@@ -71,6 +71,8 @@ Requires `jq` for JSON merging (`brew install jq` on macOS, `apt install jq` on 
 ```
 /setup-wizard → /constitute → /onboard → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
    (once)         (once)       (once)    (optional)  (per feat)                      (per task/batch)  (per feat)
+
+/fix "bug description"   ← lightweight shortcut for small bugs (skips spec/plan/breakdown)
 ```
 
 ### Phase 0: `/setup-wizard` (one-time)
@@ -106,6 +108,9 @@ Supports multiple execution modes:
 
 ### Phase 7: `/verify` (per feature)
 Code review against the spec's acceptance criteria, cross-referenced with constitution rules. Updates persistent memory with lessons learned.
+
+### `/fix "bug description"` (standalone, for small bugs)
+Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown pipeline. Designed for small, localized bugs (1-5 files). Phases: diagnose (with **runtime-debugger** agent for runtime errors), apply minimal fix, verify (tsc + lint + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent). Includes crash recovery, constitution enforcement, and memory updates. If the bug turns out to be larger than expected, recommends escalating to `/specify`.
 
 ## Artifact Storage
 

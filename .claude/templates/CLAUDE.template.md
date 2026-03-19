@@ -68,6 +68,18 @@ One-time deep codebase analysis (or interview for greenfield projects) that gene
 ### `/onboard`
 One-time deep codebase scan for existing projects. Uses the tech-writer agent to generate comprehensive documentation in `docs/` — the knowledge base for all agents. Run once after `/constitute`.
 
+### `/fix "bug description"`
+Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the full spec→plan→breakdown pipeline. Phases:
+1. Diagnosis (runtime-debugger agent for runtime errors, manual tracing for logic bugs)
+2. User confirms root cause (hard gate)
+3. Apply minimal fix with WIP checkpoint
+4. Verification (tsc, lint, self-repair loop)
+5. Code review (code-reviewer agent)
+6. Test assessment (qa-engineer agent)
+7. Clean commit + memory update
+
+If the bug grows beyond 5 files, recommends escalating to `/specify`.
+
 ### Additional Commands
 
 - `/setup-wizard` — Re-run initial project setup (regenerates config files)
