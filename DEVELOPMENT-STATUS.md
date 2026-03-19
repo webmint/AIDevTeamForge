@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (10 files in `.claude/commands/`)
+### Commands (11 files in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -17,6 +17,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `execute-task.md` — Runs a single task with pre-flight checks, agent execution, doc writing, verification
 - `verify.md` — Validates all tasks against spec acceptance criteria
 - `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test, with runtime-debugger, code-reviewer, and qa-engineer agents
+- `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review, with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
 
 ### Agent Templates (14 files in `.claude/templates/agents/`)
 Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`
@@ -40,7 +41,7 @@ Setup wizard decides which agents to generate based on detected stack.
 ### Wrapper Mode
 - Setup wizard detects nested git repos at depth 1 and offers wrapper mode
 - `SOURCE_ROOT` variable propagated through CLAUDE.md → all commands read it
-- All 9 commands scope source scanning to the Source Root path
+- All commands scope source scanning to the Source Root path
 - Wrapper repo git auto-commits only; inner repo commits are manual
 - `/execute-task` Phase 3.3 verifies no Claude artifacts leak into the inner project
 - `install.sh --wrapper` pre-configures the `.gitignore` entry for the inner folder

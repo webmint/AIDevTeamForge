@@ -15,6 +15,7 @@
       ".claude/commands/onboard.md",
       ".claude/commands/verify.md",
       ".claude/commands/fix.md",
+      ".claude/commands/refactor.md",
       "scripts/**"
     ]
   },

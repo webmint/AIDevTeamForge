@@ -72,7 +72,8 @@ Requires `jq` for JSON merging (`brew install jq` on macOS, `apt install jq` on 
 /setup-wizard → /constitute → /onboard → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
    (once)         (once)       (once)    (optional)  (per feat)                      (per task/batch)  (per feat)
 
-/fix "bug description"   ← lightweight shortcut for small bugs (skips spec/plan/breakdown)
+/fix "bug description"        ← lightweight shortcut for small bugs (skips spec/plan/breakdown)
+/refactor path/to/file.ts    ← focused code restructuring without behavior changes
 ```
 
 ### Phase 0: `/setup-wizard` (one-time)
@@ -111,6 +112,9 @@ Code review against the spec's acceptance criteria, cross-referenced with consti
 
 ### `/fix "bug description"` (standalone, for small bugs)
 Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown pipeline. Designed for small, localized bugs (1-5 files). Phases: diagnose (with **runtime-debugger** agent for runtime errors), apply minimal fix, verify (tsc + lint + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent). Includes crash recovery, constitution enforcement, and memory updates. If the bug turns out to be larger than expected, recommends escalating to `/specify`.
+
+### `/refactor path/to/file.ts "goal"` (standalone, for code restructuring)
+Focused refactoring workflow for behavior-preserving code restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path with optional line range. Phases: analyze code against 9 refactoring categories (long functions, deep nesting, SOLID/DRY violations, type safety, naming, dead code, pattern mismatches, complexity), present detailed proposal with before/after for each opportunity (hard gate — partial approval supported), apply refactoring with auto-selected agent (**architect**, **frontend-engineer**, or **backend-engineer** based on file layer), verify (tsc + lint + tests + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent — tests must pass unchanged since refactoring is behavior-preserving). If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 
 ## Artifact Storage
 
