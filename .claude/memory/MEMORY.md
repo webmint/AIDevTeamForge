@@ -1,9 +1,3 @@
-# Template Memory
+# Memory Index
 
-This file is a placeholder. When `/setup-wizard` runs, it will be replaced with project-specific content.
-
-When using this template, the memory file will accumulate:
-- Project structure notes
-- Known pitfalls and gotchas
-- Pattern decisions and their rationale
-- Lessons learned from debugging sessions
+- [feedback_research_efficiency.md](feedback_research_efficiency.md) — Web search should be signal-based, not automatic; avoid overhead on simple features

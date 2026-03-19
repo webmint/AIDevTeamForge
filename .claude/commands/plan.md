@@ -23,48 +23,75 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 1. A spec must exist with **Status: Approved**
 2. If status is still "Draft", stop and inform the user
 
-## PHASE 0: Research (if needed)
+## PHASE 0: Research Evaluation
+
+**This phase always runs.** Scan the spec to determine the research depth needed.
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path.
 
-Read the spec and identify technical unknowns:
-- Are there technology choices that need investigation?
-- Are there external APIs/services that need their contracts checked?
-- Are there performance constraints that need benchmarking?
-- Are there existing patterns in the codebase that need to be understood?
+### Step 1: Codebase Research (always)
 
-### For existing codebases:
 - Read relevant source files to understand current patterns
 - Check how similar features are implemented
 - Identify reusable code and patterns
+- For greenfield projects: check the constitution's scaffolding guide for pattern references
 
-### For greenfield projects:
-- Use WebSearch for framework best practices relevant to this feature
-- Check the constitution's scaffolding guide for pattern references
-- Research libraries or approaches if the spec mentions unfamiliar tech
+### Step 2: Signal Scan
+
+Read the spec and check for these signals:
+
+| Signal | Example |
+|--------|---------|
+| External library/package mentioned or implied | "use Stripe SDK", "add PDF export" |
+| New integration with third-party service or API | "connect to payment gateway", "OAuth with Google" |
+| Architectural decision where multiple valid approaches exist | "real-time updates" (polling vs SSE vs WebSocket) |
+| Greenfield pattern not yet present in the codebase | first use of caching, first background job, new auth flow |
+| Performance constraints that need benchmarking | "handle 10k concurrent users", "< 200ms response" |
+| Unfamiliar technology referenced in spec | framework, protocol, or tool the codebase hasn't used before |
+
+**No signals found** → proceed to Phase 1 with codebase research only.
+
+**1+ signals found** → continue to Step 3.
+
+### Step 3: Deep Research (when signals detected)
+
+For each signal identified:
+- Use WebSearch to find current best practices and proven approaches
+- Compare at least 2-3 alternatives with pros/cons
+- Check library options: maintenance status, bundle size, community adoption
+- Look at real-world examples of similar implementations
+- Verify external API contracts and limitations
 
 ### Research output:
-If research was needed, save to `specs/[feature-name]/research.md`:
+
+Save to `specs/[feature-name]/research.md`:
 
 ```markdown
 # Research: [Feature Name]
 
 **Date**: [DD-MM-YYYY HH:MM Ukrainian time]
+**Signals detected**: [list which signals triggered deep research]
 
 ## Questions Investigated
 1. [Question] → [Finding + decision]
 2. [Question] → [Finding + decision]
 
-## Decisions
-| Decision | Rationale | Alternatives Considered |
-|----------|-----------|------------------------|
-| [choice] | [why] | [what else was evaluated] |
+## Alternatives Compared
+
+### [Decision Area] (e.g., "Payment processor", "WebSocket library")
+| Option | Pros | Cons | Verdict |
+|--------|------|------|---------|
+| [option A] | [pros] | [cons] | Chosen / Rejected |
+| [option B] | [pros] | [cons] | Chosen / Rejected |
+| [option C] | [pros] | [cons] | Chosen / Rejected |
+
+**Decision**: [chosen option] — [one-line rationale]
 
 ## References
-- [links to docs, examples, or source files]
+- [links to docs, examples, or source files consulted]
 ```
 
-If no research needed, skip this phase.
+If no deep research was needed (no signals), skip the research.md file.
 
 ## PHASE 1: Technical Design
 
