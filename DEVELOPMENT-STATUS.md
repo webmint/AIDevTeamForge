@@ -12,7 +12,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
 - `clarify.md` — Optional pre-step, 9 ambiguity categories, max 5 questions
 - `specify.md` — Creates feature specs with acceptance criteria; auto-creates `spec/NNN-short-desc` branch when on default branch
-- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts)
+- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation (deep web research only when complexity signals detected)
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files
 - `execute-task.md` — Runs a single task with pre-flight checks, agent execution, doc writing, verification
 - `verify.md` — Validates all tasks against spec acceptance criteria
