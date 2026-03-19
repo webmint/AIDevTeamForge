@@ -24,6 +24,8 @@ Optional pre-step before `/specify`. Use when requirements are vague or have man
 
 ## PHASE 1: Load Context
 
+**Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, scope all codebase scanning to that path.
+
 1. Read `constitution.md` for architecture constraints
 2. Read `.claude/memory/MEMORY.md` for related past work
 3. If an existing spec is referenced, read it

@@ -5,6 +5,27 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-19
+
+### Added
+- **Wrapper mode** — setup wizard now detects nested git repos and offers wrapper mode for projects where AI usage must be invisible to the client
+  - Wrapper repo holds all Claude artifacts (`.claude/`, `CLAUDE.md`, `constitution.md`, `specs/`, `docs/`)
+  - Inner folder is the client's separate git repo with zero Claude traces
+  - Auto-detection: scans for nested `.git/` directories at depth 1
+  - New `{{SOURCE_ROOT}}` and `{{WRAPPER_MODE_SECTION}}` placeholders in CLAUDE.md template
+  - New `{{WORKSPACE_MODE}}` placeholder in memory template
+  - Inner project folder automatically added to wrapper's `.gitignore`
+  - Git auto-commits apply to wrapper repo only; source code commits are manual
+- All 9 commands now read Source Root from CLAUDE.md and scope source scanning accordingly
+- `/execute-task` Phase 3.3 includes wrapper isolation check (no Claude artifacts inside Source Root)
+- `install.sh` now supports `--wrapper` flag for pre-configuring wrapper mode during installation
+
+### Changed
+- `/setup-wizard` Step 0 is now Workspace Mode Detection; original greenfield detection moved to Step 0.5
+- `/constitute` scans Source Root instead of workspace root when in wrapper mode
+- `/onboard` uses Source Root as starting point for tree scan
+- Settings template type-check command prefixed with `cd SOURCE_ROOT &&` in wrapper mode
+
 ## [1.2.0] - 2026-03-19
 
 ### Added

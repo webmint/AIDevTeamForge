@@ -14,9 +14,10 @@ If any prerequisite is missing, inform the user and suggest running `/setup-wiza
 
 Before starting, determine which mode to use:
 
-1. **Count source files** in the project (exclude `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `vendor`)
-2. If there are **fewer than 10 source files** (or the project has only boilerplate/scaffold files like a fresh `create-vite` or `create-next-app`), use **GREENFIELD MODE**
-3. If there are **10+ meaningful source files**, use **EXISTING CODEBASE MODE**
+1. **Read `CLAUDE.md`** to check the **Source Root** field. If it is not `.`, this is a wrapper project — scan the Source Root path instead of the workspace root for all source code operations.
+2. **Count source files** in the Source Root (exclude `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `vendor`)
+3. If there are **fewer than 10 source files** (or the project has only boilerplate/scaffold files like a fresh `create-vite` or `create-next-app`), use **GREENFIELD MODE**
+4. If there are **10+ meaningful source files**, use **EXISTING CODEBASE MODE**
 
 Inform the user which mode you're using:
 - Greenfield: "This looks like a new project. I'll build the constitution from your preferences and framework best practices."
@@ -216,6 +217,8 @@ Now proceed to **PHASE 3** (User Review) below.
 Perform a thorough analysis of the entire codebase. This is the most important step — the constitution's quality depends on how well you understand the project.
 
 #### 1.1: Architecture Mapping
+
+**Source Root awareness**: If `CLAUDE.md` specifies a Source Root other than `.`, all source scanning paths are relative to that Source Root. Claude artifacts (`specs/`, `docs/`, `constitution.md`) remain at the workspace root, not inside the Source Root.
 
 Scan the full source tree and identify:
 - **Layer boundaries**: Where does data access live? Business logic? Presentation?

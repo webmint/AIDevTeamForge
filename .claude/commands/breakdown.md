@@ -31,6 +31,8 @@ Verify both spec AND plan are approved. If not, stop and inform the user.
 
 ## PHASE 2: Deep File Analysis
 
+**Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, all source file paths are relative to the workspace root (e.g., `SOURCE_ROOT/src/components/...`). Claude artifact paths (`specs/`, `docs/`) remain at the workspace root.
+
 ### If existing codebase:
 For every file listed in the spec's "Affected Areas" section:
 1. **Read the file** completely

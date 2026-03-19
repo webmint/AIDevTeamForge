@@ -130,6 +130,7 @@ For multi-task queues: the current task is always the first item. After it compl
 ### 1.2: Load Context
 
 0. Read `.claude/session-state.md` if it exists.
+   - **Check workspace mode**: Read the Source Root from `CLAUDE.md`. If it is not `.`, this is a wrapper project. All source code lives under the Source Root path. Git auto-commits target the wrapper repo only. Verify no Claude artifacts are created inside the Source Root during post-agent verification (Phase 3.3).
    - If it does NOT exist, this is a fresh session — proceed normally.
    - If it exists, compare the "Current Feature" field with the feature you're about to execute.
      - **Feature matches** → use the session state as-is (context load count carries over).
@@ -258,6 +259,7 @@ After the agent completes, run verification:
 2. **TypeScript compiles**: Run `tsc --noEmit` (the PostToolUse hook should catch this, but verify explicitly)
 3. **ESLint passes**: Run lint on all changed files
 4. **Done conditions met**: Check each "Done when" item from the task
+5. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`. If any are found, flag as a verification failure.
 
 **If ALL checks pass** → proceed to Phase 4.
 

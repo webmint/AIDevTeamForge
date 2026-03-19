@@ -36,6 +36,16 @@ Setup wizard decides which agents to generate based on detected stack.
 - `README.md` — Full documentation with installation, workflow, pre-populated rules section
 - `specs/` — Empty specs directory with .gitkeep
 
+### Wrapper Mode
+- Setup wizard detects nested git repos at depth 1 and offers wrapper mode
+- `SOURCE_ROOT` variable propagated through CLAUDE.md → all commands read it
+- All 9 commands scope source scanning to the Source Root path
+- Wrapper repo git auto-commits only; inner repo commits are manual
+- `/execute-task` Phase 3.3 verifies no Claude artifacts leak into the inner project
+- `install.sh --wrapper` pre-configures the `.gitignore` entry for the inner folder
+- CLAUDE.md template has conditional `{{WRAPPER_MODE_SECTION}}` (omitted for standalone)
+- Memory template tracks `{{WORKSPACE_MODE}}` (standalone/wrapper) and `{{SOURCE_ROOT}}`
+
 ## Key Design Decisions
 
 1. **User's workflow is primary** — spec-kit ideas adapted to serve hard gates + agents, not replace them
@@ -48,6 +58,7 @@ Setup wizard decides which agents to generate based on detected stack.
 8. **Greenfield support** — all commands work for empty/new projects
 9. **Check before build** — must search codebase for existing utilities before creating new ones
 10. **Onboarding for existing projects** — `/onboard` generates comprehensive docs as the knowledge base for all agents
+11. **Wrapper mode for client-invisible AI** — template wraps around existing project folder; zero Claude traces in the client's repo
 
 ### Onboarding System (`/onboard`)
 - Runs after `/constitute` for existing projects — uses constitution + CLAUDE.md + memory as input

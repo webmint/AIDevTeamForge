@@ -25,6 +25,8 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 
 ## PHASE 0: Research (if needed)
 
+**Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path.
+
 Read the spec and identify technical unknowns:
 - Are there technology choices that need investigation?
 - Are there external APIs/services that need their contracts checked?

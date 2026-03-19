@@ -51,6 +51,8 @@ Based on the description, identify ambiguities and ask clarifying questions. Use
 
 ## PHASE 3: Codebase Analysis
 
+**Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, all file searches and code reads target that path. File paths in the spec's Affected Areas table use workspace-relative paths (e.g., `SOURCE_ROOT/src/...`).
+
 ### If existing codebase:
 Search the codebase to understand the current state of affected areas:
 
