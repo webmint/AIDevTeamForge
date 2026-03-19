@@ -5,7 +5,7 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] - 2026-03-19
+## [1.5.0] - 2026-03-19
 
 ### Added
 - `/fix` command — lightweight bug-fixing workflow for small, localized bugs (1-5 files)
@@ -29,8 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Self-repair loop, crash recovery, constitution enforcement, and memory updates — same patterns as `/fix`
 
 ### Changed
+- `/specify` now auto-creates a `spec/NNN-short-desc` branch when invoked on the default branch
+  - Incremental numbering based on existing `spec/*` branches (local + remote)
+  - Short description (2-3 words kebab-case) generated from the feature description
+  - Skips if already on a `spec/*` branch; asks user if on any other non-default branch
 - Command count: 9 → 11
-- CLAUDE.md template updated with `/fix` and `/refactor` in workflow commands section
+- CLAUDE.md template updated with `/fix`, `/refactor`, and `/specify` branch creation in workflow commands section
 - Template manifest updated to include `fix.md` and `refactor.md` as template-owned
 
 ## [1.3.0] - 2026-03-19

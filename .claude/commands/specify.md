@@ -10,6 +10,58 @@ Create a structured specification for a feature or change. This command takes a 
 ## Arguments
 - `$ARGUMENTS` — The feature description provided by the user. If empty, ask the user to describe what they want.
 
+## PHASE 0: Branch Setup
+
+Before any spec work, ensure you're on a dedicated spec branch.
+
+### 0.1: Detect Current Branch
+
+Run `git branch --show-current` to get the current branch name.
+
+### 0.2: Detect Default Branch
+
+Determine the repository's default branch using these methods in order:
+1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null` — parse the branch name from the output
+2. If that fails, check if `main` exists: `git show-ref --verify --quiet refs/heads/main`
+3. If that fails, check if `master` exists: `git show-ref --verify --quiet refs/heads/master`
+4. If none found, ask the user what their default branch is
+
+### 0.3: Branch Decision
+
+**If already on a `spec/*` branch**: Skip to Pre-Step — already on a spec branch.
+
+**If on the default branch**: Create a new spec branch:
+
+1. **Find the next spec number**: List all existing spec branches (local and remote):
+   ```
+   git branch -a --list '*spec/*' --sort=-version:refname
+   ```
+   Parse the highest `NNN` prefix from branch names matching `spec/NNN-*`. If none exist, start at `001`.
+
+2. **Generate short description**: From `$ARGUMENTS`, generate a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`).
+
+3. **Create and checkout the branch**:
+   ```
+   git checkout -b spec/NNN-short-desc
+   ```
+
+4. **Inform the user**:
+   ```
+   Created and switched to branch `spec/NNN-short-desc`
+   ```
+
+**If on any other branch** (not default, not `spec/*`): Ask the user:
+```
+You're currently on branch `[branch-name]`, which is not the default branch.
+
+Options:
+1. Create spec branch from here (branch off current branch)
+2. Switch to [default-branch] first, then create spec branch
+3. Continue on current branch without creating a spec branch
+```
+
+Wait for user choice and execute accordingly.
+
 ## Pre-Step: Reset Session State
 
 Delete `.claude/session-state.md` if it exists (or overwrite with the empty placeholder). A new spec means a new feature scope — previous session tracking is irrelevant.

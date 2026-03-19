@@ -43,7 +43,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 Scans requirements against 9 ambiguity categories, asks up to 5 multiple-choice questions. Saves decisions to `specs/[feature]/clarifications.md`. Use when requirements are vague.
 
 ### `/specify "feature description"`
-Creates a structured specification with acceptance criteria. Analyzes affected code, saves spec to `specs/[feature]/spec.md`. **Requires approval before proceeding.**
+Creates a structured specification with acceptance criteria. Analyzes affected code, saves spec to `specs/[feature]/spec.md`. **Requires approval before proceeding.** Auto-creates a `spec/NNN-short-desc` branch when on the default branch.
 
 ### `/plan [spec-file]`
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. **Requires approval before breakdown.**

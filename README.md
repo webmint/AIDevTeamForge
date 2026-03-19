@@ -89,7 +89,7 @@ Deep codebase scan that generates comprehensive documentation in `docs/`. Delega
 Scans requirements against 9 ambiguity categories, asks up to 5 multiple-choice questions with recommendations. Saves to `specs/[feature]/clarifications.md`. Skip if requirements are already clear.
 
 ### Phase 3: `/specify "feature description"` (per feature)
-Produces a structured specification with acceptance criteria, scope boundaries, and risk assessment. Saves to `specs/[feature]/spec.md`. **Requires approval.**
+Produces a structured specification with acceptance criteria, scope boundaries, and risk assessment. Saves to `specs/[feature]/spec.md`. **Requires approval.** When invoked on the default branch, auto-creates a `spec/NNN-short-desc` branch (incremental numbering, 2-3 word description from the feature name). Skips if already on a `spec/*` branch.
 
 ### Phase 4: `/plan` (per feature)
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research findings. Saves to `specs/[feature]/plan.md`. **Requires approval.**
