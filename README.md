@@ -65,7 +65,7 @@ Requires `jq` for JSON merging (`brew install jq` on macOS, `apt install jq` on 
 
 ```
 /setup-wizard → /constitute → /onboard → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
-   (once)         (once)       (once)    (optional)  (per feat)                        (per task)     (per task)
+   (once)         (once)       (once)    (optional)  (per feat)                      (per task/batch)  (per feat)
 ```
 
 ### Phase 0: `/setup-wizard` (one-time)
@@ -89,8 +89,15 @@ Takes an approved spec and produces a technical plan: architecture decisions, da
 ### Phase 5: `/breakdown` (per feature)
 Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval.**
 
-### Phase 6: `/execute-task [number]` (per task)
-Picks up a task, reads relevant docs for context, selects the assigned agent, executes with scope constraints, verifies with automated hooks, then the tech-writer agent updates `docs/` with any changes.
+### Phase 6: `/execute-task` (per task or batch)
+Picks up a task (or multiple tasks), reads relevant docs for context, selects the assigned agent, executes with scope constraints, and verifies. If verification fails, a self-repair agent automatically fixes errors (up to 3 attempts). Then the tech-writer agent updates `docs/`.
+
+Supports multiple execution modes:
+- `/execute-task` — next pending task
+- `/execute-task 3` — specific task
+- `/execute-task 1,3,5` — specific tasks sequentially
+- `/execute-task 1-5` — range of tasks
+- `/execute-task all` — all pending tasks in feature
 
 ### Phase 7: `/verify` (per feature)
 Code review against the spec's acceptance criteria, cross-referenced with constitution rules. Updates persistent memory with lessons learned.
@@ -134,12 +141,14 @@ specs/
 ## Automated Guardrails
 
 - **PostToolUse hooks**: Type checking runs after every file edit
+- **Self-repair loop**: When verification catches errors, a repair agent automatically fixes them (up to 3 attempts) before escalating
 - **Persistent memory**: Lessons learned carry across sessions
 - **Agent specialization**: Domain-specific agents, not generic ones
 - **Minimal changes rule**: Every task touches as little code as possible
 - **Mandatory linting**: Must pass before task completion
 - **Constitution compliance**: Checked in pre-flight before every task
 - **9-category ambiguity scan**: Catches requirement gaps before implementation
+- **Auto-compact**: In batch execution, automatically compacts context at heavy load to prevent degradation
 
 ## Pre-Populated Universal Rules
 
