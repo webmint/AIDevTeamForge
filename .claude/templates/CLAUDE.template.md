@@ -80,6 +80,18 @@ Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the
 
 If the bug grows beyond 5 files, recommends escalating to `/specify`.
 
+### `/refactor path/to/file.ts "goal"`
+Focused code refactoring workflow for behavior-preserving restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path. Phases:
+1. Analysis (detect refactoring opportunities against constitution rules — long functions, SOLID/DRY/KISS violations, type safety, naming, dead code, pattern mismatches)
+2. User approves proposal with specific items (hard gate, partial approval supported)
+3. Apply refactoring with auto-selected agent (architect, frontend-engineer, or backend-engineer based on file layer)
+4. Verification (tsc, lint, tests, self-repair loop)
+5. Code review (code-reviewer agent)
+6. Test assessment (qa-engineer agent — tests must pass unchanged since refactoring is behavior-preserving)
+7. Clean commit + memory update
+
+If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
+
 ### Additional Commands
 
 - `/setup-wizard` — Re-run initial project setup (regenerates config files)

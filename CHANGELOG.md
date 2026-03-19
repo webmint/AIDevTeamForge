@@ -18,11 +18,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Full crash recovery with WIP markers and git checkpoints
   - Wrapper mode awareness (Source Root scoping, isolation checks)
   - Memory update for bug patterns and pitfalls
+- `/refactor` command — focused code refactoring workflow for behavior-preserving restructuring (1-5 files)
+  - Supports both IDE-injected context (active file/selection from WebStorm) and manual file path with optional line range
+  - Structured analysis phase scans 9 refactoring categories: long functions, deep nesting, SOLID/DRY violations, type safety, naming, dead code, pattern mismatches, complexity
+  - Auto-selects execution agent based on file layer (**architect**, **frontend-engineer**, or **backend-engineer**)
+  - Hard gate on proposal — user sees detailed before/after for each opportunity and can approve all, specific items, or cancel
+  - Partial approval supported — approve individual refactoring actions by number
+  - **code-reviewer** agent validates refactored code
+  - **qa-engineer** agent verifies tests still pass (behavior-preserving guarantee)
+  - Self-repair loop, crash recovery, constitution enforcement, and memory updates — same patterns as `/fix`
 
 ### Changed
-- Command count: 9 → 10
-- CLAUDE.md template updated with `/fix` in workflow commands section
-- Template manifest updated to include `fix.md` as template-owned
+- Command count: 9 → 11
+- CLAUDE.md template updated with `/fix` and `/refactor` in workflow commands section
+- Template manifest updated to include `fix.md` and `refactor.md` as template-owned
 
 ## [1.3.0] - 2026-03-19
 
