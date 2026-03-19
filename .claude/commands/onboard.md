@@ -33,6 +33,8 @@ Compile a **project brief** — a concise summary (~50 lines max) containing:
 
 ### 1.2: Map Project Structure
 
+**Source Root awareness**: If `CLAUDE.md` specifies a Source Root other than `.`, use that path as the starting point for the source tree scan. All module paths will be relative to the workspace root (e.g., `SOURCE_ROOT/src/auth/`, not `src/auth/`). Claude artifacts (`specs/`, `docs/`) remain at the workspace root.
+
 Get the full directory tree of source files. **Exclude**: `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `vendor`, `coverage`, `.claude`, `specs`, `docs`, lock files, binary/asset files.
 
 From the tree, identify **module boundaries** — top-level source directories or feature directories that represent distinct areas of the codebase. Examples:
@@ -105,6 +107,8 @@ The docs you write must answer these questions for any agent picking up a task:
 ## SECTION A: Tech-Writer Onboarding Instructions
 
 **These instructions are included verbatim in the tech-writer agent prompt.**
+
+**Source Root**: All source code scanning targets the Source Root specified in `CLAUDE.md`. For wrapper mode projects, this is a subfolder (e.g., `db-cse-na-parts/`). Claude artifacts (`specs/`, `docs/`, `constitution.md`) are at the workspace root.
 
 ### A.1: Scanning Rules — Protecting Context
 

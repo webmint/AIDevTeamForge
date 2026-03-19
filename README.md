@@ -11,12 +11,17 @@ Every phase transition requires explicit user approval. No step can be skipped.
 ## Installation
 
 ```bash
+# Standard installation
 /path/to/claude-hybrid-template/install.sh /path/to/your-project
+
+# Wrapper mode (for client-invisible AI usage)
+/path/to/claude-hybrid-template/install.sh --wrapper /path/to/workspace inner-project-folder
 ```
 
 This copies `.claude/`, `specs/`, `scripts/`, `.mcp.json`, and `update.sh` into your project. It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
 
 The wizard will:
+   - Detect workspace mode (standalone vs wrapper around a client project)
    - Detect your project structure (or interview you for greenfield projects)
    - Ask clarifying questions about your stack
    - Generate `CLAUDE.md`, `constitution.md`, agents, hooks, and memory
@@ -165,6 +170,34 @@ The constitution template comes with universal rules that apply to ALL projects 
 **Workflow**: Minimal changes, semantic understanding before renaming, read-first principle, document new code, check constitution and memory before every task.
 
 Project-specific rules (architecture, naming conventions, type safety, testing, domain rules) are populated by `/constitute`.
+
+## Wrapper Mode
+
+Use wrapper mode when the Claude orchestration layer must wrap around an existing client project folder (a separate git repo) — keeping AI usage invisible to the client.
+
+```
+my-workspace/                    # Wrapper (your git repo)
+├── .claude/                     # Commands, agents, memory
+├── CLAUDE.md                    # Project config (Source Root = client-project)
+├── constitution.md              # Project constitution
+├── specs/                       # Feature specifications
+├── docs/                        # Documentation
+├── .gitignore                   # Ignores client-project/
+└── client-project/              # Client's project (client's git repo, zero AI traces)
+    ├── src/
+    ├── package.json
+    └── ...
+```
+
+### How it works
+- All Claude artifacts stay in the wrapper root — nothing leaks into the inner project
+- All source scanning (`/constitute`, `/onboard`, agents) targets the inner folder
+- Git auto-commits apply to the wrapper repo only — you commit source changes to the client's repo manually
+- `/execute-task` verifies no Claude artifacts were created inside the inner project
+
+### Setup options
+1. **Auto-detect**: Run `install.sh` normally, then `/setup-wizard` — it detects nested git repos and asks
+2. **Pre-configure**: `install.sh --wrapper /path/to/workspace inner-folder` — sets up `.gitignore` entry upfront
 
 ## Greenfield Support
 

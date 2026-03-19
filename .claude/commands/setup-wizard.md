@@ -2,10 +2,46 @@
 
 You are running the initial setup wizard for the Claude Hybrid Template. Your job is to analyze the current project, ask the user targeted questions, and generate all configuration files.
 
-## STEP 0: Greenfield Detection
+## STEP 0: Workspace Mode Detection
 
-Before scanning, check if this is a new/empty project:
-1. Count source files (exclude `node_modules`, `.git`, `dist`, `build`, config files at root)
+Before scanning source code, determine whether this is a standalone project or a wrapper workspace.
+
+### 0.1: Auto-Detect Nested Git Repos
+
+Scan for directories at depth 1 (direct children of the workspace root) that contain a `.git/` directory. Exclude `node_modules`, `.git`, and hidden directories (directories starting with `.`).
+
+### 0.2: Present Finding & Ask
+
+**If exactly one nested `.git` directory is found** (e.g., `db-cse-na-parts/.git`):
+Use AskUserQuestion: "I found a nested git repository at `[folder-name]/`. Is this a wrapper workspace where Claude artifacts live here and the actual source code lives in that subfolder?"
+- Yes, this is a wrapper around `[folder-name]`
+- No, this is a standalone project
+
+**If zero nested `.git` directories are found:**
+Use AskUserQuestion: "Is this a standalone project, or a wrapper workspace around a client project folder?"
+- Standalone project (default)
+- Wrapper workspace (then ask: "Which folder contains the client's source code?")
+
+**If multiple nested `.git` directories are found:**
+Use AskUserQuestion: "I found multiple nested git repositories: [list]. Is this a wrapper workspace? If so, which folder is the primary source root?"
+- Standalone (default)
+- Wrapper around [user picks one]
+
+### 0.3: Set Source Root
+
+Store the result for use in all subsequent steps:
+- **Standalone**: `SOURCE_ROOT = "."`
+- **Wrapper**: `SOURCE_ROOT = "[folder-name]"` (e.g., `db-cse-na-parts`)
+
+If wrapper mode:
+- Inform the user: "Wrapper mode activated. Source root: `[folder-name]/`. All Claude artifacts will live in the wrapper root. I'll scan the source code inside `[folder-name]/`."
+- Verify the inner folder exists and contains files
+
+## STEP 0.5: Greenfield Detection
+
+Check if the project is new/empty. **When scanning source files, use the SOURCE_ROOT path** (`.` for standalone, `[folder-name]/` for wrapper).
+
+1. Count source files inside SOURCE_ROOT (exclude `node_modules`, `.git`, `dist`, `build`, config files at root)
 2. If **0-5 source files** (or only scaffold boilerplate from `create-vite`, `create-next-app`, `npm init`, etc.), this is a **GREENFIELD PROJECT**
 3. If **6+ meaningful source files**, this is an **EXISTING PROJECT**
 
@@ -20,6 +56,8 @@ Before scanning, check if this is a new/empty project:
 Inform the user: "This appears to be a [new/existing] project. I'll [ask you about your intended stack / analyze your existing codebase] to set things up."
 
 ## STEP 1: Auto-Detect Project Structure
+
+**All scanning in this step targets the SOURCE_ROOT directory.** For standalone projects this is the workspace root (`.`). For wrapper projects this is the inner folder (e.g., `db-cse-na-parts/`). Resolve all file paths (`package.json`, `tsconfig.json`, etc.) relative to SOURCE_ROOT.
 
 Silently scan the project to detect as much as possible before asking questions. For greenfield projects, only scan config files. For existing projects, scan everything. Look for:
 
@@ -167,9 +205,26 @@ Replace ALL placeholders:
 - `{{ERROR_HANDLING}}` — error handling strategy
 - `{{STYLING}}` — CSS framework/approach
 - `{{MONOREPO_TOOL}}` — monorepo tool (or "N/A")
-- `{{PROJECT_STRUCTURE}}` — generate a tree of the actual project structure
-- `{{DEV_COMMANDS}}` — actual dev/build/test/lint commands from package.json scripts
+- `{{SOURCE_ROOT}}` — `.` for standalone projects, or the inner folder name for wrapper mode (e.g., `db-cse-na-parts`)
+- `{{WRAPPER_MODE_SECTION}}` — for wrapper projects, include the Wrapper Mode section (see below). For standalone projects, replace with empty string.
+- `{{PROJECT_STRUCTURE}}` — generate a tree of the actual project structure (scanning SOURCE_ROOT)
+- `{{DEV_COMMANDS}}` — actual dev/build/test/lint commands from package.json scripts (from SOURCE_ROOT)
 - `{{AGENT_LIST}}` — list of agents generated for this project
+
+**Wrapper Mode section** (only included when wrapper mode is active — replace `{{WRAPPER_MODE_SECTION}}` with this):
+```markdown
+## Wrapper Mode
+
+This workspace wraps a client-owned project. Claude artifacts live here; source code lives in `{{SOURCE_ROOT}}/`.
+
+### Wrapper Rules
+1. **Never create Claude artifacts inside `{{SOURCE_ROOT}}/`** — no `.claude/`, `specs/`, `docs/`, `constitution.md`, or `CLAUDE.md` files
+2. **All source scanning** (by `/constitute`, `/onboard`, agents) targets `{{SOURCE_ROOT}}/` as the base path
+3. **Git auto-commits** apply to the wrapper repo only — source code commits in the inner repo are manual
+4. **File paths** in specs and tasks use workspace-relative paths (e.g., `{{SOURCE_ROOT}}/src/components/Button.tsx`)
+```
+
+For standalone projects, replace `{{WRAPPER_MODE_SECTION}}` with an empty string (no section generated).
 
 Fill the commands section with REAL commands from the project's `package.json` scripts (or `Makefile`, `pyproject.toml`, etc.). Do NOT use placeholder commands.
 
@@ -237,6 +292,8 @@ Configure PostToolUse hooks based on detected tooling:
 
 Adjust the `cd` path in the hook to the actual project directory where the type checker should run. For monorepos, point to the root or the appropriate package.
 
+**Wrapper mode**: Prefix the type-check command with `cd SOURCE_ROOT &&` so the type checker runs in the correct directory. For example: `cd db-cse-na-parts && tsc --noEmit --pretty 2>&1 | head -20`.
+
 ### 3.4: Generate Memory
 
 Read `.claude/templates/memory.template.md` and generate `.claude/memory/MEMORY.md`.
@@ -246,6 +303,8 @@ Pre-populate with:
 - Key file paths
 - Architecture pattern notes
 - Any patterns you discovered during detection
+
+Replace `{{WORKSPACE_MODE}}` with `standalone` or `wrapper`, and `{{SOURCE_ROOT}}` with `.` or the inner folder name.
 
 ### 3.5: Create constitution.md stub
 
@@ -266,6 +325,18 @@ docs/
 For **existing projects**: If a `docs/` directory already exists, do NOT overwrite it. Warn the user and skip this step.
 
 For **greenfield projects**: Create the stubs. The tech-writer agent will populate them as features are built.
+
+### 3.7: Wrapper Mode Setup (wrapper only)
+
+If wrapper mode is active, perform these additional steps:
+
+1. **Add inner folder to .gitignore**: Append `[SOURCE_ROOT]/` to the wrapper's `.gitignore` file (create `.gitignore` if it doesn't exist). This prevents the wrapper repo from tracking the inner project's files.
+   ```
+   # Inner project (separate git repo)
+   [SOURCE_ROOT]/
+   ```
+
+2. **Check for inner project's .claude/**: If the inner project already has a `.claude/` directory, warn the user: "The inner project at `[SOURCE_ROOT]/` already has its own `.claude/` directory. This wrapper's `.claude/` will take precedence for Claude Code running in the wrapper root."
 
 ## STEP 4: Cleanup & Summary
 
@@ -293,6 +364,14 @@ For **greenfield projects**: Create the stubs. The tech-writer agent will popula
 - Linting: [lint tool]
 - Architecture: [pattern]
 
+### Workspace Mode:
+- Mode: [standalone / wrapper]
+- Source Root: [. / folder-name]
+[Wrapper only]:
+- Inner project added to .gitignore
+- Git auto-commits apply to wrapper repo only
+- Source code in inner repo is committed manually by the developer
+
 ### Next Steps:
 1. Review the generated files and adjust if needed
 2. Run /constitute to generate your project's constitution
@@ -307,3 +386,4 @@ For **greenfield projects**: Create the stubs. The tech-writer agent will popula
 3. **Use real commands** — all generated commands must come from the project's actual scripts
 4. **Preserve existing files** — if `CLAUDE.md` or `.claude/settings.json` already exists, warn the user and ask before overwriting
 5. **Validate after generation** — read back each generated file to verify it has no unresolved `{{PLACEHOLDER}}` variables
+6. **Wrapper isolation** — in wrapper mode, never create any Claude artifact (`.claude/`, `specs/`, `docs/`, `constitution.md`, `CLAUDE.md`) inside SOURCE_ROOT. All Claude artifacts belong in the wrapper root.

@@ -7,6 +7,10 @@
 <!-- Key paths populated by setup wizard -->
 {{KEY_PATHS}}
 
+## Workspace Configuration
+- **Mode**: {{WORKSPACE_MODE}}
+- **Source Root**: {{SOURCE_ROOT}}
+
 ## Architecture Decisions
 <!-- Populated during /constitute — records WHY decisions were made, not just what -->
 <!-- Format: **Decision** - rationale -->

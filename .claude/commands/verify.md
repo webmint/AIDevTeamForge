@@ -12,6 +12,8 @@ Verifies completed tasks against the original specification's acceptance criteri
 
 ## PHASE 1: Load Context
 
+**Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, run type-checking and linting commands inside that directory.
+
 1. Read the spec file (from `$ARGUMENTS` or most recent feature directory in `specs/`)
 2. Read the feature's `plan.md`
 3. Read all task files in `specs/NNN-feature/tasks/`

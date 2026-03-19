@@ -9,6 +9,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 **Framework**: {{FRAMEWORK}}
 **Language**: {{LANGUAGE}}
 **Build Tool**: {{BUILD_TOOL}}
+**Source Root**: {{SOURCE_ROOT}}
+
+{{WRAPPER_MODE_SECTION}}
 
 ## Project Structure
 
@@ -144,6 +147,7 @@ docs/
 - Everything for a feature lives in one directory
 - Docs are organized by topic (not by task/date) in `docs/`
 - See `.claude/templates/storage-rules.md` for full conventions
+- **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`
 
 ## Session Continuity
 
