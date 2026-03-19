@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (9 files in `.claude/commands/`)
+### Commands (10 files in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -16,6 +16,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files
 - `execute-task.md` — Runs a single task with pre-flight checks, agent execution, doc writing, verification
 - `verify.md` — Validates all tasks against spec acceptance criteria
+- `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test, with runtime-debugger, code-reviewer, and qa-engineer agents
 
 ### Agent Templates (14 files in `.claude/templates/agents/`)
 Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`

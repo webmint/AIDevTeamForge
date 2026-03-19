@@ -5,6 +5,25 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-19
+
+### Added
+- `/fix` command — lightweight bug-fixing workflow for small, localized bugs (1-5 files)
+  - Diagnosis phase with **runtime-debugger** agent for runtime errors or manual tracing for logic bugs
+  - Hard gate on diagnosis — user must confirm root cause before any code changes
+  - Scope guard — automatically recommends `/specify` if bug affects more than 5 files
+  - **code-reviewer** agent runs on all changed files after fix
+  - **qa-engineer** agent assesses test impact and writes regression tests when warranted
+  - Self-repair loop (up to 3 attempts) on verification failure — same pattern as `/execute-task`
+  - Full crash recovery with WIP markers and git checkpoints
+  - Wrapper mode awareness (Source Root scoping, isolation checks)
+  - Memory update for bug patterns and pitfalls
+
+### Changed
+- Command count: 9 → 10
+- CLAUDE.md template updated with `/fix` in workflow commands section
+- Template manifest updated to include `fix.md` as template-owned
+
 ## [1.3.0] - 2026-03-19
 
 ### Added
