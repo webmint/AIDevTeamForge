@@ -110,7 +110,7 @@ If `$ARGUMENTS` is empty:
 4. Read `constitution.md`
 5. Read `.claude/memory/MEMORY.md`
 6. Read ALL files listed in the task's "Files" section
-7. **Read relevant documentation**: Search `docs/` for files related to the area this task touches. This gives you context about existing behavior, APIs, and patterns before you make changes. Read only docs that are directly relevant — not all docs.
+7. **Read relevant documentation**: Search `docs/` for files related to the area this task touches. These docs are the knowledge base for all agents — populated by `/onboard` for existing projects or built incrementally by the tech-writer for new projects. Read only docs that are directly relevant — not all docs.
 
 Verify:
 - Task exists and is not already completed

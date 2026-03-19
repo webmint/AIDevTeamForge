@@ -32,8 +32,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 ### Spec-Driven Development Flow
 
 ```
-/setup-wizard → /constitute → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
-   (once)         (once)      (optional)  (per feature)         (auto)      (per task)     (per task)
+/setup-wizard → /constitute → /onboard → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
+   (once)         (once)       (once)    (optional)  (per feature)         (auto)      (per task)     (per task)
 ```
 
 ### `/clarify "feature description"` (optional)
@@ -61,6 +61,9 @@ Verifies all completed tasks against the spec's acceptance criteria. Performs co
 
 ### `/constitute`
 One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns.
+
+### `/onboard`
+One-time deep codebase scan for existing projects. Uses the tech-writer agent to generate comprehensive documentation in `docs/` — the knowledge base for all agents. Run once after `/constitute`.
 
 ### Additional Commands
 

@@ -373,6 +373,7 @@ After approval:
 1. Update `.claude/memory/MEMORY.md` with a link to the constitution and key rules summary
 2. Verify that `CLAUDE.md` references the constitution
 3. Confirm that all agents can access the constitution path
+4. **For existing projects**: Inform the user that the next step is to run `/onboard` to generate comprehensive codebase documentation that will serve as the knowledge base for all agents
 
 ## IMPORTANT RULES
 

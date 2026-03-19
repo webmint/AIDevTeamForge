@@ -296,7 +296,8 @@ For **greenfield projects**: Create the stubs. The tech-writer agent will popula
 ### Next Steps:
 1. Review the generated files and adjust if needed
 2. Run /constitute to generate your project's constitution
-3. Start working with /specify "your first feature"
+3. [Existing projects only] Run /onboard to generate comprehensive codebase documentation
+4. Start working with /specify "your first feature"
 ```
 
 ## IMPORTANT RULES

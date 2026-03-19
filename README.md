@@ -64,8 +64,8 @@ Requires `jq` for JSON merging (`brew install jq` on macOS, `apt install jq` on 
 ## Workflow
 
 ```
-/setup-wizard → /constitute → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
-   (once)         (once)      (optional) (per feat)                        (per task)     (per task)
+/setup-wizard → /constitute → /onboard → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
+   (once)         (once)       (once)    (optional)  (per feat)                        (per task)     (per task)
 ```
 
 ### Phase 0: `/setup-wizard` (one-time)
@@ -73,6 +73,9 @@ Interactive wizard that adapts the template to your project. Auto-detects stack 
 
 ### Phase 1: `/constitute` (one-time)
 Deep codebase analysis (existing projects) or preference-based interview (greenfield) that produces `constitution.md` — non-negotiable rules, architecture decisions, patterns. Persists across sessions.
+
+### Phase 1.5: `/onboard` (one-time, existing projects only)
+Deep codebase scan that generates comprehensive documentation in `docs/`. Delegates to the tech-writer agent, which uses subagents for large codebases to stay within context limits. Produces `overview.md`, `architecture.md`, `features/*.md`, and `api/*.md` — the knowledge base all agents read before executing tasks. Skip for greenfield projects (docs are built incrementally).
 
 ### Phase 2: `/clarify "feature description"` (optional, per feature)
 Scans requirements against 9 ambiguity categories, asks up to 5 multiple-choice questions with recommendations. Saves to `specs/[feature]/clarifications.md`. Skip if requirements are already clear.
@@ -120,7 +123,8 @@ specs/
 | Transition | Gate |
 |-----------|------|
 | setup-wizard → constitute | User confirms generated config |
-| constitute → specify | User approves constitution |
+| constitute → onboard | User approves constitution |
+| onboard → specify | Docs generated (existing) or skipped (greenfield) |
 | specify → plan | User approves spec |
 | plan → breakdown | User approves technical plan |
 | breakdown → execute | User approves task list |

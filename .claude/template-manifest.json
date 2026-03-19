@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Manifest for claude-hybrid-template update system",
 
   "templateOwned": {
@@ -12,6 +12,7 @@
       ".claude/commands/plan.md",
       ".claude/commands/setup-wizard.md",
       ".claude/commands/specify.md",
+      ".claude/commands/onboard.md",
       ".claude/commands/verify.md",
       "scripts/**"
     ]

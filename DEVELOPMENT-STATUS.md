@@ -6,9 +6,10 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (8 files in `.claude/commands/`)
+### Commands (9 files in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
+- `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
 - `clarify.md` — Optional pre-step, 9 ambiguity categories, max 5 questions
 - `specify.md` — Creates feature specs with acceptance criteria
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts)
@@ -46,6 +47,21 @@ Setup wizard decides which agents to generate based on detected stack.
 7. **Mandatory documentation** — tech-writer agent runs after every task, reads only changed code, writes to `docs/`
 8. **Greenfield support** — all commands work for empty/new projects
 9. **Check before build** — must search codebase for existing utilities before creating new ones
+10. **Onboarding for existing projects** — `/onboard` generates comprehensive docs as the knowledge base for all agents
+
+### Onboarding System (`/onboard`)
+- Runs after `/constitute` for existing projects — uses constitution + CLAUDE.md + memory as input
+- Delegates ALL scanning and documentation to the tech-writer agent in onboarding mode
+- Context-safe scanning via size-based strategies:
+  - < 50 files: single agent, direct scan
+  - 50-200 files: one subagent per module, parallel
+  - 200-1000 files: two-pass (structure first, then depth via subagents)
+  - 1000+ files: sample-based (entry points + types + 2-3 representative files per module)
+- Smart extraction: types read fully, implementation files read signatures only, tests read names only
+- Fixed-size output contract: each subagent returns max 50 lines per module
+- Generates: `docs/overview.md`, `docs/architecture.md`, `docs/features/*.md`, `docs/api/*.md`
+- Enriches memory with module boundaries, dependency warnings, and complexity areas
+- Docs serve as the primary knowledge base for all agents during `/execute-task`
 
 ### Context Maintenance (Phase 7.5)
 - `/execute-task` now includes Phase 7.5: Context Maintenance after each task
