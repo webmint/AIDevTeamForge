@@ -5,6 +5,16 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-19
+
+### Changed
+- `/plan` Phase 0 (Research) revamped with signal-based evaluation
+  - Codebase research always runs; deep research (web search) only triggers when complexity signals are detected
+  - Six signal categories: external libraries, third-party integrations, architectural forks, greenfield patterns, performance constraints, unfamiliar technology
+  - Deep research compares 2-3 alternatives with pros/cons for each signal
+  - Research output saved to `specs/[feature]/research.md` only when signals found; skipped for simple features
+  - Reduces unnecessary web searches on simple features where codebase context is sufficient
+
 ## [1.5.0] - 2026-03-19
 
 ### Added

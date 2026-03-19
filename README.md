@@ -92,7 +92,7 @@ Scans requirements against 9 ambiguity categories, asks up to 5 multiple-choice 
 Produces a structured specification with acceptance criteria, scope boundaries, and risk assessment. Saves to `specs/[feature]/spec.md`. **Requires approval.** When invoked on the default branch, auto-creates a `spec/NNN-short-desc` branch (incremental numbering, 2-3 word description from the feature name). Skips if already on a `spec/*` branch.
 
 ### Phase 4: `/plan` (per feature)
-Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research findings. Saves to `specs/[feature]/plan.md`. **Requires approval.**
+Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research findings. Codebase research always runs; deep web research is signal-based — only triggered when the spec references external libraries, third-party integrations, architectural forks, or unfamiliar technology. Saves to `specs/[feature]/plan.md`. **Requires approval.**
 
 ### Phase 5: `/breakdown` (per feature)
 Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval.**
