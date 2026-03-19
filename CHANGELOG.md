@@ -5,6 +5,22 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-19
+
+### Added
+- `/execute-task` self-repair loop — when post-execution verification fails (tsc, lint, done-conditions), automatically launches a repair agent to fix errors (up to 3 attempts) before stopping
+- `/execute-task` multi-task arguments:
+  - `1,3,5` — execute specific tasks sequentially
+  - `1-5` — execute a range of tasks
+  - `all` — execute all pending tasks in active feature
+- Phase 8 (Multi-Task Continuation) — chains task cycles, checks dependencies between tasks, produces batch summary
+- Auto-compact in multi-task mode — at heavy context load (6+ tasks), automatically compacts without asking
+
+### Changed
+- `/execute-task` Phase 3.3 now includes self-repair before escalating to user
+- Important Rules updated: "one task at a time" → "one task per cycle", added self-repair and hard-stop rules
+- Context hygiene rule updated: auto-compact at heavy load in multi-task mode
+
 ## [1.1.0] - 2026-03-19
 
 ### Added

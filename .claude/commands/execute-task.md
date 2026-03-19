@@ -1,15 +1,25 @@
-# /execute-task — Execute a Task from Breakdown
+# /execute-task — Execute Tasks from Breakdown
 
-Picks up a single task from the breakdown, selects the assigned agent, and executes it with the full enforced workflow.
+Picks up one or more tasks from the breakdown, selects the assigned agent for each, and executes them with the full enforced workflow. Includes automatic self-repair when verification catches errors.
 
 ## Usage
 ```
-/execute-task [task-number]           # task in active feature
-/execute-task [feature]/[task]        # explicit feature (e.g. 001/3 or user-auth/3)
+/execute-task                         # next pending task in active feature
+/execute-task 3                       # specific task in active feature
+/execute-task 001/3                   # explicit feature/task (e.g. 001/3 or user-auth/3)
+/execute-task 1,3,5                   # specific tasks, executed sequentially
+/execute-task 1-5                     # range of tasks, executed sequentially
+/execute-task all                     # all pending tasks in active feature
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Task number to execute, optionally prefixed with feature number or name. If empty, execute the next pending task (lowest number with all dependencies satisfied) from the active feature.
+- `$ARGUMENTS` — What to execute. Supports these formats:
+  - **Empty**: Execute the next pending task (lowest number with all dependencies satisfied) from the active feature.
+  - **Single number** (e.g. `3`): Execute that specific task in the active feature.
+  - **Feature/task** (e.g. `001/3` or `user-auth/3`): Execute a specific task in a specific feature.
+  - **Comma-separated** (e.g. `1,3,5`): Execute these specific tasks sequentially in the active feature. Each task gets the full Phase 0–7.5 treatment.
+  - **Range** (e.g. `1-5`): Execute tasks 1 through 5 sequentially. Equivalent to `1,2,3,4,5`.
+  - **`all`**: Execute all pending tasks in the active feature, in dependency order.
 
 ## Prerequisites
 
@@ -83,19 +93,40 @@ Wait for user to choose. Execute their choice:
 
 ## PHASE 1: Load Task Context
 
-### 1.1: Resolve Feature Directory
+### 1.1: Resolve Feature Directory and Build Task Queue
 
-If `$ARGUMENTS` contains a `/` (e.g. `001/3`, `user-auth/3`):
-- Use the part before `/` to match a feature directory in `specs/` (by number prefix or name)
-- Use the part after `/` as the task number
-
-If `$ARGUMENTS` is just a number (e.g. `3`):
-- Scan all feature directories in `specs/` and find the **active** one — the feature that has incomplete tasks (at least one task not marked Complete)
+First, resolve the **active feature** (used by all formats except `feature/task`):
+- Scan all feature directories in `specs/` and find the one with incomplete tasks (at least one task not marked Complete)
 - If multiple features have incomplete tasks, use the **lowest numbered** one (finish earlier features first)
 - If all features are complete, inform the user there are no pending tasks
 
-If `$ARGUMENTS` is empty:
-- Same active feature resolution as above, then pick the next pending task (lowest number with all dependencies satisfied)
+Then, build the **task queue** based on `$ARGUMENTS`:
+
+**If `$ARGUMENTS` contains a `/`** (e.g. `001/3`, `user-auth/3`):
+- Use the part before `/` to match a feature directory in `specs/` (by number prefix or name)
+- Task queue = `[part after /]` (single task)
+
+**If `$ARGUMENTS` is `all`**:
+- Task queue = all pending tasks in the active feature, sorted by number, filtered to those whose dependencies are already satisfied or will be satisfied by earlier tasks in the queue
+
+**If `$ARGUMENTS` contains `,`** (e.g. `1,3,5`):
+- Parse as comma-separated list of task numbers
+- Task queue = those tasks in the given order
+- Validate each task exists and is not already Complete
+
+**If `$ARGUMENTS` contains `-` but no `/`** (e.g. `1-5`):
+- Parse as range: start number to end number (inclusive)
+- Task queue = expanded range in order
+- Skip any tasks in the range that are already Complete
+
+**If `$ARGUMENTS` is a single number** (e.g. `3`):
+- Task queue = `[that number]` (single task)
+
+**If `$ARGUMENTS` is empty**:
+- Task queue = `[next pending task]` (lowest number with all dependencies satisfied)
+
+For multi-task queues: the current task is always the first item. After it completes (Phase 7.5), the remaining queue is processed via the Multi-Task Continuation phase (Phase 8).
+
 ### 1.2: Load Context
 
 0. Read `.claude/session-state.md` if it exists.
@@ -219,14 +250,39 @@ git add -A && git commit -m "[WIP] Task [N]: [title] — agent execution complet
 
 Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
 
-### 3.3: Post-Agent Verification
+### 3.3: Post-Agent Verification (with Self-Repair)
 
-After the agent completes, verify:
+After the agent completes, run verification:
 
 1. **Files changed match task scope**: Check `git diff --name-only` (or `git status` for new files) against the task's file list. If extra files were changed, investigate why.
 2. **TypeScript compiles**: Run `tsc --noEmit` (the PostToolUse hook should catch this, but verify explicitly)
 3. **ESLint passes**: Run lint on all changed files
 4. **Done conditions met**: Check each "Done when" item from the task
+
+**If ALL checks pass** → proceed to Phase 4.
+
+**If any check fails** → enter the self-repair loop (max 3 attempts):
+
+For each repair attempt:
+1. Collect all error output (tsc errors, lint errors, unmet done-conditions)
+2. Launch a **repair agent** (using the Task tool) with:
+   - The original task description and scope constraints
+   - The specific errors to fix (full error output)
+   - The list of files that were changed
+   - Clear instruction: **"Fix ONLY these errors. Do not add features, refactor, or change scope. Stay within the files listed."**
+3. After the repair agent completes, commit:
+   ```
+   git add -A && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
+   ```
+4. Re-run ALL four verification checks above
+
+**If verification passes after any attempt** → proceed to Phase 4.
+
+**If all 3 repair attempts are exhausted and checks still fail** → STOP execution entirely:
+- Report the remaining errors to the user
+- Do NOT proceed to Phase 4 or any subsequent task (even in multi-task mode)
+- Keep the WIP marker and commits so the user can inspect the state
+- Suggest: "Run `/execute-task [N]` again after manually fixing, or use recovery options"
 
 ## PHASE 4: Mark Complete
 
@@ -378,13 +434,45 @@ Strongly recommended: Run /compact before continuing.
 
 Do NOT auto-compact — always let the user decide. Surface the recommendation with the pre-built compact instruction.
 
+## PHASE 8: Multi-Task Continuation
+
+This phase only applies when the task queue (built in Phase 1.1) contains more than one task.
+
+After Phase 7.5 completes for the current task:
+
+1. Remove the completed task from the queue
+2. If the queue is empty → done. Report final summary of all tasks completed in this run.
+3. If the queue has remaining tasks:
+   a. **Dependency check**: Verify the next task's dependencies are all satisfied (marked Complete). If not, stop and report: "Task [N] is blocked by incomplete dependency Task [M]. Completed [X] of [Y] queued tasks."
+   b. **Context health**: Read the "Tasks completed this session" count from session-state.md.
+      - If heavy (6+ tasks): **auto-compact** before continuing. Run `/compact` with these preserved items: (1) Current task statuses from `specs/[feature]/tasks/README.md`, (2) All entries from `.claude/memory/MEMORY.md`, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from `.claude/session-state.md`. Do NOT ask — compact and continue.
+      - If light/moderate: continue without compaction.
+   c. **Loop back** to Phase 1 for the next task in the queue. The task queue carries over — do not re-parse `$ARGUMENTS`.
+
+### Multi-Task Final Report
+
+When all queued tasks are complete (or execution stops due to failure/blocked dependency), provide a summary:
+
+```
+## Batch Execution Complete
+
+**Tasks completed**: [list with status]
+**Tasks skipped/blocked**: [list with reason, if any]
+**Total verification**: [all passed / N repair cycles needed]
+
+**Feature progress**: [X of Y tasks complete]
+**Next pending**: Task [N] — [title] (ready / blocked by [M])
+```
+
 ## IMPORTANT RULES
 
-1. **One task at a time** — never execute multiple tasks in a single command invocation
+1. **One task per cycle** — each task gets its own full Phase 0–7.5 treatment, even in multi-task mode. Multi-task arguments (`all`, ranges, lists) chain sequential cycles — they do not batch or parallelize tasks.
 2. **Scope discipline** — if the agent changes files outside the task scope, revert those changes and investigate
 3. **Fail fast** — if pre-flight checks fail, stop immediately. Don't try to work around constitution violations
 4. **Agent isolation** — the agent should only know about its task, not the entire breakdown. This prevents scope creep
-5. **Verify everything** — trust but verify. Even if hooks ran, run explicit verification after the agent finishes
-6. **Track deviations** — if the actual changes differ from the planned changes, document WHY in the task file's Completion Notes
-7. **Context hygiene** — always fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines. Recommend /compact at moderate load, strongly recommend at heavy load.
-8. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start of execute-task, enter recovery flow. Never delete wip.md without either completing the task or explicitly rolling back.
+5. **Self-repair before escalation** — when post-execution verification fails, attempt automatic repair (up to 3 times) before stopping and reporting to the user. Never skip repair attempts.
+6. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
+7. **Verify everything** — trust but verify. Even if hooks ran, run explicit verification after the agent finishes
+8. **Track deviations** — if the actual changes differ from the planned changes, document WHY in the task file's Completion Notes
+9. **Context hygiene** — always fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines. Recommend /compact at moderate load. In multi-task mode, auto-compact at heavy load (6+ tasks) without asking.
+10. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start of execute-task, enter recovery flow. Never delete wip.md without either completing the task or explicitly rolling back.
