@@ -175,10 +175,84 @@ Show the user the verification report and recommend next action:
 - If NEEDS WORK: "Found [N] issues. Recommend re-running `/execute-task [X]` for [reason]. Details in the verification report above."
 - If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]."
 
+## PHASE 10: Issue Triage (if NEEDS WORK)
+
+If the verdict is NEEDS WORK and the report contains Critical or Warning issues, offer the user a triage for each issue. If the verdict is APPROVED or REJECTED, skip this phase entirely.
+
+### 10.1: Number and Present Issues
+
+List each Critical and Warning issue from the verification report with a sequential number:
+
+```
+Issues to triage:
+
+1. [Critical] [file path] — [issue description]
+2. [Warning] [file path] — [issue description]
+3. [Warning] [file path] — [issue description]
+...
+```
+
+Info-level issues are shown for awareness but not included in triage (they are observations, not actionable bugs).
+
+### 10.2: Per-Issue Triage
+
+If there are **5 or fewer** issues, ask the user for each one individually:
+
+```
+Issue #N: [severity] [short description]
+  1. Fix now — invoke /fix with this issue
+  2. Report for later — save to bugs/ for future fixing
+  3. Skip — ignore this issue
+```
+
+If there are **more than 5** issues, first offer a batch option:
+
+```
+[N] issues found. How would you like to triage?
+  1. Triage individually — decide per-issue
+  2. Report all for later — save all to bugs/
+  3. Pick specific issues to fix now — provide issue numbers, report the rest
+```
+
+Wait for user response before proceeding.
+
+### 10.3: Execute Triage Decisions
+
+**Determine next bug number**: Scan `bugs/` for existing `.md` files, find the highest NNN prefix, and assign numbers sequentially from there. Do this ONCE before creating any files (do not re-scan between each file creation).
+
+**"Report for later" items**: For each, create a bug file in `bugs/`:
+1. Write `bugs/NNN-short-description.md` using the standard bug file format
+2. Set **Status** to "Open", **Source** to "verify", **Severity** from the verification report
+3. Copy the relevant evidence from the verification report into the **Evidence** section
+4. Populate **File(s)** from the issue's file path
+
+**"Fix now" items**: For each, also create a bug file first (so there's a tracking record):
+1. Write the bug file with **Status** set to "In Progress"
+2. Invoke `/fix bugs/NNN-short-description.md` for the **first** "fix now" item only
+3. If there are additional "fix now" items beyond the first, inform the user:
+   "Starting with issue #N. After this fix completes, address remaining issues by running `/fix bugs/NNN-xxx.md` for each, or re-run `/verify` to re-assess."
+
+**"Skip" items**: No action taken.
+
+### 10.4: Summary
+
+Present a summary of triage decisions:
+
+```
+Triage complete:
+- Fix now: [count] (starting with: bugs/NNN-xxx.md)
+- Reported for later: [count]
+  - bugs/NNN-xxx.md
+  - bugs/NNN-xxx.md
+- Skipped: [count]
+```
+
+If "fix now" items exist, proceed to invoke `/fix` for the first one.
+
 ## IMPORTANT RULES
 
 1. **Verify against spec, not assumptions** — the spec is the contract. If the code does something useful but the spec didn't ask for it, that's scope creep
 2. **Be specific about failures** — "AC-2 fails because `orderState.soldToParty` is null when ShippingTypeEnum is SoldTo, but it should return the party data" not "AC-2 fails"
-3. **Don't fix during verification** — verification is read-only. If something needs fixing, document it and let `/execute-task` handle it
+3. **Don't fix during verification** — Phases 1-9 are read-only. Phase 10 may invoke `/fix` based on user triage decisions, but verification itself does not apply fixes
 4. **Memory updates are mandatory** — even if everything passed, record what you learned
 5. **Constitution violations are always critical** — never downgrade a constitution violation to "warning"

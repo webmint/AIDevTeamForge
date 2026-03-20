@@ -6,10 +6,11 @@ Lightweight workflow for diagnosing and fixing small bugs. Uses the project's ag
 ```
 /fix "description of the bug"
 /fix "description" --file path/to/suspected/file.ts
+/fix bugs/NNN-short-description.md
 ```
 
 ## Arguments
-- `$ARGUMENTS` — Description of the bug and optionally a `--file` flag pointing to the suspected file. If empty, ask the user to describe the bug.
+- `$ARGUMENTS` — Either a path to a bug file in `bugs/` (e.g., `bugs/003-null-check.md`), or a description of the bug with an optional `--file` flag. If empty, ask the user to describe the bug.
 
 ## When to Use /fix vs /specify
 
@@ -68,6 +69,26 @@ Options:
 Wait for user to choose. Execute their choice using the same recovery logic as `/execute-task` Phase 0.3.
 
 ## PHASE 1: Load Context
+
+### 1.0: Input Detection
+
+Determine whether `$ARGUMENTS` is a bug file path or a plain description.
+
+**If `$ARGUMENTS` matches a path to an existing file in `bugs/`** (e.g., `bugs/003-null-check.md`):
+1. Read the bug file
+2. Extract the **Description** section as the bug description
+3. Extract the **File(s)** table — use the first file path as the `--file` target (if specified and not "(not specified)")
+4. Extract the **Severity** for context
+5. Update the bug file's **Status** from "Open" to "In Progress"
+6. Note the bug file path for later update in Phase 8
+7. Continue with Phase 1.1 using the extracted description and file
+
+**If `$ARGUMENTS` refers to a `bugs/` path that does NOT exist**:
+- Warn: "Bug file not found: [path]. Treating input as a bug description."
+- Continue with existing behavior
+
+**If `$ARGUMENTS` does NOT match a bug file path**:
+- Proceed with existing behavior (parse description and optional `--file` flag)
 
 ### 1.1: Read Project Rules
 
@@ -287,6 +308,16 @@ Squash all `[WIP]` and `[checkpoint]` commits for this fix into a single clean c
 git reset --soft [checkpoint-commit-hash]
 git commit -m "fix([area]): [concise description of what was fixed]"
 ```
+
+### 8.1.5: Update Bug File (if applicable)
+
+If this fix was initiated from a bug file (detected in Phase 1.0):
+1. Update the bug file's **Status** to "Fixed"
+2. Fill in the **Fixed** date with today's date (YYYY-MM-DD)
+3. Fill in the **Fix Notes** section with:
+   - The root cause from Phase 2.2
+   - A 1-2 sentence summary of what was changed
+   - The commit reference from Phase 8.1
 
 ### 8.2: Delete WIP Marker
 

@@ -5,6 +5,9 @@ These rules define how all development artifacts are organized. All commands MUS
 ## Directory Structure
 
 ```
+bugs/
+  NNN-short-description.md           # Bug reports (/report-bug or /verify triage)
+
 specs/
   NNN-feature-name/                # One numbered directory per feature
     spec.md                        # Feature specification (/specify)
@@ -104,7 +107,9 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 /plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
 /breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
 /execute-task → updates individual task file status + completion notes
-/verify       → updates specs/NNN-name/spec.md status to Complete
+/verify       → updates specs/NNN-name/spec.md status to Complete; Phase 10 triage may create bugs/NNN-xxx.md
+/report-bug   → creates bugs/NNN-description.md
+/fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 ```
 
 ## Status Tracking
@@ -170,6 +175,61 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - `docs/architecture.md` is updated when architectural patterns change
 - `docs/features/` files are updated when feature behavior changes
 - `docs/api/` files are updated when API contracts change
+
+## Bug Report Rules
+
+### Directory
+- Location: `bugs/` at project root (parallel to `specs/` and `docs/`)
+- Each bug is a single file: `NNN-short-description.md`
+
+### Naming
+- **Format**: `NNN-short-description.md` where NNN is a zero-padded sequential number
+- Scan existing `bugs/` files to determine the next number
+- Description part: lowercase kebab-case, 2-4 words
+- Examples: `001-null-cart-total.md`, `002-missing-auth-check.md`, `003-broken-date-format.md`
+
+### Status Lifecycle
+- `Open` — reported, not yet being fixed
+- `In Progress` — currently being fixed via `/fix`
+- `Fixed` — fix applied and verified
+
+### Bug File Format
+
+```markdown
+# Bug NNN: [Short Title]
+
+**Status**: Open | In Progress | Fixed
+**Severity**: Critical | Warning | Info
+**Source**: verify | manual
+**Reported**: [YYYY-MM-DD]
+**Fixed**: [YYYY-MM-DD or empty]
+
+## Description
+
+[What is wrong — 1-3 sentences]
+
+## File(s)
+
+| File | Detail |
+|------|--------|
+| [path/to/file.ts] | [line number or area, if known] |
+
+## Evidence
+
+[How this was discovered — error message, verification report excerpt, user observation]
+
+## Fix Notes
+
+[Filled in by /fix after resolution — root cause, what was changed, commit reference]
+```
+
+### How Bug Files Are Created
+- `/verify` Phase 10 triage — user selects "report for later" or "fix now" on a verification issue
+- `/report-bug` — standalone manual bug reporting
+
+### How Bug Files Are Resolved
+- `/fix bugs/NNN-xxx.md` — reads the bug file, fixes the issue, updates status to Fixed
+- Manual: user can edit the status directly if fixing outside the workflow
 
 ## Cleanup Rules
 

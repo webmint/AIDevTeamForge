@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (11 files in `.claude/commands/`)
+### Commands (12 files in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -15,8 +15,9 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation (deep web research only when complexity signals detected)
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files
 - `execute-task.md` — Runs a single task with pre-flight checks, agent execution, doc writing, verification
-- `verify.md` — Validates all tasks against spec acceptance criteria
-- `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test, with runtime-debugger, code-reviewer, and qa-engineer agents
+- `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now or defer to `bugs/`
+- `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test, with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
+- `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
 - `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review, with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
 
 ### Agent Templates (14 files in `.claude/templates/agents/`)
@@ -32,11 +33,12 @@ Setup wizard decides which agents to generate based on detected stack.
 - `settings.template.json` — PostToolUse type-checking hook + safe permissions
 - `spec.template.md` — Feature spec template with 10 sections
 - `memory.template.md` — Persistent memory with universal categories
-- `storage-rules.md` — Full storage conventions for specs, tasks, and docs
+- `storage-rules.md` — Full storage conventions for specs, tasks, bugs, and docs
 
 ### Other
 - `README.md` — Full documentation with installation, workflow, pre-populated rules section
 - `specs/` — Empty specs directory with .gitkeep
+- `bugs/` — Empty bugs directory with .gitkeep (bug backlog for `/report-bug` and `/verify` triage)
 
 ### Wrapper Mode
 - Setup wizard detects nested git repos at depth 1 and offers wrapper mode
