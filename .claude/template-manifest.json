@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Manifest for claude-hybrid-template update system",
 
   "templateOwned": {
@@ -16,6 +16,7 @@
       ".claude/commands/verify.md",
       ".claude/commands/fix.md",
       ".claude/commands/refactor.md",
+      ".claude/commands/report-bug.md",
       "scripts/**"
     ]
   },
@@ -43,6 +44,7 @@
       ".claude/session-state.md",
       ".claude/wip.md",
       "specs/**",
+      "bugs/**",
       "docs/**",
       "DEVELOPMENT-STATUS.md"
     ]
@@ -66,7 +68,8 @@
   "copyIfMissing": {
     "description": "Files to copy only if they don't exist in the target project",
     "patterns": [
-      "specs/.gitkeep"
+      "specs/.gitkeep",
+      "bugs/.gitkeep"
     ]
   }
 }

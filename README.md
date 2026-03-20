@@ -18,7 +18,7 @@ Every phase transition requires explicit user approval. No step can be skipped.
 /path/to/claude-hybrid-template/install.sh --wrapper /path/to/workspace inner-project-folder
 ```
 
-This copies `.claude/`, `specs/`, `scripts/`, `.mcp.json`, and `update.sh` into your project. It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
+This copies `.claude/`, `specs/`, `bugs/`, `scripts/`, `.mcp.json`, and `update.sh` into your project. It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
 
 The wizard will:
    - Detect workspace mode (standalone vs wrapper around a client project)
@@ -73,6 +73,8 @@ Requires `jq` for JSON merging (`brew install jq` on macOS, `apt install jq` on 
    (once)         (once)       (once)    (optional)  (per feat)                      (per task/batch)  (per feat)
 
 /fix "bug description"        ← lightweight shortcut for small bugs (skips spec/plan/breakdown)
+/fix bugs/003-null-check.md  ← fix a reported bug from the backlog
+/report-bug "description"    ← log a bug for later fixing
 /refactor path/to/file.ts    ← focused code restructuring without behavior changes
 ```
 
@@ -108,10 +110,13 @@ Supports multiple execution modes:
 - `/execute-task all` — all pending tasks in feature
 
 ### Phase 7: `/verify` (per feature)
-Code review against the spec's acceptance criteria, cross-referenced with constitution rules. Updates persistent memory with lessons learned.
+Code review against the spec's acceptance criteria, cross-referenced with constitution rules. Updates persistent memory with lessons learned. Phase 10 (Issue Triage) lets you decide per-issue: fix now (chains into `/fix`), report for later (creates a bug file in `bugs/`), or skip.
 
 ### `/fix "bug description"` (standalone, for small bugs)
-Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown pipeline. Designed for small, localized bugs (1-5 files). Phases: diagnose (with **runtime-debugger** agent for runtime errors), apply minimal fix, verify (tsc + lint + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent). Includes crash recovery, constitution enforcement, and memory updates. If the bug turns out to be larger than expected, recommends escalating to `/specify`.
+Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown pipeline. Designed for small, localized bugs (1-5 files). Also accepts bug file paths: `/fix bugs/003-null-check.md` — reads the file, extracts description and file(s), and updates the bug's status to Fixed after completion. Phases: diagnose (with **runtime-debugger** agent for runtime errors), apply minimal fix, verify (tsc + lint + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent). Includes crash recovery, constitution enforcement, and memory updates. If the bug turns out to be larger than expected, recommends escalating to `/specify`.
+
+### `/report-bug "description"` (standalone, for logging bugs)
+Creates a structured bug report file in `bugs/` for later fixing. Accepts an optional `--file` flag to link the bug to a specific file and `--severity` flag (Critical/Warning/Info, defaults to Warning). Bug files follow sequential numbering (`001-short-description.md`) with a status lifecycle (Open → In Progress → Fixed). Fix a reported bug with `/fix bugs/NNN-xxx.md` or escalate larger ones with `/specify`.
 
 ### `/refactor path/to/file.ts "goal"` (standalone, for code restructuring)
 Focused refactoring workflow for behavior-preserving code restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path with optional line range. Phases: analyze code against 9 refactoring categories (long functions, deep nesting, SOLID/DRY violations, type safety, naming, dead code, pattern mismatches, complexity), present detailed proposal with before/after for each opportunity (hard gate — partial approval supported), apply refactoring with auto-selected agent (**architect**, **frontend-engineer**, or **backend-engineer** based on file layer), verify (tsc + lint + tests + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent — tests must pass unchanged since refactoring is behavior-preserving). If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
@@ -132,10 +137,15 @@ specs/
       001-define-types.md        # Individual task files
       002-create-repository.md
       003-build-login-form.md
+
+bugs/
+  001-null-cart-total.md         # Bug reports (/report-bug or /verify triage)
+  002-missing-auth-check.md      # Status: Open → In Progress → Fixed
 ```
 
 - Feature dirs: `NNN-kebab-name` — sequential numbering (001, 002, ...)
 - Task files: `NNN-short-title.md` — sequential within feature
+- Bug files: `NNN-short-description.md` — sequential, standalone
 - Everything for a feature lives in one directory
 - Full storage rules in `.claude/templates/storage-rules.md`
 

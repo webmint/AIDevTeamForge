@@ -5,6 +5,34 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-03-20
+
+### Added
+- `/report-bug` command — standalone bug reporting that creates structured bug files in `bugs/`
+  - Accepts description, optional `--file` path, optional `--severity` (defaults to Warning)
+  - Creates `bugs/NNN-short-description.md` with status lifecycle (Open → In Progress → Fixed)
+  - Suggests `/fix bugs/NNN-xxx.md` or `/specify` for resolution
+- `bugs/` directory — lightweight bug backlog at project root (parallel to `specs/` and `docs/`)
+  - Sequential numbering (001, 002, ...) with kebab-case descriptions
+  - Structured format: status, severity, source, description, file(s), evidence, fix notes
+  - Created by `/report-bug` (manual) or `/verify` Phase 10 triage (automated)
+  - Resolved by `/fix bugs/NNN-xxx.md` which updates status to Fixed
+- `/verify` Phase 10: Issue Triage — after presenting the verification report, lets user decide per-issue what to do
+  - Per-issue options: "fix now" (chains into `/fix`), "report for later" (creates bug file), "skip"
+  - Batch shortcut when >5 issues: "report all remaining for later" to avoid tedious per-issue prompts
+  - Bug files created for all triaged items (including "fix now") for tracking regardless of outcome
+  - Only activates on NEEDS WORK verdict with Critical/Warning issues
+- `/fix` now accepts bug file paths as input: `/fix bugs/003-null-check.md`
+  - Phase 1.0 (Input Detection): reads bug file, extracts description and file(s), updates status to In Progress
+  - Phase 8.1.5 (Update Bug File): after successful fix, marks bug as Fixed with date and fix notes
+  - Existing usage (`/fix "description"`) unchanged — fully backward-compatible
+
+### Changed
+- Storage rules updated with Bug Report Rules section (naming, format, lifecycle, creation/resolution)
+- Template manifest updated with `report-bug.md` (template-owned), `bugs/**` (project-owned), `bugs/.gitkeep` (copy-if-missing)
+- `install.sh` now copies `bugs/` directory to target during installation
+- Command count: 11 → 12
+
 ## [1.6.0] - 2026-03-19
 
 ### Changed
