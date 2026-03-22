@@ -100,7 +100,7 @@ Takes an approved spec and produces a technical plan: architecture decisions, da
 Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval.**
 
 ### Phase 6: `/execute-task` (per task or batch)
-Picks up a task (or multiple tasks), reads relevant docs for context, selects the assigned agent, executes with scope constraints, and verifies. If verification fails, a self-repair agent automatically fixes errors (up to 3 attempts). Then the tech-writer agent updates `docs/`.
+Picks up a task (or multiple tasks), reads relevant docs for context, selects the assigned agent, executes with scope constraints, and verifies (tsc, lint, build, done conditions). If verification fails, a self-repair agent automatically fixes errors (up to 3 attempts). Then the tech-writer agent updates `docs/`.
 
 Supports multiple execution modes:
 - `/execute-task` — next pending task
@@ -113,13 +113,13 @@ Supports multiple execution modes:
 Code review against the spec's acceptance criteria, cross-referenced with constitution rules. Updates persistent memory with lessons learned. Phase 10 (Issue Triage) lets you decide per-issue: fix now (chains into `/fix`), report for later (creates a bug file in `bugs/`), or skip.
 
 ### `/fix "bug description"` (standalone, for small bugs)
-Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown pipeline. Designed for small, localized bugs (1-5 files). Also accepts bug file paths: `/fix bugs/003-null-check.md` — reads the file, extracts description and file(s), and updates the bug's status to Fixed after completion. Phases: diagnose (with **runtime-debugger** agent for runtime errors), apply minimal fix, verify (tsc + lint + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent). Includes crash recovery, constitution enforcement, and memory updates. If the bug turns out to be larger than expected, recommends escalating to `/specify`.
+Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown pipeline. Designed for small, localized bugs (1-5 files). Also accepts bug file paths: `/fix bugs/003-null-check.md` — reads the file, extracts description and file(s), and updates the bug's status to Fixed after completion. Phases: diagnose (with **runtime-debugger** agent for runtime errors), apply minimal fix, verify (tsc + lint + build + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent). Includes crash recovery, constitution enforcement, and memory updates. If the bug turns out to be larger than expected, recommends escalating to `/specify`.
 
 ### `/report-bug "description"` (standalone, for logging bugs)
 Creates a structured bug report file in `bugs/` for later fixing. Accepts an optional `--file` flag to link the bug to a specific file and `--severity` flag (Critical/Warning/Info, defaults to Warning). Bug files follow sequential numbering (`001-short-description.md`) with a status lifecycle (Open → In Progress → Fixed). Fix a reported bug with `/fix bugs/NNN-xxx.md` or escalate larger ones with `/specify`.
 
 ### `/refactor path/to/file.ts "goal"` (standalone, for code restructuring)
-Focused refactoring workflow for behavior-preserving code restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path with optional line range. Phases: analyze code against 9 refactoring categories (long functions, deep nesting, SOLID/DRY violations, type safety, naming, dead code, pattern mismatches, complexity), present detailed proposal with before/after for each opportunity (hard gate — partial approval supported), apply refactoring with auto-selected agent (**architect**, **frontend-engineer**, or **backend-engineer** based on file layer), verify (tsc + lint + tests + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent — tests must pass unchanged since refactoring is behavior-preserving). If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
+Focused refactoring workflow for behavior-preserving code restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path with optional line range. Phases: analyze code against 9 refactoring categories (long functions, deep nesting, SOLID/DRY violations, type safety, naming, dead code, pattern mismatches, complexity), present detailed proposal with before/after for each opportunity (hard gate — partial approval supported), apply refactoring with auto-selected agent (**architect**, **frontend-engineer**, or **backend-engineer** based on file layer), verify (tsc + lint + build + tests + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent — tests must pass unchanged since refactoring is behavior-preserving). If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 
 ## Artifact Storage
 
@@ -165,7 +165,8 @@ bugs/
 ## Automated Guardrails
 
 - **PostToolUse hooks**: Type checking runs after every file edit
-- **Self-repair loop**: When verification catches errors, a repair agent automatically fixes them (up to 3 attempts) before escalating
+- **Build verification**: Runs the actual project build command after tsc/lint to catch bundler-specific failures (import resolution, asset processing, SSR errors, unexpected tokens)
+- **Self-repair loop**: When verification catches errors (tsc, lint, or build), a repair agent automatically fixes them (up to 3 attempts) before escalating
 - **Persistent memory**: Lessons learned carry across sessions
 - **Agent specialization**: Domain-specific agents, not generic ones
 - **Minimal changes rule**: Every task touches as little code as possible

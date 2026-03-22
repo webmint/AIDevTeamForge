@@ -70,7 +70,7 @@ Options:
 Wait for user to choose. Execute their choice:
 
 **If Resume:**
-- Run `tsc --noEmit` and lint on all files listed in the WIP marker
+- Run `tsc --noEmit`, lint, and the build command (if Build Command is specified in CLAUDE.md) on all files listed in the WIP marker
 - If they pass, jump to the phase AFTER the interrupted phase (e.g., if interrupted in Phase 3, jump to Phase 4: Mark Complete)
 - If they fail, inform the user — the code is in a broken state. Recommend option 2 (rollback and retry).
 
@@ -258,15 +258,16 @@ After the agent completes, run verification:
 1. **Files changed match task scope**: Check `git diff --name-only` (or `git status` for new files) against the task's file list. If extra files were changed, investigate why.
 2. **TypeScript compiles**: Run `tsc --noEmit` (the PostToolUse hook should catch this, but verify explicitly)
 3. **ESLint passes**: Run lint on all changed files
-4. **Done conditions met**: Check each "Done when" item from the task
-5. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`. If any are found, flag as a verification failure.
+4. **Project builds** (if Build Command is specified in CLAUDE.md): Run the build command. For wrapper mode projects, run inside the Source Root directory. Skip this check if no Build Command is configured.
+5. **Done conditions met**: Check each "Done when" item from the task
+6. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`. If any are found, flag as a verification failure.
 
 **If ALL checks pass** → proceed to Phase 4.
 
 **If any check fails** → enter the self-repair loop (max 3 attempts):
 
 For each repair attempt:
-1. Collect all error output (tsc errors, lint errors, unmet done-conditions)
+1. Collect all error output (tsc errors, lint errors, build errors, unmet done-conditions)
 2. Launch a **repair agent** (using the Task tool) with:
    - The original task description and scope constraints
    - The specific errors to fix (full error output)
@@ -276,7 +277,7 @@ For each repair attempt:
    ```
    git add -A && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
    ```
-4. Re-run ALL four verification checks above
+4. Re-run ALL verification checks above
 
 **If verification passes after any attempt** → proceed to Phase 4.
 
@@ -339,6 +340,7 @@ Provide a concise summary to the user:
 **Verification**:
 - TypeScript: PASS
 - ESLint: PASS
+- Build: PASS [or SKIP if no build command configured]
 - Done conditions: [all met / exceptions]
 
 **Documentation**: [Updated docs/features/X.md / Created docs/api/Y.md / No docs needed]

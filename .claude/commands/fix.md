@@ -228,16 +228,17 @@ Run verification on all changed files:
 
 1. **TypeScript compiles**: Run `tsc --noEmit` (or project equivalent from CLAUDE.md)
 2. **Linter passes**: Run lint on all changed files
-3. **Bug is actually fixed**: Verify the root cause identified in Phase 2 is addressed by the change
-4. **No regressions**: Check that the fix doesn't break the obvious happy path
-5. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root
+3. **Project builds** (if Build Command is specified in CLAUDE.md): Run the build command. For wrapper mode projects, run inside the Source Root directory. Skip this check if no Build Command is configured.
+4. **Bug is actually fixed**: Verify the root cause identified in Phase 2 is addressed by the change
+5. **No regressions**: Check that the fix doesn't break the obvious happy path
+6. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root
 
 **If ALL checks pass** → proceed to Phase 6.
 
 **If any check fails** → enter the self-repair loop (max 3 attempts):
 
 For each repair attempt:
-1. Collect all error output (tsc errors, lint errors)
+1. Collect all error output (tsc errors, lint errors, build errors)
 2. Apply a targeted fix for ONLY those errors
 3. Commit:
    ```
@@ -339,6 +340,7 @@ Delete `.claude/wip.md`.
 **Verification**:
 - TypeScript: PASS
 - Linter: PASS
+- Build: PASS [or SKIP if no build command configured]
 - Code review: [APPROVE / issues addressed]
 
 **Tests**: [Added regression test in [file] / Existing tests sufficient / No test needed — [reason]]

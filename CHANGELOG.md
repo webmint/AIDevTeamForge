@@ -5,6 +5,23 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-03-22
+
+### Added
+- **Build verification step** in all workflow commands that run post-execution checks
+  - Runs the project's actual build command (e.g., `npm run build`, `next build`, `vite build`) after tsc and lint
+  - Catches bundler-specific failures that `tsc --noEmit` alone misses: import resolution, asset processing, SSR/SSG errors, ESM/CJS incompatibilities, unexpected token issues
+  - Gated on `Build Command` field in CLAUDE.md — skipped if not configured or set to `N/A`
+  - Included in self-repair loop — build errors get auto-fixed (up to 3 attempts) like tsc/lint errors
+  - Added to: `/execute-task` (Phase 3.3), `/verify` (Phase 3), `/fix` (Phase 5), `/refactor` (Phase 5)
+- `**Build Command**` field in CLAUDE.md template — stores the actual build command (distinct from `Build Tool` which is just the tool name)
+- `/setup-wizard` now detects and populates `{{BUILD_COMMAND}}` — auto-detects from package.json `scripts.build`, Makefile, Go/Rust project conventions
+
+### Changed
+- Verification reports in all commands now include `Build: PASS/FAIL/SKIP` line
+- CLAUDE.md template references updated: `(tsc, lint, ...)` → `(tsc, lint, build, ...)`
+- Automated Guards section updated: `tsc + lint` → `tsc + lint + build`
+
 ## [1.7.0] - 2026-03-20
 
 ### Added

@@ -60,6 +60,7 @@ The agent will check: constitution compliance, architecture & patterns, type saf
 **Additionally**, run these automated checks and append results to the agent's findings:
 - **Type checker**: Run `tsc --noEmit` (or project equivalent) and report result
 - **Linter**: Run ESLint (or project equivalent) on all changed files and report result
+- **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured
 - **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope
 - **Documentation**: Check if any task introduced new public APIs or behavior changes that lack docs in `docs/` or inline JSDoc. Flag as Warning
 
@@ -113,6 +114,7 @@ If the agent doesn't exist, skip this phase silently.
 ### Code Quality
 - TypeScript: PASS/FAIL
 - ESLint: PASS/FAIL
+- Build: PASS/FAIL/SKIP
 - Constitution compliance: PASS/FAIL [details if fail]
 - No scope creep: PASS/FAIL [details if fail]
 - No leftover artifacts: PASS/FAIL [details if fail]

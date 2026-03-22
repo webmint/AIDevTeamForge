@@ -9,6 +9,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 **Framework**: {{FRAMEWORK}}
 **Language**: {{LANGUAGE}}
 **Build Tool**: {{BUILD_TOOL}}
+**Build Command**: {{BUILD_COMMAND}}
 **Source Root**: {{SOURCE_ROOT}}
 
 {{WRAPPER_MODE_SECTION}}
@@ -55,7 +56,7 @@ Takes an approved plan and generates ordered, atomic tasks with dependencies and
 Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
 1. Pre-flight check (constitution, memory, docs, file state)
 2. Agent execution with scope constraints
-3. Post-execution verification (tsc, lint, done conditions)
+3. Post-execution verification (tsc, lint, build, done conditions)
 4. Documentation update (tech-writer agent)
 5. Memory update
 
@@ -73,7 +74,7 @@ Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the
 1. Diagnosis (runtime-debugger agent for runtime errors, manual tracing for logic bugs)
 2. User confirms root cause (hard gate)
 3. Apply minimal fix with WIP checkpoint
-4. Verification (tsc, lint, self-repair loop)
+4. Verification (tsc, lint, build, self-repair loop)
 5. Code review (code-reviewer agent)
 6. Test assessment (qa-engineer agent)
 7. Clean commit + memory update
@@ -85,7 +86,7 @@ Focused code refactoring workflow for behavior-preserving restructuring (1-5 fil
 1. Analysis (detect refactoring opportunities against constitution rules — long functions, SOLID/DRY/KISS violations, type safety, naming, dead code, pattern mismatches)
 2. User approves proposal with specific items (hard gate, partial approval supported)
 3. Apply refactoring with auto-selected agent (architect, frontend-engineer, or backend-engineer based on file layer)
-4. Verification (tsc, lint, tests, self-repair loop)
+4. Verification (tsc, lint, build, tests, self-repair loop)
 5. Code review (code-reviewer agent)
 6. Test assessment (qa-engineer agent — tests must pass unchanged since refactoring is behavior-preserving)
 7. Clean commit + memory update
@@ -113,7 +114,7 @@ If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 ### Automated Guards (run automatically)
 - **PostToolUse hook**: Type checking after every file Edit/Write
 - **Pre-flight check**: Constitution and memory review before each task
-- **Post-execution**: tsc + lint on all changed files after each task
+- **Post-execution**: tsc + lint + build on all changed files after each task
 
 ## Key Rules
 
