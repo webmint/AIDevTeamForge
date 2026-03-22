@@ -197,6 +197,7 @@ Replace ALL placeholders:
 - `{{FRAMEWORK}}` — primary framework
 - `{{LANGUAGE}}` — primary language
 - `{{BUILD_TOOL}}` — build tool
+- `{{BUILD_COMMAND}}` — actual build command. Detection: (1) `scripts.build` in package.json → `npm run build` / `yarn build` / `pnpm build` depending on lockfile, (2) `scripts["build:prod"]` → same pattern, (3) Makefile `build` target → `make build`, (4) Go project → `go build ./...`, (5) Rust project → `cargo build`, (6) None found → `N/A`. For wrapper mode, prefix with `cd SOURCE_ROOT &&`
 - `{{TEST_FRAMEWORK}}` — testing framework
 - `{{LINT_TOOL}}` — linting tool
 - `{{STATE_MANAGEMENT}}` — state management solution (or "N/A")
