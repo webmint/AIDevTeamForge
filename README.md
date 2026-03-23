@@ -98,10 +98,10 @@ Produces a structured specification with acceptance criteria, scope boundaries, 
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research findings. Codebase research always runs; deep web research is signal-based — only triggered when the spec references external libraries, third-party integrations, architectural forks, or unfamiliar technology. Saves to `specs/[feature]/plan.md`. **Requires approval.**
 
 ### Phase 5: `/breakdown` (per feature)
-Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval.**
+Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Each task includes cross-task contracts (Expects/Produces) that are verified during execution to prevent silent error compounding. Review checkpoints are auto-placed at convergence points and layer boundaries. Saves to `specs/[feature]/tasks/`. **Requires approval.**
 
 ### Phase 6: `/execute-task` (per task or batch)
-Picks up a task (or multiple tasks), reads relevant docs for context, selects the assigned agent, executes with scope constraints, and verifies (tsc, lint, build, done conditions). If verification fails, a self-repair agent automatically fixes errors (up to 3 attempts). Then the tech-writer agent updates `docs/`.
+Picks up a task (or multiple tasks), reads relevant docs for context, selects the assigned agent, executes with scope constraints, and verifies (tsc, lint, build, done conditions, contract postconditions). Contract preconditions are checked before execution — if a prior task's output doesn't match expectations, execution stops with upstream tracing. If verification fails, a self-repair agent automatically fixes errors (up to 3 attempts). At review checkpoints, user reviews preceding work before continuing. Then the tech-writer agent updates `docs/`.
 
 Supports multiple execution modes:
 - `/execute-task` — next pending task
@@ -176,6 +176,8 @@ bugs/
 - **Minimal changes rule**: Every task touches as little code as possible
 - **Mandatory linting**: Must pass before task completion
 - **Constitution compliance**: Checked in pre-flight before every task
+- **Cross-task contracts**: Each task declares what it expects (preconditions) and produces (postconditions). Preconditions are verified before execution; postconditions after. Contract violations stop execution with upstream tracing
+- **Review checkpoint gates**: Auto-placed at dependency convergence points and layer boundaries. User reviews preceding work before continuing in batch mode
 - **9-category ambiguity scan**: Catches requirement gaps before implementation
 - **Auto-compact**: In batch execution, automatically compacts context at heavy load to prevent degradation
 

@@ -5,7 +5,7 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.9.0] - 2026-03-23
+## [1.10.0] - 2026-03-23
 
 ### Added
 - `/refresh-docs` command — lightweight documentation refresh that targets only changed files
@@ -40,7 +40,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Report template includes `**Documentation**:` line
   - Tech-writer receives `docs/` folder structure for context
 - `/plan` IMPORTANT RULES: new rule 8 — "Read docs before planning"
-- Command count: 12 → 13
+- Command count: 13 → 14
+
+## [1.9.0] - 2026-03-23
+
+### Added
+- **Cross-task contracts** in `/breakdown` and `/execute-task` — prevents silent error compounding between sequential tasks
+  - Each task file now has a `## Contracts` section with `### Expects` (preconditions) and `### Produces` (postconditions)
+  - `/breakdown` generates contracts during task creation with concrete, grep-verifiable conditions (exports, interfaces, function names — never line numbers)
+  - `/execute-task` Phase 2 verifies preconditions before execution — stops with upstream tracing if a contract is violated
+  - `/execute-task` Phase 3.3 verifies postconditions after execution — feeds into the existing self-repair loop on failure
+  - Agent prompt includes postconditions as "What This Task Must Produce" so the agent is aware of verification expectations
+  - Completion notes and reports now include contract verification results
+- **Contract consistency check** in `/breakdown` — after generating all tasks, verifies every "Produces" is consumed by a downstream "Expects" and every "Expects" traces to an upstream "Produces" or existing codebase state
+- **Review checkpoint gates** in `/execute-task` multi-task mode — auto-placed pause points at convergence (2+ dependencies), layer boundary crossings (domain → presentation), and high-risk tasks
+  - New `**Review checkpoint**: Yes/No` field in task file headers
+  - At checkpoints: user sees preceding tasks' contract results and chooses Continue / Review (git diff) / Pause
+  - `/breakdown` README.md now includes a Review Checkpoints table
+- Storage rules updated with Contracts section and Review checkpoint field in task file format
 
 ## [1.8.0] - 2026-03-22
 

@@ -64,6 +64,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 **Depends on**: [task numbers] or None
 **Blocks**: [task numbers] or None
 **Spec criteria**: AC-[numbers]
+**Review checkpoint**: Yes/No
 
 ## Files
 
@@ -82,6 +83,14 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - In `path/to/other.ts`:
   - [specific change]
 
+## Contracts
+
+### Expects (checked before execution)
+- [precondition: what must be true in the codebase before this task runs]
+
+### Produces (checked after execution)
+- [postcondition: what must be true in the codebase after this task completes]
+
 ## Done When
 
 - [ ] [Testable condition specific to this task]
@@ -96,6 +105,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 [Filled in by /execute-task after completion]
 **Completed**: [date/time]
 **Files changed**: [actual files]
+**Contract**: Expects [X/Y verified] | Produces [X/Y verified]
 **Notes**: [deviations or observations]
 ```
 
