@@ -40,6 +40,7 @@ For every file listed in the spec's "Affected Areas" section:
 3. **Identify the change points**: Exactly which lines/functions/blocks need to change
 4. **Estimate scope**: How many lines will change? Is it a simple rename or a logic change?
 5. **Check for cascading effects**: Will changing this file require changes in other files not listed in the spec?
+6. **Identify verifiable semantics**: What exports, interfaces, functions, or call patterns must exist after the change? What must be imported from where? These become the basis for cross-task contracts.
 
 If you discover files that should have been in the spec but weren't, note them as additions.
 
@@ -50,6 +51,7 @@ For every file listed in the spec's "Affected Areas" section:
 3. **Identify the pattern reference** — find the closest pattern example from the constitution's Section 7.2
 4. **Map required dependencies** — what types, interfaces, or modules must be created first?
 5. **Check for infrastructure needs** — does this feature need new directories, config changes, or package installations?
+6. **Identify verifiable semantics** — what exports, interfaces, or functions must exist after each creation step? These become cross-task contracts.
 
 **Greenfield task ordering is different** — instead of "types first, then core, then UI", it's:
 1. **Infrastructure** — create directories, install packages, add config
@@ -121,6 +123,42 @@ For each task, generate:
 **Spec criteria addressed**: AC-[numbers]
 ```
 
+### Contract Generation Rules
+
+For each task, generate a `## Contracts` section with `### Expects` and `### Produces` subsections:
+
+- **Expects (preconditions)**: What must be true in the codebase before this task can execute correctly. For the first task in a chain, these describe existing codebase state. For downstream tasks, these should match an upstream task's "Produces".
+- **Produces (postconditions)**: What must be true in the codebase after this task completes. These are independently verified by `/execute-task` via grep/read.
+
+**Rules**:
+- 2-5 items per section. Keep them concrete and grep-verifiable.
+- Reference **semantic identifiers** (function names, export names, interface names, field names) — never line numbers. Line numbers shift as earlier tasks modify files.
+- Examples of good contracts:
+  - `src/types/Cart.ts` exports interface `CartTotals` with fields `subtotal: number`, `total: number`
+  - `CartBLoC.ts` has a public getter named `cartTotals` returning `CartTotals`
+  - `CartSummary.vue` imports `CartBLoC` from `src/domain/cart/`
+- Examples of bad contracts:
+  - "Cart totals work correctly" (not verifiable)
+  - "Line 45 of CartBLoC.ts returns the right value" (line numbers shift)
+  - "Performance is acceptable" (not grep-verifiable)
+
+### Review Checkpoint Placement
+
+For each task, set `**Review checkpoint**: Yes` or `No` in the header. Auto-place checkpoints at:
+
+1. **Convergence points** — task depends on 2+ other tasks
+2. **Layer boundary crossings** — first presentation-layer task after domain/data-layer tasks
+3. **High-risk tasks** — any task rated High in the risk assessment
+
+All other tasks get `**Review checkpoint**: No`. Users can add or remove checkpoints during the approval phase.
+
+### Contract Consistency Check
+
+After generating all tasks, verify contract chain integrity:
+- Every "Produces" item must be consumed by at least one downstream task's "Expects" OR directly map to a spec acceptance criterion
+- Every "Expects" item must either already be true in the current codebase OR be produced by an upstream task's "Produces"
+- If any contract is orphaned (Produces not consumed) or unsatisfied (Expects with no source), flag it in the breakdown summary
+
 ## PHASE 4: Save the Breakdown
 
 Create the `tasks/` directory inside the feature's spec directory and save each task as a separate numbered file.
@@ -173,6 +211,12 @@ Also create a `specs/NNN-feature/tasks/README.md` index file:
 | Task | Risk | Reason |
 |------|------|--------|
 | 001 | Low/Med/High | [why] |
+
+## Review Checkpoints
+
+| Before Task | Reason | What to Review |
+|-------------|--------|----------------|
+| [NNN] | [convergence / layer crossing / high risk] | [what to verify before proceeding] |
 ```
 
 ## PHASE 5: User Approval
@@ -188,6 +232,9 @@ Present a summary:
 Dependency chain: [simplified graph]
 
 Riskiest tasks: [list high-risk tasks and why]
+
+Review checkpoints: [count] (before tasks [list])
+Contract orphans: [any Produces items not consumed by downstream Expects, or 'none']
 
 Please review the task files. You can:
 1. Approve as-is → run `/execute-task 001` to start
@@ -205,3 +252,5 @@ Tasks should be executed in order (dependencies are marked)."
 5. **Reference spec criteria** — every task must map to at least one acceptance criterion (AC-N)
 6. **All ACs covered** — every acceptance criterion from the spec must be addressed by at least one task
 7. **Don't over-split** — a simple find-and-replace across 5 files is ONE task, not five tasks
+8. **Contract chain integrity** — every task's "Produces" must be consumed by a downstream "Expects" or map to a spec AC. Every "Expects" must trace to an upstream "Produces" or existing codebase state. Broken chains indicate missing tasks or wrong dependencies
+9. **Contracts use semantic identifiers** — reference function names, export names, interface names, field names. Never line numbers (they shift as earlier tasks modify files)

@@ -13,8 +13,8 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `clarify.md` — Optional pre-step, 9 ambiguity categories, max 5 questions
 - `specify.md` — Creates feature specs with acceptance criteria; auto-creates `spec/NNN-short-desc` branch when on default branch
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation (deep web research only when complexity signals detected)
-- `breakdown.md` — Splits plan into sequential atomic tasks in individual files
-- `execute-task.md` — Runs a single task with pre-flight checks, agent execution, doc writing, verification
+- `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints
+- `execute-task.md` — Runs a single task with pre-flight checks (including contract preconditions), agent execution, doc writing, verification (including contract postconditions); review checkpoint gates in batch mode
 - `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now or defer to `bugs/`
 - `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test, with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
@@ -33,7 +33,7 @@ Setup wizard decides which agents to generate based on detected stack.
 - `settings.template.json` — PostToolUse type-checking hook + safe permissions
 - `spec.template.md` — Feature spec template with 10 sections
 - `memory.template.md` — Persistent memory with universal categories
-- `storage-rules.md` — Full storage conventions for specs, tasks, bugs, and docs
+- `storage-rules.md` — Full storage conventions for specs, tasks (with contracts and review checkpoint fields), bugs, and docs
 
 ### Other
 - `README.md` — Full documentation with installation, workflow, pre-populated rules section
@@ -63,6 +63,7 @@ Setup wizard decides which agents to generate based on detected stack.
 9. **Check before build** — must search codebase for existing utilities before creating new ones
 10. **Onboarding for existing projects** — `/onboard` generates comprehensive docs as the knowledge base for all agents
 11. **Wrapper mode for client-invisible AI** — template wraps around existing project folder; zero Claude traces in the client's repo
+12. **Cross-task contracts prevent silent drift** — each task declares Expects/Produces; preconditions catch upstream semantic errors before they compound, postconditions verify the task delivered what downstream tasks need
 
 ### Onboarding System (`/onboard`)
 - Runs after `/constitute` for existing projects — uses constitution + CLAUDE.md + memory as input

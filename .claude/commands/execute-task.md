@@ -159,6 +159,13 @@ Before writing ANY code, verify:
    - **Existing files**: Are the target files in the expected state? (No unexpected changes since the breakdown was created)
    - **New files (greenfield)**: Does the target directory exist? If not, it should be created as part of this task or a prior task
 4. **Type safety**: Read the type definitions involved and verify the change is type-safe on paper. For greenfield, verify the proposed types align with the constitution's patterns
+5. **Contract preconditions**: Read the task's `## Contracts → ### Expects` section. For each precondition:
+   - Use Grep or Read to verify the condition holds in the current codebase (e.g., check that an export exists, an interface has expected fields, a function exists with the expected name)
+   - If a precondition fails:
+     - Identify which upstream task should have produced it (check the task's "Depends on" and the upstream task's "Produces")
+     - If the upstream task is marked Complete but its postcondition is not met, report: **"Contract violation: Task [N] expects [X] but it's not present. Task [M] (which should have produced it) is marked Complete. Task [M]'s output may be semantically incorrect. Review Task [M]'s code before proceeding."**
+     - If the precondition references something that should already exist in the codebase (no upstream task), report: **"Contract violation: Task [N] expects [X] but it's not present in the codebase. The breakdown may be based on stale assumptions."**
+     - STOP execution — do not proceed to Phase 3
 
 If ANY pre-flight check fails, stop and inform the user with specifics.
 
@@ -234,6 +241,10 @@ You are executing Task [N] from an approved task breakdown.
 5. Every file you change must pass ESLint
 6. Document any new functions/variables you create
 
+## Contract: What This Task Must Produce
+[Items from the task's Contracts → Produces section]
+These postconditions will be independently verified after you complete.
+
 ## Done When
 [Done conditions from breakdown]
 
@@ -260,17 +271,19 @@ After the agent completes, run verification:
 3. **ESLint passes**: Run lint on all changed files
 4. **Project builds** (if Build Command is specified in CLAUDE.md): Run the build command. For wrapper mode projects, run inside the Source Root directory. Skip this check if no Build Command is configured.
 5. **Done conditions met**: Check each "Done when" item from the task
-6. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`. If any are found, flag as a verification failure.
+6. **Contract postconditions**: Read the task's `## Contracts → ### Produces` section. For each postcondition, use Grep or Read to verify it holds in the codebase (e.g., verify the export exists, the interface has the expected fields, the function has the expected name). Track pass/fail for each postcondition.
+7. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`. If any are found, flag as a verification failure.
 
 **If ALL checks pass** → proceed to Phase 4.
 
 **If any check fails** → enter the self-repair loop (max 3 attempts):
 
 For each repair attempt:
-1. Collect all error output (tsc errors, lint errors, build errors, unmet done-conditions)
+1. Collect all error output (tsc errors, lint errors, build errors, unmet done-conditions, contract postcondition failures)
 2. Launch a **repair agent** (using the Task tool) with:
    - The original task description and scope constraints
    - The specific errors to fix (full error output)
+   - For contract failures: include the exact postcondition that failed and what was found instead (e.g., "Expected export `cartTotals` in CartBLoC.ts but found `getCartTotal`")
    - The list of files that were changed
    - Clear instruction: **"Fix ONLY these errors. Do not add features, refactor, or change scope. Stay within the files listed."**
 3. After the repair agent completes, commit:
@@ -297,6 +310,7 @@ For each repair attempt:
      ```
      **Completed**: [date/time]
      **Files changed**: [actual files that changed]
+     **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
      **Notes**: [any deviations from plan or things to watch]
      ```
 3. Update the task index (`specs/NNN-feature/tasks/README.md`) — mark this task's status as Complete
@@ -342,6 +356,7 @@ Provide a concise summary to the user:
 - ESLint: PASS
 - Build: PASS [or SKIP if no build command configured]
 - Done conditions: [all met / exceptions]
+- Contracts: Expects [X/Y] | Produces [X/Y]
 
 **Documentation**: [Updated docs/features/X.md / Created docs/api/Y.md / No docs needed]
 
@@ -448,6 +463,23 @@ After Phase 7.5 completes for the current task:
 2. If the queue is empty → done. Report final summary of all tasks completed in this run.
 3. If the queue has remaining tasks:
    a. **Dependency check**: Verify the next task's dependencies are all satisfied (marked Complete). If not, stop and report: "Task [N] is blocked by incomplete dependency Task [M]. Completed [X] of [Y] queued tasks."
+   a2. **Review checkpoint gate**: Read the next task's header. If `Review checkpoint: Yes`:
+      ```
+      ⏸️ REVIEW CHECKPOINT before Task [N]: [title]
+
+      Preceding tasks completed:
+      - Task [X]: [1-line summary] — Contract: Expects [A/B] | Produces [C/D]
+      - Task [Y]: [1-line summary] — Contract: Expects [A/B] | Produces [C/D]
+
+      Options:
+      1. **Continue** — contracts pass, proceed to Task [N]
+      2. **Review** — show git diff from preceding tasks before continuing
+      3. **Pause** — stop execution here, resume later with /execute-task [N]
+      ```
+      Wait for user response:
+      - **Continue**: proceed to step b.
+      - **Review**: show `git diff` for the preceding tasks' commits. After user reviews, ask again: Continue or Pause.
+      - **Pause**: clean up WIP state (delete `.claude/wip.md`), stop execution. Report completed tasks so far.
    b. **Context health**: Read the "Tasks completed this session" count from session-state.md.
       - If heavy (6+ tasks): **auto-compact** before continuing. Run `/compact` with these preserved items: (1) Current task statuses from `specs/[feature]/tasks/README.md`, (2) All entries from `.claude/memory/MEMORY.md`, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from `.claude/session-state.md`. Do NOT ask — compact and continue.
       - If light/moderate: continue without compaction.
