@@ -300,6 +300,23 @@ If tests were added or modified, commit:
 git add -A && git commit -m "[WIP] Fix: [short description] — tests"
 ```
 
+## PHASE 7.5: Documentation Update (Conditional)
+
+If the fix changed any **public API signatures** (function parameters, return types, exported interfaces) or **user-facing behavior** (different output, new error messages, changed defaults):
+
+1. Launch the **tech-writer** agent with:
+   - The bug description and root cause from Phase 2.2
+   - The list of changed files
+   - The existing `docs/` folder structure (run Glob on `docs/`)
+   - Instruction: "A bug fix changed these files. Check if any public API signatures or documented behavior changed. If so, update inline docs (JSDoc/docstrings) and the relevant `docs/` file. If the fix only restores previously-documented behavior, report 'No doc update needed.'"
+
+2. If the tech-writer made changes, commit:
+   ```
+   git add -A && git commit -m "[WIP] Fix: [short description] — doc update"
+   ```
+
+If the fix is purely internal (no public API or behavior change), skip this phase — but document the skip decision in Phase 8.3's report as: `**Documentation**: No public API changes — skipped`.
+
 ## PHASE 8: Report & Clean Up
 
 ### 8.1: Final Commit
@@ -344,6 +361,8 @@ Delete `.claude/wip.md`.
 - Code review: [APPROVE / issues addressed]
 
 **Tests**: [Added regression test in [file] / Existing tests sufficient / No test needed — [reason]]
+
+**Documentation**: [Updated docs/api/X.md / No public API changes — skipped]
 
 **Commit**: `fix([area]): [description]`
 ```

@@ -6,19 +6,20 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (12 files in `.claude/commands/`)
+### Commands (13 files in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
 - `clarify.md` — Optional pre-step, 9 ambiguity categories, max 5 questions
 - `specify.md` — Creates feature specs with acceptance criteria; auto-creates `spec/NNN-short-desc` branch when on default branch
-- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation (deep web research only when complexity signals detected)
+- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation; reads `docs/` for context; outputs Documentation Impact section
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files
-- `execute-task.md` — Runs a single task with pre-flight checks, agent execution, doc writing, verification
-- `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now or defer to `bugs/`
-- `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test, with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
+- `execute-task.md` — Runs a single task with pre-flight checks, agent execution, doc writing (with structured prompt + post-doc verification), verification
+- `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now, fix docs now (direct tech-writer), or defer to `bugs/`
+- `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test → doc update (conditional), with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
-- `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review, with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
+- `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review → doc update (conditional), with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
+- `refresh-docs.md` — Lightweight documentation refresh using git delta; invokes tech-writer in Refresh Mode on changed files only
 
 ### Agent Templates (14 files in `.claude/templates/agents/`)
 Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`
@@ -58,7 +59,7 @@ Setup wizard decides which agents to generate based on detected stack.
 4. **Sequential numbering** — features: 001, 002...; tasks within feature: 001, 002...
 5. **All agents as templates, wizard selects** — 14 templates, setup wizard conditionally generates based on project
 6. **Universal constitution rules pre-populated** — SOLID, DRY, KISS, error handling, code quality, workflow rules all built-in; project-specific rules added by `/constitute`
-7. **Mandatory documentation** — tech-writer agent runs after every task, reads only changed code, writes to `docs/`
+7. **Mandatory documentation** — tech-writer agent runs after every task (with structured prompt + post-doc verification), also runs conditionally after `/fix` and `/refactor` when public APIs change; `/refresh-docs` catches stale docs via git delta; `/plan` declares documentation impact upfront
 8. **Greenfield support** — all commands work for empty/new projects
 9. **Check before build** — must search codebase for existing utilities before creating new ones
 10. **Onboarding for existing projects** — `/onboard` generates comprehensive docs as the knowledge base for all agents

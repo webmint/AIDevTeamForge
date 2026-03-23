@@ -35,6 +35,11 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 - Check how similar features are implemented
 - Identify reusable code and patterns
 - For greenfield projects: check the constitution's scaffolding guide for pattern references
+- Read relevant documentation from `docs/`:
+  - `docs/architecture.md` — for understanding current architecture patterns, layer boundaries, data flow
+  - `docs/features/*.md` — for features related to the area this spec touches
+  - `docs/api/*.md` — if the feature involves API changes
+  - Skip if `docs/` doesn't exist or contains only stubs (greenfield)
 
 ### Step 2: Signal Scan
 
@@ -191,6 +196,16 @@ Save to `specs/[feature-name]/plan.md`:
 | [path] | Create/Modify | [brief description] |
 | [path] | Create/Modify | [brief description] |
 
+### Documentation Impact
+
+| Doc File | Action | What Changes |
+|----------|--------|-------------|
+| docs/features/[name].md | Update/Create | [what needs documenting] |
+| docs/api/[name].md | Update | [new endpoints or changed contracts] |
+| docs/architecture.md | Update | [if architecture patterns change] |
+
+[If no documentation impact: "No documentation changes expected — internal implementation only."]
+
 ## Risk Assessment
 
 | Risk | Likelihood | Impact | Mitigation |
@@ -233,3 +248,4 @@ Please review and approve. Once approved, run `/breakdown` to generate tasks."
 5. **Minimal supporting docs** — only create research.md, data-model.md, contracts.md if they're actually needed. Don't create empty files
 6. **Memory check** — consult MEMORY.md for lessons about similar technical decisions
 7. **Keep it scannable** — tables over paragraphs, decisions over discussions
+8. **Read docs before planning** — check `docs/architecture.md` and relevant `docs/features/*.md` for context about existing patterns and module relationships. If `docs/` is stale or missing, note this in the plan as a risk

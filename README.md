@@ -76,6 +76,7 @@ Requires `jq` for JSON merging (`brew install jq` on macOS, `apt install jq` on 
 /fix bugs/003-null-check.md  ← fix a reported bug from the backlog
 /report-bug "description"    ← log a bug for later fixing
 /refactor path/to/file.ts    ← focused code restructuring without behavior changes
+/refresh-docs                ← update stale documentation (git delta, not full scan)
 ```
 
 ### Phase 0: `/setup-wizard` (one-time)
@@ -119,7 +120,10 @@ Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown p
 Creates a structured bug report file in `bugs/` for later fixing. Accepts an optional `--file` flag to link the bug to a specific file and `--severity` flag (Critical/Warning/Info, defaults to Warning). Bug files follow sequential numbering (`001-short-description.md`) with a status lifecycle (Open → In Progress → Fixed). Fix a reported bug with `/fix bugs/NNN-xxx.md` or escalate larger ones with `/specify`.
 
 ### `/refactor path/to/file.ts "goal"` (standalone, for code restructuring)
-Focused refactoring workflow for behavior-preserving code restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path with optional line range. Phases: analyze code against 9 refactoring categories (long functions, deep nesting, SOLID/DRY violations, type safety, naming, dead code, pattern mismatches, complexity), present detailed proposal with before/after for each opportunity (hard gate — partial approval supported), apply refactoring with auto-selected agent (**architect**, **frontend-engineer**, or **backend-engineer** based on file layer), verify (tsc + lint + build + tests + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent — tests must pass unchanged since refactoring is behavior-preserving). If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
+Focused refactoring workflow for behavior-preserving code restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path with optional line range. Phases: analyze code against 9 refactoring categories (long functions, deep nesting, SOLID/DRY violations, type safety, naming, dead code, pattern mismatches, complexity), present detailed proposal with before/after for each opportunity (hard gate — partial approval supported), apply refactoring with auto-selected agent (**architect**, **frontend-engineer**, or **backend-engineer** based on file layer), verify (tsc + lint + build + tests + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent — tests must pass unchanged since refactoring is behavior-preserving), conditional documentation update (tech-writer agent when public APIs or architecture changed). If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
+
+### `/refresh-docs` (standalone, for stale documentation)
+Lightweight documentation refresh that detects what source files changed since docs were last updated and invokes the tech-writer on just those files. Uses git delta detection — sits between `/onboard` (full codebase scan) and Phase 5 of `/execute-task` (single task). Supports `--since <commit>`, `--module <name>`, and `--all` (delegates to `/onboard`). Captures both committed and uncommitted changes. Includes verification (tsc + lint) and memory update.
 
 ## Artifact Storage
 

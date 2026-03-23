@@ -62,7 +62,7 @@ The agent will check: constitution compliance, architecture & patterns, type saf
 - **Linter**: Run ESLint (or project equivalent) on all changed files and report result
 - **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured
 - **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope
-- **Documentation**: Check if any task introduced new public APIs or behavior changes that lack docs in `docs/` or inline JSDoc. Flag as Warning
+- **Documentation**: Check if any task introduced new public APIs or behavior changes that lack docs in `docs/` or inline JSDoc. Flag as Warning. For each documentation gap found, record the specific file path and public API name — this is needed for direct remediation in Phase 10
 
 The code-reviewer's verdict (APPROVE / REQUEST CHANGES / BLOCK) feeds into the final verification report.
 
@@ -203,8 +203,9 @@ If there are **5 or fewer** issues, ask the user for each one individually:
 ```
 Issue #N: [severity] [short description]
   1. Fix now — invoke /fix with this issue
-  2. Report for later — save to bugs/ for future fixing
-  3. Skip — ignore this issue
+  2. Fix docs now — invoke tech-writer agent directly (for documentation-only issues)
+  3. Report for later — save to bugs/ for future fixing
+  4. Skip — ignore this issue
 ```
 
 If there are **more than 5** issues, first offer a batch option:
@@ -234,6 +235,18 @@ Wait for user response before proceeding.
 3. If there are additional "fix now" items beyond the first, inform the user:
    "Starting with issue #N. After this fix completes, address remaining issues by running `/fix bugs/NNN-xxx.md` for each, or re-run `/verify` to re-assess."
 
+**"Fix docs now" items** (documentation gaps only): For each, invoke the tech-writer agent directly — do NOT route through `/fix`:
+1. Launch the **tech-writer** agent with:
+   - The list of files and public APIs flagged as lacking documentation
+   - The feature spec for context
+   - Instruction: "These public APIs were flagged during verification as lacking documentation. Add inline docs (JSDoc/docstrings) to each, and create or update the relevant `docs/` file."
+2. After the tech-writer completes, verify the flagged APIs now have inline docs
+3. Commit the doc changes:
+   ```
+   git add -A && git commit -m "docs: add missing documentation flagged by /verify"
+   ```
+4. Process the next "Fix docs now" item (unlike "Fix now", multiple doc fixes can run sequentially since they are lightweight)
+
 **"Skip" items**: No action taken.
 
 ### 10.4: Summary
@@ -243,13 +256,14 @@ Present a summary of triage decisions:
 ```
 Triage complete:
 - Fix now: [count] (starting with: bugs/NNN-xxx.md)
+- Fix docs now: [count] (completed)
 - Reported for later: [count]
   - bugs/NNN-xxx.md
   - bugs/NNN-xxx.md
 - Skipped: [count]
 ```
 
-If "fix now" items exist, proceed to invoke `/fix` for the first one.
+If "fix now" items exist, proceed to invoke `/fix` for the first one. If only "fix docs now" items exist (no "fix now"), report documentation fixes complete.
 
 ## IMPORTANT RULES
 

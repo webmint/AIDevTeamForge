@@ -316,15 +316,56 @@ Provide the agent with:
 1. The completed task file (with completion notes and actual files changed)
 2. The feature spec
 3. The list of files that were actually changed
+4. The existing `docs/` folder structure (run Glob on `docs/`)
 
-The tech-writer will:
-- Read only the task, spec, and changed files
-- Determine if documentation updates are needed
-- Add or update **inline documentation** (JSDoc/docstrings) in changed source files for new/changed public APIs
-- Update existing docs or create new ones in `docs/`
-- Skip documentation if the change doesn't warrant it (internal refactoring, bug fixes, test-only changes)
+The tech-writer prompt should follow this structure:
 
-If the tech-writer determines no docs are needed, that's fine — not every task produces documentation. But the step MUST run.
+```
+You are updating documentation after Task [N] from an approved task breakdown.
+
+## Completed Task
+[Full task description and completion notes from breakdown]
+
+## Feature Context
+[Relevant section from spec.md — what this feature does and why]
+
+## Files Changed
+[List of files actually changed, from completion notes]
+
+## Existing Docs
+[Output of Glob on docs/ — so you know what already exists]
+
+## Instructions
+1. Read each changed file and identify new or changed public APIs (exported functions, classes, components, types)
+2. For each new/changed public API: add or update inline documentation (JSDoc/docstrings) in the source file
+3. Check if any existing doc in docs/ covers this area — if so, update it
+4. If this task introduces a new feature area with no existing doc, create docs/features/[name].md
+5. If no public APIs were added or changed AND no user-facing behavior changed, report "No documentation needed" with a 1-sentence justification
+
+## Rules
+1. Only document what exists — code that is implemented and verified
+2. Every new public export gets inline docs (JSDoc/docstring)
+3. Match existing doc style in the project
+4. Code examples must come from actual implementation
+5. Do NOT modify logic, specs, or task files — only add documentation
+```
+
+### 5.1: Post-Doc Verification
+
+After the tech-writer completes, verify documentation was handled:
+
+1. **Check for public API changes**: Run `git diff [checkpoint-commit-hash] --name-only` and scan changed files for new exported functions, classes, components, or types. If any exist, verify they have inline documentation (JSDoc/docstrings).
+2. **Check `docs/` for updates**: If public APIs were added or behavior changed, verify that at least one file in `docs/` was created or modified (check `git diff --name-only` for paths starting with `docs/`).
+3. **If the tech-writer reported "No documentation needed"**: Accept this ONLY if the changed files contain no new public exports AND no user-facing behavior changes. Otherwise, re-invoke the tech-writer with explicit instruction: "The following new public APIs lack documentation: [list]. Add inline docs and update docs/ accordingly."
+
+### 5.2: Commit Doc Changes
+
+If the tech-writer made any changes, commit them:
+```
+git add -A && git commit -m "[WIP] Task [N]: [title] — documentation update"
+```
+
+Update `.claude/wip.md` — change Phase to `6 (Report)`.
 
 ## PHASE 6: Report
 
@@ -422,7 +463,7 @@ Read the "Tasks completed this session" count from the session-state you just wr
 💡 Context maintenance: [N] tasks completed this session.
 Optional: Run /compact with these instructions:
 
-/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
+/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
 
 Or continue to next task if context still feels responsive.
 ```
@@ -433,7 +474,7 @@ Or continue to next task if context still feels responsive.
 🔴 Context maintenance: [N] tasks completed this session (heavy context load).
 Strongly recommended: Run /compact before continuing.
 
-/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
+/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
 ```
 
 Do NOT auto-compact — always let the user decide. Surface the recommendation with the pre-built compact instruction.
@@ -449,7 +490,7 @@ After Phase 7.5 completes for the current task:
 3. If the queue has remaining tasks:
    a. **Dependency check**: Verify the next task's dependencies are all satisfied (marked Complete). If not, stop and report: "Task [N] is blocked by incomplete dependency Task [M]. Completed [X] of [Y] queued tasks."
    b. **Context health**: Read the "Tasks completed this session" count from session-state.md.
-      - If heavy (6+ tasks): **auto-compact** before continuing. Run `/compact` with these preserved items: (1) Current task statuses from `specs/[feature]/tasks/README.md`, (2) All entries from `.claude/memory/MEMORY.md`, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from `.claude/session-state.md`. Do NOT ask — compact and continue.
+      - If heavy (6+ tasks): **auto-compact** before continuing. Run `/compact` with these preserved items: (1) Current task statuses from `specs/[feature]/tasks/README.md`, (2) All entries from `.claude/memory/MEMORY.md`, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from `.claude/session-state.md`, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Do NOT ask — compact and continue.
       - If light/moderate: continue without compaction.
    c. **Loop back** to Phase 1 for the next task in the queue. The task queue carries over — do not re-parse `$ARGUMENTS`.
 
@@ -479,4 +520,5 @@ When all queued tasks are complete (or execution stops due to failure/blocked de
 7. **Verify everything** — trust but verify. Even if hooks ran, run explicit verification after the agent finishes
 8. **Track deviations** — if the actual changes differ from the planned changes, document WHY in the task file's Completion Notes
 9. **Context hygiene** — always fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines. Recommend /compact at moderate load. In multi-task mode, auto-compact at heavy load (6+ tasks) without asking.
-10. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start of execute-task, enter recovery flow. Never delete wip.md without either completing the task or explicitly rolling back.
+10. **Documentation is non-negotiable** — Phase 5 MUST run for every task, including in multi-task mode. The tech-writer agent must be invoked and its output verified (new public APIs must have inline docs). Skipping Phase 5 is a workflow violation equivalent to skipping verification.
+11. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start of execute-task, enter recovery flow. Never delete wip.md without either completing the task or explicitly rolling back.

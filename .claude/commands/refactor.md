@@ -366,6 +366,23 @@ If tests were adjusted (import fixes only), commit:
 git add -A && git commit -m "[WIP] Refactor: [short description] — test import fixes"
 ```
 
+## PHASE 7.5: Documentation Update (Conditional)
+
+If the refactoring changed any **public API signatures** (renamed exports, moved files that other code imports, changed function signatures) or **restructured architecture** (new modules, changed layer boundaries):
+
+1. Launch the **tech-writer** agent with:
+   - The refactoring description and approved actions from Phase 2.4
+   - The list of changed files
+   - The existing `docs/` folder structure (run Glob on `docs/`)
+   - Instruction: "A refactoring changed these files. Check if any public API signatures, import paths, or documented architecture changed. If so, update inline docs (JSDoc/docstrings) and the relevant `docs/` file. If the refactoring was purely internal with no public-facing changes, report 'No doc update needed.'"
+
+2. If the tech-writer made changes, commit:
+   ```
+   git add -A && git commit -m "[WIP] Refactor: [short description] — doc update"
+   ```
+
+If the refactoring is purely internal (no public API, import path, or architecture change), skip this phase — but document the skip decision in Phase 8.3's report as: `**Documentation**: Internal refactoring — no public API changes`.
+
 ## PHASE 8: Report & Clean Up
 
 ### 8.1: Final Commit
@@ -403,6 +420,8 @@ Delete `.claude/wip.md`.
 - Tests: PASS / [details]
 - Code review: [APPROVE / issues addressed]
 - Behavior preserved: YES
+
+**Documentation**: [Updated docs/architecture.md / Internal refactoring — no public API changes]
 
 **Commit**: `refactor([area]): [description]`
 ```

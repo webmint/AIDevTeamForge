@@ -5,6 +5,43 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-03-23
+
+### Added
+- `/refresh-docs` command — lightweight documentation refresh that targets only changed files
+  - Uses git delta to detect source files changed since docs were last updated
+  - Invokes tech-writer in new **Refresh Mode** — scoped to changed files, not full codebase scan
+  - Supports `--since <commit>`, `--module <name>`, and `--all` (delegates to `/onboard`) flags
+  - Captures both committed and uncommitted changes
+  - Scoped `git add` (only doc-related files) instead of `git add -A`
+  - Includes verification (tsc + lint on changed source files) and memory update phases
+- **Refresh Mode** in tech-writer agent template — third operating mode alongside Normal and Onboarding
+  - Reads only changed files grouped by module
+  - Updates both inline docs (JSDoc/docstrings) and `docs/` folder
+  - Cleans up stale doc references for removed public APIs
+- `/verify` **"Fix docs now"** triage option — invokes tech-writer directly for documentation-only issues, bypassing `/fix`
+  - Documentation gaps flagged during verification now record specific file paths and API names
+  - Phase 10.4 summary includes "Fix docs now" count
+- `/plan` now reads `docs/` during Phase 0 research — `docs/architecture.md`, `docs/features/*.md`, and `docs/api/*.md` for architectural context
+- `/plan` output now includes **Documentation Impact** section — declares which docs will need updating, giving `/execute-task` Phase 5 better targets
+
+### Changed
+- `/execute-task` Phase 5 (Documentation Update) **rewritten** with stronger enforcement
+  - Structured prompt template for tech-writer invocation (mirrors Phase 3.2's execution agent pattern)
+  - New Phase 5.1: Post-Doc Verification — checks `git diff` for new public exports and verifies inline docs exist
+  - New Phase 5.2: Commit — doc changes get their own `[WIP]` commit
+  - Re-invokes tech-writer if public APIs lack documentation
+- `/execute-task` compact preservation lists updated — all 3 instances (moderate, heavy, auto-compact) now include item (6): Phase 5 documentation obligation
+- `/execute-task` IMPORTANT RULES: new rule 10 — "Documentation is non-negotiable" (equivalent to skipping verification)
+- `/fix` now includes Phase 7.5: Documentation Update (Conditional) — launches tech-writer when public API signatures or user-facing behavior changed
+  - Report template includes `**Documentation**:` line
+  - Tech-writer receives `docs/` folder structure for context
+- `/refactor` now includes Phase 7.5: Documentation Update (Conditional) — launches tech-writer when public API signatures, import paths, or architecture changed
+  - Report template includes `**Documentation**:` line
+  - Tech-writer receives `docs/` folder structure for context
+- `/plan` IMPORTANT RULES: new rule 8 — "Read docs before planning"
+- Command count: 12 → 13
+
 ## [1.8.0] - 2026-03-22
 
 ### Added
