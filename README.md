@@ -71,7 +71,7 @@ When the template is improved, you can push updates to projects that already use
 
 ### Three-way merge
 
-Agents and CLAUDE.md use three-way merge (`git merge-file`) to apply only the template diff while preserving all project customizations — wizard-added framework-specific items, custom sections, and manual edits. Baselines (snapshots of the last-applied substituted template) are stored in `.claude/agents/.baseline/` and `.claude/.baseline/`. The first update on a project saves baselines without changing files; subsequent updates merge cleanly.
+Agents and CLAUDE.md use three-way merge (`git merge-file`) to apply only the template diff while preserving all project customizations — wizard-added framework-specific items, custom sections, and manual edits. Baselines (snapshots of the substituted template) are stored in `.claude/agents/.baseline/` and `.claude/.baseline/`. The setup wizard saves baselines during generation, so the very first `update.sh` run can three-way merge immediately — no bootstrap needed.
 
 ### Version tracking
 

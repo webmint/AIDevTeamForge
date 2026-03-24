@@ -5,6 +5,17 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-03-25
+
+### Added
+- `/setup-wizard` now saves **baselines** during generation (Steps 3.1.1 and 3.2.1)
+  - CLAUDE.md baseline saved to `.claude/.baseline/CLAUDE.md`
+  - Agent baselines saved to `.claude/agents/.baseline/[name].md`
+  - Enables `update.sh` three-way merge immediately after setup — no bootstrap run needed
+
+### Changed
+- Template version: 1.15.0 → 1.16.0
+
 ## [1.15.0] - 2026-03-24
 
 ### Added

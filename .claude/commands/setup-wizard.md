@@ -261,6 +261,15 @@ Fill the commands section with REAL commands from the project's `package.json` s
 
 **Greenfield note**: If no scripts exist yet (empty `package.json`), generate sensible defaults based on the chosen framework and build tool (e.g., `vite dev`, `vitest`, `eslint .`). Mark them with a comment: `<!-- default, update after scaffolding -->`.
 
+### 3.1.1: Save CLAUDE.md Baseline
+
+After generating `CLAUDE.md`, save a baseline for three-way merge support in `update.sh`:
+1. Read `.claude/templates/CLAUDE.template.md`
+2. Substitute all `{{PLACEHOLDER}}` variables (same values used in 3.1)
+3. Save the result to `.claude/.baseline/CLAUDE.md`
+
+Create the `.claude/.baseline/` directory if it doesn't exist. The baseline is the template with placeholders resolved but **without** any project-specific custom sections — it represents what the template alone produces.
+
 ### 3.2: Generate Agents
 
 Read agent templates from `.claude/templates/agents/` and generate `.claude/agents/`.
@@ -306,10 +315,21 @@ For each agent:
 - Replace `{{LINT_CONFIG}}` with actual linting setup
 - Replace `{{STYLING}}` with actual CSS approach
 - Add project-specific patterns you discovered during detection (existing projects) or framework best-practice patterns (greenfield) — add these as NEW sections or append to existing sections, never replace template content
-- Set appropriate model: `opus` for runtime-debugger, `sonnet` for others
+- Replace `{{AGENT_MODEL}}` with the model chosen in Question 8 (default: `opus`)
 - **Greenfield**: Use framework-idiomatic examples in agents since there's no project code to reference yet
 
 **CRITICAL**: The generated agent file = full template content + placeholder replacements + project-specific additions. Never subtract from the template.
+
+### 3.2.1: Save Agent Baselines
+
+After generating all agents, save a **baseline** for each — the template with placeholders substituted but **without** project-specific additions. These baselines enable `update.sh` to three-way merge on the next update (applying only template diffs while preserving project customizations).
+
+For each generated agent:
+1. Read the original template from `.claude/templates/agents/[name].template.md`
+2. Substitute all `{{PLACEHOLDER}}` variables (same values used in 3.2)
+3. Save the result to `.claude/agents/.baseline/[name].md`
+
+Create the `.claude/agents/.baseline/` directory if it doesn't exist.
 
 ### 3.3: Generate settings.json
 

@@ -7,7 +7,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 ## What's Built
 
 ### Commands (15 files in `.claude/commands/`)
-- `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield
+- `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
 - `research.md` — Quick feasibility check for vague ideas; investigates codebase for related patterns, signal-based external research, displays full report in console and optionally saves to `research/DD-MM-YY-[topic-slug].md`
