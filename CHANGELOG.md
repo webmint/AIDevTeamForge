@@ -5,6 +5,15 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-03-24
+
+### Changed
+- `/research` command now displays the full research report in the console before saving
+- `/research` now asks the user whether to save the report (previously auto-saved)
+- Research reports moved from `specs/research/` to `research/` at project root
+- Research file naming changed from `[topic-slug].md` to `DD-MM-YY-[topic-slug].md`
+- Storage rules updated to reflect new research location and naming convention
+
 ## [1.12.0] - 2026-03-24
 
 ### Fixed
@@ -25,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `update.sh` now requires `perl` in addition to `jq`
 - Template manifest: `.claude/templates/**` and `.claude/template-manifest.json` moved to `templateOwned`; `CLAUDE.md` moved from `projectOwned` to new `sectionMerge` category
-- Command count: 14 (unchanged); template version: 1.11.0 → 1.12.0
+- Command count: 14 (unchanged); template version: 1.11.0 → 1.12.0 → 1.13.0
 
 ## [1.11.0] - 2026-03-23
 

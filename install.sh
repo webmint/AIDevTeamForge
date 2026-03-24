@@ -63,6 +63,7 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 cp -r "$TEMPLATE_DIR/.claude" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/specs" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/bugs" "$TARGET_DIR/"
+cp -r "$TEMPLATE_DIR/research" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/scripts" "$TARGET_DIR/"
 cp "$TEMPLATE_DIR/.mcp.json" "$TARGET_DIR/"
 
