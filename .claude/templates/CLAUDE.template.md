@@ -168,9 +168,10 @@ If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 ## Artifact Storage
 
 ```
+research/
+  DD-MM-YY-topic-slug.md        # Research reports (/research) — exploratory, pre-spec
+
 specs/
-  research/                    # Research reports (/research) — exploratory, pre-spec
-    topic-slug.md
   001-feature-name/            # Numbered feature directories
     spec.md                    # /specify output
     clarifications.md          # /clarify output (optional)

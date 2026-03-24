@@ -5,6 +5,15 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-03-25
+
+### Changed
+- Tech-writer agent model hardcoded to `sonnet` instead of `{{AGENT_MODEL}}` — docs generation doesn't need opus, sonnet is faster and cheaper
+- `/release` command added for automating version bumps, changelog, and documentation updates in the template repo
+
+### Fixed
+- Artifact Storage tree in CLAUDE.md template showed `research/` nested under `specs/` — corrected to project root, matching `/research` command behavior since v1.13.0
+
 ## [1.16.0] - 2026-03-25
 
 ### Added

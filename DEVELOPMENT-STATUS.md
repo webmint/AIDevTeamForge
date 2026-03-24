@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (15 files in `.claude/commands/`)
+### Commands (16 files in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -21,6 +21,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
 - `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review → doc update (conditional), with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
 - `refresh-docs.md` — Lightweight documentation refresh using git delta; invokes tech-writer in Refresh Mode on changed files only
+- `release.md` — Meta-command for the template repo itself: automates version bump, changelog, and documentation updates after making changes
 
 ### Agent Templates (14 files in `.claude/templates/agents/`)
 Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`
