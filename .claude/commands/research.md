@@ -107,11 +107,7 @@ For each signal detected:
 
 ## PHASE 4: Generate Research Report
 
-Save to `specs/research/[topic-slug].md`. Create the `specs/research/` directory if it doesn't exist.
-
-**Topic slug**: lowercase kebab-case, 2-4 words derived from the topic (e.g., `caching-strategy`, `websocket-real-time`, `authentication-options`).
-
-If a file at that path already exists, append a date suffix: `[slug]-YYYY-MM-DD.md`.
+Generate the full report and **render it directly in the console** so the user can read it immediately. Do NOT save to a file yet — saving happens in Phase 5 after user confirmation.
 
 ### Report Format
 
@@ -190,24 +186,32 @@ If a file at that path already exists, append a date suffix: `[slug]-YYYY-MM-DD.
 - **Not recommended**: "[Reason]. Consider [alternative] instead."
 ```
 
-## PHASE 5: Present and Recommend
+## PHASE 5: Ask to Save & Recommend
 
-Present a concise summary to the user:
+The full report was already displayed in Phase 4. Now ask the user whether to save it.
+
+### Step 1: Ask to Save
+
+Use `AskUserQuestion` to ask: **"Save this research to a file?"**
+
+- **If yes**: Save to `research/DD-MM-YY-[topic-slug].md` at project root.
+  - `DD-MM-YY` = current date (e.g., `24-03-26`)
+  - `[topic-slug]` = lowercase kebab-case, 2-4 words derived from the topic (e.g., `caching-strategy`, `websocket-real-time`, `authentication-options`)
+  - Create the `research/` directory if it doesn't exist
+  - If a file at that path already exists, append `-2`, `-3`, etc. (e.g., `24-03-26-caching-strategy-2.md`)
+  - Confirm: `Saved to research/[filename].md`
+- **If no**: Do nothing. The research stays in the console only.
+
+### Step 2: Next Steps
+
+Present next steps to the user:
 
 ```
-Research complete: specs/research/[topic-slug].md
-
-**Verdict**: [Feasible / Feasible with Caveats / Not Recommended]
-**Summary**: [2-3 sentences]
-**Existing related code**: [count] relevant files found
-**Approaches identified**: [count] ([recommended one])
-**Estimated complexity**: [Low/Medium/High]
-
 Next steps:
 - To proceed: `/specify "[refined description]"`
 - To clarify first: `/clarify "[specific aspect]"`
 - To research deeper: `/research "[narrower sub-topic]"`
-- To shelve: no action needed — report saved for future reference
+- To shelve: no action needed
 ```
 
 Tailor the next steps to the verdict. If not recommended, lead with the alternative. If feasible, lead with `/specify`.

@@ -20,7 +20,7 @@ Every phase transition requires explicit user approval. No step can be skipped.
 /path/to/AIDevTeamForge/install.sh --wrapper /path/to/workspace inner-project-folder
 ```
 
-This copies `.claude/`, `specs/`, `bugs/`, `scripts/`, and `.mcp.json` into your project. It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
+This copies `.claude/`, `specs/`, `bugs/`, `research/`, `scripts/`, and `.mcp.json` into your project. It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
 
 The wizard will:
    - Detect workspace mode (standalone vs wrapper around a client project)
@@ -97,7 +97,7 @@ Deep codebase analysis (existing projects) or preference-based interview (greenf
 Deep codebase scan that generates comprehensive documentation in `docs/`. Delegates to the tech-writer agent, which uses subagents for large codebases to stay within context limits. Produces `overview.md`, `architecture.md`, `features/*.md`, and `api/*.md` — the knowledge base all agents read before executing tasks. Skip for greenfield projects (docs are built incrementally).
 
 ### Phase 1.75: `/research "topic or idea"` (optional, per idea)
-Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based — only when the idea involves new libraries, integrations, or unfamiliar tech), and outputs a concise report to `specs/research/[topic-slug].md`. Does NOT create specs, modify code, or create branches. Use before `/specify` when you're unsure whether an idea is viable or how it fits the project's architecture.
+Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based — only when the idea involves new libraries, integrations, or unfamiliar tech), and displays the full research report in the console. You're then asked whether to save — if yes, saves to `research/DD-MM-YY-[topic-slug].md`. Does NOT create specs, modify code, or create branches. Use before `/specify` when you're unsure whether an idea is viable or how it fits the project's architecture.
 
 ### Phase 2: `/clarify "feature description"` (optional, per feature)
 Scans requirements against 9 ambiguity categories, asks up to 5 multiple-choice questions with recommendations. Saves to `specs/[feature]/clarifications.md`. Skip if requirements are already clear.
@@ -139,9 +139,10 @@ Lightweight documentation refresh that detects what source files changed since d
 ## Artifact Storage
 
 ```
+research/
+  DD-MM-YY-topic-slug.md         # Research reports (/research) — exploratory, pre-spec
+
 specs/
-  research/                      # Research reports (/research) — exploratory, pre-spec
-    topic-slug.md
   001-user-auth/                 # Numbered feature directories
     spec.md                      # /specify output
     clarifications.md            # /clarify output (optional)

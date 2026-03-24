@@ -10,7 +10,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
-- `research.md` — Quick feasibility check for vague ideas; investigates codebase for related patterns, signal-based external research, outputs report to `specs/research/`
+- `research.md` — Quick feasibility check for vague ideas; investigates codebase for related patterns, signal-based external research, displays full report in console and optionally saves to `research/DD-MM-YY-[topic-slug].md`
 - `clarify.md` — Optional pre-step, 9 ambiguity categories, max 5 questions
 - `specify.md` — Creates feature specs with acceptance criteria; auto-creates `spec/NNN-short-desc` branch when on default branch
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation; reads `docs/` for context; outputs Documentation Impact section
@@ -47,6 +47,7 @@ Setup wizard decides which agents to generate based on detected stack.
 - `README.md` — Full documentation with installation, workflow, pre-populated rules section
 - `specs/` — Empty specs directory with .gitkeep
 - `bugs/` — Empty bugs directory with .gitkeep (bug backlog for `/report-bug` and `/verify` triage)
+- `research/` — Empty research directory with .gitkeep (research reports from `/research`)
 
 ### Wrapper Mode
 - Setup wizard detects nested git repos at depth 1 and offers wrapper mode
