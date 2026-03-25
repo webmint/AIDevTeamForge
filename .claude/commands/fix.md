@@ -322,11 +322,19 @@ If the fix is purely internal (no public API or behavior change), skip this phas
 
 ### 8.1: Final Commit
 
-Squash all `[WIP]` and `[checkpoint]` commits for this fix into a single clean commit:
+Squash all `[WIP]` and `[checkpoint]` commits for this fix into a single clean commit.
+
+First, verify WIP commits haven't been pushed to the remote:
 ```
-git reset --soft [checkpoint-commit-hash]
-git commit -m "fix([area]): [concise description of what was fixed]"
+git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
 ```
+- If this shows commits (or fails because there's no upstream) → WIP commits are **local only** → safe to squash:
+  ```
+  git reset --soft [checkpoint-commit-hash]
+  git commit -m "fix([area]): [concise description of what was fixed]"
+  ```
+- If this shows **no commits** (HEAD matches remote) → WIP commits were already pushed → **skip squashing** and keep commits as-is.
+
 Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
 
 ### 8.1.5: Update Bug File (if applicable)

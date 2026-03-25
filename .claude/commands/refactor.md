@@ -388,11 +388,19 @@ If the refactoring is purely internal (no public API, import path, or architectu
 
 ### 8.1: Final Commit
 
-Squash all `[WIP]` and `[checkpoint]` commits for this refactoring into a single clean commit:
+Squash all `[WIP]` and `[checkpoint]` commits for this refactoring into a single clean commit.
+
+First, verify WIP commits haven't been pushed to the remote:
 ```
-git reset --soft [checkpoint-commit-hash]
-git commit -m "refactor([area]): [concise description of what was restructured]"
+git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
 ```
+- If this shows commits (or fails because there's no upstream) → WIP commits are **local only** → safe to squash:
+  ```
+  git reset --soft [checkpoint-commit-hash]
+  git commit -m "refactor([area]): [concise description of what was restructured]"
+  ```
+- If this shows **no commits** (HEAD matches remote) → WIP commits were already pushed → **skip squashing** and keep commits as-is.
+
 Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
 
 ### 8.2: Delete WIP Marker

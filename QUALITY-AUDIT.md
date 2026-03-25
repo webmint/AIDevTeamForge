@@ -35,11 +35,8 @@ Comprehensive quality audit of the AIDevTeamForge template system — a set of C
 ### ~~C5. `execute-task` uses `git add -A` throughout — risks committing secrets and unwanted files~~ RESOLVED
 - **Resolution**: All 18 `git add -A` instances replaced with scoped staging across `execute-task.md`, `fix.md`, `refactor.md`, and `verify.md`. Checkpoint commits no longer stage files (use `--allow-empty`). Work/repair/review commits stage only modified files. Doc/test commits scope to `docs/` or test files respectively.
 
-### C6. `execute-task` Phase 6 squash uses `git reset --soft` — rewrites history
-- **Location**: `execute-task.md` lines 411-416. Also `fix.md` lines 325-328. `refactor.md` lines 390-394.
-- **Problem**: Squashing WIP commits via `git reset --soft [hash] && git commit` rewrites git history. If the user pushed the branch (common when working on spec branches), this forces a `git push --force`.
-- **Impact**: Claude will execute the reset without checking if commits were pushed. In team environments this can destroy others' work.
-- **Fix**: Add a pre-squash check: "Before squashing, verify no WIP commits have been pushed: `git log --oneline origin/[branch]..HEAD`. If WIP commits exist on remote, skip squashing — the WIP commits become the final commits."
+### ~~C6. `execute-task` Phase 6 squash uses `git reset --soft` — rewrites history~~ RESOLVED
+- **Resolution**: All 3 squash sections (`execute-task.md`, `fix.md`, `refactor.md`) now check `git log --oneline origin/$(git branch --show-current)..HEAD` before squashing. If WIP commits were already pushed, squashing is skipped to avoid rewriting shared history.
 
 ### C7. `/constitute` overwrites constitution.md entirely — losing ALL universal rules from the template
 - **Location**: `constitute.md` Phase 3 vs `constitution.template.md` sections 3.5, 3.6, 3.7, 4.1, 4.2, 4.3, 6.1-6.4
