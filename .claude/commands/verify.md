@@ -243,7 +243,7 @@ Wait for user response before proceeding.
 2. After the tech-writer completes, verify the flagged APIs now have inline docs
 3. Commit the doc changes (follow the **Commit Convention** section in CLAUDE.md for attribution rules):
    ```
-   git add -A && git commit -m "docs: add missing documentation flagged by /verify"
+   git add docs/ [source files with doc changes] && git commit -m "docs: add missing documentation flagged by /verify"
    ```
 4. Process the next "Fix docs now" item (unlike "Fix now", multiple doc fixes can run sequentially since they are lightweight)
 

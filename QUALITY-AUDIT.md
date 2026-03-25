@@ -32,11 +32,8 @@ Comprehensive quality audit of the AIDevTeamForge template system — a set of C
 ### ~~C4. `settings.local.json` in template repo has literal `{{TYPE_CHECK_COMMAND}}` — PostToolUse hook will break~~ RESOLVED
 - **Resolution**: `install.sh` now removes `settings.local.json` after the bulk `.claude/` copy (`rm -f`). The hook with `{{TYPE_CHECK_COMMAND}}` exists only in `settings.template.json` (correct), and `settings.local.json` is project-owned and no longer copied to target projects.
 
-### C5. `execute-task` uses `git add -A` throughout — risks committing secrets and unwanted files
-- **Location**: `execute-task.md` lines 176, 260, 291, 319, 377-379, 411. Also `fix.md` lines 180, 219, 245, 273, 299, 325. Also `refactor.md` lines 220, 283, 309, 337, 365, 390.
-- **Problem**: `git add -A && git commit` is used for every checkpoint, WIP commit, doc commit, and repair commit. This adds ALL untracked and modified files including `.env`, credentials, large binaries, and IDE config.
-- **Impact**: Secrets or unwanted files get committed in WIP/checkpoint commits. Even though these get squashed, they remain in git reflog and can be recovered. Claude Code's own system prompt explicitly warns against `git add -A`.
-- **Fix**: Replace with specific file additions: `git add [list of files from task's Files section] .claude/wip.md`. For doc commits: `git add docs/ [source files]`. For checkpoint commits: `git add -A -- ':!.env*' ':!*.pem' ':!*.key'` (exclude common secret patterns).
+### ~~C5. `execute-task` uses `git add -A` throughout — risks committing secrets and unwanted files~~ RESOLVED
+- **Resolution**: All 18 `git add -A` instances replaced with scoped staging across `execute-task.md`, `fix.md`, `refactor.md`, and `verify.md`. Checkpoint commits no longer stage files (use `--allow-empty`). Work/repair/review commits stage only modified files. Doc/test commits scope to `docs/` or test files respectively.
 
 ### C6. `execute-task` Phase 6 squash uses `git reset --soft` — rewrites history
 - **Location**: `execute-task.md` lines 411-416. Also `fix.md` lines 325-328. `refactor.md` lines 390-394.

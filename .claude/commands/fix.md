@@ -178,7 +178,7 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
 1. Create a git checkpoint BEFORE any changes:
    ```
-   git add -A && git commit -m "[checkpoint] Pre-fix: [short bug description]" --allow-empty
+   git commit -m "[checkpoint] Pre-fix: [short bug description]" --allow-empty
    ```
 
 2. Write `.claude/wip.md`:
@@ -218,7 +218,7 @@ Apply the minimal change that fixes the root cause.
 
 After applying the fix, commit:
 ```
-git add -A && git commit -m "[WIP] Fix: [short description] — fix applied"
+git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — fix applied"
 ```
 
 Update `.claude/wip.md` — change Phase to `5 (Verify)`.
@@ -243,7 +243,7 @@ For each repair attempt:
 2. Apply a targeted fix for ONLY those errors
 3. Commit:
    ```
-   git add -A && git commit -m "[WIP] Fix: [short description] — repair attempt [M]/3"
+   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — repair attempt [M]/3"
    ```
 4. Re-run ALL verification checks
 
@@ -271,7 +271,7 @@ The agent will check: constitution compliance, architecture & patterns, type saf
 - Re-run verification (Phase 5 checks)
 - Commit:
   ```
-  git add -A && git commit -m "[WIP] Fix: [short description] — review fixes"
+  git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — review fixes"
   ```
 
 **If the agent returns APPROVE or only warnings/info** → proceed to Phase 7.
@@ -298,7 +298,7 @@ The agent should:
 
 If tests were added or modified, commit:
 ```
-git add -A && git commit -m "[WIP] Fix: [short description] — tests"
+git add [test files you modified] && git commit -m "[WIP] Fix: [short description] — tests"
 ```
 
 ## PHASE 7.5: Documentation Update (Conditional)
@@ -313,7 +313,7 @@ If the fix changed any **public API signatures** (function parameters, return ty
 
 2. If the tech-writer made changes, commit:
    ```
-   git add -A && git commit -m "[WIP] Fix: [short description] — doc update"
+   git add docs/ [source files with doc changes] && git commit -m "[WIP] Fix: [short description] — doc update"
    ```
 
 If the fix is purely internal (no public API or behavior change), skip this phase — but document the skip decision in Phase 8.3's report as: `**Documentation**: No public API changes — skipped`.

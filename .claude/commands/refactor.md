@@ -219,7 +219,7 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
 1. Create a git checkpoint BEFORE any changes:
    ```
-   git add -A && git commit -m "[checkpoint] Pre-refactor: [short description]" --allow-empty
+   git commit -m "[checkpoint] Pre-refactor: [short description]" --allow-empty
    ```
 
 2. Write `.claude/wip.md`:
@@ -281,7 +281,7 @@ You are executing an approved refactoring plan.
 
 After the agent completes, commit:
 ```
-git add -A && git commit -m "[WIP] Refactor: [short description] — refactoring applied"
+git add [files you modified] .claude/wip.md && git commit -m "[WIP] Refactor: [short description] — refactoring applied"
 ```
 
 Update `.claude/wip.md` — change Phase to `5 (Verify)`.
@@ -306,7 +306,7 @@ For each repair attempt:
 2. Apply a targeted fix for ONLY those errors
 3. Commit:
    ```
-   git add -A && git commit -m "[WIP] Refactor: [short description] — repair attempt [M]/3"
+   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Refactor: [short description] — repair attempt [M]/3"
    ```
 4. Re-run ALL verification checks
 
@@ -336,7 +336,7 @@ The agent will check: constitution compliance, architecture & patterns, type saf
 - Re-run verification (Phase 5 checks)
 - Commit:
   ```
-  git add -A && git commit -m "[WIP] Refactor: [short description] — review fixes"
+  git add [files you modified] .claude/wip.md && git commit -m "[WIP] Refactor: [short description] — review fixes"
   ```
 
 **If the agent returns APPROVE or only warnings/info** → proceed to Phase 7.
@@ -364,7 +364,7 @@ The agent should:
 
 If tests were adjusted (import fixes only), commit:
 ```
-git add -A && git commit -m "[WIP] Refactor: [short description] — test import fixes"
+git add [test files you modified] && git commit -m "[WIP] Refactor: [short description] — test import fixes"
 ```
 
 ## PHASE 7.5: Documentation Update (Conditional)
@@ -379,7 +379,7 @@ If the refactoring changed any **public API signatures** (renamed exports, moved
 
 2. If the tech-writer made changes, commit:
    ```
-   git add -A && git commit -m "[WIP] Refactor: [short description] — doc update"
+   git add docs/ [source files with doc changes] && git commit -m "[WIP] Refactor: [short description] — doc update"
    ```
 
 If the refactoring is purely internal (no public API, import path, or architecture change), skip this phase — but document the skip decision in Phase 8.3's report as: `**Documentation**: Internal refactoring — no public API changes`.

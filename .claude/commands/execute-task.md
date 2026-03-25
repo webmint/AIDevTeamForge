@@ -174,7 +174,7 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
 1. Create a git checkpoint BEFORE any changes:
    ```
-   git add -A && git commit -m "[checkpoint] Pre-task [N]: [title]" --allow-empty
+   git commit -m "[checkpoint] Pre-task [N]: [title]" --allow-empty
    ```
    This gives us a clean rollback point.
 
@@ -258,7 +258,7 @@ These postconditions will be independently verified after you complete.
 
 After the agent completes, immediately create a WIP git commit to preserve the work:
 ```
-git add -A && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
+git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
 ```
 
 Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
@@ -289,7 +289,7 @@ For each repair attempt:
    - Clear instruction: **"Fix ONLY these errors. Do not add features, refactor, or change scope. Stay within the files listed."**
 3. After the repair agent completes, commit:
    ```
-   git add -A && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
+   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
    ```
 4. Re-run ALL verification checks above
 
@@ -318,7 +318,7 @@ For each repair attempt:
 
 After marking the task complete in task files, commit:
 ```
-git add -A && git commit -m "[WIP] Task [N]: [title] — marked complete"
+git add specs/ .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — marked complete"
 ```
 
 Update `.claude/wip.md` — change Phase to `5 (Documentation Update)`.
@@ -377,7 +377,7 @@ After the tech-writer completes, verify documentation was handled:
 
 If the tech-writer made any changes, commit them:
 ```
-git add -A && git commit -m "[WIP] Task [N]: [title] — documentation update"
+git add docs/ [source files with doc changes] && git commit -m "[WIP] Task [N]: [title] — documentation update"
 ```
 
 Update `.claude/wip.md` — change Phase to `6 (Report)`.
