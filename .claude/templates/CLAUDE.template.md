@@ -38,8 +38,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 ### Spec-Driven Development Flow
 
 ```
-/setup-wizard → /constitute → /onboard → /research → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
-   (once)         (once)       (once)    (optional)  (optional)  (per feat)  (per feat) (per feat)   (per task)    (per feat)
+/setup-wizard → /constitute → /onboard → /research → /clarify → /specify → /plan → /breakdown → /execute-task → /verify → /summarize
+   (once)         (once)       (once)    (optional)  (optional)  (per feat)  (per feat) (per feat)   (per task)    (per feat)  (auto)
 ```
 
 ### `/research "topic or idea"` (optional)
@@ -66,7 +66,10 @@ Executes a single task from the breakdown using the assigned specialized agent. 
 5. Memory update
 
 ### `/verify [spec-file]`
-Verifies all completed tasks against the spec's acceptance criteria. Performs code review against constitution rules. Updates memory with lessons learned.
+Verifies all completed tasks against the spec's acceptance criteria. Performs code review against constitution rules. Updates memory with lessons learned. Automatically triggers `/summarize` when verdict is APPROVED.
+
+### `/summarize [spec-file]`
+Generates a concise, PR-ready summary of a completed feature. Reads spec, plan, tasks, and git history. Saves to `specs/[feature]/summary.md`. Runs automatically after `/verify` approves.
 
 ### `/constitute`
 One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns.

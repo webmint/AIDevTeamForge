@@ -14,7 +14,7 @@ Optional pre-step before `/specify`. Use when requirements are vague or have man
 ## Context in the Workflow
 
 ```
-/clarify (optional) → /specify → /plan → /breakdown → /execute-task → /verify
+/clarify (optional) → /specify → /plan → /breakdown → /execute-task → /verify → /summarize
 ```
 
 `/clarify` is NOT mandatory. Skip it when requirements are already clear. Use it when:

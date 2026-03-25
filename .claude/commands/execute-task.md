@@ -520,6 +520,18 @@ Do NOT auto-compact. Surface the recommendation and let the user decide. For sin
 
 > **Note**: Phase 7.5.2 (single-task) recommends compaction; Phase 8 (multi-task, heavy) pauses execution. The difference is intentional: single-task completion is advisory, multi-task continuation requires the pause to prevent context degradation across many sequential tasks.
 
+### 7.5.3: Auto-Verify on Feature Completion
+
+After Phase 7.5.2 completes (for both single-task and multi-task paths), check whether the entire feature is now done:
+
+1. Read `specs/[feature]/tasks/README.md` and check whether **every** task in the feature has Status: `Complete`.
+2. If **all tasks are Complete**: skip the normal completion report and instead:
+   ```
+   ✅ All feature tasks complete — automatically running /verify
+   ```
+   Then invoke `/verify` with the feature's spec file path. This replaces the normal end-of-execution flow (no Multi-Task Final Report needed).
+3. If any tasks remain non-Complete: continue with the normal flow (single-task completion report or Phase 8 multi-task continuation).
+
 ## PHASE 8: Multi-Task Continuation
 
 This phase only applies when the task queue (built in Phase 1.1) contains more than one task.
@@ -527,7 +539,7 @@ This phase only applies when the task queue (built in Phase 1.1) contains more t
 After Phase 7.5 completes for the current task:
 
 1. Remove the completed task from the queue
-2. If the queue is empty → done. Report final summary of all tasks completed in this run.
+2. If the queue is empty → Phase 7.5.3 (Auto-Verify) already handled feature-complete detection. If it did not trigger (some tasks outside the queue are still pending), report the Multi-Task Final Report below.
 3. If the queue has remaining tasks:
    a. **Dependency check**: Verify the next task's dependencies are all satisfied (marked Complete). If not, stop and report: "Task [N] is blocked by incomplete dependency Task [M]. Completed [X] of [Y] queued tasks."
    a2. **Review checkpoint gate**: Read the next task's header. If `Review checkpoint: Yes`:
