@@ -29,11 +29,8 @@ Comprehensive quality audit of the AIDevTeamForge template system — a set of C
 - **Impact**: `/setup-wizard` auto-detects patterns and generates CLAUDE.md for an existing project. Then `/constitute` enters greenfield mode and interviews the user about architecture choices — ignoring what setup-wizard already detected. Contradictory behavior in the same workflow.
 - **Fix**: Align all thresholds. Recommend using a flag in `project-config.json` (set by setup-wizard) instead of re-counting files each time: `"PROJECT_MODE": "greenfield"` or `"existing"`.
 
-### C4. `settings.local.json` in template repo has literal `{{TYPE_CHECK_COMMAND}}` — PostToolUse hook will break
-- **Location**: `.claude/settings.local.json` (copied by `install.sh` to target project)
-- **Problem**: The template repo's `.claude/settings.local.json` contains a PostToolUse hook with `"command": "{{TYPE_CHECK_COMMAND}}"`. `install.sh` copies the entire `.claude/` directory including this file. Claude Code's harness will try to execute this literal string as a shell command after every Edit/Write operation.
-- **Impact**: Every file edit triggers a hook that runs `{{TYPE_CHECK_COMMAND}}` in the shell — which fails immediately. The hook is async with 30s timeout, so it won't block Claude, but it generates noise/errors in every session until `/setup-wizard` generates the proper `.claude/settings.json`.
-- **Fix**: Remove the PostToolUse hook from `settings.local.json` — it belongs only in `settings.template.json` (which `/setup-wizard` reads and generates `settings.json` from). Or have `install.sh` exclude `settings.local.json`.
+### ~~C4. `settings.local.json` in template repo has literal `{{TYPE_CHECK_COMMAND}}` — PostToolUse hook will break~~ RESOLVED
+- **Resolution**: `install.sh` now removes `settings.local.json` after the bulk `.claude/` copy (`rm -f`). The hook with `{{TYPE_CHECK_COMMAND}}` exists only in `settings.template.json` (correct), and `settings.local.json` is project-owned and no longer copied to target projects.
 
 ### C5. `execute-task` uses `git add -A` throughout — risks committing secrets and unwanted files
 - **Location**: `execute-task.md` lines 176, 260, 291, 319, 377-379, 411. Also `fix.md` lines 180, 219, 245, 273, 299, 325. Also `refactor.md` lines 220, 283, 309, 337, 365, 390.

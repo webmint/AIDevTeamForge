@@ -61,6 +61,7 @@ fi
 echo "Installing AIDevTeamForge into: $TARGET_DIR"
 
 cp -r "$TEMPLATE_DIR/.claude" "$TARGET_DIR/"
+rm -f "$TARGET_DIR/.claude/settings.local.json"   # project-owned; not part of template install
 cp -r "$TEMPLATE_DIR/specs" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/bugs" "$TARGET_DIR/"
 cp -r "$TEMPLATE_DIR/research" "$TARGET_DIR/"
