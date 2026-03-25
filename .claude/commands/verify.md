@@ -151,8 +151,9 @@ If the agent doesn't exist, skip this phase silently.
 ## PHASE 7: Update Spec Status
 
 If all acceptance criteria pass and code quality checks pass:
-1. Update the spec file status to "Complete"
-2. Update the task index README.md with a completion summary
+1. **Task completion cross-check**: Before marking spec Complete, verify all task files in `specs/NNN-feature/tasks/` (excluding README.md) have `Status: Complete`. If any task is not Complete, keep spec as "In Progress" and report: "Spec cannot be marked Complete — Task [N] is still [status]."
+2. Update the spec file status to "Complete"
+3. Update the task index README.md with a completion summary
 
 If issues found:
 1. Keep spec status as "In Progress"

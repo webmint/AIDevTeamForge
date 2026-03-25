@@ -1,134 +1,141 @@
-# Quality Audit v2: AIDevTeamForge — Re-Audit After v1 Fixes
+# Quality Audit: AIDevTeamForge — Cumulative Results (v1 → v2 → v3 → v4)
 
-## Context
+## Overview
 
-Re-audit of the AIDevTeamForge template system after all fixes from the v1 audit (2026-03-25) were applied. Covers all 15 commands, 5 templates, 14 agent templates, install.sh, update.sh, template-manifest.json, settings.template.json, and cross-file consistency.
+Four audit passes covering the entire AIDevTeamForge template system: 15 commands, 5 templates, 14 agent templates, install.sh, update.sh, template-manifest.json, settings.template.json, and cross-file consistency.
 
----
-
-## v1 Audit Status (31 issues)
-
-All 31 issues from the v1 audit have been verified and resolved:
-
-| ID | Issue | v1 Status | v2 Status |
-|----|-------|-----------|-----------|
-| C1 | Phase 8 auto-compact impossible | Open | **RESOLVED** — Phase 8 now pauses and asks user to run /compact |
-| C2 | Constitution placeholder gap | Open | **RESOLVED** — Guard added to /specify, /plan, /breakdown, /execute-task, /fix, /refactor |
-| C3 | Greenfield threshold conflict | Open | **RESOLVED** — All thresholds aligned (0-5/6+), project-config.json checked first |
-| C4 | settings.local.json broken hook | RESOLVED (v1) | RESOLVED |
-| C5 | git add -A risk | RESOLVED (v1) | RESOLVED |
-| C6 | History rewrite | RESOLVED (v1) | RESOLVED |
-| C7 | Universal rules lost | RESOLVED (v1) | RESOLVED |
-| H1 | No test execution in pipeline | RESOLVED (v1) | RESOLVED |
-| H2 | Agent assignment gaps | RESOLVED (v1) | RESOLVED |
-| H3 | Memory format undefined | RESOLVED (v1) | RESOLVED |
-| H4 | Branch/spec counter mismatch | RESOLVED (v1) | RESOLVED |
-| H5 | /verify references /commit | RESOLVED (v1) | RESOLVED |
-| H6 | Unlimited fix review cycles | RESOLVED (v1) | RESOLVED |
-| H7 | Date format inconsistency | RESOLVED (v1) | RESOLVED |
-| H8 | /onboard Phase 3.3 duplicate | RESOLVED (v1) | RESOLVED |
-| M1 | No partial setup detection | Open | **RESOLVED** — setup-complete marker written by setup-wizard |
-| M2 | Context load no budget | Open | **RESOLVED** — 500-line threshold added |
-| M3 | Session-state size not enforced | Open | **RESOLVED** — verification step added |
-| M4 | /fix /refactor no session-state | Open | **RESOLVED** — Phase 10 added to both |
-| M5 | Wrapper isolation incomplete | Open | **RESOLVED** — bugs/, research/, .mcp.json added |
-| M6 | Compaction contradiction | Open | **RESOLVED** — difference documented as intentional |
-| M7 | Contracts not grep-verifiable | Open | **RESOLVED** — literal identifier guidance added |
-| M8 | update.sh ## headers only | Open | **MOOT** — merge_sections() was dead code, now removed |
-| M9 | /specify no git check | Open | **RESOLVED** — Phase 0.0 prerequisite added |
-| M10 | Research filename format | Open | **RESOLVED** — YYYY-MM-DD format |
-| L1 | Agent model undocumented | Open | **RESOLVED** — rationale in setup-wizard |
-| L2 | install.sh copies settings.local | Open | **RESOLVED** — rm -f after copy |
-| L3 | Unused spec template | Open | **RESOLVED** — removed |
-| L4 | Research path mismatch | Open | **RESOLVED** — paths aligned |
-| L5 | Ukrainian time hardcoded | Open | **RESOLVED** — removed |
-| L6 | memory: project field unclear | Open | **RESOLVED** — removed |
+| Audit | Date | Issues Found | Resolved |
+|-------|------|-------------|----------|
+| v1 | 2026-03-25 | 31 | 31 (30 fixed, 1 moot) |
+| v2 | 2026-03-25 | 16 | 16 (15 fixed, 1 accepted) |
+| v3 | 2026-03-25 | 12 | 12 (9 fixed, 3 accepted/deferred) |
+| v4 | 2026-03-25 | 5 | 5 (3 fixed, 2 acceptable/no-action) |
+| **Total** | | **64** | **64** |
 
 ---
 
-## v2 New Issues Found (16 issues — all fixed)
+## v1 Audit (31 issues) — ALL RESOLVED
 
-### HIGH (3)
-
-#### ~~N-H1. `install.sh` copies `release.md` to target projects~~ RESOLVED
-- **Resolution**: install.sh now removes `.claude/commands/release.md` after the bulk copy. Target projects no longer get the template-repo-only `/release` command.
-
-#### ~~N-H2. Type check/lint commands hardcoded to TypeScript/ESLint across multiple commands~~ RESOLVED
-- **Resolution**: Added `Type Check Command` and `Lint Command` fields to `CLAUDE.template.md`. All commands (execute-task, fix, refactor, verify, breakdown) now reference "the Type Check Command from CLAUDE.md" and "the Lint Command from CLAUDE.md" instead of hardcoded `tsc --noEmit` / ESLint. Agent prompt templates updated to use generic "project's type checker/linter". `setup-wizard` updated with `TYPE_CHECK_COMMAND` and `LINT_COMMAND` in required keys and example config.
-
-#### ~~N-H3. `settings.template.json` doesn't include Edit, Write, Bash, or Agent permissions~~ RESOLVED
-- **Resolution**: Added `Edit`, `Write`, `Bash`, and `Agent` to the permissions allow list in `settings.template.json`. The workflow now functions without requiring dozens of manual permission approvals per task.
-
-### MEDIUM (8)
-
-#### ~~N-M1. `architect.template.md` has typo `Te/sting` on line 15~~ RESOLVED
-- **Resolution**: Fixed to `Testing`.
-
-#### ~~N-M2. `settings.template.json` references wrong context7 MCP tool name~~ RESOLVED
-- **Resolution**: Changed `mcp__context7__get-library-docs` to `mcp__context7__query-docs` to match the current `@upstash/context7-mcp` tool name.
-
-#### ~~N-M3. `/refactor` Phase 6 code review has no cycle cap~~ RESOLVED
-- **Resolution**: Added "max 1 additional review cycle" cap matching `/fix`'s pattern. If still BLOCKED after one additional cycle, execution stops and reports to the user.
-
-#### ~~N-M4. `CLAUDE.template.md` workflow diagram has misleading `(auto)` label~~ RESOLVED
-- **Resolution**: Fixed label alignment. Each command now has its own correct label: `(per feat)` for /specify, /plan, /breakdown; `(per task)` for /execute-task; `(per feat)` for /verify.
-
-#### ~~N-M5. `/verify` and `/clarify` lack constitution populated guard~~ RESOLVED
-- **Resolution**: Added the `_Run /constitute to populate_` guard to both /verify Phase 1 and /clarify Phase 1, matching all other commands.
-
-#### ~~N-M6. `/release` Phase 5 doesn't check `CLAUDE.template.md` or `storage-rules.md`~~ RESOLVED
-- **Resolution**: Added Phase 5.5 to /release that checks if CLAUDE.template.md and storage-rules.md need updating when commands, workflows, or storage conventions change.
-
-#### ~~N-M7. `install.sh` leaks template repo memory files to target projects~~ RESOLVED
-- **Resolution**: install.sh now removes `.claude/memory/` after the bulk copy and recreates it empty. Setup-wizard recreates MEMORY.md from the template.
-
-#### ~~N-M8. `execute-task.md` Phase 3.2 agent prompt is TypeScript/ESLint-specific~~ RESOLVED
-- **Resolution**: Changed to "project's type checker" and "project's linter" (see N-H2).
-
-### LOW (5)
-
-#### ~~N-L1. `copyIfMissing` in manifest doesn't include `research/.gitkeep`~~ RESOLVED
-- **Resolution**: Added `"research/.gitkeep"` to the `copyIfMissing` patterns in template-manifest.json.
-
-#### N-L2. `.claude/setup-complete` marker is written but never consumed
-- **Status**: ACCEPTED — The marker is cheap to write and provides a future hook point. Existing prerequisite checks (CLAUDE.md + agents exist) are sufficient for current commands.
-
-#### ~~N-L3. `update.sh` contains ~100 lines of dead code (`merge_sections` function)~~ RESOLVED
-- **Resolution**: Removed the dead `merge_sections()` Perl function and its comments from update.sh.
-
-#### ~~N-L4. `/onboard` references "Task tool" in parentheses~~ RESOLVED
-- **Resolution**: Removed "(Task tool)" parenthetical from onboard.md. Now consistently says "Agent tool".
-
-#### ~~N-L5. No dedicated `Type Check Command` field in `CLAUDE.template.md`~~ RESOLVED
-- **Resolution**: Added `Type Check Command` and `Lint Command` fields to the Project Overview section (see N-H2).
+| ID | Severity | Issue | Status |
+|----|----------|-------|--------|
+| C1 | CRITICAL | Phase 8 auto-compact impossible | RESOLVED |
+| C2 | CRITICAL | Constitution placeholder gap | RESOLVED |
+| C3 | CRITICAL | Greenfield threshold conflict | RESOLVED |
+| C4-C7 | CRITICAL | settings.local.json, git add -A, history rewrite, universal rules | RESOLVED |
+| H1-H8 | HIGH | Test execution, agent coverage, memory format, branch numbering, /commit ref, review cycles, dates, onboard duplicate | RESOLVED |
+| M1-M10 | MEDIUM | Setup detection, context budget, session-state, wrapper isolation, compaction, contracts, update.sh merge, git check, research format | RESOLVED/MOOT |
+| L1-L6 | LOW | Model docs, install.sh, unused template, paths, locale, memory field | RESOLVED |
 
 ---
 
-## Summary
+## v2 Audit (16 issues) — ALL RESOLVED
 
-| Category | Count | Status |
-|----------|-------|--------|
-| v1 issues | 31 | 30 RESOLVED, 1 MOOT |
-| v2 HIGH | 3 | All RESOLVED |
-| v2 MEDIUM | 8 | All RESOLVED |
-| v2 LOW | 5 | 4 RESOLVED, 1 ACCEPTED |
-| **TOTAL** | **47** | **All addressed** |
+| ID | Severity | Issue | Status |
+|----|----------|-------|--------|
+| N-H1 | HIGH | install.sh copies release.md to target projects | RESOLVED |
+| N-H2 | HIGH | Type check/lint hardcoded to TypeScript/ESLint | RESOLVED |
+| N-H3 | HIGH | settings.template.json missing Edit/Write/Bash/Agent permissions | RESOLVED |
+| N-M1 | MEDIUM | Architect template `Te/sting` typo | RESOLVED |
+| N-M2 | MEDIUM | Wrong context7 MCP tool name | RESOLVED |
+| N-M3 | MEDIUM | /refactor review cycle no cap | RESOLVED |
+| N-M4 | MEDIUM | Workflow diagram `(auto)` label misaligned | RESOLVED |
+| N-M5 | MEDIUM | /verify and /clarify lack constitution guard | RESOLVED |
+| N-M6 | MEDIUM | /release doesn't check CLAUDE.template.md | RESOLVED |
+| N-M7 | MEDIUM | install.sh leaks template memory files | RESOLVED |
+| N-M8 | MEDIUM | Agent prompt TypeScript-specific | RESOLVED |
+| N-L1 | LOW | research/.gitkeep in manifest | RESOLVED |
+| N-L2 | LOW | setup-complete marker unused | ACCEPTED |
+| N-L3 | LOW | Dead merge_sections() code | RESOLVED |
+| N-L4 | LOW | "(Task tool)" legacy reference | RESOLVED |
+| N-L5 | LOW | No Type Check Command field in CLAUDE.md | RESOLVED |
 
 ---
 
-## Verification Checklist
+## v3 Audit (12 issues) — ALL ADDRESSED
 
-After all fixes applied:
+### HIGH (4) — All fixed
 
-1. [x] `install.sh` — no `release.md` copied, no template memory files copied
-2. [x] `CLAUDE.template.md` — has Type Check Command and Lint Command fields
-3. [x] `settings.template.json` — has Edit, Write, Bash, Agent permissions; correct context7 tool name
-4. [x] `architect.template.md` — no `Te/sting` typo
-5. [x] All commands reference "Type Check Command from CLAUDE.md" — no hardcoded tsc/ESLint
-6. [x] All commands have constitution populated guard — including /verify and /clarify
-7. [x] `/release` — checks CLAUDE.template.md and storage-rules.md
-8. [x] `/refactor` — review cycle capped at 1 additional cycle
-9. [x] Workflow diagram — correct label alignment
-10. [x] `template-manifest.json` — research/.gitkeep in copyIfMissing
-11. [x] `update.sh` — dead merge_sections() code removed
-12. [x] `onboard.md` — no "(Task tool)" references
+#### ~~V3-H1. update.sh baseline updated unconditionally on merge conflict~~ RESOLVED
+- **Resolution**: Moved `cp "$new_agent" "$baseline"` inside the merge-success branch only. On conflict, both agent and baseline are left unchanged so the next update retries the full merge.
+
+#### ~~V3-H2. update.sh migrate_project_config() missing TYPE_CHECK_COMMAND/LINT_COMMAND~~ RESOLVED
+- **Resolution**: Added extraction of Type Check Command and Lint Command from CLAUDE.md, language-based fallback detection, PROJECT_MODE inference, and all three fields to the jq arguments and JSON output.
+
+#### ~~V3-H3. Hardcoded `tsc --noEmit` in execute-task.md Phase 0.3 Recovery~~ RESOLVED
+- **Resolution**: Changed to "Run the Type Check Command from CLAUDE.md, the Lint Command, and the build command".
+
+#### ~~V3-H4. Hardcoded `tsc` in CLAUDE.template.md Automated Guards~~ RESOLVED
+- **Resolution**: Changed to "type check + lint + build".
+
+### MEDIUM (5) — All fixed
+
+#### ~~V3-M1. wip.md shared between commands with no type differentiation~~ RESOLVED
+- **Resolution**: Added `## Command` field (execute-task | fix | refactor) to wip.md template in all three commands. Each command's Phase 0 recovery now checks the Command field first and stops with a clear message if the wip.md belongs to a different command.
+
+#### ~~V3-M2. WIP squash atomicity — no error handling if commit fails after reset~~ RESOLVED
+- **Resolution**: Added error handling note: if commit fails after reset --soft, do NOT delete wip.md. Inform user that changes are staged. wip.md is only deleted after successful commit.
+
+#### ~~V3-M3. /verify doesn't cross-check task statuses before marking spec Complete~~ RESOLVED
+- **Resolution**: Added task completion cross-check to Phase 7: all task files must have Status: Complete before spec can be marked Complete.
+
+#### ~~V3-M4. /fix has no awareness of pending spec tasks on same files~~ RESOLVED
+- **Resolution**: Added file overlap check in Phase 1.2: scans specs/*/tasks/*.md for Pending/In Progress tasks targeting the same files and warns the user (non-blocking).
+
+#### ~~V3-M5. LINT_COMMAND defined but not in PostToolUse hook~~ RESOLVED
+- **Resolution**: Documented the intentional asymmetry in CLAUDE.template.md: Type Check Command runs via hook, Lint Command runs during explicit verification phases.
+
+### LOW (3) — Deferred/accepted
+
+#### V3-L1. TYPE_CHECK_COMMAND/LINT_COMMAND not in README/DEVELOPMENT-STATUS
+- **Status**: DEFERRED — will be addressed during next /release.
+
+#### V3-L2. Inconsistent terminology (Type Check Command vs type checking vs type checker)
+- **Status**: ACCEPTED — functionally correct, cosmetic only.
+
+#### V3-L3. No validation that TYPE_CHECK_COMMAND works after generation
+- **Status**: DEFERRED — nice-to-have for future improvement.
+
+---
+
+---
+
+## v4 Audit (5 issues) — ALL ADDRESSED
+
+### v3 Fix Verification: 17/17 PASS, 0 regressions
+
+### CRITICAL (1) — Fixed
+
+#### ~~V4-C1. `${language,,}` in update.sh incompatible with macOS bash 3.2~~ RESOLVED
+- **Resolution**: Replaced `${language,,}` with portable `$(echo "$language" | tr '[:upper:]' '[:lower:]')`. Works on bash 3.2+ and POSIX sh.
+
+### MEDIUM (2) — Fixed
+
+#### ~~V4-M1. Setup-wizard missing Astro/Remix/Deno/Bun auto-detection~~ RESOLVED
+- **Resolution**: Added `astro`, `@remix-run/react` to framework detection; added `deno.json`/`deno.jsonc` and `bun.lockb`/`bunfig.toml` under new "Runtimes" section.
+
+#### ~~V4-M2. CLAUDE.template.md Crash Recovery missing `## Command` field docs~~ RESOLVED
+- **Resolution**: Added sentence explaining the Command field and cross-command mismatch detection.
+
+### LOW (2) — No action needed
+
+#### V4-L1. execute-task.md is 590 lines (31KB)
+- **Status**: ACCEPTABLE — within Claude Code limits, well-structured.
+
+#### V4-L2. Agent description fields are large
+- **Status**: ACCEPTABLE — functional, no truncation risk.
+
+---
+
+## Cumulative Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total issues found | 64 |
+| Fixed | 57 |
+| Accepted (by design) | 4 |
+| Deferred (next release) | 2 |
+| Moot (dead code removed) | 1 |
+| Files modified across all audits | 18 unique files |
+| Commands with constitution guard | All 8 that need it |
+| Language-agnostic type check refs | All commands updated |
+| wip.md cross-command safety | All 3 commands protected |

@@ -164,6 +164,7 @@ migrate_project_config() {
   # Extract simple key-value pairs from the known **Key**: value format
   local proj_name proj_type framework language build_tool build_cmd source_root
   local architecture error_handling api_layer state_mgmt styling monorepo
+  local type_check_cmd lint_cmd project_mode
 
   proj_name="$(grep '^\*\*Name\*\*:' "$claude_md" | sed 's/\*\*Name\*\*: *//' | head -1)"
   proj_type="$(grep '^\*\*Type\*\*:' "$claude_md" | sed 's/\*\*Type\*\*: *//' | head -1)"
@@ -171,6 +172,8 @@ migrate_project_config() {
   language="$(grep '^\*\*Language\*\*:' "$claude_md" | sed 's/\*\*Language\*\*: *//' | head -1)"
   build_tool="$(grep '^\*\*Build Tool\*\*:' "$claude_md" | sed 's/\*\*Build Tool\*\*: *//' | head -1)"
   build_cmd="$(grep '^\*\*Build Command\*\*:' "$claude_md" | sed 's/\*\*Build Command\*\*: *//' | head -1)"
+  type_check_cmd="$(grep '^\*\*Type Check Command\*\*:' "$claude_md" | sed 's/\*\*Type Check Command\*\*: *//' | head -1)"
+  lint_cmd="$(grep '^\*\*Lint Command\*\*:' "$claude_md" | sed 's/\*\*Lint Command\*\*: *//' | head -1)"
   source_root="$(grep '^\*\*Source Root\*\*:' "$claude_md" | sed 's/\*\*Source Root\*\*: *//' | head -1)"
   architecture="$(grep '^\*\*Pattern\*\*:' "$claude_md" | sed 's/\*\*Pattern\*\*: *//' | head -1)"
   error_handling="$(grep '^\*\*Error Handling\*\*:' "$claude_md" | sed 's/\*\*Error Handling\*\*: *//' | head -1)"
@@ -178,6 +181,34 @@ migrate_project_config() {
   state_mgmt="$(grep '^\*\*State Management\*\*:' "$claude_md" | sed 's/\*\*State Management\*\*: *//' | head -1)"
   styling="$(grep '^\*\*Styling\*\*:' "$claude_md" | sed 's/\*\*Styling\*\*: *//' | head -1)"
   monorepo="$(grep '^\*\*Monorepo\*\*:' "$claude_md" | sed 's/\*\*Monorepo\*\*: *//' | head -1)"
+
+  # Detect project mode: check if project-config.json hint exists, else infer from source file count
+  project_mode="existing"
+  local src_root="${source_root:-.}"
+  if [ "$src_root" != "." ]; then
+    src_root="$TARGET_DIR/$src_root"
+  else
+    src_root="$TARGET_DIR"
+  fi
+  local src_count
+  src_count="$(find "$src_root" -maxdepth 3 -type f \( -name '*.ts' -o -name '*.js' -o -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.vue' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.svelte' \) -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/dist/*' -not -path '*/build/*' 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$src_count" -le 5 ] 2>/dev/null; then
+    project_mode="greenfield"
+  fi
+
+  # Fallback for type check/lint commands based on language if not found in CLAUDE.md
+  if [ -z "$type_check_cmd" ] || [ "$type_check_cmd" = "N/A" ]; then
+    case "$(echo "$language" | tr '[:upper:]' '[:lower:]')" in
+      *typescript*) type_check_cmd="tsc --noEmit --pretty 2>&1 | head -20" ;;
+      *python*)     type_check_cmd="python -m py_compile" ;;
+      *go*)         type_check_cmd="go vet ./..." ;;
+      *rust*)       type_check_cmd="cargo check 2>&1 | head -20" ;;
+      *)            type_check_cmd="N/A" ;;
+    esac
+  fi
+  if [ -z "$lint_cmd" ] || [ "$lint_cmd" = "N/A" ]; then
+    lint_cmd="N/A"
+  fi
 
   # Extract PROJECT_PATHS from an existing agent file (agents have ## Project Paths section)
   local project_paths=""
@@ -226,7 +257,10 @@ migrate_project_config() {
     --arg LANGUAGE "${language:-N/A}" \
     --arg BUILD_TOOL "${build_tool:-N/A}" \
     --arg BUILD_COMMAND "${build_cmd:-N/A}" \
+    --arg TYPE_CHECK_COMMAND "${type_check_cmd:-N/A}" \
+    --arg LINT_COMMAND "${lint_cmd:-N/A}" \
     --arg SOURCE_ROOT "${source_root:-\.}" \
+    --arg PROJECT_MODE "$project_mode" \
     --arg ARCHITECTURE "${architecture:-N/A}" \
     --arg ERROR_HANDLING "${error_handling:-N/A}" \
     --arg API_LAYER "${api_layer:-N/A}" \
@@ -248,7 +282,10 @@ migrate_project_config() {
       LANGUAGE: $LANGUAGE,
       BUILD_TOOL: $BUILD_TOOL,
       BUILD_COMMAND: $BUILD_COMMAND,
+      TYPE_CHECK_COMMAND: $TYPE_CHECK_COMMAND,
+      LINT_COMMAND: $LINT_COMMAND,
       SOURCE_ROOT: $SOURCE_ROOT,
+      PROJECT_MODE: $PROJECT_MODE,
       ARCHITECTURE: $ARCHITECTURE,
       ERROR_HANDLING: $ERROR_HANDLING,
       API_LAYER: $API_LAYER,
@@ -527,13 +564,13 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
     if git merge-file "$tmp_current" "$baseline" "$new_agent" 2>/dev/null; then
       mv "$tmp_current" "$TARGET_DIR/$tgt"
       merged "Three-way merged: $tgt"
+      # Update baseline to new template version (only on successful merge)
+      cp "$new_agent" "$baseline"
     else
-      # Conflicts — keep current agent unchanged, warn user
+      # Conflicts — keep current agent AND baseline unchanged so next update retries the merge
       rm -f "$tmp_current"
-      warn "Merge conflicts in $tgt — agent unchanged, review template changes manually"
+      warn "Merge conflicts in $tgt — agent and baseline unchanged, review template changes manually"
     fi
-    # Always update baseline to new template version
-    cp "$new_agent" "$baseline"
   else
     # No baseline → save it, leave agent unchanged
     cp "$new_agent" "$baseline"

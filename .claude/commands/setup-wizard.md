@@ -73,6 +73,8 @@ Silently scan the project to detect as much as possible before asking questions.
 - `react` or `next` in dependencies → React/Next.js
 - `svelte` or `@sveltejs/kit` in dependencies → Svelte/SvelteKit
 - `angular` in dependencies → Angular
+- `astro` in dependencies → Astro
+- `@remix-run/react` in dependencies → Remix
 - `express` or `fastify` or `koa` or `hono` in dependencies → Node.js backend
 - `nestjs` in dependencies → NestJS
 - `django` or `flask` in `requirements.txt` / `pyproject.toml` → Python backend
@@ -125,6 +127,10 @@ Silently scan the project to detect as much as possible before asking questions.
 **Error handling patterns** (scan a few source files):
 - `Either`, `Left`, `Right` imports → Either/Result pattern (purify-ts, fp-ts, neverthrow)
 - Mostly `try/catch` → Traditional error handling
+
+**Runtimes:**
+- `deno.json` or `deno.jsonc` → Deno
+- `bun.lockb` or `bunfig.toml` → Bun
 
 **Other:**
 - `Dockerfile` → Docker

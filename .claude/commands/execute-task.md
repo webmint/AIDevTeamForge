@@ -35,7 +35,11 @@ Before anything else, check if a previous task execution was interrupted.
 
 Read `.claude/wip.md`. If it does NOT exist, skip to PHASE 1 (normal flow).
 
-If it DOES exist, a previous task was interrupted. Read the WIP marker to determine:
+If it DOES exist, a previous execution was interrupted. First check the `## Command` field:
+- If `Command: execute-task` → this is a previous task execution. Continue with recovery below.
+- If `Command: fix` or `Command: refactor` → a different command was interrupted. Inform the user: "A previous `/[command]` session was interrupted (see .claude/wip.md). Clear it first by running `/[command]` to resume or recover, or delete `.claude/wip.md` manually to discard it." STOP — do not proceed.
+
+Read the WIP marker to determine:
 - Which task was being executed (feature + task number)
 - Which phase it was in when interrupted
 - What files were being modified
@@ -70,7 +74,7 @@ Options:
 Wait for user to choose. Execute their choice:
 
 **If Resume:**
-- Run `tsc --noEmit`, lint, and the build command (if Build Command is specified in CLAUDE.md) on all files listed in the WIP marker
+- Run the Type Check Command from CLAUDE.md, the Lint Command, and the build command (if Build Command is specified in CLAUDE.md) on all files listed in the WIP marker
 - If they pass, jump to the phase AFTER the interrupted phase (e.g., if interrupted in Phase 3, jump to Phase 4: Mark Complete)
 - If they fail, inform the user — the code is in a broken state. Recommend option 2 (rollback and retry).
 
@@ -181,6 +185,9 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 2. Write `.claude/wip.md`:
    ```markdown
    # Work In Progress
+
+   ## Command
+   execute-task
 
    ## Task
    Feature: [NNN-feature-name]
@@ -421,11 +428,12 @@ Provide a concise summary to the user:
      git reset --soft [checkpoint-commit-hash]
      git commit -m "feat([feature-name]): Task [N] — [title]"
      ```
+     If the commit fails after the reset (pre-commit hook rejection, etc.), do NOT delete `.claude/wip.md`. Inform the user: "Squash reset was applied but the commit failed. Your changes are staged. Run `git commit` manually to complete, or `git reset HEAD~0` to unstage."
    - If this shows **no commits** (HEAD matches remote) → WIP commits were already pushed → **skip squashing** and keep commits as-is.
 
    Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
 
-2. Delete `.claude/wip.md`
+2. Delete `.claude/wip.md` (only after the final commit succeeds)
 
 The task is now fully committed with a clean single commit and no WIP artifacts.
 

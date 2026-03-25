@@ -35,7 +35,11 @@ Before anything else, check if a previous fix was interrupted.
 
 Read `.claude/wip.md`. If it does NOT exist, skip to PHASE 1.
 
-If it DOES exist, a previous execution was interrupted. Read the WIP marker to determine:
+If it DOES exist, a previous execution was interrupted. First check the `## Command` field:
+- If `Command: fix` → this is a previous fix. Continue with recovery below.
+- If `Command: execute-task` or `Command: refactor` → a different command was interrupted. Inform the user: "A previous `/[command]` session was interrupted (see .claude/wip.md). Clear it first by running `/[command]` to resume or recover, or delete `.claude/wip.md` manually to discard it." STOP — do not proceed.
+
+Read the WIP marker to determine:
 - What was being fixed
 - Which phase it was in when interrupted
 - What files were being modified
@@ -104,6 +108,7 @@ Based on the bug description (and `--file` flag if provided):
 2. **If no file specified**: Use Grep and Glob to search for code related to the bug description — error messages, function names, component names, etc.
 3. Read all files that appear related (up to 10 files for initial scan)
 4. Check `.claude/memory/MEMORY.md` for known pitfalls in this area
+5. **Task overlap check**: Scan `specs/*/tasks/*.md` for any Pending or In Progress tasks that list the same files in their Files section. If found, warn the user: "Note: Task [N] in feature [X] also targets [file]. Your fix may cause merge conflicts during future task execution." This is a warning only — do not block the fix.
 
 ### 1.3: Scope Check
 
@@ -184,6 +189,9 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 2. Write `.claude/wip.md`:
    ```markdown
    # Work In Progress
+
+   ## Command
+   fix
 
    ## Fix
    Bug: [short description]

@@ -117,9 +117,9 @@ If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 - Acceptance criteria → verified in `/verify`
 
 ### Automated Guards (run automatically)
-- **PostToolUse hook**: Type checking after every file Edit/Write
+- **PostToolUse hook**: Type Check Command runs automatically after every file Edit/Write (Lint Command runs during explicit verification phases, not per-edit — this is intentional to avoid noise)
 - **Pre-flight check**: Constitution and memory review before each task
-- **Post-execution**: tsc + lint + build on all changed files after each task
+- **Post-execution**: type check + lint + build on all changed files after each task
 
 ## Key Rules
 
@@ -216,7 +216,7 @@ If you run `/clear` or context is compacted, session-state.md ensures the next `
 
 ### Crash Recovery
 
-If a task execution is interrupted (power loss, terminal crash, network drop), the next `/execute-task` will detect the interrupted state via `.claude/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. Git checkpoint commits (`[WIP]` prefix) preserve partial work and get squashed into a clean commit on successful completion.
+If a task execution is interrupted (power loss, terminal crash, network drop), the next `/execute-task` will detect the interrupted state via `.claude/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command (`/execute-task`, `/fix`, or `/refactor`) was interrupted — if you run a different command, it will detect the mismatch and ask you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and get squashed into a clean commit on successful completion.
 
 ## References
 
