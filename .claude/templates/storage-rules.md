@@ -122,6 +122,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 /breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
 /execute-task → updates individual task file status + completion notes
 /verify       → updates specs/NNN-name/spec.md status to Complete; Phase 10 triage may create bugs/NNN-xxx.md
+/summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 ```

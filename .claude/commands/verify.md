@@ -177,7 +177,10 @@ Keep memory entries concise (1-2 lines each). Link to specific files if relevant
 
 Show the user the verification report and recommend next action:
 
-- If APPROVED: "All acceptance criteria are met and code quality checks pass. Ready for commit (`git add` + `git commit`) or PR creation."
+- If APPROVED: "All acceptance criteria are met and code quality checks pass." Then automatically invoke `/summarize` with the spec file path:
+  ```
+  ✅ Verification passed — automatically running /summarize
+  ```
 - If NEEDS WORK: "Found [N] issues. Recommend re-running `/execute-task [X]` for [reason]. Details in the verification report above."
 - If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]."
 

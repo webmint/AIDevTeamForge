@@ -2,11 +2,11 @@
 
 ## What This Is
 
-A reusable spec-driven development template for Claude Code. Combines a structured intake flow (research → clarify → specify → plan → breakdown → execute → verify) with enforced quality gates, specialized agents, and automated hooks.
+A reusable spec-driven development template for Claude Code. Combines a structured intake flow (research → clarify → specify → plan → breakdown → execute → verify → summarize) with enforced quality gates, specialized agents, and automated hooks.
 
 ## What's Built
 
-### Commands (16 files in `.claude/commands/`)
+### Commands (17 files in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -16,7 +16,8 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation; reads `docs/` for context; outputs Documentation Impact section
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints
 - `execute-task.md` — Runs a single task with pre-flight checks (including contract preconditions), agent execution, doc writing (with structured prompt + post-doc verification), verification (including contract postconditions + affected tests); review checkpoint gates in batch mode
-- `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now, fix docs now (direct tech-writer), or defer to `bugs/`
+- `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now, fix docs now (direct tech-writer), or defer to `bugs/`; auto-triggers `/summarize` on APPROVED verdict
+- `summarize.md` — Generates concise, PR-ready feature summary from spec, plan, tasks, and git history; saves to `specs/[feature]/summary.md`; runs automatically after `/verify` approves
 - `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test → doc update (conditional), with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
 - `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review → doc update (conditional), with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents

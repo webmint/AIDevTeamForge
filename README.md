@@ -82,8 +82,8 @@ Requires `jq` for JSON merging and `perl` for placeholder substitution (both pre
 ## Workflow
 
 ```
-/setup-wizard → /constitute → /onboard → /research → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
-   (once)         (once)       (once)    (optional)  (optional)  (per feat)                      (per task/batch)  (per feat)
+/setup-wizard → /constitute → /onboard → /research → /clarify → /specify → /plan → /breakdown → /execute-task → /verify → /summarize
+   (once)         (once)       (once)    (optional)  (optional)  (per feat)                      (per task/batch)  (per feat)  (auto)
 
 /fix "bug description"        ← lightweight shortcut for small bugs (skips spec/plan/breakdown)
 /fix bugs/003-null-check.md  ← fix a reported bug from the backlog
@@ -127,7 +127,10 @@ Supports multiple execution modes:
 - `/execute-task all` — all pending tasks in feature
 
 ### Phase 7: `/verify` (per feature)
-Code review against the spec's acceptance criteria, cross-referenced with constitution rules. Updates persistent memory with lessons learned. Phase 10 (Issue Triage) lets you decide per-issue: fix now (chains into `/fix`), report for later (creates a bug file in `bugs/`), or skip.
+Code review against the spec's acceptance criteria, cross-referenced with constitution rules. Updates persistent memory with lessons learned. Phase 10 (Issue Triage) lets you decide per-issue: fix now (chains into `/fix`), report for later (creates a bug file in `bugs/`), or skip. Automatically triggers `/summarize` when verdict is APPROVED.
+
+### Phase 8: `/summarize` (per feature, auto)
+Generates a concise, PR-ready summary of the completed feature. Reads spec, plan, tasks, and git history to produce a structured overview of what was built, files changed, key decisions, and acceptance criteria. Saves to `specs/[feature]/summary.md`. Runs automatically after `/verify` approves — no manual invocation needed.
 
 ### `/fix "bug description"` (standalone, for small bugs)
 Lightweight bug-fixing workflow that bypasses the full spec→plan→breakdown pipeline. Designed for small, localized bugs (1-5 files). Also accepts bug file paths: `/fix bugs/003-null-check.md` — reads the file, extracts description and file(s), and updates the bug's status to Fixed after completion. Phases: diagnose (with **runtime-debugger** agent for runtime errors), apply minimal fix, verify (tsc + lint + build + self-repair loop), code review (**code-reviewer** agent), test assessment (**qa-engineer** agent). Includes crash recovery, constitution enforcement, and memory updates. If the bug turns out to be larger than expected, recommends escalating to `/specify`.

@@ -1,5 +1,5 @@
 {
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Manifest for AIDevTeamForge update system",
 
   "templateOwned": {
@@ -19,6 +19,7 @@
       ".claude/commands/report-bug.md",
       ".claude/commands/refresh-docs.md",
       ".claude/commands/research.md",
+      ".claude/commands/summarize.md",
       ".claude/template-manifest.json",
       "scripts/**"
     ]

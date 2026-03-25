@@ -5,6 +5,20 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-03-25
+
+### Added
+- **`/summarize` command**: New command that generates concise, PR-ready feature summaries from spec, plan, tasks, and git history — saves to `specs/[feature]/summary.md`
+- **Auto-verify on feature completion**: `/execute-task` Phase 7.5.3 automatically triggers `/verify` when all tasks in the feature are marked Complete — no manual invocation needed
+- **Auto-summarize on approval**: `/verify` Phase 9 automatically triggers `/summarize` when verdict is APPROVED
+- **Full automated chain**: Last task completion → `/verify` → `/summarize` runs end-to-end without human intervention
+
+### Changed
+- Workflow diagrams across all commands now include `→ /summarize` as the final step
+- `/verify` Phase 9 APPROVED path chains into `/summarize` instead of suggesting manual commit/PR
+- `/execute-task` Phase 8 step 2 defers to Phase 7.5.3 for feature-complete detection
+- Template version: 1.17.0 → 1.18.0
+
 ## [1.17.0] - 2026-03-25
 
 ### Added
