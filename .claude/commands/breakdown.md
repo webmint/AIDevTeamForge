@@ -143,6 +143,7 @@ For each task, generate a `## Contracts` section with `### Expects` and `### Pro
   - `src/types/Cart.ts` exports interface `CartTotals` with fields `subtotal: number`, `total: number`
   - `CartBLoC.ts` has a public getter named `cartTotals` returning `CartTotals`
   - `CartSummary.vue` imports `CartBLoC` from `src/domain/cart/`
+- Contracts must reference **literal strings that appear in source code** — export names, function names, interface names, field names, class names. Avoid referencing abstract concepts (e.g., "has a getter") — reference the literal declaration pattern instead (e.g., "`get cartTotals()`" appears in `CartBLoC.ts`).
 - Examples of bad contracts:
   - "Cart totals work correctly" (not verifiable)
   - "Line 45 of CartBLoC.ts returns the right value" (line numbers shift)

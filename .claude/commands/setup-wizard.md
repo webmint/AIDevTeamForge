@@ -467,6 +467,13 @@ Use the exact same values you substituted into the templates. For multi-line val
 4. Start working with /specify "your first feature"
 ```
 
+4. **Write setup completion marker**: After presenting the summary, write `.claude/setup-complete` with content:
+   ```
+   Setup completed: [current date and time]
+   Generated files: CLAUDE.md, .claude/settings.json, agents, memory, constitution.md stub, specs/, docs/
+   ```
+   This marker allows other commands to detect whether setup-wizard ran to completion. If the file is missing, setup may have been interrupted mid-generation.
+
 ## IMPORTANT RULES
 
 1. **Never guess** — if you can't detect something, ask

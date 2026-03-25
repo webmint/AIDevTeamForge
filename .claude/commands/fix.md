@@ -390,6 +390,20 @@ Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entr
 
 Keep entries concise (1-2 lines each). Only update if there's something genuinely useful for future work — not every bug fix needs a memory entry.
 
+## PHASE 10: Session State Update
+
+If `.claude/session-state.md` exists, update it to reflect the fix. FULLY OVERWRITE the file (same sliding-window pattern as `/execute-task`):
+
+1. Read the current session-state.md
+2. Increment "Tasks completed this session" by 1
+3. Update "Last completed" to reference this bug fix (use the commit message as the title)
+4. Update "Files Modified Recently" with the files changed in this fix
+5. Re-estimate context load based on the new task count
+
+If `.claude/session-state.md` does not exist, skip this phase — session state is only initialized by `/execute-task` or `/specify`.
+
+After writing, verify the file is under 40 lines. If over, trim oldest entries from "Key Decisions" and "Files Modified Recently."
+
 ## IMPORTANT RULES
 
 1. **Diagnose before fixing** — never apply a fix without understanding the root cause. Guessing wastes time and can introduce new bugs

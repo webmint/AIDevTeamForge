@@ -273,6 +273,11 @@ migrate_project_config() {
 # Updates template-owned sections while preserving project-owned sections.
 # $3 is a newline-separated list of section headers to preserve from target.
 # NOTE: Currently unused — three-way merge via git merge-file replaced this.
+# LIMITATION: This function splits on ^## (h2 headers) only. Custom ### or #
+# sections added by the user will be merged into the body of the preceding ##
+# section. This is acceptable because CLAUDE.md and other managed files use ##
+# as the primary section delimiter. If finer-grained merging is needed, extend
+# the regex to split on ^#{1,6} and adjust the merge logic accordingly.
 merge_sections() {
   local template_file="$1"
   local target_file="$2"

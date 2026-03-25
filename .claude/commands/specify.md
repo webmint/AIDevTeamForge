@@ -14,6 +14,14 @@ Create a structured specification for a feature or change. This command takes a 
 
 Before any spec work, ensure you're on a dedicated spec branch.
 
+### 0.0: Prerequisites
+
+Verify this is a git repository:
+```bash
+git rev-parse --is-inside-work-tree
+```
+If the command fails, stop and tell the user: **"This directory is not a git repository. Initialize with `git init` and make an initial commit first."**
+
 ### 0.1: Detect Current Branch
 
 Run `git branch --show-current` to get the current branch name.

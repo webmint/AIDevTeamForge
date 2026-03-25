@@ -141,7 +141,7 @@ For multi-task queues: the current task is always the first item. After it compl
 3. Read the feature's `spec.md` and `plan.md`
 4. Read `constitution.md`
 5. Read `.claude/memory/MEMORY.md`
-6. Read ALL files listed in the task's "Files" section
+6. Read files listed in the task's "Files" section. If total estimated lines exceed 500, read only the sections relevant to the change (use Change Details to identify which functions/blocks to focus on). For smaller file sets, read them fully.
 7. **Read relevant documentation**: Search `docs/` for files related to the area this task touches. These docs are the knowledge base for all agents — populated by `/onboard` for existing projects or built incrementally by the tech-writer for new projects. Read only docs that are directly relevant — not all docs.
 
 Verify:
@@ -274,7 +274,7 @@ After the agent completes, run verification:
 5. **Done conditions met**: Check each "Done when" item from the task
 6. **Contract postconditions**: Read the task's `## Contracts → ### Produces` section. For each postcondition, use Grep or Read to verify it holds in the codebase (e.g., verify the export exists, the interface has the expected fields, the function has the expected name). Track pass/fail for each postcondition.
 7. **Run affected tests**: Search for test files (`*.test.*`, `*.spec.*`) in the same directories as changed files. If test files exist and a test runner is available (check CLAUDE.md for Test Command, or detect via package.json scripts), run them. If no test files or test runner exist, skip this check. Test failures are treated the same as other verification failures.
-8. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`. If any are found, flag as a verification failure.
+8. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`, `bugs/`, `research/`, `.mcp.json`. If any are found, flag as a verification failure.
 
 **If ALL checks pass** → proceed to Phase 4.
 
@@ -479,6 +479,8 @@ Older modifications are tracked in each task's completion notes under specs/.
 - [Any constitution rules or spec constraints actively relevant to the next task]
 ```
 
+After writing session-state.md, verify its line count. If over 40 lines, trim oldest entries from "Key Decisions This Session" and "Files Modified Recently" until the file is under 40 lines.
+
 ### 7.5.2: Context Health Check
 
 Read the "Tasks completed this session" count from the session-state you just wrote.
@@ -505,7 +507,9 @@ Strongly recommended: Run /compact before continuing.
 /compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
 ```
 
-Do NOT auto-compact — always let the user decide. Surface the recommendation with the pre-built compact instruction.
+Do NOT auto-compact. Surface the recommendation and let the user decide. For single-task mode, this is advisory only — the user may choose to continue without compacting.
+
+> **Note**: Phase 7.5.2 (single-task) recommends compaction; Phase 8 (multi-task, heavy) pauses execution. The difference is intentional: single-task completion is advisory, multi-task continuation requires the pause to prevent context degradation across many sequential tasks.
 
 ## PHASE 8: Multi-Task Continuation
 
@@ -538,7 +542,7 @@ After Phase 7.5 completes for the current task:
       - If heavy (6+ tasks): **pause execution** and present the compaction command to the user:
         ```
         🔴 CONTEXT HEALTH PAUSE — [N] tasks completed this session (heavy context load).
-        Please run /compact before continuing:
+        Strongly recommended: Run /compact before continuing.
 
         /compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
 

@@ -5,6 +5,23 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.4] - 2026-03-25
+
+### Fixed
+- **M1**: `/setup-wizard` now writes `.claude/setup-complete` marker at end of generation — allows detecting interrupted setups
+- **M2**: `/execute-task` Phase 1.2 file reading budgeted — if task files exceed 500 lines total, reads only relevant sections instead of all files fully
+- **M3**: `/execute-task` Phase 7.5.1 now verifies session-state.md line count after writing — trims oldest entries if over 40 lines
+- **M4**: `/fix` and `/refactor` now update `.claude/session-state.md` after completion (new Phase 10) — prevents stale session state after non-execute-task workflows
+- **M5**: Wrapper mode isolation check expanded to include `bugs/`, `research/`, `.mcp.json` — previously only checked 6 artifact types, now covers 9
+- **M6**: Reconciled compaction contradiction between Phase 7.5.2 (advisory) and Phase 8 (pause) — added explicit note that the difference is intentional: single-task = recommend, multi-task = pause
+- **M7**: `/breakdown` contract rules now require literal source code strings — "has a getter" style contracts replaced with guidance to reference declaration patterns (e.g., "`get cartTotals()`")
+- **M8**: Documented `update.sh` `merge_sections()` limitation — only splits on `##` headers; custom `###` or `#` sections merge into preceding `##` body
+- **M9**: `/specify` Phase 0.0 prerequisite added — verifies git repository exists before branch operations, prevents cryptic errors in non-git directories
+- **M10**: Fixed research filename example from `24-03-26-` to `2026-03-26-` to match the YYYY-MM-DD format specification
+
+### Changed
+- Template version: 1.16.3 → 1.16.4
+
 ## [1.16.3] - 2026-03-25
 
 ### Fixed
