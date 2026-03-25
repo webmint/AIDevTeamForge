@@ -83,7 +83,7 @@ Save to `specs/[feature-name]/clarifications.md` (create the feature directory i
 ```markdown
 # Clarifications: [Feature Name]
 
-**Date**: [DD-MM-YYYY HH:MM Ukrainian time]
+**Date**: [YYYY-MM-DD]
 **Questions asked**: [N] of 5
 
 ## Decisions

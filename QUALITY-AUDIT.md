@@ -45,60 +45,29 @@ Comprehensive quality audit of the AIDevTeamForge template system — a set of C
 
 ## HIGH — Will cause confusion or significantly degraded behavior
 
-### H1. No test execution in `/execute-task` verification pipeline
-- **Location**: `execute-task.md` Phase 3.3 (lines 265-298)
-- **Problem**: Post-execution verification checks: tsc, lint, build, done-conditions, contracts. It does NOT run tests. The `/refactor` command (Phase 5, line 295) runs tests, but `/execute-task` — the primary execution pipeline — does not.
-- **Impact**: Code passes all gates while breaking existing tests. Tests are only checked during `/verify` (end of feature), which may be 10+ tasks later. This is the #1 source of regressions in real projects.
-- **Fix**: Add to Phase 3.3: "6. **Run affected tests**: If test files exist for the changed areas (search for `*.test.*`, `*.spec.*` in the same directories), run them. Test failures enter the self-repair loop."
+### ~~H1. No test execution in `/execute-task` verification pipeline~~ RESOLVED
+- **Resolution**: Phase 3.3 now includes step 7 ("Run affected tests") which searches for `*.test.*` / `*.spec.*` files in changed directories and runs them if a test runner is available. Test failures enter the self-repair loop alongside tsc, lint, and build errors.
 
-### H2. `/breakdown` agent assignment table only covers 6 of 14 agent types
-- **Location**: `breakdown.md` lines 84-93
-- **Problem**: Assignment table maps to: architect, frontend-engineer, backend-engineer, runtime-debugger, performance-analyst, security-reviewer. Missing: db-engineer, api-designer, design-auditor, migration-engineer, devops-engineer, tech-writer, qa-engineer, code-reviewer.
-- **Impact**: For a database migration task (common!), Claude has no guidance and defaults to architect. For CI/CD setup, no guidance either.
-- **Fix**: Expand the table:
-  - Database schemas, migrations, queries → `db-engineer`
-  - API contract design, OpenAPI specs → `api-designer`
-  - CI/CD, Docker, deployment config → `devops-engineer`
-  - Data migration, backward compatibility → `migration-engineer`
-  - Accessibility, design system compliance → `design-auditor`
+### ~~H2. `/breakdown` agent assignment table only covers 6 of 14 agent types~~ RESOLVED
+- **Resolution**: Added 5 execution-capable agent types to the assignment table: db-engineer, api-designer, devops-engineer, migration-engineer, design-auditor. The remaining 3 (tech-writer, qa-engineer, code-reviewer) are verification agents that run automatically and don't need task assignment rows.
 
-### H3. Memory updates have no defined format — becomes unstructured noise
-- **Location**: `execute-task.md` Phase 7, `fix.md` Phase 9, `refactor.md` Phase 9, `verify.md` Phase 8
-- **Problem**: All say "update MEMORY.md" but none specifies the format. The template `memory.template.md` defines sections (Known Pitfalls, What Worked, etc.) but commands just say "add a concise note."
-- **Impact**: After 10+ tasks, MEMORY.md is an unstructured dump. Different sessions format entries differently. Claude reads it but extracts little value.
-- **Fix**: Define format in each command: "Add to the appropriate section in MEMORY.md using the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`"
+### ~~H3. Memory updates have no defined format — becomes unstructured noise~~ RESOLVED
+- **Resolution**: All 4 commands (execute-task Phase 7, fix Phase 9, refactor Phase 9, verify Phase 8) now include the standardized format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_` with instruction to add entries under the matching MEMORY.md section.
 
-### H4. Spec branch numbering and spec directory numbering use independent counters
-- **Location**: `specify.md` lines 35-39 (branches scan `git branch`) vs line 130 (directories scan `specs/`)
-- **Problem**: Branch numbering scans `git branch -a --list '*spec/*'`. Directory numbering scans `specs/`. If someone deletes a spec directory but not the branch (or vice versa), numbers diverge. Branch `spec/003-auth` might correspond to `specs/002-auth/`.
-- **Fix**: Derive branch name from the spec directory number: first create the spec directory (Phase 4), then create branch `spec/NNN-name` using the same NNN.
+### ~~H4. Spec branch numbering and spec directory numbering use independent counters~~ RESOLVED
+- **Resolution**: Branch creation deferred from Phase 0.3 to Phase 4. The spec directory number (from scanning `specs/`) is now the single source of truth — the branch `spec/NNN-name` is created using the same NNN immediately before writing the spec file.
 
-### H5. `/verify` Phase 9 references `/commit` which doesn't exist
-- **Location**: `verify.md` Phase 9 (line 176)
-- **Problem**: Says "Ready for `/commit` or PR creation." There is no `/commit` slash command (neither built-in Claude Code nor custom). Claude Code has a built-in `/commit` skill via its system prompt but it's not a slash command in the same sense.
-- **Impact**: Claude may try to invoke it as a custom command and fail, or correctly interpret it as a suggestion to commit.
-- **Fix**: Change to: "Ready for commit (use `git add` + `git commit`) or PR creation."
+### ~~H5. `/verify` Phase 9 references `/commit` which doesn't exist~~ RESOLVED
+- **Resolution**: Changed to `Ready for commit (git add + git commit) or PR creation.` — no longer references a non-existent slash command.
 
-### H6. `/fix` Phase 6 code review can trigger unlimited fix cycles
-- **Location**: `fix.md` lines 268-276
-- **Problem**: If code-reviewer returns BLOCK, the instruction says "Apply the required fixes, Re-run verification." No iteration limit. Phase 5 has a 3-attempt repair loop, but Phase 6's review-triggered fixes have no limit. Claude could loop: fix → review → BLOCK → fix → review → BLOCK...
-- **Impact**: Context exhaustion from an infinite loop of review-triggered changes.
-- **Fix**: Add: "If the code-reviewer returns BLOCK, apply fixes and re-verify (max 1 additional review cycle). If still BLOCKED, report to the user."
+### ~~H6. `/fix` Phase 6 code review can trigger unlimited fix cycles~~ RESOLVED
+- **Resolution**: Phase 6 now specifies max 1 additional review cycle when code-reviewer returns BLOCK. If still blocked after that cycle, execution stops and reports to the user.
 
-### H7. Date format inconsistency across commands
-- **Location**: Multiple files
-- **Problem**: Four different date formats:
-  - Research filenames: `DD-MM-YY` (2-digit year, doesn't sort chronologically)
-  - Plan/Clarify timestamps: `DD-MM-YYYY HH:MM Ukrainian time`
-  - Spec dates: `YYYY-MM-DD` (ISO)
-  - Bug report dates: `YYYY-MM-DD`
-- **Impact**: Inconsistent naming, sorting issues, and "Ukrainian time" is locale-specific.
-- **Fix**: Standardize on ISO 8601 (`YYYY-MM-DD`) everywhere. Remove "Ukrainian time" — use local timezone.
+### ~~H7. Date format inconsistency across commands~~ RESOLVED
+- **Resolution**: Standardized all date formats to ISO 8601 (`YYYY-MM-DD`). Removed "Ukrainian time" references from plan.md, research.md, and clarify.md. Updated research filename format from `DD-MM-YY` to `YYYY-MM-DD`.
 
-### H8. `/onboard` Phase 3.3 tries to update CLAUDE.md with content that's already there
-- **Location**: `onboard.md` lines 466-478
-- **Problem**: Phase 3.3 says "Update CLAUDE.md to add `/onboard` to the workflow commands section." But `CLAUDE.template.md` already has `/onboard` in the workflow diagram (line 39) and description (lines 72-73). Claude will either add a duplicate or waste context checking.
-- **Fix**: Remove Phase 3.3 from onboard.md.
+### ~~H8. `/onboard` Phase 3.3 tries to update CLAUDE.md with content that's already there~~ RESOLVED
+- **Resolution**: Removed Phase 3.3 ("Update Workflow References") from onboard.md. The `/onboard` entry already exists in `CLAUDE.template.md`.
 
 ---
 

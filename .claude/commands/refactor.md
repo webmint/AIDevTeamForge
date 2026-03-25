@@ -444,6 +444,8 @@ If anything noteworthy happened during the refactoring, update `.claude/memory/M
 - **Complex area**: If the code was especially tangled or hard to restructure safely, note it as a caution for future work
 - **Gotcha discovered**: If the refactoring revealed a hidden coupling or unexpected dependency, record it
 
+Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+
 Keep entries concise (1-2 lines each). Only update if there's something genuinely useful for future work — not every refactoring needs a memory entry.
 
 ## IMPORTANT RULES

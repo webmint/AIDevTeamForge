@@ -114,7 +114,7 @@ Generate the full report and **render it directly in the console** so the user c
 ```markdown
 # Research: [Topic Name]
 
-**Date**: [DD-MM-YYYY HH:MM Ukrainian time]
+**Date**: [YYYY-MM-DD]
 **Topic**: [user's original description]
 **Verdict**: Feasible | Feasible with Caveats | Not Recommended
 
@@ -194,8 +194,8 @@ The full report was already displayed in Phase 4. Now ask the user whether to sa
 
 Use `AskUserQuestion` to ask: **"Save this research to a file?"**
 
-- **If yes**: Save to `research/DD-MM-YY-[topic-slug].md` at project root.
-  - `DD-MM-YY` = current date (e.g., `24-03-26`)
+- **If yes**: Save to `research/YYYY-MM-DD-[topic-slug].md` at project root.
+  - `YYYY-MM-DD` = current date (e.g., `2026-03-25`)
   - `[topic-slug]` = lowercase kebab-case, 2-4 words derived from the topic (e.g., `caching-strategy`, `websocket-real-time`, `authentication-options`)
   - Create the `research/` directory if it doesn't exist
   - If a file at that path already exists, append `-2`, `-3`, etc. (e.g., `24-03-26-caching-strategy-2.md`)

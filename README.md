@@ -102,7 +102,7 @@ Deep codebase analysis (existing projects) or preference-based interview (greenf
 Deep codebase scan that generates comprehensive documentation in `docs/`. Delegates to the tech-writer agent, which uses subagents for large codebases to stay within context limits. Produces `overview.md`, `architecture.md`, `features/*.md`, and `api/*.md` — the knowledge base all agents read before executing tasks. Skip for greenfield projects (docs are built incrementally).
 
 ### Phase 1.75: `/research "topic or idea"` (optional, per idea)
-Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based — only when the idea involves new libraries, integrations, or unfamiliar tech), and displays the full research report in the console. You're then asked whether to save — if yes, saves to `research/DD-MM-YY-[topic-slug].md`. Does NOT create specs, modify code, or create branches. Use before `/specify` when you're unsure whether an idea is viable or how it fits the project's architecture.
+Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based — only when the idea involves new libraries, integrations, or unfamiliar tech), and displays the full research report in the console. You're then asked whether to save — if yes, saves to `research/YYYY-MM-DD-[topic-slug].md`. Does NOT create specs, modify code, or create branches. Use before `/specify` when you're unsure whether an idea is viable or how it fits the project's architecture.
 
 ### Phase 2: `/clarify "feature description"` (optional, per feature)
 Scans requirements against 9 ambiguity categories, asks up to 5 multiple-choice questions with recommendations. Saves to `specs/[feature]/clarifications.md`. Skip if requirements are already clear.
@@ -117,7 +117,7 @@ Takes an approved spec and produces a technical plan: architecture decisions, da
 Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Each task includes cross-task contracts (Expects/Produces) that are verified during execution to prevent silent error compounding. Review checkpoints are auto-placed at convergence points and layer boundaries. Saves to `specs/[feature]/tasks/`. **Requires approval.**
 
 ### Phase 6: `/execute-task` (per task or batch)
-Picks up a task (or multiple tasks), reads relevant docs for context, selects the assigned agent, executes with scope constraints, and verifies (tsc, lint, build, done conditions, contract postconditions). Contract preconditions are checked before execution — if a prior task's output doesn't match expectations, execution stops with upstream tracing. If verification fails, a self-repair agent automatically fixes errors (up to 3 attempts). At review checkpoints, user reviews preceding work before continuing. Then the tech-writer agent updates `docs/`.
+Picks up a task (or multiple tasks), reads relevant docs for context, selects the assigned agent, executes with scope constraints, and verifies (tsc, lint, build, done conditions, contract postconditions, affected tests). Contract preconditions are checked before execution — if a prior task's output doesn't match expectations, execution stops with upstream tracing. If verification fails, a self-repair agent automatically fixes errors (up to 3 attempts). At review checkpoints, user reviews preceding work before continuing. Then the tech-writer agent updates `docs/`.
 
 Supports multiple execution modes:
 - `/execute-task` — next pending task
@@ -145,7 +145,7 @@ Lightweight documentation refresh that detects what source files changed since d
 
 ```
 research/
-  DD-MM-YY-topic-slug.md         # Research reports (/research) — exploratory, pre-spec
+  YYYY-MM-DD-topic-slug.md         # Research reports (/research) — exploratory, pre-spec
 
 specs/
   001-user-auth/                 # Numbered feature directories

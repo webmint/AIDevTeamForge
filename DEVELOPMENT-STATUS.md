@@ -10,12 +10,12 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
-- `research.md` — Quick feasibility check for vague ideas; investigates codebase for related patterns, signal-based external research, displays full report in console and optionally saves to `research/DD-MM-YY-[topic-slug].md`
+- `research.md` — Quick feasibility check for vague ideas; investigates codebase for related patterns, signal-based external research, displays full report in console and optionally saves to `research/YYYY-MM-DD-[topic-slug].md`
 - `clarify.md` — Optional pre-step, 9 ambiguity categories, max 5 questions
 - `specify.md` — Creates feature specs with acceptance criteria; auto-creates `spec/NNN-short-desc` branch when on default branch
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation; reads `docs/` for context; outputs Documentation Impact section
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints
-- `execute-task.md` — Runs a single task with pre-flight checks (including contract preconditions), agent execution, doc writing (with structured prompt + post-doc verification), verification (including contract postconditions); review checkpoint gates in batch mode
+- `execute-task.md` — Runs a single task with pre-flight checks (including contract preconditions), agent execution, doc writing (with structured prompt + post-doc verification), verification (including contract postconditions + affected tests); review checkpoint gates in batch mode
 - `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now, fix docs now (direct tech-writer), or defer to `bugs/`
 - `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test → doc update (conditional), with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`

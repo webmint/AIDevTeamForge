@@ -167,13 +167,15 @@ Update `.claude/memory/MEMORY.md` with lessons learned from this feature:
 - **New patterns**: Any new code patterns introduced that should be followed in future work
 - **Pitfalls**: Gotchas discovered that should be avoided in similar work
 
+Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
+
 Keep memory entries concise (1-2 lines each). Link to specific files if relevant.
 
 ## PHASE 9: Present Results
 
 Show the user the verification report and recommend next action:
 
-- If APPROVED: "All acceptance criteria are met and code quality checks pass. Ready for `/commit` or PR creation."
+- If APPROVED: "All acceptance criteria are met and code quality checks pass. Ready for commit (`git add` + `git commit`) or PR creation."
 - If NEEDS WORK: "Found [N] issues. Recommend re-running `/execute-task [X]` for [reason]. Details in the verification report above."
 - If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]."
 

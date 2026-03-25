@@ -30,25 +30,11 @@ Determine the repository's default branch using these methods in order:
 
 **If already on a `spec/*` branch**: Skip to Pre-Step — already on a spec branch.
 
-**If on the default branch**: Create a new spec branch:
+**If on the default branch**: Prepare for spec branch creation (branch is created in Phase 4 after the spec number is determined):
 
-1. **Find the next spec number**: List all existing spec branches (local and remote):
-   ```
-   git branch -a --list '*spec/*' --sort=-version:refname
-   ```
-   Parse the highest `NNN` prefix from branch names matching `spec/NNN-*`. If none exist, start at `001`.
+1. **Generate short description**: From `$ARGUMENTS`, generate a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`). Save this for use in Phase 4.
 
-2. **Generate short description**: From `$ARGUMENTS`, generate a 2-3 word kebab-case summary that captures the essence of the feature (e.g., "add user authentication" → `user-auth`, "implement dark mode toggle" → `dark-mode`).
-
-3. **Create and checkout the branch**:
-   ```
-   git checkout -b spec/NNN-short-desc
-   ```
-
-4. **Inform the user**:
-   ```
-   Created and switched to branch `spec/NNN-short-desc`
-   ```
+2. **Note**: Branch creation is deferred to Phase 4 so the branch number matches the spec directory number. Phases 1-3 are read-only research and safe to run on the default branch.
 
 **If on any other branch** (not default, not `spec/*`): Ask the user:
 ```
@@ -129,6 +115,12 @@ Since there's little or no existing code:
 ## PHASE 4: Write the Specification
 
 Generate a feature name (lowercase kebab-case, 2-4 words). Determine the next sequential number by scanning existing `specs/` directories for the highest `NNN` prefix. Create `specs/NNN-feature-name/` and save the spec to `specs/NNN-feature-name/spec.md`.
+
+**If branch creation was deferred from Phase 0.3**: Before writing any files, create and checkout the spec branch using the same `NNN` from the directory scan above:
+```
+git checkout -b spec/NNN-short-desc
+```
+Inform the user: `Created and switched to branch spec/NNN-short-desc`. This ensures the branch and directory always share the same number.
 
 ### Spec Format:
 

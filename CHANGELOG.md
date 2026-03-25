@@ -5,6 +5,22 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.3] - 2026-03-25
+
+### Fixed
+- **H1**: `/execute-task` Phase 3.3 now runs affected tests (`*.test.*`, `*.spec.*`) as verification step 7 — test failures enter the self-repair loop
+- **H2**: `/breakdown` agent assignment table expanded from 6 → 11 agent types — added db-engineer, api-designer, devops-engineer, migration-engineer, design-auditor
+- **H3**: Standardized MEMORY.md entry format (`- **[AREA]**: [observation] _(Task N / Feature NNN)_`) across execute-task, fix, refactor, and verify commands
+- **H4**: Unified spec branch/directory numbering in `/specify` — branch creation deferred to Phase 4 so both use the same NNN from `specs/` scan
+- **H5**: `/verify` Phase 9 approval message no longer references non-existent `/commit` command
+- **H6**: `/fix` Phase 6 code review loop limited to max 1 additional cycle when BLOCKED — prevents infinite fix→review loops
+- **H7**: Standardized all date formats to ISO 8601 (`YYYY-MM-DD`) — removed `DD-MM-YY`, `DD-MM-YYYY HH:MM Ukrainian time` variants from plan, research, and clarify commands
+- **H8**: Removed redundant Phase 3.3 from `/onboard` that tried to add already-existing `/onboard` entry to CLAUDE.md
+
+### Changed
+- Template version: 1.16.2 → 1.16.3
+- Updated README.md, DEVELOPMENT-STATUS.md, CLAUDE.template.md, and storage-rules.md to reflect H1 (test execution) and H7 (date format) fixes
+
 ## [1.16.2] - 2026-03-25
 
 ### Fixed

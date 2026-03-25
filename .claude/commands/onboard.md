@@ -462,21 +462,6 @@ If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.claude/memory/M
 - Areas of complexity → under "Known Pitfalls"
 - Inconsistencies → under "Known Pitfalls"
 
-### 3.3: Update Workflow References
-
-Update `CLAUDE.md` to add `/onboard` to the workflow commands section and update the flow diagram:
-
-```
-/setup-wizard → /constitute → /onboard → /clarify → /specify → /plan → /breakdown → /execute-task → /verify
-   (once)         (once)       (once)    (optional)  (per feature)         (auto)      (per task)     (per task)
-```
-
-Add a brief entry for `/onboard`:
-```
-### `/onboard`
-One-time deep codebase scan for existing projects. Uses the tech-writer agent to generate comprehensive documentation in `docs/` — the knowledge base for all agents. Run once after `/constitute`.
-```
-
 ## PHASE 4: Summary
 
 Present to the user:

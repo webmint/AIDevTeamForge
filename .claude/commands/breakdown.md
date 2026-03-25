@@ -90,6 +90,11 @@ Assign each task to the most appropriate agent based on the files it touches:
 | Bug investigation with runtime symptoms | runtime-debugger |
 | Performance-critical path or optimization task | performance-analyst |
 | Auth, secrets, input validation, security hardening | security-reviewer |
+| Database schemas, migrations, queries, seed data | db-engineer |
+| API contract design, OpenAPI specs, endpoint structure | api-designer |
+| CI/CD, Docker, deployment config, infrastructure | devops-engineer |
+| Data migration scripts, backward compatibility layers | migration-engineer |
+| Accessibility, design system compliance, UI audit | design-auditor |
 
 **Note**: `performance-analyst` and `security-reviewer` also run automatically during `/verify` on all changed files. Assign them to individual tasks only when the task itself is primarily about performance or security work.
 

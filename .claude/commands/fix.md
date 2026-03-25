@@ -266,13 +266,14 @@ Provide the agent with:
 
 The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality, and memory pitfalls.
 
-**If the agent returns BLOCK or critical issues**:
+**If the agent returns BLOCK or critical issues** (max 1 additional review cycle):
 - Apply the required fixes
 - Re-run verification (Phase 5 checks)
 - Commit:
   ```
   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — review fixes"
   ```
+- If still BLOCKED after this additional cycle, STOP and report the remaining issues to the user. Do not attempt further review cycles.
 
 **If the agent returns APPROVE or only warnings/info** → proceed to Phase 7.
 
@@ -384,6 +385,8 @@ If anything noteworthy happened during the fix, update `.claude/memory/MEMORY.md
 - **Bug pattern**: If this bug represents a pattern that could recur (e.g., "null checks missing on API responses in the cart module"), record it under Known Pitfalls
 - **What caused it**: If the root cause reveals a systemic issue (e.g., "type definitions don't enforce required fields"), note it
 - **Fix approach**: If the diagnosis or fix involved a non-obvious technique, record it under What Worked
+
+Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 Keep entries concise (1-2 lines each). Only update if there's something genuinely useful for future work — not every bug fix needs a memory entry.
 

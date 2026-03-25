@@ -41,7 +41,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 ```
 
 ### `/research "topic or idea"` (optional)
-Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based), and displays the full report in the console. You're then asked whether to save — if yes, saves to `research/DD-MM-YY-[topic-slug].md`. Does NOT create specs or modify code. Use before `/specify` when you're unsure whether an idea is viable or how it fits.
+Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based), and displays the full report in the console. You're then asked whether to save — if yes, saves to `research/YYYY-MM-DD-[topic-slug].md`. Does NOT create specs or modify code. Use before `/specify` when you're unsure whether an idea is viable or how it fits.
 
 ### `/clarify "feature description"` (optional)
 Scans requirements against 9 ambiguity categories, asks up to 5 multiple-choice questions. Saves decisions to `specs/[feature]/clarifications.md`. Use when requirements are vague.
@@ -169,7 +169,7 @@ If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 
 ```
 research/
-  DD-MM-YY-topic-slug.md        # Research reports (/research) — exploratory, pre-spec
+  YYYY-MM-DD-topic-slug.md        # Research reports (/research) — exploratory, pre-spec
 
 specs/
   001-feature-name/            # Numbered feature directories

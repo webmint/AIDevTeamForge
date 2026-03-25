@@ -74,7 +74,7 @@ Save to `specs/[feature-name]/research.md`:
 ```markdown
 # Research: [Feature Name]
 
-**Date**: [DD-MM-YYYY HH:MM Ukrainian time]
+**Date**: [YYYY-MM-DD]
 **Signals detected**: [list which signals triggered deep research]
 
 ## Questions Investigated
@@ -151,7 +151,7 @@ Save to `specs/[feature-name]/plan.md`:
 ```markdown
 # Plan: [Feature Name]
 
-**Date**: [DD-MM-YYYY HH:MM Ukrainian time]
+**Date**: [YYYY-MM-DD]
 **Spec**: [path to spec.md]
 **Status**: Draft
 
