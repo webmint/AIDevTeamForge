@@ -5,6 +5,20 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.2] - 2026-03-25
+
+### Fixed
+- **C1**: Context handling pauses execution and prompts user-initiated compaction for heavy task loads instead of silently continuing
+- **C2**: Commands now guard against empty `constitution.md` — prompts user to run `/constitute` first
+- **C3**: Project mode detection uses `project-config.json` flag instead of re-counting files each time, preventing contradictory greenfield/existing behavior
+- **C4**: `install.sh` no longer copies `settings.local.json` to target projects — file is project-owned, not part of template install
+- **C5**: Replaced all 18 `git add -A` instances with scoped staging across `execute-task`, `fix`, `refactor`, and `verify` commands — prevents accidentally committing secrets/unwanted files
+- **C6**: Pre-squash safety check added to all three workflow commands — verifies WIP commits haven't been pushed before `git reset --soft` to avoid rewriting shared history
+- **C7**: `/constitute` now reads `constitution.template.md` and copies all `[universal]` sections (3.5–3.7, 4.1–4.3, 6.1–6.4) verbatim instead of regenerating them
+
+### Changed
+- Template version: 1.16.1 → 1.16.2
+
 ## [1.16.1] - 2026-03-25
 
 ### Changed

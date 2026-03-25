@@ -20,7 +20,7 @@ Every phase transition requires explicit user approval. No step can be skipped.
 /path/to/AIDevTeamForge/install.sh --wrapper /path/to/workspace inner-project-folder
 ```
 
-This copies `.claude/`, `specs/`, `bugs/`, `research/`, `scripts/`, and `.mcp.json` into your project. It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
+This copies `.claude/`, `specs/`, `bugs/`, `research/`, `scripts/`, and `.mcp.json` into your project (excluding `settings.local.json`, which is project-owned). It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
 
 The wizard will:
    - Detect workspace mode (standalone vs wrapper around a client project)
@@ -194,16 +194,17 @@ bugs/
 - **Agent specialization**: Domain-specific agents, not generic ones
 - **Minimal changes rule**: Every task touches as little code as possible
 - **Mandatory linting**: Must pass before task completion
-- **Constitution compliance**: Checked in pre-flight before every task
+- **Constitution compliance**: Checked in pre-flight before every task — commands guard against empty `constitution.md` and prompt the user to run `/constitute` first
 - **Cross-task contracts**: Each task declares what it expects (preconditions) and produces (postconditions). Preconditions are verified before execution; postconditions after. Contract violations stop execution with upstream tracing
 - **Review checkpoint gates**: Auto-placed at dependency convergence points and layer boundaries. User reviews preceding work before continuing in batch mode
-- **Commit convention**: All commits follow Conventional Commits format. AI co-author attribution is off by default — no `Co-Authored-By` trailers, no AI mentions in commit messages. Opt-in during `/setup-wizard`
+- **Commit convention**: All commits follow Conventional Commits format. AI co-author attribution is off by default — no `Co-Authored-By` trailers, no AI mentions in commit messages. Opt-in during `/setup-wizard`. All workflow commits use scoped `git add` (specific files only, never `git add -A`)
+- **Pre-squash safety check**: Before squashing WIP commits, workflows verify no commits were pushed to the remote — skips squash if history was already shared
 - **9-category ambiguity scan**: Catches requirement gaps before implementation
-- **Auto-compact**: In batch execution, automatically compacts context at heavy load to prevent degradation
+- **Auto-compact**: In batch execution, pauses and prompts user-initiated compaction at heavy context load to prevent degradation
 
 ## Pre-Populated Universal Rules
 
-The constitution template comes with universal rules that apply to ALL projects regardless of language or framework. These are ready out of the box — no `/constitute` needed:
+The constitution template comes with universal rules that apply to ALL projects regardless of language or framework. `/constitute` preserves these verbatim and only populates project-specific sections:
 
 **Code Quality**: No dead code, no debug artifacts, no magic values, one function one job, early returns, keep functions short, consistent style within files.
 
