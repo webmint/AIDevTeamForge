@@ -376,22 +376,61 @@ If tests were adjusted (import fixes only), commit:
 git add [test files you modified] && git commit -m "[WIP] Refactor: [short description] — test import fixes"
 ```
 
-## PHASE 7.5: Documentation Update (Conditional)
+## PHASE 7.5: Documentation Update (MANDATORY)
 
-If the refactoring changed any **public API signatures** (renamed exports, moved files that other code imports, changed function signatures) or **restructured architecture** (new modules, changed layer boundaries):
+Always invoke the tech-writer — let it decide whether documentation changes are needed.
 
-1. Launch the **tech-writer** agent with:
-   - The refactoring description and approved actions from Phase 2.4
-   - The list of changed files
-   - The existing `docs/` folder structure (run Glob on `docs/`)
-   - Instruction: "A refactoring changed these files. Check if any public API signatures, import paths, or documented architecture changed. If so, update inline docs (JSDoc/docstrings) and the relevant `docs/` file. If the refactoring was purely internal with no public-facing changes, report 'No doc update needed.'"
+### 7.5.1: Load Tech-Writer Agent
 
-2. If the tech-writer made changes, commit:
-   ```
-   git add docs/ [source files with doc changes] && git commit -m "[WIP] Refactor: [short description] — doc update"
-   ```
+Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. If the file does not exist, proceed with the inline prompt alone.
 
-If the refactoring is purely internal (no public API, import path, or architecture change), skip this phase — but document the skip decision in Phase 8.3's report as: `**Documentation**: Internal refactoring — no public API changes`.
+### 7.5.2: Launch Tech-Writer
+
+Construct the prompt with two parts:
+
+**Part 1** (if agent file exists): The full content of `.claude/agents/tech-writer.md`.
+
+**Part 2** (always included):
+
+```
+A refactoring changed these files. Evaluate whether documentation needs updating.
+
+## Refactoring Context
+[Refactoring description and approved actions from Phase 2.4]
+
+## Files Changed
+[List of changed files]
+
+## Existing Docs
+[Output of Glob on docs/ — so you know what already exists]
+
+## Instructions
+1. Read each changed file and determine if any public API signatures, import paths, or documented architecture changed
+2. If so: update inline docs (JSDoc/docstrings) and the relevant docs/ file
+3. If the refactoring was purely internal with no public-facing changes: report "No doc update needed" with justification — list which skip criteria apply and confirm no "Document when" criteria are triggered
+
+### Document when ANY of these apply:
+- Public API signatures changed (renamed exports, changed parameters/return types)
+- Import paths changed (moved files that other code imports)
+- Architecture restructured (new modules, changed layer boundaries)
+- User-facing behavior changed as a side effect
+
+### Skip documentation ONLY when ALL of these apply:
+- Purely internal restructuring (no public API surface changes)
+- No import path changes affecting consumers
+- No architecture changes that alter documented patterns
+```
+
+Launch the tech-writer agent with the combined prompt.
+
+### 7.5.3: Commit
+
+If the tech-writer made changes, commit:
+```
+git add docs/ [source files with doc changes] && git commit -m "[WIP] Refactor: [short description] — doc update"
+```
+
+Report the tech-writer's decision in Phase 8.3's report as: `**Documentation**: [Updated docs/architecture.md / No doc update needed — [justification]]`.
 
 ## PHASE 8: Report & Clean Up
 

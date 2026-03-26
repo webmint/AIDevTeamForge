@@ -5,6 +5,18 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-03-26
+
+### Changed
+- **Tech-writer invocation standardized**: All commands (`execute-task`, `fix`, `refactor`, `verify`) now use the same 2-part prompt pattern — Part 1 loads `.claude/agents/tech-writer.md` (full agent workflow), Part 2 provides task-specific context
+- **Documentation phase now mandatory**: `/fix` and `/refactor` Phase 7.5 changed from conditional ("if public API changed, invoke tech-writer") to mandatory — tech-writer always invoked and decides itself whether docs are needed, with explicit skip/document criteria and justification requirements
+- **Post-doc verification strengthened** (`execute-task`): Now checks changed signatures on existing exports (not just new exports), detects stale doc references, and validates tech-writer skip justifications against actual diff
+- Template version: 1.18.0 → 1.19.0
+
+### Fixed
+- **Task "Done When" checkboxes never checked**: `execute-task` Phase 4 had vague "Mark done conditions with `[x]`" — replaced with explicit instruction to change `- [ ]` to `- [x]` in the Done When section
+- **Spec AC checkboxes never checked**: `/verify` Phase 7 updated spec status to "Complete" but never marked acceptance criteria checkboxes — added explicit instruction to change `- [ ]` to `- [x]` for passing ACs
+
 ## [1.18.0] - 2026-03-25
 
 ### Added
