@@ -1,5 +1,5 @@
 {
-  "version": "1.21.1",
+  "version": "1.22.0",
   "description": "Manifest for AIDevTeamForge update system",
 
   "templateOwned": {
@@ -20,6 +20,10 @@
       ".claude/commands/refresh-docs.md",
       ".claude/commands/research.md",
       ".claude/commands/summarize.md",
+      ".claude/commands/_recovery.md",
+      ".claude/commands/_context-maintenance.md",
+      ".claude/commands/_multi-task-continuation.md",
+      ".claude/commands/_tech-writer-onboarding.md",
       ".claude/template-manifest.json",
       "scripts/**"
     ]

@@ -52,50 +52,9 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 
 Before anything else, check if a previous fix was interrupted.
 
-### 0.1: Check for WIP Marker
-
 Read `.claude/wip.md`. If it does NOT exist, skip to PHASE 1.
 
-If it DOES exist, a previous execution was interrupted. First check the `## Command` field:
-- If `Command: fix` → this is a previous fix. Continue with recovery below.
-- If the `## Command` field is **missing** (pre-v3 format) → assume it belongs to the current command. Continue with recovery below.
-- If `Command: execute-task` or `Command: refactor` → a different command was interrupted. Inform the user: "A previous `/[command]` session was interrupted (see .claude/wip.md). Clear it first by running `/[command]` to resume or recover, or delete `.claude/wip.md` manually to discard it." STOP — do not proceed.
-
-Read the WIP marker to determine:
-- What was being fixed
-- Which phase it was in when interrupted
-- What files were being modified
-
-### 0.2: Assess State
-
-Run these checks:
-1. `git status` — are there uncommitted changes?
-2. `git log --oneline -5` — are there `[WIP]` commits?
-3. Read the WIP marker for context
-4. **Source repo state** (if wip.md has a `## Source Repo Checkpoint` section with a commit hash):
-   - `git -C $SOURCE_ROOT status` — uncommitted source changes?
-   - `git -C $SOURCE_ROOT log --oneline -5` — source WIP commits?
-
-### 0.3: Present Recovery Options
-
-Report findings to the user and offer exactly these options:
-
-```
-Interrupted fix detected: [bug description]
-Interrupted during: Phase [N] — [phase name]
-
-Git state:
-- Uncommitted changes: [yes/no] ([list files])
-- WIP commits found: [yes/no] ([count])
-
-Options:
-1. **Resume** — Re-run verification on current state and continue from the interrupted phase.
-2. **Rollback and retry** — Reset to the last clean checkpoint, then re-execute the fix from scratch.
-3. **Rollback and abandon** — Reset to pre-WIP state. You handle it manually.
-4. **Keep changes, clear marker** — Keep current git state as-is, delete WIP marker only.
-```
-
-Wait for user to choose. Execute their choice using the same recovery logic as `/execute-task` Phase 0.3 (including source repo rollback via `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT` for "Rollback" options when a source checkpoint exists).
+If it exists, read `.claude/commands/_recovery.md` and follow its instructions with `CALLING_COMMAND = fix`.
 
 ## PHASE 1: Load Context
 
@@ -134,7 +93,7 @@ If `AC_VERIFICATION` is `"auto"` or `"browser-only"`:
 1. Attempt to call `mcp__chrome-devtools__list_pages` as a lightweight probe.
 2. If it **fails** (MCP not available):
    - Display: "Note: Chrome DevTools MCP is not running. When `/verify` runs after this fix, frontend AC items will be verified by code reading instead of browser interaction. To enable browser-based AC verification, start the WebStorm JS debugger before running `/verify`."
-   - This is informational only — do NOT block execution.
+   - This is informational only — do not block execution.
 3. If it **succeeds**: no message needed.
 
 ### 1.2: Locate Affected Code
@@ -392,17 +351,9 @@ A bug fix changed these files. Evaluate whether documentation needs updating.
 ## Instructions
 1. Read each changed file and determine if any public API signatures, documented behavior, or user-facing output changed
 2. If so: update inline docs (JSDoc/docstrings) and the relevant docs/ file
-3. If the fix only restores previously-documented behavior or is purely internal: report "No doc update needed" with justification — list which skip criteria apply and confirm no "Document when" criteria are triggered
+3. If the fix only restores previously-documented behavior or is purely internal: report "No doc update needed" with justification
 
-### Document when ANY of these apply:
-- Public API signature changed (parameters, return types, exports)
-- User-facing behavior changed (different output, new error messages, changed defaults)
-- New configuration option or workflow change introduced as part of the fix
-
-### Skip documentation ONLY when ALL of these apply:
-- Fix restores previously-documented behavior (no new semantics)
-- No public API signature changes
-- No user-facing behavior changes
+Use the document-when/skip-when criteria from the tech-writer workflow (Part 1). For bug fixes specifically: restoring previously-documented behavior with no API signature changes qualifies as a skip.
 ```
 
 Launch the tech-writer agent with the combined prompt.

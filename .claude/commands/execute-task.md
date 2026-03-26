@@ -45,74 +45,9 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 
 Before anything else, check if a previous task execution was interrupted.
 
-### 0.1: Check for WIP Marker
+Read `.claude/wip.md`. If it does NOT exist, skip to PHASE 1.
 
-Read `.claude/wip.md`. If it does NOT exist, skip to PHASE 1 (normal flow).
-
-If it DOES exist, a previous execution was interrupted. First check the `## Command` field:
-- If `Command: execute-task` → this is a previous task execution. Continue with recovery below.
-- If the `## Command` field is **missing** (pre-v3 format) → assume it belongs to the current command. Continue with recovery below.
-- If `Command: fix` or `Command: refactor` → a different command was interrupted. Inform the user: "A previous `/[command]` session was interrupted (see .claude/wip.md). Clear it first by running `/[command]` to resume or recover, or delete `.claude/wip.md` manually to discard it." STOP — do not proceed.
-
-Read the WIP marker to determine:
-- Which task was being executed (feature + task number)
-- Which phase it was in when interrupted
-- What files were being modified
-
-### 0.2: Assess State
-
-Run these checks:
-1. `git status` — are there uncommitted changes?
-2. `git log --oneline -5` — are there `[WIP]` commits?
-3. Read the task file — is it marked `in_progress`?
-4. Read `specs/[feature]/tasks/README.md` — current task statuses
-5. **Source repo state** (if wip.md has a `## Source Repo Checkpoint` section with a commit hash):
-   - `git -C $SOURCE_ROOT status` — uncommitted source changes?
-   - `git -C $SOURCE_ROOT log --oneline -5` — source WIP commits?
-
-### 0.3: Present Recovery Options
-
-Report findings to the user and offer exactly these options:
-
-```
-⚠️ Interrupted task detected: Task [N] — [Title] (Feature: [NNN-name])
-Interrupted during: Phase [N] — [phase name]
-
-Git state:
-- Uncommitted changes: [yes/no] ([list files])
-- WIP commits found: [yes/no] ([count])
-
-Options:
-1. **Resume** — Continue from where it stopped. Will re-run verification (tsc, lint) on current state and continue from the interrupted phase.
-2. **Rollback and retry** — Reset to the last clean checkpoint (git reset to pre-WIP state), then re-execute the task from scratch.
-3. **Rollback and skip** — Reset to pre-WIP state, mark task as Pending, and let you choose what to do next.
-4. **Keep changes, mark manual** — Keep current git state as-is, delete WIP marker, and let you handle it manually.
-```
-
-Wait for user to choose. Execute their choice:
-
-**If Resume:**
-- Run the Type Check Command from CLAUDE.md, the Lint Command, and the build command (if Build Command is specified in CLAUDE.md) on all files listed in the WIP marker
-- If they pass, jump to the phase AFTER the interrupted phase (e.g., if interrupted in Phase 3, jump to Phase 4: Mark Complete)
-- If they fail, inform the user — the code is in a broken state. Recommend option 2 (rollback and retry).
-
-**If Rollback and retry:**
-- `git stash` any uncommitted changes (save them just in case, user can `git stash pop` later)
-- `git reset --hard` to the commit before the first `[WIP]` commit (find it via `git log --oneline | grep -v "\[WIP\]" | head -1`)
-- **Source repo rollback** (if `$SOURCE_CHECKPOINT` exists in wip.md): `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`
-- Delete `.claude/wip.md`
-- Re-run `/execute-task [same task number]` from PHASE 1
-
-**If Rollback and skip:**
-- Same git reset as above (including source repo rollback if applicable)
-- Update the task file: set status back to `Pending`
-- Delete `.claude/wip.md`
-- Inform user the task is pending and they can run `/execute-task` when ready
-
-**If Keep changes, mark manual:**
-- Delete `.claude/wip.md` only
-- Do nothing else
-- Inform user: "WIP marker cleared. Git state untouched. Task file still shows in_progress — update it manually when done."
+If it exists, read `.claude/commands/_recovery.md` and follow its instructions with `CALLING_COMMAND = execute-task`.
 
 ## PHASE 1: Load Task Context
 
@@ -181,12 +116,12 @@ If `AC_VERIFICATION` is `"auto"` or `"browser-only"`:
 1. Attempt to call `mcp__chrome-devtools__list_pages` as a lightweight probe.
 2. If it **fails** (MCP not available):
    - Display: "Note: Chrome DevTools MCP is not running. When `/verify` runs after this task, frontend AC items will be verified by code reading instead of browser interaction. To enable browser-based AC verification, start the WebStorm JS debugger before running `/verify`."
-   - This is informational only — do NOT block execution.
+   - This is informational only — do not block execution.
 3. If it **succeeds**: no message needed.
 
 ## PHASE 2: Pre-Flight Check
 
-Before writing ANY code, verify:
+Before writing code, verify:
 
 1. **Constitution populated**: If `constitution.md` contains `_Run /constitute to populate_`, stop immediately and inform the user: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/execute-task`."
 2. **Constitution compliance**: Does the planned change violate any NON-NEGOTIABLE rules?
@@ -411,40 +346,9 @@ You are updating documentation after Task [N] from an approved task breakdown.
 
 ## Instructions
 
-You must address BOTH documentation layers:
+Address both documentation layers (inline docs + docs/ folder) using the document-when/skip-when criteria and rules from the tech-writer workflow (Part 1). Apply them to the task context above.
 
-**Layer 1 — Inline docs**: For every new or changed public export (function, class, component, type), add or update inline documentation (JSDoc/docstrings) in the source file.
-
-**Layer 2 — docs/ folder**: Check if any existing doc in docs/ covers this area — if so, update it. If this task introduces a new feature area with no existing doc, create docs/features/[name].md.
-
-### Document when ANY of these apply:
-- A new public API, function, or component was created
-- Existing behavior was changed in a way users/developers need to know
-- A new architectural pattern was introduced
-- A new configuration option was added
-- A workflow or process changed
-
-### Skip documentation ONLY when ALL of these apply:
-- Internal refactoring with no behavior change
-- Bug fixes that restore expected (already-documented) behavior
-- Type-only changes with no semantic difference
-- Test-only changes
-
-If you determine documentation is not needed, you must justify by:
-1. Listing which skip criteria apply
-2. Confirming that NONE of the "Document when" criteria are triggered
-
-### Before completing:
-Verify every code example matches the actual implementation and every file path mentioned is correct. Cross-check inline doc signatures against the real function signatures.
-
-## Rules
-1. Only document what exists — code that is implemented and verified
-2. Every new public export gets inline docs (JSDoc/docstring)
-3. Match existing doc style in the project
-4. Code examples must come from actual implementation
-5. Do NOT modify logic, specs, or task files — only add documentation
-6. Include @example for non-trivial public APIs
-7. Match the existing inline doc style in the file (if other functions have JSDoc, use JSDoc)
+If you determine documentation is not needed, justify by listing which skip criteria apply and confirming no "Document when" criteria are triggered.
 ```
 
 Launch the tech-writer agent with the combined prompt (Part 1 + Part 2) using the Agent tool.
@@ -518,8 +422,6 @@ The task is now fully committed with a clean single commit and no WIP artifacts.
 
 > **Source repo note** (wrapper mode): Source WIP commits are intentionally NOT squashed here. They accumulate across tasks and are squashed into a single clean commit when `/verify` approves the feature (Phase 9.5).
 
-> **Source repo note** (wrapper mode): Source WIP commits are intentionally NOT squashed here. They accumulate across tasks and are squashed into a single clean commit when `/verify` approves the feature (Phase 9.5).
-
 ## PHASE 7: Memory Update
 
 If anything unexpected happened during execution (a gotcha, a pattern discovery, a near-mistake), update `.claude/memory/MEMORY.md`.
@@ -528,158 +430,21 @@ Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entr
 
 ## PHASE 7.5: Context Maintenance
 
-After completing a task, maintain context health to prevent degradation across sequential task executions.
-
-### 7.5.1: Update Session State
-
-FULLY OVERWRITE `.claude/session-state.md` with the following template. This is a fixed-size sliding window — never append, always overwrite completely. The file must not exceed ~40 lines / ~800 tokens.
-
-When writing session-state.md, the "Tasks completed this session" counter refers to tasks completed in the current session FOR THE CURRENT FEATURE. If the feature has changed since the last write, start the counter at 1.
-
-```
-<!-- This file is a fixed-size sliding window. Always fully overwritten, never appended. Max ~40 lines. -->
-# Session State
-Last updated after Task [N]: [Title]
-
-## Current Feature
-[NNN-feature-name]
-
-## Session Stats
-Tasks completed this session: [N]
-Estimated context load: light (<3 tasks) | moderate (3-5) | heavy (6+)
-
-## Progress
-- Last completed: Task [N] — [title]
-- Next pending: Task [N] — [title] (ready | blocked by Task [N])
-- Tasks remaining in feature: [count]
-
-## Key Decisions This Session (last 3 only)
-- [decision 1 — most recent, from MEMORY.md or this session]
-- [decision 2]
-- [decision 3]
-
-Older decisions are persisted in .claude/memory/MEMORY.md.
-
-## Files Modified Recently (last 3 tasks only)
-- [file]: [what changed] (Task [N])
-- [file]: [what changed] (Task [N])
-
-Older modifications are tracked in each task's completion notes under specs/.
-
-## Active Constraints
-- [Any constitution rules or spec constraints actively relevant to the next task]
-```
-
-After writing session-state.md, verify its line count. If over 40 lines, trim oldest entries from "Key Decisions This Session" and "Files Modified Recently" until the file is under 40 lines.
-
-### 7.5.2: Context Health Check
-
-Read the "Tasks completed this session" count from the session-state you just wrote.
-
-**If light (1-2 tasks):** No action. Just report task completion normally.
-
-**If moderate (3-5 tasks):** Add a recommendation after the task report:
-
-```
-💡 Context maintenance: [N] tasks completed this session.
-Optional: Run /compact with these instructions:
-
-/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
-
-Or continue to next task if context still feels responsive.
-```
-
-**If heavy (6+ tasks):** Strongly recommend compaction:
-
-```
-🔴 Context maintenance: [N] tasks completed this session (heavy context load).
-Strongly recommended: Run /compact before continuing.
-
-/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
-```
-
-Do NOT auto-compact. Surface the recommendation and let the user decide. For single-task mode, this is advisory only — the user may choose to continue without compacting.
-
-> **Note**: Phase 7.5.2 (single-task) recommends compaction; Phase 8 (multi-task, heavy) pauses execution. The difference is intentional: single-task completion is advisory, multi-task continuation requires the pause to prevent context degradation across many sequential tasks.
-
-### 7.5.3: Auto-Verify on Feature Completion
-
-After Phase 7.5.2 completes (for both single-task and multi-task paths), check whether the entire feature is now done:
-
-1. Read `specs/[feature]/tasks/README.md` and check whether **every** task in the feature has Status: `Complete`.
-2. If **all tasks are Complete**: skip the normal completion report and instead:
-   ```
-   ✅ All feature tasks complete — automatically running /verify
-   ```
-   Then invoke `/verify` with the feature's spec file path. This replaces the normal end-of-execution flow (no Multi-Task Final Report needed).
-3. If any tasks remain non-Complete: continue with the normal flow (single-task completion report or Phase 8 multi-task continuation).
+Read `.claude/commands/_context-maintenance.md` and follow its instructions.
+Context: the current feature directory, the task number and title just completed.
 
 ## PHASE 8: Multi-Task Continuation
 
 This phase only applies when the task queue (built in Phase 1.1) contains more than one task.
 
-After Phase 7.5 completes for the current task:
+Read `.claude/commands/_multi-task-continuation.md` and follow its instructions.
+Context: the remaining task queue, the current feature directory.
 
-1. Remove the completed task from the queue
-2. If the queue is empty → Phase 7.5.3 (Auto-Verify) already handled feature-complete detection. If it did not trigger (some tasks outside the queue are still pending), report the Multi-Task Final Report below.
-3. If the queue has remaining tasks:
-   a. **Dependency check**: Verify the next task's dependencies are all satisfied (marked Complete). If not, stop and report: "Task [N] is blocked by incomplete dependency Task [M]. Completed [X] of [Y] queued tasks."
-   a2. **Review checkpoint gate**: Read the next task's header. If `Review checkpoint: Yes`:
-      ```
-      ⏸️ REVIEW CHECKPOINT before Task [N]: [title]
+## RULES
 
-      Preceding tasks completed:
-      - Task [X]: [1-line summary] — Contract: Expects [A/B] | Produces [C/D]
-      - Task [Y]: [1-line summary] — Contract: Expects [A/B] | Produces [C/D]
-
-      Options:
-      1. **Continue** — contracts pass, proceed to Task [N]
-      2. **Review** — show git diff from preceding tasks before continuing
-      3. **Pause** — stop execution here, resume later with /execute-task [N]
-      ```
-      Wait for user response:
-      - **Continue**: proceed to step b.
-      - **Review**: show `git diff` for the preceding tasks' commits. After user reviews, ask again: Continue or Pause.
-      - **Pause**: clean up WIP state (delete `.claude/wip.md`), stop execution. Report completed tasks so far.
-   b. **Context health**: Read the "Tasks completed this session" count from session-state.md.
-      - If heavy (6+ tasks): **pause execution** and present the compaction command to the user:
-        ```
-        🔴 CONTEXT HEALTH PAUSE — [N] tasks completed this session (heavy context load).
-        Strongly recommended: Run /compact before continuing.
-
-        /compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task MUST run the tech-writer agent and verify docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
-
-        Then resume with: /execute-task [remaining-task-ids]
-        ```
-        Stop execution here. Do NOT continue to the next task without user-initiated compaction.
-      - If light/moderate: continue without compaction.
-   c. **Loop back** to Phase 1 for the next task in the queue. The task queue carries over — do not re-parse `$ARGUMENTS`.
-
-### Multi-Task Final Report
-
-When all queued tasks are complete (or execution stops due to failure/blocked dependency), provide a summary:
-
-```
-## Batch Execution Complete
-
-**Tasks completed**: [list with status]
-**Tasks skipped/blocked**: [list with reason, if any]
-**Total verification**: [all passed / N repair cycles needed]
-
-**Feature progress**: [X of Y tasks complete]
-**Next pending**: Task [N] — [title] (ready / blocked by [M])
-```
-
-## IMPORTANT RULES
-
-1. **One task per cycle** — each task gets its own full Phase 0–7.5 treatment, even in multi-task mode. Multi-task arguments (`all`, ranges, lists) chain sequential cycles — they do not batch or parallelize tasks.
-2. **Scope discipline** — if the agent changes files outside the task scope, revert those changes and investigate
-3. **Fail fast** — if pre-flight checks fail, stop immediately. Don't try to work around constitution violations
-4. **Agent isolation** — the agent should only know about its task, not the entire breakdown. This prevents scope creep
-5. **Self-repair before escalation** — when post-execution verification fails, attempt automatic repair (up to 3 times) before stopping and reporting to the user. Never skip repair attempts.
-6. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
-7. **Verify everything** — trust but verify. Even if hooks ran, run explicit verification after the agent finishes
-8. **Track deviations** — if the actual changes differ from the planned changes, document WHY in the task file's Completion Notes
-9. **Context hygiene** — always fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines. Recommend /compact at moderate load. In multi-task mode, pause execution at heavy load (6+ tasks) and ask the user to run /compact before resuming.
-10. **Documentation is non-negotiable** — Phase 5 MUST run for every task, including in multi-task mode. The tech-writer agent must be invoked and its output verified (new public APIs must have inline docs). Skipping Phase 5 is a workflow violation equivalent to skipping verification.
-11. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start of execute-task, enter recovery flow. Never delete wip.md without either completing the task or explicitly rolling back.
+1. **Scope discipline** — if the agent changes files outside the task scope, revert those changes and investigate
+2. **Self-repair before escalation** — when verification fails, attempt automatic repair (up to 3 times) before stopping. Never skip repair attempts.
+3. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
+4. **Documentation is non-negotiable** — Phase 5 MUST run for every task, including in multi-task mode. The tech-writer agent must be invoked and its output verified.
+5. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow.
+6. **Context hygiene** — fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines.

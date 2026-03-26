@@ -1,0 +1,89 @@
+# Context Maintenance: Post-Task Bookkeeping
+
+This file is read by `/execute-task` after every task completion (Phase 7.5). It manages session state and context health.
+
+Context from the caller: the current feature directory, the task number and title just completed.
+
+## 7.5.1: Update Session State
+
+FULLY OVERWRITE `.claude/session-state.md` with the following template. This is a fixed-size sliding window — never append, always overwrite completely. The file must not exceed ~40 lines / ~800 tokens.
+
+When writing session-state.md, the "Tasks completed this session" counter refers to tasks completed in the current session FOR THE CURRENT FEATURE. If the feature has changed since the last write, start the counter at 1.
+
+```
+<!-- This file is a fixed-size sliding window. Always fully overwritten, never appended. Max ~40 lines. -->
+# Session State
+Last updated after Task [N]: [Title]
+
+## Current Feature
+[NNN-feature-name]
+
+## Session Stats
+Tasks completed this session: [N]
+Estimated context load: light (<3 tasks) | moderate (3-5) | heavy (6+)
+
+## Progress
+- Last completed: Task [N] — [title]
+- Next pending: Task [N] — [title] (ready | blocked by Task [N])
+- Tasks remaining in feature: [count]
+
+## Key Decisions This Session (last 3 only)
+- [decision 1 — most recent, from MEMORY.md or this session]
+- [decision 2]
+- [decision 3]
+
+Older decisions are persisted in .claude/memory/MEMORY.md.
+
+## Files Modified Recently (last 3 tasks only)
+- [file]: [what changed] (Task [N])
+- [file]: [what changed] (Task [N])
+
+Older modifications are tracked in each task's completion notes under specs/.
+
+## Active Constraints
+- [Any constitution rules or spec constraints actively relevant to the next task]
+```
+
+After writing session-state.md, verify its line count. If over 40 lines, trim oldest entries from "Key Decisions This Session" and "Files Modified Recently" until under 40 lines.
+
+## 7.5.2: Context Health Check
+
+Read the "Tasks completed this session" count from the session-state you just wrote.
+
+**If light (1-2 tasks):** No action. Report task completion normally.
+
+**If moderate (3-5 tasks):** Add a recommendation after the task report:
+
+```
+💡 Context maintenance: [N] tasks completed this session.
+Optional: Run /compact with these instructions:
+
+/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task runs the tech-writer agent and verifies docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
+
+Or continue to next task if context still feels responsive.
+```
+
+**If heavy (6+ tasks):** Strongly recommend compaction:
+
+```
+🔴 Context maintenance: [N] tasks completed this session (heavy context load).
+Strongly recommended: Run /compact before continuing.
+
+/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Phase 5 documentation obligation: every task runs the tech-writer agent and verifies docs before Phase 6. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
+```
+
+Do not auto-compact. Surface the recommendation and let the user decide. For single-task mode, this is advisory only.
+
+> **Note**: Phase 7.5.2 (single-task) recommends compaction; Phase 8 (multi-task, heavy) pauses execution. The difference is intentional: single-task completion is advisory, multi-task continuation requires the pause to prevent context degradation across many sequential tasks.
+
+## 7.5.3: Auto-Verify on Feature Completion
+
+After 7.5.2 completes (for both single-task and multi-task paths), check whether the entire feature is done:
+
+1. Read `specs/[feature]/tasks/README.md` and check whether **every** task in the feature has Status: `Complete`.
+2. If **all tasks are Complete**: skip the normal completion report and instead:
+   ```
+   ✅ All feature tasks complete — automatically running /verify
+   ```
+   Then invoke `/verify` with the feature's spec file path. This replaces the normal end-of-execution flow.
+3. If any tasks remain non-Complete: continue with the normal flow (single-task completion report or Phase 8 multi-task continuation).

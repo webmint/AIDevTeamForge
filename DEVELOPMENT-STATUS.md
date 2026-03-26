@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (17 files in `.claude/commands/`)
+### Commands (17 commands + 4 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -23,6 +23,12 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review → doc update (mandatory), with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
 - `refresh-docs.md` — Lightweight documentation refresh using git delta; invokes tech-writer in Refresh Mode on changed files only
 - `release.md` — Meta-command for the template repo itself: automates version bump, changelog, and documentation updates after making changes
+
+Shared partials (`_`-prefixed, loaded on-demand by parent commands):
+- `_recovery.md` — Phase 0 crash recovery logic shared by execute-task, fix, and refactor
+- `_context-maintenance.md` — Phase 7.5 session state and context health (execute-task)
+- `_multi-task-continuation.md` — Phase 8 batch queue management (execute-task multi-task mode)
+- `_tech-writer-onboarding.md` — Full onboarding scan instructions Section A (onboard)
 
 ### Agent Templates (15 files in `.claude/templates/agents/`)
 Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`
@@ -105,8 +111,8 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - CLAUDE.template.md updated with rule 13 (session state) and Session Continuity section
 
 ### Crash Recovery (Phase 0 + WIP Checkpoints)
-- `/execute-task` now creates a WIP marker (`.claude/wip.md`) and git checkpoint commits during execution
-- Phase 0: Recovery Check detects interrupted tasks and offers 4 options: resume, rollback+retry, rollback+skip, keep manual. WIP markers include a `Command` field (execute-task/fix/refactor) to prevent cross-command recovery confusion
+- `/execute-task`, `/fix`, and `/refactor` create a WIP marker (`.claude/wip.md`) and git checkpoint commits during execution
+- Phase 0: Recovery Check (shared via `_recovery.md`) detects interrupted sessions and offers 4 options: resume, rollback+retry, rollback+skip, keep manual. WIP markers include a `Command` field (execute-task/fix/refactor) to prevent cross-command recovery confusion
 - Git `[WIP]` commits preserve partial work at each phase; squashed into a clean commit on completion (with pre-squash safety check — skips squash if commits were already pushed to remote; preserves wip.md if squash commit fails)
 - All workflow commits use scoped `git add` (specific files only, never `git add -A`) to prevent accidentally committing secrets or unwanted files
 - `wip.md` is gitignored — only exists during active task execution

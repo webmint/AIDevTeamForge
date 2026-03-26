@@ -5,6 +5,26 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-03-26
+
+### Added
+- **Shared command partials**: Extracted conditional and duplicated sections into 4 reusable `_`-prefixed files in `.claude/commands/`:
+  - `_recovery.md` — Phase 0 crash recovery logic, shared by `/execute-task`, `/fix`, and `/refactor` (previously duplicated ~50 lines × 3 files)
+  - `_context-maintenance.md` — Phase 7.5 session state and context health management, loaded on-demand by `/execute-task`
+  - `_multi-task-continuation.md` — Phase 8 queue management and batch execution, loaded only for multi-task runs
+  - `_tech-writer-onboarding.md` — Full onboarding scan instructions (Section A), loaded on-demand by `/onboard`
+
+### Changed
+- **Command prompt sizes reduced**: `/execute-task` 685→450 lines (-34%), `/onboard` 504→171 lines (-66%), `/fix` 520→471 lines (-9%), `/refactor` 581→531 lines (-9%) — reduces per-invocation cognitive load on Claude
+- **Emphasis marker inflation reduced**: Strong markers (CRITICAL/NEVER/MUST/IMPORTANT) across the 4 main execution commands cut from 183→71 total — remaining markers reserved for genuine safety/correctness risks (data loss, workflow corruption, scope violations)
+- **IMPORTANT RULES trimmed in `/execute-task`**: 11 rules→6, removing rules that duplicate inline instructions (fail-fast, agent isolation, verify-everything already enforced by their respective phases)
+- **Tech-writer Part 2 prompts trimmed**: Document-when/skip-when criteria removed from `/execute-task`, `/fix`, and `/refactor` agent prompts — these already exist in the tech-writer agent file (Part 1) loaded at runtime
+- **`/refresh-docs` now loads agent file**: Phase 3 follows the same Part 1 (agent file) + Part 2 (context) pattern used by all other commands, instead of embedding an inline prompt with duplicated rules
+- Template version: 1.21.1 → 1.22.0
+
+### Fixed
+- Duplicated "Source repo note" paragraph in `/execute-task` Phase 6
+
 ## [1.21.1] - 2026-03-26
 
 ### Changed

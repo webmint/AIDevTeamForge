@@ -127,9 +127,17 @@ Wait for user confirmation before proceeding.
 
 ## PHASE 3: Refresh Documentation
 
+### 3.0: Load Tech-Writer Agent
+
+Read `.claude/agents/tech-writer.md` and include its **full content** as Part 1 of the agent prompt. The agent already knows about Refresh Mode (it will auto-select it when the prompt contains "REFRESH MODE"). If the file does not exist, proceed with the Part 2 prompt alone.
+
 ### 3.1: Single Invocation (1–20 files)
 
-Launch the **tech-writer** agent with this prompt:
+Construct the prompt with two parts:
+
+**Part 1** (if agent file exists): The full content of `.claude/agents/tech-writer.md`.
+
+**Part 2** (always included):
 
 ```
 You are operating in **REFRESH MODE**. Update documentation for source files that changed since docs were last updated.
@@ -161,15 +169,9 @@ You are operating in **REFRESH MODE**. Update documentation for source files tha
 5. If architecture or cross-module patterns changed, update `docs/architecture.md`
 6. If a public API was removed, remove it from both inline docs and `docs/` files
 7. Report what you updated, what you created, and what you skipped (with reasons)
-
-## Rules
-1. Only read files listed above — do not scan the broader codebase
-2. Only document what exists — code that is implemented
-3. Match existing documentation style in the project
-4. Code examples must come from actual implementation
-5. Do NOT modify logic, specs, or task files — only add documentation
-6. Update existing docs first — only create new files when no existing file covers the topic
 ```
+
+Launch the tech-writer agent with the combined prompt (Part 1 + Part 2).
 
 ### 3.2: Batched Invocation (21–50 files)
 
