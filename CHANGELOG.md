@@ -5,6 +5,14 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.1] - 2026-03-26
+
+### Changed
+- **Source auto-commit simplified**: Reduced per-command WIP commits from 5-7 (one per phase) to 1 (after verification passes only) — less context pressure, fewer points for Claude to forget
+- **Squash logic deduplicated**: Extracted into a shared `Source Repo Auto-Commit` reference section at the top of each command file, replacing ~70 lines of duplicated inline logic with compact references
+- **User-confirmed squash**: Source repo squash now proposes `[TICKET-ID] - Description` and asks user to confirm or edit before committing, instead of auto-committing silently
+- Template version: 1.21.0 → 1.21.1
+
 ## [1.21.0] - 2026-03-26
 
 ### Added

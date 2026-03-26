@@ -27,6 +27,27 @@ Use `/specify` instead when:
 
 If during diagnosis (Phase 2) the bug turns out to be larger than expected, STOP and recommend the user run `/specify` instead. Do not attempt large fixes through `/fix`.
 
+## Source Repo Auto-Commit (Wrapper Mode)
+
+Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
+
+**Checkpoint**: At the start of execution, create an empty checkpoint in the source repo:
+`git -C $SOURCE_ROOT commit -m "[WIP] checkpoint" --allow-empty` → store hash as `$SOURCE_CHECKPOINT`
+
+**WIP commit**: After code passes verification (Phase 5), commit all source changes:
+`git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] source changes"`
+
+**Squash** (at Phase 8.1.1): Propose a commit message and ask user to confirm before committing:
+1. Extract ticket ID from source branch name — first match of `[A-Z]{2,}-[0-9]+`
+2. Generate description from bug description (Phase 2.2)
+3. Present to user: `Proposed source commit: [AAA-123] - Description. Confirm or edit:`
+4. On confirmation: `git -C $SOURCE_ROOT reset --soft $SOURCE_CHECKPOINT && git -C $SOURCE_ROOT commit -m "<confirmed message>"`
+5. If WIP commits were already pushed to remote, skip squash and warn user
+
+No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
+
+**Recovery**: Phase 0 checks source repo state via wip.md's `## Source Repo Checkpoint` section. Rollback resets source: `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`.
+
 ## PHASE 0: Recovery Check
 
 Before anything else, check if a previous fix was interrupted.
@@ -257,8 +278,6 @@ After applying the fix, commit:
 git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — fix applied"
 ```
 
-**Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] fix applied"`
-
 Update `.claude/wip.md` — change Phase to `5 (Verify)`.
 
 ## PHASE 5: Verify (with Self-Repair)
@@ -272,6 +291,8 @@ Run verification on all changed files:
 5. **No regressions**: Check that the fix doesn't break the obvious happy path
 6. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root
 
+**Source repo WIP** (wrapper mode only): After all checks pass, run the **WIP commit** from the Source Repo Auto-Commit section above.
+
 **If ALL checks pass** → proceed to Phase 6.
 
 **If any check fails** → enter the self-repair loop (max 3 attempts):
@@ -283,7 +304,6 @@ For each repair attempt:
    ```
    git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — repair attempt [M]/3"
    ```
-   **Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] repair"`
 4. Re-run ALL verification checks
 
 **If verification passes after any attempt** → proceed to Phase 6.
@@ -312,7 +332,6 @@ The agent will check: constitution compliance, architecture & patterns, type saf
   ```
   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — review fixes"
   ```
-  **Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] review fixes"`
 - If still BLOCKED after this additional cycle, STOP and report the remaining issues to the user. Do not attempt further review cycles.
 
 **If the agent returns APPROVE or only warnings/info** → proceed to Phase 7.
@@ -341,8 +360,6 @@ If tests were added or modified, commit:
 ```
 git add [test files you modified] && git commit -m "[WIP] Fix: [short description] — tests"
 ```
-
-**Source repo WIP** (wrapper mode only, if source test files touched): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] tests"`
 
 ## PHASE 7.5: Documentation Update (MANDATORY)
 
@@ -397,8 +414,6 @@ If the tech-writer made changes, commit:
 git add docs/ [source files with doc changes] && git commit -m "[WIP] Fix: [short description] — doc update"
 ```
 
-**Source repo WIP** (wrapper mode only, if source files touched): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] docs"`
-
 Report the tech-writer's decision in Phase 8.3's report as: `**Documentation**: [Updated docs/features/X.md / No doc update needed — [justification]]`.
 
 ## PHASE 8: Report & Clean Up
@@ -422,26 +437,9 @@ Follow the **Commit Convention** section in CLAUDE.md (format and attribution ru
 
 ### 8.1.1: Source Repo Squash (wrapper mode only)
 
-This step only runs when `SOURCE_ROOT != "."` AND there are `[WIP]` commits in the source repo.
+Skip if `SOURCE_ROOT` is `.` or no `[WIP]` commits in source repo.
 
-1. **Extract ticket ID**: Read the source repo's branch name (`git -C $SOURCE_ROOT branch --show-current`). Match the first `[A-Z]{2,}-[0-9]+` in the name (e.g. `feature/AAA-123-desc` → `AAA-123`). If no match, ask the user for the commit message.
-
-2. **Generate description**: Use the bug description from Phase 2.2 as the commit description. Keep it under 72 characters total with the ticket ID.
-
-3. **Squash**: Verify WIP commits haven't been pushed:
-   ```
-   git -C $SOURCE_ROOT log --oneline origin/$(git -C $SOURCE_ROOT branch --show-current)..HEAD 2>/dev/null
-   ```
-   - If local only → squash:
-     ```
-     git -C $SOURCE_ROOT reset --soft $SOURCE_CHECKPOINT
-     git -C $SOURCE_ROOT commit -m "[AAA-123] - Description"
-     ```
-   - If already pushed → skip squash, warn user.
-
-   No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
-
-4. Report: `Source repo commit: [AAA-123] - Description (squashed N WIP commits)`
+Run the **Squash** procedure from the Source Repo Auto-Commit section above. Generate the description from the bug description (Phase 2.2).
 
 ### 8.1.5: Update Bug File (if applicable)
 

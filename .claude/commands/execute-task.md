@@ -27,6 +27,20 @@ Picks up one or more tasks from the breakdown, selects the assigned agent for ea
 2. The specified task's dependencies must all be completed (status: Complete)
 3. If dependencies are not met, inform the user which tasks must be completed first
 
+## Source Repo Auto-Commit (Wrapper Mode)
+
+Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
+
+**Checkpoint**: At the start of execution, create an empty checkpoint in the source repo:
+`git -C $SOURCE_ROOT commit -m "[WIP] checkpoint" --allow-empty` → store hash as `$SOURCE_CHECKPOINT`
+
+**WIP commit**: After code passes verification (Phase 3.3), commit all source changes:
+`git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] source changes"`
+
+**Squash**: For execute-task, source WIP commits are NOT squashed here — they accumulate across tasks and are squashed by `/verify` Phase 9.5 when the feature is approved.
+
+**Recovery**: Phase 0 checks source repo state via wip.md's `## Source Repo Checkpoint` section. Rollback resets source: `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`.
+
 ## PHASE 0: Recovery Check
 
 Before anything else, check if a previous task execution was interrupted.
@@ -297,11 +311,6 @@ After the agent completes, immediately create a WIP git commit to preserve the w
 git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
 ```
 
-**Source repo WIP** (wrapper mode only, `SOURCE_ROOT != "."`):
-```
-git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] task execution"
-```
-
 Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
 
 ### 3.3: Post-Agent Verification (with Self-Repair)
@@ -316,6 +325,8 @@ After the agent completes, run verification:
 6. **Contract postconditions**: Read the task's `## Contracts → ### Produces` section. For each postcondition, use Grep or Read to verify it holds in the codebase (e.g., verify the export exists, the interface has the expected fields, the function has the expected name). Track pass/fail for each postcondition.
 7. **Run affected tests**: Search for test files (`*.test.*`, `*.spec.*`) in the same directories as changed files. If test files exist and a test runner is available (check CLAUDE.md for Test Command, or detect via package.json scripts), run them. If no test files or test runner exist, skip this check. Test failures are treated the same as other verification failures.
 8. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`, `bugs/`, `research/`, `.mcp.json`. If any are found, flag as a verification failure.
+
+**Source repo WIP** (wrapper mode only): After all checks pass, run the **WIP commit** from the Source Repo Auto-Commit section above.
 
 **If ALL checks pass** → proceed to Phase 4.
 
@@ -333,7 +344,6 @@ For each repair attempt:
    ```
    git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
    ```
-   **Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] repair"`
 4. Re-run ALL verification checks above
 
 **If verification passes after any attempt** → proceed to Phase 4.
@@ -457,8 +467,6 @@ If the tech-writer made any changes, commit them:
 git add docs/ [source files with doc changes] && git commit -m "[WIP] Task [N]: [title] — documentation update"
 ```
 
-**Source repo WIP** (wrapper mode only, if source files were touched): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] docs"`
-
 Update `.claude/wip.md` — change Phase to `6 (Report)`.
 
 ## PHASE 6: Report
@@ -507,6 +515,8 @@ Provide a concise summary to the user:
 2. Delete `.claude/wip.md` (only after the final commit succeeds)
 
 The task is now fully committed with a clean single commit and no WIP artifacts.
+
+> **Source repo note** (wrapper mode): Source WIP commits are intentionally NOT squashed here. They accumulate across tasks and are squashed into a single clean commit when `/verify` approves the feature (Phase 9.5).
 
 > **Source repo note** (wrapper mode): Source WIP commits are intentionally NOT squashed here. They accumulate across tasks and are squashed into a single clean commit when `/verify` approves the feature (Phase 9.5).
 
