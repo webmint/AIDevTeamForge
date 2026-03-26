@@ -311,22 +311,60 @@ If tests were added or modified, commit:
 git add [test files you modified] && git commit -m "[WIP] Fix: [short description] — tests"
 ```
 
-## PHASE 7.5: Documentation Update (Conditional)
+## PHASE 7.5: Documentation Update (MANDATORY)
 
-If the fix changed any **public API signatures** (function parameters, return types, exported interfaces) or **user-facing behavior** (different output, new error messages, changed defaults):
+Always invoke the tech-writer — let it decide whether documentation changes are needed.
 
-1. Launch the **tech-writer** agent with:
-   - The bug description and root cause from Phase 2.2
-   - The list of changed files
-   - The existing `docs/` folder structure (run Glob on `docs/`)
-   - Instruction: "A bug fix changed these files. Check if any public API signatures or documented behavior changed. If so, update inline docs (JSDoc/docstrings) and the relevant `docs/` file. If the fix only restores previously-documented behavior, report 'No doc update needed.'"
+### 7.5.1: Load Tech-Writer Agent
 
-2. If the tech-writer made changes, commit:
-   ```
-   git add docs/ [source files with doc changes] && git commit -m "[WIP] Fix: [short description] — doc update"
-   ```
+Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. If the file does not exist, proceed with the inline prompt alone.
 
-If the fix is purely internal (no public API or behavior change), skip this phase — but document the skip decision in Phase 8.3's report as: `**Documentation**: No public API changes — skipped`.
+### 7.5.2: Launch Tech-Writer
+
+Construct the prompt with two parts:
+
+**Part 1** (if agent file exists): The full content of `.claude/agents/tech-writer.md`.
+
+**Part 2** (always included):
+
+```
+A bug fix changed these files. Evaluate whether documentation needs updating.
+
+## Bug Context
+[Bug description and root cause from Phase 2.2]
+
+## Files Changed
+[List of changed files]
+
+## Existing Docs
+[Output of Glob on docs/ — so you know what already exists]
+
+## Instructions
+1. Read each changed file and determine if any public API signatures, documented behavior, or user-facing output changed
+2. If so: update inline docs (JSDoc/docstrings) and the relevant docs/ file
+3. If the fix only restores previously-documented behavior or is purely internal: report "No doc update needed" with justification — list which skip criteria apply and confirm no "Document when" criteria are triggered
+
+### Document when ANY of these apply:
+- Public API signature changed (parameters, return types, exports)
+- User-facing behavior changed (different output, new error messages, changed defaults)
+- New configuration option or workflow change introduced as part of the fix
+
+### Skip documentation ONLY when ALL of these apply:
+- Fix restores previously-documented behavior (no new semantics)
+- No public API signature changes
+- No user-facing behavior changes
+```
+
+Launch the tech-writer agent with the combined prompt.
+
+### 7.5.3: Commit
+
+If the tech-writer made changes, commit:
+```
+git add docs/ [source files with doc changes] && git commit -m "[WIP] Fix: [short description] — doc update"
+```
+
+Report the tech-writer's decision in Phase 8.3's report as: `**Documentation**: [Updated docs/features/X.md / No doc update needed — [justification]]`.
 
 ## PHASE 8: Report & Clean Up
 

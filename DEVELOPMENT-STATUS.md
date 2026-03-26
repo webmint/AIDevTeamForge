@@ -18,9 +18,9 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `execute-task.md` — Runs a single task with pre-flight checks (including contract preconditions), agent execution, doc writing (with structured prompt + post-doc verification), verification (including contract postconditions + affected tests); review checkpoint gates in batch mode
 - `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now, fix docs now (direct tech-writer), or defer to `bugs/`; auto-triggers `/summarize` on APPROVED verdict
 - `summarize.md` — Generates concise, PR-ready feature summary from spec, plan, tasks, and git history; saves to `specs/[feature]/summary.md`; runs automatically after `/verify` approves
-- `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test → doc update (conditional), with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
+- `fix.md` — Lightweight bug-fix workflow: diagnose → fix → review → test → doc update (mandatory), with runtime-debugger, code-reviewer, and qa-engineer agents; accepts bug file paths from `bugs/`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
-- `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review → doc update (conditional), with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
+- `refactor.md` — Focused refactoring workflow: analyze → propose → approve → apply → review → doc update (mandatory), with auto-selected agent (architect/frontend-engineer/backend-engineer), code-reviewer, and qa-engineer agents
 - `refresh-docs.md` — Lightweight documentation refresh using git delta; invokes tech-writer in Refresh Mode on changed files only
 - `release.md` — Meta-command for the template repo itself: automates version bump, changelog, and documentation updates after making changes
 
@@ -71,7 +71,7 @@ Setup wizard decides which agents to generate based on detected stack.
 4. **Sequential numbering** — features: 001, 002...; tasks within feature: 001, 002...
 5. **All agents as templates, wizard selects** — 14 templates, setup wizard conditionally generates based on project
 6. **Universal constitution rules pre-populated** — SOLID, DRY, KISS, error handling, code quality, workflow rules all built-in; `/constitute` preserves these `[universal]` sections verbatim and only populates `[project-specific]` sections
-7. **Mandatory documentation** — tech-writer agent runs after every task (with structured prompt + post-doc verification), also runs conditionally after `/fix` and `/refactor` when public APIs change; `/refresh-docs` catches stale docs via git delta; `/plan` declares documentation impact upfront
+7. **Mandatory documentation** — tech-writer agent runs after every task, `/fix`, and `/refactor` (all with structured 2-part prompt: agent file + task context, explicit document/skip criteria, post-doc verification); `/refresh-docs` catches stale docs via git delta; `/plan` declares documentation impact upfront
 8. **Greenfield support** — all commands work for empty/new projects
 9. **Check before build** — must search codebase for existing utilities before creating new ones
 10. **Onboarding for existing projects** — `/onboard` generates comprehensive docs as the knowledge base for all agents

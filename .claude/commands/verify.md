@@ -153,6 +153,7 @@ If the agent doesn't exist, skip this phase silently.
 If all acceptance criteria pass and code quality checks pass:
 1. **Task completion cross-check**: Before marking spec Complete, verify all task files in `specs/NNN-feature/tasks/` (excluding README.md) have `Status: Complete`. If any task is not Complete, keep spec as "In Progress" and report: "Spec cannot be marked Complete — Task [N] is still [status]."
 2. Update the spec file status to "Complete"
+   - In the spec's **Acceptance Criteria** section, change `- [ ]` to `- [x]` for every AC that passed verification
 3. Update the task index README.md with a completion summary
 
 If issues found:
@@ -243,16 +244,16 @@ Wait for user response before proceeding.
    "Starting with issue #N. After this fix completes, address remaining issues by running `/fix bugs/NNN-xxx.md` for each, or re-run `/verify` to re-assess."
 
 **"Fix docs now" items** (documentation gaps only): For each, invoke the tech-writer agent directly — do NOT route through `/fix`:
-1. Launch the **tech-writer** agent with:
-   - The list of files and public APIs flagged as lacking documentation
-   - The feature spec for context
-   - Instruction: "These public APIs were flagged during verification as lacking documentation. Add inline docs (JSDoc/docstrings) to each, and create or update the relevant `docs/` file."
-2. After the tech-writer completes, verify the flagged APIs now have inline docs
-3. Commit the doc changes (follow the **Commit Convention** section in CLAUDE.md for attribution rules):
+1. Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. If the file does not exist, proceed with the inline prompt alone.
+2. Launch the **tech-writer** agent with:
+   - Part 1 (if agent file exists): The full content of `.claude/agents/tech-writer.md`
+   - Part 2: The list of files and public APIs flagged as lacking documentation, the feature spec for context, and instruction: "These public APIs were flagged during verification as lacking documentation. Add inline docs (JSDoc/docstrings) to each, and create or update the relevant `docs/` file."
+3. After the tech-writer completes, verify the flagged APIs now have inline docs
+4. Commit the doc changes (follow the **Commit Convention** section in CLAUDE.md for attribution rules):
    ```
    git add docs/ [source files with doc changes] && git commit -m "docs: add missing documentation flagged by /verify"
    ```
-4. Process the next "Fix docs now" item (unlike "Fix now", multiple doc fixes can run sequentially since they are lightweight)
+5. Process the next "Fix docs now" item (unlike "Fix now", multiple doc fixes can run sequentially since they are lightweight)
 
 **"Skip" items**: No action taken.
 

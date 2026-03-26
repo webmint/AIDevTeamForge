@@ -315,7 +315,7 @@ For each repair attempt:
 1. Update the task tracking (TaskUpdate → completed)
 2. In the task file (`specs/NNN-feature/tasks/NNN-title.md`):
    - Change **Status** to `Complete`
-   - Mark done conditions with `[x]`
+   - In the **Done When** section, change every `- [ ]` to `- [x]` for conditions that were verified as met
    - Fill in the Completion Notes section:
      ```
      **Completed**: [date/time]
@@ -336,13 +336,19 @@ Update `.claude/wip.md` — change Phase to `5 (Documentation Update)`.
 
 After code is verified, launch the **tech-writer** agent to update documentation.
 
-Provide the agent with:
-1. The completed task file (with completion notes and actual files changed)
-2. The feature spec
-3. The list of files that were actually changed
-4. The existing `docs/` folder structure (run Glob on `docs/`)
+### 5.0: Load Tech-Writer Agent
 
-The tech-writer prompt should follow this structure:
+Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. This file contains the tech-writer's complete Normal Mode workflow (6 steps, 2-layer documentation model, skip/include criteria, formatting rules).
+
+If `.claude/agents/tech-writer.md` does not exist, warn: "⚠️ Tech-writer agent file not found — documentation quality may be reduced. Run `/setup-wizard` to generate agent files." Proceed with the inline prompt alone.
+
+### 5.1: Build and Launch Tech-Writer Prompt
+
+Construct the tech-writer prompt with two parts:
+
+**Part 1** (if agent file exists): The full content of `.claude/agents/tech-writer.md` (this gives the agent its complete workflow and rules — it will auto-select Normal Mode).
+
+**Part 2** (always included): The task-specific context below.
 
 ```
 You are updating documentation after Task [N] from an approved task breakdown.
@@ -360,11 +366,32 @@ You are updating documentation after Task [N] from an approved task breakdown.
 [Output of Glob on docs/ — so you know what already exists]
 
 ## Instructions
-1. Read each changed file and identify new or changed public APIs (exported functions, classes, components, types)
-2. For each new/changed public API: add or update inline documentation (JSDoc/docstrings) in the source file
-3. Check if any existing doc in docs/ covers this area — if so, update it
-4. If this task introduces a new feature area with no existing doc, create docs/features/[name].md
-5. If no public APIs were added or changed AND no user-facing behavior changed, report "No documentation needed" with a 1-sentence justification
+
+You must address BOTH documentation layers:
+
+**Layer 1 — Inline docs**: For every new or changed public export (function, class, component, type), add or update inline documentation (JSDoc/docstrings) in the source file.
+
+**Layer 2 — docs/ folder**: Check if any existing doc in docs/ covers this area — if so, update it. If this task introduces a new feature area with no existing doc, create docs/features/[name].md.
+
+### Document when ANY of these apply:
+- A new public API, function, or component was created
+- Existing behavior was changed in a way users/developers need to know
+- A new architectural pattern was introduced
+- A new configuration option was added
+- A workflow or process changed
+
+### Skip documentation ONLY when ALL of these apply:
+- Internal refactoring with no behavior change
+- Bug fixes that restore expected (already-documented) behavior
+- Type-only changes with no semantic difference
+- Test-only changes
+
+If you determine documentation is not needed, you must justify by:
+1. Listing which skip criteria apply
+2. Confirming that NONE of the "Document when" criteria are triggered
+
+### Before completing:
+Verify every code example matches the actual implementation and every file path mentioned is correct. Cross-check inline doc signatures against the real function signatures.
 
 ## Rules
 1. Only document what exists — code that is implemented and verified
@@ -372,17 +399,24 @@ You are updating documentation after Task [N] from an approved task breakdown.
 3. Match existing doc style in the project
 4. Code examples must come from actual implementation
 5. Do NOT modify logic, specs, or task files — only add documentation
+6. Include @example for non-trivial public APIs
+7. Match the existing inline doc style in the file (if other functions have JSDoc, use JSDoc)
 ```
 
-### 5.1: Post-Doc Verification
+Launch the tech-writer agent with the combined prompt (Part 1 + Part 2) using the Agent tool.
+
+### 5.2: Post-Doc Verification
 
 After the tech-writer completes, verify documentation was handled:
 
-1. **Check for public API changes**: Run `git diff [checkpoint-commit-hash] --name-only` and scan changed files for new exported functions, classes, components, or types. If any exist, verify they have inline documentation (JSDoc/docstrings).
-2. **Check `docs/` for updates**: If public APIs were added or behavior changed, verify that at least one file in `docs/` was created or modified (check `git diff --name-only` for paths starting with `docs/`).
-3. **If the tech-writer reported "No documentation needed"**: Accept this ONLY if the changed files contain no new public exports AND no user-facing behavior changes. Otherwise, re-invoke the tech-writer with explicit instruction: "The following new public APIs lack documentation: [list]. Add inline docs and update docs/ accordingly."
+1. **Check for new AND changed public APIs**: Run `git diff [checkpoint-commit-hash]` (not just `--name-only`) and scan changed files for:
+   - New exported functions, classes, components, or types — verify they have inline documentation
+   - Changed signatures on existing public exports (parameter or return type changes) — verify inline docs are updated to match
+2. **Check `docs/` for updates**: If public APIs were added, behavior changed, or architecture was restructured, verify that at least one file in `docs/` was created or modified (check `git diff --name-only` for paths starting with `docs/`).
+3. **Check for stale doc references**: If any existing `docs/` file references the changed source files (search docs/ for the filenames), verify those references are still accurate.
+4. **If the tech-writer reported "No documentation needed"**: Verify the justification — check that the listed skip criteria actually apply AND that none of the "Document when" criteria are triggered. If the justification is insufficient or contradicted by the diff, re-invoke the tech-writer with explicit instruction: "The following changes require documentation: [list specific APIs/behaviors]. Add inline docs and update docs/ accordingly."
 
-### 5.2: Commit Doc Changes
+### 5.3: Commit Doc Changes
 
 If the tech-writer made any changes, commit them:
 ```
