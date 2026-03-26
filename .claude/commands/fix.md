@@ -51,6 +51,9 @@ Run these checks:
 1. `git status` — are there uncommitted changes?
 2. `git log --oneline -5` — are there `[WIP]` commits?
 3. Read the WIP marker for context
+4. **Source repo state** (if wip.md has a `## Source Repo Checkpoint` section with a commit hash):
+   - `git -C $SOURCE_ROOT status` — uncommitted source changes?
+   - `git -C $SOURCE_ROOT log --oneline -5` — source WIP commits?
 
 ### 0.3: Present Recovery Options
 
@@ -71,7 +74,7 @@ Options:
 4. **Keep changes, clear marker** — Keep current git state as-is, delete WIP marker only.
 ```
 
-Wait for user to choose. Execute their choice using the same recovery logic as `/execute-task` Phase 0.3.
+Wait for user to choose. Execute their choice using the same recovery logic as `/execute-task` Phase 0.3 (including source repo rollback via `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT` for "Rollback" options when a source checkpoint exists).
 
 ## PHASE 1: Load Context
 
@@ -100,6 +103,7 @@ Determine whether `$ARGUMENTS` is a bug file path or a plain description.
 1. Read `constitution.md`
 2. Read `.claude/memory/MEMORY.md`
 3. Read `CLAUDE.md` — note the Source Root (if not `.`, this is a wrapper project)
+   - **Source repo tracking** (wrapper mode only, `SOURCE_ROOT != "."`): Record the source repo's current HEAD as `$SOURCE_CHECKPOINT` (`git -C $SOURCE_ROOT rev-parse HEAD`) and the source branch name (`git -C $SOURCE_ROOT branch --show-current`).
 
 ### 1.2: Locate Affected Code
 
@@ -187,7 +191,15 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
    git commit -m "[checkpoint] Pre-fix: [short bug description]" --allow-empty
    ```
 
-2. Write `.claude/wip.md`:
+2. **Source repo checkpoint** (wrapper mode only, `SOURCE_ROOT != "."`):
+   - Check for pre-existing uncommitted source changes: `git -C $SOURCE_ROOT status --porcelain`. If uncommitted changes exist, warn the user and let them decide to proceed or stop.
+   - Create source checkpoint:
+     ```
+     git -C $SOURCE_ROOT commit -m "[WIP] checkpoint" --allow-empty
+     ```
+   - Record this hash as `$SOURCE_CHECKPOINT`.
+
+3. Write `.claude/wip.md`:
    ```markdown
    # Work In Progress
 
@@ -206,6 +218,10 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
    ## Rollback Point
    Commit: [hash from the checkpoint commit above]
+
+   ## Source Repo Checkpoint
+   Commit: [source-checkpoint-hash or N/A for standalone]
+   Branch: [source-branch-name or N/A]
    ```
 
 ## PHASE 4: Apply Fix
@@ -229,6 +245,8 @@ After applying the fix, commit:
 ```
 git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — fix applied"
 ```
+
+**Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] fix applied"`
 
 Update `.claude/wip.md` — change Phase to `5 (Verify)`.
 
@@ -254,6 +272,7 @@ For each repair attempt:
    ```
    git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — repair attempt [M]/3"
    ```
+   **Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] repair"`
 4. Re-run ALL verification checks
 
 **If verification passes after any attempt** → proceed to Phase 6.
@@ -282,6 +301,7 @@ The agent will check: constitution compliance, architecture & patterns, type saf
   ```
   git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — review fixes"
   ```
+  **Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] review fixes"`
 - If still BLOCKED after this additional cycle, STOP and report the remaining issues to the user. Do not attempt further review cycles.
 
 **If the agent returns APPROVE or only warnings/info** → proceed to Phase 7.
@@ -310,6 +330,8 @@ If tests were added or modified, commit:
 ```
 git add [test files you modified] && git commit -m "[WIP] Fix: [short description] — tests"
 ```
+
+**Source repo WIP** (wrapper mode only, if source test files touched): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] tests"`
 
 ## PHASE 7.5: Documentation Update (MANDATORY)
 
@@ -364,6 +386,8 @@ If the tech-writer made changes, commit:
 git add docs/ [source files with doc changes] && git commit -m "[WIP] Fix: [short description] — doc update"
 ```
 
+**Source repo WIP** (wrapper mode only, if source files touched): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] docs"`
+
 Report the tech-writer's decision in Phase 8.3's report as: `**Documentation**: [Updated docs/features/X.md / No doc update needed — [justification]]`.
 
 ## PHASE 8: Report & Clean Up
@@ -384,6 +408,29 @@ git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
 - If this shows **no commits** (HEAD matches remote) → WIP commits were already pushed → **skip squashing** and keep commits as-is.
 
 Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
+
+### 8.1.1: Source Repo Squash (wrapper mode only)
+
+This step only runs when `SOURCE_ROOT != "."` AND there are `[WIP]` commits in the source repo.
+
+1. **Extract ticket ID**: Read the source repo's branch name (`git -C $SOURCE_ROOT branch --show-current`). Match the first `[A-Z]{2,}-[0-9]+` in the name (e.g. `feature/AAA-123-desc` → `AAA-123`). If no match, ask the user for the commit message.
+
+2. **Generate description**: Use the bug description from Phase 2.2 as the commit description. Keep it under 72 characters total with the ticket ID.
+
+3. **Squash**: Verify WIP commits haven't been pushed:
+   ```
+   git -C $SOURCE_ROOT log --oneline origin/$(git -C $SOURCE_ROOT branch --show-current)..HEAD 2>/dev/null
+   ```
+   - If local only → squash:
+     ```
+     git -C $SOURCE_ROOT reset --soft $SOURCE_CHECKPOINT
+     git -C $SOURCE_ROOT commit -m "[AAA-123] - Description"
+     ```
+   - If already pushed → skip squash, warn user.
+
+   No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
+
+4. Report: `Source repo commit: [AAA-123] - Description (squashed N WIP commits)`
 
 ### 8.1.5: Update Bug File (if applicable)
 

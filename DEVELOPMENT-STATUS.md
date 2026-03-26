@@ -57,7 +57,7 @@ Setup wizard decides which agents to generate based on detected stack.
 - Setup wizard detects nested git repos at depth 1 and offers wrapper mode
 - `SOURCE_ROOT` variable propagated through CLAUDE.md → all commands read it
 - All commands scope source scanning to the Source Root path
-- Wrapper repo git auto-commits only; inner repo commits are manual
+- Git auto-commits apply to both repos — wrapper gets workflow commits, source repo gets per-task WIP commits squashed into one clean commit (`[TICKET-ID] - Description`) at `/verify` (or at `/fix`/`/refactor` final commit)
 - `/execute-task` Phase 3.3 verifies no Claude artifacts leak into the inner project
 - `install.sh --wrapper` pre-configures the `.gitignore` entry for the inner folder
 - CLAUDE.md template has conditional `{{WRAPPER_MODE_SECTION}}` (omitted for standalone)
@@ -108,6 +108,7 @@ Setup wizard decides which agents to generate based on detected stack.
 - Git `[WIP]` commits preserve partial work at each phase; squashed into a clean commit on completion (with pre-squash safety check — skips squash if commits were already pushed to remote; preserves wip.md if squash commit fails)
 - All workflow commits use scoped `git add` (specific files only, never `git add -A`) to prevent accidentally committing secrets or unwanted files
 - `wip.md` is gitignored — only exists during active task execution
+- In wrapper mode, WIP marker includes `## Source Repo Checkpoint` section; Phase 0 recovery also rolls back source repo WIP commits
 
 ## What's Left / Potential Enhancements
 

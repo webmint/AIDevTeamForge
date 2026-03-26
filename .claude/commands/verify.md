@@ -14,6 +14,10 @@ Verifies completed tasks against the original specification's acceptance criteri
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, run type-checking and linting commands inside that directory.
 
+**Source repo tracking** (wrapper mode only, `SOURCE_ROOT != "."`):
+- Record the source repo's current branch: `git -C $SOURCE_ROOT branch --show-current`
+- Find the source squash base: look for `[WIP]` commits in the source repo (`git -C $SOURCE_ROOT log --oneline --grep="\[WIP\]"`). The squash base is the parent of the oldest `[WIP]` commit. If no `[WIP]` commits exist, there are no source changes to squash.
+
 1. Read the spec file (from `$ARGUMENTS` or most recent feature directory in `specs/`)
 2. Read the feature's `plan.md`
 3. Read all task files in `specs/NNN-feature/tasks/`
@@ -178,12 +182,70 @@ Keep memory entries concise (1-2 lines each). Link to specific files if relevant
 
 Show the user the verification report and recommend next action:
 
-- If APPROVED: "All acceptance criteria are met and code quality checks pass." Then automatically invoke `/summarize` with the spec file path:
-  ```
-  ✅ Verification passed — automatically running /summarize
-  ```
+- If APPROVED: "All acceptance criteria are met and code quality checks pass." Then run Phase 9.5 (if applicable), then invoke `/summarize`.
 - If NEEDS WORK: "Found [N] issues. Recommend re-running `/execute-task [X]` for [reason]. Details in the verification report above."
 - If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]."
+
+## PHASE 9.5: Source Repo Squash (wrapper mode only)
+
+This phase only runs when ALL of these conditions are met:
+1. `SOURCE_ROOT != "."` (wrapper mode)
+2. The verdict is APPROVED
+3. There are `[WIP]` commits in the source repo
+
+If any condition is not met, skip directly to `/summarize` invocation.
+
+### 9.5.1: Extract Ticket ID
+
+Read the source repo's current branch name:
+```
+git -C $SOURCE_ROOT branch --show-current
+```
+
+Extract the ticket ID — match the first occurrence of `[A-Z]{2,}-[0-9]+` in the branch name:
+- `feature/AAA-123-some-desc` → `AAA-123`
+- `bugfix/PROJ-42` → `PROJ-42`
+- `ABC-99/implement-feature` → `ABC-99`
+
+If no match is found, ask the user: "No ticket ID found in source branch `[branch-name]`. Please provide a commit message for the source repo (format: `[TICKET-ID] - Description`):" — use their response as the full commit message and skip to 9.5.3.
+
+### 9.5.2: Generate Description
+
+Read the spec's `## 1. Overview` section. Use the first 1-2 sentences as the commit description. Strip markdown formatting. If combined with ticket ID the message exceeds 72 characters, truncate the description to fit.
+
+Final commit message format:
+```
+[AAA-123] - Brief description from spec overview
+```
+
+No `Co-Authored-By`. No AI traces. No conventional commit prefixes. No task numbers.
+
+### 9.5.3: Squash
+
+Find the squash base — the parent of the oldest `[WIP]` commit in the source repo (identified in Phase 1).
+
+Verify WIP commits haven't been pushed to the source remote:
+```
+git -C $SOURCE_ROOT log --oneline origin/$(git -C $SOURCE_ROOT branch --show-current)..HEAD 2>/dev/null
+```
+- If local only (shows commits or fails because no upstream) → safe to squash:
+  ```
+  git -C $SOURCE_ROOT reset --soft [squash-base-hash]
+  git -C $SOURCE_ROOT commit -m "[AAA-123] - Description"
+  ```
+- If already pushed (HEAD matches remote) → skip squashing, warn: "Source WIP commits were already pushed to the remote. Squash skipped — consider interactive rebase manually."
+
+### 9.5.4: Report
+
+```
+✅ Source repo commit: [AAA-123] - Description
+Squashed [N] WIP commits into 1 clean commit.
+```
+
+Then invoke `/summarize`:
+```
+✅ Verification passed — automatically running /summarize
+```
 
 ## PHASE 10: Issue Triage (if NEEDS WORK)
 

@@ -259,7 +259,7 @@ This workspace wraps a client-owned project. Claude artifacts live here; source 
 ### Wrapper Rules
 1. **Never create Claude artifacts inside `{{SOURCE_ROOT}}/`** — no `.claude/`, `specs/`, `docs/`, `constitution.md`, or `CLAUDE.md` files
 2. **All source scanning** (by `/constitute`, `/onboard`, agents) targets `{{SOURCE_ROOT}}/` as the base path
-3. **Git auto-commits** apply to the wrapper repo only — source code commits in the inner repo are manual
+3. **Git auto-commits** apply to both repos — wrapper gets workflow commits, source repo gets WIP commits per task that are squashed into one clean commit (format: `[TICKET-ID] - Description`) when the feature is verified
 4. **File paths** in specs and tasks use workspace-relative paths (e.g., `{{SOURCE_ROOT}}/src/components/Button.tsx`)
 ```
 

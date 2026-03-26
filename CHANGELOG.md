@@ -5,6 +5,18 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-03-26
+
+### Added
+- **Source repo auto-commit in wrapper mode**: All execution commands (`execute-task`, `fix`, `refactor`) now auto-commit source changes to the inner repo with per-phase WIP commits for crash safety
+- **Source repo squash**: `/verify` Phase 9.5 squashes all source WIP commits into a single clean commit when verdict is APPROVED. `/fix` and `/refactor` squash at their own Phase 8.1.1. Commit format: `[TICKET-ID] - Description` — ticket ID extracted from source branch name (`[A-Z]{2,}-[0-9]+` pattern), description from spec overview or bug/refactoring context. Falls back to user prompt if no ticket ID found
+- **Source repo crash recovery**: Phase 0 in all 3 execution commands now checks and recovers source repo state. WIP marker includes `## Source Repo Checkpoint` section with commit hash and branch name
+- **Pre-existing source changes warning**: Phase 2.5/3.1 warns if source repo has uncommitted changes before creating the checkpoint
+
+### Changed
+- Wrapper Rule 3 updated across setup-wizard, DEVELOPMENT-STATUS, and README — from "source commits are manual" to "auto-commit both repos with WIP + squash"
+- Template version: 1.19.0 → 1.20.0
+
 ## [1.19.0] - 2026-03-26
 
 ### Changed

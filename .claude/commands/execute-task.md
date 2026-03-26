@@ -52,6 +52,9 @@ Run these checks:
 2. `git log --oneline -5` — are there `[WIP]` commits?
 3. Read the task file — is it marked `in_progress`?
 4. Read `specs/[feature]/tasks/README.md` — current task statuses
+5. **Source repo state** (if wip.md has a `## Source Repo Checkpoint` section with a commit hash):
+   - `git -C $SOURCE_ROOT status` — uncommitted source changes?
+   - `git -C $SOURCE_ROOT log --oneline -5` — source WIP commits?
 
 ### 0.3: Present Recovery Options
 
@@ -82,11 +85,12 @@ Wait for user to choose. Execute their choice:
 **If Rollback and retry:**
 - `git stash` any uncommitted changes (save them just in case, user can `git stash pop` later)
 - `git reset --hard` to the commit before the first `[WIP]` commit (find it via `git log --oneline | grep -v "\[WIP\]" | head -1`)
+- **Source repo rollback** (if `$SOURCE_CHECKPOINT` exists in wip.md): `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`
 - Delete `.claude/wip.md`
 - Re-run `/execute-task [same task number]` from PHASE 1
 
 **If Rollback and skip:**
-- Same git reset as above
+- Same git reset as above (including source repo rollback if applicable)
 - Update the task file: set status back to `Pending`
 - Delete `.claude/wip.md`
 - Inform user the task is pending and they can run `/execute-task` when ready
@@ -135,7 +139,8 @@ For multi-task queues: the current task is always the first item. After it compl
 ### 1.2: Load Context
 
 0. Read `.claude/session-state.md` if it exists.
-   - **Check workspace mode**: Read the Source Root from `CLAUDE.md`. If it is not `.`, this is a wrapper project. All source code lives under the Source Root path. Git auto-commits target the wrapper repo only. Verify no Claude artifacts are created inside the Source Root during post-agent verification (Phase 3.3).
+   - **Check workspace mode**: Read the Source Root from `CLAUDE.md`. If it is not `.`, this is a wrapper project. All source code lives under the Source Root path. Verify no Claude artifacts are created inside the Source Root during post-agent verification (Phase 3.3).
+     - **Source repo tracking** (wrapper mode only): Record the source repo's current HEAD as `$SOURCE_CHECKPOINT` (`git -C $SOURCE_ROOT rev-parse HEAD`) and the source branch name (`git -C $SOURCE_ROOT branch --show-current`). These are needed for WIP commits and recovery.
    - If it does NOT exist, this is a fresh session — proceed normally.
    - If it exists, compare the "Current Feature" field with the feature you're about to execute.
      - **Feature matches** → use the session state as-is (context load count carries over).
@@ -183,7 +188,15 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
    ```
    This gives us a clean rollback point.
 
-2. Write `.claude/wip.md`:
+2. **Source repo checkpoint** (wrapper mode only, `SOURCE_ROOT != "."`):
+   - Check for pre-existing uncommitted source changes: `git -C $SOURCE_ROOT status --porcelain`. If there are uncommitted changes, warn: "Source repo has uncommitted changes. These will be included in the WIP commits. Stash or commit them first if you want them separate." Let the user decide to proceed or stop.
+   - Create source checkpoint:
+     ```
+     git -C $SOURCE_ROOT commit -m "[WIP] checkpoint" --allow-empty
+     ```
+   - Record this hash as `$SOURCE_CHECKPOINT`.
+
+3. Write `.claude/wip.md`:
    ```markdown
    # Work In Progress
 
@@ -203,6 +216,10 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
    ## Rollback Point
    Commit: [hash from the checkpoint commit above]
+
+   ## Source Repo Checkpoint
+   Commit: [source-checkpoint-hash or N/A for standalone]
+   Branch: [source-branch-name or N/A]
    ```
 
 ## PHASE 3: Execute
@@ -269,6 +286,11 @@ After the agent completes, immediately create a WIP git commit to preserve the w
 git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
 ```
 
+**Source repo WIP** (wrapper mode only, `SOURCE_ROOT != "."`):
+```
+git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] task execution"
+```
+
 Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
 
 ### 3.3: Post-Agent Verification (with Self-Repair)
@@ -300,6 +322,7 @@ For each repair attempt:
    ```
    git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"
    ```
+   **Source repo WIP** (wrapper mode only): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] repair"`
 4. Re-run ALL verification checks above
 
 **If verification passes after any attempt** → proceed to Phase 4.
@@ -423,6 +446,8 @@ If the tech-writer made any changes, commit them:
 git add docs/ [source files with doc changes] && git commit -m "[WIP] Task [N]: [title] — documentation update"
 ```
 
+**Source repo WIP** (wrapper mode only, if source files were touched): `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] docs"`
+
 Update `.claude/wip.md` — change Phase to `6 (Report)`.
 
 ## PHASE 6: Report
@@ -471,6 +496,8 @@ Provide a concise summary to the user:
 2. Delete `.claude/wip.md` (only after the final commit succeeds)
 
 The task is now fully committed with a clean single commit and no WIP artifacts.
+
+> **Source repo note** (wrapper mode): Source WIP commits are intentionally NOT squashed here. They accumulate across tasks and are squashed into a single clean commit when `/verify` approves the feature (Phase 9.5).
 
 ## PHASE 7: Memory Update
 

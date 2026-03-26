@@ -242,7 +242,7 @@ my-workspace/                    # Wrapper (your git repo)
 ### How it works
 - All Claude artifacts stay in the wrapper root — nothing leaks into the inner project
 - All source scanning (`/constitute`, `/onboard`, agents) targets the inner folder
-- Git auto-commits apply to the wrapper repo only — you commit source changes to the client's repo manually
+- Git auto-commits apply to both repos — wrapper gets workflow commits, source repo gets per-task WIP commits that are squashed into one clean commit (`[TICKET-ID] - Description`, extracted from source branch name) when `/verify` approves the feature (or at `/fix`/`/refactor` final commit)
 - `/execute-task` verifies no Claude artifacts were created inside the inner project
 
 ### Setup options
