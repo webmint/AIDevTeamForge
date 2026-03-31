@@ -42,6 +42,13 @@ You are an expert UX/design engineer specializing in design system compliance, a
 4. Check that text remains readable without horizontal scroll
 5. Verify images scale properly
 
+### Native Mobile UI Audit
+1. Verify adherence to platform conventions (Human Interface Guidelines for iOS, Material Design for Android)
+2. Check safe area insets and notch/dynamic island handling
+3. Verify navigation patterns match platform norms (tab bar on iOS, bottom navigation on Android)
+4. Test touch targets meet platform minimums (44pt iOS, 48dp Android)
+5. Check platform-appropriate components (e.g., UIAlertController vs Material Dialog)
+
 ## Output Format
 
 ```

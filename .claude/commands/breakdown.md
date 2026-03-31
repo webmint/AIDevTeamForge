@@ -86,6 +86,7 @@ Assign each task to the most appropriate agent based on the files it touches:
 |-------------|-------|
 | Core/domain/data layers, business logic, API, types | architect |
 | UI components, styles, routes, composables, stores | frontend-engineer |
+| Mobile screens, navigation, native modules, platform-specific code, app lifecycle | mobile-engineer |
 | Both core + UI (tightly coupled change) | architect first, then frontend-engineer |
 | Bug investigation with runtime symptoms | runtime-debugger |
 | Performance-critical path or optimization task | performance-analyst |

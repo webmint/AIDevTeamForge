@@ -49,6 +49,13 @@ You are an expert performance engineer specializing in {{FRAMEWORK}} application
 - Incremental builds in development
 - Analyze and remove unused dependencies
 
+### Mobile Performance
+- **Startup time**: Cold start under 2 seconds target; measure warm start too
+- **Memory**: Monitor for leaks in navigation stacks and list views; check peak on low-end devices
+- **Battery**: Profile CPU/network during background ops; avoid unnecessary wake locks
+- **Rendering**: Target 60fps; identify dropped frames in scrolls, animations, transitions
+- **Bundle size**: Monitor app binary size; use code splitting and lazy loading for feature modules
+
 ## Output Format
 
 ```

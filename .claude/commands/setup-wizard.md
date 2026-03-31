@@ -79,6 +79,14 @@ Silently scan the project to detect as much as possible before asking questions.
 - `nestjs` in dependencies → NestJS
 - `django` or `flask` in `requirements.txt` / `pyproject.toml` → Python backend
 
+**Mobile frameworks:**
+- `react-native` in dependencies → React Native
+- `expo` in dependencies → Expo (React Native)
+- `flutter` in `pubspec.yaml` → Flutter
+- `.xcodeproj` or `.xcworkspace` presence → iOS native (Swift)
+- `build.gradle.kts` with `com.android.application` plugin → Android native (Kotlin)
+- `ios/` + `android/` directories → cross-platform mobile
+
 **TypeScript:**
 - `tsconfig.json` presence and `strict` setting
 - Check if `strict: true` or individual strict flags
@@ -123,6 +131,7 @@ Silently scan the project to detect as much as possible before asking questions.
 - `src/controllers/`, `src/models/`, `src/views/` → MVC
 - `src/modules/` with self-contained folders → Modular/Feature-based
 - `src/stores/` → Store-based state management
+- `src/screens/` or `src/navigation/` → Mobile screen-based architecture
 
 **Error handling patterns** (scan a few source files):
 - `Either`, `Left`, `Right` imports → Either/Result pattern (purify-ts, fp-ts, neverthrow)
@@ -321,7 +330,8 @@ Read agent templates from `.claude/templates/agents/` and generate `.claude/agen
 #### By project type:
 | Condition | Agents |
 |-----------|--------|
-| Frontend detected | `frontend-engineer` |
+| Frontend detected (web — has `react-dom`, `vue`, `svelte`, `angular`, etc.) | `frontend-engineer` |
+| Mobile-only detected (`react-native` without `react-dom`) | `mobile-engineer` (instead of `frontend-engineer`) |
 | Backend framework detected (Express, NestJS, FastAPI, etc.) | `backend-engineer` |
 | Core/library without backend framework | `architect` (instead of backend-engineer) |
 | Both frontend + backend | `frontend-engineer` + `backend-engineer` + `architect` |
@@ -336,6 +346,7 @@ Read agent templates from `.claude/templates/agents/` and generate `.claude/agen
 | API project (REST or GraphQL) | `api-designer` |
 | Frontend or API project | `performance-analyst` |
 | Existing codebase with deprecated code or migration keywords in recent commits | `migration-engineer` |
+| Mobile framework detected (React Native, Expo, Flutter, Swift/Xcode, Kotlin/Android) | `mobile-engineer` |
 | `security-reviewer` | Include when: auth library detected (passport, okta, auth0, next-auth), OR backend with API endpoints, OR user explicitly requests it. Skip for: simple frontend-only projects with no auth |
 | AC_VERIFICATION != "off" (Question 9) | `ac-verifier` |
 
