@@ -30,9 +30,9 @@ Shared partials (`_`-prefixed, loaded on-demand by parent commands):
 - `_multi-task-continuation.md` — Phase 8 batch queue management (execute-task multi-task mode)
 - `_tech-writer-onboarding.md` — Full onboarding scan instructions Section A (onboard)
 
-### Agent Templates (15 files in `.claude/templates/agents/`)
+### Agent Templates (16 files in `.claude/templates/agents/`)
 Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`
-By project type: `frontend-engineer`, `backend-engineer`, `architect`
+By project type: `frontend-engineer`, `backend-engineer`, `architect`, `mobile-engineer`
 By detected stack: `db-engineer`, `devops-engineer`, `design-auditor`, `api-designer`, `performance-analyst`, `security-reviewer`, `migration-engineer`
 By config: `ac-verifier` (when `AC_VERIFICATION != "off"`)
 

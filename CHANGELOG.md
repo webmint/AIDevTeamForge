@@ -5,6 +5,29 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-04-01
+
+### Added
+- **Tiered agent model system**: Replaced single `AGENT_MODEL` with 3 tiers — Think (opus: architect, api-designer, security-reviewer), Do (sonnet: implementation agents), Verify (sonnet: code-reviewer, ac-verifier, qa-engineer). Configurable per tier in setup wizard Question 8
+  - Templates use `{{MODEL_THINK}}`, `{{MODEL_DO}}`, `{{MODEL_VERIFY}}` placeholders
+  - `update.sh` auto-migrates old `AGENT_MODEL` config to tier keys on first run
+- **2-dimensional agent assignment in `/breakdown`**: Tasks are now classified by nature (design-decision vs. mechanical) before assigning by file layer. Mechanical tasks go to the nearest dependency's agent instead of defaulting to architect
+  - Bundling rule: mechanical tasks <30 lines with a single same-agent dependency can be merged into the parent task
+- **`backend-engineer` in breakdown assignment table**: Previously had a template but no assignment rule — now assigned to API endpoints, controllers, middleware, services, and server-side logic tasks
+- **Always-delegate rule in `/execute-task`**: Rule 1 now mandates every task must be executed via the Agent tool — orchestrator never writes implementation code directly, regardless of task size
+- **Mobile support**: New `mobile-engineer` agent template with Flutter/React Native/Swift/Kotlin expertise. Mobile-specific sections added to design-auditor, devops-engineer, performance-analyst, and qa-engineer templates. Setup wizard detects mobile frameworks. Breakdown table includes mobile-engineer row
+
+### Changed
+- **Architect scope narrowed**: Assignment table row changed from "Core/domain/data layers, business logic, API, types" to "Domain models, interfaces, contracts, type definitions, architectural decisions" — implementation work now routes to backend-engineer
+- **State management with orchestration logic** explicitly assigned to architect (BLoC with business rules, Redux reducers with logic, Pinia stores with computed logic)
+- Template version: 1.22.0 → 1.23.0
+
+### Fixed
+- `backend-engineer` agent template existed but was unreachable — no breakdown assignment rule mapped to it
+- Repository implementation tasks (boilerplate wrapping) over-assigned to architect instead of db-engineer
+- DI registration / routing tasks over-assigned to architect instead of frontend-engineer
+- Orchestrator skipping agent delegation for "trivial" tasks despite clear instructions
+
 ## [1.22.0] - 2026-03-26
 
 ### Added
