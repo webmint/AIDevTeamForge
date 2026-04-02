@@ -239,7 +239,7 @@ You are executing Task [N] from an approved task breakdown.
 3. Known pitfalls for this area: [from MEMORY.md]
 4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
 5. Every file you change must pass the project's linter (see Lint Command in CLAUDE.md)
-6. Document any new functions/variables you create
+6. Add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface you create. This is part of writing the code, not a separate step
 
 ## Documentation Context
 [Content from the doc files listed in the task's Context docs field, if any. Omit this section if Context docs is "None".]
@@ -306,6 +306,42 @@ For each repair attempt:
 - Keep the WIP marker and commits so the user can inspect the state
 - Suggest: "Run `/execute-task [N]` again after manually fixing, or use recovery options"
 
+### 3.4: Code Review
+
+After verification passes, launch the **code-reviewer** agent on all files changed by the task.
+
+Provide the agent with:
+1. The list of changed files (`git diff --name-only` against the checkpoint commit)
+2. The task description and scope constraints
+3. The constitution's relevant rules
+4. Relevant entries from `.claude/memory/MEMORY.md`
+
+The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality (including inline documentation on new public APIs), and memory pitfalls.
+
+**If verdict is APPROVE or warnings only** → proceed to Phase 4. Include warnings in the task report.
+
+**If verdict is REQUEST CHANGES or BLOCK** → report findings to the user immediately:
+
+```
+⚠️ Code review for Task [N] found issues:
+
+#### Critical (blocks completion)
+- [file:line] — [description]
+
+#### Warning (should fix)
+- [file:line] — [description]
+
+Options:
+1. **Address now** — fix the issues, then re-run review
+2. **Continue** — proceed despite warnings (Critical issues CANNOT be skipped)
+3. **Stop** — halt execution, keep WIP state for manual handling
+```
+
+Wait for user response:
+- **Address now**: Launch a repair agent to fix the review issues. After fixes, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/execute-task [N]`."
+- **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 4 with warnings noted.
+- **Stop**: Keep WIP marker and commits. Report completed state for manual handling.
+
 ## PHASE 4: Mark Complete
 
 1. Update the task tracking (TaskUpdate → completed)
@@ -326,71 +362,9 @@ After marking the task complete in task files, commit:
 git add specs/ .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — marked complete"
 ```
 
-Update `.claude/wip.md` — change Phase to `5 (Documentation Update)`.
+Update `.claude/wip.md` — change Phase to `5 (Report)`.
 
-## PHASE 5: Documentation Update (MANDATORY)
-
-After code is verified, launch the **tech-writer** agent to update documentation.
-
-### 5.0: Load Tech-Writer Agent
-
-Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. This file contains the tech-writer's complete Normal Mode workflow (6 steps, 2-layer documentation model, skip/include criteria, formatting rules).
-
-If `.claude/agents/tech-writer.md` does not exist, warn: "⚠️ Tech-writer agent file not found — documentation quality may be reduced. Run `/setup-wizard` to generate agent files." Proceed with the inline prompt alone.
-
-### 5.1: Build and Launch Tech-Writer Prompt
-
-Construct the tech-writer prompt with two parts:
-
-**Part 1** (if agent file exists): The full content of `.claude/agents/tech-writer.md` (this gives the agent its complete workflow and rules — it will auto-select Normal Mode).
-
-**Part 2** (always included): The task-specific context below.
-
-```
-You are updating documentation after Task [N] from an approved task breakdown.
-
-## Completed Task
-[Full task description and completion notes from breakdown]
-
-## Feature Context
-[Relevant section from spec.md — what this feature does and why]
-
-## Files Changed
-[List of files actually changed, from completion notes]
-
-## Existing Docs
-[Output of Glob on docs/ — so you know what already exists]
-
-## Instructions
-
-Address both documentation layers (inline docs + docs/ folder) using the document-when/skip-when criteria and rules from the tech-writer workflow (Part 1). Apply them to the task context above.
-
-If you determine documentation is not needed, justify by listing which skip criteria apply and confirming no "Document when" criteria are triggered.
-```
-
-Launch the tech-writer agent with the combined prompt (Part 1 + Part 2) using the Agent tool.
-
-### 5.2: Post-Doc Verification
-
-After the tech-writer completes, verify documentation was handled:
-
-1. **Check for new AND changed public APIs**: Run `git diff [checkpoint-commit-hash]` (not just `--name-only`) and scan changed files for:
-   - New exported functions, classes, components, or types — verify they have inline documentation
-   - Changed signatures on existing public exports (parameter or return type changes) — verify inline docs are updated to match
-2. **Check `docs/` for updates**: If public APIs were added, behavior changed, or architecture was restructured, verify that at least one file in `docs/` was created or modified (check `git diff --name-only` for paths starting with `docs/`).
-3. **Check for stale doc references**: If any existing `docs/` file references the changed source files (search docs/ for the filenames), verify those references are still accurate.
-4. **If the tech-writer reported "No documentation needed"**: Verify the justification — check that the listed skip criteria actually apply AND that none of the "Document when" criteria are triggered. If the justification is insufficient or contradicted by the diff, re-invoke the tech-writer with explicit instruction: "The following changes require documentation: [list specific APIs/behaviors]. Add inline docs and update docs/ accordingly."
-
-### 5.3: Commit Doc Changes
-
-If the tech-writer made any changes, commit them:
-```
-git add docs/ [source files with doc changes] && git commit -m "[WIP] Task [N]: [title] — documentation update"
-```
-
-Update `.claude/wip.md` — change Phase to `6 (Report)`.
-
-## PHASE 6: Report
+## PHASE 5: Report & Commit
 
 Provide a concise summary to the user:
 
@@ -408,56 +382,36 @@ Provide a concise summary to the user:
 - Done conditions: [all met / exceptions]
 - Contracts: Expects [X/Y] | Produces [X/Y]
 
-**Documentation**: [Updated docs/features/X.md / Created docs/api/Y.md / No docs needed]
+**Code review**: [APPROVE / APPROVE with warnings: (list) / addressed after review]
 
 **Spec criteria addressed**: AC-[numbers]
 
 **Next task**: [NNN]-[title] (ready / blocked by [NNN])
 ```
 
-### Final Commit and WIP Cleanup
+### Commit and WIP Cleanup
 
-1. Squash all `[WIP]` and `[checkpoint]` commits for this task into a single clean commit.
+Commit all remaining changes (task files, any review fixes) with a `[WIP]` prefix:
+```
+git add [changed files] specs/ && git commit -m "[WIP] Task [N]: [title] — complete"
+```
 
-   First, verify WIP commits haven't been pushed to the remote:
-   ```
-   git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
-   ```
-   - If this shows commits (or fails because there's no upstream) → WIP commits are **local only** → safe to squash:
-     ```
-     git reset --soft [checkpoint-commit-hash]
-     ```
-     Immediately after the reset, update `.claude/wip.md` — change Phase to `6.5 (Squash Applied, Commit Pending)`. This marks that the destructive reset has happened, so recovery knows not to re-run it.
-     ```
-     git commit -m "feat([feature-name]): Task [N] — [title]"
-     ```
-     If the commit fails after the reset (pre-commit hook rejection, etc.), do NOT delete `.claude/wip.md`. Inform the user: "Squash reset was applied but the commit failed. Your changes are staged. Run `git commit` manually to complete, or `git reset HEAD~0` to unstage."
-   - If this shows **no commits** (HEAD matches remote) → WIP commits were already pushed → **skip squashing** and keep commits as-is.
+Delete `.claude/wip.md`.
 
-   Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
+> **No per-task squash**: WIP commits accumulate across tasks and are squashed into a clean commit by `/verify` Phase 9.5 when the feature is approved. This keeps per-task execution simple and defers git history cleanup to the feature-level verification.
 
-2. Delete `.claude/wip.md` (only after the final commit succeeds)
-
-The task is now fully committed with a clean single commit and no WIP artifacts.
-
-> **Source repo note** (wrapper mode): Source WIP commits are intentionally NOT squashed here. They accumulate across tasks and are squashed into a single clean commit when `/verify` approves the feature (Phase 9.5).
-
-## PHASE 7: Memory Update
-
-Update `.claude/wip.md` — change Phase to `7 (Memory Update)`.
+## PHASE 6: Memory Update
 
 If anything unexpected happened during execution (a gotcha, a pattern discovery, a near-mistake), update `.claude/memory/MEMORY.md`.
 
 Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
-## PHASE 7.5: Context Maintenance
-
-Update `.claude/wip.md` — change Phase to `7.5 (Context Maintenance)`.
+## PHASE 7: Context Maintenance
 
 Read `.claude/commands/_context-maintenance.md` and follow its instructions.
 Context: the current feature directory, the task number and title just completed.
 
-**Critical**: This phase includes auto-verify detection (7.5.3). After updating session state, you MUST check whether ALL tasks in the feature are Complete by reading `specs/[feature]/tasks/README.md`. If every task has Status: Complete, invoke `/verify` immediately — do not just report completion and stop. If any tasks are still pending, continue with the normal flow (Phase 8 for multi-task, or completion report for single-task).
+**Critical**: This phase includes auto-verify detection. After updating session state, you MUST check whether ALL tasks in the feature are Complete by reading `specs/[feature]/tasks/README.md`. If every task has Status: Complete, invoke `/verify` immediately — do not just report completion and stop. If any tasks are still pending, continue with the normal flow (Phase 8 for multi-task, or completion report for single-task).
 
 ## PHASE 8: Multi-Task Continuation
 
@@ -470,8 +424,9 @@ Context: the remaining task queue, the current feature directory.
 
 1. **Always delegate** — NEVER write implementation code yourself. Every task MUST be executed by launching the assigned agent via the Agent tool, no matter how small or trivial the task appears. You are the orchestrator: you load context, launch agents, verify results, and coordinate. If you catch yourself about to edit a source file directly instead of delegating to an agent, stop — that is a rule violation.
 2. **Scope discipline** — if the agent changes files outside the task scope, revert those changes and investigate
-3. **Self-repair before escalation** — when verification fails, attempt automatic repair (up to 3 times) before stopping. Never skip repair attempts.
+3. **Self-repair before escalation** — when automated verification fails (type checker, linter, build), attempt automatic repair (up to 3 times) before stopping. Code review findings are reported to the user, not auto-repaired.
 4. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
-5. **Documentation is non-negotiable** — Phase 5 MUST run for every task, including in multi-task mode. The tech-writer agent must be invoked and its output verified.
+5. **Inline docs are the agent's job** — the implementing agent must add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface. The code-reviewer verifies this. Feature-level docs in `docs/` are handled by the tech-writer at `/verify` time.
 6. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow.
 7. **Context hygiene** — fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines.
+8. **No per-task squash** — WIP commits accumulate and are squashed by `/verify`. Do not run `git reset --soft` during execute-task.

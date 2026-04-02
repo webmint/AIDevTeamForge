@@ -107,26 +107,49 @@ If ANY criterion is FAIL or PARTIAL:
 - Suggest which task needs to be re-executed or a new task to address the gap
 - Do NOT attempt to fix it in this command — that's what `/execute-task` is for
 
-## PHASE 3: Code Review (code-reviewer agent)
+## PHASE 3: Integration Check
 
-Launch the **code-reviewer** agent on ALL files changed across all tasks in the breakdown.
+Individual code quality was reviewed per-task during `/execute-task` Phase 3.4. This phase checks what only the epic-level view can see: cross-task integration and overall consistency.
 
-Provide the agent with:
-1. The list of all changed files (from all task completion notes)
-2. The feature spec (acceptance criteria and scope boundaries)
-3. The constitution
-4. Relevant entries from `.claude/memory/MEMORY.md`
+### 3.1: Cross-Task Consistency
 
-The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality, and memory pitfalls.
+Read the key integration points between components built by different tasks:
+- Shared types/interfaces: are they used consistently across all consumers?
+- Import chains: do the pieces connect correctly?
+- API contracts: do callers and providers agree on signatures and behavior?
+- State flow: does data move correctly between layers built by different tasks?
 
-**Additionally**, run these automated checks and append results to the agent's findings:
+Flag any inconsistencies as Critical issues.
+
+### 3.2: Automated Checks
+
+Run these on ALL changed files across all tasks:
 - **Type checker**: Run the Type Check Command from CLAUDE.md and report result
 - **Linter**: Run the Lint Command from CLAUDE.md on all changed files and report result
 - **Build** (if Build Command is specified in CLAUDE.md): Run the build command and report result. For wrapper mode projects, run inside the Source Root directory. Skip if no Build Command is configured
 - **Scope creep**: Compare changed files against the spec's scope boundaries — flag files outside scope
-- **Documentation**: Check if any task introduced new public APIs or behavior changes that lack docs in `docs/` or inline JSDoc. Flag as Warning. For each documentation gap found, record the specific file path and public API name — this is included in the Phase 10 issue report
+- **Leftover artifacts**: Check for debug logs, bare TODOs, commented-out code across all changed files
 
-The code-reviewer's verdict (APPROVE / REQUEST CHANGES / BLOCK) feeds into the final verification report.
+### 3.3: Feature Documentation
+
+Launch the **tech-writer** agent to generate or update feature-level documentation in `docs/`.
+
+Read `.claude/agents/tech-writer.md` and include its **full content** as the opening section of the agent prompt. If the file does not exist, proceed with the inline prompt alone.
+
+Provide the agent with:
+1. The feature spec (what was built and why)
+2. All changed files across all tasks (from task completion notes)
+3. Existing `docs/` content (output of Glob on `docs/`)
+4. Instruction: "Write or update feature-level documentation for `docs/`. Inline code docs already exist in the source files — focus on how the feature works as a whole, architecture decisions, and usage examples. Use the document-when/skip-when criteria from your workflow."
+
+If the tech-writer determines no feature-level docs are needed (internal refactoring, no public-facing changes), accept the justification and skip.
+
+If documentation was created or updated, commit:
+```
+git add docs/ && git commit -m "[WIP] Feature docs: [feature-name]"
+```
+
+Integration check results feed into the verification report (Phase 6).
 
 ## PHASE 4: Security Review (if security-reviewer agent exists)
 
@@ -239,15 +262,30 @@ Keep memory entries concise (1-2 lines each). Link to specific files if relevant
 
 Show the user the verification report and recommend next action:
 
-- If APPROVED: "All acceptance criteria are met and code quality checks pass." Then run Phase 9.5 (if applicable), then invoke `/summarize`.
-- If NEEDS WORK: "Found [N] issues. Recommend re-running `/execute-task [X]` for [reason]. Details in the verification report above."
+- If APPROVED: "All acceptance criteria are met and integration checks pass." Then run Phase 9.5, then invoke `/summarize`.
+- If NEEDS WORK: "Found [N] issues. Details in the verification report above." Then proceed to Phase 10.
 - If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]."
 
-## PHASE 9.5: Source Repo Squash (wrapper mode only)
+## PHASE 9.5: Feature Squash
 
-Skip if `SOURCE_ROOT` is `.`, verdict is not APPROVED, or no `[WIP]` commits exist in source repo.
+Skip if verdict is not APPROVED or no `[WIP]` commits exist.
 
-Run the **Squash** procedure from the Source Repo Auto-Commit section above. Generate the description from the spec's `## 1. Overview` section (first 1-2 sentences).
+Squash all `[WIP]` and `[checkpoint]` commits from this feature into a single clean commit.
+
+1. Find the oldest `[checkpoint]` commit for this feature (from the first task's checkpoint)
+2. Verify WIP commits haven't been pushed to the remote:
+   ```
+   git log --oneline origin/$(git branch --show-current)..HEAD 2>/dev/null
+   ```
+3. If commits are local only → safe to squash:
+   ```
+   git reset --soft [oldest-checkpoint-parent]
+   git commit -m "feat([feature-name]): [spec title — 1-2 sentences from spec overview]"
+   ```
+   Follow the **Commit Convention** section in CLAUDE.md (format and attribution rules).
+4. If commits were already pushed → skip squash, warn user
+
+**Source repo squash** (wrapper mode only, `SOURCE_ROOT != "."`): Also run the Source Repo Squash procedure from the Source Repo Auto-Commit section above.
 
 Then invoke `/summarize`:
 ```
