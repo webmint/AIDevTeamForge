@@ -84,8 +84,10 @@ First, check the Phase field in wip.md to determine where execution was interrup
 
 **If Rollback and retry:**
 - `git stash` any uncommitted changes (save them just in case)
-- `git reset --hard` to the commit before the first `[WIP]` commit (find via `git log --oneline | grep -v "\[WIP\]" | head -1`)
-- **Source repo rollback** (if `$SOURCE_CHECKPOINT` exists in wip.md): `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`
+- Read the `## Rollback Point → Commit:` field from wip.md to get the checkpoint hash
+- Validate the hash: `git cat-file -t [hash]`. If valid, proceed. If invalid or missing, STOP and inform the user: "Rollback point hash in wip.md is missing or invalid. Use `git log --oneline` to find the checkpoint commit manually, then run `git reset --hard [hash]`."
+- `git reset --hard [checkpoint-hash-from-wip.md]`
+- **Source repo rollback** (if `## Source Repo Checkpoint → Commit:` exists in wip.md and is not `N/A`): Validate with `git -C $SOURCE_ROOT cat-file -t [hash]`, then `git -C $SOURCE_ROOT reset --hard [source-checkpoint-hash]`
 - Delete `.claude/wip.md`
 - Re-run the calling command from PHASE 1:
   - `execute-task`: re-run `/execute-task [same task number]`
@@ -93,7 +95,7 @@ First, check the Phase field in wip.md to determine where execution was interrup
   - `refactor`: re-run `/refactor [same arguments]`
 
 **If Rollback and skip/abandon:**
-- Same git reset as above (including source repo rollback if applicable)
+- Same git reset as above — read checkpoint hash from wip.md, validate, then reset (including source repo rollback if applicable)
 - **execute-task only**: Update the task file — set status back to `Pending`. Inform user the task is pending.
 - **fix/refactor**: Inform user the state is cleared and they can handle it manually.
 - Delete `.claude/wip.md`
