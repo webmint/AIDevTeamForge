@@ -5,6 +5,16 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-04-02
+
+### Changed
+- **Docs reading consolidated to `/specify`**: Docs are now read once at `/specify` Phase 1 and embedded into the spec's "Current State" section. `/plan` no longer reads `docs/` — it inherits docs context from the spec. `/execute-task` no longer searches `docs/` broadly — it reads only files referenced in the task's `Context docs` field
+  - `/specify` Phase 3 restructured: docs-guided codebase analysis (targeted reads) when docs exist, full exploration fallback when they don't
+  - Spec Section 2 explicitly instructs to capture docs context for downstream inheritance
+- **New `Context docs` field in task format**: `/breakdown` now embeds specific doc file references per task (max 2), with Doc Reference Rules for when to include them (integration tasks, pattern extensions, API tasks) vs. skip (self-contained tasks)
+- **`/execute-task` agent prompt** includes new `Documentation Context` section with content from task-referenced docs
+- Template version: 1.23.0 → 1.24.0
+
 ## [1.23.0] - 2026-04-01
 
 ### Added

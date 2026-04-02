@@ -13,7 +13,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `research.md` — Quick feasibility check for vague ideas; investigates codebase for related patterns, signal-based external research, displays full report in console and optionally saves to `research/YYYY-MM-DD-[topic-slug].md`
 - `clarify.md` — Optional pre-step, 9 ambiguity categories, max 5 questions
 - `specify.md` — Creates feature specs with acceptance criteria; auto-creates `spec/NNN-short-desc` branch when on default branch
-- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation; reads `docs/` for context; outputs Documentation Impact section
+- `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research evaluation; inherits docs context from spec; outputs Documentation Impact section
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints
 - `execute-task.md` — Runs a single task with pre-flight checks (including contract preconditions), agent execution, doc writing (with structured prompt + post-doc verification), verification (including contract postconditions + affected tests); review checkpoint gates in batch mode
 - `verify.md` — Validates all tasks against spec acceptance criteria; Phase 10 triage lets user fix issues now, fix docs now (direct tech-writer), or defer to `bugs/`; auto-triggers `/summarize` on APPROVED verdict
@@ -101,7 +101,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - Fixed-size output contract: each subagent returns max 50 lines per module
 - Generates: `docs/overview.md`, `docs/architecture.md`, `docs/features/*.md`, `docs/api/*.md`
 - Enriches memory with module boundaries, dependency warnings, and complexity areas
-- Docs serve as the primary knowledge base for all agents during `/execute-task`
+- Docs serve as the primary knowledge base, consumed by `/specify` and flowed to agents through the spec → breakdown → task reference chain
 
 ### Context Maintenance (Phase 7.5)
 - `/execute-task` now includes Phase 7.5: Context Maintenance after each task

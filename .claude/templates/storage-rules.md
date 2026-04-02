@@ -68,6 +68,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 **Blocks**: [task numbers] or None
 **Spec criteria**: AC-[numbers]
 **Review checkpoint**: Yes/No
+**Context docs**: [doc file paths] or None
 
 ## Files
 

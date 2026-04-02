@@ -76,6 +76,11 @@ Before doing ANY analysis, read these files for context:
    - **Guard**: If `constitution.md` contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/specify`."
 2. `.claude/memory/MEMORY.md` — past lessons and known pitfalls
 3. `CLAUDE.md` — project structure and commands
+4. Read relevant project documentation from `docs/` (if the directory exists):
+   - `docs/architecture.md` — current architecture patterns, layer boundaries, data flow
+   - `docs/features/*.md` — scan for features related to the request
+   - `docs/api/*.md` — if the request involves API changes
+   - If `docs/` doesn't exist or is empty, skip — rely on codebase analysis in Phase 3
 
 ## PHASE 2: Clarify Requirements
 
@@ -101,8 +106,20 @@ Based on the description, identify ambiguities and ask clarifying questions. Use
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, all file searches and code reads target that path. File paths in the spec's Affected Areas table use workspace-relative paths (e.g., `SOURCE_ROOT/src/...`).
 
 ### If existing codebase:
-Search the codebase to understand the current state of affected areas:
 
+**Step 1: Docs-guided understanding** (if docs were loaded in Phase 1)
+- Use docs to understand the high-level behavior, architecture, and feature relationships in the affected area
+- Identify which source files are most relevant based on docs references
+- Note any gaps — areas the docs don't cover that need direct codebase investigation
+
+**Step 2: Targeted codebase reads**
+- Read the specific source files identified from docs (for concrete file paths, line numbers, exact interfaces)
+- For areas not covered by docs, use Glob and Grep to locate related files
+- Verify docs accuracy — if code doesn't match what docs describe, note the discrepancy
+- Map dependencies and identify patterns
+- Cross-reference with MEMORY.md for known issues in this area
+
+**If no docs were loaded** (docs/ doesn't exist), fall back to full codebase exploration:
 1. **Find affected files**: Use Glob and Grep to locate all files related to the feature
 2. **Read key files**: Read the most important files (components, stores, types, API calls)
 3. **Map dependencies**: Understand what depends on what
@@ -145,7 +162,7 @@ Inform the user: `Created and switched to branch spec/NNN-short-desc`. This ensu
 
 ## 2. Current State
 
-[Existing codebase: Describe how the system currently works in the affected area. Include file paths and line numbers.]
+[Existing codebase: Describe how the system currently works in the affected area. Include file paths and line numbers. Incorporate context from docs/ loaded in Phase 1 — documented behavior, architecture patterns, and feature relationships. This section is the primary way downstream commands (/plan, /breakdown) inherit docs knowledge, so capture it fully here rather than assuming they will read docs themselves.]
 [Greenfield: Describe what exists so far (may be nothing). Reference the constitution's scaffolding guide for where this feature should be built.]
 
 ## 3. Desired Behavior

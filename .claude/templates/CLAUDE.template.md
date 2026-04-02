@@ -59,7 +59,7 @@ Takes an approved plan and generates ordered, atomic tasks with dependencies and
 
 ### `/execute-task [number]`
 Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
-1. Pre-flight check (constitution, memory, docs, file state)
+1. Pre-flight check (constitution, memory, file state, contract preconditions)
 2. Agent execution with scope constraints
 3. Post-execution verification (tsc, lint, build, done conditions)
 4. Documentation update (tech-writer agent)

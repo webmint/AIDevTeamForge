@@ -149,6 +149,7 @@ For each task, generate:
 **Files**: [list of files to change]
 **Depends on**: [task numbers this task requires to be done first, or "None"]
 **Blocks**: [task numbers that can't start until this is done]
+**Context docs**: [specific doc file paths the agent should read, or "None"]
 
 **Description**:
 [Detailed description of what to change and why]
@@ -188,6 +189,15 @@ For each task, generate a `## Contracts` section with `### Expects` and `### Pro
   - "Cart totals work correctly" (not verifiable)
   - "Line 45 of CartBLoC.ts returns the right value" (line numbers shift)
   - "Performance is acceptable" (not grep-verifiable)
+
+### Doc Reference Rules
+
+For each task, determine if the agent needs documentation context beyond what's in the task description:
+- **Integration tasks** (wiring into existing features): Reference the neighboring feature's doc (e.g., `docs/features/checkout.md`)
+- **Tasks extending existing patterns**: Reference `docs/architecture.md` if the pattern is documented there
+- **API tasks touching existing endpoints**: Reference the relevant `docs/api/*.md` file
+- **Self-contained tasks** (new types, isolated logic): No doc reference needed — the task description is sufficient
+- **Maximum 2 doc references per task** — if more context is needed, include it directly in the task description
 
 ### Review Checkpoint Placement
 

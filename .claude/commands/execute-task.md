@@ -101,7 +101,7 @@ For multi-task queues: the current task is always the first item. After it compl
 4. Read `constitution.md`
 5. Read `.claude/memory/MEMORY.md`
 6. Read files listed in the task's "Files" section. If total estimated lines exceed 500, read only the sections relevant to the change (use Change Details to identify which functions/blocks to focus on). For smaller file sets, read them fully.
-7. **Read relevant documentation**: Search `docs/` for files related to the area this task touches. These docs are the knowledge base for all agents — populated by `/onboard` for existing projects or built incrementally by the tech-writer for new projects. Read only docs that are directly relevant — not all docs.
+7. **Read referenced documentation**: If the task file has a `Context docs` field with specific file paths, read those files. Do not search `docs/` broadly — the breakdown already identified which docs are relevant for this task.
 
 Verify:
 - Task exists and is not already completed
@@ -228,6 +228,9 @@ You are executing Task [N] from an approved task breakdown.
 4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
 5. Every file you change must pass the project's linter (see Lint Command in CLAUDE.md)
 6. Document any new functions/variables you create
+
+## Documentation Context
+[Content from the doc files listed in the task's Context docs field, if any. Omit this section if Context docs is "None".]
 
 ## Contract: What This Task Must Produce
 [Items from the task's Contracts → Produces section]
