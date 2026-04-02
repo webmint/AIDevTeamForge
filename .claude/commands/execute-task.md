@@ -414,6 +414,9 @@ Provide a concise summary to the user:
    - If this shows commits (or fails because there's no upstream) → WIP commits are **local only** → safe to squash:
      ```
      git reset --soft [checkpoint-commit-hash]
+     ```
+     Immediately after the reset, update `.claude/wip.md` — change Phase to `6.5 (Squash Applied, Commit Pending)`. This marks that the destructive reset has happened, so recovery knows not to re-run it.
+     ```
      git commit -m "feat([feature-name]): Task [N] — [title]"
      ```
      If the commit fails after the reset (pre-commit hook rejection, etc.), do NOT delete `.claude/wip.md`. Inform the user: "Squash reset was applied but the commit failed. Your changes are staged. Run `git commit` manually to complete, or `git reset HEAD~0` to unstage."
@@ -429,11 +432,15 @@ The task is now fully committed with a clean single commit and no WIP artifacts.
 
 ## PHASE 7: Memory Update
 
+Update `.claude/wip.md` — change Phase to `7 (Memory Update)`.
+
 If anything unexpected happened during execution (a gotcha, a pattern discovery, a near-mistake), update `.claude/memory/MEMORY.md`.
 
 Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
 ## PHASE 7.5: Context Maintenance
+
+Update `.claude/wip.md` — change Phase to `7.5 (Context Maintenance)`.
 
 Read `.claude/commands/_context-maintenance.md` and follow its instructions.
 Context: the current feature directory, the task number and title just completed.
