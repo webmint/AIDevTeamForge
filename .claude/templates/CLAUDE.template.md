@@ -60,13 +60,14 @@ Takes an approved plan and generates ordered, atomic tasks with dependencies and
 ### `/execute-task [number]`
 Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
 1. Pre-flight check (constitution, memory, file state, contract preconditions)
-2. Agent execution with scope constraints
-3. Post-execution verification (tsc, lint, build, done conditions)
-4. Documentation update (tech-writer agent)
+2. Agent execution with scope constraints (agent writes code + inline docs)
+3. Post-execution verification (tsc, lint, build, done conditions, self-repair)
+4. Code review (code-reviewer agent — findings reported to user, critical issues block)
 5. Memory update
+WIP commits accumulate across tasks and are squashed by `/verify` when the feature is approved.
 
 ### `/verify [spec-file]`
-Verifies all completed tasks against the spec's acceptance criteria. When AC verification is enabled (`AC_VERIFICATION` in project-config.json), launches the **ac-verifier** agent to test acceptance criteria against the running app via Chrome DevTools MCP and/or API calls — falls back to code reading when MCP is not available. Performs code review against constitution rules. Updates memory with lessons learned. Automatically triggers `/summarize` when verdict is APPROVED.
+Verifies all completed tasks against the spec's acceptance criteria. When AC verification is enabled (`AC_VERIFICATION` in project-config.json), launches the **ac-verifier** agent to test acceptance criteria against the running app via Chrome DevTools MCP and/or API calls — falls back to code reading when MCP is not available. Performs cross-task integration check (not full code review — that was done per-task). Generates feature-level documentation via tech-writer. Squashes all WIP commits into a clean feature commit. Updates memory with lessons learned. Automatically triggers `/summarize` when verdict is APPROVED.
 
 ### `/summarize [spec-file]`
 Generates a concise, PR-ready summary of a completed feature. Reads spec, plan, tasks, and git history. Saves to `specs/[feature]/summary.md`. Runs automatically after `/verify` approves.
