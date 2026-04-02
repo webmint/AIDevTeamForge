@@ -457,6 +457,8 @@ Update `.claude/wip.md` — change Phase to `7.5 (Context Maintenance)`.
 Read `.claude/commands/_context-maintenance.md` and follow its instructions.
 Context: the current feature directory, the task number and title just completed.
 
+**Critical**: This phase includes auto-verify detection (7.5.3). After updating session state, you MUST check whether ALL tasks in the feature are Complete by reading `specs/[feature]/tasks/README.md`. If every task has Status: Complete, invoke `/verify` immediately — do not just report completion and stop. If any tasks are still pending, continue with the normal flow (Phase 8 for multi-task, or completion report for single-task).
+
 ## PHASE 8: Multi-Task Continuation
 
 This phase only applies when the task queue (built in Phase 1.1) contains more than one task.

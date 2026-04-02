@@ -9,7 +9,9 @@ Context from the caller: the remaining task queue, the current feature directory
 After Phase 7.5 completes for the current task:
 
 1. Remove the completed task from the queue
-2. If the queue is empty → Phase 7.5.3 (Auto-Verify) already handled feature-complete detection. If it did not trigger (some tasks outside the queue are still pending), report the Multi-Task Final Report below.
+2. If the queue is empty:
+   a. Check if Phase 7.5.3 already invoked `/verify` (all feature tasks were Complete). If yes → stop here. `/verify` has taken over the flow. Do not report anything.
+   b. If Phase 7.5.3 did NOT trigger (some tasks outside the queue are still pending) → report the Multi-Task Final Report below.
 3. If the queue has remaining tasks:
    a. **Dependency check**: Verify the next task's dependencies are all satisfied (marked Complete). If not, stop and report: "Task [N] is blocked by incomplete dependency Task [M]. Completed [X] of [Y] queued tasks."
    a2. **Review checkpoint gate**: Read the next task's header. If `Review checkpoint: Yes`:

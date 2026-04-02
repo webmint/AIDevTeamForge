@@ -85,5 +85,5 @@ After 7.5.2 completes (for both single-task and multi-task paths), check whether
    ```
    ✅ All feature tasks complete — automatically running /verify
    ```
-   Then invoke `/verify` with the feature's spec file path. This replaces the normal end-of-execution flow.
-3. If any tasks remain non-Complete: continue with the normal flow (single-task completion report or Phase 8 multi-task continuation).
+   Then invoke `/verify` with the feature's spec file path. This replaces the normal end-of-execution flow — do NOT proceed to Phase 8 or output a completion report. If a multi-task queue exists, the remaining queue is abandoned (all remaining tasks are either already Complete or will be picked up in a future run).
+3. If any tasks remain non-Complete: continue with the normal flow (single-task completion report or Phase 8 multi-task continuation). Do NOT invoke `/verify` — the feature is not done yet.
