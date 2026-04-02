@@ -5,6 +5,14 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.1] - 2026-04-02
+
+### Fixed
+- **Missing Workflow sections** in implementation agent templates: `db-engineer`, `devops-engineer`, and `migration-engineer` now have `Your Workflow` sections consistent with their peers (backend-engineer, frontend-engineer, mobile-engineer)
+- **Missing Output Format** in `qa-engineer` — only analysis/review agent without a structured output template. Now includes a Test Report format matching other review agents
+- **Missing Output Format** in `architect` — design deliverables had no predictable structure. Now includes an Architecture Decision format (context, decision, components, dependencies, trade-offs)
+- Template version: 1.24.0 → 1.24.1
+
 ## [1.24.0] - 2026-04-02
 
 ### Changed

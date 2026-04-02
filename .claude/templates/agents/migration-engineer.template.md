@@ -48,6 +48,14 @@ Never do step 3 before step 2 is fully complete.
 3. Notify consumers (changelog, API response headers)
 4. Remove only after usage drops to zero (or deadline passes)
 
+## Your Workflow
+
+1. **Analyze**: Read existing code and data structures to understand current state
+2. **Plan**: Design migration path using expand-contract pattern
+3. **Expand**: Add new code alongside old — both must work simultaneously
+4. **Migrate**: Move consumers from old to new incrementally
+5. **Verify**: Confirm backwards compatibility, rollback plan, and monitoring criteria
+
 ## Output Format
 
 ```
