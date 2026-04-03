@@ -263,7 +263,7 @@ After the agent completes, immediately create a WIP git commit to preserve the w
 git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
 ```
 
-Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
+Update `.claude/wip.md` — change Phase to `3.3 (Verification)`.
 
 ### 3.3: Post-Agent Verification (with Self-Repair)
 
@@ -308,6 +308,8 @@ For each repair attempt:
 
 ### 3.4: Code Review
 
+Update `.claude/wip.md` — change Phase to `3.4 (Code Review)`.
+
 After verification passes, launch the **code-reviewer** agent on all files changed by the task.
 
 Provide the agent with:
@@ -343,6 +345,8 @@ Wait for user response:
 - **Stop**: Keep WIP marker and commits. Report completed state for manual handling.
 
 ## PHASE 4: Mark Complete
+
+Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
 
 1. Update the task tracking (TaskUpdate → completed)
 2. In the task file (`specs/NNN-feature/tasks/NNN-title.md`):
