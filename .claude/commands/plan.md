@@ -25,6 +25,8 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 
 ## PHASE 0: Research Evaluation
 
+**Guard**: Read `constitution.md`. If it contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/plan`."
+
 **This phase always runs.** Scan the spec to determine the research depth needed.
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path.
@@ -161,9 +163,7 @@ Save to `specs/[feature-name]/plan.md`:
 **Error Handling**: [pattern to use]
 **State Management**: [approach for this feature]
 
-## Constitution Check
-
-**Guard**: If `constitution.md` contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/plan`."
+## Constitution Compliance
 
 [Verify the planned approach doesn't violate any NON-NEGOTIABLE rules]
 - Rule X: [compliant / requires attention]
