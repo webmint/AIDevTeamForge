@@ -143,7 +143,7 @@ Before writing code, verify:
    - **New files (greenfield)**: Does the target directory exist? If not, it should be created as part of this task or a prior task
 5. **Type safety**: Read the type definitions involved and verify the change is type-safe on paper. For greenfield, verify the proposed types align with the constitution's patterns
 6. **Contract preconditions**: Read the task's `## Contracts → ### Expects` section. For each precondition:
-   - Use Grep or Read to verify the condition holds in the current codebase (e.g., check that an export exists, an interface has expected fields, a function exists with the expected name)
+   - Verify each condition holds in the current codebase. For simple existence checks (export exists, function exists), Grep is sufficient. For structural checks (interface has specific fields, function has specific signature), Read the file and verify the full structure — do not rely on Grep alone for structural contracts
    - If a precondition fails:
      - Identify which upstream task should have produced it (check the task's "Depends on" and the upstream task's "Produces")
      - If the upstream task is marked Complete but its postcondition is not met, report: **"Contract violation: Task [N] expects [X] but it's not present. Task [M] (which should have produced it) is marked Complete. Task [M]'s output may be semantically incorrect. Review Task [M]'s code before proceeding."**
@@ -274,7 +274,7 @@ After the agent completes, run verification:
 3. **Linter passes**: Run the Lint Command from CLAUDE.md on all changed files
 4. **Project builds** (if Build Command is specified in CLAUDE.md): Run the build command. For wrapper mode projects, run inside the Source Root directory. Skip this check if no Build Command is configured.
 5. **Done conditions met**: Check each "Done when" item from the task
-6. **Contract postconditions**: Read the task's `## Contracts → ### Produces` section. For each postcondition, use Grep or Read to verify it holds in the codebase (e.g., verify the export exists, the interface has the expected fields, the function has the expected name). Track pass/fail for each postcondition.
+6. **Contract postconditions**: Read the task's `## Contracts → ### Produces` section. For each postcondition, verify it holds in the codebase. For simple existence checks (export exists, function exists), Grep is sufficient. For structural checks (interface has specific fields, function has specific signature), Read the file and verify the full structure. Track pass/fail for each postcondition.
 7. **Run affected tests**: Search for test files (`*.test.*`, `*.spec.*`) in the same directories as changed files. If test files exist and a test runner is available (check CLAUDE.md for Test Command, or detect via package.json scripts), run them. If no test files or test runner exist, skip this check. Test failures are treated the same as other verification failures.
 8. **Wrapper isolation check** (wrapper mode only): Verify no Claude artifacts were created inside the Source Root. Scan `SOURCE_ROOT/` for files matching: `.claude/`, `specs/`, `docs/overview.md`, `docs/architecture.md`, `constitution.md`, `CLAUDE.md`, `bugs/`, `research/`, `.mcp.json`. If any are found, flag as a verification failure.
 
