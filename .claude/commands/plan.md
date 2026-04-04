@@ -229,6 +229,19 @@ Save to `specs/[feature-name]/plan.md`:
 - [Contracts](contracts.md) — if API changes are involved
 ```
 
+## PHASE 2.5: Plan-Spec Cross-Reference Check
+
+Before presenting the plan to the user, verify completeness:
+
+1. Read every AC from the spec's Acceptance Criteria section
+2. For each AC, verify the plan addresses it:
+   - Check the plan's "Layer Map" and "File Impact" for files/components related to this AC
+   - Check "Key Design Decisions" for approach decisions relevant to this AC
+3. If any AC has no clear implementation path in the plan:
+   - Revise the plan to add the missing coverage
+   - If you cannot determine the implementation path, add it to the plan's Risk Assessment as: "AC-[N] has no clear implementation path — requires clarification during breakdown"
+4. Check the reverse: does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning (add to the plan's File Impact table with a note).
+
 ## PHASE 3: User Approval
 
 **HARD GATE**: The plan MUST be approved before `/breakdown` can generate tasks.
