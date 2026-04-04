@@ -324,16 +324,29 @@ Provide the agent with:
 
 The agent will check: constitution compliance, architecture & patterns, type safety, security basics, code quality, and memory pitfalls.
 
-**If the agent returns BLOCK or critical issues** (max 1 additional review cycle):
-- Apply the required fixes
-- Re-run verification (Phase 5 checks)
-- Commit:
-  ```
-  git add [files you modified] .claude/wip.md && git commit -m "[WIP] Fix: [short description] — review fixes"
-  ```
-- If still BLOCKED after this additional cycle, STOP and report the remaining issues to the user. Do not attempt further review cycles.
+**If verdict is APPROVE or warnings only** → proceed to Phase 7. Include warnings in the report.
 
-**If the agent returns APPROVE or only warnings/info** → proceed to Phase 7.
+**If verdict is REQUEST CHANGES or BLOCK** → report findings to the user immediately:
+
+```
+⚠️ Code review found issues:
+
+#### Critical (blocks completion)
+- [file:line] — [description]
+
+#### Warning (should fix)
+- [file:line] — [description]
+
+Options:
+1. **Address now** — fix the issues, then re-run review
+2. **Continue** — proceed despite warnings (Critical issues CANNOT be skipped)
+3. **Stop** — halt execution, keep WIP state for manual handling
+```
+
+Wait for user response:
+- **Address now**: Launch a repair agent to fix the review issues. After fixes, re-run the code-reviewer once. If still BLOCK after this second review, STOP and report: "Code review issues persist after repair. Address manually and re-run `/fix`."
+- **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 7 with warnings noted.
+- **Stop**: Keep WIP marker and commits. Report state for manual handling.
 
 ## PHASE 7: Test Assessment
 
