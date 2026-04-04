@@ -415,7 +415,7 @@ Replace `{{WORKSPACE_MODE}}` with `standalone` or `wrapper`, and `{{SOURCE_ROOT}
 
 ### 3.5: Create constitution.md stub
 
-Generate `constitution.md` at project root with a header and a note that it will be fully populated when `/constitute` is run. Include the project type and framework as initial metadata.
+Read `.claude/templates/constitution.template.md` and copy it to `constitution.md` at project root. Replace header placeholders (`{{PROJECT_NAME}}`, `{{DATE}}`, `{{PROJECT_TYPE}}`, `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ERROR_HANDLING}}`, `{{TESTING}}`) with actual values from detection and user answers. Leave all `_Run /constitute to populate_` sections and all `[universal]` sections intact — these are the sentinel strings that other commands check to verify the constitution has been populated.
 
 ### 3.6: Create docs/ folder
 
