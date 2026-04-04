@@ -264,7 +264,7 @@ Show the user the verification report and recommend next action:
 
 - If APPROVED: "All acceptance criteria are met and integration checks pass." Then run Phase 9.5, then invoke `/summarize`.
 - If NEEDS WORK: "Found [N] issues. Details in the verification report above." Then proceed to Phase 10.
-- If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]."
+- If REJECTED: "Critical issues found that require revisiting the spec. [Describe the fundamental problem]. To address: revise the spec with `/specify`, then re-run `/plan` and `/breakdown`. The current task breakdown should not be re-executed as-is."
 
 ## PHASE 9.5: Feature Squash
 
