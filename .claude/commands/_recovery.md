@@ -65,7 +65,7 @@ Wait for user to choose.
 
 First, check the Phase field in wip.md to determine where execution was interrupted:
 
-- **Phase 5 (Report)** — for `execute-task`: the task was verified and marked complete. Code is committed. Delete wip.md and continue to Phase 6 (memory update).
+- **Phase 4 (Complete)** — for `execute-task`: the task was verified, reviewed, and marked complete. Code is committed. Delete wip.md and continue to Phase 5 (bookkeeping).
 - **Phase 8 (squash-related)** — for `fix` and `refactor`: check whether the squash already happened. If wip.md says "Squash Applied", retry the commit only. If squash hasn't happened, run the squash from the start.
 
 - **All other phases (3, 4, etc.):**

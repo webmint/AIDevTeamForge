@@ -1,12 +1,12 @@
 # Multi-Task Continuation
 
-This file is read by `/execute-task` when the task queue (built in Phase 1.1) contains more than one task. Read this after Phase 7 (context maintenance) completes for the current task.
+This file is read by `/execute-task` when the task queue (built in Phase 1.1) contains more than one task. Read this after Phase 5.2 (context maintenance) completes for the current task.
 
 Context from the caller: the remaining task queue, the current feature directory.
 
 ## Queue Processing
 
-After Phase 7 completes for the current task:
+After Phase 5.2 completes for the current task:
 
 1. Remove the completed task from the queue
 2. If the queue is empty:
@@ -37,7 +37,7 @@ After Phase 7 completes for the current task:
         🔴 CONTEXT HEALTH PAUSE — [N] tasks completed this session (heavy context load).
         Strongly recommended: Run /compact before continuing.
 
-        /compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Inline documentation rule: implementing agents write JSDoc/docstrings for new public APIs, code-reviewer verifies this in Phase 3.4. Feature-level docs in docs/ are handled by the tech-writer at /verify time, (7) Completion Notes sections from all completed task files in specs/[feature]/tasks/ — these contain prior decisions, actual files changed, and deviations that inform later tasks. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
+        /compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Inline documentation rule: implementing agents write JSDoc/docstrings for new public APIs, code-reviewer verifies this in Phase 3.3. Feature-level docs in docs/ are handled by the tech-writer at /verify time, (7) Completion Notes sections from all completed task files in specs/[feature]/tasks/ — these contain prior decisions, actual files changed, and deviations that inform later tasks. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
 
         Then resume with: /execute-task [remaining-task-ids]
         ```

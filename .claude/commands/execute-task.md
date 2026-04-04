@@ -120,17 +120,6 @@ Verify:
 - All dependencies (listed in "Depends on") are marked complete
 - The assigned agent matches what's available
 
-### 1.3: AC Verification Readiness Check
-
-Read `AC_VERIFICATION` from `.claude/project-config.json`. If the value is `"off"` or the key does not exist, skip this check entirely.
-
-If `AC_VERIFICATION` is `"auto"` or `"browser-only"`:
-1. Attempt to call `mcp__chrome-devtools__list_pages` as a lightweight probe.
-2. If it **fails** (MCP not available):
-   - Display: "Note: Chrome DevTools MCP is not running. When `/verify` runs after this task, frontend AC items will be verified by code reading instead of browser interaction. To enable browser-based AC verification, start the WebStorm JS debugger before running `/verify`."
-   - This is informational only — do not block execution.
-3. If it **succeeds**: no message needed.
-
 ## PHASE 2: Pre-Flight Check
 
 Before writing code, verify:
@@ -196,16 +185,7 @@ If ANY pre-flight check fails, stop and inform the user with specifics.
 
 ## PHASE 3: Execute
 
-### 3.1: Create Task Tracking
-
-Use TaskCreate to create a tracking task:
-- Subject: Task [N] title from the breakdown
-- Description: Full description from the breakdown
-- ActiveForm: "Implementing [short description]"
-
-Set it to `in_progress`.
-
-### 3.2: Launch Agent
+### 3.1: Launch Agent
 
 **MANDATORY**: You MUST use the Agent tool to launch the assigned agent for every task, regardless of task size or complexity. You are the orchestrator — your role is to delegate, verify, and coordinate, never to write implementation code yourself. Even if the task is a single line change, a boilerplate file, or "trivial" — launch the agent. Skipping the agent launch violates the team's division of responsibilities: you manage the process, agents write the code.
 
@@ -263,9 +243,9 @@ After the agent completes, immediately create a WIP git commit to preserve the w
 git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — agent execution complete"
 ```
 
-Update `.claude/wip.md` — change Phase to `3.3 (Verification)`.
+Update `.claude/wip.md` — change Phase to `3.2 (Verification)`.
 
-### 3.3: Post-Agent Verification (with Self-Repair)
+### 3.2: Post-Agent Verification (with Self-Repair)
 
 After the agent completes, run verification:
 
@@ -306,9 +286,9 @@ For each repair attempt:
 - Keep the WIP marker and commits so the user can inspect the state
 - Suggest: "Run `/execute-task [N]` again after manually fixing, or use recovery options"
 
-### 3.4: Code Review
+### 3.3: Code Review
 
-Update `.claude/wip.md` — change Phase to `3.4 (Code Review)`.
+Update `.claude/wip.md` — change Phase to `3.3 (Code Review)`.
 
 After verification passes, launch the **code-reviewer** agent on all files changed by the task.
 
@@ -344,12 +324,13 @@ Wait for user response:
 - **Continue**: Only allowed if there are no Critical issues (warnings only). Proceed to Phase 4 with warnings noted.
 - **Stop**: Keep WIP marker and commits. Report completed state for manual handling.
 
-## PHASE 4: Mark Complete
+## PHASE 4: Complete & Report
 
-Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
+Update `.claude/wip.md` — change Phase to `4 (Complete)`.
 
-1. Update the task tracking (TaskUpdate → completed)
-2. In the task file (`specs/NNN-feature/tasks/NNN-title.md`):
+### 4.1: Mark Task Complete
+
+1. In the task file (`specs/NNN-feature/tasks/NNN-title.md`):
    - Change **Status** to `Complete`
    - In the **Done When** section, change every `- [ ]` to `- [x]` for conditions that were verified as met
    - Fill in the Completion Notes section:
@@ -359,16 +340,20 @@ Update `.claude/wip.md` — change Phase to `4 (Mark Complete)`.
      **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
      **Notes**: [any deviations from plan or things to watch]
      ```
-3. Update the task index (`specs/NNN-feature/tasks/README.md`) — mark this task's status as Complete
+2. Update the task index (`specs/NNN-feature/tasks/README.md`) — mark this task's status as Complete
+
+### 4.2: Commit & Cleanup
 
 Commit all changes (source files, task files, any review fixes) in a single `[WIP]` commit:
 ```
 git add [changed source files] specs/ && git commit -m "[WIP] Task [N]: [title] — complete"
 ```
 
-Update `.claude/wip.md` — change Phase to `5 (Report)`.
+Delete `.claude/wip.md`.
 
-## PHASE 5: Report & Cleanup
+> **No per-task squash**: WIP commits accumulate across tasks and are squashed into a clean commit by `/verify` Phase 9.5 when the feature is approved.
+
+### 4.3: Report
 
 Provide a concise summary to the user:
 
@@ -393,26 +378,24 @@ Provide a concise summary to the user:
 **Next task**: [NNN]-[title] (ready / blocked by [NNN])
 ```
 
-Delete `.claude/wip.md`.
+## PHASE 5: Bookkeeping
 
-> **No per-task squash**: WIP commits accumulate across tasks and are squashed into a clean commit by `/verify` Phase 9.5 when the feature is approved. This keeps per-task execution simple and defers git history cleanup to the feature-level verification.
-
-## PHASE 6: Memory Update
+### 5.1: Memory Update
 
 If anything unexpected happened during execution (a gotcha, a pattern discovery, a near-mistake), update `.claude/memory/MEMORY.md`.
 
 Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entries under the matching section in MEMORY.md (Known Pitfalls, What Worked, What Failed, External API Quirks, etc.).
 
-## PHASE 7: Context Maintenance
+### 5.2: Context Maintenance
 
 Read `.claude/commands/_context-maintenance.md` and follow its instructions.
 Context: the current feature directory, the task number and title just completed.
 
-**Critical**: This phase includes auto-verify detection. After updating session state, you MUST check whether ALL tasks in the feature are Complete by reading `specs/[feature]/tasks/README.md`. If every task has Status: Complete, invoke `/verify` immediately — do not just report completion and stop. If any tasks are still pending, continue with the normal flow (Phase 8 for multi-task, or completion report for single-task).
+**Critical**: This includes auto-verify detection. After updating session state, you MUST check whether ALL tasks in the feature are Complete by reading `specs/[feature]/tasks/README.md`. If every task has Status: Complete, invoke `/verify` immediately — do not just report completion and stop. If any tasks are still pending, continue with 5.3.
 
-## PHASE 8: Multi-Task Continuation
+### 5.3: Multi-Task Continuation
 
-This phase only applies when the task queue (built in Phase 1.1) contains more than one task.
+This step only applies when the task queue (built in Phase 1.1) contains more than one task. If single-task mode, skip this step.
 
 Read `.claude/commands/_multi-task-continuation.md` and follow its instructions.
 Context: the remaining task queue, the current feature directory.
