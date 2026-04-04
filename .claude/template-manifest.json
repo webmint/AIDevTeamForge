@@ -25,7 +25,6 @@
       ".claude/commands/_context-maintenance.md",
       ".claude/commands/_multi-task-continuation.md",
       ".claude/commands/_tech-writer-onboarding.md",
-      ".claude/commands/_agent-assignment.md",
       ".claude/template-manifest.json",
       "scripts/**"
     ]

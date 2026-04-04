@@ -17,7 +17,7 @@ Picks up one or more tasks from the breakdown, selects the assigned agent for ea
   - **Empty**: Execute the next pending task (lowest number with all dependencies satisfied) from the active feature.
   - **Single number** (e.g. `3`): Execute that specific task in the active feature.
   - **Feature/task** (e.g. `001/3` or `user-auth/3`): Execute a specific task in a specific feature.
-  - **Comma-separated** (e.g. `1,3,5`): Execute these specific tasks sequentially in the active feature. Each task gets the full Phase 0–7.5 treatment.
+  - **Comma-separated** (e.g. `1,3,5`): Execute these specific tasks sequentially in the active feature. Each task gets the full Phase 0–7 treatment.
   - **Range** (e.g. `1-5`): Execute tasks 1 through 5 sequentially. Equivalent to `1,2,3,4,5`.
   - **`all`**: Execute all pending tasks in the active feature, in dependency order.
 

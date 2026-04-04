@@ -328,6 +328,8 @@ For each repair attempt:
 
 ## PHASE 6: Code Review
 
+Update `.claude/wip.md` — change Phase to `6 (Code Review)`.
+
 Launch the **code-reviewer** agent on ALL changed files.
 
 Provide the agent with:
@@ -352,6 +354,8 @@ The agent will check: constitution compliance, architecture & patterns, type saf
 **If the agent returns APPROVE or only warnings/info** → proceed to Phase 7.
 
 ## PHASE 7: Test Assessment
+
+Update `.claude/wip.md` — change Phase to `7 (Test Assessment)`.
 
 Launch the **qa-engineer** agent to assess test impact.
 
@@ -378,6 +382,8 @@ git add [test files you modified] && git commit -m "[WIP] Refactor: [short descr
 ```
 
 ## PHASE 7.5: Documentation Update (MANDATORY)
+
+Update `.claude/wip.md` — change Phase to `7.5 (Documentation)`.
 
 Always invoke the tech-writer — let it decide whether documentation changes are needed.
 
@@ -425,6 +431,8 @@ git add docs/ [source files with doc changes] && git commit -m "[WIP] Refactor: 
 Report the tech-writer's decision in Phase 8.3's report as: `**Documentation**: [Updated docs/architecture.md / No doc update needed — [justification]]`.
 
 ## PHASE 8: Report & Clean Up
+
+Update `.claude/wip.md` — change Phase to `8 (Report & Clean Up)`.
 
 ### 8.1: Final Commit
 
