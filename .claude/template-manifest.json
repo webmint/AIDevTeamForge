@@ -21,6 +21,7 @@
       ".claude/commands/research.md",
       ".claude/commands/summarize.md",
       ".claude/commands/_recovery.md",
+      ".claude/commands/_agent-assignment.md",
       ".claude/commands/_context-maintenance.md",
       ".claude/commands/_multi-task-continuation.md",
       ".claude/commands/_tech-writer-onboarding.md",
@@ -79,6 +80,18 @@
         "description": "Add new template lines, keep existing project lines"
       }
     }
+  },
+
+  "templateRepoOnly": {
+    "description": "Files that exist only in the template repo — NOT copied to target projects during install or update",
+    "patterns": [
+      ".claude/commands/release.md",
+      "install.sh",
+      "update.sh",
+      "AI-ISSUES-AUDIT.md",
+      "COMPETITIVE-ANALYSIS.md",
+      "QUALITY-AUDIT.md"
+    ]
   },
 
   "copyIfMissing": {
