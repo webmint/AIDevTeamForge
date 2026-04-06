@@ -112,6 +112,7 @@ Run these once when you first install the template:
 /fix "bug description"         ← small bugs (1-5 files)
 /fix bugs/003-null-check.md   ← fix from bug backlog
 /refactor path/to/file.ts     ← behavior-preserving restructuring
+/security src/api/             ← security review (file, dir, or --full for codebase)
 /report-bug "description"     ← log a bug for later
 /refresh-docs                  ← update stale documentation
 /research "topic or idea"      ← quick feasibility check
@@ -119,6 +120,7 @@ Run these once when you first install the template:
 
 - **`/fix`** — Diagnose → delegate to agent → verify → code review → test assessment → doc update. Accepts enriched bug files with AC/expected/actual behavior context. Self-contained (own squash, own docs). Escalates to `/specify` if scope > 5 files.
 - **`/refactor`** — Analyze 9 categories → propose (partial approval supported) → delegate to agent → verify → code review → test assessment → doc update. Auto-selects agent by file layer. Self-contained. Escalates to `/specify` if scope > 5 files.
+- **`/security`** — On-demand security review. Target a file, directory, uncommitted changes, or full codebase (`--full`). Launches security-reviewer agent with constitution context. Reports Critical/High/Medium/Info with CWE identifiers and remediation. Read-only.
 - **`/report-bug`** — Creates structured bug file in `bugs/` with status lifecycle (Open → In Progress → Fixed).
 - **`/refresh-docs`** — Lightweight doc update using git delta. Tech-writer in Refresh Mode.
 - **`/research`** — Investigates codebase + docs/ for related patterns. Signal-based external research (Context7 first). Displays report in console, optionally saves to `research/`.

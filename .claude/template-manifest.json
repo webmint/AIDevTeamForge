@@ -19,6 +19,7 @@
       ".claude/commands/refresh-docs.md",
       ".claude/commands/research.md",
       ".claude/commands/summarize.md",
+      ".claude/commands/security.md",
       ".claude/commands/_recovery.md",
       ".claude/commands/_agent-assignment.md",
       ".claude/commands/_context-maintenance.md",

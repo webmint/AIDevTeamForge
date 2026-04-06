@@ -346,6 +346,7 @@ Read agent templates from `.claude/templates/agents/` and generate `.claude/agen
 | `qa-engineer` | Every project needs tests |
 | `runtime-debugger` | Every project has runtime bugs |
 | `tech-writer` | Every project needs documentation |
+| `security-reviewer` | Every project needs security review — not just auth projects |
 
 #### By project type:
 | Condition | Agents |
@@ -367,7 +368,6 @@ Read agent templates from `.claude/templates/agents/` and generate `.claude/agen
 | Frontend or API project | `performance-analyst` |
 | Existing codebase with deprecated code or migration keywords in recent commits | `migration-engineer` |
 | Mobile framework detected (React Native, Expo, Flutter, Swift/Xcode, Kotlin/Android) | `mobile-engineer` |
-| `security-reviewer` | Include when: auth library detected (passport, okta, auth0, next-auth), OR backend with API endpoints, OR user explicitly requests it. Skip for: simple frontend-only projects with no auth |
 | AC_VERIFICATION != "off" (Question 9) | `ac-verifier` |
 
 For each agent:
