@@ -175,6 +175,21 @@ Append the agent's findings to the verification report under a **Performance Rev
 
 If the agent doesn't exist, skip this phase silently.
 
+## PHASE 5.5: Test Assessment (if qa-engineer agent exists)
+
+If `.claude/agents/qa-engineer.md` exists, launch the **qa-engineer** agent.
+
+Provide the agent with:
+1. The list of all changed files (from all task completion notes)
+2. The spec's acceptance criteria (for AC-to-test traceability)
+3. The feature's test files (if any were created or modified across tasks)
+
+The agent assesses: test coverage gaps for changed code, untested AC items, missing edge case tests. It does NOT write tests — report only.
+
+Append the agent's findings to the verification report under a **Test Assessment** section. Any AC item with zero test coverage becomes a Warning issue in the report.
+
+If the agent doesn't exist, skip this phase silently.
+
 ## PHASE 6: Generate Verification Report
 
 ```markdown
@@ -210,6 +225,12 @@ If the agent doesn't exist, skip this phase silently.
 ### Performance Review
 [Include if performance-analyst ran, otherwise omit section]
 - [bottlenecks and recommendations]
+
+### Test Assessment
+[Include if qa-engineer ran, otherwise omit section]
+- AC items with test coverage: N of M
+- Coverage gaps: [list uncovered areas]
+- Verdict: ADEQUATE / GAPS FOUND
 
 ### Issues Found
 [List any issues, categorized by severity]
