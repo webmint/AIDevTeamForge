@@ -5,6 +5,19 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-04-06
+
+### Added
+- **`/security` command** — standalone on-demand security review. Targets a file (with optional line range), directory, uncommitted changes, or full codebase (`--full`). Uses security-reviewer agent with constitution and memory context. Full codebase mode uses module-based subagents for large projects. Read-only — reports findings with CWE identifiers and remediation suggestions
+- **`/verify` Phase 5.5: Test Assessment** — qa-engineer agent assesses test coverage gaps for all changed files. Checks AC-to-test traceability, untested AC items, missing edge case tests. Report-only — does not write tests. AC items with zero test coverage become Warning issues in the verification report
+- **Security-reviewer template**: Added Section 7 (Client-Side Security — localStorage, cookies, client state exposure) and Section 8 (Unsafe Code Patterns — eval, dynamic imports, prototype pollution, path traversal, unsafe deserialization)
+
+### Changed
+- **Security-reviewer agent now mandatory** for all projects — moved from conditional (auth-only) to always-included in setup wizard. Every project gets security review at `/verify` Phase 4, regardless of whether it has auth libraries
+- **`/verify` Phase 4** simplified — removed conditional "if agent exists" check. Security review always runs
+- **Security-reviewer template**: Added Rule 7 — skip checklist items that don't apply to the project type (CLI tools skip CORS checks, backend APIs skip client-state review)
+- Template version: 1.25.0 → 1.26.0
+
 ## [1.25.0] - 2026-04-04
 
 ### Added

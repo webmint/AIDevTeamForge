@@ -6,7 +6,7 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 
 ## What's Built
 
-### Commands (16 commands + 5 shared partials in `.claude/commands/`)
+### Commands (17 commands + 5 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -15,12 +15,13 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research with tightened triggers (not-in-project qualifier); Context7 first for library docs; Phase 2.5 cross-references plan against spec ACs before presenting to user
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints; references shared `_agent-assignment.md` for agent selection
 - `execute-task.md` — 6-phase workflow: load context → pre-flight (contracts) → execute (agent → verify → code review) → complete & report → bookkeeping (memory + context + multi-task). Per-task code review reports findings to user. No per-task squash — WIP commits deferred to /verify
-- `verify.md` — Validates all tasks against spec acceptance criteria; cross-task integration check (not full code review — done per-task); feature-level docs via tech-writer; all-mode feature squash using `git merge-base`; Phase 10 presents issues with batch bug filing — does not invoke /fix
+- `verify.md` — Validates all tasks against spec acceptance criteria; cross-task integration check (not full code review — done per-task); feature-level docs via tech-writer; mandatory security review; test coverage assessment (qa-engineer); all-mode feature squash using `git merge-base`; Phase 10 presents issues with batch bug filing — does not invoke /fix
 - `summarize.md` — Generates concise, PR-ready feature summary from spec, plan, tasks, and git history; reads DEFAULT_BRANCH from config; wrapper mode source repo handling
 - `fix.md` — Lightweight bug-fix workflow: diagnose → delegate to agent → verify → code review → test → doc update, with runtime-debugger, code-reviewer, qa-engineer, and tech-writer agents; accepts enriched bug file paths from `bugs/`; agent selection via shared `_agent-assignment.md`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
 - `refactor.md` — Focused refactoring workflow: analyze → propose → approve → delegate to agent → verify → code review → test → doc update, with auto-selected agent via `_agent-assignment.md`, code-reviewer, qa-engineer, and tech-writer agents
 - `refresh-docs.md` — Lightweight documentation refresh using git delta; invokes tech-writer in Refresh Mode on changed files only
+- `security.md` — On-demand security review: targeted (file, directory, uncommitted changes) or full codebase (`--full`). Launches security-reviewer agent with constitution context. Module-based subagents for large codebases. Read-only
 - `release.md` — Meta-command for the template repo itself: automates version bump, changelog, and documentation updates after making changes
 
 Shared partials (`_`-prefixed, loaded on-demand by parent commands):
@@ -31,9 +32,9 @@ Shared partials (`_`-prefixed, loaded on-demand by parent commands):
 - `_agent-assignment.md` — Shared file-layer→agent mapping table, referenced by breakdown, fix, and refactor
 
 ### Agent Templates (16 files in `.claude/templates/agents/`)
-Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`
+Always included: `code-reviewer`, `qa-engineer`, `runtime-debugger`, `tech-writer`, `security-reviewer`
 By project type: `frontend-engineer`, `backend-engineer`, `architect`, `mobile-engineer`
-By detected stack: `db-engineer`, `devops-engineer`, `design-auditor`, `api-designer`, `performance-analyst`, `security-reviewer`, `migration-engineer`
+By detected stack: `db-engineer`, `devops-engineer`, `design-auditor`, `api-designer`, `performance-analyst`, `migration-engineer`
 By config: `ac-verifier` (when `AC_VERIFICATION != "off"`)
 
 Setup wizard decides which agents to generate based on detected stack and user preferences (including AC verification mode).

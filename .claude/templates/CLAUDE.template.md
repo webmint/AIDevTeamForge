@@ -99,6 +99,9 @@ Focused code refactoring workflow for behavior-preserving restructuring (1-5 fil
 
 If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 
+### `/security [file|dir|--full]`
+On-demand security review. Targets a specific file (with optional line range), directory, uncommitted changes (default), or the full codebase (`--full`). Launches the security-reviewer agent with constitution and memory context. Reports findings by severity (Critical/High/Medium/Info) with CWE identifiers and remediation suggestions. Read-only — does not modify code. Full codebase mode uses module-based subagents for large projects.
+
 ### Additional Commands
 
 - `/setup-wizard` — Re-run initial project setup (regenerates config files)
