@@ -119,7 +119,7 @@ After assignment, check whether any mechanical task should be **bundled into its
 
 When bundling, merge the mechanical task's files, contracts, and done-when conditions into the parent task. Update the dependency graph accordingly.
 
-**Note**: `performance-analyst` and `security-reviewer` also run automatically during `/verify` on all changed files. Assign them to individual tasks only when the task itself is primarily about performance or security work.
+**Note**: `performance-analyst` and `security-reviewer` run during `/review` on all changed files. Assign them to individual tasks only when the task itself is primarily about performance or security work.
 
 ### Task Format
 

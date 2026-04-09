@@ -58,7 +58,7 @@ Read the "Tasks completed this session" count from the session-state you just wr
 💡 Context maintenance: [N] tasks completed this session.
 Optional: Run /compact with these instructions:
 
-/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Inline documentation rule: implementing agents write JSDoc/docstrings for new public APIs, code-reviewer verifies this in Phase 3.3. Feature-level docs in docs/ are handled by the tech-writer at /verify time, (7) Completion Notes sections from all completed task files in specs/[feature]/tasks/ — these contain prior decisions, actual files changed, and deviations that inform later tasks. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
+/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Inline documentation rule: implementing agents write JSDoc/docstrings for new public APIs, code-reviewer verifies this in Phase 3.3. Feature-level docs in docs/ are handled by the tech-writer at /finalize time, (7) Completion Notes sections from all completed task files in specs/[feature]/tasks/ — these contain prior decisions, actual files changed, and deviations that inform later tasks. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
 
 Or continue to next task if context still feels responsive.
 ```
@@ -69,21 +69,9 @@ Or continue to next task if context still feels responsive.
 🔴 Context maintenance: [N] tasks completed this session (heavy context load).
 Strongly recommended: Run /compact before continuing.
 
-/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Inline documentation rule: implementing agents write JSDoc/docstrings for new public APIs, code-reviewer verifies this in Phase 3.3. Feature-level docs in docs/ are handled by the tech-writer at /verify time, (7) Completion Notes sections from all completed task files in specs/[feature]/tasks/ — these contain prior decisions, actual files changed, and deviations that inform later tasks. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
+/compact Preserve: (1) Current task statuses from specs/[feature]/tasks/README.md, (2) All entries from .claude/memory/MEMORY.md, (3) Constitution rules referenced during this session, (4) Next task's file list and change details from its task file, (5) Session state from .claude/session-state.md, (6) Inline documentation rule: implementing agents write JSDoc/docstrings for new public APIs, code-reviewer verifies this in Phase 3.3. Feature-level docs in docs/ are handled by the tech-writer at /finalize time, (7) Completion Notes sections from all completed task files in specs/[feature]/tasks/ — these contain prior decisions, actual files changed, and deviations that inform later tasks. Discard: file contents already committed, old error outputs, superseded diffs, resolved discussions.
 ```
 
 Do not auto-compact. Surface the recommendation and let the user decide. For single-task mode, this is advisory only.
 
 > **Note**: Phase 7.2 (single-task) recommends compaction; Phase 8 (multi-task, heavy) pauses execution. The difference is intentional: single-task completion is advisory, multi-task continuation requires the pause to prevent context degradation across many sequential tasks.
-
-## 7.3: Auto-Verify on Feature Completion
-
-After 7.2 completes (for both single-task and multi-task paths), check whether the entire feature is done:
-
-1. Read `specs/[feature]/tasks/README.md` and check whether **every** task in the feature has Status: `Complete`.
-2. If **all tasks are Complete**: skip the normal completion report and instead:
-   ```
-   ✅ All feature tasks complete — automatically running /verify
-   ```
-   Then invoke `/verify` with the feature's spec file path. This replaces the normal end-of-execution flow — do NOT proceed to Phase 8 or output a completion report. If a multi-task queue exists, the remaining queue is abandoned (all remaining tasks are either already Complete or will be picked up in a future run).
-3. If any tasks remain non-Complete: continue with the normal flow (single-task completion report or Phase 8 multi-task continuation). Do NOT invoke `/verify` — the feature is not done yet.

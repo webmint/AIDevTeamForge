@@ -94,17 +94,19 @@ Run these once when you first install the template:
 ### Feature Development (repeat per feature)
 
 ```
-/specify → /plan → /breakdown → /execute-task (×N) → /verify → /summarize
-  ↑ approve    ↑ approve    ↑ approve      per task        per feature    auto
+/specify → /plan → /breakdown → /execute-task (×N) → /review → /verify → /summarize → /finalize
+  ↑ approve    ↑ approve    ↑ approve      per task       per feat   per feat   per feat    per feat
 ```
 
 - **`/specify "feature description"`** — Structured specification with acceptance criteria. Asks clarifying questions as needed (rounds of up to 5, prioritized by impact — no artificial limit). **Requires approval.** Auto-creates `spec/NNN-short-desc` branch.
 - **`/plan`** — Technical plan: architecture, data model, API contracts, research. Signal-based research (Context7 first for libraries, WebSearch for comparisons) — only triggers for things NOT already in the project. Cross-references plan against spec ACs before presenting. **Requires approval.**
 - **`/breakdown`** — Ordered atomic tasks with dependencies, agent assignments (via shared `_agent-assignment.md`), and cross-task contracts (Expects/Produces). Review checkpoints at convergence points. **Requires approval.**
-- **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/verify`.
+- **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/finalize`.
   - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task all` — all pending
-- **`/verify`** — AC verification + cross-task integration check + feature docs (tech-writer) + security review + performance review + test coverage assessment. Feature squash via `git merge-base`. Issues reported with batch bug filing. Auto-triggers `/summarize` on APPROVED.
-- **`/summarize`** — PR-ready feature summary. Runs automatically after `/verify` approves.
+- **`/review`** — Expert code review: security (security-reviewer) + performance (performance-analyst) + test assessment (qa-engineer). Produces structured findings saved to `specs/[feature]/review.md`. No verdict — findings only.
+- **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
+- **`/summarize`** — PR-ready feature summary. Run after `/verify` approves, before `/finalize`.
+- **`/finalize`** — Feature documentation (tech-writer) + feature squash via `git merge-base`. The last step before creating a PR.
 
 ### Standalone Commands (use anytime)
 

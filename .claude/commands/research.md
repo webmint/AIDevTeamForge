@@ -16,7 +16,7 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 ## Context in the Workflow
 
 ```
-/research (optional) → /specify → /plan → /breakdown → /execute-task → /verify → /summarize
+/research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
 ```
 
 `/research` is NOT mandatory. Skip it when you already know what you want to build. Use it when:

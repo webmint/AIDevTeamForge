@@ -2,11 +2,11 @@
 
 ## What This Is
 
-A reusable spec-driven development template for Claude Code. Combines a structured intake flow (research → specify → plan → breakdown → execute → verify → summarize) with enforced quality gates, specialized agents, and automated hooks.
+A reusable spec-driven development template for Claude Code. Combines a structured intake flow (research → specify → plan → breakdown → execute → review → verify → summarize → finalize) with enforced quality gates, specialized agents, and automated hooks.
 
 ## What's Built
 
-### Commands (17 commands + 5 shared partials in `.claude/commands/`)
+### Commands (19 commands + 5 shared partials in `.claude/commands/`)
 - `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `onboard.md` — Deep codebase scan for existing projects, generates comprehensive `docs/` via tech-writer agent
@@ -14,9 +14,11 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 - `specify.md` — Creates feature specs with acceptance criteria; clarifies requirements in rounds of up to 5 questions (no artificial limit); auto-creates `spec/NNN-short-desc` branch when on default branch
 - `plan.md` — Technical plan between spec and breakdown (architecture, data model, contracts); signal-based research with tightened triggers (not-in-project qualifier); Context7 first for library docs; Phase 2.5 cross-references plan against spec ACs before presenting to user
 - `breakdown.md` — Splits plan into sequential atomic tasks in individual files; generates cross-task contracts (Expects/Produces) and auto-places review checkpoints; references shared `_agent-assignment.md` for agent selection
-- `execute-task.md` — 6-phase workflow: load context → pre-flight (contracts) → execute (agent → verify → code review) → complete & report → bookkeeping (memory + context + multi-task). Per-task code review reports findings to user. No per-task squash — WIP commits deferred to /verify
-- `verify.md` — Validates all tasks against spec acceptance criteria; cross-task integration check (not full code review — done per-task); feature-level docs via tech-writer; mandatory security review; test coverage assessment (qa-engineer); all-mode feature squash using `git merge-base`; Phase 10 presents issues with batch bug filing — does not invoke /fix
-- `summarize.md` — Generates concise, PR-ready feature summary from spec, plan, tasks, and git history; reads DEFAULT_BRANCH from config; wrapper mode source repo handling
+- `execute-task.md` — 6-phase workflow: load context → pre-flight (contracts) → execute (agent → verify → code review) → complete & report → bookkeeping (memory + context + multi-task). Per-task code review reports findings to user. No per-task squash — WIP commits deferred to /finalize
+- `review.md` — Expert code review: launches specialist agents (security-reviewer, performance-analyst, qa-engineer) on all changed files. Produces structured review report saved to `specs/[feature]/review.md`. No verdict — findings only
+- `verify.md` — Validates all tasks against spec acceptance criteria; cross-task integration check (not full code review — done per-task); incorporates `/review` findings if available; renders verdict (APPROVED/NEEDS WORK/REJECTED); Phase 9 presents issues with batch bug filing — does not invoke /fix
+- `summarize.md` — Generates concise, PR-ready feature summary from spec, plan, tasks, and git history; reads DEFAULT_BRANCH from config; wrapper mode source repo handling. Run after `/verify`, before `/finalize`
+- `finalize.md` — Feature documentation via tech-writer + feature squash using `git merge-base`. Gate-checked: spec must be Complete. The last step before creating a PR
 - `fix.md` — Lightweight bug-fix workflow: diagnose → delegate to agent → verify → code review → test → doc update, with runtime-debugger, code-reviewer, qa-engineer, and tech-writer agents; accepts enriched bug file paths from `bugs/`; agent selection via shared `_agent-assignment.md`
 - `report-bug.md` — Creates structured bug report files in `bugs/` for later fixing via `/fix` or `/specify`
 - `refactor.md` — Focused refactoring workflow: analyze → propose → approve → delegate to agent → verify → code review → test → doc update, with auto-selected agent via `_agent-assignment.md`, code-reviewer, qa-engineer, and tech-writer agents
@@ -117,7 +119,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 ### Crash Recovery (Phase 0 + WIP Checkpoints)
 - `/execute-task`, `/fix`, and `/refactor` create a WIP marker (`.claude/wip.md`) and git checkpoint commits during execution
 - Phase 0: Recovery Check (shared via `_recovery.md`) detects interrupted sessions and offers 4 options: resume, rollback+retry, rollback+skip, keep manual. WIP markers include a `Command` field (execute-task/fix/refactor) to prevent cross-command recovery confusion
-- Git `[WIP]` commits preserve partial work at each phase. For execute-task: WIP commits accumulate across tasks and are squashed by `/verify` Phase 9.5 using `git merge-base`. For fix/refactor: squashed per-command (with pre-squash safety check — skips if commits already pushed)
+- Git `[WIP]` commits preserve partial work at each phase. For execute-task: WIP commits accumulate across tasks and are squashed by `/finalize` using `git merge-base`. For fix/refactor: squashed per-command (with pre-squash safety check — skips if commits already pushed)
 - All workflow commits use scoped `git add` (specific files only, never `git add -A`) to prevent accidentally committing secrets or unwanted files
 - `wip.md` is gitignored — only exists during active task execution
 - In wrapper mode, WIP marker includes `## Source Repo Checkpoint` section; Phase 0 recovery also rolls back source repo WIP commits

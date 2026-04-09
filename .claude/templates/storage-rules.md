@@ -120,8 +120,10 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 /plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
 /breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
 /execute-task → updates individual task file status + completion notes
-/verify       → updates specs/NNN-name/spec.md status to Complete; Phase 10 triage may create bugs/NNN-xxx.md
+/review       → creates specs/NNN-name/review.md (security, performance, test findings)
+/verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
 /summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
+/finalize     → squashes WIP commits, generates feature docs in docs/
 /report-bug   → creates bugs/NNN-description.md
 /fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
 ```
@@ -259,7 +261,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - `File(s)` should use area/function references, not line numbers — line numbers shift after other fixes are applied.
 
 ### How Bug Files Are Created
-- `/verify` Phase 10 — user requests batch bug filing for verification issues
+- `/verify` Phase 9 — user requests batch bug filing for verification issues
 - `/report-bug` — standalone manual bug reporting
 
 ### How Bug Files Are Resolved

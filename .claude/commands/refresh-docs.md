@@ -25,7 +25,7 @@ Detects source files that changed since documentation was last updated and invok
 | Docs are slightly stale (a few tasks ran without doc updates) | **`/refresh-docs`** |
 | Docs are severely out of date (many features behind) | `/refresh-docs --all` |
 | Just completed a single task | Phase 5 of `/execute-task` handles this |
-| Verification flagged missing docs | `/verify` → "Fix docs now" triage option |
+| Verification flagged missing docs | `/finalize` handles feature docs, or run `/refresh-docs` directly |
 
 ## Prerequisites
 

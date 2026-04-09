@@ -1,5 +1,5 @@
 {
-  "version": "1.26.0",
+  "version": "1.27.0",
   "description": "Manifest for AIDevTeamForge update system",
 
   "templateOwned": {
@@ -20,6 +20,8 @@
       ".claude/commands/research.md",
       ".claude/commands/summarize.md",
       ".claude/commands/security.md",
+      ".claude/commands/review.md",
+      ".claude/commands/finalize.md",
       ".claude/commands/_recovery.md",
       ".claude/commands/_agent-assignment.md",
       ".claude/commands/_context-maintenance.md",

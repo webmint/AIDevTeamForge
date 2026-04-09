@@ -13,7 +13,7 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 ## Context in the Workflow
 
 ```
-/research (optional) → /specify → /plan → /breakdown → /execute-task → /verify → /summarize
+/research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
 ```
 
 `/plan` runs AFTER the spec is approved, BEFORE task breakdown. It answers technical questions the spec intentionally left open (specs describe WHAT, plans describe HOW).

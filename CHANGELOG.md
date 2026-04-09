@@ -5,6 +5,25 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] - 2026-04-08
+
+### Added
+- **`/review` command** — expert code review launching specialist agents (security-reviewer, performance-analyst, qa-engineer) on all changed files across a feature. Produces structured review report at `specs/[feature]/review.md` with severity-classified findings. Separate from `/verify` verdict — findings only, no judgment
+- **`/finalize` command** — feature ship preparation: launches tech-writer for feature-level documentation in `docs/`, then squashes all WIP/checkpoint commits into a single clean feature commit. Gate-checked (spec must be Complete). The last step before PR creation
+
+### Changed
+- **`/verify` simplified** — removed security review, performance review, test assessment (moved to `/review`), tech-writer docs (moved to `/finalize`), feature squash (moved to `/finalize`), and auto-`/summarize` invocation. Now focuses on: AC verification (ac-verifier agent), cross-task integration check, and verdict. Reads `/review` findings if available (warns if missing). Agent count per command reduced from 5 to 1
+- **Workflow chain expanded**: `→ /execute-task → /verify → /summarize` becomes `→ /execute-task → /review → /verify → /summarize → /finalize`. All steps user-activated with warn-not-block guards
+- **All auto-triggers removed**: `/execute-task` no longer auto-invokes `/verify` when all tasks complete; `/verify` no longer auto-invokes `/summarize` on APPROVED verdict. Each command reports a clear next-step prompt instead
+- **`/summarize` commit** uses `[WIP]` prefix so it's included in `/finalize`'s squash. Adds finalization detection (warns if run after squash). Adds "Next: Run `/finalize`" guidance
+- **`/execute-task` completion** now shows "all tasks complete, run `/review` → `/verify` → `/summarize` → `/finalize`" when the last task finishes (single-task and multi-task modes)
+- Template version: 1.26.0 → 1.27.0
+
+### Fixed
+- **Auto-verify reliability** — the auto-verify trigger was buried in a dynamically-loaded sub-file (`_context-maintenance.md` Phase 7.3) where the LLM lost the thread after outputting compaction recommendations. Real-world evidence: verify ran but partially completed — squash executed (destructive) while docs and summary were dropped. Fixed by eliminating auto-triggers entirely — each workflow step is now a focused, user-activated command that completes reliably within context limits
+- **Context exhaustion in `/verify`** — monolithic verify launched up to 5 agents + squash + auto-summarize in a single command. Context filled before later phases could execute, causing partial failures. Fixed by splitting into `/review` (1-3 agents), `/verify` (1 agent), `/finalize` (1 agent) — each command fits comfortably in context
+- **Partial failure safety** — previously, squash (destructive, irreversible) could execute while docs/summary were skipped due to context exhaustion, leaving the repo in an inconsistent state. Fixed by isolating the squash in `/finalize` as the very last step, user-initiated
+
 ## [1.26.0] - 2026-04-06
 
 ### Added

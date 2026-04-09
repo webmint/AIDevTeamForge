@@ -37,7 +37,7 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 **WIP commit**: After code passes verification (Phase 3.3), commit all source changes:
 `git -C $SOURCE_ROOT add -A && git -C $SOURCE_ROOT diff --cached --quiet || git -C $SOURCE_ROOT commit -m "[WIP] source changes"`
 
-**Squash**: For execute-task, source WIP commits are NOT squashed here — they accumulate across tasks and are squashed by `/verify` Phase 9.5 when the feature is approved.
+**Squash**: For execute-task, source WIP commits are NOT squashed here — they accumulate across tasks and are squashed by `/finalize` when the feature is approved.
 
 **Recovery**: Phase 0 checks source repo state via wip.md's `## Source Repo Checkpoint` section. Rollback resets source: `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`.
 
@@ -351,7 +351,7 @@ git add [changed source files] specs/ && git commit -m "[WIP] Task [N]: [title] 
 
 Delete `.claude/wip.md`.
 
-> **No per-task squash**: WIP commits accumulate across tasks and are squashed into a clean commit by `/verify` Phase 9.5 when the feature is approved.
+> **No per-task squash**: WIP commits accumulate across tasks and are squashed into a clean commit by `/finalize` when the feature is approved.
 
 ### 4.3: Report
 
@@ -378,6 +378,11 @@ Provide a concise summary to the user:
 **Next task**: [NNN]-[title] (ready / blocked by [NNN])
 ```
 
+If this was the last pending task (all other tasks in the feature are Complete), replace the "Next task" line with:
+```
+✅ All feature tasks complete. Next: run `/review` → `/verify` → `/summarize` → `/finalize`
+```
+
 ## PHASE 5: Bookkeeping
 
 ### 5.1: Memory Update
@@ -390,8 +395,6 @@ Use the format: `- **[AREA]**: [observation] _(Task N / Feature NNN)_`. Add entr
 
 Read `.claude/commands/_context-maintenance.md` and follow its instructions.
 Context: the current feature directory, the task number and title just completed.
-
-**Critical**: This includes auto-verify detection. After updating session state, you MUST check whether ALL tasks in the feature are Complete by reading `specs/[feature]/tasks/README.md`. If every task has Status: Complete, invoke `/verify` immediately — do not just report completion and stop. If any tasks are still pending, continue with 5.3.
 
 ### 5.3: Multi-Task Continuation
 
@@ -406,7 +409,7 @@ Context: the remaining task queue, the current feature directory.
 2. **Scope discipline** — if the agent changes files outside the task scope, revert those changes and investigate
 3. **Self-repair before escalation** — when automated verification fails (type checker, linter, build), attempt automatic repair (up to 3 times) before stopping. Code review findings are reported to the user, not auto-repaired.
 4. **Hard stop on repair failure** — if all 3 repair attempts fail, stop the entire execution chain (including remaining queued tasks). Do not proceed with broken state.
-5. **Inline docs are the agent's job** — the implementing agent must add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface. The code-reviewer verifies this. Feature-level docs in `docs/` are handled by the tech-writer at `/verify` time.
+5. **Inline docs are the agent's job** — the implementing agent must add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface. The code-reviewer verifies this. Feature-level docs in `docs/` are handled by the tech-writer at `/finalize` time.
 6. **Crash safety** — always write .claude/wip.md before starting execution and delete it only after the final commit. If wip.md exists at the start, enter recovery flow.
 7. **Context hygiene** — fully overwrite .claude/session-state.md after each task (never append). Keep it under 40 lines.
-8. **No per-task squash** — WIP commits accumulate and are squashed by `/verify`. Do not run `git reset --soft` during execute-task.
+8. **No per-task squash** — WIP commits accumulate and are squashed by `/finalize`. Do not run `git reset --soft` during execute-task.

@@ -92,7 +92,7 @@ Read `AC_VERIFICATION` from `.claude/project-config.json`. If the value is `"off
 If `AC_VERIFICATION` is `"auto"` or `"browser-only"`:
 1. Attempt to call `mcp__chrome-devtools__list_pages` as a lightweight probe.
 2. If it **fails** (MCP not available):
-   - Display: "Note: Chrome DevTools MCP is not running. When `/verify` runs after this fix, frontend AC items will be verified by code reading instead of browser interaction. To enable browser-based AC verification, start the WebStorm JS debugger before running `/verify`."
+   - Display: "Note: Chrome DevTools MCP is not running. When `/verify` runs, frontend AC items will be verified by code reading instead of browser interaction. To enable browser-based AC verification, start the WebStorm JS debugger before running `/verify`."
    - This is informational only — do not block execution.
 3. If it **succeeds**: no message needed.
 
