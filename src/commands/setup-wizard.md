@@ -6,7 +6,7 @@ You are running the initial setup wizard for AIDevTeamForge. Your job is:
 2. Ask the user targeted questions via confirm / override / defer.
 3. Substitute the user's answers into the `{{PLACEHOLDER}}` markers in every target file that has them. `install.sh` has already placed all files — **you do NOT create new files**.
 4. Where specific files have designated project-specific sections (e.g., CLAUDE.md / AGENTS.md architecture notes, agent files with project paths, constitution custom clauses), append content derived from detection + user answers to those sections only. **Never rewrite whole files.**
-5. Write the answers record to `target/.devforge/answers.json` (which `install.sh` placed as an empty scaffold) so later commands and `update.sh` can consume user decisions.
+5. Write the answers record to `target/.devforge/project-config.json` (which `install.sh` placed as an empty scaffold with all keys set to `null`) so later commands and `update.sh` can consume user decisions.
 
 ## STEP 0: Workspace Mode Detection
 
@@ -44,6 +44,8 @@ Scan for directories at depth 1 (direct children of the workspace root) that con
 Store the result for use in all subsequent steps:
 - **Standalone**: `SOURCE_ROOT = "."`
 - **Wrapper**: `SOURCE_ROOT = "[folder-name]"` (e.g., `client-project`)
+
+Track `SOURCE_ROOT` in your working context throughout the rest of the wizard; at the end it's persisted to `target/.devforge/project-config.json` along with all other collected answers.
 
 If wrapper mode:
 - Inform the user: "Wrapper mode activated. Source root: `[folder-name]/`. All template artifacts will live in the wrapper root. I'll scan the source code inside `[folder-name]/`."
@@ -98,21 +100,25 @@ Do not invent details or fill categories with plausible-sounding defaults. An ho
 
 ## STEP 2: Present Findings & Ask Questions
 
-Present what you detected in a clear summary, then walk the user through each category. For every question below, offer **three options**:
+Present what you detected in a clear summary, then walk the user through each question. Every question is labeled with exactly one of three markers:
 
-- **Confirm** the detected value (fast path when detection is clear)
-- **Override** — user types a correct value (free-text or picks from a list)
-- **Defer** — mark the field as `TBD`. Downstream commands will ask the user to fill it in when the field becomes relevant (e.g., when `{{cli.sigil}}specify` needs an architecture decision for a specific feature).
+- **REQUIRED** — must be answered. Offer **confirm / override**. Defer is not allowed; downstream commands depend on the value.
+- **OPTIONAL** — user may answer or explicitly defer. Offer **confirm / override / defer**. "Defer" marks the field as `TBD` and downstream commands will ask when the field becomes relevant (e.g., when `{{cli.sigil}}specify` needs an architecture decision for a specific feature). A small number of OPTIONAL questions are free-text only (e.g. "anything else I should know?") — those are noted explicitly and allow an empty response.
+- **CONDITIONAL** — may not apply to this project. If it doesn't apply, skip it and record the natural default (this is the one case where a silent default is permitted; the marker acknowledges it). If it does apply, treat as REQUIRED (confirm / override — no silent guess).
 
-Do NOT silently default. Do NOT skip a field. Every category must end with a Confirm, Override, or explicit Defer. This is what keeps outputs consistent across runtimes — the user's answers are the canonical input, not the LLM's inference.
+For every question that applies, do NOT silently default. Do NOT infer answers. The user's confirmed answers are the canonical input across all runtimes — that's what keeps outputs consistent between Claude, Codex, and any future runtime.
 
-Fields marked REQUIRED below cannot be deferred (downstream commands can't function without them). Fields marked OPTIONAL can be deferred and firmed up later as the project evolves.
+**Anti-hallucination rule for findings.** When presenting findings to the user (anywhere you'd fill `[findings]`, `[observed indicators]`, `[pattern indicators]`, `[detected framework]`, etc.), quote ONLY concrete observed facts: exact file paths, exact package names, exact config keys, exact imports or symbols you actually read. Do NOT invent indicators to make the prose flow. If detection surfaced nothing for a category, say so plainly (e.g. "I found no framework dependencies, so I can't infer the stack — could you tell me what you're using?") instead of fabricating plausibles.
+
+**Where answers are stored.** As you walk through the questions below, track the user's answers in your working context. At the end of the wizard, every collected answer is written to `target/.devforge/project-config.json` (which `install.sh` has already placed as an empty scaffold with all keys set to `null`). That file is the canonical record — every command under every CLI (Claude, Codex, and later runtimes), plus `update.sh`, reads from it. Use the variable names noted in each question (e.g. `SOURCE_ROOT`, `PROJECT_NAME`, `CLAUDE_MODEL_THINK`) as the keys.
 
 ### Question 1: Project Type (REQUIRED)
 
-Based on what you found, tell the user:
+Present the question to the user. If STEP 1 detection surfaced concrete indicators, quote them explicitly; if nothing was detected, say so plainly and just ask. Do not invent.
 
-> I detected [findings]. What type of project is this?
+**If concrete indicators were found:**
+
+> Based on what I found — [quote 2–5 specific observed facts: exact dep names, exact file paths, exact config markers] — this looks like a [proposed type]. What type of project is this?
 >
 > Options:
 > - Frontend application
@@ -122,7 +128,13 @@ Based on what you found, tell the user:
 > - CLI tool
 > - Mobile application
 > - Plugin / extension
-> - Other (let user describe)
+> - Other (user describes)
+
+**If nothing was detected (empty / greenfield / unclear):**
+
+> I couldn't detect enough from the files alone to guess. What type of project is this?
+>
+> Options: [same list as above]
 
 ### Question 2: Primary Framework & Language (REQUIRED)
 
@@ -130,42 +142,55 @@ Based on what you found, tell the user:
 
 Accept free-text for override — no hardcoded framework list.
 
-### Question 3: Architecture Pattern (OPTIONAL — deferrable)
+### Question 3: Architecture Pattern (OPTIONAL)
 
-**Existing projects:**
+**If detection identified a pattern with reasonable confidence (existing project):**
 
-> I see [pattern indicators you detected]. Which architecture pattern does this project follow?
+> I see [specific folders/files you observed]. This looks like [detected pattern]. Confirm, override, or defer.
 >
 > Options:
-> - Confirm my guess: [pattern]
-> - Override (user names their own pattern)
+> - Confirm: [detected pattern]
+> - Override — name a different pattern
 > - Defer — establish the pattern as the project evolves
 
-**Empty / greenfield projects:**
+**If detection was uncertain or the project has no clear pattern (existing project):**
+
+> I scanned the code but couldn't identify a clear architecture pattern. Which does this project follow?
+>
+> Options:
+> - Name a pattern (e.g., Clean Architecture, MVC, feature-modular, hexagonal, layered, flat)
+> - Defer — establish the pattern as the project evolves
+
+**If the project is empty or greenfield:**
 
 > Which architecture pattern do you want to follow?
 >
 > Options:
-> - A named pattern (Clean Architecture, MVC, feature-modular, hexagonal, etc. — user picks or describes)
+> - Name a pattern (Clean Architecture, MVC, feature-modular, hexagonal, etc.)
 > - Defer — decide as features get built
 
-### Question 4: Error Handling Convention (CONDITIONAL — may not apply)
+### Question 4: Error Handling Convention (OPTIONAL)
 
-For many ecosystems, error handling is essentially language-defined and there's no meaningful project-level choice — e.g. Go uses explicit `(value, error)` returns, Rust uses `Result<T, E>` with `?`, Python uses exceptions. In those cases, record the language default silently and skip this question.
+Error handling is typically project-specific, not just language-specific. Even in languages with a dominant default (Go's `(value, error)` returns, Python's exceptions, Rust's `Result<T, E>`), projects commonly layer library-level conventions on top — `pkg/errors` / `hashicorp/go-multierror` for Go; `returns` / `rustedpy/result` for Python; `anyhow` / `thiserror` / `eyre` for Rust; Either-style libraries or custom error hierarchies for TypeScript; etc.
 
-Ask this question **only if** the detected ecosystem has a genuine project-level choice (common examples include TypeScript/JavaScript, Scala, Haskell, and any ecosystem where the team picks between throwing-style and result-type-style error handling).
-
-If asking:
+Before asking, scan a few representative source files for error-handling imports and patterns. Quote what you actually saw (anti-hallucination rule applies).
 
 **Existing projects:**
 
-> I found [pattern indicators you saw in the code]. How does this project handle errors?
+> I saw [specific imports or patterns observed in source, e.g. `thiserror` derives on error types in `src/error.rs`, `?` operator throughout]. How does this project handle errors?
+>
+> Options:
+> - Confirm: [your summary of what you saw]
+> - Override — name a different convention
+> - Defer — establish the pattern as the project evolves
 
 **Empty / greenfield projects:**
 
 > How should this project handle errors?
-
-Accept free-text (e.g. "Either/Result monads via neverthrow", "try/catch with custom error hierarchy", "mixed — HTTP codes at API boundary, typed results internally"). Defer is always valid — especially for greenfield: "I'll decide during the first spec."
+>
+> Options:
+> - Name a convention (e.g. "language default", "`thiserror` + `?` for Rust", "`returns` Result in Python", "Either/Result via neverthrow", "HTTP-codes at boundary + typed results internally")
+> - Defer — decide during the first spec
 
 ### Question 5: Workflow Enforcement Level (REQUIRED)
 
@@ -206,7 +231,12 @@ Specialized agents are grouped into three tiers based on the reasoning they requ
 | **Do** | `backend-engineer`, `frontend-engineer`, `mobile-engineer`, `db-engineer`, `devops-engineer`, `migration-engineer`, `runtime-debugger`, `performance-analyst`, `design-auditor` | Implementation following established patterns — benefits from speed |
 | **Verify** | `code-reviewer`, `ac-verifier`, `qa-engineer` | Code review, AC verification, test generation — understands intent, doesn't design from scratch |
 
-The `tech-writer` agent is hardcoded to the runtime's default "standard" model regardless of tier choices — documentation generation doesn't benefit from heavier reasoning.
+The `tech-writer` agent is hardcoded to a lightweight default regardless of tier choices — documentation generation doesn't benefit from heavier reasoning.
+
+- Under Claude: tech-writer uses `sonnet`.
+- Under Codex: tech-writer uses `medium` reasoning effort.
+
+**Key naming convention (uniform across runtimes):** tier values are stored under `{{RUNTIME}}_TIER_{{ROLE}}` (e.g. `CLAUDE_TIER_THINK`, `CODEX_TIER_DO`). The VALUE under each key is runtime-specific — a model name for Claude, a reasoning-effort enum for Codex — but the KEY SHAPE is symmetric so consumers (update.sh, agent materializer, future runtimes) can iterate uniformly. Model-override secondary keys use a `_MODEL` suffix: `CODEX_TIER_THINK_MODEL`.
 
 #### 8a: Claude model tiers
 
@@ -216,7 +246,10 @@ Claude exposes three named models: `opus` (heaviest reasoning), `sonnet` (balanc
 > **Do tier:** sonnet (default) / opus / haiku
 > **Verify tier:** sonnet (default) / opus / haiku
 
-Recommended defaults: opus / sonnet / sonnet. Store in config as `CLAUDE_MODEL_THINK`, `CLAUDE_MODEL_DO`, `CLAUDE_MODEL_VERIFY`.
+Recommended defaults: opus / sonnet / sonnet. Store in config as:
+- `CLAUDE_TIER_THINK` = model name (e.g. `"opus"`)
+- `CLAUDE_TIER_DO` = model name
+- `CLAUDE_TIER_VERIFY` = model name
 
 #### 8b: Codex model tiers
 
@@ -226,35 +259,31 @@ Codex tunes agent behavior via `model_reasoning_effort` rather than named model 
 > **Do tier reasoning effort:** medium (default) / low / high
 > **Verify tier reasoning effort:** medium (default) / low / high
 
-Recommended defaults: high / medium / medium. Store in config as `CODEX_REASONING_THINK`, `CODEX_REASONING_DO`, `CODEX_REASONING_VERIFY`.
+Recommended defaults: high / medium / medium. Store in config as:
+- `CODEX_TIER_THINK` = reasoning-effort enum (e.g. `"high"`)
+- `CODEX_TIER_DO` = reasoning-effort enum
+- `CODEX_TIER_VERIFY` = reasoning-effort enum
 
-Override the underlying model per tier only if the user explicitly asks — otherwise leave the Codex default. Store optional overrides as `CODEX_MODEL_THINK`, `CODEX_MODEL_DO`, `CODEX_MODEL_VERIFY`.
+Override the underlying model per tier only if the user explicitly asks — otherwise leave the Codex default. Store optional overrides as:
+- `CODEX_TIER_THINK_MODEL` = model name or `null`
+- `CODEX_TIER_DO_MODEL` = model name or `null`
+- `CODEX_TIER_VERIFY_MODEL` = model name or `null`
 
 ### Question 9: Acceptance Criteria Verification (REQUIRED)
 
-When the user runs `{{cli.sigil}}verify` after a task completes, how should acceptance criteria be checked? Pick a verification MODE first, then ask mode-specific follow-ups. Use **confirm / override / defer** semantics.
+When the user runs `{{cli.sigil}}verify` after a task completes, how should acceptance criteria be checked? Pick one mode:
 
 > Options:
-> - **Code-only** — verify by reading code against the AC spec. No execution. Works for any project type.
-> - **Tests** — run the project's test suite; failures indicate AC violations. Requires tests to exist.
-> - **Runtime-assisted** — run the built artifact and interact with it. Follow-ups depend on project type.
-> - **Off** — skip AC verification; user handles manually.
-
-**Suggested default based on detected project:**
-- Tests present → **Tests**
-- Web frontend → **Runtime-assisted**
-- Backend with HTTP API → **Runtime-assisted**
-- CLI tool with tests → **Tests**
-- CLI tool without tests → **Runtime-assisted**
-- Library / SDK / data pipeline → **Code-only** or **Tests**
-- Mobile / desktop / game → **Runtime-assisted** (largely manual) or **Code-only**
-- Greenfield / unclear → **Code-only**
+> - **Code-only** — verify by reading code against the AC spec. No execution. Works for any project type; safe pick if unsure.
+> - **Tests** — run the project's test suite; failures indicate AC violations. Good fit when the project has meaningful tests.
+> - **Runtime-assisted** — run the built artifact and interact with it. Good fit when the artifact is easily launchable (web app, backend, CLI) and AC is observable at runtime.
+> - **Off** — skip AC verification; user handles manually. Only choose this if the user explicitly wants to opt out.
 
 Store the chosen mode as `AC_VERIFICATION_MODE`.
 
 #### Runtime-assisted follow-ups (only if that mode was chosen)
 
-Branch by detected project type. If the project type is unclear, ask the user which category fits; if still unclear, fall back to **Code-only**.
+Branch by the project type confirmed in Q1 (not what STEP 1 detected — Q1's answer is canonical). If Q1's answer was "Other" or ambiguous, ask the user for a specific category; if still unclear, fall back to **Code-only**.
 
 **Web frontend:**
 
