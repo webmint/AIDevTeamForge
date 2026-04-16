@@ -3,33 +3,33 @@
   "description": "Manifest for AIDevTeamForge update system",
 
   "templateOwned": {
-    "description": "Files 100% owned by the template — safe to overwrite on update",
-    "patterns": [
-      ".claude/commands/breakdown.md",
-      ".claude/commands/constitute.md",
-      ".claude/commands/execute-task.md",
-      ".claude/commands/plan.md",
-      ".claude/commands/setup-wizard.md",
-      ".claude/commands/specify.md",
-      ".claude/commands/onboard.md",
-      ".claude/commands/verify.md",
-      ".claude/commands/fix.md",
-      ".claude/commands/refactor.md",
-      ".claude/commands/report-bug.md",
-      ".claude/commands/refresh-docs.md",
-      ".claude/commands/research.md",
-      ".claude/commands/summarize.md",
-      ".claude/commands/security.md",
-      ".claude/commands/review.md",
-      ".claude/commands/audit.md",
-      ".claude/commands/finalize.md",
-      ".claude/commands/_recovery.md",
-      ".claude/commands/_agent-assignment.md",
-      ".claude/commands/_context-maintenance.md",
-      ".claude/commands/_multi-task-continuation.md",
-      ".claude/commands/_tech-writer-onboarding.md",
-      ".claude/template-manifest.json",
-      "scripts/**"
+    "description": "Files 100% owned by the template — safe to overwrite on update. Each entry maps template-repo source path to installed-target path.",
+    "files": [
+      { "source": "src/commands/breakdown.md",              "target": ".claude/commands/breakdown.md" },
+      { "source": "src/commands/constitute.md",             "target": ".claude/commands/constitute.md" },
+      { "source": "src/commands/execute-task.md",           "target": ".claude/commands/execute-task.md" },
+      { "source": "src/commands/plan.md",                   "target": ".claude/commands/plan.md" },
+      { "source": "src/commands/setup-wizard.md",           "target": ".claude/commands/setup-wizard.md" },
+      { "source": "src/commands/specify.md",                "target": ".claude/commands/specify.md" },
+      { "source": "src/commands/onboard.md",                "target": ".claude/commands/onboard.md" },
+      { "source": "src/commands/verify.md",                 "target": ".claude/commands/verify.md" },
+      { "source": "src/commands/fix.md",                    "target": ".claude/commands/fix.md" },
+      { "source": "src/commands/refactor.md",               "target": ".claude/commands/refactor.md" },
+      { "source": "src/commands/report-bug.md",             "target": ".claude/commands/report-bug.md" },
+      { "source": "src/commands/refresh-docs.md",           "target": ".claude/commands/refresh-docs.md" },
+      { "source": "src/commands/research.md",               "target": ".claude/commands/research.md" },
+      { "source": "src/commands/summarize.md",              "target": ".claude/commands/summarize.md" },
+      { "source": "src/commands/security.md",               "target": ".claude/commands/security.md" },
+      { "source": "src/commands/review.md",                 "target": ".claude/commands/review.md" },
+      { "source": "src/commands/audit.md",                  "target": ".claude/commands/audit.md" },
+      { "source": "src/commands/finalize.md",               "target": ".claude/commands/finalize.md" },
+      { "source": "src/commands/_recovery.md",              "target": ".claude/commands/_recovery.md" },
+      { "source": "src/commands/_agent-assignment.md",      "target": ".claude/commands/_agent-assignment.md" },
+      { "source": "src/commands/_context-maintenance.md",   "target": ".claude/commands/_context-maintenance.md" },
+      { "source": "src/commands/_multi-task-continuation.md", "target": ".claude/commands/_multi-task-continuation.md" },
+      { "source": "src/commands/_tech-writer-onboarding.md", "target": ".claude/commands/_tech-writer-onboarding.md" },
+      { "source": "src/manifest.json",                      "target": ".claude/template-manifest.json" },
+      { "source": "scripts/**",                             "target": "scripts/**" }
     ]
   },
 
@@ -37,15 +37,20 @@
     "description": "Template files whose changes should propagate to generated files in target projects. Only updates files that already exist in the target (i.e., agents the project chose to install). Placeholder variables are substituted using .claude/project-config.json.",
     "mappings": [
       {
-        "source": ".claude/templates/agents",
+        "source": "src/agents",
         "target": ".claude/agents",
         "strip_suffix": ".template",
         "description": "Agent templates → generated agents. Three-way merge preserves all project customizations."
       },
       {
-        "source": ".claude/templates/CLAUDE.template.md",
+        "source": "src/files/coreLLM/CLAUDE.md",
         "target": "CLAUDE.md",
-        "description": "CLAUDE.md template → project CLAUDE.md. Three-way merge preserves project overview, architecture, custom sections."
+        "description": "CLAUDE.md source → project CLAUDE.md. Three-way merge preserves project overview, architecture, custom sections."
+      },
+      {
+        "source": "src/files/coreLLM/AGENTS.md",
+        "target": "AGENTS.md",
+        "description": "AGENTS.md source → project AGENTS.md. Codex CLI equivalent of CLAUDE.md."
       }
     ]
   },

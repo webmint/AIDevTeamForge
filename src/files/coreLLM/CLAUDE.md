@@ -4,15 +4,17 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-**Name**: {{PROJECT_NAME}}
-**Type**: {{PROJECT_TYPE}}
-**Framework**: {{FRAMEWORK}}
-**Language**: {{LANGUAGE}}
-**Build Tool**: {{BUILD_TOOL}}
-**Build Command**: {{BUILD_COMMAND}}
-**Type Check Command**: {{TYPE_CHECK_COMMAND}}
-**Lint Command**: {{LINT_COMMAND}}
-**Source Root**: {{SOURCE_ROOT}}
+{{PROJECT_DESCRIPTION}}
+
+- **Name**: {{PROJECT_NAME}}
+- **Type**: {{PROJECT_TYPE}}
+- **Framework**: {{FRAMEWORK}}
+- **Language**: {{LANGUAGE}}
+- **Build Tool**: {{BUILD_TOOL}}
+- **Build Command**: `{{BUILD_COMMAND}}`
+- **Type Check Command**: `{{TYPE_CHECK_COMMAND}}`
+- **Lint Command**: `{{LINT_COMMAND}}`
+- **Source Root**: {{SOURCE_ROOT}}
 
 {{WRAPPER_MODE_SECTION}}
 
@@ -26,14 +28,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Architecture
 
-**Pattern**: {{ARCHITECTURE}}
-**Error Handling**: {{ERROR_HANDLING}}
-**API Layer**: {{API_LAYER}}
-**State Management**: {{STATE_MANAGEMENT}}
-**Styling**: {{STYLING}}
-**Monorepo**: {{MONOREPO_TOOL}}
+{{ARCHITECTURE_DETAILS}}
 
-## Workflow Commands
+## Workflow
 
 ### Spec-Driven Development Flow
 
@@ -42,19 +39,36 @@ This file provides guidance to Claude Code when working with code in this reposi
    (once)         (once)       (once)    (optional)  (per feat)  (per feat) (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
 ```
 
-### `/research "topic or idea"` (optional)
+- `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md`
+- `/plan` — Technical plan from approved spec → `specs/NNN-name/plan.md`
+- `/breakdown` — Atomic tasks with dependencies → `specs/NNN-name/tasks/`
+- `/execute-task N` — Implement one task with assigned agent
+- `/review` — Security + performance + test review → findings report
+- `/verify` — Check acceptance criteria against spec
+- `/finalize` — Squash WIP commits, generate docs, clean commit
+
+Standalone (no spec required):
+- `/fix "bug"` — Localized bug fix (1-5 files)
+- `/refactor path "goal"` — Behavior-preserving restructuring (1-5 files)
+- `/security [target]` — On-demand security review
+- `/audit` — Adversarial whole-codebase quality review
+- `/research "topic"` — Feasibility check before specifying
+
+### Command Details
+
+#### `/research "topic or idea"` (optional)
 Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based), and displays the full report in the console. You're then asked whether to save — if yes, saves to `research/YYYY-MM-DD-[topic-slug].md`. Does NOT create specs or modify code. Use before `/specify` when you're unsure whether an idea is viable or how it fits.
 
-### `/specify "feature description"`
+#### `/specify "feature description"`
 Creates a structured specification with acceptance criteria. Asks clarifying questions as needed (no artificial limit — the AI judges how many based on input clarity). Analyzes affected code, saves spec to `specs/[feature]/spec.md`. **Requires approval before proceeding.** Auto-creates a `spec/NNN-short-desc` branch when on the default branch.
 
-### `/plan [spec-file]`
+#### `/plan [spec-file]`
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. **Requires approval before breakdown.**
 
-### `/breakdown [spec-file]`
+#### `/breakdown [spec-file]`
 Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval before execution.**
 
-### `/execute-task [number]`
+#### `/execute-task [number]`
 Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
 1. Pre-flight check (constitution, memory, file state, contract preconditions)
 2. Agent execution with scope constraints (agent writes code + inline docs)
@@ -63,25 +77,25 @@ Executes a single task from the breakdown using the assigned specialized agent. 
 5. Memory update
 WIP commits accumulate across tasks and are squashed by `/finalize` when the feature is approved.
 
-### `/review [spec-file]`
+#### `/review [spec-file]`
 Launches specialist review agents (security, performance, test assessment) on completed feature code. Produces a structured review report saved to `specs/[feature]/review.md` for `/verify` to incorporate into its verdict. Does not render a verdict — findings only.
 
-### `/verify [spec-file]`
+#### `/verify [spec-file]`
 Verifies all completed tasks against the spec's acceptance criteria. When AC verification is enabled (`AC_VERIFICATION` in project-config.json), launches the **ac-verifier** agent to test acceptance criteria against the running app via Chrome DevTools MCP and/or API calls — falls back to code reading when MCP is not available. Incorporates `/review` findings if available (warns if missing). Performs cross-task integration check (not full code review — that was done per-task). Updates memory with lessons learned.
 
-### `/summarize [spec-file]`
+#### `/summarize [spec-file]`
 Generates a concise, PR-ready summary of a completed feature. Reads spec, plan, tasks, and git history. Saves to `specs/[feature]/summary.md`. Run after `/verify` approves, before `/finalize`.
 
-### `/finalize [spec-file]`
+#### `/finalize [spec-file]`
 Generates feature-level documentation via tech-writer, then squashes all WIP commits into a single clean feature commit. Gate-checked: spec must be Complete (set by `/verify`). The last step before creating a PR.
 
-### `/constitute`
+#### `/constitute`
 One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns.
 
-### `/onboard`
+#### `/onboard`
 One-time deep codebase scan for existing projects. Uses the tech-writer agent to generate comprehensive documentation in `docs/` — the knowledge base for all agents. Run once after `/constitute`.
 
-### `/fix "bug description"`
+#### `/fix "bug description"`
 Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the full spec→plan→breakdown pipeline. Phases:
 1. Diagnosis (runtime-debugger agent for runtime errors, manual tracing for logic bugs)
 2. User confirms root cause (hard gate)
@@ -93,7 +107,7 @@ Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the
 
 If the bug grows beyond 5 files, recommends escalating to `/specify`.
 
-### `/refactor path/to/file.ts "goal"`
+#### `/refactor path/to/file.ts "goal"`
 Focused code refactoring workflow for behavior-preserving restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path. Phases:
 1. Analysis (detect refactoring opportunities against constitution rules — long functions, SOLID/DRY/KISS violations, type safety, naming, dead code, pattern mismatches)
 2. User approves proposal with specific items (hard gate, partial approval supported)
@@ -105,13 +119,13 @@ Focused code refactoring workflow for behavior-preserving restructuring (1-5 fil
 
 If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 
-### `/security [file|dir|--full]`
+#### `/security [file|dir|--full]`
 On-demand security review. Targets a specific file (with optional line range), directory, uncommitted changes (default), or the full codebase (`--full`). Launches the security-reviewer agent with constitution and memory context. Reports findings by severity (Critical/High/Medium/Info) with CWE identifiers and remediation suggestions. Read-only — does not modify code. Full codebase mode uses module-based subagents for large projects.
 
-### `/audit [--full | --uncommitted | path]`
+#### `/audit [--full | --uncommitted | path]`
 Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-engineer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming-vs-behavior mismatches, lying comments, off-by-one errors, dead branches, cross-file contradictions, contradictory configs). Reads up to 5 recent `specs/*/review.md` files to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim Evidence quote from the actual code; Phase 4 validation re-reads cited files and discards ungrounded findings. Writes dated reports to `audits/YYYY-MM-DD-audit.md` and prints inline summary. Read-only, not auto-committed, **NOT part of any workflow chain** — invoke manually after several specs ship.
 
-### Additional Commands
+#### Additional Commands
 
 - `/setup-wizard` — Re-run initial project setup (regenerates config files)
 
@@ -119,7 +133,7 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 
 {{AGENT_LIST}}
 
-**Agent Selection** is automatic in `/execute-task` based on the task's assigned agent. You can also launch agents directly using the Task tool.
+Agent selection is automatic in `/execute-task` based on the task's assigned agent.
 
 ## Enforced Quality Gates
 
@@ -140,7 +154,7 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 1. **Read before write** — always read files before modifying them
 2. **Constitution is law** — `constitution.md` rules override everything except user instructions
 3. **Minimal changes** — every change should impact as little code as possible
-4. **Memory is persistent** — check `.claude/memory/MEMORY.md` for lessons from past sessions
+4. **Memory is persistent** — check `.devforge/memory/MEMORY.md` for lessons from past sessions
 5. **Specs are contracts** — once approved, implementation must satisfy every acceptance criterion
 6. **One task at a time** — execute tasks sequentially following the dependency graph
 7. **Document new code** — all new functions/variables must have clear documentation
@@ -149,8 +163,8 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 10. **Validate at boundaries** — validate external input (user input, API responses, env vars); trust internal code
 11. **SOLID, DRY, KISS** — single responsibility, don't repeat logic 3+ times, keep it simple
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
-13. **Session state** — after each `/execute-task`, overwrite `.claude/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
-14. **Crash recovery** — `/execute-task` writes a WIP marker before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
+13. **Session state** — after each `/execute-task`, overwrite `.devforge/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
+14. **Crash recovery** — `/execute-task` writes a WIP marker (`.devforge/wip.md`) before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
@@ -211,12 +225,12 @@ docs/
 - Task files: `NNN-short-title.md`, sequential within feature
 - Everything for a feature lives in one directory
 - Docs are organized by topic (not by task/date) in `docs/`
-- See `.claude/templates/storage-rules.md` for full conventions
+- See `.devforge/storage-rules.md` for full conventions
 - **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`
 
 ## Session Continuity
 
-At the start of each session, read `.claude/session-state.md` if it exists. It contains a compact snapshot from the last completed task — current feature, progress, recent decisions, and recently modified files.
+At the start of each session, read `.devforge/session-state.md` if it exists. It contains a compact snapshot from the last completed task — current feature, progress, recent decisions, and recently modified files.
 
 This file is:
 - **Fixed-size** — always fully overwritten, never appended, max ~40 lines
@@ -224,14 +238,15 @@ This file is:
 - **Not a history log** — history lives in task completion notes (`specs/`) and `MEMORY.md`
 - **Updated automatically** by `/execute-task` (Phase 7)
 
-If you run `/clear` or context is compacted, session-state.md ensures the next `/execute-task` can bootstrap without re-discovering state.
+If context is compacted or a new session starts, session-state.md ensures the next `/execute-task` can bootstrap without re-discovering state.
 
 ### Crash Recovery
 
-If a task execution is interrupted (power loss, terminal crash, network drop), the next `/execute-task` will detect the interrupted state via `.claude/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command (`/execute-task`, `/fix`, or `/refactor`) was interrupted — if you run a different command, it will detect the mismatch and ask you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/finalize` when the feature is approved.
+If a task execution is interrupted (power loss, terminal crash, network drop), the next `/execute-task` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command (`/execute-task`, `/fix`, or `/refactor`) was interrupted — if you run a different command, it will detect the mismatch and ask you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/finalize` when the feature is approved.
 
 ## References
 
 - [Constitution](constitution.md) — Project rules and patterns
 - [Specs](specs/) — Feature specifications, plans, and tasks
-- [Memory](/.claude/memory/MEMORY.md) — Persistent learnings
+- [Memory](.devforge/memory/MEMORY.md) — Persistent learnings
+- [Project Config](.devforge/project-config.json) — Wizard answers
