@@ -29,15 +29,22 @@ Scan for directories at depth 1 (direct children of the workspace root) that con
 
 {{ask "Is this a standalone project, or a wrapper workspace around a client project folder?"}}
 - Standalone project
-- Wrapper workspace (if chosen, follow up with: "Which folder contains the client's source code?")
+- Wrapper workspace
 {{/ask}}
+
+If the user picks "Wrapper workspace", follow up with a second ask: "Which folder contains the client's source code?"
 
 **If multiple nested `.git` directories are found:**
 
-{{ask "I found multiple nested git repositories: [list]. Is this a wrapper workspace? If so, which folder is the primary source root?"}}
-- Standalone
-- Wrapper around one of the listed folders (have the user pick)
+{{ask "I found multiple nested git repositories: [list folder names]. Is this a wrapper workspace? If yes, which folder is the primary source root?"}}
+- Standalone (treat the outer root as the source)
+- Wrapper around [folder-1]
+- Wrapper around [folder-2]
+- Wrapper around [folder-3]
+- ... (one wrapper option per detected folder)
 {{/ask}}
+
+Multi-root wrapper (coordinating across several of the nested repos simultaneously) is not currently supported. If the user indicates that's what they want, tell them to pick one primary root for now and raise the multi-root case as a feature request.
 
 ### 0.3: Set Source Root
 
@@ -51,37 +58,33 @@ If wrapper mode:
 - Inform the user: "Wrapper mode activated. Source root: `[folder-name]/`. All template artifacts will live in the wrapper root. I'll scan the source code inside `[folder-name]/`."
 - Verify the inner folder exists and contains files
 
-## STEP 0.5: Greenfield Detection
+## STEP 1: Project State
 
-Look at what's inside SOURCE_ROOT. Skip `.git/`, hidden directories, and any obvious dependency or build-artifact directory — use your knowledge of the ecosystem (e.g. `node_modules/`, `vendor/`, `target/`, `venv/`, `.venv/`, `__pycache__/`, `build/`, `dist/`, `out/`, `.gradle/`, `.next/`, `.nuxt/`, `.cache/`). Decide which of these three states best describes the project:
+{{ask "What state is this project in?"}}
+- Empty / brand new — no code, no config files, directory was just created
+- Greenfield / just scaffolded — ran a starter tool (e.g. npm create, cargo new, flutter create, django-admin startproject), only boilerplate present, no custom code yet
+- Brownfield / existing — real codebase with custom code, established patterns and conventions
+{{/ask}}
 
-- **Empty** — essentially nothing there (fresh `mkdir` then install). No manifests, no source, no config.
-- **Greenfield** — just a fresh scaffold from a starter tool (e.g. output of `npm create vite`, `cargo new`, `flutter create`, `django-admin startproject`, or similar for any ecosystem). Files present are template boilerplate, not meaningful custom code.
-- **Existing** — real in-progress project with custom code and conventions.
+Store the result as `PROJECT_STATE`. This controls detection depth in STEP 2 and question behavior in STEP 3:
 
-Use your judgment on the greenfield-vs-existing boundary. If genuinely unsure, mark as uncertain and raise it with the user in STEP 2.
+- **Empty**: skip STEP 2 entirely — there's nothing to scan. All project info comes from user answers in STEP 3.
+- **Greenfield**: STEP 2 does a light scan — read config/manifest files only (e.g. `package.json`, `Cargo.toml`, `tsconfig.json`, `pyproject.toml`) to extract language, framework, and tooling. Skip source-code scanning for patterns. In STEP 3, ask MORE questions since there's less to auto-detect. In STEP 4, use framework best-practice defaults instead of extracted patterns.
+- **Brownfield**: STEP 2 does a full scan — read configs + representative source files to detect architecture, error handling, conventions. In STEP 4, use project-specific patterns extracted from real code.
 
-**If empty or greenfield:**
-- Skip pattern detection that requires real code to scan (architecture, error handling, state management, etc.) — there isn't any.
-- Inspect whatever scaffold / config files ARE present (e.g. `package.json`, `Cargo.toml`, `tsconfig.json`, `pyproject.toml`) to extract language, framework, and tooling hints.
-- In STEP 2, ask MORE questions since there's less to auto-detect.
-- In STEP 3, use framework best-practice defaults instead of extracted patterns.
-- When generating the project instructions file, use the constitution's scaffolding section for project structure.
-- When generating agents, use framework-idiomatic patterns instead of project-specific ones.
+## STEP 2: Auto-Detect Project Structure
 
-Inform the user briefly: "This appears to be an [empty / greenfield / existing] project. I'll [ask you about your intended stack / analyze your existing codebase] to set things up."
-
-## STEP 1: Auto-Detect Project Structure
+**If `PROJECT_STATE` is empty, skip this step entirely and go to STEP 3.**
 
 **All scanning in this step targets the SOURCE_ROOT directory.** For standalone projects this is the workspace root (`.`). For wrapper projects this is the inner folder (e.g., `client-project/`). Resolve all file paths relative to SOURCE_ROOT.
 
 Read dependency manifests, lockfiles, config files, and top-level directory layout at SOURCE_ROOT to identify the project's tech stack. Typical starting points: dependency manifests like `package.json`, `pyproject.toml`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml`, `pubspec.yaml`, `Gemfile`, `composer.json`, `*.csproj`, `mix.exs`, `deno.json`; config files like `tsconfig.json`, `.eslintrc.*`, `tailwind.config.*`, `pyrightconfig.json`; and structural markers like `Dockerfile`, `.github/workflows/`, workspace/monorepo files (`pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`, Cargo workspace, Go workspaces).
 
-For existing projects, also scan a few representative source files to infer architectural patterns (layered / feature-modular / MVC / BLoC / hexagonal / etc.) and error-handling conventions (Either-style results / typed exceptions / traditional try-catch / HTTP-error patterns / etc.).
+**Brownfield only:** also scan a few representative source files to infer architectural patterns (layered / feature-modular / MVC / BLoC / hexagonal / etc.) and error-handling conventions (Either-style results / typed exceptions / traditional try-catch / HTTP-error patterns / etc.).
 
-Based on what you find, identify each of the following. Mark any category that genuinely doesn't apply as **N/A**. If you're uncertain, note the uncertainty and raise it with the user in STEP 2 rather than guessing.
+Based on what you find, identify each of the following. Mark any category that genuinely doesn't apply as **N/A**. If you're uncertain, note the uncertainty and raise it with the user in STEP 3 rather than guessing.
 
-- **Primary language(s)** and **runtime**
+- **Languages and runtimes** — detect all present. If multiple (monorepo, polyglot, cross-platform), order them by approximate file count descending (most files first). Note the associated runtime per language (TypeScript → Node, Python → Python 3, Dart → Flutter, etc.).
 - **Primary framework(s)** (app-level, not library-level)
 - **Package manager** (if applicable)
 - **Testing framework(s)** (if present)
@@ -98,9 +101,9 @@ Based on what you find, identify each of the following. Mark any category that g
 
 Do not invent details or fill categories with plausible-sounding defaults. An honest "uncertain — will ask the user" beats a confident wrong guess. Do not limit yourself to the indicators mentioned above — examine whatever is actually present, in whatever ecosystem the project uses.
 
-## STEP 2: Present Findings & Ask Questions
+## STEP 3: Present Findings & Ask Questions
 
-Present what you detected in a clear summary, then walk the user through each question. Every question is labeled with exactly one of three markers:
+Present what you detected in STEP 2 in a clear summary (or, if `PROJECT_STATE` is empty, skip the summary and go straight to questions). Walk the user through each question in order (Q1 → Q9; later questions depend on earlier answers). Every question is labeled with exactly one of three markers:
 
 - **REQUIRED** — must be answered. Offer **confirm / override**. Defer is not allowed; downstream commands depend on the value.
 - **OPTIONAL** — user may answer or explicitly defer. Offer **confirm / override / defer**. "Defer" marks the field as `TBD` and downstream commands will ask when the field becomes relevant (e.g., when `{{cli.sigil}}specify` needs an architecture decision for a specific feature). A small number of OPTIONAL questions are free-text only (e.g. "anything else I should know?") — those are noted explicitly and allow an empty response.
@@ -114,21 +117,27 @@ For every question that applies, do NOT silently default. Do NOT infer answers. 
 
 ### Question 1: Project Type (REQUIRED)
 
-Present the question to the user. If STEP 1 detection surfaced concrete indicators, quote them explicitly; if nothing was detected, say so plainly and just ask. Do not invent.
+Present the question to the user. If STEP 2 detection surfaced concrete indicators, quote them explicitly; if nothing was detected (or `PROJECT_STATE` is empty), say so plainly and just ask. Do not invent.
 
 **If concrete indicators were found:**
 
 > Based on what I found — [quote 2–5 specific observed facts: exact dep names, exact file paths, exact config markers] — this looks like a [proposed type]. What type of project is this?
 >
 > Options:
-> - Frontend application
-> - Backend API/service
-> - Full-stack application
-> - Library / package
-> - CLI tool
-> - Mobile application
-> - Plugin / extension
-> - Other (user describes)
+> - Frontend / web application
+> - Backend API / service
+> - Full-stack web application
+> - Mobile application (native or cross-platform)
+> - Desktop application (Electron, Tauri, native)
+> - CLI tool / script
+> - Library / package / SDK
+> - Plugin / extension / add-on
+> - Data pipeline / ETL / batch job
+> - ML / data science / AI model
+> - Game
+> - Infrastructure-as-code / config management
+> - Documentation / static site
+> - Other — user describes their own category (e.g., "firmware", "Figma plugin", "browser extension", "Slack bot")
 
 **If nothing was detected (empty / greenfield / unclear):**
 
@@ -136,9 +145,29 @@ Present the question to the user. If STEP 1 detection surfaced concrete indicato
 >
 > Options: [same list as above]
 
-### Question 2: Primary Framework & Language (REQUIRED)
+### Question 2: Languages & Frameworks (REQUIRED)
 
-> I found [detected framework] with [detected language]. Confirm, override, or describe if different.
+**If a single language dominates:**
+
+> I found [language] with [framework]. Confirm, override, or describe if different.
+
+**If multiple languages are present (monorepo, polyglot, cross-platform):**
+
+> I found multiple languages, ordered by approximate file count:
+> - [language 1] (~[n] files) with [framework 1]
+> - [language 2] (~[n] files) with [framework 2]
+> - ...
+>
+> The first in the list is treated as the project's "primary" language for downstream defaults (default agent, default type-check command, etc.). Commands still operate correctly on files in other languages — "primary" only controls what to pick when no file or context is specified.
+>
+> Options:
+> - Confirm this ordering
+> - Override — reorder, or specify a different primary
+
+Store as:
+- `LANGUAGES` = ordered array of detected language strings (e.g. `["TypeScript", "Python"]`)
+- `FRAMEWORKS` = parallel array; each element is the dominant framework for the language at the same index (or `null` if none)
+- `PRIMARY_LANGUAGE` = first element of `LANGUAGES` (or the user's explicit pick if they overrode the ordering)
 
 Accept free-text for override — no hardcoded framework list.
 
@@ -221,7 +250,7 @@ Free text. User can skip.
 
 ### Question 8: Agent Model Assignments (per-runtime)
 
-Specialized agents are grouped into three tiers based on the reasoning they require. Ask the sub-question for each supported runtime (since install produces artifacts for every enabled runtime, all sub-questions are asked by default). Use **confirm / override / defer** semantics from the STEP 2 preamble — don't silently default.
+Specialized agents are grouped into three tiers based on the reasoning they require. Ask the sub-question for each supported runtime (since install produces artifacts for every enabled runtime, all sub-questions are asked by default). Use **confirm / override / defer** semantics from the STEP 3 preamble — don't silently default.
 
 **Tiers (shared across runtimes):**
 
@@ -283,13 +312,13 @@ Store the chosen mode as `AC_VERIFICATION_MODE`.
 
 #### Runtime-assisted follow-ups (only if that mode was chosen)
 
-Branch by the project type confirmed in Q1 (not what STEP 1 detected — Q1's answer is canonical). If Q1's answer was "Other" or ambiguous, ask the user for a specific category; if still unclear, fall back to **Code-only**.
+Branch by the project type confirmed in Q1 (not what STEP 2 detected — Q1's answer is canonical). If Q1's answer was "Other" or ambiguous, ask the user for a specific category; if still unclear, fall back to **Code-only**.
 
 **Web frontend:**
 
 > What URL does the dev server serve the app on? (e.g. http://localhost:5173)
 
-Store the URL as `AC_RUNTIME_URL`. Also flag for STEP 3: the target needs a browser-automation MCP server (e.g. `chrome-devtools` for Claude, the equivalent for Codex) registered in the runtime's MCP config.
+Store the URL as `AC_RUNTIME_URL`. Also flag for STEP 4: the target needs a browser-automation MCP server registered in each installed runtime's MCP config. The `chrome-devtools` MCP is runtime-agnostic (the MCP protocol works across clients); what differs is the config file format and location per runtime. STEP 4 handles the per-runtime registration.
 
 **Backend with HTTP API:**
 
@@ -309,7 +338,7 @@ Store as `AC_RUNTIME_CLI_COMMAND`.
 
 No follow-up storage needed beyond `AC_VERIFICATION_MODE` in this case.
 
-## STEP 3: Generate Configuration Files
+## STEP 4: Generate Configuration Files
 
 Based on detection + user answers, generate ALL of the following files. Read each template from `.claude/templates/`, fill in the placeholders, and write the output files.
 
@@ -549,7 +578,7 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
 }
 ```
 
-**Detecting DEFAULT_BRANCH**: Use this cascade during Step 1:
+**Detecting DEFAULT_BRANCH**: Use this cascade during STEP 2:
 1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null` → parse branch name
 2. Check if `main` exists: `git show-ref --verify --quiet refs/heads/main`
 3. Check if `master` exists: `git show-ref --verify --quiet refs/heads/master`
@@ -560,7 +589,7 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
 
 Use the exact same values you substituted into the templates. For multi-line values, use `\n` for newlines in the JSON string. For values that don't apply, use `"N/A"` (not empty string).
 
-## STEP 4: Cleanup & Summary
+## STEP 5: Cleanup & Summary
 
 1. Ask the user: "Setup is complete. Should I remove the `.claude/templates/` directory? (It's no longer needed but can be kept for re-running the wizard.)"
 2. If yes, delete `.claude/templates/`
