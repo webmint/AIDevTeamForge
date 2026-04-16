@@ -132,7 +132,7 @@ For each changed source file:
 
 ### Step 4: Find the Right Doc File
 
-1. Read the `docs/` folder structure (use Glob)
+1. Read the `docs/` folder structure
 2. Check if an existing file covers this topic
 3. If yes → update that file
 4. If no → create a new file in the appropriate subfolder
