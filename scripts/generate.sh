@@ -49,6 +49,12 @@ python3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
   --src "$SRC_DIR/files/coreLLM" \
   --out "$TARGET_DIR"
 
+# ── Agents: generate per-runtime agent files from universal sources ──────
+echo "→ Generating agents"
+python3 "$TEMPLATE_DIR/scripts/generate-agents.py" \
+  --src "$SRC_DIR/agents" \
+  --target "$TARGET_DIR"
+
 # ── Per-runtime emitters (commands/skills only) ──────────────────────────
 for runtime in $RUNTIMES; do
   emitter="$EMITTERS_DIR/${runtime}.py"

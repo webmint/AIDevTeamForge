@@ -1,12 +1,12 @@
 """Minimal frontmatter parser for AIDevTeamForge templates.
 
 Handles the subset of YAML-ish frontmatter used in src/commands/*.md and
-src/agents/*.template.md:
+src/agents/*.md:
 
     ---
     name: architect
     description: "long quoted string, possibly with \\n escapes"
-    model: {{MODEL_THINK}}
+    model_tier: think
     ---
     <body>
 

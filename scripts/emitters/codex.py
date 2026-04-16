@@ -8,7 +8,9 @@ removed in 0.117.0).
 Responsibilities:
   - src/commands/setup-wizard.md   → target/.agents/skills/setup-wizard/SKILL.md
 
-CoreLLM files (AGENTS.md) are handled by generate-corellm.py, not this emitter.
+Handled by other generators, not this emitter:
+  - CoreLLM files (AGENTS.md)        → scripts/generate-corellm.py
+  - Subagents (.codex/agents/*.toml) → scripts/generate-agents.py
 
 Does NOT substitute {{PLACEHOLDERS}} — wizard handles that post-install.
 """
@@ -109,30 +111,6 @@ def emit_skills(src_commands: Path, target_skills_dir: Path) -> int:
     return count
 
 
-def emit_agents(src_agents: Path, target_agents_dir: Path) -> int:
-    """Turn each src/agents/*.template.md into <name>.toml.
-
-    Codex subagent TOML schema (MVP): name, description, developer_instructions.
-    Placeholders like {{MODEL_THINK}}, {{FRAMEWORK}} remain visible for the
-    wizard to substitute later.
-    """
-    if not src_agents.is_dir():
-        return 0
-    target_agents_dir.mkdir(parents=True, exist_ok=True)
-    count = 0
-    for md_file in sorted(src_agents.glob("*.template.md")):
-        # Strip '.template' from the stem: architect.template.md → architect
-        name = md_file.stem.replace(".template", "")
-        text = md_file.read_text()
-        fm, body, _ = parse_frontmatter(text)
-        description = fm.get("description") or _derive_description(text, name)
-        toml = _emit_toml_agent(name=name, description=description, body=body)
-        out_file = target_agents_dir / f"{name}.toml"
-        out_file.write_text(toml)
-        count += 1
-    return count
-
-
 def emit_agents_md(src_agents_md: Path, target_root: Path) -> bool:
     """Write target/AGENTS.md from the AGENTS.md source.
 
@@ -174,11 +152,10 @@ def emit(src: Path, target: Path) -> None:
 
     print(f"    setup-wizard skill: yes")
 
-    # ── Commented out: will be restored when commands/agents are promoted ──
-    # codex_agents_dir = target / ".codex" / "agents"
+    # ── Commented out: will be restored when commands are promoted ───────────
+    # Agents are handled by scripts/generate-agents.py, not this emitter.
     # n_skills = emit_skills(src / "commands", skills_dir)
-    # n_agents = emit_agents(src / "agents", codex_agents_dir)
-    # print(f"    skills: {n_skills}, codex agents: {n_agents}, AGENTS.md: ...")
+    # print(f"    skills: {n_skills}")
 
 
 def main() -> int:

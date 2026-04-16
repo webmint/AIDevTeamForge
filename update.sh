@@ -79,7 +79,7 @@ if ! command -v perl >/dev/null 2>&1; then
 fi
 
 # ── Load manifest ──────────────────────────────────────────────────────────
-MANIFEST="$TEMPLATE_DIR/.claude/template-manifest.json"
+MANIFEST="$TEMPLATE_DIR/src/manifest.json"
 if [ ! -f "$MANIFEST" ]; then
   err "Template manifest not found at: $MANIFEST"
   exit 1
@@ -398,15 +398,48 @@ expand_patterns() {
   done | sort -u
 }
 
+# ── Expand templateOwned.files[] into source\ttarget pairs ────────────────
+# Post-reshape, manifest pairs source (template repo path, e.g. src/commands/X.md)
+# with target (installed path, e.g. .claude/commands/X.md). Glob patterns (scripts/**)
+# expand against the template dir.
+expand_templateOwned_pairs() {
+  local pair_count
+  pair_count="$(jq -r '.templateOwned.files | length' "$MANIFEST")"
+  local i=0
+  while [ "$i" -lt "$pair_count" ]; do
+    local src_path tgt_path
+    src_path="$(jq -r ".templateOwned.files[$i].source" "$MANIFEST")"
+    tgt_path="$(jq -r ".templateOwned.files[$i].target" "$MANIFEST")"
+    case "$src_path" in
+      *"**"*)
+        local src_base="${src_path%%/\*\*}"
+        local tgt_base="${tgt_path%%/\*\*}"
+        if [ -d "$TEMPLATE_DIR/$src_base" ]; then
+          find "$TEMPLATE_DIR/$src_base" -type f 2>/dev/null | while IFS= read -r fp; do
+            local rel="${fp#$TEMPLATE_DIR/$src_base/}"
+            printf "%s\t%s\n" "$src_base/$rel" "$tgt_base/$rel"
+          done
+        fi
+        ;;
+      *)
+        if [ -f "$TEMPLATE_DIR/$src_path" ]; then
+          printf "%s\t%s\n" "$src_path" "$tgt_path"
+        fi
+        ;;
+    esac
+    i=$((i + 1))
+  done
+}
+
 # ── Read pattern lists from manifest ───────────────────────────────────────
-TEMPLATE_OWNED_PATTERNS="$(jq -r '.templateOwned.patterns[]' "$MANIFEST")"
 PROJECT_OWNED_PATTERNS="$(jq -r '.projectOwned.patterns[]' "$MANIFEST")"
 COPY_IF_MISSING_PATTERNS="$(jq -r '.copyIfMissing.patterns[]' "$MANIFEST")"
 MERGE_FILES="$(jq -r '.mergeFiles.files | keys[]' "$MANIFEST")"
 DERIVED_COUNT="$(jq -r '.templateDerived.mappings | length' "$MANIFEST")"
 
 # ── Build file lists ───────────────────────────────────────────────────────
-TEMPLATE_OWNED_FILES="$(echo "$TEMPLATE_OWNED_PATTERNS" | expand_patterns "$TEMPLATE_DIR")"
+# TEMPLATE_OWNED_FILES now contains tab-separated "source\ttarget" pairs.
+TEMPLATE_OWNED_FILES="$(expand_templateOwned_pairs)"
 COPY_IF_MISSING_FILES="$(echo "$COPY_IF_MISSING_PATTERNS" | expand_patterns "$TEMPLATE_DIR")"
 
 # Build templateDerived file list: source → target pairs (tab-separated)
@@ -480,11 +513,11 @@ done)"
 # ── Dry-run report ─────────────────────────────────────────────────────────
 header "Plan"
 
-# Overwrite (templateOwned)
+# Overwrite (templateOwned) — display target path for each pair
 OVERWRITE_COUNT=0
-echo "$TEMPLATE_OWNED_FILES" | while IFS= read -r f; do
-  [ -z "$f" ] && continue
-  overwrt "OVERWRITE  $f"
+echo "$TEMPLATE_OWNED_FILES" | while IFS=$'\t' read -r src tgt; do
+  [ -z "$src" ] && continue
+  overwrt "OVERWRITE  $tgt"
 done
 OVERWRITE_COUNT="$(echo "$TEMPLATE_OWNED_FILES" | grep -c . || true)"
 
@@ -550,11 +583,11 @@ fi
 # ── Execute: templateOwned (overwrite) ─────────────────────────────────────
 header "Applying updates..."
 
-echo "$TEMPLATE_OWNED_FILES" | while IFS= read -r f; do
-  [ -z "$f" ] && continue
-  mkdir -p "$TARGET_DIR/$(dirname "$f")"
-  cp "$TEMPLATE_DIR/$f" "$TARGET_DIR/$f"
-  overwrt "Overwritten: $f"
+echo "$TEMPLATE_OWNED_FILES" | while IFS=$'\t' read -r src tgt; do
+  [ -z "$src" ] && continue
+  mkdir -p "$TARGET_DIR/$(dirname "$tgt")"
+  cp "$TEMPLATE_DIR/$src" "$TARGET_DIR/$tgt"
+  overwrt "Overwritten: $tgt"
 done
 
 # ── Execute: templateDerived (update generated files from templates) ───────

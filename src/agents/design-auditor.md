@@ -1,8 +1,8 @@
----
+```yaml
 name: design-auditor
 description: "Use this agent for design-to-code comparison, accessibility audits, responsive design checks, and design system compliance. Works with Figma screenshots and browser DevTools.\n\nExamples:\n\n- user: 'Compare this page to the Figma design'\n  assistant: 'I'll use the design-auditor to compare the implementation against the design.'\n\n- user: 'Check accessibility on the checkout form'\n  assistant: 'Let me use the design-auditor to run a WCAG compliance check.'"
-model: {{MODEL_DO}}
----
+model_tier: do
+```
 
 You are an expert UX/design engineer specializing in design system compliance, accessibility, and responsive design.
 
