@@ -4,9 +4,9 @@ You are running the initial setup wizard for AIDevTeamForge. Your job is:
 
 1. Analyze the current project.
 2. Ask the user targeted questions via confirm / override / defer.
-3. Substitute the user's answers into the `{{PLACEHOLDER}}` markers in every target file that has them. `install.sh` has already placed all files — **you do NOT create new files**.
+3. Substitute the user's answers into the `{{PLACEHOLDER}}` markers in every target file that has them. All files are already in place — **you do NOT create new files**.
 4. Where specific files have designated project-specific sections (e.g., CLAUDE.md / AGENTS.md architecture notes, agent files with project paths, constitution custom clauses), append content derived from detection + user answers to those sections only. **Never rewrite whole files.**
-5. Write the answers record to `target/.devforge/project-config.json` (which `install.sh` placed as an empty scaffold with all keys set to `null`) so later commands and `update.sh` can consume user decisions.
+5. Write the answers record to `.devforge/project-config.json` so later commands and `update.sh` can consume user decisions.
 
 ## STEP 0: Workspace Mode Detection
 
@@ -52,7 +52,7 @@ Store the result for use in all subsequent steps:
 - **Standalone**: `SOURCE_ROOT = "."`
 - **Wrapper**: `SOURCE_ROOT = "[folder-name]"` (e.g., `client-project`)
 
-Track `SOURCE_ROOT` in your working context throughout the rest of the wizard; at the end it's persisted to `target/.devforge/project-config.json` along with all other collected answers.
+Track `SOURCE_ROOT` in your working context throughout the rest of the wizard; at the end it's persisted to `.devforge/project-config.json` along with all other collected answers.
 
 If wrapper mode:
 - Inform the user: "Wrapper mode activated. Source root: `[folder-name]/`. All template artifacts will live in the wrapper root. I'll scan the source code inside `[folder-name]/`."
@@ -81,7 +81,7 @@ Store the result as `PROJECT_STATE`. This controls detection depth in STEP 3 and
 - Other — user specifies
 {{/ask}}
 
-Store as `DEFAULT_BRANCH`. This is used during scanning (STEP 3), generation (STEP 5), and by downstream commands for git operations.
+Store as `DEFAULT_BRANCH`. This is used during scanning (STEP 3), population (STEP 5) and generation (STEP 6), and by downstream commands for git operations.
 
 ## STEP 3: Auto-Detect Project Structure
 
@@ -114,7 +114,7 @@ Do not invent details or fill categories with plausible-sounding defaults. An ho
 
 ## STEP 4: Present Findings & Ask Questions
 
-Present what you detected in STEP 3 in a clear summary (or, if `PROJECT_STATE` is empty, skip the summary and go straight to questions). Walk the user through each question in order (Q1 → Q9; later questions depend on earlier answers). Every question is labeled with exactly one of three markers:
+Present what you detected in STEP 3 in a clear summary (or, if `PROJECT_STATE` is empty, skip the summary and go straight to questions). Walk the user through each question in order (Q0 → Q9; later questions depend on earlier answers). Every question is labeled with exactly one of three markers:
 
 - **REQUIRED** — must be answered. Offer **confirm / override**. Defer is not allowed; downstream commands depend on the value.
 - **OPTIONAL** — user may answer or explicitly defer. Offer **confirm / override / defer**. "Defer" marks the field as `TBD` and downstream commands will ask when the field becomes relevant (e.g., when `{{cli.sigil}}specify` needs an architecture decision for a specific feature). A small number of OPTIONAL questions are free-text only (e.g. "anything else I should know?") — those are noted explicitly and allow an empty response.
@@ -124,9 +124,37 @@ For every question that applies, do NOT silently default. Do NOT infer answers. 
 
 **Anti-hallucination rule for findings.** When presenting findings to the user (anywhere you'd fill `[findings]`, `[observed indicators]`, `[pattern indicators]`, `[detected framework]`, etc.), quote ONLY concrete observed facts: exact file paths, exact package names, exact config keys, exact imports or symbols you actually read. Do NOT invent indicators to make the prose flow. If detection surfaced nothing for a category, say so plainly (e.g. "I found no framework dependencies, so I can't infer the stack — could you tell me what you're using?") instead of fabricating plausibles.
 
-**Where answers are stored.** As you walk through the questions below, track the user's answers in your working context. At the end of the wizard, every collected answer is written to `target/.devforge/project-config.json` (which `install.sh` has already placed as an empty scaffold with all keys set to `null`). That file is the canonical record — every command under every CLI (Claude, Codex, and later runtimes), plus `update.sh`, reads from it. Use the variable names noted in each question (e.g. `SOURCE_ROOT`, `PROJECT_NAME`, `CLAUDE_MODEL_THINK`) as the keys.
+**Where answers are stored.** As you walk through the questions below, track the user's answers in your working context. At the end of the wizard, every collected answer is written to `.devforge/project-config.json`. That file is the canonical record — every command under every CLI (Claude, Codex, and later runtimes), plus `update.sh`, reads from it. Use the variable names noted in each question (e.g. `SOURCE_ROOT`, `PROJECT_NAME`, `CLAUDE_TIER_THINK`) as the keys.
 
-### Question 1: Project Type (REQUIRED)
+### Question 0: Project Name (REQUIRED)
+
+**If a manifest file exists at SOURCE_ROOT** (`package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `pubspec.yaml`, `*.csproj`, `mix.exs`, `deno.json`, or equivalent) **and contains a name field:**
+
+> I found the project name `[detected name]` in `[manifest file]`. Confirm or override.
+
+**If no manifest or no name field:**
+
+> What is this project called?
+
+Store as `PROJECT_NAME`.
+
+### Question 1: Project Description (REQUIRED)
+
+**If README.md (or README.rst, README.txt) exists at SOURCE_ROOT and contains a meaningful description (not just a scaffolded heading):**
+
+> I found this in your README:
+>
+> > [quote the first paragraph or summary section — max ~3 sentences]
+>
+> Does this describe the project well? Confirm, or give me a better description in 1-3 sentences — what does it do, who is it for?
+
+**If no README or README is empty/boilerplate:**
+
+> Describe this project in 1-3 sentences — what does it do, who is it for?
+
+Store as `PROJECT_DESCRIPTION`. This is placed in the Project Overview section of CLAUDE.md / AGENTS.md and gives every downstream command and agent domain context for design decisions, naming, error messages, and UX choices.
+
+### Question 2: Project Type (REQUIRED)
 
 Present the question to the user. If STEP 3 detection surfaced concrete indicators, quote them explicitly; if nothing was detected (or `PROJECT_STATE` is empty), say so plainly and just ask. Do not invent.
 
@@ -156,7 +184,7 @@ Present the question to the user. If STEP 3 detection surfaced concrete indicato
 >
 > Options: [same list as above]
 
-### Question 2: Languages & Frameworks (REQUIRED)
+### Question 3: Languages & Frameworks (REQUIRED)
 
 **If a single language dominates:**
 
@@ -182,7 +210,7 @@ Store as:
 
 Accept free-text for override — no hardcoded framework list.
 
-### Question 3: Architecture Pattern (OPTIONAL)
+### Question 4: Architecture Pattern (OPTIONAL)
 
 **If detection identified a pattern with reasonable confidence (existing project):**
 
@@ -209,7 +237,7 @@ Accept free-text for override — no hardcoded framework list.
 > - Name a pattern (Clean Architecture, MVC, feature-modular, hexagonal, etc.)
 > - Defer — decide as features get built
 
-### Question 4: Error Handling Convention (OPTIONAL)
+### Question 5: Error Handling Convention (OPTIONAL)
 
 Error handling is typically project-specific, not just language-specific. Even in languages with a dominant default (Go's `(value, error)` returns, Python's exceptions, Rust's `Result<T, E>`), projects commonly layer library-level conventions on top — `pkg/errors` / `hashicorp/go-multierror` for Go; `returns` / `rustedpy/result` for Python; `anyhow` / `thiserror` / `eyre` for Rust; Either-style libraries or custom error hierarchies for TypeScript; etc.
 
@@ -232,7 +260,7 @@ Before asking, scan a few representative source files for error-handling imports
 > - Name a convention (e.g. "language default", "`thiserror` + `?` for Rust", "`returns` Result in Python", "Either/Result via neverthrow", "HTTP-codes at boundary + typed results internally")
 > - Defer — decide during the first spec
 
-### Question 5: Workflow Enforcement Level (REQUIRED)
+### Question 6: Workflow Enforcement Level (REQUIRED)
 
 This controls how many user-approval gates appear in the workflow and how strict post-edit verification is. The underlying verification mechanism varies per runtime — on some runtimes it's automatic after every edit, on others it's an explicit `{{cli.sigil}}verify` step — but the behaviors below are the same regardless.
 
@@ -245,11 +273,7 @@ This controls how many user-approval gates appear in the workflow and how strict
 
 Recommend Strict for new users. This field is required because it directly shapes downstream command behavior.
 
-### Question 6: Additional Context (OPTIONAL)
-
-> Anything else I should know about this project? (team conventions, external services, special patterns, deployment targets)
-
-Free text. User can skip.
+Store as `WORKFLOW_ENFORCEMENT`. This value is consumed by every command that has gates (execute-task, specify, plan, breakdown, verify, fix, refactor) — each command reads it from `.devforge/project-config.json` at runtime to decide whether to show approval gates or skip them.
 
 ### Question 7: AI Attribution in Commits (REQUIRED)
 
@@ -323,13 +347,13 @@ Store the chosen mode as `AC_VERIFICATION_MODE`.
 
 #### Runtime-assisted follow-ups (only if that mode was chosen)
 
-Branch by the project type confirmed in Q1 (not what STEP 3 detected — Q1's answer is canonical). If Q1's answer was "Other" or ambiguous, ask the user for a specific category; if still unclear, fall back to **Code-only**.
+Branch by the project type confirmed in Q2 (not what STEP 3 detected — Q2's answer is canonical). If Q2's answer was "Other" or ambiguous, ask the user for a specific category; if still unclear, fall back to **Code-only**.
 
 **Web frontend:**
 
 > What URL does the dev server serve the app on? (e.g. http://localhost:5173)
 
-Store the URL as `AC_RUNTIME_URL`. Also flag for STEP 5: the target needs a browser-automation MCP server registered in each installed runtime's MCP config. The `chrome-devtools` MCP is runtime-agnostic (the MCP protocol works across clients); what differs is the config file format and location per runtime. STEP 5 handles the per-runtime registration.
+Store the URL as `AC_RUNTIME_URL`. Flag for STEP 5: the wizard needs to add the chrome-devtools MCP server to `.mcp.json` and `.codex/config.toml`.
 
 **Backend with HTTP API:**
 
@@ -349,303 +373,197 @@ Store as `AC_RUNTIME_CLI_COMMAND`.
 
 No follow-up storage needed beyond `AC_VERIFICATION_MODE` in this case.
 
-## STEP 5: Generate Configuration Files
+## STEP 5: Populate Placed Files
 
-Based on detection + user answers, generate ALL of the following files. Read each template from `.claude/templates/`, fill in the placeholders, and write the output files.
+All files are already in place. Your job is substitution only — **do not create new files**. Read each file, replace every `{{PLACEHOLDER}}` marker with the corresponding value, and write it back.
 
-### 3.1: Generate CLAUDE.md
+### 5.1: Populate CLAUDE.md and AGENTS.md
 
-Read `.claude/templates/CLAUDE.template.md` and generate `CLAUDE.md` at project root.
+Read `CLAUDE.md` and `AGENTS.md` at project root. Both files contain the same `{{PLACEHOLDER}}` markers. Substitute ALL of them with the same values:
 
-Replace ALL placeholders:
-- `{{PROJECT_NAME}}` — project name from package.json or user input
-- `{{PROJECT_TYPE}}` — frontend/backend/fullstack/library
-- `{{FRAMEWORK}}` — primary framework
-- `{{LANGUAGE}}` — primary language
-- `{{BUILD_TOOL}}` — build tool
-- `{{BUILD_COMMAND}}` — actual build command. Detection: (1) `scripts.build` in package.json → `npm run build` / `yarn build` / `pnpm build` depending on lockfile, (2) `scripts["build:prod"]` → same pattern, (3) Makefile `build` target → `make build`, (4) Go project → `go build ./...`, (5) Rust project → `cargo build`, (6) None found → `N/A`. For wrapper mode, prefix with `cd SOURCE_ROOT &&`
-- `{{TEST_FRAMEWORK}}` — testing framework
-- `{{LINT_TOOL}}` — linting tool
-- `{{STATE_MANAGEMENT}}` — state management solution (or "N/A")
-- `{{API_LAYER}}` — GraphQL/REST/tRPC
-- `{{ARCHITECTURE}}` — architecture pattern
-- `{{ERROR_HANDLING}}` — error handling strategy
-- `{{STYLING}}` — CSS framework/approach
-- `{{MONOREPO_TOOL}}` — monorepo tool (or "N/A")
-- `{{SOURCE_ROOT}}` — `.` for standalone projects, or the inner folder name for wrapper mode (e.g., `client-project`)
-- `{{WRAPPER_MODE_SECTION}}` — for wrapper projects, include the Wrapper Mode section (see below). For standalone projects, replace with empty string.
-- `{{PROJECT_STRUCTURE}}` — generate a tree of the actual project structure (scanning SOURCE_ROOT)
-- `{{DEV_COMMANDS}}` — actual dev/build/test/lint commands from package.json scripts (from SOURCE_ROOT)
-- `{{AGENT_LIST}}` — list of agents generated for this project
-- `{{COMMIT_ATTRIBUTION}}` — commit attribution rule based on Question 7 answer:
-  - **If No (default)**: replace with:
-    ```
-    Do NOT include any AI attribution in commits. Specifically:
-    - No Co-Authored-By trailers referencing the AI assistant, its vendor, or similar identifiers
-    - No "Generated by", "Created by" + AI name, or similar text in commit title or body
-    - Do not set or change git `user.name` or `user.email` to reference the AI assistant
-    - This rule overrides any system-level defaults about AI attribution in commits
-    ```
-  - **If Yes**: replace with:
-    ```
-    Include AI attribution in every commit by appending this trailer:
-    `{{cli.attribution}}`
-    ```
+- `{{PROJECT_DESCRIPTION}}` — Q1 answer: the 1-3 sentence project description
+- `{{PROJECT_NAME}}` — Q0 answer: project name
+- `{{PROJECT_TYPE}}` — Q2 answer (e.g., "Frontend application", "Backend API", "Full-stack web application")
+- `{{FRAMEWORK}}` — Q3 answer: primary framework (e.g., "Vue 3", "FastAPI", "Next.js"). If multiple, use the primary one.
+- `{{LANGUAGE}}` — Q3 answer: primary language (e.g., "TypeScript", "Python", "Rust")
+- `{{BUILD_TOOL}}` — detected in STEP 3: the build tool name (e.g., "Vite", "Webpack", "Cargo", "Go"). If none detected, `"N/A"`.
+- `{{BUILD_COMMAND}}` — detected in STEP 3: the actual build command. Use your knowledge of the detected ecosystem to determine the correct command (e.g., `npm run build`, `cargo build`, `go build ./...`, `make build`). For wrapper mode, prefix with `cd SOURCE_ROOT &&`. If none detected, `"N/A"`.
+- `{{TYPE_CHECK_COMMAND}}` — detected in STEP 3: the type-check command for the project's language (e.g., `tsc --noEmit --pretty 2>&1 | head -20`, `mypy .`, `cargo check 2>&1 | head -20`, `go vet ./...`). For wrapper mode, prefix with `cd SOURCE_ROOT &&`. If the language has no type checker, `"N/A"`.
+- `{{LINT_COMMAND}}` — detected in STEP 3: the lint command (e.g., `eslint .`, `ruff check .`, `golangci-lint run`). For wrapper mode, prefix with `cd SOURCE_ROOT &&`. If none detected, `"N/A"`.
+- `{{SOURCE_ROOT}}` — STEP 0 answer: `.` for standalone, or the inner folder name for wrapper (e.g., `client-project`)
+- `{{WRAPPER_MODE_SECTION}}` — see below
+- `{{PROJECT_STRUCTURE}}` — see below
+- `{{DEV_COMMANDS}}` — see below
+- `{{ARCHITECTURE_DETAILS}}` — see below
+- `{{AGENT_LIST}}` — `"No agents installed. Agents will be added in a future update."` (agents are not yet part of the install scope)
+- `{{COMMIT_ATTRIBUTION}}` — see below
 
-- `{{MODEL_THINK}}` — model for Think-tier agents from Question 8 (default: `opus`). Used by: `architect`, `api-designer`, `security-reviewer`.
-- `{{MODEL_DO}}` — model for Do-tier agents from Question 8 (default: `sonnet`). Used by: `backend-engineer`, `frontend-engineer`, `mobile-engineer`, `db-engineer`, `devops-engineer`, `migration-engineer`, `runtime-debugger`, `performance-analyst`, `design-auditor`.
-- `{{MODEL_VERIFY}}` — model for Verify-tier agents from Question 8 (default: `sonnet`). Used by: `code-reviewer`, `ac-verifier`, `qa-engineer`.
+#### `{{WRAPPER_MODE_SECTION}}`
 
-**Wrapper Mode section** (only included when wrapper mode is active — replace `{{WRAPPER_MODE_SECTION}}` with this):
+**If standalone project**: replace with empty string.
+
+**If wrapper mode**: replace with:
 ```markdown
 ## Wrapper Mode
 
-This workspace wraps a client-owned project. Claude artifacts live here; source code lives in `{{SOURCE_ROOT}}/`.
+This workspace wraps a client-owned project. All workflow artifacts live here; source code lives in `{{SOURCE_ROOT}}/`.
 
 ### Wrapper Rules
-1. **Never create Claude artifacts inside `{{SOURCE_ROOT}}/`** — no `.claude/`, `specs/`, `docs/`, `constitution.md`, or `CLAUDE.md` files
-2. **All source scanning** (by `{{cli.sigil}}constitute`, `{{cli.sigil}}onboard`, agents) targets `{{SOURCE_ROOT}}/` as the base path
-3. **Git auto-commits** apply to both repos — wrapper gets workflow commits, source repo gets WIP commits per task that are squashed into one clean commit (format: `[TICKET-ID] - Description`) when `{{cli.sigil}}finalize` runs
+1. **Never create workflow artifacts inside `{{SOURCE_ROOT}}/`** — no `.devforge/`, `specs/`, `docs/`, or `constitution.md` files
+2. **All source scanning** targets `{{SOURCE_ROOT}}/` as the base path
+3. **Git auto-commits** apply to both repos — wrapper gets workflow commits, source repo gets WIP commits per task that are squashed into one clean commit when finalize runs
 4. **File paths** in specs and tasks use workspace-relative paths (e.g., `{{SOURCE_ROOT}}/src/components/Button.tsx`)
 ```
 
-For standalone projects, replace `{{WRAPPER_MODE_SECTION}}` with an empty string (no section generated).
+#### `{{PROJECT_STRUCTURE}}`
 
-Fill the commands section with REAL commands from the project's `package.json` scripts (or `Makefile`, `pyproject.toml`, etc.). Do NOT use placeholder commands.
+Scan SOURCE_ROOT and generate a tree of the actual project structure. Show directories and key files (entry points, configs, manifests). Collapse large directories (e.g., `src/components/ (47 files)`). Keep it under 30 lines. Example:
 
-**Greenfield note**: If no scripts exist yet (empty `package.json`), generate sensible defaults based on the chosen framework and build tool (e.g., `vite dev`, `vitest`, `eslint .`). Mark them with a comment: `<!-- default, update after scaffolding -->`.
-
-### 3.1.1: Save CLAUDE.md Baseline
-
-After generating `CLAUDE.md`, save a baseline for three-way merge support in `update.sh`:
-1. Read `.claude/templates/CLAUDE.template.md`
-2. Substitute all `{{PLACEHOLDER}}` variables (same values used in 3.1)
-3. Save the result to `.claude/.baseline/CLAUDE.md`
-
-Create the `.claude/.baseline/` directory if it doesn't exist. The baseline is the template with placeholders resolved but **without** any project-specific custom sections — it represents what the template alone produces.
-
-### 3.2: Generate Agents
-
-Read agent templates from `.claude/templates/agents/` and generate `.claude/agents/`.
-
-**Decide which agents to create based on project type and detected stack:**
-
-#### Always included (all project types):
-| Agent | Why |
-|-------|-----|
-| `code-reviewer` | Every project needs code review |
-| `qa-engineer` | Every project needs tests |
-| `runtime-debugger` | Every project has runtime bugs |
-| `tech-writer` | Every project needs documentation |
-| `security-reviewer` | Every project needs security review — not just auth projects |
-
-#### By project type:
-| Condition | Agents |
-|-----------|--------|
-| Frontend detected (web — has `react-dom`, `vue`, `svelte`, `angular`, etc.) | `frontend-engineer` |
-| Mobile-only detected (`react-native` without `react-dom`) | `mobile-engineer` (instead of `frontend-engineer`) |
-| Backend framework detected (Express, NestJS, FastAPI, etc.) | `backend-engineer` |
-| Core/library without backend framework | `architect` (instead of backend-engineer) |
-| Both frontend + backend | `frontend-engineer` + `backend-engineer` + `architect` |
-| Library/package | `architect` |
-
-#### By detected stack (conditional):
-| Condition | Agent |
-|-----------|-------|
-| Database detected (prisma, typeorm, sequelize, mongoose, knex, drizzle, SQLAlchemy, etc.) | `db-engineer` |
-| Docker/CI detected (Dockerfile, .github/workflows/, .gitlab-ci.yml) | `devops-engineer` |
-| Frontend project with styling framework | `design-auditor` |
-| API project (REST or GraphQL) | `api-designer` |
-| Frontend or API project | `performance-analyst` |
-| Existing codebase with deprecated code or migration keywords in recent commits | `migration-engineer` |
-| Mobile framework detected (React Native, Expo, Flutter, Swift/Xcode, Kotlin/Android) | `mobile-engineer` |
-| AC_VERIFICATION != "off" (Question 9) | `ac-verifier` |
-
-For each agent:
-- **Preserve ALL template content** — do NOT condense, simplify, or remove sections from the template. The templates contain carefully designed workflows, steps, and rules that must survive into the generated agent files intact
-- Replace `{{FRAMEWORK}}` with actual framework
-- Replace `{{LANGUAGE}}` with actual language
-- Replace `{{ARCHITECTURE}}` with actual architecture pattern
-- Replace `{{ERROR_HANDLING}}` with actual error handling pattern
-- Replace `{{PROJECT_PATHS}}` with actual source paths from the project
-- Replace `{{TESTING}}` with actual test framework
-- Replace `{{LINT_CONFIG}}` with actual linting setup
-- Replace `{{STYLING}}` with actual CSS approach
-- Replace `{{TYPE_SAFETY_RULES}}` with language-appropriate type safety rules. Generate 3-5 bullet points covering: escape-hatch types to avoid, null/optional safety patterns, unsafe cast/assertion patterns, and any language-specific type concerns. Base these on `{{LANGUAGE}}` — use your knowledge of the language's type system. Example for TypeScript: "No `any` types without justification, use optional chaining for nullable access, no unsafe type assertions." Example for Dart: "No `dynamic` without justification, proper null safety with `late`/`required`, avoid `as` casts." For unfamiliar languages, generate generic rules: "Avoid escape-hatch types, handle nullable values explicitly, no unsafe type casts."
-- Add project-specific patterns you discovered during detection (existing projects) or framework best-practice patterns (greenfield) — add these as NEW sections or append to existing sections, never replace template content
-- Replace `{{MODEL_THINK}}`, `{{MODEL_DO}}`, or `{{MODEL_VERIFY}}` with the model chosen for each tier in Question 8 (defaults: opus/sonnet/sonnet). Each template uses the placeholder for its tier.
-- **Greenfield**: Use framework-idiomatic examples in agents since there's no project code to reference yet
-
-**CRITICAL**: The generated agent file = full template content + placeholder replacements + project-specific additions. Never subtract from the template.
-
-### 3.2.1: Save Agent Baselines
-
-After generating all agents, save a **baseline** for each — the template with placeholders substituted but **without** project-specific additions. These baselines enable `update.sh` to three-way merge on the next update (applying only template diffs while preserving project customizations).
-
-For each generated agent:
-1. Read the original template from `.claude/templates/agents/[name].template.md`
-2. Substitute all `{{PLACEHOLDER}}` variables (same values used in 3.2)
-3. Save the result to `.claude/agents/.baseline/[name].md`
-
-Create the `.claude/agents/.baseline/` directory if it doesn't exist.
-
-### 3.3: Generate settings.json
-
-Read `.claude/templates/settings.template.json` and generate `.claude/settings.json`.
-
-Configure PostToolUse hooks based on detected tooling:
-- TypeScript project → `tsc --noEmit --pretty 2>&1 | head -20`
-- Python project → `python -m py_compile` or `mypy --no-error-summary`
-- Go project → `go vet ./...`
-- Rust project → `cargo check 2>&1 | head -20`
-
-Adjust the `cd` path in the hook to the actual project directory where the type checker should run. For monorepos, point to the root or the appropriate package.
-
-**Wrapper mode**: Prefix the type-check command with `cd SOURCE_ROOT &&` so the type checker runs in the correct directory. For example: `cd client-project && tsc --noEmit --pretty 2>&1 | head -20`.
-
-### 3.4: Generate Memory
-
-Read `.claude/templates/memory.template.md` and generate `.claude/memory/MEMORY.md`.
-
-Pre-populate with:
-- Project structure summary
-- Key file paths
-- Architecture pattern notes
-- Any patterns you discovered during detection
-
-Replace `{{WORKSPACE_MODE}}` with `standalone` or `wrapper`, and `{{SOURCE_ROOT}}` with `.` or the inner folder name.
-
-### 3.5: Create constitution.md stub
-
-Read `.claude/templates/constitution.template.md` and copy it to `constitution.md` at project root. Replace header placeholders (`{{PROJECT_NAME}}`, `{{DATE}}`, `{{PROJECT_TYPE}}`, `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ERROR_HANDLING}}`, `{{TESTING}}`) with actual values from detection and user answers. Leave all `_Run {{cli.sigil}}constitute to populate_` sections and all `[universal]` sections intact — these are the sentinel strings that other commands check to verify the constitution has been populated.
-
-### 3.6: Create docs/ folder
-
-Create the documentation directory structure:
 ```
-docs/
-  overview.md              # Stub with project name and "TODO: populate after {{cli.sigil}}constitute"
-  architecture.md          # Stub with "TODO: populate after {{cli.sigil}}constitute"
-  features/                # Empty directory (created with .gitkeep)
-  api/                     # Empty directory (created with .gitkeep) — only if API project
-  guides/                  # Empty directory (created with .gitkeep)
+src/
+  app/
+    layout.tsx
+    page.tsx
+  components/ (23 files)
+  lib/
+    api.ts
+    utils.ts
+  styles/
+    globals.css
+public/
+package.json
+tsconfig.json
 ```
 
-For **existing projects**: If a `docs/` directory already exists, do NOT overwrite it. Warn the user and skip this step.
+**Greenfield/empty project**: show whatever exists (possibly just the manifest file and a `src/` stub).
 
-For **greenfield projects**: Create the stubs. The tech-writer agent will populate them as features are built.
+#### `{{DEV_COMMANDS}}`
 
-### 3.7: Wrapper Mode Setup (wrapper only)
+Extract actual dev/build/test/lint commands from the project's manifest or config files. Format as a markdown list:
 
-If wrapper mode is active, perform these additional steps:
+```markdown
+- `npm run dev` — Start development server
+- `npm run build` — Production build
+- `npm test` — Run test suite
+- `npm run lint` — Run linter
+```
 
-1. **Add inner folder to .gitignore**: Append `[SOURCE_ROOT]/` to the wrapper's `.gitignore` file (create `.gitignore` if it doesn't exist). This prevents the wrapper repo from tracking the inner project's files.
-   ```
-   # Inner project (separate git repo)
-   [SOURCE_ROOT]/
-   ```
+Use your knowledge of the detected ecosystem to identify the correct command runner (`npm`, `yarn`, `pnpm`, `cargo`, `go`, `make`, `poetry`, etc.) based on lockfiles and manifest.
 
-2. **Check for inner project's .claude/**: If the inner project already has a `.claude/` directory, warn the user: "The inner project at `[SOURCE_ROOT]/` already has its own `.claude/` directory. This wrapper's `.claude/` will take precedence for Claude Code running in the wrapper root."
+**Greenfield note**: If no scripts exist yet, generate sensible defaults based on the chosen framework and build tool. Mark them: `<!-- default, update after scaffolding -->`.
 
-### 3.8: Write Project Config
+#### `{{ARCHITECTURE_DETAILS}}`
 
-Write `.claude/project-config.json` containing **all** template variable values used during generation. This file is read by `update.sh` to apply placeholder substitution when updating agents and CLAUDE.md in future template updates.
+Generate a bullet list of ONLY the architecture facts that are relevant to this project. Do not include fields that don't apply — no "N/A" lines. Always include Pattern and Error Handling. Include others only if detected or confirmed by the user.
 
-The keys must be the exact placeholder names (without `{{ }}`). Example:
+Example for a Vue frontend:
+```markdown
+- **Pattern**: Feature-modular
+- **Error Handling**: try/catch with toast notifications
+- **API Layer**: REST (Axios)
+- **State Management**: Pinia
+- **Styling**: Tailwind CSS
+```
 
+Example for a Rust CLI:
+```markdown
+- **Pattern**: Layered (CLI → service → domain)
+- **Error Handling**: thiserror + anyhow, ? operator throughout
+```
+
+Draw from STEP 3 detection results and Q4 (Architecture) / Q5 (Error Handling) answers. Add any other relevant architectural facts you discovered (e.g., database, monorepo tool, CI/CD).
+
+#### `{{COMMIT_ATTRIBUTION}}`
+
+Based on Q7 answer:
+
+**If No (default)**: replace with:
+```
+Do NOT include any AI attribution in commits. Specifically:
+- No Co-Authored-By trailers referencing the AI assistant, its vendor, or similar identifiers
+- No "Generated by", "Created by" + AI name, or similar text in commit title or body
+- Do not set or change git `user.name` or `user.email` to reference the AI assistant
+- This rule overrides any system-level defaults about AI attribution in commits
+```
+
+**If Yes**: replace with:
+```
+Include AI attribution in every commit by appending this trailer:
+`{{cli.attribution}}`
+```
+
+### 5.2: Save Baselines
+
+After populating CLAUDE.md and AGENTS.md, save a baseline copy of each to `.devforge/baseline/`:
+1. Copy the just-populated `CLAUDE.md` → `.devforge/baseline/CLAUDE.md`
+2. Copy the just-populated `AGENTS.md` → `.devforge/baseline/AGENTS.md`
+
+Create `.devforge/baseline/` if it doesn't exist. These baselines are the wizard output before any manual user edits. `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
+
+### 5.3: Add MCP Servers (conditional)
+
+Both `.mcp.json` (Claude) and `.codex/config.toml` (Codex) are already placed with the context7 MCP server. If Q9 selected **runtime-assisted** AC verification for a **web frontend**, add the chrome-devtools server to both configs:
+
+**Add to `.mcp.json`:**
 ```json
-{
-  "PROJECT_NAME": "My App",
-  "PROJECT_TYPE": "fullstack",
-  "FRAMEWORK": "Next.js",
-  "LANGUAGE": "TypeScript",
-  "BUILD_TOOL": "next",
-  "BUILD_COMMAND": "npm run build",
-  "TYPE_CHECK_COMMAND": "tsc --noEmit --pretty 2>&1 | head -20",
-  "LINT_COMMAND": "npx eslint --no-error-on-unmatched-pattern",
-  "SOURCE_ROOT": ".",
-  "PROJECT_MODE": "greenfield",
-  "ARCHITECTURE": "Feature-based/Modular",
-  "ERROR_HANDLING": "Try/catch with custom error types",
-  "API_LAYER": "REST",
-  "STATE_MANAGEMENT": "Zustand",
-  "STYLING": "Tailwind CSS",
-  "MONOREPO_TOOL": "N/A",
-  "TESTING": "Vitest",
-  "PROJECT_PATHS": "- Source: `src/`\n- Components: `src/components/`\n- ...",
-  "PROJECT_STRUCTURE": "src/\n  components/\n  pages/\n  ...",
-  "DEV_COMMANDS": "- `npm run dev` — Start dev server\n- `npm run build` — Production build\n- ...",
-  "AGENT_LIST": "- `code-reviewer` — Code review\n- `qa-engineer` — Testing\n- ...",
-  "WRAPPER_MODE_SECTION": "",
-  "COMMIT_ATTRIBUTION": "Do NOT include any AI attribution in commits. Specifically:\n- No Co-Authored-By trailers referencing the AI assistant, its vendor, or similar identifiers\n- No \"Generated by\", \"Created by\" + AI name, or similar text in commit title or body\n- Do not set or change git `user.name` or `user.email` to reference the AI assistant\n- This rule overrides any system-level defaults about AI attribution in commits",
-  "MODEL_THINK": "opus",
-  "MODEL_DO": "sonnet",
-  "MODEL_VERIFY": "sonnet",
-  "AC_VERIFICATION": "auto",
-  "AC_VERIFICATION_URL": "http://localhost:5173",
-  "AC_VERIFICATION_API_BASE": "",
-  "DEFAULT_BRANCH": "main",
-  "TYPE_SAFETY_RULES": "- No `any` types without documented justification\n- Null/undefined properly handled (optional chaining, null checks)\n- Generic types used correctly\n- No unsafe type assertions"
+"chrome-devtools": {
+  "command": "npx",
+  "args": ["-y", "@anthropic/chrome-devtools-mcp"]
 }
 ```
 
-**Required keys**: `PROJECT_NAME`, `PROJECT_TYPE`, `FRAMEWORK`, `LANGUAGE`, `BUILD_TOOL`, `BUILD_COMMAND`, `TYPE_CHECK_COMMAND`, `LINT_COMMAND`, `SOURCE_ROOT`, `PROJECT_MODE`, `ARCHITECTURE`, `ERROR_HANDLING`, `API_LAYER`, `STATE_MANAGEMENT`, `STYLING`, `MONOREPO_TOOL`, `TESTING`, `PROJECT_PATHS`, `PROJECT_STRUCTURE`, `DEV_COMMANDS`, `AGENT_LIST`, `WRAPPER_MODE_SECTION`, `COMMIT_ATTRIBUTION`, `MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY`, `AC_VERIFICATION`, `AC_VERIFICATION_URL`, `AC_VERIFICATION_API_BASE`, `DEFAULT_BRANCH`, `TYPE_SAFETY_RULES`.
+**Add to `.codex/config.toml`:**
+```toml
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["-y", "@anthropic/chrome-devtools-mcp"]
+```
 
-Use the exact same values you substituted into the templates. For multi-line values, use `\n` for newlines in the JSON string. For values that don't apply, use `"N/A"` (not empty string).
+If Q9 did not select runtime-assisted for a web frontend, skip this step.
 
-## STEP 6: Cleanup & Summary
+### 5.4: Populate Project Config
 
-1. Ask the user: "Setup is complete. Should I remove the `.claude/templates/` directory? (It's no longer needed but can be kept for re-running the wizard.)"
-2. If yes, delete `.claude/templates/`
-3. Present a summary:
+Read `.devforge/project-config.json`. Replace every `null` value with the corresponding answer collected during STEPs 0–4. Use the same values you substituted into the files above. Keys match the placeholder names without `{{ }}`.
+
+For values that don't apply to this project, use `"N/A"`. For multi-line values (like `ARCHITECTURE_DETAILS`, `COMMIT_ATTRIBUTION`), use `\n` for newlines in the JSON string.
+
+## STEP 6: Generate Project Files
+
+_Reserved for future work. When agents, constitution, settings, and memory generation are added to install scope, this step will create new files based on detection + user answers. Unlike STEP 5 (substitution into existing files), this step explicitly creates files._
+
+## STEP 7: Summary
+
+Present a summary:
 
 ```
 ## Setup Complete
 
-### Generated Files:
-- CLAUDE.md — Project configuration and workflow
-- .claude/settings.json — Hooks and plugins
-- .claude/agents/[list agents].md — Specialized agents
-- .claude/memory/MEMORY.md — Persistent memory (pre-seeded)
-- constitution.md — Constitution stub (run {{cli.sigil}}constitute to populate)
-- specs/ — Feature specifications directory
-- docs/ — Project documentation directory
+### Populated Files:
+- CLAUDE.md — Project instructions for Claude Code
+- AGENTS.md — Project instructions for Codex CLI
+- .devforge/project-config.json — Answers record
 
-### Detected Stack:
-- Type: [type]
-- Framework: [framework]
-- Language: [language]
-- Testing: [test framework]
-- Linting: [lint tool]
-- Architecture: [pattern]
+### Project:
+- Description: [PROJECT_DESCRIPTION]
+- Type: [PROJECT_TYPE]
+- Framework: [FRAMEWORK]
+- Language: [LANGUAGE]
 
 ### Workspace Mode:
 - Mode: [standalone / wrapper]
-- Source Root: [. / folder-name]
-[Wrapper only]:
-- Inner project added to .gitignore
-- Git auto-commits apply to wrapper repo only
-- Source code in inner repo is committed manually by the developer
+- Source Root: [SOURCE_ROOT]
 
 ### Next Steps:
-1. Review the generated files and adjust if needed
-2. Run {{cli.sigil}}constitute to generate your project's constitution
-3. [Existing projects only] Run {{cli.sigil}}onboard to generate comprehensive codebase documentation
-4. Start working with {{cli.sigil}}specify "your first feature"
+1. Review CLAUDE.md and AGENTS.md — adjust if needed
+2. Start working with {{cli.sigil}}specify "your first feature"
 ```
-
-4. **Write setup completion marker**: After presenting the summary, write `.claude/setup-complete` with content:
-   ```
-   Setup completed: [current date and time]
-   Generated files: CLAUDE.md, .claude/settings.json, agents, memory, constitution.md stub, specs/, docs/
-   ```
-   This marker allows other commands to detect whether setup-wizard ran to completion. If the file is missing, setup may have been interrupted mid-generation.
 
 ## IMPORTANT RULES
 
 1. **Never guess** — if you can't detect something, ask
-2. **Use real paths** — all generated paths must point to actual directories in the project
-3. **Use real commands** — all generated commands must come from the project's actual scripts
-4. **Preserve existing files** — if `CLAUDE.md` or `.claude/settings.json` already exists, warn the user and ask before overwriting
-5. **Validate after generation** — read back each generated file to verify it has no unresolved `{{PLACEHOLDER}}` variables
-6. **Wrapper isolation** — in wrapper mode, never create any Claude artifact (`.claude/`, `specs/`, `docs/`, `constitution.md`, `CLAUDE.md`) inside SOURCE_ROOT. All Claude artifacts belong in the wrapper root.
+2. **STEP 5 never creates files** — all files are already placed; STEP 5 only populates. STEP 6 creates files explicitly when generation is added.
+3. **Use real paths** — all paths must point to actual directories in the project
+4. **Use real commands** — all commands must come from the project's actual scripts
+5. **Validate after population** — read back each file to verify no unresolved `{{PLACEHOLDER}}` markers remain
+6. **Wrapper isolation** — in wrapper mode, never create any artifact inside SOURCE_ROOT
+7. **Same values in both files** — CLAUDE.md and AGENTS.md get identical substitutions; `.devforge/project-config.json` gets the same values as JSON

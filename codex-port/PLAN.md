@@ -150,6 +150,7 @@ STEPs 0–4 of setup-wizard.md fully audited and rewritten. 24 issues found → 
 
 ### Medium-term
 - Promote remaining 22 commands one-by-one.
+- **IMPORTANT: Wire WORKFLOW_ENFORCEMENT into every gated command.** Currently collected by wizard (Q5: strict/moderate/light) and stored in `.devforge/project-config.json`, but NO command reads it — all commands are hardcoded to strict flow. Each command with gates (execute-task, specify, plan, breakdown, verify, fix, refactor) needs to read `WORKFLOW_ENFORCEMENT` and branch: strict = all gates, moderate = spec + breakdown gates only, light = spec gate only.
 - Parity test harness.
 - update.sh multi-runtime support.
 
