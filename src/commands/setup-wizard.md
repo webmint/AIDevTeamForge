@@ -527,9 +527,114 @@ Read `.devforge/project-config.json`. Replace every `null` value with the corres
 
 For values that don't apply to this project, use `"N/A"`. For multi-line values (like `ARCHITECTURE_DETAILS`, `COMMIT_ATTRIBUTION`), use `\n` for newlines in the JSON string.
 
-## STEP 6: Generate Project Files
+## STEP 6: Curate & Populate Agents
 
-_Reserved for future work. When agents, constitution, settings, and memory generation are added to install scope, this step will create new files based on detection + user answers. Unlike STEP 5 (substitution into existing files), this step explicitly creates files._
+Install has placed all 16 agent templates for both runtimes (`.claude/agents/` and `.codex/agents/`). Your job: decide which agents this project needs, remove the rest, populate the kept ones.
+
+### 6.1: Select Agents
+
+Based on STEP 3 detection and STEP 4 answers, classify each agent as **keep** or **remove**.
+
+#### Always keep (all project types):
+| Agent | Why |
+|-------|-----|
+| `code-reviewer` | Every project needs code review |
+| `qa-engineer` | Every project needs tests |
+| `runtime-debugger` | Every project has runtime bugs |
+| `tech-writer` | Every project needs documentation |
+| `security-reviewer` | Every project needs security review |
+
+#### Keep if relevant (LLM decides based on detection):
+| Agent | Keep when... |
+|-------|-------------|
+| `architect` | Project has significant structural complexity, or is a library/package, or both frontend + backend are present |
+| `frontend-engineer` | Frontend/UI layer detected (web, desktop GUI, or any user-facing rendering) |
+| `backend-engineer` | Backend/service layer detected (HTTP server, gRPC service, message consumer, any request-handling framework) |
+| `mobile-engineer` | Mobile framework detected (native or cross-platform) |
+| `db-engineer` | Database layer detected (any ORM, query builder, database driver, or migration tool in any language) |
+| `devops-engineer` | CI/CD or containerization detected (any CI config files, Dockerfile, deployment configs) |
+| `design-auditor` | Frontend project with styling/design system tooling |
+| `api-designer` | Project exposes or consumes APIs (REST, GraphQL, gRPC, tRPC, or any RPC mechanism) |
+| `performance-analyst` | Project has performance-sensitive paths (user-facing services, data processing, real-time systems) |
+| `migration-engineer` | Existing codebase with evidence of ongoing migrations, deprecations, or major version upgrades |
+| `ac-verifier` | `AC_VERIFICATION_MODE` is not `"off"` (Q9) |
+
+**Do not hardcode framework or package names in your selection logic.** Use your knowledge of the detected ecosystem from STEP 3. If STEP 3 found a database driver you don't recognize by name, it's still a database layer — keep `db-engineer`. If it found a framework you've never seen, reason about what layer it serves.
+
+### 6.2: Present Selection & Ask
+
+Present the full list with your recommendation:
+
+> Based on your project, I recommend these agents:
+>
+> **Keep:**
+> - `code-reviewer` — code review (always)
+> - `backend-engineer` — [detected: FastAPI service layer]
+> - `db-engineer` — [detected: SQLAlchemy + Alembic migrations]
+> - ... [list all with brief reason]
+>
+> **Remove:**
+> - `frontend-engineer` — no frontend layer detected
+> - `mobile-engineer` — no mobile framework detected
+> - `design-auditor` — no styling tooling detected
+> - ... [list all with brief reason]
+>
+> Confirm, or override (move agents between keep/remove)?
+
+The user may:
+- Confirm the selection
+- Move agents from remove → keep ("actually, keep `api-designer`, we're adding a REST API soon")
+- Move agents from keep → remove ("don't need `performance-analyst` for this project")
+
+### 6.3: Remove Rejected Agents
+
+Delete the rejected agent files from both runtime directories:
+- `.claude/agents/[name].md`
+- `.codex/agents/[name].toml`
+
+### 6.4: Populate Kept Agents
+
+For each kept agent, read the file and substitute all `{{PLACEHOLDER}}` markers:
+
+- `{{FRAMEWORK}}` — Q3 answer: primary framework
+- `{{LANGUAGE}}` — Q3 answer: primary language
+- `{{ARCHITECTURE}}` — Q4 answer: architecture pattern (or "TBD" if deferred)
+- `{{ERROR_HANDLING}}` — Q5 answer: error handling convention (or "TBD" if deferred)
+- `{{PROJECT_PATHS}}` — actual source paths from the project (scan SOURCE_ROOT)
+- `{{TESTING}}` — detected test framework from STEP 3
+- `{{BUILD_TOOL}}` — detected build tool from STEP 3
+- `{{STYLING}}` — detected styling approach (only in `frontend-engineer`, `design-auditor`)
+- `{{STATE_MANAGEMENT}}` — detected state management (only in `frontend-engineer`, `mobile-engineer`)
+- `{{API_LAYER}}` — detected API layer (only in `api-designer`, `architect`, `backend-engineer`)
+- `{{TYPE_SAFETY_RULES}}` — generate 3-5 bullet points based on `{{LANGUAGE}}`. Use your knowledge of the language's type system: escape-hatch types to avoid, null/optional safety, unsafe casts, language-specific concerns. If the language is unfamiliar, generate generic rules.
+- `{{MODEL_THINK}}` — Q8 answer: model for Think-tier agents (`architect`, `api-designer`, `security-reviewer`)
+- `{{MODEL_DO}}` — Q8 answer: model for Do-tier agents (`backend-engineer`, `frontend-engineer`, `mobile-engineer`, `db-engineer`, `devops-engineer`, `migration-engineer`, `runtime-debugger`, `performance-analyst`, `design-auditor`)
+- `{{MODEL_VERIFY}}` — Q8 answer: model for Verify-tier agents (`code-reviewer`, `ac-verifier`, `qa-engineer`)
+
+**Preserve ALL template content.** The templates contain carefully designed workflows, steps, and rules. Substitution replaces placeholders — it never removes or condenses sections.
+
+**Add project-specific patterns** discovered during STEP 3 detection (brownfield) or framework best-practice patterns (greenfield). Append these as new subsections — never replace existing template content.
+
+For placeholders that don't apply to a specific agent (e.g., `{{STYLING}}` in a backend-only project that kept `frontend-engineer` by user override), use `"N/A"`.
+
+### 6.5: Save Agent Baselines
+
+For each kept agent, save a baseline copy:
+- `.devforge/baseline/agents/[name].md` (Claude version)
+- `.devforge/baseline/agents/[name].toml` (Codex version)
+
+Create `.devforge/baseline/agents/` if it doesn't exist. These are the wizard output before manual user edits — `update.sh` uses them for three-way merge.
+
+### 6.6: Update AGENT_LIST
+
+Now that agents are finalized, go back to CLAUDE.md and AGENTS.md and replace the `{{AGENT_LIST}}` placeholder (which was set to "No agents installed" in STEP 5) with the actual list of kept agents. Format:
+
+```markdown
+- `architect` — Design decisions, architecture planning (Think tier)
+- `backend-engineer` — Backend implementation (Do tier)
+- `code-reviewer` — Code review (Verify tier)
+- ...
+```
 
 ## STEP 7: Summary
 
