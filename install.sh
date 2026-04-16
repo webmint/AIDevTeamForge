@@ -92,6 +92,11 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 # scripts/generate.sh. install.sh never needs to change.
 "$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
 
+# ── Copy cross-runtime scaffolding (.devforge/) ──────────────────────────
+# Shared across all runtimes: project config, memory, storage rules.
+# Session-state and wip markers are created at runtime by commands.
+cp -r "$TEMPLATE_DIR/src/devforge" "$TARGET_DIR/.devforge"
+
 # # ── Copy project-level scaffolding ─────────────────────────────────────────
 # # These directories belong at the target root (not under .claude/).
 # # They're shared across all runtimes and all workflows.

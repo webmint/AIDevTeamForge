@@ -83,7 +83,7 @@ Fix issues before proceeding. Codex does not auto-run checks after edits — you
 1. **Read before write** — always read files before modifying them
 2. **Constitution is law** — `constitution.md` rules override everything except user instructions
 3. **Minimal changes** — every change should impact as little code as possible
-4. **Memory is persistent** — check `.devforge/memory/MEMORY.md` for lessons from past sessions
+4. **Memory is persistent** — check `.devforge/memory.md` for lessons from past sessions
 5. **Specs are contracts** — once approved, implementation must satisfy every acceptance criterion
 6. **One task at a time** — execute tasks sequentially following the dependency graph
 7. **Document new code** — all new functions/variables must have clear documentation
@@ -177,5 +177,5 @@ If a task execution is interrupted (power loss, terminal crash, network drop), t
 
 - [Constitution](constitution.md) — Project rules and patterns
 - [Specs](specs/) — Feature specifications, plans, and tasks
-- [Memory](.devforge/memory/MEMORY.md) — Persistent learnings
+- [Memory](.devforge/memory.md) — Persistent learnings
 - [Project Config](.devforge/project-config.json) — Wizard answers

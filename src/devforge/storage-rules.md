@@ -6,23 +6,23 @@ These rules define how all development artifacts are organized. All commands MUS
 
 ```
 bugs/
-  NNN-short-description.md           # Bug reports (/report-bug or /verify triage)
+  NNN-short-description.md           # Bug reports (report-bug or verify triage)
 
 research/
-  YYYY-MM-DD-[topic-slug].md          # Research reports (/research) — exploratory, pre-spec
+  YYYY-MM-DD-[topic-slug].md          # Research reports (research) — exploratory, pre-spec
 
 audits/
-  YYYY-MM-DD-audit.md                  # Adversarial codebase audits (/audit) — periodic, dated, not auto-committed
-  .gitignore                           # Auto-created on first /audit run (excludes .tmp-* files)
+  YYYY-MM-DD-audit.md                  # Adversarial codebase audits (audit) — periodic, dated, not auto-committed
+  .gitignore                           # Auto-created on first audit run (excludes .tmp-* files)
 
 specs/
   NNN-feature-name/                # One numbered directory per feature
-    spec.md                        # Feature specification (/specify)
-    plan.md                        # Technical implementation plan (/plan)
-    research.md                    # Research findings (/plan) — optional
-    data-model.md                  # Entity definitions (/plan) — optional
-    contracts.md                   # API contracts (/plan) — optional
-    tasks/                         # Task breakdown (/breakdown)
+    spec.md                        # Feature specification (specify)
+    plan.md                        # Technical implementation plan (plan)
+    research.md                    # Research findings (plan) — optional
+    data-model.md                  # Entity definitions (plan) — optional
+    contracts.md                   # API contracts (plan) — optional
+    tasks/                         # Task breakdown (breakdown)
       001-short-task-title.md      # Individual task files
       002-short-task-title.md
       003-short-task-title.md
@@ -85,9 +85,9 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 ## Change Details
 
-- In `path/to/file.ts`:
+- In `path/to/file`:
   - [specific change]
-- In `path/to/other.ts`:
+- In `path/to/other`:
   - [specific change]
 
 ## Contracts
@@ -102,14 +102,14 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 - [ ] [Testable condition specific to this task]
 - [ ] [Another task-specific condition]
-- [ ] No debug artifacts (console.log, debugger, etc.) in changed files
-- [ ] Type checker passes on changed files (see Type Check Command in CLAUDE.md)
-- [ ] Linter passes on changed files (see Lint Command in CLAUDE.md)
+- [ ] No debug artifacts left in changed files
+- [ ] Type checker passes on changed files (see Development Commands section)
+- [ ] Linter passes on changed files (see Development Commands section)
 - [ ] No new secrets or credentials in code
 
 ## Completion Notes
 
-[Filled in by /execute-task after completion]
+[Filled in by execute-task after completion]
 **Completed**: [date/time]
 **Files changed**: [actual files]
 **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
@@ -119,31 +119,31 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 ## File Lifecycle
 
 ```
-/research     → displays report in console, optionally saves to research/YYYY-MM-DD-[topic-slug].md
-/specify      → creates specs/NNN-name/spec.md
-/plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
-/breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
-/execute-task → updates individual task file status + completion notes
-/review       → creates specs/NNN-name/review.md (security, performance, test findings)
-/verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
-/summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
-/finalize     → squashes WIP commits, generates feature docs in docs/
-/report-bug   → creates bugs/NNN-description.md
-/fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
-/audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
+research     → displays report in console, optionally saves to research/YYYY-MM-DD-[topic-slug].md
+specify      → creates specs/NNN-name/spec.md
+plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
+breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
+execute-task → updates individual task file status + completion notes
+review       → creates specs/NNN-name/review.md (security, performance, test findings)
+verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
+summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
+finalize     → squashes WIP commits, generates feature docs in docs/
+report-bug   → creates bugs/NNN-description.md
+fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
+audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
 ```
 
 ## Status Tracking
 
 ### Spec Status (in spec.md header)
 - `Draft` — initial creation, not yet approved
-- `Approved` — user approved, ready for /plan
+- `Approved` — user approved, ready for plan command
 - `In Progress` — tasks are being executed
 - `Complete` — all acceptance criteria verified
 
 ### Plan Status (in plan.md header)
 - `Draft` — initial creation
-- `Approved` — user approved, ready for /breakdown
+- `Approved` — user approved, ready for breakdown
 
 ### Task Status (in each task file header)
 - `Pending` — not yet started
@@ -155,7 +155,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - Every plan.md MUST reference its spec
 - Every task file MUST reference which acceptance criteria (AC-N) it addresses
 - Task dependencies reference other task numbers within the same feature
-- The /verify command reads the spec and all task files to cross-check
+- The verify command reads the spec and all task files to cross-check
 
 ## Documentation Rules
 
@@ -165,7 +165,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 - One file per logical feature area — don't create a new file per task
 
 ### When Docs Are Updated
-- After every `/execute-task` — the tech-writer agent runs automatically
+- During finalize — the tech-writer agent generates feature documentation
 - The agent reads ONLY the completed task, spec, and changed files
 - It updates existing docs or creates new ones in the appropriate subfolder
 - Not every task produces doc changes — internal refactoring, bug fixes, and test-only changes are skipped
@@ -211,7 +211,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 ### Status Lifecycle
 - `Open` — reported, not yet being fixed
-- `In Progress` — currently being fixed via `/fix`
+- `In Progress` — currently being fixed via the fix command
 - `Fixed` — fix applied and verified
 
 ### Bug File Format
@@ -243,7 +243,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 | File | Detail |
 |------|--------|
-| [path/to/file.ts] | [area or function — not line numbers, they shift after other fixes] |
+| [path/to/file] | [area or function — not line numbers, they shift after other fixes] |
 
 ## Evidence
 
@@ -256,21 +256,21 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 ## Fix Notes
 
-[Filled in by /fix after resolution — root cause, what was changed, commit reference]
+[Filled in by the fix command after resolution — root cause, what was changed, commit reference]
 ```
 
 **Field notes:**
-- `Feature` and `AC` are populated by `/verify`. `/report-bug` sets them to N/A.
-- `Expected Behavior` and `Actual Behavior` are populated by `/verify` (from spec + verification evidence). `/report-bug` may omit them if unknown.
-- `Related Issues` is populated when multiple bugs are filed in the same batch. Helps `/fix` know what else is being addressed.
+- `Feature` and `AC` are populated by verify. report-bug sets them to N/A.
+- `Expected Behavior` and `Actual Behavior` are populated by verify (from spec + verification evidence). report-bug may omit them if unknown.
+- `Related Issues` is populated when multiple bugs are filed in the same batch. Helps the fix command know what else is being addressed.
 - `File(s)` should use area/function references, not line numbers — line numbers shift after other fixes are applied.
 
 ### How Bug Files Are Created
-- `/verify` Phase 9 — user requests batch bug filing for verification issues
-- `/report-bug` — standalone manual bug reporting
+- verify Phase 9 — user requests batch bug filing for verification issues
+- report-bug — standalone manual bug reporting
 
 ### How Bug Files Are Resolved
-- `/fix bugs/NNN-xxx.md` — reads the bug file, fixes the issue, updates status to Fixed
+- `fix bugs/NNN-xxx.md` — reads the bug file, fixes the issue, updates status to Fixed
 - Manual: user can edit the status directly if fixing outside the workflow
 
 ## Cleanup Rules
