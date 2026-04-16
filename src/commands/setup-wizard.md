@@ -66,15 +66,26 @@ If wrapper mode:
 - Brownfield / existing — real codebase with custom code, established patterns and conventions
 {{/ask}}
 
-Store the result as `PROJECT_STATE`. This controls detection depth in STEP 2 and question behavior in STEP 3:
+Store the result as `PROJECT_STATE`. This controls detection depth in STEP 3 and question behavior in STEP 4:
 
-- **Empty**: skip STEP 2 entirely — there's nothing to scan. All project info comes from user answers in STEP 3.
-- **Greenfield**: STEP 2 does a light scan — read config/manifest files only (e.g. `package.json`, `Cargo.toml`, `tsconfig.json`, `pyproject.toml`) to extract language, framework, and tooling. Skip source-code scanning for patterns. In STEP 3, ask MORE questions since there's less to auto-detect. In STEP 4, use framework best-practice defaults instead of extracted patterns.
-- **Brownfield**: STEP 2 does a full scan — read configs + representative source files to detect architecture, error handling, conventions. In STEP 4, use project-specific patterns extracted from real code.
+- **Empty**: skip STEP 3 entirely — there's nothing to scan. All project info comes from user answers in STEP 4.
+- **Greenfield**: STEP 3 does a light scan — read config/manifest files only (e.g. `package.json`, `Cargo.toml`, `tsconfig.json`, `pyproject.toml`) to extract language, framework, and tooling. Skip source-code scanning for patterns. In STEP 4, ask MORE questions since there's less to auto-detect. In STEP 5, use framework best-practice defaults instead of extracted patterns.
+- **Brownfield**: STEP 3 does a full scan — read configs + representative source files to detect architecture, error handling, conventions. In STEP 5, use project-specific patterns extracted from real code.
 
-## STEP 2: Auto-Detect Project Structure
+## STEP 2: Default Branch
 
-**If `PROJECT_STATE` is empty, skip this step entirely and go to STEP 3.**
+{{ask "What is the default branch for this project?"}}
+- main (most common)
+- master
+- develop
+- Other — user specifies
+{{/ask}}
+
+Store as `DEFAULT_BRANCH`. This is used during scanning (STEP 3), generation (STEP 5), and by downstream commands for git operations.
+
+## STEP 3: Auto-Detect Project Structure
+
+**If `PROJECT_STATE` is empty, skip this step entirely and go to STEP 4.**
 
 **All scanning in this step targets the SOURCE_ROOT directory.** For standalone projects this is the workspace root (`.`). For wrapper projects this is the inner folder (e.g., `client-project/`). Resolve all file paths relative to SOURCE_ROOT.
 
@@ -82,7 +93,7 @@ Read dependency manifests, lockfiles, config files, and top-level directory layo
 
 **Brownfield only:** also scan a few representative source files to infer architectural patterns (layered / feature-modular / MVC / BLoC / hexagonal / etc.) and error-handling conventions (Either-style results / typed exceptions / traditional try-catch / HTTP-error patterns / etc.).
 
-Based on what you find, identify each of the following. Mark any category that genuinely doesn't apply as **N/A**. If you're uncertain, note the uncertainty and raise it with the user in STEP 3 rather than guessing.
+Based on what you find, identify each of the following. Mark any category that genuinely doesn't apply as **N/A**. If you're uncertain, note the uncertainty and raise it with the user in STEP 4 rather than guessing.
 
 - **Languages and runtimes** — detect all present. If multiple (monorepo, polyglot, cross-platform), order them by approximate file count descending (most files first). Note the associated runtime per language (TypeScript → Node, Python → Python 3, Dart → Flutter, etc.).
 - **Primary framework(s)** (app-level, not library-level)
@@ -101,9 +112,9 @@ Based on what you find, identify each of the following. Mark any category that g
 
 Do not invent details or fill categories with plausible-sounding defaults. An honest "uncertain — will ask the user" beats a confident wrong guess. Do not limit yourself to the indicators mentioned above — examine whatever is actually present, in whatever ecosystem the project uses.
 
-## STEP 3: Present Findings & Ask Questions
+## STEP 4: Present Findings & Ask Questions
 
-Present what you detected in STEP 2 in a clear summary (or, if `PROJECT_STATE` is empty, skip the summary and go straight to questions). Walk the user through each question in order (Q1 → Q9; later questions depend on earlier answers). Every question is labeled with exactly one of three markers:
+Present what you detected in STEP 3 in a clear summary (or, if `PROJECT_STATE` is empty, skip the summary and go straight to questions). Walk the user through each question in order (Q1 → Q9; later questions depend on earlier answers). Every question is labeled with exactly one of three markers:
 
 - **REQUIRED** — must be answered. Offer **confirm / override**. Defer is not allowed; downstream commands depend on the value.
 - **OPTIONAL** — user may answer or explicitly defer. Offer **confirm / override / defer**. "Defer" marks the field as `TBD` and downstream commands will ask when the field becomes relevant (e.g., when `{{cli.sigil}}specify` needs an architecture decision for a specific feature). A small number of OPTIONAL questions are free-text only (e.g. "anything else I should know?") — those are noted explicitly and allow an empty response.
@@ -117,7 +128,7 @@ For every question that applies, do NOT silently default. Do NOT infer answers. 
 
 ### Question 1: Project Type (REQUIRED)
 
-Present the question to the user. If STEP 2 detection surfaced concrete indicators, quote them explicitly; if nothing was detected (or `PROJECT_STATE` is empty), say so plainly and just ask. Do not invent.
+Present the question to the user. If STEP 3 detection surfaced concrete indicators, quote them explicitly; if nothing was detected (or `PROJECT_STATE` is empty), say so plainly and just ask. Do not invent.
 
 **If concrete indicators were found:**
 
@@ -250,7 +261,7 @@ Free text. User can skip.
 
 ### Question 8: Agent Model Assignments (per-runtime)
 
-Specialized agents are grouped into three tiers based on the reasoning they require. Ask the sub-question for each supported runtime (since install produces artifacts for every enabled runtime, all sub-questions are asked by default). Use **confirm / override / defer** semantics from the STEP 3 preamble — don't silently default.
+Specialized agents are grouped into three tiers based on the reasoning they require. Ask the sub-question for each supported runtime (since install produces artifacts for every enabled runtime, all sub-questions are asked by default). Use **confirm / override / defer** semantics from the STEP 4 preamble — don't silently default.
 
 **Tiers (shared across runtimes):**
 
@@ -312,13 +323,13 @@ Store the chosen mode as `AC_VERIFICATION_MODE`.
 
 #### Runtime-assisted follow-ups (only if that mode was chosen)
 
-Branch by the project type confirmed in Q1 (not what STEP 2 detected — Q1's answer is canonical). If Q1's answer was "Other" or ambiguous, ask the user for a specific category; if still unclear, fall back to **Code-only**.
+Branch by the project type confirmed in Q1 (not what STEP 3 detected — Q1's answer is canonical). If Q1's answer was "Other" or ambiguous, ask the user for a specific category; if still unclear, fall back to **Code-only**.
 
 **Web frontend:**
 
 > What URL does the dev server serve the app on? (e.g. http://localhost:5173)
 
-Store the URL as `AC_RUNTIME_URL`. Also flag for STEP 4: the target needs a browser-automation MCP server registered in each installed runtime's MCP config. The `chrome-devtools` MCP is runtime-agnostic (the MCP protocol works across clients); what differs is the config file format and location per runtime. STEP 4 handles the per-runtime registration.
+Store the URL as `AC_RUNTIME_URL`. Also flag for STEP 5: the target needs a browser-automation MCP server registered in each installed runtime's MCP config. The `chrome-devtools` MCP is runtime-agnostic (the MCP protocol works across clients); what differs is the config file format and location per runtime. STEP 5 handles the per-runtime registration.
 
 **Backend with HTTP API:**
 
@@ -338,7 +349,7 @@ Store as `AC_RUNTIME_CLI_COMMAND`.
 
 No follow-up storage needed beyond `AC_VERIFICATION_MODE` in this case.
 
-## STEP 4: Generate Configuration Files
+## STEP 5: Generate Configuration Files
 
 Based on detection + user answers, generate ALL of the following files. Read each template from `.claude/templates/`, fill in the placeholders, and write the output files.
 
@@ -578,18 +589,11 @@ The keys must be the exact placeholder names (without `{{ }}`). Example:
 }
 ```
 
-**Detecting DEFAULT_BRANCH**: Use this cascade during STEP 2:
-1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null` → parse branch name
-2. Check if `main` exists: `git show-ref --verify --quiet refs/heads/main`
-3. Check if `master` exists: `git show-ref --verify --quiet refs/heads/master`
-4. Check if `develop` exists: `git show-ref --verify --quiet refs/heads/develop`
-5. If none found, default to `main`
-
 **Required keys**: `PROJECT_NAME`, `PROJECT_TYPE`, `FRAMEWORK`, `LANGUAGE`, `BUILD_TOOL`, `BUILD_COMMAND`, `TYPE_CHECK_COMMAND`, `LINT_COMMAND`, `SOURCE_ROOT`, `PROJECT_MODE`, `ARCHITECTURE`, `ERROR_HANDLING`, `API_LAYER`, `STATE_MANAGEMENT`, `STYLING`, `MONOREPO_TOOL`, `TESTING`, `PROJECT_PATHS`, `PROJECT_STRUCTURE`, `DEV_COMMANDS`, `AGENT_LIST`, `WRAPPER_MODE_SECTION`, `COMMIT_ATTRIBUTION`, `MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY`, `AC_VERIFICATION`, `AC_VERIFICATION_URL`, `AC_VERIFICATION_API_BASE`, `DEFAULT_BRANCH`, `TYPE_SAFETY_RULES`.
 
 Use the exact same values you substituted into the templates. For multi-line values, use `\n` for newlines in the JSON string. For values that don't apply, use `"N/A"` (not empty string).
 
-## STEP 5: Cleanup & Summary
+## STEP 6: Cleanup & Summary
 
 1. Ask the user: "Setup is complete. Should I remove the `.claude/templates/` directory? (It's no longer needed but can be kept for re-running the wizard.)"
 2. If yes, delete `.claude/templates/`
