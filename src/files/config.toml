@@ -1,3 +1,23 @@
+# Codex CLI project-level configuration.
+# Layers: MDM > system managed > CLI overrides > user config (~/.codex/config.toml).
+# This file is copied to .codex/config.toml at install; wizard populates the
+# {{PLACEHOLDERS}} from project-config answers.
+
+# Default model for plain prompts. Subagents override per-agent in .codex/agents/*.toml.
+model = "{{CODEX_MODEL_DEFAULT}}"
+model_reasoning_effort = "{{CODEX_REASONING_DEFAULT}}"
+
+# Approval policy — wizard maps from WORKFLOW_ENFORCEMENT (Q6):
+#   strict   → "untrusted"
+#   moderate → "on-request"
+#   light    → "never"
+approval_policy = "{{CODEX_APPROVAL_POLICY}}"
+
+# Sandbox mode: "macos" (Seatbelt), "docker", or "none".
+# Default "none" for portability; tighten per-project if desired.
+sandbox = "none"
+
+# MCP servers (union-merged with user-level ~/.codex/config.toml).
 [mcp_servers.context7]
 command = "npx"
 args = ["-y", "@upstash/context7-mcp"]

@@ -97,11 +97,18 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 # Session-state and wip markers are created at runtime by commands.
 cp -r "$TEMPLATE_DIR/src/devforge" "$TARGET_DIR/.devforge"
 
-# ── Copy MCP configs (per-runtime) ───────────────────────────────────────
-# Claude reads .mcp.json at project root. Codex reads .codex/config.toml.
-# Both start with context7 MCP server. Wizard adds more (e.g. chrome-devtools)
-# based on AC verification mode.
+# ── Copy runtime config files (per-runtime, not shared) ─────────────────
+# Each runtime gets whatever config files it natively uses — no forced
+# symmetry. All files contain {{PLACEHOLDERS}} that wizard STEP 5 populates.
+#
+# Claude:
+#   .mcp.json           — MCP servers (project-scope)
+#   .claude/settings.json — hooks, permissions, plugins
+# Codex:
+#   .codex/config.toml  — model, sandbox, approval_policy, MCP servers
 cp "$TEMPLATE_DIR/src/files/mcp.json" "$TARGET_DIR/.mcp.json"
+mkdir -p "$TARGET_DIR/.claude"
+cp "$TEMPLATE_DIR/src/files/settings.template.json" "$TARGET_DIR/.claude/settings.json"
 mkdir -p "$TARGET_DIR/.codex"
 cp "$TEMPLATE_DIR/src/files/config.toml" "$TARGET_DIR/.codex/config.toml"
 

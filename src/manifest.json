@@ -67,6 +67,7 @@
       ".claude/memory/**",
       ".claude/settings.json",
       ".claude/settings.local.json",
+      ".codex/config.toml",
       ".claude/session-state.md",
       ".claude/wip.md",
       "specs/**",
