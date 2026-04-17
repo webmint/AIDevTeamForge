@@ -492,7 +492,26 @@ Include AI attribution in every commit by appending this trailer:
 `{{cli.attribution}}`
 ```
 
-### 5.2: Save Baselines
+### 5.2: Populate Runtime Config Files
+
+Two runtime-native config files are already in place and contain `{{PLACEHOLDERS}}`. Read each, substitute, write back.
+
+#### `.claude/settings.json`
+
+Substitute:
+- `{{TYPE_CHECK_COMMAND}}` — same value derived in 5.1. If the project has no type checker (`"N/A"` in 5.1), replace the entire `hooks.PostToolUse` array with `[]` (remove the hook entry entirely — don't leave a command set to `"N/A"`).
+
+#### `.codex/config.toml`
+
+Substitute:
+- `{{CODEX_MODEL_DEFAULT}}` — if Q8b set `CODEX_TIER_DO_MODEL`, use that value. If `CODEX_TIER_DO_MODEL` is `null` (user accepted Codex default), use the literal string `"gpt-5.4"` (current documented Codex default).
+- `{{CODEX_REASONING_DEFAULT}}` — Q8b answer `CODEX_TIER_DO` (e.g. `"medium"`).
+- `{{CODEX_APPROVAL_POLICY}}` — map from Q6 `WORKFLOW_ENFORCEMENT`:
+  - `strict` → `"untrusted"`
+  - `moderate` → `"on-request"`
+  - `light` → `"never"`
+
+### 5.3: Save Baselines
 
 After populating CLAUDE.md and AGENTS.md, save a baseline copy of each to `.devforge/baseline/`:
 1. Copy the just-populated `CLAUDE.md` → `.devforge/baseline/CLAUDE.md`
@@ -500,11 +519,13 @@ After populating CLAUDE.md and AGENTS.md, save a baseline copy of each to `.devf
 
 Create `.devforge/baseline/` if it doesn't exist. These baselines are the wizard output before any manual user edits. `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
 
-### 5.3: Add MCP Servers (conditional)
+**Note:** `.claude/settings.json` and `.codex/config.toml` are **projectOwned** — update.sh never overwrites them — so they don't need baselines.
 
-Both `.mcp.json` (Claude) and `.codex/config.toml` (Codex) are already placed with the context7 MCP server. If Q9 selected **runtime-assisted** AC verification for a **web frontend**, add the chrome-devtools server to both configs:
+### 5.4: Add MCP Servers + Permissions (conditional)
 
-**Add to `.mcp.json`:**
+Both `.mcp.json` (Claude) and `.codex/config.toml` (Codex) are already placed with the context7 MCP server. If Q9 selected **runtime-assisted** AC verification for a **web frontend**, add the chrome-devtools server and its permissions across all three runtime config files:
+
+**1. Add to `.mcp.json` (Claude MCP servers):**
 ```json
 "chrome-devtools": {
   "command": "npx",
@@ -512,18 +533,41 @@ Both `.mcp.json` (Claude) and `.codex/config.toml` (Codex) are already placed wi
 }
 ```
 
-**Add to `.codex/config.toml`:**
+**2. Add to `.codex/config.toml` (Codex MCP servers):**
 ```toml
 [mcp_servers.chrome-devtools]
 command = "npx"
 args = ["-y", "@anthropic/chrome-devtools-mcp"]
 ```
 
-If Q9 did not select runtime-assisted for a web frontend, skip this step.
+**3. Append to `.claude/settings.json` under `permissions.allow[]`** (Claude needs explicit tool-name allowlist entries for each chrome-devtools MCP tool to auto-approve them):
+```
+"mcp__chrome-devtools__take_screenshot",
+"mcp__chrome-devtools__take_snapshot",
+"mcp__chrome-devtools__evaluate_script",
+"mcp__chrome-devtools__navigate_page",
+"mcp__chrome-devtools__list_pages",
+"mcp__chrome-devtools__select_page",
+"mcp__chrome-devtools__click",
+"mcp__chrome-devtools__fill",
+"mcp__chrome-devtools__fill_form",
+"mcp__chrome-devtools__wait_for",
+"mcp__chrome-devtools__press_key",
+"mcp__chrome-devtools__hover",
+"mcp__chrome-devtools__list_console_messages",
+"mcp__chrome-devtools__list_network_requests",
+"mcp__chrome-devtools__get_network_request"
+```
 
-### 5.4: Populate Project Config
+Codex does not use an allowlist — its `approval_policy` governs behavior — so step 3 is Claude-only.
+
+If Q9 did not select runtime-assisted for a web frontend, skip this entire step.
+
+### 5.5: Populate Project Config
 
 Read `.devforge/project-config.json`. Replace every `null` value with the corresponding answer collected during STEPs 0–4. Use the same values you substituted into the files above. Keys match the placeholder names without `{{ }}`.
+
+New keys this file includes for runtime configs: `CODEX_MODEL_DEFAULT`, `CODEX_REASONING_DEFAULT`, `CODEX_APPROVAL_POLICY`. Use the same substituted values from 5.2.
 
 For values that don't apply to this project, use `"N/A"`. For multi-line values (like `ARCHITECTURE_DETAILS`, `COMMIT_ATTRIBUTION`), use `\n` for newlines in the JSON string.
 
