@@ -1,4 +1,4 @@
-# Multi-Runtime Support — Branch Plan (rev 7)
+# Multi-Runtime Support — Branch Plan (rev 8)
 
 Branch: `feature/codex-support`
 Main: Claude-only, unchanged. **This branch never merges to main** — it's a separate multi-runtime experiment that will ship differently (its own product, long-lived branch, or archived).
@@ -27,13 +27,14 @@ Target goal: after one install, a developer can open **any supported CLI** (Clau
 src/
 ├── commands/               ← active commands (setup-wizard.md currently; rest in _pending/)
 ├── _pending/commands/      ← 22 commands awaiting annotation + promotion
-├── agents/                 ← 16 agent templates (markdown + YAML frontmatter)
+├── agents/                 ← 16 universal agent sources (fenced-yaml meta + markdown body)
 ├── files/
 │   ├── coreLLM/
 │   │   ├── SOURCE.md       ← single source → generates CLAUDE.md + AGENTS.md
 │   │   └── desiredOutput/  ← reference examples of generated output
-│   ├── mcp.json            ← Claude MCP config (context7 pre-loaded)
-│   └── config.toml         ← Codex MCP config (context7 pre-loaded)
+│   ├── mcp.json                  ← Claude MCP config (context7 pre-loaded)
+│   ├── settings.template.json    ← Claude settings (hooks + minimal permissions)
+│   └── config.toml               ← Codex full settings: MCP + model + sandbox + approval
 ├── devforge/               ← cross-runtime scaffolding → installed to .devforge/
 │   ├── project-config.json ← empty scaffold (null keys), wizard populates
 │   ├── memory.md           ← persistent learnings (flat file, cross-runtime)
@@ -45,9 +46,9 @@ src/
 
 `install.sh` is intentionally thin:
 - Validates args (target dir, wrapper mode)
-- Delegates to `scripts/generate.sh` for coreLLM + runtime-specific emission
+- Delegates to `scripts/generate.sh` for coreLLM + agents + runtime-specific emission
 - Copies `.devforge/` scaffolding
-- Copies MCP configs (`.mcp.json` for Claude, `.codex/config.toml` for Codex)
+- Copies runtime config files (`.mcp.json`, `.claude/settings.json`, `.codex/config.toml`)
 
 Adding a new runtime does **not** touch install.sh (except MCP config if the runtime has one).
 
@@ -56,16 +57,37 @@ Adding a new runtime does **not** touch install.sh (except MCP config if the run
 ```
 scripts/
 ├── generate-corellm.py         ← reads SOURCE.md, produces CLAUDE.md + AGENTS.md
-├── generate.sh                 ← orchestrator: coreLLM first, then per-runtime emitters
+├── generate-agents.py          ← reads src/agents/*.md, produces .claude/agents/*.md + .codex/agents/*.toml
+├── generate.sh                 ← orchestrator: coreLLM → agents → per-runtime emitters
 ├── emitters/
 │   ├── claude.py               ← commands → target/.claude/commands/
 │   └── codex.py                ← commands → target/.agents/skills/
 │   └── (future) cursor.py, gemini.py
 └── lib/
-    └── frontmatter.py          ← stdlib markdown+YAML parser shared across emitters
+    └── frontmatter.py          ← stdlib markdown+YAML parser for command frontmatter
 ```
 
 Python 3, stdlib only. No PyYAML, no requirements.txt.
+
+### Agent generator (`src/agents/*.md` → per-runtime native)
+
+Each agent source is a **universal** file — intentionally *not* shaped like any runtime's native format. Format:
+
+```
+```yaml
+name: architect
+description: "..."
+model_tier: think      # think | do | verify — semantic, not runtime-specific
+```
+
+<markdown body>
+```
+
+The fenced `yaml` block (not `---`/`---` frontmatter) prevents the source from mimicking Claude's native agent format, forcing every runtime emission to be constructed from scratch. `model_tier` translates to runtime-specific placeholders:
+- Claude: `model: {{CLAUDE_TIER_THINK}}`
+- Codex: `model = "{{CODEX_TIER_THINK}}"` + `model_reasoning_effort = "{{CODEX_REASONING_THINK}}"`
+
+Codex TOML body uses multi-line literal `'''...'''` — no escaping of backslashes, backticks, or quotes. Adding a runtime = one `RUNTIMES` dict entry.
 
 ### CoreLLM generator (SOURCE.md → CLAUDE.md + AGENTS.md)
 
@@ -127,10 +149,17 @@ Three load-bearing assumptions resolved via docs analysis (see `phase-0/REPORT.m
 ### ✅ Phase A (partial) — Generator + emitters
 
 - `scripts/generate-corellm.py` — CoreLLM generator: single SOURCE.md → CLAUDE.md + AGENTS.md.
+- `scripts/generate-agents.py` — Agent generator: universal fenced-yaml source → per-runtime native (`.claude/agents/*.md` + `.codex/agents/*.toml`). Neither runtime is pass-through; both built from scratch. `model_tier` (think/do/verify) translates into wizard placeholders `{{CLAUDE_TIER_*}}` and `{{CODEX_TIER_*}}` + `{{CODEX_REASONING_*}}`.
 - `scripts/emitters/claude.py` — Claude emitter (commands to `.claude/commands/`).
 - `scripts/emitters/codex.py` — Codex emitter (commands to `.agents/skills/`).
-- `scripts/generate.sh` — orchestrator: coreLLM generator first, then per-runtime emitters.
-- `install.sh` narrowed: coreLLM + setup-wizard command + `.devforge/` + MCP configs. Tested: install into testSpawn produces 9 files across both runtimes.
+- `scripts/generate.sh` — orchestrator: coreLLM → agents → per-runtime emitters.
+- `install.sh` narrowed: coreLLM + agents + setup-wizard command + `.devforge/` + runtime configs. Tested end-to-end: 16 agents per runtime + 9 other files.
+
+### ✅ Phase A (partial) — Agent source neutralization
+
+- All 16 agent sources renamed `*.template.md` → `*.md` and rewritten in the universal fenced-yaml format.
+- Scanned sources for Claude-specific leakage: removed "Your Tools" lists naming `**Bash**`, `**File tools (Read, Grep, Glob)**`, `**TaskCreate/TaskUpdate**`; replaced with runtime-neutral "Your Capabilities" (Shell access, Codebase search & read, Task tracking).
+- Inline prose replaced: `Use Grep to find` → `Search the codebase for`, `Use Read to open` → `Open`, `Bash curl` → `shell curl`, `via Bash` → `in the shell`. "subagent" terminology kept (standard across both runtimes now).
 
 ### ✅ Phase A (partial) — CoreLLM files (CLAUDE.md + AGENTS.md)
 
@@ -149,12 +178,16 @@ Three load-bearing assumptions resolved via docs analysis (see `phase-0/REPORT.m
 - `src/devforge/storage-rules.md` — moved from `src/files/`, neutralized (no CLI sigils, no hardcoded `.ts` extensions, no JS-specific debug artifacts, commands referenced without sigils).
 - install.sh copies `src/devforge/` → `target/.devforge/`.
 
-### ✅ Phase A (partial) — MCP configs
+### ✅ Phase A (partial) — Runtime config templates
 
-- `src/files/mcp.json` — Claude MCP config with context7 server.
-- `src/files/config.toml` — Codex MCP config with context7 server.
-- install.sh places `.mcp.json` at target root (Claude) and `.codex/config.toml` (Codex).
-- Wizard STEP 5.3 adds chrome-devtools conditionally (web frontend + runtime-assisted AC).
+Per-runtime native config files — no forced symmetry between Claude JSON and Codex TOML. Each runtime gets what it natively uses:
+
+- `src/files/mcp.json` — Claude MCP servers (`.mcp.json` at target root).
+- `src/files/settings.template.json` — Claude settings: hooks (`PostToolUse` → `{{TYPE_CHECK_COMMAND}}`), minimal `permissions.allow[]` (core Claude tools + context7). chrome-devtools entries stripped; wizard STEP 5.4 adds them conditionally.
+- `src/files/config.toml` — Codex full settings: `model = "{{CODEX_MODEL_DEFAULT}}"`, `model_reasoning_effort = "{{CODEX_REASONING_DEFAULT}}"`, `approval_policy = "{{CODEX_APPROVAL_POLICY}}"`, `sandbox = "none"`, MCP servers (context7).
+- install.sh places all three files. Wizard STEP 5.2 populates placeholders.
+- Classification: `.claude/settings.json` and `.codex/config.toml` are **projectOwned** in the manifest — user customizes, update.sh never overwrites.
+- Wizard STEP 5.4 adds chrome-devtools MCP to both `.mcp.json` and `.codex/config.toml`, AND appends `mcp__chrome-devtools__*` entries to Claude's `permissions.allow[]` (Claude-only; Codex uses `approval_policy` instead).
 
 ### ✅ Phase A (partial) — setup-wizard.md STEPs 0–7
 
@@ -162,9 +195,10 @@ Three load-bearing assumptions resolved via docs analysis (see `phase-0/REPORT.m
 
 **STEP 5** (Populate Placed Files): full placeholder-to-answer mapping with construction rules for dynamic values. Substeps:
 - 5.1: Populate CLAUDE.md + AGENTS.md (same values, both files)
-- 5.2: Save baselines to `.devforge/baseline/`
-- 5.3: Add chrome-devtools MCP conditionally
-- 5.4: Populate `.devforge/project-config.json`
+- 5.2: Populate runtime config files (`.claude/settings.json` + `.codex/config.toml`) — substitute `{{TYPE_CHECK_COMMAND}}`, `{{CODEX_MODEL_DEFAULT}}`, `{{CODEX_REASONING_DEFAULT}}`, `{{CODEX_APPROVAL_POLICY}}`
+- 5.3: Save baselines to `.devforge/baseline/` (only for CLAUDE.md + AGENTS.md — runtime configs are projectOwned, no baseline)
+- 5.4: Add chrome-devtools MCP + Claude permission entries conditionally
+- 5.5: Populate `.devforge/project-config.json`
 
 **STEP 6** (Curate & Populate Agents): LLM-driven agent selection. Substeps:
 - 6.1: Select agents (5 always-keep + 11 conditional, no hardcoded framework lists)
@@ -193,22 +227,21 @@ Three load-bearing assumptions resolved via docs analysis (see `phase-0/REPORT.m
 ## 4. What's next
 
 ### Immediate (next session)
-- **Agent pipeline**: Apply coreLLM pattern to agents — single source templates → multi-runtime output (`.claude/agents/*.md` + `.codex/agents/*.toml`). Update emitters to place all 16 agents. This is the prerequisite for STEP 6 to actually work.
-- **Implement variation-marker substitution in emitters** — `claude.py` and `codex.py` need to process `{{cli.sigil}}`, `{{cli.attribution}}`, and `{{ask}}...{{/ask}}` blocks in commands before writing to target. Currently these markers pass through literally.
+- **Implement variation-marker substitution in command emitters** — `claude.py` and `codex.py` need to process `{{cli.sigil}}`, `{{cli.attribution}}`, and `{{ask}}...{{/ask}}` blocks in commands before writing to target. Currently these markers pass through literally. This blocks promoting commands beyond setup-wizard.
+- **TYPE_CHECK_COMMAND derivation rule in wizard STEP 3** — the placeholder is referenced in 5.1 and 5.2, but the wizard hasn't formalized the detection/derivation rule (TS→`tsc --noEmit`, Py→`mypy` or `py_compile`, Go→`go vet ./...`, Rust→`cargo check`). Add as a detection output of STEP 3.
+- Test end-to-end: install into `testSpawn`, run wizard under Claude, verify full output including the new 5.2 substitutions.
 
 ### After that
-- Test: install into `testSpawn`, run wizard under Claude, verify full output (coreLLM + agents + config).
 - Finish STEP 7 (Summary).
 - Promote next command from `src/_pending/` (probably `/fix` — simplest workflow command).
-- Eventually: run wizard under Codex, compare parity.
+- Run wizard under Codex, compare parity.
 
 ### Medium-term
 - Promote remaining 22 commands one-by-one.
 - **IMPORTANT: Wire WORKFLOW_ENFORCEMENT into every gated command.** Currently collected by wizard (Q6: strict/moderate/light) and stored in `.devforge/project-config.json`, but NO command reads it — all commands are hardcoded to strict flow. Each command with gates (execute-task, specify, plan, breakdown, verify, fix, refactor) needs to read `WORKFLOW_ENFORCEMENT` and branch: strict = all gates, moderate = spec + breakdown gates only, light = spec gate only.
 - Constitution.md emission (shared content, cross-runtime).
-- Settings files emission (`.claude/settings.json`, `.codex/config.toml` extensions).
 - Parity test harness.
-- update.sh multi-runtime support.
+- update.sh multi-runtime support (currently `expand_templateOwned_pairs` handles pair-based mappings, but `templateDerived` three-way merge for `generated:agents` and `generated:coreLLM` sources isn't implemented yet).
 
 ### Longer-term
 - Cursor / Gemini emitters.
@@ -238,6 +271,11 @@ Three load-bearing assumptions resolved via docs analysis (see `phase-0/REPORT.m
 18. **Wizard STEP 5 populates, STEP 6 generates** — different operations, different rules. STEP 5 never creates files. STEP 6 creates/deletes files (agents, future: constitution, settings).
 19. **`{{ARCHITECTURE_DETAILS}}`** is a single dynamic placeholder — wizard generates relevant fields only, no hardcoded web-centric field list.
 20. **Install places all agents, wizard curates** — user sees keep/remove recommendation, confirms/overrides, wizard deletes rejected agents from both runtimes.
+21. **Agent sources are universal, not Claude-shaped** — fenced `yaml` meta block (deliberately *not* `---`/`---` frontmatter) + markdown body. Neither runtime is passed through unchanged; both are constructed from scratch. `model_tier` (think/do/verify) is semantic, translated per-runtime into placeholder names.
+22. **Runtime config files are per-runtime native, no forced symmetry** — Claude gets `.mcp.json` + `.claude/settings.json`; Codex gets one unified `.codex/config.toml` that covers MCP + model + sandbox + approval. Asymmetric file count is a feature, not a bug: each runtime gets the shape it natively uses.
+23. **Runtime configs are projectOwned, not templateOwned** — install drops initial version with `{{PLACEHOLDERS}}`, wizard populates, user customizes thereafter; update.sh never overwrites. No baseline needed (no three-way merge).
+24. **Claude `permissions.allow[]` ships minimal**; wizard adds MCP tool-names conditionally (chrome-devtools on web + runtime-AC). Mirrors existing MCP server-addition logic. Codex has no allowlist; uses `approval_policy` instead.
+25. **Codex project-level config.toml doesn't set model/reasoning defaults rigidly** — `{{CODEX_MODEL_DEFAULT}}` maps from `CODEX_TIER_DO_MODEL` override or falls back to `"gpt-5.4"` (Codex's documented default). `{{CODEX_APPROVAL_POLICY}}` maps from Q6 WORKFLOW_ENFORCEMENT (strict→untrusted, moderate→on-request, light→never).
 
 ---
 
@@ -247,7 +285,8 @@ Three load-bearing assumptions resolved via docs analysis (see `phase-0/REPORT.m
 2. Extensions file (`.devforge/extensions.yml`) — name/location, lower priority.
 3. Test target for parity — `testSpawn` or scaffold fresh?
 4. Codex CLI installed + authenticated for parity testing?
-5. Agent templates: do they need a coreLLM-style single-source generator, or is the emitter format conversion (md → toml) sufficient?
+5. ~~Agent templates: do they need a coreLLM-style single-source generator~~ — **resolved**: yes, universal fenced-yaml source with per-runtime emit-from-scratch. See decision #21.
+6. `[notify]` hook in `.codex/config.toml` — deferred; no clear use case yet. Session-end notification is the closest analog to Claude's Stop hook.
 
 ---
 
