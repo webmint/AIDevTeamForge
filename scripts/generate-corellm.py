@@ -97,6 +97,10 @@ def main() -> int:
         "--out", type=Path, required=True,
         help="Directory to write output files (CLAUDE.md, AGENTS.md, ...)",
     )
+    parser.add_argument(
+        "--runtimes", type=str, default="",
+        help="Space-separated runtimes to emit. Empty = all registered runtimes.",
+    )
     args = parser.parse_args()
 
     source_file = args.src / "SOURCE.md"
@@ -104,10 +108,25 @@ def main() -> int:
         print(f"error: {source_file} not found", file=sys.stderr)
         return 1
 
+    # Resolve runtime filter.
+    selected = [r for r in args.runtimes.split() if r]
+    if selected:
+        unknown = [r for r in selected if r not in RUNTIMES]
+        if unknown:
+            print(
+                f"error: unknown runtime(s): {', '.join(unknown)}. "
+                f"Known: {', '.join(RUNTIMES)}",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        selected = list(RUNTIMES.keys())
+
     args.out.mkdir(parents=True, exist_ok=True)
     source = source_file.read_text()
 
-    for runtime, values in RUNTIMES.items():
+    for runtime in selected:
+        values = RUNTIMES[runtime]
         output_filename = values["output.filename"]
         rendered = render(source, runtime, values)
         out_path = args.out / output_filename

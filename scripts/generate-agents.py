@@ -281,6 +281,10 @@ def main() -> int:
         "--target", type=Path, required=True,
         help="Target project dir (outputs go under .claude/agents and .codex/agents)",
     )
+    parser.add_argument(
+        "--runtimes", type=str, default="",
+        help="Space-separated runtimes to emit. Empty = all registered runtimes.",
+    )
     args = parser.parse_args()
 
     if not args.src.is_dir():
@@ -290,12 +294,27 @@ def main() -> int:
         print(f"error: --target '{args.target}' is not a directory", file=sys.stderr)
         return 1
 
+    # Resolve runtime filter.
+    selected = [r for r in args.runtimes.split() if r]
+    if selected:
+        unknown = [r for r in selected if r not in RUNTIMES]
+        if unknown:
+            print(
+                f"error: unknown runtime(s): {', '.join(unknown)}. "
+                f"Known: {', '.join(RUNTIMES)}",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        selected = list(RUNTIMES.keys())
+
     sources = sorted(p for p in args.src.glob("*.md"))
     if not sources:
         print(f"warning: no agent sources in {args.src}", file=sys.stderr)
         return 0
 
-    for runtime, cfg in RUNTIMES.items():
+    for runtime in selected:
+        cfg = RUNTIMES[runtime]
         count = 0
         for src_file in sources:
             _render_one(src_file, runtime, cfg, args.target)

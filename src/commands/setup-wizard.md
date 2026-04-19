@@ -377,9 +377,11 @@ No follow-up storage needed beyond `AC_VERIFICATION_MODE` in this case.
 
 All files are already in place. Your job is substitution only — **do not create new files**. Read each file, replace every `{{PLACEHOLDER}}` marker with the corresponding value, and write it back.
 
+**Single-runtime installs:** if install was run with `--runtime claude` or `--runtime codex`, only that runtime's files exist. For each file mentioned below, check presence first; skip the file if it doesn't exist. Do not error.
+
 ### 5.1: Populate CLAUDE.md and AGENTS.md
 
-Read `CLAUDE.md` and `AGENTS.md` at project root. Both files contain the same `{{PLACEHOLDER}}` markers. Substitute ALL of them with the same values:
+Read `CLAUDE.md` and `AGENTS.md` at project root — **whichever exist**. Each contains the same `{{PLACEHOLDER}}` markers; substitute ALL of them with the same values:
 
 - `{{PROJECT_DESCRIPTION}}` — Q1 answer: the 1-3 sentence project description
 - `{{PROJECT_NAME}}` — Q0 answer: project name
@@ -494,14 +496,14 @@ Include AI attribution in every commit by appending this trailer:
 
 ### 5.2: Populate Runtime Config Files
 
-Two runtime-native config files are already in place and contain `{{PLACEHOLDERS}}`. Read each, substitute, write back.
+Two runtime-native config files may be in place. For each, check presence first — if missing (single-runtime install), skip that sub-section silently.
 
-#### `.claude/settings.json`
+#### `.claude/settings.json` (if present)
 
 Substitute:
 - `{{TYPE_CHECK_COMMAND}}` — same value derived in 5.1. If the project has no type checker (`"N/A"` in 5.1), replace the entire `hooks.PostToolUse` array with `[]` (remove the hook entry entirely — don't leave a command set to `"N/A"`).
 
-#### `.codex/config.toml`
+#### `.codex/config.toml` (if present)
 
 Substitute:
 - `{{CODEX_MODEL_DEFAULT}}` — if Q8b set `CODEX_TIER_DO_MODEL`, use that value. If `CODEX_TIER_DO_MODEL` is `null` (user accepted Codex default), use the literal string `"gpt-5.4"` (current documented Codex default).
@@ -513,9 +515,9 @@ Substitute:
 
 ### 5.3: Save Baselines
 
-After populating CLAUDE.md and AGENTS.md, save a baseline copy of each to `.devforge/baseline/`:
-1. Copy the just-populated `CLAUDE.md` → `.devforge/baseline/CLAUDE.md`
-2. Copy the just-populated `AGENTS.md` → `.devforge/baseline/AGENTS.md`
+For each of `CLAUDE.md` and `AGENTS.md` that exists (single-runtime installs have only one), save a baseline copy to `.devforge/baseline/`:
+1. If `CLAUDE.md` exists → copy to `.devforge/baseline/CLAUDE.md`
+2. If `AGENTS.md` exists → copy to `.devforge/baseline/AGENTS.md`
 
 Create `.devforge/baseline/` if it doesn't exist. These baselines are the wizard output before any manual user edits. `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
 
@@ -523,7 +525,7 @@ Create `.devforge/baseline/` if it doesn't exist. These baselines are the wizard
 
 ### 5.4: Add MCP Servers + Permissions (conditional)
 
-Both `.mcp.json` (Claude) and `.codex/config.toml` (Codex) are already placed with the context7 MCP server. If Q9 selected **runtime-assisted** AC verification for a **web frontend**, add the chrome-devtools server and its permissions across all three runtime config files:
+If Q9 selected **runtime-assisted** AC verification for a **web frontend**, add the chrome-devtools server and its permissions to each runtime config file **that exists** (single-runtime installs skip the missing one):
 
 **1. Add to `.mcp.json` (Claude MCP servers):**
 ```json

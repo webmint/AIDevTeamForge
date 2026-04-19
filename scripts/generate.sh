@@ -44,16 +44,20 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 # ── CoreLLM: generate CLAUDE.md + AGENTS.md from single source ───────────
+# Forward RUNTIMES filter so a single-runtime install doesn't produce the
+# other runtime's CLAUDE.md / AGENTS.md file.
 echo "→ Generating coreLLM files"
 python3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
   --src "$SRC_DIR/files/coreLLM" \
-  --out "$TARGET_DIR"
+  --out "$TARGET_DIR" \
+  --runtimes "$RUNTIMES"
 
 # ── Agents: generate per-runtime agent files from universal sources ──────
 echo "→ Generating agents"
 python3 "$TEMPLATE_DIR/scripts/generate-agents.py" \
   --src "$SRC_DIR/agents" \
-  --target "$TARGET_DIR"
+  --target "$TARGET_DIR" \
+  --runtimes "$RUNTIMES"
 
 # ── Per-runtime emitters (commands/skills only) ──────────────────────────
 for runtime in $RUNTIMES; do

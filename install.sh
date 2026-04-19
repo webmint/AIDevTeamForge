@@ -20,12 +20,23 @@ TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRAPPER_MODE=false
 TARGET_DIR=""
 INNER_FOLDER=""
+# Comma-separated runtime list. Empty = install all registered runtimes
+# (whatever generate.sh defaults to). Populated from --runtime flag.
+RUNTIMES_CSV=""
+
+# Canonical list of runtimes install.sh knows how to gate files for.
+# Must stay in sync with scripts/generate.sh's RUNTIMES default.
+VALID_RUNTIMES="claude codex"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --wrapper)
       WRAPPER_MODE=true
       shift
+      ;;
+    --runtime)
+      RUNTIMES_CSV="$2"
+      shift 2
       ;;
     -*)
       echo "Unknown flag: $1"
@@ -43,14 +54,39 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Validate --runtime values. Empty means "all" — no validation needed.
+if [ -n "$RUNTIMES_CSV" ]; then
+  # Split on comma, check each against VALID_RUNTIMES.
+  OLD_IFS="$IFS"; IFS=','
+  for r in $RUNTIMES_CSV; do
+    case " $VALID_RUNTIMES " in
+      *" $r "*) ;;
+      *) echo "Unknown runtime: '$r'. Valid: $VALID_RUNTIMES" >&2; exit 1 ;;
+    esac
+  done
+  IFS="$OLD_IFS"
+fi
+
+# has_runtime <name> — returns 0 if the runtime is selected (or no filter set).
+has_runtime() {
+  [ -z "$RUNTIMES_CSV" ] && return 0
+  case ",$RUNTIMES_CSV," in *",$1,"*) return 0 ;; esac
+  return 1
+}
+
 # ── Validate target directory ──────────────────────────────────────────────
 # Refuse to install into the current directory as a safety guard — users
 # should pass an explicit target path.
 if [ -z "$TARGET_DIR" ] || [ "$TARGET_DIR" = "." ]; then
-  echo "Usage: install.sh [--wrapper] <target-directory> [inner-project-folder]"
+  echo "Usage: install.sh [--wrapper] [--runtime <csv>] <target-directory> [inner-project-folder]"
+  echo ""
+  echo "  --runtime <csv>  Comma-separated runtime list. Omit = all ($VALID_RUNTIMES)."
+  echo "                   Valid values: $VALID_RUNTIMES"
   echo ""
   echo "Examples:"
   echo "  ./install.sh ~/Projects/my-app"
+  echo "  ./install.sh --runtime claude ~/Projects/my-app"
+  echo "  ./install.sh --runtime claude,codex ~/Projects/my-app"
   echo "  ./install.sh --wrapper ~/Projects/my-workspace client-project"
   exit 1
 fi
@@ -90,7 +126,14 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 # generator. Each runtime has its own emitter in scripts/emitters/.
 # Adding a new runtime = adding one emitter file + registering it in
 # scripts/generate.sh. install.sh never needs to change.
-"$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
+#
+# Forward runtime selection: if --runtime was passed, generate.sh reads
+# the RUNTIMES env var (space-separated) to filter. Empty = all.
+if [ -n "$RUNTIMES_CSV" ]; then
+  RUNTIMES="$(echo "$RUNTIMES_CSV" | tr ',' ' ')" "$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
+else
+  "$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
+fi
 
 # ── Copy cross-runtime scaffolding (.devforge/) ──────────────────────────
 # Shared across all runtimes: project config, memory, storage rules.
@@ -99,18 +142,23 @@ cp -r "$TEMPLATE_DIR/src/devforge" "$TARGET_DIR/.devforge"
 
 # ── Copy runtime config files (per-runtime, not shared) ─────────────────
 # Each runtime gets whatever config files it natively uses — no forced
-# symmetry. All files contain {{PLACEHOLDERS}} that wizard STEP 5 populates.
+# symmetry. Only the runtimes selected via --runtime (or all by default)
+# get their config files placed.
 #
 # Claude:
-#   .mcp.json           — MCP servers (project-scope)
+#   .mcp.json             — MCP servers (project-scope)
 #   .claude/settings.json — hooks, permissions, plugins
 # Codex:
-#   .codex/config.toml  — model, sandbox, approval_policy, MCP servers
-cp "$TEMPLATE_DIR/src/files/mcp.json" "$TARGET_DIR/.mcp.json"
-mkdir -p "$TARGET_DIR/.claude"
-cp "$TEMPLATE_DIR/src/files/settings.template.json" "$TARGET_DIR/.claude/settings.json"
-mkdir -p "$TARGET_DIR/.codex"
-cp "$TEMPLATE_DIR/src/files/config.toml" "$TARGET_DIR/.codex/config.toml"
+#   .codex/config.toml    — model, sandbox, approval_policy, MCP servers
+if has_runtime claude; then
+  cp "$TEMPLATE_DIR/src/files/mcp.json" "$TARGET_DIR/.mcp.json"
+  mkdir -p "$TARGET_DIR/.claude"
+  cp "$TEMPLATE_DIR/src/files/settings.template.json" "$TARGET_DIR/.claude/settings.json"
+fi
+if has_runtime codex; then
+  mkdir -p "$TARGET_DIR/.codex"
+  cp "$TEMPLATE_DIR/src/files/config.toml" "$TARGET_DIR/.codex/config.toml"
+fi
 
 # # ── Copy project-level scaffolding ─────────────────────────────────────────
 # # These directories belong at the target root (not under .claude/).
