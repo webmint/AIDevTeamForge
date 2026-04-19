@@ -1,4 +1,4 @@
-# Multi-Runtime Support — Branch Plan (rev 8)
+# Multi-Runtime Support — Branch Plan (rev 9)
 
 Branch: `feature/codex-support`
 Main: Claude-only, unchanged. **This branch never merges to main** — it's a separate multi-runtime experiment that will ship differently (its own product, long-lived branch, or archived).
@@ -189,6 +189,27 @@ Per-runtime native config files — no forced symmetry between Claude JSON and C
 - Classification: `.claude/settings.json` and `.codex/config.toml` are **projectOwned** in the manifest — user customizes, update.sh never overwrites.
 - Wizard STEP 5.4 adds chrome-devtools MCP to both `.mcp.json` and `.codex/config.toml`, AND appends `mcp__chrome-devtools__*` entries to Claude's `permissions.allow[]` (Claude-only; Codex uses `approval_policy` instead).
 
+### ✅ Phase A (partial) — Runtime selection flag
+
+`install.sh --runtime <csv>` lets users install only the runtimes they actually use. Default (no flag) installs all registered runtimes.
+
+- `install.sh`: `--runtime claude,codex,...` with validation (unknown name → fail fast). `has_runtime()` helper gates per-runtime config-file copies. `.devforge/` stays unconditional (cross-runtime). `RUNTIMES` env var forwarded to `generate.sh` when a filter is active.
+- `scripts/generate.sh`: forwards `$RUNTIMES` to `generate-corellm.py` and `generate-agents.py` via `--runtimes` (was only used by per-runtime emitter loop previously).
+- `scripts/generate-corellm.py` and `scripts/generate-agents.py`: accept `--runtimes` (space-separated). Empty = all registered runtimes. Unknown runtime name → error.
+- `setup-wizard.md` STEP 5: "if file exists" guards in 5.1, 5.2, 5.3, 5.4 so single-runtime installs don't fail when the other runtime's files are absent.
+- Closing message: per-runtime launch hints — Claude Code gets `/setup-wizard`, Codex CLI gets "ask it to run the setup-wizard skill" (Codex skills have no slash-command syntax).
+
+Tested 3 install modes:
+- default → 41 files, both runtimes
+- `--runtime claude` → 23 files, no `.codex/`, no `AGENTS.md`
+- `--runtime codex` → 22 files, no `.claude/`, no `.mcp.json`, no `CLAUDE.md`
+
+### ✅ Phase A (partial) — /plan: Algorithmic Pattern Scan
+
+Content-level improvement to `src/_pending/commands/plan.md` (not yet promoted). Adds conditional Phase 1.4 that catches classical algorithmic pattern wins when spec operations hit non-trivial scale. Trigger table covers hash set/map, two-pointer, sliding window, prefix sum / Fenwick, trie, BFS / Dijkstra / 0-1 BFS, heap, union-find, sweep line, DP / memoization, binary search on answer. Explicit skip rule for small fixed sets, pure CRUD/UI, no traversal — "pattern over premature optimization."
+
+Plan template gains an "Algorithmic Patterns" table (naive → pattern → complexity win → scale justification). Section omitted entirely when no material win.
+
 ### ✅ Phase A (partial) — setup-wizard.md STEPs 0–7
 
 **STEPs 0–4** (detection + questions): fully audited and rewritten across multiple sessions. 24+ issues resolved.
@@ -229,7 +250,7 @@ Per-runtime native config files — no forced symmetry between Claude JSON and C
 ### Immediate (next session)
 - **Implement variation-marker substitution in command emitters** — `claude.py` and `codex.py` need to process `{{cli.sigil}}`, `{{cli.attribution}}`, and `{{ask}}...{{/ask}}` blocks in commands before writing to target. Currently these markers pass through literally. This blocks promoting commands beyond setup-wizard.
 - **TYPE_CHECK_COMMAND derivation rule in wizard STEP 3** — the placeholder is referenced in 5.1 and 5.2, but the wizard hasn't formalized the detection/derivation rule (TS→`tsc --noEmit`, Py→`mypy` or `py_compile`, Go→`go vet ./...`, Rust→`cargo check`). Add as a detection output of STEP 3.
-- Test end-to-end: install into `testSpawn`, run wizard under Claude, verify full output including the new 5.2 substitutions.
+- Test end-to-end: install into `testSpawn` (both with and without `--runtime` flag), run wizard under Claude, verify full output including the 5.2 substitutions and single-runtime guards.
 
 ### After that
 - Finish STEP 7 (Summary).
@@ -276,6 +297,9 @@ Per-runtime native config files — no forced symmetry between Claude JSON and C
 23. **Runtime configs are projectOwned, not templateOwned** — install drops initial version with `{{PLACEHOLDERS}}`, wizard populates, user customizes thereafter; update.sh never overwrites. No baseline needed (no three-way merge).
 24. **Claude `permissions.allow[]` ships minimal**; wizard adds MCP tool-names conditionally (chrome-devtools on web + runtime-AC). Mirrors existing MCP server-addition logic. Codex has no allowlist; uses `approval_policy` instead.
 25. **Codex project-level config.toml doesn't set model/reasoning defaults rigidly** — `{{CODEX_MODEL_DEFAULT}}` maps from `CODEX_TIER_DO_MODEL` override or falls back to `"gpt-5.4"` (Codex's documented default). `{{CODEX_APPROVAL_POLICY}}` maps from Q6 WORKFLOW_ENFORCEMENT (strict→untrusted, moderate→on-request, light→never).
+26. **Runtime selection is a first-class install option**, not a post-install trim step. `install.sh --runtime <csv>` filters at generation time (corellm, agents, emitters) and at file-copy time (MCP/settings/config). No flag = all registered runtimes. Adding a runtime: one entry in `VALID_RUNTIMES` + dict entry in each generator + one line in `installed_clis()` / `print_launch_hints()`.
+27. **Closing launch instructions are per-runtime**, never generic. Claude Code uses `/setup-wizard`; Codex CLI uses natural-language skill invocation ("ask it to run the setup-wizard skill"). Codex has no slash-command syntax for skills — printing `/setup-wizard` under a Codex-only install would be wrong.
+28. **Wizard STEP 5 uses presence guards, not flow branches**, to survive single-runtime installs. Each substep checks file existence before reading; missing files are silently skipped. No `if runtime == claude` conditionals in wizard prose — keeps wizard single-codepath, new runtimes don't require wizard surgery.
 
 ---
 
