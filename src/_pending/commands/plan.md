@@ -51,6 +51,7 @@ Read the spec and check for these signals. **Only flag signals for things NOT al
 | Greenfield pattern not yet present in the codebase | first use of caching, first background job | Pattern already exists in codebase |
 | Performance constraints that need benchmarking | "handle 10k concurrent users", "< 200ms response" | Always a signal — requires research |
 | Technology **not part of the project's current stack** | new protocol or tool the codebase hasn't used | Technology is already in the stack |
+| Algorithmic pattern opportunity — operation over a collection/graph/string at non-trivial scale where a known pattern beats the naive approach | "dedupe 100k records", "find overlapping bookings", "autocomplete from tag list", "shortest route in graph", "top-K trending items" | Operation is over a small fixed set (e.g., ~20 config keys), or no collection/traversal is involved |
 
 **No signals found** → proceed to Phase 1 with codebase research only.
 
@@ -150,6 +151,32 @@ For existing codebases, reference existing GraphQL queries/mutations or REST end
 
 Document HOW the feature maps to the project's architecture. This is the core of the plan.
 
+### 1.4: Algorithmic Pattern Scan (conditional)
+
+**When to run**: The Signal Scan flagged an algorithmic pattern opportunity, OR the spec involves operations over collections/graphs/strings at scale >~100 items, OR the spec has explicit perf constraints.
+
+**When to skip**: Operations over small fixed sets (config dicts, short lists), pure glue/CRUD/UI, no traversal or bulk data work. If in doubt, skip — this section exists to catch real wins, not to decorate every plan.
+
+**What to do**: For each data operation the spec implies, compare the obvious approach to known algorithmic patterns. Record a finding only when the pattern materially wins at expected scale.
+
+Common pattern triggers (not exhaustive — pattern-match, don't force-fit):
+
+| If the spec implies… | Consider |
+|---|---|
+| Lookup, membership test, or dedup over a collection | Hash set/map — O(n) vs O(n²) nested scan |
+| Pair/triplet search, or search in sorted data | Two-pointer / binary search — O(n) or O(log n) vs O(n²) |
+| Contiguous subarray/substring under a constraint | Sliding window — O(n) vs O(n²) |
+| Repeated range sums/counts over a static array | Prefix sum / Fenwick tree — O(1) per query |
+| Prefix match, autocomplete, dictionary lookup | Trie — O(m) per query vs O(n·m) |
+| Shortest path, reachability, level-order traversal | BFS / Dijkstra / 0-1 BFS |
+| Top-K or streaming order statistics | Heap — O(n log k) vs full sort |
+| Dynamic grouping / connected components | Union-find — near-O(1) amortized |
+| Overlapping intervals, schedules, or event timelines | Sweep line + sort — O(n log n) vs O(n²) |
+| Subproblem reuse / overlapping state | DP / memoization — exponential → polynomial |
+| Minimize or feasibility over a monotonic answer space | Binary search on answer |
+
+Record findings in the plan's **Algorithmic Patterns** section (see Phase 2 template). Omit the section entirely if no pattern applies.
+
 ## PHASE 2: Write the Plan
 
 Save to `specs/[feature-name]/plan.md`:
@@ -201,6 +228,16 @@ Save to `specs/[feature-name]/plan.md`:
 |------|--------|-------------|
 | [path] | Create/Modify | [brief description] |
 | [path] | Create/Modify | [brief description] |
+
+### Algorithmic Patterns
+
+[Include only if Phase 1.4 identified at least one pattern that materially wins at expected scale. Otherwise omit this subsection entirely.]
+
+| Operation in spec | Naive approach | Pattern to apply | Complexity win | Scale justification |
+|---|---|---|---|---|
+| [what the spec asks for] | [obvious loop / nested scan] | [pattern + one-line how] | [e.g., O(n²) → O(n log n)] | [why scale makes this matter] |
+
+**Implementation notes**: [anything breakdown/execute-task must know — e.g., "trie must support case-insensitive prefix match", "union-find uses path compression + union by rank"]
 
 ### Documentation Impact
 
@@ -268,3 +305,4 @@ Please review and approve. Once approved, run `/breakdown` to generate tasks."
 6. **Memory check** — consult MEMORY.md for lessons about similar technical decisions
 7. **Keep it scannable** — tables over paragraphs, decisions over discussions
 8. **Docs context comes from the spec** — the spec already incorporates `docs/` knowledge. Do not re-read docs; use the spec's "Current State" and "Affected Areas" sections. If the spec notes stale or missing docs, carry that forward as a plan risk
+9. **Pattern over premature optimization** — the Algorithmic Pattern Scan fires on shape + scale, not on every loop. A hash map for 20 config keys is noise; a hash map for 100k-row dedup is the plan. When the naive approach is fine at real scale, omit the section and move on
