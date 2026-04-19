@@ -179,15 +179,15 @@ fi
 # In wrapper mode the outer workspace is the "target". The inner folder is a
 # separate git repo whose files we must never track. Add it to the wrapper's
 # .gitignore if not already present.
-# ── Build a human-readable list of installed CLIs for the closing message ──
-# Map: runtime key → display name. Add future runtimes here (cursor, gemini).
-installed_clis() {
-  local parts=""
-  has_runtime claude && parts="${parts:+$parts or }Claude Code"
-  has_runtime codex  && parts="${parts:+$parts or }Codex CLI"
-  echo "$parts"
+# ── Closing message: per-runtime launch instructions ─────────────────────
+# Each runtime has its own invocation syntax:
+#   Claude Code: slash command /setup-wizard
+#   Codex CLI  : skills are invoked by asking in natural language
+# Adding a future runtime: add a case to print_launch_hints().
+print_launch_hints() {
+  has_runtime claude && echo "  Claude Code: run /setup-wizard"
+  has_runtime codex  && echo "  Codex CLI:   ask it to run the setup-wizard skill"
 }
-CLI_LIST="$(installed_clis)"
 
 if [ "$WRAPPER_MODE" = true ]; then
   GITIGNORE="$TARGET_DIR/.gitignore"
@@ -203,9 +203,11 @@ if [ "$WRAPPER_MODE" = true ]; then
   echo ""
   echo "Done. AIDevTeamForge installed (wrapper mode)."
   echo "Source root: $INNER_FOLDER/"
-  echo "Open the project in $CLI_LIST and run /setup-wizard"
+  echo "Next — open the project and start the wizard:"
+  print_launch_hints
 else
   echo ""
   echo "Done. AIDevTeamForge installed."
-  echo "Open the project in $CLI_LIST and run /setup-wizard"
+  echo "Next — open the project and start the wizard:"
+  print_launch_hints
 fi
