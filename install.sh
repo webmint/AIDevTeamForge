@@ -179,6 +179,16 @@ fi
 # In wrapper mode the outer workspace is the "target". The inner folder is a
 # separate git repo whose files we must never track. Add it to the wrapper's
 # .gitignore if not already present.
+# ── Build a human-readable list of installed CLIs for the closing message ──
+# Map: runtime key → display name. Add future runtimes here (cursor, gemini).
+installed_clis() {
+  local parts=""
+  has_runtime claude && parts="${parts:+$parts or }Claude Code"
+  has_runtime codex  && parts="${parts:+$parts or }Codex CLI"
+  echo "$parts"
+}
+CLI_LIST="$(installed_clis)"
+
 if [ "$WRAPPER_MODE" = true ]; then
   GITIGNORE="$TARGET_DIR/.gitignore"
   ENTRY="$INNER_FOLDER/"
@@ -193,9 +203,9 @@ if [ "$WRAPPER_MODE" = true ]; then
   echo ""
   echo "Done. AIDevTeamForge installed (wrapper mode)."
   echo "Source root: $INNER_FOLDER/"
-  echo "Open the project in Claude Code or Codex CLI and run /setup-wizard"
+  echo "Open the project in $CLI_LIST and run /setup-wizard"
 else
   echo ""
   echo "Done. AIDevTeamForge installed."
-  echo "Open the project in Claude Code or Codex CLI and run /setup-wizard"
+  echo "Open the project in $CLI_LIST and run /setup-wizard"
 fi
