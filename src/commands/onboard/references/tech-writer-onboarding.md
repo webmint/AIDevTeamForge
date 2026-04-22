@@ -25,7 +25,7 @@ You are scanning a potentially large codebase. Context is a finite resource. Fol
 
 ### Subagent Usage (for 50+ file projects)
 
-When the scan strategy requires subagents, launch them via the runtime's subagent-dispatch mechanism (Claude Code: the `Agent` tool; Codex CLI: subagent invocation). Each subagent scans ONE module.
+When the scan strategy requires subagents, launch them via {{cli.subagent}}. Each subagent scans ONE module.
 
 **Subagent prompt template:**
 ```

@@ -55,7 +55,7 @@ Based on total source file count:
 
 ## PHASE 2: Execute Onboarding Scan
 
-Launch the tech-writer agent via the runtime's subagent-dispatch mechanism (Claude Code: the `Agent` tool; Codex CLI: subagent invocation — whichever is available in the current runtime) with the prompt built below. The tech-writer does ALL the heavy lifting.
+Launch the tech-writer agent via {{cli.subagent}} with the prompt built below. The tech-writer does ALL the heavy lifting.
 
 **CRITICAL**: The tech-writer agent prompt must include:
 1. The project brief from Phase 1.1
@@ -84,7 +84,7 @@ You are operating in **ONBOARDING MODE**. This is NOT your normal task-documenta
 
 ## Your Mission
 
-Generate complete project documentation in `docs/` that will serve as the **knowledge base for all agents** (runtime-neutral — consumed by Claude Code agents and Codex CLI subagents alike). Every agent reads from `docs/` before making changes. The quality of your documentation directly determines how well agents understand and work with this codebase.
+Generate complete project documentation in `docs/` that will serve as the **knowledge base for all agents**. Every agent reads from `docs/` before making changes. The quality of your documentation directly determines how well agents understand and work with this codebase.
 
 ## Documentation Requirements
 
@@ -168,4 +168,4 @@ All agents will now use these docs as their knowledge base when executing tasks.
 5. **Real code only** — every code example in docs must be copied from the actual codebase, never invented
 6. **No constitution duplication** — docs describe HOW the code works. The constitution describes the RULES. Don't repeat constitution rules in docs
 7. **Preserve existing docs** — if `docs/` already has real content (not stubs), update rather than overwrite. Ask the user before replacing non-stub content
-8. **This is for agents** — the primary audience is the agents running subsequent commands (Claude Code agents or Codex CLI subagents, depending on runtime), not humans. Write docs that help an AI understand the codebase quickly: be explicit, structured, and precise. Avoid vague descriptions
+8. **This is for agents** — the primary audience is the agents running subsequent commands, not humans. Write docs that help an AI understand the codebase quickly: be explicit, structured, and precise. Avoid vague descriptions

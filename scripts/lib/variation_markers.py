@@ -32,6 +32,12 @@ _MARKERS: Dict[str, Dict[str, str]] = {
         # identical substituted values from the same SOURCE.md at install
         # time (see scripts/generate-corellm.py).
         "cli.primer": "CLAUDE.md",
+        # Subagent-dispatch mechanism used when a command needs to spawn
+        # helper agents (e.g., onboard's tech-writer launch). Claude Code
+        # has a first-class `Agent` tool; Codex CLI dispatches subagents
+        # via its own invocation path — prose is already in present tense
+        # so the phrase slots naturally into "launch via <mechanism>".
+        "cli.subagent": "the `Agent` tool",
     },
     "codex": {
         # Codex skills are invoked with a "$" prefix in user text — per
@@ -40,6 +46,7 @@ _MARKERS: Dict[str, Dict[str, str]] = {
         "cli.sigil": "$",
         "cli.attribution": "Co-Authored-By: Codex <noreply@openai.com>",
         "cli.primer": "AGENTS.md",
+        "cli.subagent": "subagent invocation",
     },
 }
 
