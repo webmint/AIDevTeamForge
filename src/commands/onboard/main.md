@@ -6,7 +6,7 @@ This is a **one-time command** run after `{{cli.sigil}}setup-wizard` for brownfi
 
 ## Prerequisites
 
-1. `{{cli.sigil}}setup-wizard` must have been run — the runtime primer (`CLAUDE.md` under Claude Code, `AGENTS.md` under Codex CLI), agents directory, runtime config, and `.devforge/` scaffold must exist
+1. `{{cli.sigil}}setup-wizard` must have been run — the runtime primer (`{{cli.primer}}`), agents directory, runtime config, and `.devforge/` scaffold must exist
 2. `docs/` folder must exist (placed by install, populated by setup wizard)
 3. This is an **existing project** — check `.devforge/project-config.json` for `"PROJECT_STATE": "brownfield"`. For `"greenfield"` or `"empty"` projects, skip onboard — docs are built incrementally via `{{cli.sigil}}execute-task` as features ship.
 
@@ -18,7 +18,7 @@ If any prerequisite is missing, inform the user and suggest running the missing 
 
 Read the following files and extract the key information the tech-writer will need:
 
-1. **Runtime primer** (`CLAUDE.md` under Claude Code, `AGENTS.md` under Codex CLI — whichever the current runtime uses) — project name, type, framework, language, project structure, dev commands. Both files carry identical substituted values when both runtimes are installed; read whichever is present.
+1. **Runtime primer** (`{{cli.primer}}`) — project name, type, framework, language, project structure, dev commands.
 2. **`constitution.md`** — architecture rules, layer boundaries, naming conventions, domain entities, key patterns
 3. **`.devforge/memory.md`** — any pre-seeded knowledge from setup wizard (cross-runtime shared file — both Claude and Codex read the same memory)
 
@@ -32,7 +32,7 @@ Compile a **project brief** — a concise summary (~50 lines max) containing:
 
 ### 1.2: Map Project Structure
 
-**Source Root awareness**: If the runtime primer specifies a Source Root other than `.` (check either `CLAUDE.md` or `AGENTS.md` — identical values when both exist, or `.devforge/project-config.json` `SOURCE_ROOT` field as the canonical source), use that path as the starting point for the source tree scan. All module paths will be relative to the workspace root (e.g., `SOURCE_ROOT/src/auth/`, not `src/auth/`). Cross-runtime artifacts (`specs/`, `docs/`, `.devforge/`, `constitution.md`) remain at the workspace root.
+**Source Root awareness**: If the runtime primer specifies a Source Root other than `.` (check `{{cli.primer}}`, or `.devforge/project-config.json` `SOURCE_ROOT` field as the canonical source), use that path as the starting point for the source tree scan. All module paths will be relative to the workspace root (e.g., `SOURCE_ROOT/src/auth/`, not `src/auth/`). Cross-runtime artifacts (`specs/`, `docs/`, `.devforge/`, `constitution.md`) remain at the workspace root.
 
 Get the full directory tree of source files. **Exclude**: `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `vendor`, `coverage`, `.claude`, `.codex`, `.devforge`, `specs`, `docs`, lock files, binary/asset files.
 

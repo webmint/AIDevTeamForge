@@ -27,6 +27,11 @@ _MARKERS: Dict[str, Dict[str, str]] = {
     "claude": {
         "cli.sigil": "/",
         "cli.attribution": "Co-Authored-By: Claude <noreply@anthropic.com>",
+        # Runtime primer file at project root. Claude Code reads CLAUDE.md
+        # for project context; Codex CLI reads AGENTS.md. Both get
+        # identical substituted values from the same SOURCE.md at install
+        # time (see scripts/generate-corellm.py).
+        "cli.primer": "CLAUDE.md",
     },
     "codex": {
         # Codex skills are invoked with a "$" prefix in user text — per
@@ -34,6 +39,7 @@ _MARKERS: Dict[str, Dict[str, str]] = {
         # See openai/codex codex-rs/app-server/README.md for the full spec.
         "cli.sigil": "$",
         "cli.attribution": "Co-Authored-By: Codex <noreply@openai.com>",
+        "cli.primer": "AGENTS.md",
     },
 }
 

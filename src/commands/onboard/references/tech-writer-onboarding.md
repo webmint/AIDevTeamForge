@@ -2,7 +2,7 @@
 
 These instructions are included in the tech-writer agent prompt when running `{{cli.sigil}}onboard`. They define how to scan an existing codebase and generate comprehensive project documentation.
 
-**Source Root**: All source code scanning targets the Source Root specified in the runtime primer (`CLAUDE.md` under Claude Code, `AGENTS.md` under Codex CLI — identical values when both exist), or canonically in `.devforge/project-config.json` `SOURCE_ROOT` field. For wrapper mode projects, this is a subfolder (e.g., `client-project/`). Cross-runtime artifacts (`specs/`, `docs/`, `constitution.md`, `.devforge/`) are at the workspace root, not inside the Source Root.
+**Source Root**: All source code scanning targets the Source Root specified in the runtime primer (`{{cli.primer}}`), or canonically in `.devforge/project-config.json` `SOURCE_ROOT` field. For wrapper mode projects, this is a subfolder (e.g., `client-project/`). Cross-runtime artifacts (`specs/`, `docs/`, `constitution.md`, `.devforge/`) are at the workspace root, not inside the Source Root.
 
 ## A.1: Scanning Rules — Protecting Context
 
@@ -132,7 +132,7 @@ src/
 - **Configuration**: [where config is loaded]
 
 ## Key Commands
-[From the runtime primer (`CLAUDE.md` / `AGENTS.md`) — dev, build, test, lint commands]
+[From the runtime primer (`{{cli.primer}}`) — dev, build, test, lint commands]
 
 ## Module Map
 [One-line description of each module and its responsibility]
