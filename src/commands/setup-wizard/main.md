@@ -12,9 +12,7 @@ You are running the initial setup wizard for AIDevTeamForge. Your job is:
 
 This wizard and its reference files use a small set of variation markers that the install-time emitter processes per-runtime. When the emitter has run, you (the LLM executing the wizard) should see these already substituted. If you encounter any of them unsubstituted, treat them as follows rather than emitting the literal `{{...}}` text to the user:
 
-- `{{cli.attribution}}` — AI attribution git-commit trailer string. Runtime-specific; substituted by the emitter. If unsubstituted, describe as "the runtime's AI attribution trailer" when the user needs context.
-- `{{ask "question text"}}` … `{{/ask}}` — interactive user-question block. On Claude: the emitter rewrites to an `AskUserQuestion` tool call. On Codex: rewritten to a prose question the LLM poses directly to the user. If unsubstituted, interpret the `{{ask}}...{{/ask}}` block as "pose this question to the user and wait for the answer" — use the runtime's natural question mechanism (tool call on Claude, prose on Codex).
-- `{{output.*}}` — generator-only markers used in `src/files/coreLLM/SOURCE.md` to produce CLAUDE.md / AGENTS.md. Not present in wizard source files — ignore if encountered.
+- `{{ask "question text"}}` … `{{/ask}}` — interactive user-question block. Pose the question to the user and wait for the answer, using your runtime's natural question mechanism.
 
 Any `{{UPPERCASE}}` marker (e.g., `{{PROJECT_NAME}}`, `{{LANGUAGE}}`) is a wizard-substitution placeholder — the wizard itself fills these with user answers or detection values during Phase 3. Do NOT emit them literally to user-visible output; substitute before presenting.
 
