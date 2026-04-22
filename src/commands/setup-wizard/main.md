@@ -42,7 +42,7 @@ Retain every captured answer in conversational memory under the keys documented 
 
 ### Phase 3 — Population (file substitution)
 
-**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / AGENTS.md / runtime configs / baselines / MCP permissions / project config / memory seed / constitution header (§5.7), using the answers from Phase 2 and the detection data from Phase 1.
+**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / AGENTS.md / runtime configs / baselines / MCP permissions / project config / memory seed / constitution header (§5.7) / docs stubs (§5.8), using the answers from Phase 2 and the detection data from Phase 1.
 
 ### Phase 4 — Agent Curation
 
@@ -89,6 +89,8 @@ Populated files: {comma-joined list of files the wizard actually touched this ru
 - `CLAUDE.md` — include if it exists at SOURCE_ROOT (§5.1 populated it)
 - `AGENTS.md` — include if it exists at SOURCE_ROOT (§5.1 populated it)
 - `constitution.md` — include if it exists at the project root AND §5.7 actually substituted placeholders (wizard skips §5.7 silently if the file is missing; brownfield projects with a pre-existing constitution leave it as-is, in which case the wizard did NOT modify it and this line should be omitted)
+- `docs/overview.md` — include if it exists AND §5.8 actually substituted placeholders (install is per-file presence-guarded; pre-existing overview stays untouched and is omitted from this list)
+- `docs/architecture.md` — same rule as `docs/overview.md`
 - `.devforge/project-config.json` — always include (§5.5 always runs)
 - `.devforge/memory.md` — always include (§5.6 always runs)
 - `.devforge/baseline/CLAUDE.md` / `.devforge/baseline/AGENTS.md` / `.devforge/baseline/constitution.md` — include each only if the corresponding source file existed and §5.3 copied it

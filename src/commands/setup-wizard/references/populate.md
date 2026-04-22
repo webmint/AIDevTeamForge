@@ -7,12 +7,16 @@ This reference covers the file-substitution phase of the setup-wizard flow, load
 - `CLAUDE.md` — placeholder substitution (if present)
 - `AGENTS.md` — placeholder substitution (if present)
 - `constitution.md` — header-placeholder substitution only (§5.7). Body sections stay untouched — `/constitute` (separate command) fills them later.
+- `docs/overview.md` — placeholder substitution only (§5.8). Body sections stay untouched — `/constitute`, `/onboard`, and the tech-writer agent fill them later.
+- `docs/architecture.md` — placeholder substitution only (§5.8). Body sections stay untouched — same deferred-fill pattern.
 - `.claude/settings.json` — conditional permissions only, no placeholder substitution (if present)
 - `.codex/config.toml` — placeholder substitution + conditional MCP entry (if present)
 - `.mcp.json` — conditional MCP entry (if present, Claude only)
 - `.devforge/baseline/CLAUDE.md` — new baseline copy
 - `.devforge/baseline/AGENTS.md` — new baseline copy
 - `.devforge/baseline/constitution.md` — new baseline copy
+- `.devforge/baseline/docs/overview.md` — new baseline copy
+- `.devforge/baseline/docs/architecture.md` — new baseline copy
 - `.devforge/memory.md` — pre-populate with Phase 1 detection findings (single shared file; both runtimes read it)
 - `.devforge/project-config.json` — populate null values with collected answers
 
@@ -437,14 +441,16 @@ Substitute:
 
 ## 5.3: Save Baselines
 
-For each of `CLAUDE.md`, `AGENTS.md`, and `constitution.md` that exists, save a baseline copy to `.devforge/baseline/`:
+For each of `CLAUDE.md`, `AGENTS.md`, `constitution.md`, `docs/overview.md`, and `docs/architecture.md` that exists, save a baseline copy to `.devforge/baseline/`:
 1. If `CLAUDE.md` exists → copy to `.devforge/baseline/CLAUDE.md`
 2. If `AGENTS.md` exists → copy to `.devforge/baseline/AGENTS.md`
 3. If `constitution.md` exists → copy to `.devforge/baseline/constitution.md`
+4. If `docs/overview.md` exists → copy to `.devforge/baseline/docs/overview.md` (create `.devforge/baseline/docs/` first)
+5. If `docs/architecture.md` exists → copy to `.devforge/baseline/docs/architecture.md`
 
-Create `.devforge/baseline/` if it doesn't exist. These baselines are the wizard output before any manual user edits (and before `/constitute` fills constitution's body sections). `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
+Create `.devforge/baseline/` (and `.devforge/baseline/docs/` for step 4–5) if they don't exist. These baselines are the wizard output before any manual user edits (and before `/constitute`, `/onboard`, or tech-writer fills body sections). `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
 
-**Note:** `.claude/settings.json` and `.codex/config.toml` are **projectOwned** — update.sh never overwrites them — so they don't need baselines. `constitution.md` gets a baseline because the header section is template-driven (wizard-owned) even though the body is user/constitute-owned; the baseline captures just-after-wizard state so future template updates to the header can three-way merge cleanly.
+**Note:** `.claude/settings.json` and `.codex/config.toml` are **projectOwned** — update.sh never overwrites them — so they don't need baselines. The three template-driven-header / body-filled-later files (`constitution.md`, `docs/overview.md`, `docs/architecture.md`) get baselines because the header/stub section is template-owned even though the body is user/command/agent-owned; the baseline captures just-after-wizard state so future template updates to the stub can three-way merge cleanly.
 
 ## 5.4: Add MCP Servers + Permissions (conditional)
 
@@ -625,6 +631,34 @@ If `constitution.md` does not exist at the project root (presence check failed a
 - Do NOT rewrite any `[universal]` section (Sections 3.5, 3.6, 3.7, 4.1, 4.2, 4.3, 6.1–6.4). These are the pre-populated rules that apply to every project.
 
 **Validate after substitution:** read `constitution.md` back and confirm no `{{PLACEHOLDER}}` markers remain in the header. Body sentinels (`_Run /constitute to populate_`) are expected to remain — those are not placeholders.
+
+## 5.8: Populate docs/overview.md and docs/architecture.md
+
+Both files are placed at `docs/` by `install.sh` (per-file presence-guarded — brownfield projects with pre-existing `docs/overview.md` or `docs/architecture.md` keep their versions). This step fills placeholders in each file. Body sections marked `_Populated by ..._` stay untouched — they're sentinel strings that `/constitute`, `/onboard`, and the tech-writer agent use later.
+
+If either file does not exist at `docs/<name>.md` (presence check failed at install time, or user removed it), skip THAT file silently. Do not error. Handle each file independently — one may be present while the other isn't.
+
+**Placeholders in `docs/overview.md`:**
+
+- `{{PROJECT_NAME}}` — Q0 answer (same value as constitution §5.7 / CLAUDE.md §5.1).
+- `{{PROJECT_DESCRIPTION}}` — Q1 answer (the 1-3 sentence description).
+
+**Placeholders in `docs/architecture.md`:**
+
+- `{{PROJECT_NAME}}` — Q0 answer.
+- `{{PROJECT_TYPE}}` — Q2 answer.
+- `{{LANGUAGE}}` — render via the same rule as CLAUDE.md §5.1 (`LANGUAGES[0]` for single-stack; comma-joined full list for multi-stack).
+- `{{FRAMEWORK}}` — same rule (`FRAMEWORKS[0]` / comma-joined).
+- `{{WORKSPACE_MODE}}` — Phase 1 detection (`"standalone"` or `"wrapper"`).
+- `{{SOURCE_ROOT}}` — Phase 1 detection (`"."` or inner folder name).
+
+**What NOT to do in this step:**
+
+- Do NOT write body content for `## Architectural Decisions`, `## Layer Boundaries & Dependency Rules`, `## Data Flow`, `## Cross-cutting Concerns`, `## What this project is for`, `## How it's used`. These sentinel blocks are how `/constitute` / `/onboard` / tech-writer detect unpopulated regions.
+- Do NOT create `docs/features/`, `docs/api/`, `docs/guides/`, or any other subdirectory. Those emerge lazily when tech-writer creates the first file inside them during `/execute-task` / `/summarize` / `/finalize`.
+- Do NOT invent placeholders that aren't listed above. If a placeholder appears in the stub but isn't in this list, that's a template drift — flag it and leave the placeholder unsubstituted rather than guessing.
+
+**Validate after substitution:** read both files back and confirm no `{{PLACEHOLDER}}` markers remain. The `_Populated by ..._` sentinels are expected to remain — those are not placeholders.
 
 ---
 

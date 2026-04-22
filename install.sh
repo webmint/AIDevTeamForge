@@ -144,6 +144,21 @@ else
   echo "  existing constitution.md detected — leaving as-is"
 fi
 
+# ── Place docs/ stubs (per-file presence-guarded) ─────────────────────────
+# Only two files are scaffolded: docs/overview.md and docs/architecture.md.
+# Everything under docs/ (features/, api/, guides/) springs into existence
+# when tech-writer creates its first file there — no empty dirs with
+# .gitkeep. Per-file guard: if the user has overview.md but not
+# architecture.md, only the missing one is copied.
+mkdir -p "$TARGET_DIR/docs"
+for f in overview.md architecture.md; do
+  if [ ! -f "$TARGET_DIR/docs/$f" ]; then
+    cp "$TEMPLATE_DIR/src/files/docs/$f" "$TARGET_DIR/docs/$f"
+  else
+    echo "  existing docs/$f detected — leaving as-is"
+  fi
+done
+
 # ── Build runtime-specific files via the generator ─────────────────────────
 # install.sh is intentionally dumb: it scaffolds shared dirs and delegates
 # all runtime-specific work (Claude, Codex, later Cursor/Gemini) to the
