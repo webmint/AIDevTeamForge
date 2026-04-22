@@ -645,12 +645,9 @@ If either file does not exist at `docs/<name>.md` (presence check failed at inst
 
 **Placeholders in `docs/architecture.md`:**
 
-- `{{PROJECT_NAME}}` — Q0 answer.
-- `{{PROJECT_TYPE}}` — Q2 answer.
-- `{{LANGUAGE}}` — render via the same rule as CLAUDE.md §5.1 (`LANGUAGES[0]` for single-stack; comma-joined full list for multi-stack).
-- `{{FRAMEWORK}}` — same rule (`FRAMEWORKS[0]` / comma-joined).
-- `{{WORKSPACE_MODE}}` — Phase 1 detection (`"standalone"` or `"wrapper"`).
-- `{{SOURCE_ROOT}}` — Phase 1 detection (`"."` or inner folder name).
+- `{{PROJECT_NAME}}` — Q0 answer. Appears twice (title heading + orientation blockquote); use the same value in both.
+
+The stub deliberately does NOT carry stack facts (`LANGUAGE`, `FRAMEWORK`, `WORKSPACE_MODE`, `SOURCE_ROOT`, `PROJECT_TYPE`) — those live in `CLAUDE.md` / `AGENTS.md` which the agent has in its session primer. architecture.md is the decisions / rules / flow document, not a duplicate of runtime stack context. If you find yourself needing a stack-fact placeholder here, add it to CLAUDE.md instead and cross-link.
 
 **What NOT to do in this step:**
 

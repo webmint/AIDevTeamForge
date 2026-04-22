@@ -1,12 +1,6 @@
 # Architecture — {{PROJECT_NAME}}
 
-- **Type**: {{PROJECT_TYPE}}
-- **Language(s)**: {{LANGUAGE}}
-- **Framework(s)**: {{FRAMEWORK}}
-- **Workspace Mode**: {{WORKSPACE_MODE}}
-- **Source Root**: {{SOURCE_ROOT}}
-
-> For multi-package projects, per-package details (path, language, framework, architecture pattern, error-handling convention, API layer, testing framework, build/lint/typecheck commands) live in the `## Packages` section of `CLAUDE.md` / `AGENTS.md`. This file captures project-wide architectural decisions, not per-package stack tables.
+> **Project**: {{PROJECT_NAME}} — see `CLAUDE.md` / `AGENTS.md` for stack facts (language, framework, build/lint/typecheck commands) and, for multi-package projects, the `## Packages` table with per-package detail. This file captures architectural **decisions, rules, and flow** — the "why" behind the setup, not the "what".
 
 ---
 
