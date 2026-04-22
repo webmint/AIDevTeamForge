@@ -29,7 +29,10 @@ _MARKERS: Dict[str, Dict[str, str]] = {
         "cli.attribution": "Co-Authored-By: Claude <noreply@anthropic.com>",
     },
     "codex": {
-        "cli.sigil": "",
+        # Codex skills are invoked with a "$" prefix in user text — per
+        # Codex CLI turn/start docs: "$<skill-name> <optional additional text>".
+        # See openai/codex codex-rs/app-server/README.md for the full spec.
+        "cli.sigil": "$",
         "cli.attribution": "Co-Authored-By: Codex <noreply@openai.com>",
     },
 }
