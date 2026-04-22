@@ -196,7 +196,8 @@ Summarize in 1–3 lines what was appended to `.devforge/memory.md`. Group natur
 
 ### Next Steps
 1. Review `docs/` and adjust as needed
-2. Start working: `{{cli.sigil}}specify "your first feature"`
+2. Run `{{cli.sigil}}constitute` — turn scan findings and your architectural preferences into enforceable rules populated into the `[project-specific]` sections of `constitution.md`
+3. Start working: `{{cli.sigil}}specify "your first feature"`
 ```
 
 ## IMPORTANT RULES
