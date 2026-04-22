@@ -19,7 +19,7 @@ If any prerequisite is missing, inform the user and suggest running the missing 
 Read the following files and extract the key information the tech-writer will need:
 
 1. **Runtime primer** (`{{cli.primer}}`) — project name, type, framework, language, project structure, dev commands.
-2. **`constitution.md`** — architecture rules, layer boundaries, naming conventions, domain entities, key patterns
+2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules (Sections 3.5–3.7, 4.1–4.3, 6.1–6.4 — installed verbatim). The `[project-specific]` sections (§2 Architecture, §3.1 Type Safety, §3.3 Naming, §4.1.1/4.2.1/4.3.1 patterns, §5 Domain Rules, §6.5/6.6 workflow) are still sentinel-marked at this stage — onboard populates them as part of its scan output.
 3. **`.devforge/memory.md`** — any pre-seeded knowledge from setup wizard (cross-runtime shared file — both Claude and Codex read the same memory)
 
 Compile a **project brief** — a concise summary (~50 lines max) containing:
