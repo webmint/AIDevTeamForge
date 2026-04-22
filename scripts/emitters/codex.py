@@ -73,17 +73,29 @@ def _derive_description(md_text: str, fallback_name: str) -> str:
 
     Order of preference:
       1. 'description' field in source frontmatter (if any)
-      2. First H1 heading in the body, with leading '# ' stripped
+      2. First H1 heading in the body:
+         - If the heading follows the `# <sigil><name> — <description>`
+           convention (em-dash separator), return only the text after the
+           em-dash. This keeps the invocation prefix and skill name out of
+           the Codex metadata string — "$onboard" is invocation syntax, not
+           a skill description.
+         - Otherwise return the full H1 text with leading '# ' stripped.
       3. Generic fallback: "AIDevTeamForge command: <name>"
     """
     fm, body, _ = parse_frontmatter(md_text)
     if fm.get("description"):
         return fm["description"]
-    # Scan body for first '# ' heading
+    # Scan body for first '# ' heading. Split on the first " — " (em-dash
+    # surrounded by spaces, U+2014) if present — that's our convention across
+    # command templates. Any later em-dashes in the description stay intact
+    # (split with maxsplit=1).
     for line in body.splitlines():
         stripped = line.strip()
         if stripped.startswith("# "):
-            return stripped[2:].strip()
+            heading = stripped[2:].strip()
+            if " — " in heading:
+                return heading.split(" — ", 1)[1].strip()
+            return heading
     return f"AIDevTeamForge command: {fallback_name}"
 
 
