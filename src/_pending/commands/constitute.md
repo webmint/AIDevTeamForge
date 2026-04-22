@@ -1,4 +1,4 @@
-# /constitute — Generate Project Constitution
+a# /constitute — Generate Project Constitution
 
 You are generating the project's constitution — a persistent document that captures non-negotiable rules, architecture decisions, quality standards, and domain knowledge. This document is referenced by ALL other commands and agents.
 

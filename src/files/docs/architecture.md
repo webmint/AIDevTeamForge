@@ -1,21 +1,23 @@
 # Architecture — {{PROJECT_NAME}}
 
-> **Project**: {{PROJECT_NAME}} — see `CLAUDE.md` / `AGENTS.md` for stack facts (language, framework, build/lint/typecheck commands) and, for multi-package projects, the `## Packages` table with per-package detail. This file captures architectural **decisions, rules, and flow** — the "why" behind the setup, not the "what".
+> Commands named in backticks (e.g. `constitute`, `onboard`) are invoked per your runtime — `/` prefix under Claude Code, natural-language skill invocation under Codex CLI. The same behavior applies either way.
+>
+> **Project**: {{PROJECT_NAME}} — see the project primer (`CLAUDE.md` under Claude Code or `AGENTS.md` under Codex CLI) for stack facts (language, framework, build/lint/typecheck commands) and, for multi-package projects, the `## Packages` table with per-package detail. This file captures architectural **decisions, rules, and flow** — the "why" behind the setup, not the "what".
 
 ---
 
 ## Architectural Decisions
 
-_Populated by `/constitute` — records WHY decisions were made, not just what. Format: **Decision** — rationale + tradeoffs considered._
+_Populated by `constitute` — records WHY decisions were made, not just what. Format: **Decision** — rationale + tradeoffs considered._
 
 ## Layer Boundaries & Dependency Rules
 
-_Populated by `/constitute` (for new/greenfield projects — chosen patterns) or `/onboard` (for brownfield projects — extracted from existing code). Documents which layers exist, what imports from what, and which directions are forbidden._
+_Populated by `constitute` (for new/greenfield projects — chosen patterns) or `onboard` (for brownfield projects — extracted from existing code). Documents which layers exist, what imports from what, and which directions are forbidden._
 
 ## Data Flow
 
-_Populated by `/onboard` (for brownfield — scan findings) or by tech-writer as features are built. Captures how data moves through the system end-to-end._
+_Populated by `onboard` (for brownfield — scan findings) or by tech-writer as features are built. Captures how data moves through the system end-to-end._
 
 ## Cross-cutting Concerns
 
-_Populated as relevant: authentication/authorization approach, error propagation strategy, logging/observability, transaction boundaries, caching strategy, feature flagging. Filled in by `/constitute` or discovered by `/onboard`._
+_Populated as relevant: authentication/authorization approach, error propagation strategy, logging/observability, transaction boundaries, caching strategy, feature flagging. Filled in by `constitute` or discovered by `onboard`._
