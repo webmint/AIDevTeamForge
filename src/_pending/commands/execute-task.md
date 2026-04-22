@@ -217,8 +217,8 @@ You are executing Task [N] from an approved task breakdown.
 1. Make ONLY the changes described above — nothing more
 2. Follow the project's constitution (key rules: [relevant rules])
 3. Known pitfalls for this area: [from MEMORY.md]
-4. Every file you change must pass the project's type checker (see Type Check Command in CLAUDE.md)
-5. Every file you change must pass the project's linter (see Lint Command in CLAUDE.md)
+4. Every file you change must pass its package's type checker. The package for a file is determined by longest-path-prefix match against `PACKAGE_STACKS` (stored in `.devforge/project-config.json`; rendered as `## Packages` in CLAUDE.md / AGENTS.md). Use the matching package's `type_check_command`; for files that don't match any package, use the primary-stack fallback `TYPE_CHECK_COMMANDS[0]`. Skip `"N/A"` silently (not a failure).
+5. Every file you change must pass its package's linter (same lookup rule as rule 4, using `lint_command` / `LINT_COMMANDS[0]`). Skip `"N/A"` silently.
 6. Add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface you create. This is part of writing the code, not a separate step
 
 ## Documentation Context
@@ -247,12 +247,22 @@ Update `.claude/wip.md` — change Phase to `3.2 (Verification)`.
 
 ### 3.2: Post-Agent Verification (with Self-Repair)
 
-After the agent completes, run verification:
+After the agent completes, run verification. Verification is **scope-aware**: checks are scoped to the package(s) containing the touched files, not project-wide. Per `/breakdown`'s atomicity rules, most tasks touch 1–3 files within one package — the common case runs one package's commands. Tasks that legitimately span multiple packages run each touched package's commands, aggregated.
+
+**Scope mapping (preamble, used by bullets 2–4 below):**
+
+1. Read `PACKAGE_STACKS` from `.devforge/project-config.json` (populated by the wizard; see `## Packages` in CLAUDE.md / AGENTS.md for the rendered view).
+2. Collect the task's touched files from `git diff --name-only` (plus `git status` for new files).
+3. For each touched file, find its **package** via longest-path-prefix match against `PACKAGE_STACKS[i].path` (e.g., `services/api/internal/users.py` matches the `services/api` package; `apps/web/src/App.tsx` matches `apps/web`).
+4. Group touched files by package. Build a list of **touched packages** = unique packages across all touched files.
+5. For files that don't match any package (top-level scripts, misc configs): fall back to the primary-stack commands read from the `TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` / `BUILD_COMMANDS[0]` arrays in the same config.
+
+Now run the checks:
 
 1. **Files changed match task scope**: Check `git diff --name-only` (or `git status` for new files) against the task's file list. If extra files were changed, investigate why.
-2. **Type checker passes**: Run the Type Check Command from CLAUDE.md (e.g. `tsc --noEmit` for TypeScript, `mypy` for Python, `go vet` for Go). The PostToolUse hook should catch this, but verify explicitly.
-3. **Linter passes**: Run the Lint Command from CLAUDE.md on all changed files
-4. **Project builds** (if Build Command is specified in CLAUDE.md): Run the build command. For wrapper mode projects, run inside the Source Root directory. Skip this check if no Build Command is configured.
+2. **Type checker passes (per-package, scope-aware)**: For each touched package, run its `type_check_command` from the `PACKAGE_STACKS` record. Skip packages with `"N/A"` (no type checker for that language — e.g., plain JavaScript). For non-package touched files, run the primary-stack fallback (`TYPE_CHECK_COMMANDS[0]`). Aggregate errors across packages. Wrapper-mode `cd SOURCE_ROOT && ` prefix is already baked into the stored commands — do not re-prefix.
+3. **Linter passes (per-package, scope-aware)**: For each touched package, run its `lint_command` from the `PACKAGE_STACKS` record on files within that package. Skip `"N/A"` silently. For non-package files, run primary-stack fallback. Aggregate errors.
+4. **Project builds (per-touched-package, aggregated)**: Run each touched package's `build_command` (from `PACKAGE_STACKS`). De-duplicate if multiple packages share the same command (e.g., monorepo-orchestrator command like `pnpm -r build` covering all TS packages). Skip `"N/A"` silently. For non-package files without a matching package, run primary-stack fallback (`BUILD_COMMANDS[0]`). Wrapper-mode prefix already baked in.
 5. **Done conditions met**: Check each "Done when" item from the task
 6. **Contract postconditions**: Read the task's `## Contracts → ### Produces` section. For each postcondition, verify it holds in the codebase. For simple existence checks (export exists, function exists), Grep is sufficient. For structural checks (interface has specific fields, function has specific signature), Read the file and verify the full structure. Track pass/fail for each postcondition.
 7. **Run affected tests**: Search for test files (`*.test.*`, `*.spec.*`) in the same directories as changed files. If test files exist and a test runner is available (check CLAUDE.md for Test Command, or detect via package.json scripts), run them. If no test files or test runner exist, skip this check. Test failures are treated the same as other verification failures.
@@ -265,13 +275,14 @@ After the agent completes, run verification:
 **If any check fails** → enter the self-repair loop (max 3 attempts):
 
 For each repair attempt:
-1. Collect all error output (tsc errors, lint errors, build errors, test failures, unmet done-conditions, contract postcondition failures)
+1. Collect all error output (tsc errors, lint errors, build errors, test failures, unmet done-conditions, contract postcondition failures), **tagged by package** so the repair agent knows the scope. Example tag format: `[services/api — Python/FastAPI] mypy error: …`. For non-package files, tag as `[top-level — <primary-stack>]`.
 2. Launch a **repair agent** (using the Task tool) with:
    - The original task description and scope constraints
-   - The specific errors to fix (full error output)
+   - The specific errors to fix (full error output, per-package tagged)
    - For contract failures: include the exact postcondition that failed and what was found instead (e.g., "Expected export `cartTotals` in CartBLoC.ts but found `getCartTotal`")
-   - The list of files that were changed
-   - Clear instruction: **"Fix ONLY these errors. Do not add features, refactor, or change scope. Stay within the files listed."**
+   - The list of files that were changed, grouped by package so the agent sees which package each file belongs to
+   - The package-level conventions (architecture, error handling, testing framework) for each touched package from `PACKAGE_STACKS` — so the repair agent applies the right convention when fixing (e.g., uses `mypy` + `returns.Result` for a Python/hexagonal package, not TypeScript idioms)
+   - Clear instruction: **"Fix ONLY these errors. Do not add features, refactor, or change scope. Stay within the files listed. Apply the convention of each file's package (see package tags)."**
 3. After the repair agent completes, commit:
    ```
    git add [files you modified] .claude/wip.md && git commit -m "[WIP] Task [N]: [title] — repair attempt [M]/3"

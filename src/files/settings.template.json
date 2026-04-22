@@ -3,22 +3,6 @@
   "enabledPlugins": {
     "claude-code-setup@claude-plugins-official": true
   },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{{TYPE_CHECK_COMMAND}}",
-            "timeout": 30,
-            "async": true,
-            "statusMessage": "Type-checking..."
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "allow": [
       "Edit",

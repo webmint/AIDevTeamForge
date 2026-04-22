@@ -120,6 +120,19 @@ fi
 
 echo "Installing AIDevTeamForge into: $TARGET_DIR"
 
+# ── Copy cross-runtime scaffolding (.devforge/) ──────────────────────────
+# Must run BEFORE generate.sh: emitters may create subdirectories under
+# .devforge/ (e.g. .devforge/commands/<cmd>/references/ for folder-based
+# commands). If we copied the scaffolding AFTER the emitter ran, cp -r
+# would nest src/devforge into an already-existing .devforge/ → the wrong
+# layout .devforge/devforge/*.
+#
+# The `src/devforge/.` + trailing `/` syntax copies CONTENTS (not the
+# folder itself) so this is idempotent regardless of whether .devforge/
+# pre-exists.
+mkdir -p "$TARGET_DIR/.devforge"
+cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
+
 # ── Build runtime-specific files via the generator ─────────────────────────
 # install.sh is intentionally dumb: it scaffolds shared dirs and delegates
 # all runtime-specific work (Claude, Codex, later Cursor/Gemini) to the
@@ -134,11 +147,6 @@ if [ -n "$RUNTIMES_CSV" ]; then
 else
   "$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
 fi
-
-# ── Copy cross-runtime scaffolding (.devforge/) ──────────────────────────
-# Shared across all runtimes: project config, memory, storage rules.
-# Session-state and wip markers are created at runtime by commands.
-cp -r "$TEMPLATE_DIR/src/devforge" "$TARGET_DIR/.devforge"
 
 # ── Copy runtime config files (per-runtime, not shared) ─────────────────
 # Each runtime gets whatever config files it natively uses — no forced

@@ -23,6 +23,21 @@ Takes an approved spec and produces a technical plan: research findings, data mo
 1. A spec must exist with **Status: Approved**
 2. If status is still "Draft", stop and inform the user
 
+## Role & Delegation
+
+This command is owned by the **architect** agent. The orchestrator's job is to invoke architect via the Agent tool and relay the result — not to author the plan directly.
+
+Architect is a pure director: it decides HOW, but never writes implementation code. When architect needs domain depth beyond its generalist scope, it consults specialists — discretionarily, not through a mandatory matrix.
+
+**Consultation rules (enforced in `src/agents/architect.md`):**
+- Architect may invoke any specialist agent (security-reviewer, db-engineer, api-designer, performance-analyst, design-auditor, devops-engineer, migration-engineer, mobile-engineer, qa-engineer, etc.) when the decision touches their domain
+- Specialists produce **input**, not decisions
+- Architect synthesizes specialist input in its own voice — names the specialist, summarizes the input, states what was accepted, modified, or rejected and why
+- Rubber-stamping (verbatim restatement of specialist advice) is a failure mode — the synthesis step MUST be visible in the decision document
+- Architect always terminates the decision chain. It never delegates a decision back to an asker. On truly spec-level ambiguity, it escalates to the user, not to another agent.
+
+Decisions produced during this command follow the "Output Format for Decisions" in `architect.md` and are embedded into the plan's Key Design Decisions section and the research.md file when applicable.
+
 ## PHASE 0: Research Evaluation
 
 **Guard**: Read `constitution.md`. If it contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/plan`."

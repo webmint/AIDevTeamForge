@@ -47,8 +47,9 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - `constitution.template.md` — Pre-populated universal rules + project-specific placeholders; `/constitute` copies `[universal]` sections verbatim
 - `settings.template.json` — PostToolUse type-checking hook + default permissions (Edit, Write, Bash, Agent, read tools, task tools, MCP tools)
 - `spec.template.md` — Feature spec template with 10 sections
-- `memory.template.md` — Persistent memory with universal categories
 - `storage-rules.md` — Full storage conventions for specs, tasks (with contracts and review checkpoint fields), bugs, and docs
+
+> Persistent memory scaffold now lives at `src/devforge/memory.md` (4-section starter installed verbatim into `.devforge/memory.md`; wizard §5.6 seeds it from Phase 1 detection). The richer `memory.template.md` with placeholders was removed as orphaned code — nothing consumed it.
 
 ### Update System
 - `update.sh` — Manifest-driven update script with 4 strategies: overwrite (template-owned), three-way merge via `git merge-file` (agents + CLAUDE.md), smart merge (JSON/text), copy-if-missing

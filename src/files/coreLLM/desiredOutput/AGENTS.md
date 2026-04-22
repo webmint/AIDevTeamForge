@@ -70,12 +70,22 @@ Agent selection is automatic in `$execute-task` based on the task's assigned age
 - Task breakdown approval → before `$execute-task` can start
 - Acceptance criteria → verified in `$verify`
 
-### Verification (explicit — no auto-hooks)
-After each code-writing task, run verification explicitly:
-1. Type check: `{{TYPE_CHECK_COMMAND}}`
-2. Lint: `{{LINT_COMMAND}}`
-3. Build: `{{BUILD_COMMAND}}`
-Fix issues before proceeding. Codex does not auto-run checks after edits — you must verify manually at each task boundary.
+### Verification (explicit, scope-aware — no runtime hooks)
+
+Verification runs at task boundaries (end of `$execute-task`, `$fix`, `$refactor`, etc.), not after every file edit. Both Claude and Codex behave identically — no runtime hooks, no auto-execution after Edit/Write. Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build commands apply to each file touched during the task.
+
+**Scope-aware verification flow**:
+
+1. Identify files touched during the task (git diff against the task-start checkpoint).
+2. For each touched file, find its package via `PACKAGE_STACKS` path lookup (longest path prefix wins; e.g., `services/api/users.py` matches the `services/api` package).
+3. Run that package's `type_check_command` and `lint_command` (stored in `.devforge/project-config.json`). Skip `"N/A"` commands silently (no-op; not a failure).
+4. Build (`build_command`) typically runs once per task at the end, aggregated across touched packages when multiple are edited.
+5. For files not inside any detected package (top-level scripts, misc files): fall back to the primary-stack commands (`TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` / `BUILD_COMMANDS[0]`).
+6. **Self-repair loop**: if type check or lint fails, attempt up to 3 auto-repair iterations before stopping and reporting. Code-review findings are reported to the user, not auto-repaired.
+
+**Pre-flight check** (before each task): read `constitution.md` and `.devforge/memory.md` so the task starts with the right context. Applies to both runtimes equally.
+
+Full specification in `$execute-task`.
 
 ## Key Rules
 

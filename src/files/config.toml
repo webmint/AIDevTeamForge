@@ -7,7 +7,7 @@
 model = "{{CODEX_MODEL_DEFAULT}}"
 model_reasoning_effort = "{{CODEX_REASONING_DEFAULT}}"
 
-# Approval policy — wizard maps from WORKFLOW_ENFORCEMENT (Q6):
+# Approval policy — wizard maps from WORKFLOW_ENFORCEMENT (Q8):
 #   strict   → "untrusted"
 #   moderate → "on-request"
 #   light    → "never"
