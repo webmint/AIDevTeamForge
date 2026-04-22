@@ -257,7 +257,7 @@ Capture `BUILD_TOOLS`, `BUILD_COMMANDS`, `TYPE_CHECK_COMMANDS`, `LINT_COMMANDS` 
 
 4. **Anti-hallucination**: if the manifest is present but the script/tool isn't named, use the language default from step 2.2. If you're unsure about the standard tool for a language, leave `null` rather than guess. Phase 3's rendering handles `null` as "no command available".
 
-5. **Per-package overrides**: captured separately via `PACKAGES_DETECTED`. `BUILD_COMMANDS` etc. are stack-level (per-LANGUAGE) defaults. When downstream consumers need per-package commands (e.g., scope-aware verification in `/execute-task`), they look up the package in `PACKAGE_STACKS` and fall back to the language-level command if the package doesn't override.
+5. **Per-package overrides**: captured separately via `PACKAGES_DETECTED`. `BUILD_COMMANDS` etc. are stack-level (per-LANGUAGE) defaults. When downstream consumers need per-package commands (e.g., scope-aware verification in `{{cli.sigil}}execute-task`), they look up the package in `PACKAGE_STACKS` and fall back to the language-level command if the package doesn't override.
 
 ### Aggregated categories
 
