@@ -18,7 +18,7 @@ Any `{{UPPERCASE}}` marker (e.g., `{{PROJECT_NAME}}`, `{{LANGUAGE}}`) is a wizar
 
 ## Execution Flow
 
-Execute these phases in order. Each phase's detailed instructions live in its reference file under `references/`. **Read the reference file fully before executing the phase.** Do not attempt any phase from memory or guesses.
+Execute these phases in order. Each phase's detailed instructions live in a dedicated reference file; **read the reference file fully before executing the phase.** Do not attempt any phase from memory or guesses.
 
 ### Phase 1 — Detection (read-only)
 
