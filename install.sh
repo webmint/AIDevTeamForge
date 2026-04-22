@@ -133,6 +133,17 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 mkdir -p "$TARGET_DIR/.devforge"
 cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
 
+# ── Place constitution.md at project root (presence-guarded) ──────────────
+# Brownfield safety: if the target already has a constitution.md, leave it
+# alone. The wizard's Phase 3 §5.7 substitutes header placeholders only,
+# and /constitute (later) fills body sections — both operate on whatever
+# file is present.
+if [ ! -f "$TARGET_DIR/constitution.md" ]; then
+  cp "$TEMPLATE_DIR/src/files/constitution.md" "$TARGET_DIR/constitution.md"
+else
+  echo "  existing constitution.md detected — leaving as-is"
+fi
+
 # ── Build runtime-specific files via the generator ─────────────────────────
 # install.sh is intentionally dumb: it scaffolds shared dirs and delegates
 # all runtime-specific work (Claude, Codex, later Cursor/Gemini) to the

@@ -5,6 +5,7 @@ Last updated: {{DATE}}
 
 > Sections marked `[universal]` are pre-populated with rules that apply to ALL projects.
 > Sections marked `[project-specific]` are populated by `/constitute` based on your codebase or interview answers.
+> Header fields in Section 1 are populated by the setup wizard from Phase 1 detection + Phase 2 answers. Per-stack details for multi-stack projects (Sections 3.2 / 3.4) follow the same paired-rendering rules as agent files — see `CLAUDE.md` / `AGENTS.md` `## Packages` section for the per-package breakdown.
 
 ---
 
@@ -12,8 +13,12 @@ Last updated: {{DATE}}
 
 **Name**: {{PROJECT_NAME}}
 **Type**: {{PROJECT_TYPE}}
-**Framework**: {{FRAMEWORK}}
-**Language**: {{LANGUAGE}}
+**Framework(s)**: {{FRAMEWORK}}
+**Language(s)**: {{LANGUAGE}}
+**Workspace Mode**: {{WORKSPACE_MODE}}
+**Source Root**: {{SOURCE_ROOT}}
+
+> For multi-package projects, per-package stack details (one row per package with language / framework / architecture / error-handling / API layer / testing) live in the `## Packages` section of `CLAUDE.md` / `AGENTS.md`, not duplicated here.
 
 ---
 
@@ -39,6 +44,9 @@ _Run `/constitute` to populate with language-specific type rules_
 
 ### 3.2 Error Handling [project-specific]
 - **Pattern**: {{ERROR_HANDLING}}
+
+> For multi-stack projects, `{{ERROR_HANDLING}}` renders as paired bullets — one per stack (e.g., `"neverthrow Result<T,E> (TypeScript/Next.js), exceptions + returns.Result (Python/FastAPI)"`). `"TBD"` entries (user deferred in Q5) are omitted; `/constitute` fills them in later.
+
 _Details populated by `/constitute`_
 
 ### 3.3 Naming Conventions [project-specific]
@@ -46,6 +54,9 @@ _Run `/constitute` to populate with project naming patterns_
 
 ### 3.4 Testing Requirements [project-specific]
 - **Framework**: {{TESTING}}
+
+> For multi-stack projects, `{{TESTING}}` renders as paired bullets — one per stack (e.g., `"vitest (TypeScript/Next.js), pytest (Python/FastAPI)"`). `"N/A"` stacks (no tests) are kept with the stack label so it's explicit; `"TBD"` entries are omitted.
+
 _Details populated by `/constitute`_
 
 ### 3.5 Universal Code Quality [universal]

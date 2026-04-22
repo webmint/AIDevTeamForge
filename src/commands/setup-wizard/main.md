@@ -42,7 +42,7 @@ Retain every captured answer in conversational memory under the keys documented 
 
 ### Phase 3 — Population (file substitution)
 
-**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / AGENTS.md / runtime configs / baselines / MCP permissions / project config, using the answers from Phase 2 and the detection data from Phase 1.
+**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / AGENTS.md / runtime configs / baselines / MCP permissions / project config / memory seed / constitution header (§5.7), using the answers from Phase 2 and the detection data from Phase 1.
 
 ### Phase 4 — Agent Curation
 
@@ -88,9 +88,10 @@ Populated files: {comma-joined list of files the wizard actually touched this ru
 
 - `CLAUDE.md` — include if it exists at SOURCE_ROOT (§5.1 populated it)
 - `AGENTS.md` — include if it exists at SOURCE_ROOT (§5.1 populated it)
+- `constitution.md` — include if it exists at the project root AND §5.7 actually substituted placeholders (wizard skips §5.7 silently if the file is missing; brownfield projects with a pre-existing constitution leave it as-is, in which case the wizard did NOT modify it and this line should be omitted)
 - `.devforge/project-config.json` — always include (§5.5 always runs)
 - `.devforge/memory.md` — always include (§5.6 always runs)
-- `.devforge/baseline/CLAUDE.md` / `.devforge/baseline/AGENTS.md` — include each only if the corresponding source file existed (§5.3 is presence-guarded)
+- `.devforge/baseline/CLAUDE.md` / `.devforge/baseline/AGENTS.md` / `.devforge/baseline/constitution.md` — include each only if the corresponding source file existed and §5.3 copied it
 - `.claude/settings.json` — include only if it exists AND §5.4 appended chrome-devtools permissions (i.e., `AC_RUNTIME_URL` is set) — skip otherwise, since §5.2 does no placeholder substitution on this file
 - `.mcp.json` — include only if it exists AND §5.4 appended the chrome-devtools entry
 - `.codex/config.toml` — include only if it exists (§5.2 substituted placeholders, and §5.4 may have appended chrome-devtools)

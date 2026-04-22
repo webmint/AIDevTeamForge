@@ -44,7 +44,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 
 ### Supporting Templates (in `.claude/templates/`)
 - `CLAUDE.template.md` — Main project config (including Type Check Command and Lint Command fields), workflow commands, key rules (Always/Never lists), commit convention (format + attribution)
-- `constitution.template.md` — Pre-populated universal rules + project-specific placeholders; `/constitute` copies `[universal]` sections verbatim
+- `constitution.md` — Pre-populated universal rules + project-specific placeholders. Placed at project root by `install.sh` (presence-guarded for brownfield); setup-wizard §5.7 substitutes header placeholders (name/type/framework/language/workspace/source-root, plus error-handling and testing summaries); `/constitute` fills the `[project-specific]` body sections later. Renamed from `constitution.template.md` as part of the "install places, wizard populates" alignment.
 - `settings.template.json` — PostToolUse type-checking hook + default permissions (Edit, Write, Bash, Agent, read tools, task tools, MCP tools)
 - `spec.template.md` — Feature spec template with 10 sections
 - `storage-rules.md` — Full storage conventions for specs, tasks (with contracts and review checkpoint fields), bugs, and docs
