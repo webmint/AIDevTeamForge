@@ -158,13 +158,14 @@ Read `references/tech-writer-onboarding.md` and include its full content in the 
 
 ### 3.1: Verify Documentation Created
 
-After the tech-writer agent completes, verify that the following files exist:
-- `docs/overview.md` — must have real content (not a stub)
-- `docs/architecture.md` — must have real content (not a stub)
-- At least one file in `docs/features/` (unless the project has only 1-2 modules)
-- Files in `docs/api/` if the project has API endpoints
+Verify the tech-writer's output matches the Documentation Requirements above. Check:
 
-If any expected file is missing, inform the user.
+- **Presence**: `docs/overview.md` and `docs/architecture.md` exist with real content; `docs/features/*.md` files exist per substantive module (absent is acceptable for small/monolithic projects — architecture.md suffices); `docs/api/*.md` exist only if the project has HTTP/RPC APIs.
+- **Per-file structure**: each file follows its section layout from Requirements (overview's what+who/why paragraphs; architecture's module map + dependency rules + conventions + optional cross-cutting; features' what + public surface + types + deps + invariants; api's endpoint list + auth + shapes).
+- **"What NOT to document" violations**: stub markers left behind, per-file implementation detail, rules duplicated from `constitution.md`.
+- **Cross-file consistency**: the project described in `overview.md` aligns with `architecture.md` and any `features/` files — obvious story conflicts suggest the scan misinterpreted something substantial.
+
+If any check fails, report file path + what's wrong + what to correct. Proceed to §3.2 only after the user acknowledges or re-runs the tech-writer with corrections.
 
 ### 3.2: Update Memory
 
