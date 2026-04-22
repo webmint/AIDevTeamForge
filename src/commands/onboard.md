@@ -1,15 +1,15 @@
-# /onboard — Deep Codebase Onboarding & Documentation Generation
+# {{cli.sigil}}onboard — Deep Codebase Onboarding & Documentation Generation
 
-You are running the onboarding process for an existing codebase. This command performs a deep scan of the entire project and generates comprehensive documentation that serves as the **knowledge base for all Claude Code agents**.
+You are running the onboarding process for an existing codebase. This command performs a deep scan of the entire project and generates comprehensive documentation that serves as the **knowledge base for all agents** (runtime-neutral — the output is consumed by whichever runtime the user installed, Claude Code or Codex CLI).
 
-This is a **one-time command** run after `/constitute`. It delegates ALL scanning and documentation work to the **tech-writer agent** operating in **onboarding mode**.
+This is a **one-time command** run after `{{cli.sigil}}constitute`. It delegates ALL scanning and documentation work to the **tech-writer agent** operating in **onboarding mode**.
 
 ## Prerequisites
 
-1. `/setup-wizard` must have been run — `CLAUDE.md`, agents, settings, memory must exist
-2. `/constitute` must have been run — `constitution.md` must exist and be approved
-3. `docs/` folder must exist (created by setup wizard)
-4. This is an **existing project** — check `.claude/project-config.json` for `"PROJECT_MODE": "existing"`. If missing, verify 6+ source files exist. For greenfield projects, docs are built incrementally via `/execute-task`
+1. `{{cli.sigil}}setup-wizard` must have been run — the runtime primer (`CLAUDE.md` under Claude Code, `AGENTS.md` under Codex CLI), agents directory, runtime config, and `.devforge/` scaffold must exist
+2. `{{cli.sigil}}constitute` must have been run — `constitution.md` must exist and be approved
+3. `docs/` folder must exist (placed by install, populated by setup wizard)
+4. This is an **existing project** — check `.devforge/project-config.json` for `"PROJECT_MODE": "existing"`. If missing, verify 6+ source files exist. For greenfield projects, docs are built incrementally via `{{cli.sigil}}execute-task`
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
@@ -19,9 +19,9 @@ If any prerequisite is missing, inform the user and suggest running the missing 
 
 Read the following files and extract the key information the tech-writer will need:
 
-1. **`CLAUDE.md`** — project name, type, framework, language, project structure, dev commands
+1. **Runtime primer** (`CLAUDE.md` under Claude Code, `AGENTS.md` under Codex CLI — whichever the current runtime uses) — project name, type, framework, language, project structure, dev commands. Both files carry identical substituted values when both runtimes are installed; read whichever is present.
 2. **`constitution.md`** — architecture rules, layer boundaries, naming conventions, domain entities, key patterns
-3. **`.claude/memory/MEMORY.md`** — any pre-seeded knowledge from setup wizard
+3. **`.devforge/memory.md`** — any pre-seeded knowledge from setup wizard (cross-runtime shared file — both Claude and Codex read the same memory)
 
 Compile a **project brief** — a concise summary (~50 lines max) containing:
 - Project name, type, stack
@@ -33,9 +33,9 @@ Compile a **project brief** — a concise summary (~50 lines max) containing:
 
 ### 1.2: Map Project Structure
 
-**Source Root awareness**: If `CLAUDE.md` specifies a Source Root other than `.`, use that path as the starting point for the source tree scan. All module paths will be relative to the workspace root (e.g., `SOURCE_ROOT/src/auth/`, not `src/auth/`). Claude artifacts (`specs/`, `docs/`) remain at the workspace root.
+**Source Root awareness**: If the runtime primer specifies a Source Root other than `.` (check either `CLAUDE.md` or `AGENTS.md` — identical values when both exist, or `.devforge/project-config.json` `SOURCE_ROOT` field as the canonical source), use that path as the starting point for the source tree scan. All module paths will be relative to the workspace root (e.g., `SOURCE_ROOT/src/auth/`, not `src/auth/`). Cross-runtime artifacts (`specs/`, `docs/`, `.devforge/`, `constitution.md`) remain at the workspace root.
 
-Get the full directory tree of source files. **Exclude**: `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `vendor`, `coverage`, `.claude`, `specs`, `docs`, lock files, binary/asset files.
+Get the full directory tree of source files. **Exclude**: `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `vendor`, `coverage`, `.claude`, `.codex`, `.devforge`, `specs`, `docs`, lock files, binary/asset files.
 
 From the tree, identify **module boundaries** — top-level source directories or feature directories that represent distinct areas of the codebase. Examples:
 - `src/auth/`, `src/cart/`, `src/orders/` → 3 modules
@@ -56,7 +56,7 @@ Based on total source file count:
 
 ## PHASE 2: Execute Onboarding Scan
 
-Launch the tech-writer agent using the Agent tool with the prompt built below. The tech-writer does ALL the heavy lifting.
+Launch the tech-writer agent via the runtime's subagent-dispatch mechanism (Claude Code: the `Agent` tool; Codex CLI: subagent invocation — whichever is available in the current runtime) with the prompt built below. The tech-writer does ALL the heavy lifting.
 
 **CRITICAL**: The tech-writer agent prompt must include:
 1. The project brief from Phase 1.1
@@ -85,7 +85,7 @@ You are operating in **ONBOARDING MODE**. This is NOT your normal task-documenta
 
 ## Your Mission
 
-Generate complete project documentation in `docs/` that will serve as the **knowledge base for all Claude Code agents**. Every agent reads from `docs/` before making changes. The quality of your documentation directly determines how well agents understand and work with this codebase.
+Generate complete project documentation in `docs/` that will serve as the **knowledge base for all agents** (runtime-neutral — consumed by Claude Code agents and Codex CLI subagents alike). Every agent reads from `docs/` before making changes. The quality of your documentation directly determines how well agents understand and work with this codebase.
 
 ## Documentation Requirements
 
@@ -106,7 +106,7 @@ The docs you write must answer these questions for any agent picking up a task:
 
 ## SECTION A: Tech-Writer Onboarding Instructions
 
-Read `.claude/commands/_tech-writer-onboarding.md` and include its full content in the tech-writer agent prompt where `[Insert full Section A instructions below]` appears. This file contains the complete onboarding workflow: scanning rules, smart extraction tables, subagent templates, doc generation templates (overview, architecture, features, API), quality checks, and memory enrichment.
+Read the tech-writer-onboarding reference file — installed alongside this command by the runtime emitter. The exact on-disk path is runtime-specific (Claude Code: under `.claude/commands/`; Codex CLI: under `.agents/skills/onboard/`) — whichever runtime is executing this command knows where its command assets live. Include the reference's full content in the tech-writer agent prompt where `[Insert full Section A instructions below]` appears. This file contains the complete onboarding workflow: scanning rules, smart extraction tables, subagent templates, doc generation templates (overview, architecture, features, API), quality checks, and memory enrichment.
 
 ---
 
@@ -124,7 +124,7 @@ If any expected file is missing, inform the user.
 
 ### 3.2: Update Memory
 
-If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.claude/memory/MEMORY.md` under appropriate sections:
+If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.devforge/memory.md` (cross-runtime shared file — both Claude and Codex read the same memory) under appropriate sections:
 - Module boundaries → under "Project Structure" or a new "Module Map" section
 - Dependency warnings → under "Known Pitfalls"
 - Areas of complexity → under "Known Pitfalls"
@@ -155,7 +155,7 @@ Present to the user:
 
 ### Next Steps:
 1. Review the generated docs and adjust if needed
-2. Start working with `/specify "your first feature"`
+2. Start working with `{{cli.sigil}}specify "your first feature"`
 
 All agents will now use these docs as their knowledge base when executing tasks.
 ```
@@ -169,4 +169,4 @@ All agents will now use these docs as their knowledge base when executing tasks.
 5. **Real code only** — every code example in docs must be copied from the actual codebase, never invented
 6. **No constitution duplication** — docs describe HOW the code works. The constitution describes the RULES. Don't repeat constitution rules in docs
 7. **Preserve existing docs** — if `docs/` already has real content (not stubs), update rather than overwrite. Ask the user before replacing non-stub content
-8. **This is for agents** — the primary audience is Claude Code agents, not humans. Write docs that help an AI understand the codebase quickly: be explicit, structured, and precise. Avoid vague descriptions
+8. **This is for agents** — the primary audience is the agents running subsequent commands (Claude Code agents or Codex CLI subagents, depending on runtime), not humans. Write docs that help an AI understand the codebase quickly: be explicit, structured, and precise. Avoid vague descriptions
