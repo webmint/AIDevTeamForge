@@ -106,7 +106,7 @@ The docs you write must answer these questions for any agent picking up a task:
 
 ## SECTION A: Tech-Writer Onboarding Instructions
 
-Read the tech-writer-onboarding reference file — installed alongside this command by the runtime emitter. The exact on-disk path is runtime-specific (Claude Code: under `.claude/commands/`; Codex CLI: under `.agents/skills/onboard/`) — whichever runtime is executing this command knows where its command assets live. Include the reference's full content in the tech-writer agent prompt where `[Insert full Section A instructions below]` appears. This file contains the complete onboarding workflow: scanning rules, smart extraction tables, subagent templates, doc generation templates (overview, architecture, features, API), quality checks, and memory enrichment.
+Read `references/tech-writer-onboarding.md` and include its full content in the tech-writer agent prompt where `[Insert full Section A instructions below]` appears. The path is rewritten to the runtime-native location at install time (alongside this command's main body). This file contains the complete onboarding workflow: scanning rules, smart extraction tables, subagent templates, doc generation templates (overview, architecture, features, API), quality checks, and memory enrichment.
 
 ---
 

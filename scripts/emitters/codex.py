@@ -9,6 +9,9 @@ Responsibilities:
   - src/commands/setup-wizard/main.md  → target/.agents/skills/setup-wizard/SKILL.md
   - src/commands/setup-wizard/references/*.md
                                        → target/.agents/skills/setup-wizard/references/*.md
+  - src/commands/onboard/main.md       → target/.agents/skills/onboard/SKILL.md
+  - src/commands/onboard/references/*.md
+                                       → target/.agents/skills/onboard/references/*.md
   (both flat and folder-based sources supported during migration)
 
 Handled by other generators, not this emitter:
@@ -117,24 +120,28 @@ def _write_skill(source, skills_dir: Path) -> int:
 def emit(src: Path, target: Path) -> None:
     skills_dir = target / ".agents" / "skills"
 
-    # 1. Setup-wizard skill only (folder-based after migration; flat still supported).
-    source = load_command(src / "commands", "setup-wizard")
-    if source is not None:
-        n_refs = _write_skill(source, skills_dir)
-        if source.is_folder:
-            print(f"    setup-wizard skill: yes ({n_refs} references)")
-        else:
-            print(f"    setup-wizard skill: yes (flat)")
+    # Commands promoted so far. As each command matures out of src/_pending/,
+    # add it here. Full generalized iteration (loop all src/commands/ entries)
+    # stays commented below until every command has passed its CLI-agnostic +
+    # audit passes — premature promotion would ship broken skills.
+    _PROMOTED = ("setup-wizard", "onboard")
 
-    # ── Commented out: will be restored when commands are promoted ───────────
-    # Agents are handled by scripts/generate-agents.py, not this emitter.
+    for cmd_name in _PROMOTED:
+        source = load_command(src / "commands", cmd_name)
+        if source is None:
+            continue
+        n_refs = _write_skill(source, skills_dir)
+        layout = "folder" if source.is_folder else "flat"
+        print(f"    {cmd_name} skill: yes ({layout}, {n_refs} references)")
+
+    # ── Commented out: will be restored when ALL commands are promoted ───────
+    # Generalized loop over src/commands/ — replaces the explicit _PROMOTED
+    # list once every command has been audited.
     #
     # src_commands = src / "commands"
     # if src_commands.is_dir():
     #     for entry in sorted(src_commands.iterdir()):
     #         name = entry.stem if entry.is_file() else entry.name
-    #         if name == "setup-wizard":
-    #             continue  # already emitted above
     #         src_obj = load_command(src_commands, name)
     #         if src_obj is None:
     #             continue

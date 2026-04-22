@@ -1,8 +1,8 @@
 # Tech-Writer Onboarding Instructions
 
-These instructions are included in the tech-writer agent prompt when running `/onboard`. They define how to scan an existing codebase and generate comprehensive project documentation.
+These instructions are included in the tech-writer agent prompt when running `{{cli.sigil}}onboard`. They define how to scan an existing codebase and generate comprehensive project documentation.
 
-**Source Root**: All source code scanning targets the Source Root specified in `CLAUDE.md`. For wrapper mode projects, this is a subfolder (e.g., `client-project/`). Claude artifacts (`specs/`, `docs/`, `constitution.md`) are at the workspace root.
+**Source Root**: All source code scanning targets the Source Root specified in the runtime primer (`CLAUDE.md` under Claude Code, `AGENTS.md` under Codex CLI — identical values when both exist), or canonically in `.devforge/project-config.json` `SOURCE_ROOT` field. For wrapper mode projects, this is a subfolder (e.g., `client-project/`). Cross-runtime artifacts (`specs/`, `docs/`, `constitution.md`, `.devforge/`) are at the workspace root, not inside the Source Root.
 
 ## A.1: Scanning Rules — Protecting Context
 
@@ -25,7 +25,7 @@ You are scanning a potentially large codebase. Context is a finite resource. Fol
 
 ### Subagent Usage (for 50+ file projects)
 
-When the scan strategy requires subagents, launch them using the Agent tool. Each subagent scans ONE module.
+When the scan strategy requires subagents, launch them via the runtime's subagent-dispatch mechanism (Claude Code: the `Agent` tool; Codex CLI: subagent invocation). Each subagent scans ONE module.
 
 **Subagent prompt template:**
 ```
@@ -88,7 +88,7 @@ When sample-based strategy is selected:
 3. Read ALL route/controller/endpoint files
 4. For each module: read 2-3 representative implementation files (pick the largest or most-imported ones)
 5. Read test file NAMES only (not contents) — the file names reveal what features exist
-6. Flag in `docs/overview.md` that this was a sample-based scan: `> Note: This documentation was generated from a structural scan. Some internal details may be incomplete. Run /onboard again after significant changes.`
+6. Flag in `docs/overview.md` that this was a sample-based scan: `> Note: This documentation was generated from a structural scan. Some internal details may be incomplete. Run {{cli.sigil}}onboard again after significant changes.`
 
 ## A.2: Documentation Generation
 
@@ -132,7 +132,7 @@ src/
 - **Configuration**: [where config is loaded]
 
 ## Key Commands
-[From CLAUDE.md — dev, build, test, lint commands]
+[From the runtime primer (`CLAUDE.md` / `AGENTS.md`) — dev, build, test, lint commands]
 
 ## Module Map
 [One-line description of each module and its responsibility]
@@ -311,7 +311,7 @@ After generating all docs, verify:
 
 ## A.4: Memory Enrichment
 
-After generating docs, return a summary of findings to be added to `.claude/memory/MEMORY.md`. The summary should include:
+After generating docs, return a summary of findings to be added to `.devforge/memory.md` (cross-runtime shared file — both Claude and Codex read it). The summary should include:
 - Key module boundaries and their responsibilities
 - Cross-module dependency warnings (tightly coupled areas)
 - Areas of complexity or risk (modules with many dependencies, unclear patterns)
