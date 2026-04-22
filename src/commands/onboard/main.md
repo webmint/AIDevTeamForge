@@ -202,9 +202,9 @@ Summarize in 1–3 lines what was appended to `.devforge/memory.md`. Group natur
 ## IMPORTANT RULES
 
 1. **Tech-writer owns everything** — this command ONLY orchestrates. The tech-writer agent does all scanning and writing
-2. **Never modify source files** — onboarding generates `docs/` only. No inline docs, no code changes
+2. **Never modify source files** — onboarding writes only to `docs/` and `.devforge/memory.md`. No inline docs in source, no code changes
 3. **Context safety** — follow the scan strategy thresholds strictly. Do NOT read all files in a 500-file project in a single agent
-4. **Accuracy over coverage** — if you can't determine what a module does from its signatures and types, say so honestly in the docs rather than guessing
+4. **Accuracy over coverage** — if you can't determine a pattern from the scan, SKIP it. Stubs and speculative content are worse than omission (better absent than speculative)
 5. **Real code only** — every code example in docs must be copied from the actual codebase, never invented
 6. **No constitution duplication** — docs describe HOW the code works. The constitution describes the RULES. Don't repeat constitution rules in docs
 7. **Preserve existing docs** — if `docs/` already has real content (not stubs), update rather than overwrite. Ask the user before replacing non-stub content
