@@ -2,14 +2,13 @@
 
 You are running the onboarding process for an existing codebase. This command performs a deep scan of the entire project and generates comprehensive documentation that serves as the **knowledge base for all agents** (runtime-neutral — the output is consumed by whichever runtime the user installed, Claude Code or Codex CLI).
 
-This is a **one-time command** run after `{{cli.sigil}}constitute`. It delegates ALL scanning and documentation work to the **tech-writer agent** operating in **onboarding mode**.
+This is a **one-time command** run after `{{cli.sigil}}setup-wizard` for brownfield projects — the wizard's Phase 5 summary suggests running it when `PROJECT_STATE` is `brownfield`. It delegates ALL scanning and documentation work to the **tech-writer agent** operating in **onboarding mode**.
 
 ## Prerequisites
 
 1. `{{cli.sigil}}setup-wizard` must have been run — the runtime primer (`CLAUDE.md` under Claude Code, `AGENTS.md` under Codex CLI), agents directory, runtime config, and `.devforge/` scaffold must exist
-2. `{{cli.sigil}}constitute` must have been run — `constitution.md` must exist and be approved
-3. `docs/` folder must exist (placed by install, populated by setup wizard)
-4. This is an **existing project** — check `.devforge/project-config.json` for `"PROJECT_MODE": "existing"`. If missing, verify 6+ source files exist. For greenfield projects, docs are built incrementally via `{{cli.sigil}}execute-task`
+2. `docs/` folder must exist (placed by install, populated by setup wizard)
+3. This is an **existing project** — check `.devforge/project-config.json` for `"PROJECT_STATE": "brownfield"`. For `"greenfield"` or `"empty"` projects, skip onboard — docs are built incrementally via `{{cli.sigil}}execute-task` as features ship.
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
