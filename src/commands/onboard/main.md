@@ -88,15 +88,60 @@ Generate complete project documentation in `docs/` that will serve as the **know
 
 ## Documentation Requirements
 
-The docs you write must answer these questions for any agent picking up a task:
-1. What does this project do? (overview)
-2. How is the code organized and why? (architecture)
-3. What are the key modules and how do they relate? (architecture)
-4. What does each feature/module do and how does it work? (features/*)
-5. What API endpoints exist and what are their contracts? (api/* — if applicable)
-6. What patterns must be followed when making changes? (architecture)
-7. Where are the boundaries between modules? (architecture)
-8. What are the key types/entities and their relationships? (architecture or features)
+Docs save future per-task tokens: an agent should find what it needs in docs faster than re-deriving from source. Density target varies by read frequency — write tighter for files read often, allow more detail in files read only when relevant.
+
+**Read-frequency map** (informs how dense to write):
+
+- `docs/overview.md` — every task, first read (keep tight)
+- `docs/architecture.md` — most tasks that touch structure (tight)
+- `docs/features/<module>.md` — only tasks touching that module (can carry more detail)
+- `docs/api/<resource>.md` — only tasks touching that endpoint (can carry more detail)
+
+### `docs/overview.md`
+
+Two paragraphs max:
+
+- **What + who**: what the project does, who uses it, what domain it serves
+- **Why**: the defining architectural decision + its rationale
+
+### `docs/architecture.md`
+
+1. **Module map**: each top-level source directory + one sentence — what it handles, what it can/can't import
+2. **Layer boundaries & dependency rules**: which direction imports flow; which crossings are forbidden
+3. **Conventions**: naming, file organization, import style
+4. **Cross-cutting concerns** (conditional — include only if the scan surfaced clear patterns, at least 3+ concordant observations): error propagation, authentication/authorization flow, data flow, state management. Skip any concern the scan didn't resolve cleanly — better absent than speculative.
+
+### `docs/features/<module>.md` — one per substantive module
+
+Produce one file per module surfaced with enough signal during scan. Skip a module if the scan found nothing substantial — better no doc than a stub.
+
+1. **What the module does** — one-sentence summary + one paragraph of context
+2. **Public surface** — exported functions/types with one-line descriptions
+3. **Key types / entities** the module owns
+4. **External dependencies** — other modules, libraries, services
+5. **Invariants or gotchas** that surfaced during scan (if any)
+
+### `docs/api/<resource>.md` — only for projects with HTTP/RPC APIs
+
+Per endpoint group:
+
+1. **Endpoint list**: methods + paths
+2. **Auth requirements**
+3. **Request/response shapes** (type-level, not every field)
+
+## Depth principle
+
+Docs describe **conventions and structure** — things that persist when implementation changes. If code changes but the pattern holds, the doc stays valid.
+
+- ✅ YES: "Repositories live in `src/data/repositories/`; each implements the corresponding domain interface from `src/domain/`." (Survives refactoring.)
+- ❌ NO: "`UserRepository.findById()` returns a `User` or `null`." (Becomes stale the moment anyone adds caching.)
+
+## What NOT to document
+
+- Per-file implementation details — code is the source of truth
+- Private function purposes — name the function well; skip the doc
+- Duplicated rules from `constitution.md` — docs describe HOW code works; constitution describes RULES. No overlap.
+- Anything the scan is uncertain about — better silent than wrong
 
 [Insert full Section A instructions below]
 ```
