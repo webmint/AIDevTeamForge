@@ -1,4 +1,4 @@
-# Multi-Runtime Support — Branch Plan (rev 9)
+# Multi-Runtime Support — Branch Plan (rev 10)
 
 Branch: `feature/codex-support`
 Main: Claude-only, unchanged. **This branch never merges to main** — it's a separate multi-runtime experiment that will ship differently (its own product, long-lived branch, or archived).
@@ -215,11 +215,12 @@ Plan template gains an "Algorithmic Patterns" table (naive → pattern → compl
 **STEPs 0–4** (detection + questions): fully audited and rewritten across multiple sessions. 24+ issues resolved.
 
 **STEP 5** (Populate Placed Files): full placeholder-to-answer mapping with construction rules for dynamic values. Substeps:
-- 5.1: Populate CLAUDE.md + AGENTS.md (same values, both files)
-- 5.2: Populate runtime config files (`.claude/settings.json` + `.codex/config.toml`) — substitute `{{TYPE_CHECK_COMMAND}}`, `{{CODEX_MODEL_DEFAULT}}`, `{{CODEX_REASONING_DEFAULT}}`, `{{CODEX_APPROVAL_POLICY}}`
+- 5.1: Populate CLAUDE.md + AGENTS.md (same values, both files; includes `{{PACKAGE_STACKS_SECTION}}` for multi-package projects)
+- 5.2: Populate runtime config files — `.claude/settings.json` is static (no placeholders); `.codex/config.toml` substitutes `{{CODEX_MODEL_DEFAULT}}`, `{{CODEX_REASONING_DEFAULT}}`, `{{CODEX_APPROVAL_POLICY}}`
 - 5.3: Save baselines to `.devforge/baseline/` (only for CLAUDE.md + AGENTS.md — runtime configs are projectOwned, no baseline)
-- 5.4: Add chrome-devtools MCP + Claude permission entries conditionally
-- 5.5: Populate `.devforge/project-config.json`
+- 5.4: Add chrome-devtools MCP + Claude permission entries conditionally (triggers when `AC_RUNTIME_URL` is set — covers Q11 web-frontend AND full-stack branches)
+- 5.5: Populate `.devforge/project-config.json` (includes per-stack arrays, PACKAGE_STACKS, CODEX_REASONING_* derivation for Q10b → emitter-placeholder resolution)
+- 5.6: Pre-populate `.devforge/memory.md` with Phase 1 detection findings (cross-runtime shared)
 
 **STEP 6** (Curate & Populate Agents): LLM-driven agent selection. Substeps:
 - 6.1: Select agents (5 always-keep + 11 conditional, no hardcoded framework lists)
@@ -231,35 +232,51 @@ Plan template gains an "Algorithmic Patterns" table (naive → pattern → compl
 
 **STEP 7** (Summary): stub, needs development.
 
-**Questions Q0–Q9:**
-- Q0: Project Name (new — detected from manifest or asked)
-- Q1: Project Description (new — from README or asked)
+**Questions Q0–Q11:**
+- Q0: Project Name (detected from manifest or asked)
+- Q1: Project Description (from README or asked)
 - Q2: Project Type
-- Q3: Languages & Frameworks
-- Q4: Architecture Pattern
-- Q5: Error Handling Convention
-- Q6: Workflow Enforcement Level (stored but no command reads it yet — flagged)
-- Q7: AI Attribution in Commits
-- Q8: Agent Model Assignments (per-runtime tiers)
-- Q9: Acceptance Criteria Verification
+- Q3: Languages & Frameworks (produces parallel `LANGUAGES` / `FRAMEWORKS` arrays; Array re-sync on override keeps per-stack arrays consistent)
+- Q4: Architecture Pattern (per-stack array with cross-stack shortcut)
+- Q5: Error Handling Convention (per-stack array)
+- Q6: API Layer (per-stack array)
+- Q7: Testing Framework (per-stack array)
+- Q8: Workflow Enforcement Level (stored but no command reads it yet — flagged)
+- Q9: AI Attribution in Commits
+- Q10: Agent Model Assignments — Q10a Claude tiers (`CLAUDE_TIER_*` = model names), Q10b Codex tiers (`CODEX_TIER_*` = reasoning enums, `CODEX_TIER_*_MODEL` = optional overrides)
+- Q11: Acceptance Criteria Verification (with total Q2→Q11 branch mapping — no project-type falls off the edge)
+
+### ✅ Phase A (partial) — setup-wizard refactor + logical-gap audit (rev 10)
+
+**Structural refactor**: `src/commands/setup-wizard.md` split into `main.md` (orchestrator) + `references/detect|questions|populate|agents.md` so each phase is loadable on demand. Emitters rewritten (new `scripts/lib/command_source.py`) to materialize this multi-file layout per-runtime.
+
+**Logical-gap audit (3 passes, 19 findings, 17 resolved)** — see commit `d53efce`. Highest-impact fixes:
+
+- Corrected hallucinated MCP package name (`@anthropic/chrome-devtools-mcp` → `chrome-devtools-mcp`; `npm view` confirms the scoped name 404s)
+- Replaced hallucinated agent-frontmatter placeholders `{{MODEL_THINK/DO/VERIFY}}` with the runtime-qualified names `generate-agents.py` actually emits (`{{CLAUDE_TIER_*}}` / `{{CODEX_TIER_*}}` / `{{CODEX_REASONING_*}}`). Added matching `CODEX_REASONING_*` keys to `project-config.json` and documented the Q10b → emitter-placeholder derivation in populate.md §5.5. Without this, Q10 answers never reached the installed agent files.
+- Built a total Q2→Q11 mapping for runtime-assisted AC verification (library / ML / ETL / IaC / plugin / docs routed to a "no automatable runtime" branch instead of silently falling off)
+- `setup-complete` marker's `Populated files:` now computed from presence checks (single-runtime installs no longer claim to populate files that don't exist)
+- Consolidated drift-risk literals (`CODEX_DEFAULT_MODEL`, `CHROME_DEVTOOLS_MCP_PACKAGE`) into one reviewable block with last-verified dates
+- STEP 2 default-branch now detects via `git symbolic-ref` before asking
+- Per-stack tool detection now specifies command-runner selection from lockfiles (pnpm/yarn/bun/npm, poetry/hatch/pdm/uv, bundle exec) so commands land correctly for the project's actual toolchain
+
+Two findings deferred by user: architect template expansion to include BUILD/LINT/TYPECHECK placeholders; `{{cli.sigil}}specify` / `{{cli.sigil}}verify` wizard-prose references to `_pending/` commands (resolves when those commands promote).
 
 ---
 
 ## 4. What's next
 
 ### Immediate (next session)
-- **Implement variation-marker substitution in command emitters** — `claude.py` and `codex.py` need to process `{{cli.sigil}}`, `{{cli.attribution}}`, and `{{ask}}...{{/ask}}` blocks in commands before writing to target. Currently these markers pass through literally. This blocks promoting commands beyond setup-wizard.
-- **TYPE_CHECK_COMMAND derivation rule in wizard STEP 3** — the placeholder is referenced in 5.1 and 5.2, but the wizard hasn't formalized the detection/derivation rule (TS→`tsc --noEmit`, Py→`mypy` or `py_compile`, Go→`go vet ./...`, Rust→`cargo check`). Add as a detection output of STEP 3.
-- Test end-to-end: install into `testSpawn` (both with and without `--runtime` flag), run wizard under Claude, verify full output including the 5.2 substitutions and single-runtime guards.
+- **Agent review, one-by-one** — the 16 agent templates in `src/agents/*.md` are the stable layer; audit each against its placeholders, role description, and consumer expectations. Contract first, then command promotion can trust what it's dispatching to.
+- Test end-to-end: install into `testSpawn` (both with and without `--runtime` flag), run wizard under Claude, verify full output including the 5.2 substitutions, single-runtime guards, and agent-frontmatter substitutions landing correctly in `.claude/agents/*.md` + `.codex/agents/*.toml`.
 
 ### After that
-- Finish STEP 7 (Summary).
-- Promote next command from `src/_pending/` (probably `/fix` — simplest workflow command).
+- Promote commands from `src/_pending/` one-by-one. Sequence TBD — likely start with `/fix` (smallest blast radius) or `/specify` (unblocks user-facing workflow).
 - Run wizard under Codex, compare parity.
 
 ### Medium-term
 - Promote remaining 22 commands one-by-one.
-- **IMPORTANT: Wire WORKFLOW_ENFORCEMENT into every gated command.** Currently collected by wizard (Q6: strict/moderate/light) and stored in `.devforge/project-config.json`, but NO command reads it — all commands are hardcoded to strict flow. Each command with gates (execute-task, specify, plan, breakdown, verify, fix, refactor) needs to read `WORKFLOW_ENFORCEMENT` and branch: strict = all gates, moderate = spec + breakdown gates only, light = spec gate only.
+- **IMPORTANT: Wire WORKFLOW_ENFORCEMENT into every gated command.** Currently collected by wizard (Q8: strict/moderate/light) and stored in `.devforge/project-config.json`, but NO command reads it — all commands are hardcoded to strict flow. Each command with gates (execute-task, specify, plan, breakdown, verify, fix, refactor) needs to read `WORKFLOW_ENFORCEMENT` and branch: strict = all gates, moderate = spec + breakdown gates only, light = spec gate only.
 - Constitution.md emission (shared content, cross-runtime).
 - Parity test harness.
 - update.sh multi-runtime support (currently `expand_templateOwned_pairs` handles pair-based mappings, but `templateDerived` three-way merge for `generated:agents` and `generated:coreLLM` sources isn't implemented yet).
