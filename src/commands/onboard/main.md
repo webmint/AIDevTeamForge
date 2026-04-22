@@ -182,27 +182,21 @@ Present to the user:
 ```
 ## Onboarding Complete
 
-### Documentation Generated:
-- `docs/overview.md` — Project overview, structure, and module map
-- `docs/architecture.md` — Architecture patterns, layers, data flow, key types
-- `docs/features/[list].md` — Feature documentation per module
-- `docs/api/[list].md` — API endpoint documentation (if applicable)
+### Documentation Generated
+- `docs/overview.md`
+- `docs/architecture.md`
+- `docs/features/` — [N] files  [omit this line if N == 0]
+- `docs/api/` — [N] files  [omit this line if N == 0]
 
-### Scan Summary:
-- Source files scanned: [count]
-- Modules identified: [count]
-- Strategy used: [direct / subagent-per-module / two-pass / sample-based]
+### Scan
+- [count] source files across [count] modules ([strategy])
 
-### Memory Updated:
-- [count] module boundaries documented
-- [count] dependency warnings added
-- [count] areas of complexity flagged
+### Memory Updated
+Summarize in 1–3 lines what was appended to `.devforge/memory.md`. Group naturally by category — e.g., "4 module boundaries, 2 known pitfalls from inconsistent import patterns, 1 complexity hotspot flagged in `services/orders/`".
 
-### Next Steps:
-1. Review the generated docs and adjust if needed
-2. Start working with `{{cli.sigil}}specify "your first feature"`
-
-All agents will now use these docs as their knowledge base when executing tasks.
+### Next Steps
+1. Review `docs/` and adjust as needed
+2. Start working: `{{cli.sigil}}specify "your first feature"`
 ```
 
 ## IMPORTANT RULES
