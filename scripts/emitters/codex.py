@@ -40,6 +40,7 @@ from lib.command_source import (  # noqa: E402
     processed as process_source,
     write_references,
 )
+from lib.variation_markers import substitute as substitute_markers  # noqa: E402
 # from lib.codex_rewrite import transform_command  # noqa: E402  # TODO: not yet implemented
 
 
@@ -100,10 +101,12 @@ def _write_skill(source, skills_dir: Path) -> int:
     refs_prefix = f".agents/skills/{source.name}/references"
 
     body, refs = process_source(source, refs_prefix)
+    body = substitute_markers(body, "codex")
+    refs = {name: substitute_markers(content, "codex") for name, content in refs.items()}
     description = _derive_description(body, source.name)
-    # Apply Claude→Codex transformations: rewrite AskUserQuestion calls
-    # to prose, swap .claude/ paths to .codex/, rename CLAUDE.md → AGENTS.md,
-    # etc. See scripts/lib/codex_rewrite.py for the rule list.
+    # Apply remaining Claude→Codex transformations: rewrite AskUserQuestion
+    # calls to prose, swap .claude/ paths to .codex/, rename CLAUDE.md →
+    # AGENTS.md, etc. See scripts/lib/codex_rewrite.py for the rule list.
     # body = transform_command(body)  # TODO: not yet implemented
     (skill_dir / "SKILL.md").write_text(
         "---\n"
