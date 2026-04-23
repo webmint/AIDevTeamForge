@@ -1,8 +1,8 @@
 # {{cli.sigil}}onboard — Deep Codebase Onboarding & Documentation Generation
 
-You are running the onboarding process for an existing codebase. This command performs a deep scan of the entire project and generates comprehensive documentation that serves as the **knowledge base for all agents**.
+You are running the onboarding process for an existing codebase. This command scans the project's structure and a representative sample of its source to generate comprehensive documentation that serves as the **knowledge base for all agents**. Scan depth scales by project size — see §1.3.
 
-This command is typically run once after `{{cli.sigil}}setup-wizard` for brownfield projects — the wizard's Phase 5 summary suggests running it when `PROJECT_STATE` is `brownfield`. You can re-run it later when the codebase changes substantially (new modules, major refactor, new framework introduced); the pre-scan check in §1.0 protects existing docs on re-runs. It delegates ALL scanning and documentation work to the **tech-writer agent** operating in **onboarding mode**.
+This command is typically run once after `{{cli.sigil}}setup-wizard` for brownfield projects — the wizard's Phase 5 summary suggests running it when `PROJECT_STATE` is `brownfield`. You can re-run it later when the codebase changes substantially (new modules, major refactor, new framework introduced); the pre-scan check in §1.0 protects existing docs on re-runs. It delegates the scan and `docs/` writing to the **tech-writer agent** operating in **onboarding mode**; the orchestrator handles pre-scan checks, post-scan verification, and memory updates.
 
 ## Prerequisites
 
@@ -31,6 +31,8 @@ If `.devforge/baseline/docs/<name>.md` is missing (file was placed outside the w
 - **Abort** — skip onboard entirely
 
 Default when uncertain: abort and let the user decide. Do not proceed silently.
+
+**Scope note for the user prompt**: this check covers `docs/overview.md` and `docs/architecture.md` only. Any existing files under `docs/features/` and `docs/api/` will be regenerated from scan output regardless of the choice above (features and api outputs are considered per-module/per-endpoint regenerable artifacts, not user-owned prose). If the user has hand-edited content under those directories that must be preserved, they should pick **Abort** here and reconcile manually before re-running.
 
 **If only stubs are detected**, proceed with the scan normally (§1.1).
 
@@ -209,7 +211,7 @@ Do NOT silently proceed to §3.2 after reporting issues. Wait for the user's exp
 
 ### 3.2: Update Memory
 
-If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.devforge/memory.md` (cross-runtime shared file — both Claude and Codex read the same memory) under the appropriate existing sections of the scaffold:
+If the tech-writer returned `MEMORY_ADDITIONS` — a category-keyed structure with entries under each of the four categories below — append them to `.devforge/memory.md` (cross-runtime shared file — both Claude and Codex read the same memory) under the appropriate existing sections of the scaffold:
 
 - **Module boundaries** → under `## Architecture Decisions` as a new sub-section `### Module boundaries (from onboard)` (alongside the wizard's `### Initial detection (from setup-wizard)` sub-section)
 - **Dependency warnings** → under `## Known Pitfalls`
@@ -245,11 +247,11 @@ Summarize in 1–3 lines what was appended to `.devforge/memory.md`. Group natur
 
 ## IMPORTANT RULES
 
-1. **Tech-writer owns everything** — this command ONLY orchestrates. The tech-writer agent does all scanning and writing
+1. **Tech-writer owns scan + docs writing** — this command orchestrates. The tech-writer agent handles the codebase scan and writes to `docs/`. Verification (§3.1) and memory append (§3.2) are the orchestrator's job, not the tech-writer's.
 2. **Never modify source files** — onboarding writes only to `docs/` and `.devforge/memory.md`. No inline docs in source, no code changes
 3. **Context safety** — follow the scan strategy thresholds strictly. Do NOT read all files in a 500-file project in a single agent
 4. **Accuracy over coverage** — if you can't determine a pattern from the scan, SKIP it. Stubs and speculative content are worse than omission (better absent than speculative)
 5. **Real code only** — every code example in docs must be copied from the actual codebase, never invented
 6. **No constitution duplication** — docs describe HOW the code works. The constitution describes the RULES. Don't repeat constitution rules in docs
-7. **Preserve existing docs** — if `docs/` already has real content (not stubs), update rather than overwrite. Ask the user before replacing non-stub content
+7. **Preserve existing docs** — if `docs/` already has real content (not stubs), do NOT overwrite silently. §1.0 detects non-stub content pre-scan and asks the user to pick Overwrite / Merge / Abort. All three are valid user choices; the rule is "ask, don't assume"
 8. **This is for agents** — the primary audience is the agents running subsequent commands, not humans. Write docs that help an AI understand the codebase quickly: be explicit, structured, and precise. Avoid vague descriptions
