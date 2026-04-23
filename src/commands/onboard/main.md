@@ -1,8 +1,8 @@
 # {{cli.sigil}}onboard — Deep Codebase Onboarding & Documentation Generation
 
-You are running the onboarding process for an existing codebase. This command performs a deep scan of the entire project and generates comprehensive documentation that serves as the **knowledge base for all agents** (runtime-neutral — the output is consumed by whichever runtime the user installed, Claude Code or Codex CLI).
+You are running the onboarding process for an existing codebase. This command performs a deep scan of the entire project and generates comprehensive documentation that serves as the **knowledge base for all agents**.
 
-This is a **one-time command** run after `{{cli.sigil}}setup-wizard` for brownfield projects — the wizard's Phase 5 summary suggests running it when `PROJECT_STATE` is `brownfield`. It delegates ALL scanning and documentation work to the **tech-writer agent** operating in **onboarding mode**.
+This command is typically run once after `{{cli.sigil}}setup-wizard` for brownfield projects — the wizard's Phase 5 summary suggests running it when `PROJECT_STATE` is `brownfield`. You can re-run it later when the codebase changes substantially (new modules, major refactor, new framework introduced); the pre-scan check in §1.0 protects existing docs on re-runs. It delegates ALL scanning and documentation work to the **tech-writer agent** operating in **onboarding mode**.
 
 ## Prerequisites
 
@@ -14,27 +14,50 @@ If any prerequisite is missing, inform the user and suggest running the missing 
 
 ## PHASE 1: Prepare Onboarding Context
 
+### 1.0: Existing-Documentation Check (pre-scan)
+
+Before proceeding with the scan, check whether `docs/overview.md` and `docs/architecture.md` contain non-stub content. The wizard places them as stubs with placeholders substituted; an updated "real" version means someone edited them post-install.
+
+**Heuristic for "non-stub"**:
+
+- `docs/overview.md` exceeds ~10 lines of content OR contains prose beyond the two template paragraphs (what+who / why).
+- `docs/architecture.md` contains module-map entries, dependency rules beyond the sentinel "_Populated by ..._" stubs, or cross-cutting-concerns content — none of which the wizard places.
+
+**If real content is detected** in either file, pause and ask the user:
+
+- **Overwrite** — discard existing content; regenerate from scan
+- **Merge** — keep existing content; tech-writer appends / updates only where safe, leaves user prose intact
+- **Abort** — skip onboard entirely
+
+Default when uncertain: abort and let the user decide. Do not proceed silently.
+
+**If only stubs are detected**, proceed with the scan normally (§1.1).
+
 ### 1.1: Gather Project Knowledge
 
 Read the following files and extract the key information the tech-writer will need:
 
 1. **Runtime primer** (`{{cli.primer}}`) — project name, type, framework, language, project structure, dev commands.
-2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules (Sections 3.5–3.7, 4.1–4.3, 6.1–6.4 — installed verbatim). The `[project-specific]` sections (§2 Architecture, §3.1 Type Safety, §3.3 Naming, §4.1.1/4.2.1/4.3.1 patterns, §5 Domain Rules, §6.5/6.6 workflow) are still sentinel-marked at this stage — onboard populates them as part of its scan output.
+2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules (Sections 3.5–3.7, 4.1–4.3, 6.1–6.4 — installed verbatim). The `[project-specific]` sections (§2 Architecture, §3.1 Type Safety, §3.3 Naming, §4.1.1/4.2.1/4.3.1 patterns, §5 Domain Rules, §6.5/6.6 workflow) are still sentinel-marked at this stage — those get populated later by `{{cli.sigil}}constitute`, which reads onboard's findings (in `docs/` and `.devforge/memory.md`) plus user-stated preferences.
 3. **`.devforge/memory.md`** — any pre-seeded knowledge from setup wizard (cross-runtime shared file — both Claude and Codex read the same memory)
 
-Compile a **project brief** — a concise summary (~50 lines max) containing:
-- Project name, type, stack
-- Architecture pattern and layer boundaries
-- Key domain entities and relationships (from constitution)
-- Naming conventions
-- Error handling pattern
-- Module/directory organization
+Compile a **project brief** — a concise summary (~30 lines max) containing only what's already extractable at this stage:
+
+- Project name, type, stack (from runtime primer + `.devforge/project-config.json`)
+- Architecture pattern (wizard Q4 answer, stored as `ARCHITECTURES[]`)
+- Error handling pattern (wizard Q5 answer, stored as `ERROR_HANDLINGS[]`)
+- API layer (wizard Q6 answer, stored as `API_LAYERS[]`)
+- Testing framework (wizard Q7 answer, stored as `TESTINGS[]`)
+- Module / directory organization (from the directory tree computed in §1.2)
+- Any pre-seeded findings from `.devforge/memory.md`
+
+Do NOT include layer boundaries, domain entities, or naming conventions — those are sentinel-marked in `constitution.md` and are the tech-writer's job to DISCOVER during scan, not preconditions for the scan.
 
 ### 1.2: Map Project Structure
 
 **Source Root awareness**: If the runtime primer specifies a Source Root other than `.` (check `{{cli.primer}}`, or `.devforge/project-config.json` `SOURCE_ROOT` field as the canonical source), use that path as the starting point for the source tree scan. All module paths will be relative to the workspace root (e.g., `SOURCE_ROOT/src/auth/`, not `src/auth/`). Cross-runtime artifacts (`specs/`, `docs/`, `.devforge/`, `constitution.md`) remain at the workspace root.
 
-Get the full directory tree of source files. **Exclude**: `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`, `.nuxt`, `vendor`, `coverage`, `.claude`, `.codex`, `.devforge`, `specs`, `docs`, lock files, binary/asset files.
+Get the full directory tree of source files. **Exclude** the ecosystem-aware ignore set setup-wizard's detection phase already uses (see `detect.md` STEP 1 "Count source files" — covers build output, dependency trees, tool caches, and cross-runtime artifacts across Rust/Java/.NET/Python/Ruby/Haskell ecosystems), plus `.claude`, `.codex`, `.devforge`, `specs`, `docs`, lock files, and binary/asset files. If the project uses an ecosystem whose build/dependency directory isn't covered there, add it to both places (canonical list lives in `detect.md`).
 
 From the tree, identify **module boundaries** — top-level source directories or feature directories that represent distinct areas of the codebase. Examples:
 - `src/auth/`, `src/cart/`, `src/orders/` → 3 modules
@@ -165,7 +188,13 @@ Verify the tech-writer's output matches the Documentation Requirements above. Ch
 - **"What NOT to document" violations**: stub markers left behind, per-file implementation detail, rules duplicated from `constitution.md`.
 - **Cross-file consistency**: the project described in `overview.md` aligns with `architecture.md` and any `features/` files — obvious story conflicts suggest the scan misinterpreted something substantial.
 
-If any check fails, report file path + what's wrong + what to correct. Proceed to §3.2 only after the user acknowledges or re-runs the tech-writer with corrections.
+If any check fails, report the findings to the user (file path + what's wrong + what to correct) and **ask explicitly** how to proceed, using your runtime's natural question mechanism. Offer three options:
+
+- **Proceed** — accept the output as-is despite the issues (user's call)
+- **Re-run the tech-writer** — rebuild the prompt with corrections and re-invoke the tech-writer agent for the specific files that failed verification (preserve the ones that passed)
+- **Abort** — stop onboard entirely; user will investigate manually
+
+Do NOT silently proceed to §3.2 after reporting issues. Wait for the user's explicit choice.
 
 ### 3.2: Update Memory
 
