@@ -58,7 +58,7 @@ For each `"TBD"` entry, ask the user inline using your runtime's natural questio
 
 > For stack [i+1] ([LANGUAGES[i]] / [FRAMEWORKS[i]]), the wizard deferred the `[concern name]` question. Please answer now so I can generate rules for this stack. Free-form answer — name a specific pattern or convention (e.g., "hexagonal architecture", "thiserror + `?` operator", "REST with problem+json"), or answer "still defer" to omit rules for this stack × concern combination.
 
-Store the user's answer verbatim; update the in-memory copy of `project-config.json` (write-back happens in Phase 5). If the answer is "still defer" or empty, record as `TBD` and proceed — that stack × concern will produce no rules in Phase 4, and constitution's corresponding bullet will read `_Deferred — rerun {{cli.sigil}}constitute after deciding_`.
+Store the user's answer verbatim; update the in-memory copy of `project-config.json` (write-back happens in Phase 5). If the answer is "still defer" or empty, record as `TBD` and proceed — that stack × concern will produce no rules in Phase 4 (the affected section uses the canonical empty-section marker with reason `user deferred`; see Phase 4's Zero-rules-per-section handling).
 
 ## PHASE 3: Interview
 
@@ -155,7 +155,7 @@ Precedence — pick the most accurate tag for each rule:
 
 **§4.3.1 PREFER** — 3–7 preference rules (softer than ALWAYS/NEVER; can be overridden with justification).
 
-**§5 Domain Rules** — brownfield: extract from `docs/features/*.md` Key Types and Invariants. Greenfield: use `DOMAIN_ENTITIES` from Q-domain if provided; otherwise render a minimal stub: `_Will be populated during {{cli.sigil}}specify runs as features get built — no domain context available at constitute time._`
+**§5 Domain Rules** — brownfield with onboard: extract from `docs/features/*.md` Key Types and Invariants. Greenfield / no-onboard-brownfield: use `DOMAIN_ENTITIES` from Q-domain if provided. If `DOMAIN_ENTITIES` is empty (user skipped), use the canonical empty-section marker with reason `user deferred` (see Zero-rules-per-section handling above).
 
 **§6.5 Deprecation Handling** — brownfield: check `docs/` or memory for existing deprecation patterns. If none observed, use language conventions (TS: JSDoc `@deprecated` + removal version; Python: `warnings.warn(DeprecationWarning)`; Rust: `#[deprecated(since=..., note=...)]`; etc.). Tag `[convention]` when unobserved.
 
@@ -176,11 +176,36 @@ Precedence — pick the most accurate tag for each rule:
 - Pattern reference (one concrete example per chosen pattern)
 - "When to re-constitute" note: run `{{cli.sigil}}constitute` again when the project reaches 20+ source files to replace convention-based rules with extracted ones from the then-existing codebase.
 
-For brownfield, **omit §7 entirely** — the project is already scaffolded.
+For brownfield, write the canonical empty-section marker with reason `not applicable` (see Zero-rules-per-section handling above), OR structurally omit §7 if the constitution template's §7 heading isn't present at all — matching whichever the current file does.
 
 ### Multi-stack handling
 
 For `len(LANGUAGES) > 1`: produce per-stack rule blocks within each section where rules diverge (type safety, naming, layer boundaries — these vary per language). Cross-stack rules (workflow enforcement, deprecation strategy at the project level) go once without stack labels.
+
+### Zero-rules-per-section handling (canonical empty output)
+
+A section legitimately has no rules to synthesize when one of these holds:
+
+- **`insufficient observation`** — brownfield with no relevant pattern found in onboard's output.
+- **`no applicable default`** — greenfield with no idiomatic convention for this concern (e.g., language has no community-standard approach you'd confidently recommend).
+- **`user deferred`** — user answered "still defer" in Phase 2 for this stack × concern, or answered "skip" at Q-domain.
+- **`not applicable`** — concern doesn't apply to this stack (e.g., Type Safety for plain JavaScript without TypeScript).
+
+In those cases, write a **canonical empty-section marker** as the section's body — NOT a sentinel, NOT invented filler:
+
+```
+_No rules synthesized — [reason]. Rerun `{{cli.sigil}}constitute` with Full-rewrite mode after adding context (e.g., running onboard, resolving the deferred wizard answer, or manually writing rules)._
+```
+
+The empty marker does NOT start with `_Run constitute to populate` — so re-running in Fresh-fill mode won't target it for regeneration (the LLM already decided nothing was available; re-running without new context produces the same decision). Use Full-rewrite mode, or manual edit, to revisit.
+
+**Applied to the specific pre-defined cases:**
+
+- **§5 Domain Rules, greenfield, user skipped Q-domain**: `_No rules synthesized — no domain context provided (user skipped Q-domain). Will be populated during {{cli.sigil}}specify runs as features get built, or rerun {{cli.sigil}}constitute with Full-rewrite mode after domain entities are identified._`
+- **§7 Scaffolding Guide, brownfield**: `_No rules synthesized — not applicable (brownfield project; scaffolding already exists)._` Alternatively, structurally omit the §7 heading entirely for brownfield (either is valid; matching the rest of the constitution's section structure is preferable).
+- **Phase 2 deferred TBD × section**: `_No rules synthesized — user deferred the "[concern]" question for stack [LANGUAGES[i]] / [FRAMEWORKS[i]]. Rerun {{cli.sigil}}constitute after deciding._`
+
+User review (Phase 6) surfaces empty sections so the user can challenge lazy "insufficient observation" skips where rules WERE available.
 
 ### Citation discipline (applies during synthesis)
 
@@ -292,6 +317,11 @@ Rule sources:
 Tag adjustments (Phase 4.5 validation): [omit this line if 0 total]
 - [EXTRACTED_DOWNGRADES] [extracted] → [convention] (cited file didn't exist)
 - [ENFORCED_DOWNGRADES] [enforced] → [recommended] (cited tool / rule not found)
+
+Empty sections (no rules synthesized): [omit block if 0 empty sections]
+- [section] — reason: [insufficient observation / no applicable default / user deferred / not applicable]
+- ... [one line per empty section]
+  → If any "insufficient observation" empty sections look wrong (rules WERE available), pick Revise to regenerate.
 ```
 
 Then ask the user:
