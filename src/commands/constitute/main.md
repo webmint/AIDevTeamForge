@@ -176,6 +176,46 @@ For brownfield, **omit §7 entirely** — the project is already scaffolded.
 
 For `len(LANGUAGES) > 1`: produce per-stack rule blocks within each section where rules diverge (type safety, naming, layer boundaries — these vary per language). Cross-stack rules (workflow enforcement, deprecation strategy at the project level) go once without stack labels.
 
+### Citation discipline (applies during synthesis)
+
+Every `[extracted]` rule you draft must cite a file path you're willing to have verified in Phase 4.5. Do NOT cite files you haven't read from onboard's output. Do NOT cite plausible-looking paths you inferred but can't confirm — Phase 4.5 will downgrade them to `[convention]`, which is not wrong, just less strong a claim.
+
+Every `[enforced]` rule must name the specific tooling source (config file + rule / option name). Phase 4.5 will verify the config exists and the named rule is actually present; unverifiable enforcement claims are downgraded to `[recommended]`.
+
+## PHASE 4.5: Validate Tag Citations
+
+Before writing anything (Phase 5), verify citations on tagged rules. This is NOT a codebase walk — you only read the SPECIFIC files cited by rules you generated, to confirm the claims are real.
+
+**Path resolution**: cited paths are relative to `SOURCE_ROOT` (from Phase 1). For standalone projects that's the workspace root; for wrapper-mode it's the inner folder.
+
+### 4.5.1: Validate `[extracted]` rules
+
+For each rule tagged `[extracted]`:
+
+1. Extract the cited file path(s) from the rule text.
+2. Verify the file exists at `<SOURCE_ROOT>/<path>`. If multiple files are cited, verify each.
+3. If ANY cited file is missing, **downgrade the rule's tag to `[convention]`**. Keep the rule content — the rule itself may still be reasonable; just its claim to being evidence-based is unverified.
+4. Record the downgrade in your `TAG_ADJUSTMENTS` count (for Phase 6 summary).
+
+Scope limit: you check file EXISTENCE, not deep content verification. If a rule says "`src/auth/login.ts` uses `neverthrow`" and the file exists, that's enough — we don't parse the file to confirm `neverthrow` is actually used. Existence is the minimum honesty bar; deeper verification is out of scope.
+
+### 4.5.2: Validate `[enforced]` rules
+
+For each rule tagged `[enforced]`:
+
+1. Extract the cited config file + rule/option name (e.g., `tsconfig.json strict: true`; `.eslintrc.js no-explicit-any`; `Cargo.toml [lints.clippy] unwrap_used = "deny"`).
+2. Verify the config file exists at `<SOURCE_ROOT>/<path>` AND contains the named rule / setting / option.
+3. If the config file is missing OR the named setting isn't present, **downgrade the rule's tag to `[recommended]`**. Record the downgrade.
+
+### 4.5.3: Record adjustments
+
+After validation, hold in memory:
+
+- `EXTRACTED_DOWNGRADES` — count of `[extracted]` → `[convention]` demotions
+- `ENFORCED_DOWNGRADES` — count of `[enforced]` → `[recommended]` demotions
+
+Phase 6's summary will display these so the user sees the actual evidence quality behind the generated rules.
+
 ## PHASE 5: Populate `constitution.md`
 
 Write the synthesized rules into constitution.md's body sections. Branch on the operation mode captured in Phase 1 Step 2:
@@ -220,6 +260,10 @@ Rule sources:
 - [convention]: [count] (from user answers + framework idioms)
 - [enforced]: [count] (backed by project tooling)
 - [recommended]: [count] (best-practice suggestions)
+
+Tag adjustments (Phase 4.5 validation): [omit this line if 0 total]
+- [EXTRACTED_DOWNGRADES] [extracted] → [convention] (cited file didn't exist)
+- [ENFORCED_DOWNGRADES] [enforced] → [recommended] (cited tool / rule not found)
 ```
 
 Then ask the user:
