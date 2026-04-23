@@ -454,7 +454,7 @@ Create `.devforge/baseline/` (and `.devforge/baseline/docs/` for step 4–5) if 
 
 ## 5.4: Add MCP Servers + Permissions (conditional)
 
-If `AC_RUNTIME_URL` is set (Q11 selected **runtime-assisted** AC verification and captured a frontend URL — applies to both **web frontend** and **full-stack web application** branches of Q11), add the chrome-devtools server and its permissions to each runtime config file **that exists** (single-runtime installs skip the missing one):
+If `AC_RUNTIME_URL` is set (Q11's `AC_VERIFICATION_MODE` array included `"runtime-assisted"` AND the project's Q2 type routed through the **web frontend** or **full-stack web application** Runtime-assisted branch, which captures a frontend URL), add the chrome-devtools server and its permissions to each runtime config file **that exists** (single-runtime installs skip the missing one):
 
 The package name used below is `CHROME_DEVTOOLS_MCP_PACKAGE` from the "Drift-risk literals" section at the top of this file. If Anthropic renames the package, update the literal there — both entries below read from the same source.
 
@@ -494,7 +494,7 @@ args = ["-y", "chrome-devtools-mcp"]
 
 Codex does not use an allowlist — its `approval_policy` governs behavior — so step 3 is Claude-only.
 
-If `AC_RUNTIME_URL` is not set (Q11 didn't select runtime-assisted, or the selected branch was backend-only / CLI / mobile-desktop with no frontend URL), skip this entire step.
+If `AC_RUNTIME_URL` is not set (Q11's `AC_VERIFICATION_MODE` array didn't include `"runtime-assisted"`, or the project's Q2 type routed to a Runtime-assisted branch with no frontend URL — backend-only / CLI / mobile-desktop / no-automatable-runtime), skip this entire step.
 
 ## 5.5: Populate Project Config
 

@@ -478,17 +478,44 @@ Override the underlying model per tier only if the user explicitly asks — othe
 
 ## Question 11: Acceptance Criteria Verification (REQUIRED)
 
-When the user runs `{{cli.sigil}}verify` after a task completes, how should acceptance criteria be checked? Pick one mode:
+When the user runs `{{cli.sigil}}verify` after a task completes, how should acceptance criteria be checked? The user can pick one mode (simplest — what most projects need) or combine multiple (defense in depth — stronger signal, slower per-task verification).
+
+**Trade-off to surface in the prompt**: each additional mode adds per-task verification time. Runtime-assisted especially adds 10–30s per task for dev-server boot + UI drive. Pick "Multiple" only when multiple signals genuinely matter for this project.
 
 > Options:
 > - **Code-only** — verify by reading code against the AC spec. No execution. Works for any project type; safe pick if unsure.
 > - **Tests** — run the project's test suite; failures indicate AC violations. Good fit when the project has meaningful tests.
 > - **Runtime-assisted** — run the built artifact and interact with it. Good fit when the artifact is easily launchable (web app, backend, CLI) and AC is observable at runtime.
 > - **Off** — skip AC verification; user handles manually. Only choose this if the user explicitly wants to opt out.
+> - **Multiple** — combine two or three modes (defense in depth). Follow-up asks which.
 
-Store the chosen mode as `AC_VERIFICATION_MODE`.
+### Storage (always an array)
 
-### Runtime-assisted follow-ups (only if that mode was chosen)
+`AC_VERIFICATION_MODE` is always stored as a JSON array of strings in `.devforge/project-config.json` — single-mode picks store a one-element array for uniform downstream iteration. Examples:
+
+- Single pick: `["code-only"]`, `["tests"]`, `["runtime-assisted"]`, or `["off"]`
+- Multiple pick: `["code-only", "tests"]`, `["tests", "runtime-assisted"]`, or `["code-only", "tests", "runtime-assisted"]`
+
+Valid values inside the array: exactly `"code-only"`, `"tests"`, `"runtime-assisted"`, or `"off"`. No other strings. `"off"` can only appear as a single-element array `["off"]` — it is inherently exclusive of the other modes.
+
+### If the user picks "Multiple"
+
+Ask a follow-up multi-select. `Off` is NOT in the follow-up options — `Off` is inherently exclusive; if the user wanted that they'd have picked it on the first screen:
+
+> Which modes? Select two or three (Runtime-assisted follow-ups will fire if Runtime-assisted is among them):
+> - Code-only
+> - Tests
+> - Runtime-assisted
+
+Use the runtime's multi-select mechanism if available, otherwise ask the user to list the modes they want. Store the selected set as the `AC_VERIFICATION_MODE` array.
+
+### If the user picks a single mode (Code-only / Tests / Runtime-assisted / Off)
+
+Store as a one-element array (e.g., `["code-only"]`). Proceed directly to the mode-specific follow-ups.
+
+### Runtime-assisted follow-ups (only if `"runtime-assisted"` is in `AC_VERIFICATION_MODE`)
+
+Run these follow-ups whenever the `AC_VERIFICATION_MODE` array contains `"runtime-assisted"` — whether Runtime-assisted was picked as the sole mode OR as part of a Multiple combination. Skip them entirely otherwise.
 
 Branch by the project type confirmed in Q2 (not what Phase 1 detected — Q2's answer is canonical). Map Q2's answer to exactly one follow-up branch using the table below; every Q2 option has a defined destination so the wizard never silently skips the follow-up.
 
@@ -515,7 +542,12 @@ Branch by the project type confirmed in Q2 (not what Phase 1 detected — Q2's a
 
 > Runtime-assisted verification doesn't fit this project type — there's no launchable artifact `{{cli.sigil}}verify` can drive. I recommend **Tests** (if the project has a test suite) or **Code-only** (otherwise).
 
-Then ask them to pick Tests or Code-only and update `AC_VERIFICATION_MODE` accordingly. Do NOT store any `AC_RUNTIME_*` key in this branch.
+Then:
+
+- **Remove `"runtime-assisted"` from the `AC_VERIFICATION_MODE` array** (since it can't apply for this project type).
+- If the user picked Runtime-assisted alone (array was `["runtime-assisted"]`), ask them to pick Tests or Code-only and store it as `["tests"]` or `["code-only"]`.
+- If the user picked Multiple with Runtime-assisted AND other modes (e.g., `["tests", "runtime-assisted"]`), drop Runtime-assisted and keep the remaining modes (→ `["tests"]`). No additional question needed — the user already explicitly selected the other modes.
+- Do NOT store any `AC_RUNTIME_*` key in this branch (frontend URL / API base / CLI command are all runtime-assisted-specific).
 
 For projects that legitimately span multiple categories (e.g., a mobile app with its own backend, or a monorepo containing a web frontend + a CLI + shared libs) and Q2 only captured one of them, ask the user which ONE scope `{{cli.sigil}}verify` should primarily target, then use that branch. Additional scopes require manual verification — note this for the user so they know what's covered vs. not.
 
