@@ -4,7 +4,7 @@ Generated: {{DATE}}
 Last updated: {{DATE}}
 
 > Sections marked `[universal]` are pre-populated with rules that apply to ALL projects.
-> Sections marked `[project-specific]` are populated by `/constitute` based on your codebase or interview answers.
+> Sections marked `[project-specific]` are populated by `constitute` based on your codebase or interview answers.
 > Header fields in Section 1 are populated by the setup wizard from Phase 1 detection + Phase 2 answers. Per-stack details for multi-stack projects (Sections 3.2 / 3.4) follow the same paired-rendering rules as agent files — see `CLAUDE.md` / `AGENTS.md` `## Packages` section for the per-package breakdown.
 
 ---
@@ -24,40 +24,40 @@ Last updated: {{DATE}}
 
 ## 2. Architecture Rules [project-specific]
 
-<!-- Populated by /constitute — these depend on your chosen architecture -->
+<!-- Populated by constitute — these depend on your chosen architecture -->
 
 ### 2.1 Layer Boundaries
-_Run `/constitute` to populate_
+_Run constitute to populate_
 
 ### 2.2 File Organization
-_Run `/constitute` to populate_
+_Run constitute to populate_
 
 ### 2.3 Dependency Rules
-_Run `/constitute` to populate_
+_Run constitute to populate_
 
 ---
 
 ## 3. Code Quality Standards
 
 ### 3.1 Type Safety [project-specific]
-_Run `/constitute` to populate with language-specific type rules_
+_Run constitute to populate with language-specific type rules_
 
 ### 3.2 Error Handling [project-specific]
 - **Pattern**: {{ERROR_HANDLING}}
 
-> For multi-stack projects, `{{ERROR_HANDLING}}` renders as paired bullets — one per stack (e.g., `"neverthrow Result<T,E> (TypeScript/Next.js), exceptions + returns.Result (Python/FastAPI)"`). `"TBD"` entries (user deferred in Q5) are omitted; `/constitute` fills them in later.
+> For multi-stack projects, `{{ERROR_HANDLING}}` renders as paired bullets — one per stack (e.g., `"neverthrow Result<T,E> (TypeScript/Next.js), exceptions + returns.Result (Python/FastAPI)"`). `"TBD"` entries (user deferred in Q5) are omitted; `constitute` fills them in later.
 
-_Details populated by `/constitute`_
+_Run constitute to populate details_
 
 ### 3.3 Naming Conventions [project-specific]
-_Run `/constitute` to populate with project naming patterns_
+_Run constitute to populate with project naming patterns_
 
 ### 3.4 Testing Requirements [project-specific]
 - **Framework**: {{TESTING}}
 
 > For multi-stack projects, `{{TESTING}}` renders as paired bullets — one per stack (e.g., `"vitest (TypeScript/Next.js), pytest (Python/FastAPI)"`). `"N/A"` stacks (no tests) are kept with the stack label so it's explicit; `"TBD"` entries are omitted.
 
-_Details populated by `/constitute`_
+_Run constitute to populate details_
 
 ### 3.5 Universal Code Quality [universal]
 
@@ -135,7 +135,7 @@ Search for it using Grep and Glob before creating a new one. Duplicating existin
 - **Test your assumptions.** If a change depends on "X should already be Y," verify it. Read the code. Don't assume.
 
 ### 4.1.1 ALWAYS Do [project-specific]
-_Run `/constitute` to populate with concrete examples from your codebase_
+_Run constitute to populate with concrete examples from your codebase_
 
 ### 4.2 NEVER Do [universal]
 
@@ -161,7 +161,7 @@ try { doThing(); } catch (e) {
 - **Never guess at behavior.** If you are unsure how existing code works, read it. If you are unsure what the user wants, ask. Guessing leads to wrong implementations that waste time.
 
 ### 4.2.1 NEVER Do [project-specific]
-_Run `/constitute` to populate with project-specific anti-patterns_
+_Run constitute to populate with project-specific anti-patterns_
 
 ### 4.3 PREFER [universal]
 
@@ -173,13 +173,13 @@ _Run `/constitute` to populate with project-specific anti-patterns_
 - **Small PRs over large ones.** One concern per change. If a task touches more than 5-7 files, consider whether it can be split.
 
 ### 4.3.1 PREFER [project-specific]
-_Run `/constitute` to populate with project-specific preferences_
+_Run constitute to populate with project-specific preferences_
 
 ---
 
 ## 5. Domain Rules [project-specific]
 
-_Run `/constitute` to populate with business domain terms, rules, and constraints_
+_Run constitute to populate with business domain terms, rules, and constraints_
 
 ---
 
@@ -214,16 +214,16 @@ Skipping this step is the #1 cause of wrong implementations.
 - `docs/` is the source of truth for project documentation — organized by topic, not by task
 
 ### 6.5 Deprecation Handling [project-specific]
-_Run `/constitute` to populate_
+_Run constitute to populate_
 
 ### 6.6 Project-Specific Workflow [project-specific]
-_Run `/constitute` to populate_
+_Run constitute to populate_
 
 ---
 
 ## 7. Scaffolding Guide [greenfield-only]
 
-_This section is populated by `/constitute` when run on a greenfield project._
+_This section is populated by `constitute` when run on a greenfield project._
 _It contains the recommended directory structure, initial file setup, and bootstrapping steps._
 
 ---
@@ -232,9 +232,9 @@ _It contains the recommended directory structure, initial file setup, and bootst
 
 Rules use these tags to indicate their origin:
 - `[universal]` — Applies to all projects. Pre-populated in template.
-- `[convention]` — Team convention discovered or decided during `/constitute`.
-- `[extracted]` — Pattern extracted from existing codebase during `/constitute`.
+- `[convention]` — Team convention discovered or decided during `constitute`.
+- `[extracted]` — Pattern extracted from existing codebase during `constitute`.
 - `[enforced]` — Hard rule with automated checking (linting, type checking, hooks).
 - `[recommended]` — Best practice suggestion. Can be overridden with good reason.
 - `[greenfield-only]` — Only applies during initial project scaffolding.
-- `[project-specific]` — Populated by `/constitute` based on your project.
+- `[project-specific]` — Populated by `constitute` based on your project.

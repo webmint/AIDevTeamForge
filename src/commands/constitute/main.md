@@ -30,7 +30,11 @@ Load inputs from existing artifacts. Do NOT walk the codebase.
    - `WORKSPACE_MODE`, `SOURCE_ROOT`
    - `PACKAGES_DETECTED` / `PACKAGE_STACKS` for multi-package projects
 
-2. **`constitution.md`** — identify which `[project-specific]` sections still carry the `_Run constitute to populate_` sentinel. Those are your targets. Hold the current file body in memory so you can restore it on abort (Phase 6).
+2. **`constitution.md`** — determine operation mode based on the user's answer to Prereq #4:
+   - **Fresh-fill mode** (some `[project-specific]` sections still carry `_Run constitute to populate_` sentinels): your targets are the sentinel-marked sections. Leave already-populated sections untouched.
+   - **Full-rewrite mode** (user chose "re-constitute" in Prereq #4 when all sections were already populated): your targets are every `[project-specific]` body section — regenerate content regardless of current state.
+   
+   In either mode, hold the current file body in memory so you can restore it on abort (Phase 6).
 
 3. **`docs/architecture.md`** — if onboard ran, this contains module map, dependency rules, conventions, and cross-cutting concerns. Read these as observed patterns to cite when synthesizing rules.
 
@@ -46,12 +50,9 @@ If any of `ARCHITECTURES[]`, `ERROR_HANDLINGS[]`, `API_LAYERS[]`, `TESTINGS[]` c
 
 For each `"TBD"` entry, ask the user inline using your runtime's natural question mechanism:
 
-> For stack [i+1] ([LANGUAGES[i]] / [FRAMEWORKS[i]]), the wizard deferred [concern name]. Please answer now so I can generate rules for this stack:
-> [present the same options the wizard would have shown for that question]
+> For stack [i+1] ([LANGUAGES[i]] / [FRAMEWORKS[i]]), the wizard deferred the `[concern name]` question. Please answer now so I can generate rules for this stack. Free-form answer — name a specific pattern or convention (e.g., "hexagonal architecture", "thiserror + `?` operator", "REST with problem+json"), or answer "still defer" to omit rules for this stack × concern combination.
 
-Store the user's answer; update the in-memory copy of `project-config.json` (write-back happens in Phase 5).
-
-If the user wants to continue deferring a specific stack × concern, record it as "rules omitted — deferred" and skip rule generation for that stack's affected sections. Constitution's corresponding bullet will read `_Deferred — rerun {{cli.sigil}}constitute after deciding_`.
+Store the user's answer verbatim; update the in-memory copy of `project-config.json` (write-back happens in Phase 5). If the answer is "still defer" or empty, record as `TBD` and proceed — that stack × concern will produce no rules in Phase 4, and constitution's corresponding bullet will read `_Deferred — rerun {{cli.sigil}}constitute after deciding_`.
 
 ## PHASE 3: Interview
 
@@ -103,6 +104,17 @@ For each `[project-specific]` sentinel section in `constitution.md`, produce rul
 - `[enforced]` — backed by project tooling (linter, type-checker, CI config, pre-commit hook). **Name the tool + config file** (e.g., `tsconfig.json strict: true`, `.eslintrc.js no-explicit-any`).
 - `[recommended]` — suggested best-practice, not project-enforced. Used sparingly for rules the user can override per case.
 
+**Tag precedence when a rule qualifies for multiple:**
+
+A rule is `[enforced]` only if the **specific** rule is enforced by tooling — not if some related rule is. Example: user picks Maximum strictness, generating "no `any`". `tsconfig.json` has `strict: true` but not `noExplicitAny` (that's an eslint-level rule), and the eslint config has no `@typescript-eslint/no-explicit-any`. Tooling enforces general strictness but NOT this specific rule. Tag as `[convention]`, not `[enforced]`.
+
+Precedence — pick the most accurate tag for each rule:
+
+1. `[enforced]` — **only** when the specific rule is backed by tooling (name the config line).
+2. `[extracted]` — when observed in code, even if not tool-enforced.
+3. `[convention]` — when derived from strictness level, user answers, or framework idioms without tool backing.
+4. `[recommended]` — reserved for genuine suggestions the user should consider but where stricter tagging would overstate the commitment.
+
 ### Per-section synthesis
 
 **§2.1 Layer Boundaries** — derive from `ARCHITECTURES[i]` per stack. Each named pattern (hexagonal / ports-and-adapters, clean, layered, MVC, feature-sliced, etc.) has a canonical layer shape. Name the layers the project's architecture implies; state allowed import directions. For brownfield, cite `docs/architecture.md`'s module map.
@@ -138,7 +150,16 @@ For each `[project-specific]` sentinel section in `constitution.md`, produce rul
 
 **§7 Scaffolding Guide (greenfield only)** — propose a directory structure based on `ARCHITECTURES[0]` + `FRAMEWORKS[0]`. Include:
 - Proposed initial directory tree
-- First-files-to-create list (order matters — domain / types first, then data layer, then business logic, then UI / entry points)
+- First-files-to-create list — order matters and **depends on the architecture pattern** chosen (`ARCHITECTURES[0]`). Common orderings:
+  - **Clean / hexagonal / layered**: domain / types → data layer → business logic → UI or entry points
+  - **MVC**: models → controllers → views
+  - **Feature-sliced** (frontend): shared / entities → features → widgets → pages
+  - **Event-driven**: event schemas → handlers → emitters / consumers
+  - **Actor model**: actors + messages → supervisors → entry points
+  - **Microservices**: service boundaries + API contracts → per-service internals
+  - **Flat / simple / unopinionated**: entry point first, then feature-by-feature as needed
+  
+  For an architecture not listed above, propose an order that respects the pattern's own dependency direction (things depended-on first, things depending last) and name the pattern you're applying. Do NOT default to the clean-architecture order for an arbitrary pattern.
 - Pattern reference (one concrete example per chosen pattern)
 - "When to re-constitute" note: run `{{cli.sigil}}constitute` again when the project reaches 20+ source files to replace convention-based rules with extracted ones from the then-existing codebase.
 
@@ -150,13 +171,15 @@ For `len(LANGUAGES) > 1`: produce per-stack rule blocks within each section wher
 
 ## PHASE 5: Populate `constitution.md`
 
-Write the synthesized rules into constitution.md's body sections:
+Write the synthesized rules into constitution.md's body sections. Branch on the operation mode captured in Phase 1 Step 2:
 
-1. Replace each `_Run constitute to populate_` sentinel with the synthesized content for that section. Preserve section headings, subsection numbers, and `[project-specific]` section tags.
-2. Do NOT touch `[universal]` sections (§3.5, §3.6, §3.7, §4.1, §4.2, §4.3, §6.1, §6.2, §6.3, §6.4). They're installed verbatim and apply to every project.
-3. Do NOT rewrite the header (§1 Project Identity) — wizard owns that.
-4. Every rule must carry its source tag (`[extracted]` / `[convention]` / `[enforced]` / `[recommended]`).
-5. Update the `Last updated:` line near the top of the file to today's ISO-8601 date.
+1. **Fresh-fill mode**: replace each `_Run constitute to populate_` sentinel (and its variants like `_Run constitute to populate with language-specific type rules_`, `_Run constitute to populate details_`) with the synthesized content for that section. Sections without sentinels remain untouched.
+2. **Full-rewrite mode**: overwrite every `[project-specific]` body section's content with the newly synthesized rules, regardless of its previous state. Preserve section headings, subsection numbers, and `[project-specific]` section tags — only the body content changes.
+3. In both modes, preserve section headings, subsection numbers, and `[project-specific]` section tags.
+4. Do NOT touch `[universal]` sections (§3.5, §3.6, §3.7, §4.1, §4.2, §4.3, §6.1, §6.2, §6.3, §6.4). They're installed verbatim and apply to every project.
+5. Do NOT rewrite the header (§1 Project Identity) — wizard owns that.
+6. Every rule must carry its source tag (`[extracted]` / `[convention]` / `[enforced]` / `[recommended]`).
+7. Update the `Last updated:` line near the top of the file to today's ISO-8601 date.
 
 If any Phase 2 TBD resolutions happened, write the updated `project-config.json` too (preserve all other fields; only update the ones you resolved).
 
@@ -197,10 +220,10 @@ Then ask the user:
 > Review the constitution at `constitution.md`. How should I proceed?
 >
 > - **Accept** — constitution is ready; finalize
-> - **Revise section X** — name a section; I'll regenerate just that section
+> - **Revise section X** — name a section AND describe what should change (e.g., "§4.2.1 NEVER — add a rule about avoiding callbacks, prefer async/await" or "§3.1 Type Safety — too strict, reduce to High-level rules"). I'll regenerate that section incorporating your feedback.
 > - **Abort** — discard the draft; constitution reverts to its pre-`{{cli.sigil}}constitute` state (sentinels restored)
 
-Wait for the user's choice. On **Accept** → Phase 7. On **Revise** → re-enter Phase 4 for the named section only, then re-present. On **Abort** → restore the body content you held in memory at Phase 1 step 2; report "aborted — no changes written" and exit.
+Wait for the user's choice. On **Accept** → Phase 7. On **Revise** → capture the user's feedback as additional synthesis input; re-enter Phase 4 for the named section only, incorporating the feedback on top of Phase 1–3 inputs; then re-present. If the user revises the same section repeatedly, feedback accumulates — don't lose earlier feedback on the next revise round. On **Abort** → restore the body content you held in memory at Phase 1 step 2; report "aborted — no changes written" and exit.
 
 ## PHASE 7: Summary
 
