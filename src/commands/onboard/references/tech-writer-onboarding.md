@@ -27,7 +27,8 @@ You are scanning a potentially large codebase. Context is a finite resource. Fol
 
 When the scan strategy requires subagents, launch them via {{cli.subagent}}. Each subagent scans ONE module.
 
-**Subagent prompt template:**
+**Subagent prompt template** — when dispatching, the orchestrator fills bracketed placeholders (project context, architecture, module path, ignore set) with concrete values before sending. The subagent only sees what's substituted; it cannot follow references to other files on its own.
+
 ```
 Scan the module at `[module-path]` and return a structured summary.
 
@@ -40,7 +41,7 @@ Architecture: [architecture pattern]
 - ALL route/API files — full content
 - Implementation files — signatures, imports, exports ONLY (skip function bodies)
 - Test files — test names ONLY (skip test bodies)
-- Skip: the ecosystem-aware ignore set from `detect.md` STEP 1 "Count source files" (build output, dependency trees, tool caches, cross-runtime artifacts across Rust / Java / .NET / Python / Ruby / Haskell ecosystems), plus generated files and assets
+- Skip: [orchestrator INLINES detect.md STEP 1's ecosystem-aware ignore set here before dispatching — replace this bracketed line with the actual list of directories to ignore, covering Rust / Java / .NET / Python / Ruby / Haskell build output, dependency trees, tool caches, and cross-runtime artifacts, plus generated files and assets]
 
 ## Return Format
 
@@ -124,7 +125,7 @@ After generating all docs, verify:
 
 1. **Every file path mentioned exists** — verify using your runtime's file-discovery mechanism (file-listing tool, glob, or shell `ls` / `find` as available)
 2. **Every code example is from the actual codebase** — no invented code
-3. **Every module in the module map has documentation** (either in `features/`, `api/`, or mentioned in `overview.md`/`architecture.md`)
+3. **Every substantive module has documentation** — either in `features/`, `api/`, or mentioned in `overview.md`/`architecture.md`. Modules that the scan found nothing substantial about may be intentionally omitted (per main.md Documentation Requirements' "better absent than speculative"). If a module is skipped, it should NOT appear in the module map either — a module-map entry with no documentation is the actual gap; silence about an insignificant module is fine.
 4. **No docs reference non-existent files, functions, or types**
 5. **Cross-references are correct** — if one doc links to another, the target exists
 6. **No duplicate information** — if something is in `architecture.md`, don't repeat it in every feature doc
@@ -136,21 +137,21 @@ After generating docs, return a summary of findings to be added to `.devforge/me
 - Key module boundaries and their responsibilities
 - Cross-module dependency warnings (tightly coupled areas)
 - Areas of complexity or risk (modules with many dependencies, unclear patterns)
-- Any inconsistencies found (naming violations, pattern deviations from constitution)
+- Any inconsistencies found — self-contradictions within observed code (two files in the same module using different error-handling styles, different naming conventions, or divergent import patterns), or deviations from constitution's `[universal]` sections (§3.5–3.7, §4.1–4.3, §6.1–6.4 — these ARE populated at scan time). Do NOT flag "deviations from constitution's `[project-specific]` sections" — those are sentinel-marked at this stage and have no rules yet to deviate from.
 
 **Return format:**
 ```
 ## MEMORY_ADDITIONS
 
-### Module Boundaries
+### Module boundaries
 - [module]: [responsibility]
 
-### Dependency Warnings
+### Dependency warnings
 - [observation about tight coupling or circular dependencies]
 
-### Areas of Complexity
+### Areas of complexity
 - [module/area]: [why it's complex]
 
-### Inconsistencies Found
-- [what was expected vs what was found]
+### Inconsistencies
+- [what was expected vs what was found — self-contradictions within code OR deviations from constitution's `[universal]` sections]
 ```
