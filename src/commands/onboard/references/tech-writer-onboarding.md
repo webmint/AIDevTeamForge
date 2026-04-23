@@ -12,15 +12,15 @@ You are scanning a potentially large codebase. Context is a finite resource. Fol
 
 | File Type | What to Extract | What to Skip |
 |---|---|---|
-| **Type/interface definitions** (`.d.ts`, `types.ts`, `interfaces/`, `entities/`) | Read full content — highest information density | Nothing |
-| **Index/barrel files** (`index.ts`, `__init__.py`, `mod.rs`) | Read full content — defines module boundaries | Nothing |
-| **Route/API definitions** (routes, controllers, endpoints) | Read full content — defines API surface | Nothing |
+| **Type / interface / trait / protocol definitions** (`.d.ts`, `types.ts`, `.pyi`, `interfaces/`, `entities/`; Rust `trait` / `struct` / `enum`; Python `Protocol` / `TypedDict` / dataclass; Go `type` declarations; Swift `protocol` / `struct`; Kotlin `sealed class` / `data class`) | Read full content — highest information density | Nothing |
+| **Index / barrel / module entry files** (`index.ts`, `__init__.py`, `mod.rs`, `lib.rs`; Go `package` declarations, Swift `@_exported import`, Java / Kotlin module-info / re-exports) | Read full content — defines module boundaries | Nothing |
+| **Route / API definitions** (HTTP routes, gRPC services, GraphQL resolvers, RPC controllers, message handlers) | Read full content — defines API surface | Nothing |
 | **Config files** (`.env.example`, config modules) | Read full content | `.env` (secrets) |
-| **Implementation files** (services, repositories, helpers) | Function/method signatures, class definitions, imports, exports | Function bodies (skip internal logic) |
-| **Components** (`.vue`, `.tsx`, `.svelte`) | Props/interface, template structure, emits/events, composable/hook usage | Template HTML details, CSS |
-| **Test files** | `describe`/`it`/`test` names only — these reveal WHAT the code does | Test bodies, assertions, mocks |
-| **Migrations/schemas** | Schema definitions, table structures | Individual migration steps |
-| **Generated/vendored code** | Skip entirely | Everything |
+| **Implementation files** (services, repositories, helpers) | Function/method signatures, class/struct/trait definitions, imports, exports | Function bodies (skip internal logic) |
+| **UI component files** (UI projects only — `.vue`, `.tsx`, `.svelte`, `.dart` Flutter widgets, Android `@Composable` + XML layouts, SwiftUI `View` types, native mobile view classes) | Props / interface, template or view structure, emits / events, composable / hook usage | Template HTML / CSS details, style internals |
+| **Test files** (JS/TS `describe`/`it`/`test`, Python `def test_*`, Rust `#[test]`, Go `func TestXxx`, JUnit `@Test`, XCTest methods, RSpec `describe`/`it`) | Test names only — these reveal WHAT the code does | Test bodies, assertions, mocks |
+| **Migrations / schemas** (SQL migrations, Alembic, Prisma schema, TypeORM, ActiveRecord, Flyway, Liquibase) | Schema definitions, table / type structures | Individual migration steps |
+| **Generated / vendored code** (protobuf outputs, GraphQL codegen, SwiftGen, vendored deps) | Skip entirely | Everything |
 | **Assets** (images, fonts, static) | Skip entirely | Everything |
 
 ### Subagent Usage (for 50+ file projects)
@@ -58,7 +58,7 @@ Architecture: [architecture pattern]
 **Internal Dependencies** (other project modules this imports from):
 - `[module-name]` — [what it uses from that module]
 
-**External Dependencies** (npm packages, libraries):
+**External Dependencies** (npm / pip / cargo / gem / go-mod / maven / gradle / SwiftPM / CocoaPods packages, per the project's ecosystem):
 - `[package]` — [how it's used]
 
 **Patterns Used**:
@@ -94,6 +94,8 @@ When sample-based strategy is selected:
 
 After scanning (directly or via subagent summaries), generate the following docs. Each file has a specific purpose for agents.
 
+**Language / framework agnosticism**: the templates below lean TypeScript / web for historical reasons. Treat the examples as illustrative **structure**, not literal output — adapt file extensions, naming conventions, layer terminology, and syntax to match the actual project being onboarded. If the project is Rust, Go, Python, Swift, Kotlin, etc., substitute the ecosystem's equivalents. The rules about what each doc must cover (purpose, required sections, depth) apply equally regardless of language.
+
 ### `docs/overview.md` — Project Overview
 
 **Purpose for agents**: First thing any agent reads. Quick orientation.
@@ -111,9 +113,9 @@ After scanning (directly or via subagent summaries), generate the following docs
 | Framework | [framework] |
 | Build Tool | [build tool] |
 | Testing | [test framework] |
-| Styling | [styling approach — if applicable] |
-| Database | [database — if applicable] |
-| API Style | [REST/GraphQL/tRPC — if applicable] |
+| Styling | [styling approach] *(omit row if not a UI project)* |
+| Database | [database] *(omit row if not applicable)* |
+| API Style | [REST / GraphQL / gRPC / tRPC / WebSocket] *(omit row if not applicable)* |
 
 ## Project Structure
 [Annotated directory tree showing what each top-level directory contains]
@@ -161,6 +163,8 @@ src/
 [Specify allowed dependency directions]
 [Include a simple ASCII diagram if helpful]
 
+The diagram below is ONE example — Clean Architecture with a UI frontend. Replace it with the shape that matches the project's actual architecture pattern (hexagonal / ports-and-adapters, layered, MVC, event-driven, actor-model, microservices, etc.). Use the terminology the project itself uses (read `constitution.md` §2 and imports / folder structure for the project's own vocabulary).
+
 ```
 Presentation → Domain → Data
      ↓            ↓        ↓
@@ -170,8 +174,9 @@ Presentation → Domain → Data
 ```
 
 ## Module Structure
-[How a typical module is organized internally]
+[How a typical module is organized internally — follow the project's actual naming convention. Suffix-based in TS / JS (`.service.ts`, `.repo.ts`, `index.ts`), directory-based in Rust / Go (sub-crates or sub-packages with `mod.rs` / `package` declaration), type-prefix / filename-based in Python packages, framework-specific in Swift / Kotlin. Scan the codebase to identify the prevailing convention before writing this section.]
 
+Example (illustrative — TypeScript suffix-based):
 ```
 src/[module-name]/
   types.ts          # Type definitions and interfaces
@@ -185,8 +190,8 @@ src/[module-name]/
 ### Error Handling
 [How errors are created, propagated, and handled — with code example from the actual codebase]
 
-### State Management
-[How state is structured and updated — if applicable]
+### State Management *(UI / stateful-application projects only; omit section otherwise)*
+[How state is structured and updated]
 
 ### API Layer
 [How API calls are made — request/response patterns]
@@ -198,18 +203,9 @@ src/[module-name]/
 [How types are organized — shared types, module-specific types, DTOs, entities]
 
 ## Key Domain Types
-[List the most important types/interfaces with brief descriptions — these help agents understand the data model]
+[List the most important types / interfaces / traits / structs / protocols with brief descriptions — these help agents understand the data model]
 
-```typescript
-// Example from actual codebase
-interface Order {
-  id: string;
-  userId: string;
-  items: OrderItem[];
-  status: OrderStatus;
-  // ...
-}
-```
+Copy a concrete example from the actual codebase in the project's language (fence with the project's language identifier — `typescript` / `rust` / `python` / `go` / `swift` / `kotlin` / etc.). One small example is enough; don't paste large type hierarchies.
 
 ## Boundaries & Rules
 [What agents MUST NOT do when working in this codebase — extracted from constitution]
@@ -231,17 +227,21 @@ Create ONE file per identified module/feature. Name: `docs/features/[module-name
 [What this module does — 2-3 sentences]
 
 ## Key Components
-[List the main files/classes/functions with one-line descriptions]
+[List the main files / classes / functions with one-line descriptions — file names and syntax per the project's language and naming convention]
+
+Example *(illustrative — TypeScript auth module; adapt file names + syntax to the project)*:
 - `auth.service.ts` — Core authentication logic: login, logout, token refresh
 - `auth.guard.ts` — Route guard that checks authentication status
 - `auth.types.ts` — User, Session, and Permission type definitions
 
 ## How It Works
 [Explain the main flow — how data moves through this module]
-[Include a code example from the actual implementation showing the key pattern]
+[Include a code example from the actual implementation showing the key pattern, fenced with the project's language]
 
 ## Public API
-[What this module exports for other modules to use]
+[What this module exports for other modules to use — format per the project's language (TS, Rust, Python, Go, etc.)]
+
+Example *(illustrative — TypeScript)*:
 - `authenticate(credentials): Either<AuthError, Session>` — Validates credentials and creates a session
 - `requireAuth(roles?: Role[]): Middleware` — Express middleware for route protection
 
@@ -264,37 +264,37 @@ Create ONE file per identified module/feature. Name: `docs/features/[module-name
 
 ### `docs/api/*.md` — API Documentation (if applicable)
 
-**Only create if the project has API endpoints** (REST, GraphQL, tRPC).
+**Only create if the project exposes an API** — HTTP REST, GraphQL, gRPC, tRPC, WebSocket, or other RPC protocols. Adapt the endpoint identifier and payload format to the protocol:
 
-Create ONE file per API resource/domain area. Name: `docs/api/[resource-name].md`
+- **REST**: `METHOD /path` (e.g. `GET /users/:id`), payloads usually JSON
+- **gRPC**: `service.method` (e.g. `UserService.GetUser`), payloads protobuf (document message types by name, don't paste protobuf)
+- **GraphQL**: query / mutation / subscription names, payloads schema-typed
+- **WebSocket**: event / message type names, payloads in the wire format the project uses
+- **tRPC**: procedure name + input / output types
+
+Create ONE file per API resource / domain area. Name: `docs/api/[resource-name].md`
 
 ```markdown
 # [Resource Name] API
 
-## Endpoints
+## Endpoints / Procedures / Operations
+(pick the label that matches the protocol)
 
-### `METHOD /path`
+### `<identifier>` — format per protocol (see above)
 **Description**: [what it does]
-**Auth**: [required/optional/none]
+**Auth**: [required / optional / none]
 **Request**:
-```json
-{
-  "field": "type — description"
-}
-```
-**Response**:
-```json
-{
-  "field": "type — description"
-}
-```
-**Errors**: [error codes and when they occur]
+[Payload shape — fence with the protocol's format: `json` for REST, `protobuf` for gRPC, `graphql` for GraphQL, etc. Only fence if the payload is JSON / protobuf / GraphQL-schema; for WebSocket events describe the shape in prose if not structured.]
 
-## Types
-[Request/response types from the actual codebase]
+**Response**: (same as Request — protocol-appropriate format)
+
+**Errors**: [error codes / status / error-type enum values and when they occur]
+
+## Types / Schema
+[Request / response types from the actual codebase — copy don't invent. Fence with the project's language.]
 
 ## Notes
-[Rate limits, pagination, special headers, etc.]
+[Rate limits, pagination, special headers, streaming semantics, idempotency, etc.]
 ```
 
 ## A.3: Quality Checks
