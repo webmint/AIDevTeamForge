@@ -94,16 +94,59 @@ When sample-based strategy is selected:
 3. Read ALL route/controller/endpoint files
 4. For each module: read 2-3 representative implementation files (pick the largest or most-imported ones)
 5. Read test file NAMES only (not contents) — the file names reveal what features exist
-6. Flag in `docs/overview.md` that this was a sample-based scan: `> Note: This documentation was generated from a structural scan. Some internal details may be incomplete. Run {{cli.sigil}}onboard again after significant changes.`
+6. Flag in `docs/overview.md` that this was a sample-based scan: `> Note: This documentation was generated from a structural scan. Some internal details may be incomplete. Run onboard again after significant changes.` (Sigil-neutral — the `docs/` artifact is read by both runtimes; do not embed `/onboard` or `$onboard`.)
+
+## A.2.0: Capability Discovery (do this BEFORE writing feature files)
+
+`docs/features/<name>.md` files are organized by **business capability**, not by package, directory, or module. The orchestrator's module map (`main.md` Phase 1.2) is a scan-parallelism unit, not a documentation unit. You must derive the capability list separately.
+
+A "business capability" is a user-visible concept the product offers — a concern the product's users or external systems recognize by name. Infrastructure (wiring, base types, codegen, logging plumbing) is not a capability.
+
+**Signals to discover capabilities** (use multiple — single signals can mislead; adapt each signal's form to the project's ecosystem):
+
+1. **Recurring concept names across separate source locations** — the same noun appearing as a folder / namespace / module name in multiple places. Strong signal that the noun names a capability.
+2. **Principal type / class / aggregate names** — top-level named types that have their own operations, state, or lifecycle. Names like `Order`, `Invoice`, `Account`, `Job`, `Pipeline`, `Subscription` typically anchor capabilities.
+3. **External-interface grouping** — route prefixes, RPC service names, CLI subcommand groups, published-event families, queue / topic names, scheduled-job clusters. Whatever external surface the project exposes is typically grouped by capability.
+4. **Use-case / operation clusters** — a set of related operations that read or mutate the same aggregate (`create<X>`, `update<X>`, `delete<X>`, `query<X>`, `archive<X>`). The `<X>` is usually a capability.
+5. **User-facing navigation or top-level commands** — pages, screens, menu items, `--help` sections. Whatever the end user can name and reach is usually a capability.
+
+**Discovery process**:
+
+1. After scan, list all candidate capability names from the signals above.
+2. Cluster: a name that shows up in multiple signal categories (types + external interface + operations) is clearly one capability. A name that shows up in only one place and isn't user-facing is probably a sub-concern — fold it into the nearest parent capability rather than making a separate file.
+3. Distinguish capabilities from infrastructure:
+   - **Capability**: user-visible concern. Has a name an end user or external system would recognize. Deserves its own file.
+   - **Infrastructure**: internal plumbing with no external mental model. Consolidate into `docs/features/shared-infrastructure.md`, or leave to `docs/architecture.md` if the module map already covers it.
+4. Output the final capability list; that drives the `docs/features/*.md` file set.
+
+**Capability vs package — shape of the mistake to avoid**:
+
+- ❌ WRONG: one feature file per package / per top-level directory. The reader has to assemble the story for any given capability by cross-referencing multiple files. Example bad shape: `features/core.md`, `features/utils.md`, `features/clients.md`, `features/common.md`, `features/shared-libs.md` — structurally organized, not capability-organized.
+- ✅ RIGHT: one feature file per capability, cross-cutting whatever source locations implement it. Example good shape: `features/<capability-a>.md` that covers every location touching that capability (library A, library B, and the top-level app code that composes them), `features/<capability-b>.md` likewise, plus a single `features/shared-infrastructure.md` for the plumbing.
+
+**Fallback** — if discovery finds 0 or 1 business capabilities (pure library, single-domain app, infrastructure repo), use top-level source directories as the unit instead, with the same per-file structure. Do NOT invent capabilities the code doesn't actually express. Prefer the fallback over speculation.
 
 ## A.2: Documentation Generation
 
-After scanning (directly or via subagent summaries), generate the following docs:
+After scanning (directly or via subagent summaries) AND completing capability discovery (A.2.0), generate the following docs:
 
 - `docs/overview.md`
 - `docs/architecture.md`
-- `docs/features/<module>.md` (one per substantive module)
+- `docs/features/<capability>.md` (one per business capability from A.2.0; not one per package)
 - `docs/api/<resource>.md` (only if the project exposes an API)
+
+### A.2.1: Cross-runtime prose — sigil neutrality (MANDATORY across all `docs/*`)
+
+`docs/` is read by both Claude and Codex runtimes. Any prose in any `docs/*` file that names a command — `onboard`, `constitute`, `specify`, `plan`, `breakdown`, `execute-task`, `verify`, or any other workflow command — must use the **bare command name**. Never prefix with `/` (Claude's sigil) or `$` (Codex's sigil). The runtime-specific sigil belongs in user-facing command output (wizard summaries, command headers), not in project documentation.
+
+Examples:
+
+- ✅ RIGHT: "Run onboard again after significant changes."
+- ✅ RIGHT: "This file was seeded by onboard. Subsequent passes from constitute and tech-writer refine it."
+- ❌ WRONG: "Run `/onboard` again..." (Claude sigil; breaks Codex readers)
+- ❌ WRONG: "`$constitute` will populate this section..." (Codex sigil; looks broken under Claude)
+
+If you need to show the literal command invocation as an example (rare), phrase it as "invoke the `onboard` command in your runtime" — sigil-neutral.
 
 **Per-file structure and depth**: follow the **Documentation Requirements** section above in this same prompt. It specifies (a) the read-frequency map that drives density per file, (b) the per-file section layout for each of the four doc types, (c) the Depth principle (describe conventions and structure, not implementation), and (d) the "What NOT to document" list. That section is authoritative — do NOT extend, replace, or duplicate its specified structures here.
 
