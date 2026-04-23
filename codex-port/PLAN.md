@@ -1,4 +1,4 @@
-# Multi-Runtime Support — Branch Plan (rev 10)
+# Multi-Runtime Support — Branch Plan (rev 11)
 
 Branch: `feature/codex-support`
 Main: Claude-only, unchanged. **This branch never merges to main** — it's a separate multi-runtime experiment that will ship differently (its own product, long-lived branch, or archived).
@@ -262,22 +262,66 @@ Plan template gains an "Algorithmic Patterns" table (naive → pattern → compl
 
 Two findings deferred by user: architect template expansion to include BUILD/LINT/TYPECHECK placeholders; `{{cli.sigil}}specify` / `{{cli.sigil}}verify` wizard-prose references to `_pending/` commands (resolves when those commands promote).
 
+### ✅ Phase A (partial) — constitution.md + docs/ install-time placement (rev 11)
+
+Applied the "install places, wizard populates" pattern to two more files that previously had no install path:
+
+- **`constitution.md`** — renamed from `constitution.template.md`; install.sh copies it to target root (brownfield-presence-guarded). Wizard §5.7 substitutes header placeholders (name / type / framework / language / workspace mode / source root + `{{ERROR_HANDLING}}` and `{{TESTING}}` pattern lines). Body `[project-specific]` sentinels stay untouched — `/constitute` fills those.
+- **`docs/overview.md`** and **`docs/architecture.md`** — two stub files placed by install.sh (per-file presence-guarded; brownfield keeps any existing content). Wizard §5.8 substitutes placeholders. `features/`, `api/`, `guides/` subdirectories are NOT scaffolded — they emerge lazily when tech-writer creates the first file inside them. No empty `.gitkeep` dirs.
+
+Design decision: `/constitute` retained (earlier conversation considered eliminating it). New role: **establishment phase** that takes onboard's discovery output + user interview → populates `constitution.md` body. Flow is setup-wizard → onboard (brownfield only) → constitute → specify. Wizard's Phase 5 Next Steps now branches on `PROJECT_STATE` accordingly.
+
+### ✅ Phase A (partial) — onboard command promoted + 3-pass audit (rev 11)
+
+Onboard command moved from `_pending/` to live at `src/commands/onboard/` with the same folder structure as setup-wizard (`main.md` + `references/tech-writer-onboarding.md`). Now emitted alongside setup-wizard via both runtime emitters.
+
+Key structural work:
+- CLI-agnostic pass across `main.md` and `references/tech-writer-onboarding.md` — replaced hardcoded Claude paths (`.claude/agents/`, `CLAUDE.md`, `Agent` tool) with runtime-neutral references.
+- De-web-bias pass on `tech-writer-onboarding.md` — expanded language examples (Rust, Go, Swift, Java/Kotlin), generalized API-protocol handling (REST / gRPC / GraphQL / WebSocket / tRPC), marked UI-specific bits as conditional.
+- Added new `{{cli.primer}}` and `{{cli.subagent}}` variation markers (resolves to `CLAUDE.md` / `AGENTS.md` and the `Agent` tool / subagent invocation per runtime).
+- Deleted §A.2's duplicated per-file templates — now delegates to main.md's Documentation Requirements as the single source of truth.
+
+3-pass logical-gap audit on `onboard/main.md` (20 findings fixed total) — see commits `a98261c`, `2976acb`, `a8df9e9`. Highlights:
+- Added §1.0 existing-documentation check with baseline-diff detection (protects user-edited `docs/` from being clobbered on re-run).
+- Fixed Q2→Q11 mapping coverage (library / ML / ETL now route to "no automatable runtime" branch).
+- Corrected `PROJECT_STATE` vs stale `PROJECT_MODE` references + values.
+- Replaced subjective LLM heuristics with deterministic baseline-diff comparisons.
+- Made Mode user-choice (overwrite / merge / abort) propagate to the tech-writer prompt via a new `Mode` section in the prompt template.
+
+2-pass audit on `references/tech-writer-onboarding.md` (11 findings total).
+
+### ✅ Phase A (partial) — tech-writer agent alignment + audit (rev 11)
+
+Aligned `src/agents/tech-writer.md` with its invoking commands (onboard + pending: finalize / execute-task / fix / refactor / refresh-docs):
+
+- De-web-bias: expanded inline-doc language coverage from TS/Python-only to 6 ecosystems (TS, Python, Rust, Go, Java/Kotlin, Swift) + "other" fallback. Replaced JSDoc-specific tag references (`@param`/`@returns`/`@example`) with pattern-pairs covering Rust `# Arguments`, Python "Returns:", KDoc `@sample`, etc.
+- Runtime-neutral: replaced Claude-only `/onboard` / `/refresh-docs` with `{{cli.sigil}}` markers. Extended `scripts/generate-agents.py` to substitute `{{cli.*}}` markers at generate time — infrastructure benefit beyond this agent: every future agent source can use `{{cli.sigil}}` / `{{cli.primer}}` / `{{cli.subagent}}` / `{{cli.attribution}}` and get correct per-runtime emission.
+- Alignment fixes: "two modes" → "three modes" (was missing Refresh); per-command Input You Receive contract matching all 4 invocation shapes; inline-doc responsibility split (verify-only for finalize/execute-task per execute-task's Rule 423; write path for fix/refactor); per-location doc templates matching onboard's Documentation Requirements.
+- 2-pass audit: 8 findings total — see commits `8b28c8e`, `a56510a`. Structural drift fixed (orphaned heading), refresh-docs leak into Normal Mode scope removed, per-layer skip logic (Layer 1 inline vs Layer 2 docs/) disambiguated.
+
+### ✅ Phase A (partial) — agent-level variation-marker substitution (rev 11)
+
+`scripts/generate-agents.py` now runs `lib.variation_markers.substitute()` on agent body + description before emitting — matches the pipeline already used by `scripts/emitters/claude.py` and `scripts/emitters/codex.py` for commands. Single source of truth for `{{cli.*}}` values (`scripts/lib/variation_markers.py`) now drives all template kinds: commands, command references, and agent files. Tier placeholders (`{{CLAUDE_TIER_*}}` / `{{CODEX_TIER_*}}` / `{{CODEX_REASONING_*}}`) remain wizard-time substitutions per agents.md §6.4.
+
+### Codex sigil verified via context7
+
+`{{cli.sigil}}` for Codex was `""` (empty) in an earlier draft — **wrong per Codex CLI `turn/start` API docs** (verified via context7 against `/openai/codex`). Codex skills are invoked as `$<skill-name>` in user text. Corrected to `"$"` in `variation_markers.py`. generate-corellm.py already had `output.sigil: "$"` for Codex, so coreLLM output was correct all along; this brings the command/agent emitter pipeline into alignment.
+
 ---
 
 ## 4. What's next
 
 ### Immediate (next session)
-- **Agent review, one-by-one** — the 16 agent templates in `src/agents/*.md` are the stable layer; audit each against its placeholders, role description, and consumer expectations. Contract first, then command promotion can trust what it's dispatching to.
-- Test end-to-end: install into `testSpawn` (both with and without `--runtime` flag), run wizard under Claude, verify full output including the 5.2 substitutions, single-runtime guards, and agent-frontmatter substitutions landing correctly in `.claude/agents/*.md` + `.codex/agents/*.toml`.
+- **Continue agent review one-by-one** — tech-writer is done. Remaining 15 agents in `src/agents/` need the same de-web-bias + alignment treatment against their invoking commands, using the pattern established for tech-writer. Suggested order: specialized agents that are straightforward (security-reviewer, code-reviewer) before heavier ones (architect, backend-engineer, frontend-engineer).
+- **Test end-to-end**: install into `testSpawn` (both with and without `--runtime` flag), run wizard + onboard under Claude, verify full output including agent-frontmatter substitutions landing correctly. Same under Codex.
 
 ### After that
-- Promote commands from `src/_pending/` one-by-one. Sequence TBD — likely start with `/fix` (smallest blast radius) or `/specify` (unblocks user-facing workflow).
-- Run wizard under Codex, compare parity.
+- Promote commands from `src/_pending/` one-by-one. Sequence TBD — likely `/constitute` next (wizard's Phase 5 routes to it after onboard, so it's the next logical workflow step), or `/fix` (smallest blast radius).
+- Run wizard + onboard under Codex, compare parity with Claude output.
 
 ### Medium-term
-- Promote remaining 22 commands one-by-one.
+- Promote remaining 20+ commands one-by-one.
 - **IMPORTANT: Wire WORKFLOW_ENFORCEMENT into every gated command.** Currently collected by wizard (Q8: strict/moderate/light) and stored in `.devforge/project-config.json`, but NO command reads it — all commands are hardcoded to strict flow. Each command with gates (execute-task, specify, plan, breakdown, verify, fix, refactor) needs to read `WORKFLOW_ENFORCEMENT` and branch: strict = all gates, moderate = spec + breakdown gates only, light = spec gate only.
-- Constitution.md emission (shared content, cross-runtime).
 - Parity test harness.
 - update.sh multi-runtime support (currently `expand_templateOwned_pairs` handles pair-based mappings, but `templateDerived` three-way merge for `generated:agents` and `generated:coreLLM` sources isn't implemented yet).
 
