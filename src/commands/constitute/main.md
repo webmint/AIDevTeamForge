@@ -188,6 +188,27 @@ For brownfield, write the canonical empty-section marker with reason `not applic
 
 For `len(LANGUAGES) > 1`: produce per-stack rule blocks within each section where rules diverge (type safety, naming, layer boundaries — these vary per language). Cross-stack rules (workflow enforcement, deprecation strategy at the project level) go once without stack labels.
 
+### Context budget for large projects
+
+Phase 4 synthesis load scales with `len(LANGUAGES) × number of [project-specific] sections × rules-per-section`. For a 4-language monorepo, raw synthesis alone can run 20K+ tokens before counting Phase 1 inputs or Phase 4.5 validation reads.
+
+**Trigger the scaling strategies below when the project is large:**
+
+- **Input size signal**: `.devforge/memory.md` > 500 lines, OR onboard produced >5 `docs/features/*.md` files, OR `LANGUAGES.length >= 3`.
+- **Section count signal**: `[project-specific]` sentinel count > 10 (unlikely in current template but protect anyway).
+
+**Scaling strategies (apply together when triggered):**
+
+1. **Compact Phase 1 inputs before Phase 4.** At end of Phase 1, produce a 20–40-line working summary from the raw artifacts (wizard answers + onboard findings + memory highlights). Reference the summary during synthesis, not the full originals. Keep originals available for Phase 4.5 citation validation.
+
+2. **Batch sections in groups of 3–4.** Process §2.1 / §2.2 / §2.3 together (all architecture rules share context), then §3.1 / §3.3 separately, then §4.1.1 / §4.2.1 / §4.3.1 together (all patterns share context). Between batches, the rendered section drafts accumulate; don't re-derive them.
+
+3. **For multi-stack, render one stack at a time within each section.** §3.1 Type Safety: generate TS block, then Python block, then Rust block, then concatenate. Prevents trying to reason across all stacks simultaneously.
+
+4. **Defer Phase 4.5 validation until all synthesis is done.** Don't interleave synthesis + validation per section — the validation reads (cited files) can use whatever context remains after synthesis is complete.
+
+**Small projects (1 language, default template, sentinel count ~12)**: ignore the strategies above and synthesize in one pass — the overhead isn't worth it.
+
 ### Zero-rules-per-section handling (canonical empty output)
 
 A section legitimately has no rules to synthesize when one of these holds:
