@@ -44,6 +44,13 @@ import argparse
 import sys
 from pathlib import Path
 
+# Shared helper for per-runtime {{cli.*}} marker substitution (sigil,
+# attribution, primer, subagent). Agent sources use these markers the
+# same way commands do; emitting them literally would leak unsubstituted
+# {{cli.sigil}} into .claude/agents/ and .codex/agents/ outputs.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.variation_markers import substitute as substitute_markers  # noqa: E402
+
 # We intentionally don't use lib.frontmatter here — agent sources use a
 # ```yaml fenced meta block, not ---/--- frontmatter, to avoid mimicking
 # Claude's native agent file format. See _parse_source() below.
@@ -256,6 +263,13 @@ def _render_one(src_file: Path, runtime: str, cfg: dict, target: Path) -> str:
         )
     if not body.strip():
         raise ValueError(f"{src_file}: empty body — agent has no instructions")
+
+    # Substitute per-runtime {{cli.*}} markers (sigil, attribution, primer,
+    # subagent) in both description and body before emit. Frontmatter tier
+    # markers ({{CLAUDE_TIER_*}} / {{CODEX_TIER_*}}) stay untouched — the
+    # wizard substitutes those at install time per agents.md §6.4.
+    description = substitute_markers(description, runtime)
+    body = substitute_markers(body, runtime)
 
     rendered = cfg["emit"](
         name=name,
