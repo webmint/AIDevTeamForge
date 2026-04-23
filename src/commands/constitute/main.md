@@ -13,6 +13,12 @@ This command does NOT scan the codebase — onboard already did that for brownfi
 3. For brownfield projects: `{{cli.sigil}}onboard` should have run first — `docs/overview.md`, `docs/architecture.md`, and `.devforge/memory.md` contain scan findings. If onboard was skipped on a brownfield project, proceed anyway — the scan-derived sections fall back to user interview + convention-based rules with `[convention]` tagging (see Phase 4).
 4. The constitution must not already be populated — check `constitution.md`: if any `[project-specific]` section still contains a sentinel string starting with `_Run constitute to populate` (bare form or any of the variants described in Phase 5 Step 1), proceed in Fresh-fill mode. If NO `[project-specific]` section contains such a sentinel (all already populated), ask the user whether to re-constitute (Full-rewrite mode) or abort.
 
+5. **Crash-recovery check**: if `.devforge/wip/constitute-prewrite.md` exists, a previous `{{cli.sigil}}constitute` run was interrupted (crashed, context-exhausted, terminal closed mid-write, etc.). Constitution.md may be in a partial state. Ask the user:
+   - **Recover** — restore `constitution.md` from `.devforge/wip/constitute-prewrite.md` (that's the snapshot taken just before the previous run's write), delete the wip file, then proceed with THIS run normally.
+   - **Continue anyway** — accept the current constitution.md state, delete the wip file, proceed with this run as if nothing happened.
+   - **Abort** — stop; user will investigate the partial state manually.
+   Default on uncertainty: Recover (safer than continue-anyway).
+
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
 ## PHASE 1: Read Context
@@ -34,7 +40,7 @@ Load inputs from existing artifacts. Do NOT walk the codebase.
    - **Fresh-fill mode** (at least one `[project-specific]` section still carries a sentinel starting with `_Run constitute to populate` — bare form or any variant): your targets are the sentinel-marked sections. Leave already-populated sections untouched.
    - **Full-rewrite mode** (user chose "re-constitute" in Prereq #4 when all sections were already populated): your targets are every `[project-specific]` body section — regenerate content regardless of current state.
    
-   In either mode, hold the current file body in memory so you can restore it on abort (Phase 6).
+   Restoration source for abort (Phase 6) is `.devforge/wip/constitute-prewrite.md` — Phase 5 writes this snapshot before any modification, so abort restores from disk rather than relying on in-memory context (which may be lost if the agent is interrupted).
 
 3. **`docs/architecture.md`** — if onboard ran, this contains module map, dependency rules, conventions, and cross-cutting concerns. Read these as observed patterns to cite when synthesizing rules.
 
@@ -218,17 +224,39 @@ Phase 6's summary will display these so the user sees the actual evidence qualit
 
 ## PHASE 5: Populate `constitution.md`
 
-Write the synthesized rules into constitution.md's body sections. Branch on the operation mode captured in Phase 1 Step 2:
+Write the synthesized (and tag-validated) rules into constitution.md's body sections. Use a two-step atomic-write pattern so an interruption leaves the file recoverable.
 
-1. **Fresh-fill mode**: replace each `_Run constitute to populate_` sentinel (and its variants like `_Run constitute to populate with language-specific type rules_`, `_Run constitute to populate details_`) with the synthesized content for that section. Sections without sentinels remain untouched.
-2. **Full-rewrite mode**: overwrite every `[project-specific]` body section's content with the newly synthesized rules, regardless of its previous state. Preserve section headings, subsection numbers, and `[project-specific]` section tags — only the body content changes.
-3. In both modes, preserve section headings, subsection numbers, and `[project-specific]` section tags.
-4. Do NOT touch `[universal]` sections (§3.5, §3.6, §3.7, §4.1, §4.2, §4.3, §6.1, §6.2, §6.3, §6.4). They're installed verbatim and apply to every project.
-5. Do NOT rewrite the header (§1 Project Identity) — wizard owns that.
-6. Every rule must carry its source tag (`[extracted]` / `[convention]` / `[enforced]` / `[recommended]`).
-7. Update the `Last updated:` line near the top of the file to today's ISO-8601 date.
+### 5.1: Pre-write backup
 
-If any Phase 2 TBD resolutions happened, write the updated `project-config.json` too (preserve all other fields; only update the ones you resolved).
+Before any modification to `constitution.md`:
+
+1. Create `.devforge/wip/` if it doesn't exist.
+2. Copy the current `constitution.md` contents to `.devforge/wip/constitute-prewrite.md`. This is the restoration target if this run is interrupted or the user aborts in Phase 6. The Prereq #5 crash-recovery check looks for this file on next run.
+
+### 5.2: Write via temp + rename (atomicity)
+
+1. Compose the new constitution body in memory. Branch on the operation mode captured in Phase 1 Step 2:
+   - **Fresh-fill mode**: replace each `_Run constitute to populate_` sentinel (and its variants like `_Run constitute to populate with language-specific type rules_`, `_Run constitute to populate details_`) with the synthesized content for that section. Sections without sentinels remain untouched.
+   - **Full-rewrite mode**: overwrite every `[project-specific]` body section's content with the newly synthesized rules, regardless of previous state.
+2. In both modes, preserve section headings, subsection numbers, and `[project-specific]` section tags.
+3. Do NOT touch `[universal]` sections (§3.5, §3.6, §3.7, §4.1, §4.2, §4.3, §6.1, §6.2, §6.3, §6.4). They're installed verbatim and apply to every project.
+4. Do NOT rewrite Section 1 Project Identity — wizard owns that.
+5. Every rule must carry its source tag (`[extracted]` / `[convention]` / `[enforced]` / `[recommended]`).
+6. Update the `Last updated:` line near the top of the file to today's ISO-8601 date.
+7. Write the composed content to `constitution.md.tmp` (adjacent to `constitution.md`).
+8. Verify the temp file was written successfully (check size > 0 or spot-check a known section heading is present).
+9. Atomically replace: `mv constitution.md.tmp constitution.md`.
+
+If step 7 or 8 fails, the temp file may be left behind — delete it before aborting, and report the failure so the user can investigate. `constitution.md` itself stays untouched because the overwrite didn't complete.
+
+### 5.3: Update `project-config.json` (if needed)
+
+If Phase 2 TBD resolutions happened, apply the same temp + rename pattern to `.devforge/project-config.json`:
+1. Read current file, merge the resolved TBD fields, keep all other fields verbatim.
+2. Write to `.devforge/project-config.json.tmp`.
+3. `mv` to replace.
+
+If no TBDs were resolved, skip this step.
 
 ## PHASE 6: User Review Gate
 
@@ -274,9 +302,11 @@ Then ask the user:
 > - **Revise section X** — name a section AND describe what should change (e.g., "§4.2.1 NEVER — add a rule about avoiding callbacks, prefer async/await" or "§3.1 Type Safety — too strict, reduce to High-level rules"). I'll regenerate that section incorporating your feedback.
 > - **Abort** — discard the draft; constitution reverts to its pre-`{{cli.sigil}}constitute` state (sentinels restored)
 
-Wait for the user's choice. On **Accept** → Phase 7. On **Revise** → capture the user's feedback as additional synthesis input; re-enter Phase 4 for the named section only, incorporating the feedback on top of Phase 1–3 inputs; then re-present. If the user revises the same section repeatedly, feedback accumulates — don't lose earlier feedback on the next revise round. On **Abort** → restore the body content you held in memory at Phase 1 step 2; report "aborted — no changes written" and exit.
+Wait for the user's choice. On **Accept** → Phase 7. On **Revise** → capture the user's feedback as additional synthesis input; re-enter Phase 4 for the named section only, incorporating the feedback on top of Phase 1–3 inputs; then re-run Phase 5 (backup → write) and re-present. If the user revises the same section repeatedly, feedback accumulates — don't lose earlier feedback on the next revise round. On **Abort** → copy `.devforge/wip/constitute-prewrite.md` back over `constitution.md` (same temp+rename pattern as Phase 5.2 for safety), delete the wip file, report "aborted — no changes written" and exit.
 
 ## PHASE 7: Summary
+
+On successful Accept, delete `.devforge/wip/constitute-prewrite.md` — the run completed cleanly; the crash-recovery snapshot is no longer needed. (If deletion fails for any reason, leave it — the next run's Prereq #5 will catch a leaked wip file and let the user decide.)
 
 Present to the user:
 
@@ -314,4 +344,4 @@ All downstream commands now consult these rules when making decisions.
 7. **Strictness modulates rule strength** — Maximum produces more NEVER rules and tighter type-safety; Moderate leans toward PREFER with room for judgement.
 8. **Multi-stack projects get per-stack blocks** — type safety, naming, layer boundaries vary per language. Render per-stack within each section (one sub-block per stack under a language sub-header).
 9. **User review is blocking** — do NOT consider the command complete until the user explicitly approves the draft. The review gate is a contract, not a suggestion.
-10. **Abort must be non-destructive** — hold the original constitution body content in memory before Phase 5 writes. On abort, restore it fully; no partial state.
+10. **Abort must be non-destructive** — Phase 5.1 writes `.devforge/wip/constitute-prewrite.md` before any modification. On abort, copy that file back over `constitution.md` (via the same temp+rename pattern used for writes) and delete the wip. On successful Accept, Phase 7 deletes the wip. Interrupted runs leave the wip behind — next run's Prereq #5 offers recovery.
