@@ -8,7 +8,7 @@ This command is typically run once after `{{cli.sigil}}setup-wizard` for brownfi
 
 1. `{{cli.sigil}}setup-wizard` must have been run — the runtime primer (`{{cli.primer}}`), agents directory, runtime config, and `.devforge/` scaffold must exist
 2. `docs/` folder must exist (placed by install, populated by setup wizard)
-3. This is an **existing project** — check `.devforge/project-config.json` for `"PROJECT_STATE": "brownfield"`. For `"greenfield"` or `"empty"` projects, skip onboard — docs are built incrementally via `{{cli.sigil}}execute-task` as features ship.
+3. This is an **existing project** — check `.devforge/project-config.json` for `"PROJECT_STATE": "brownfield"`. For `"greenfield"` or `"empty"` projects, skip onboard — the wizard's Phase 5 summary already routes these cases to `{{cli.sigil}}constitute` + `{{cli.sigil}}specify`, and docs emerge per-task as features ship.
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
@@ -18,10 +18,11 @@ If any prerequisite is missing, inform the user and suggest running the missing 
 
 Before proceeding with the scan, check whether `docs/overview.md` and `docs/architecture.md` contain non-stub content. The wizard places them as stubs with placeholders substituted; an updated "real" version means someone edited them post-install.
 
-**Heuristic for "non-stub"**:
+**Non-stub detection** (diff against baseline — deterministic):
 
-- `docs/overview.md` exceeds ~10 lines of content OR contains prose beyond the two template paragraphs (what+who / why).
-- `docs/architecture.md` contains module-map entries, dependency rules beyond the sentinel "_Populated by ..._" stubs, or cross-cutting-concerns content — none of which the wizard places.
+For each of `docs/overview.md` and `docs/architecture.md`, compare the current file against its snapshot at `.devforge/baseline/docs/<name>.md` (the wizard saves these in populate.md §5.3 as just-after-populate baselines). If the current file differs beyond trivial whitespace, treat it as **modified** — someone edited it post-install, so it has non-stub content.
+
+If `.devforge/baseline/docs/<name>.md` is missing (file was placed outside the wizard's flow, or baseline was removed), do NOT silently assume stub-or-modified. Ask the user: "I can't determine whether `docs/<name>.md` carries pre-existing content — the wizard's baseline snapshot is missing. How should I proceed?" Offer the same three options: Overwrite / Merge / Abort. Fail closed rather than guess.
 
 **If real content is detected** in either file, pause and ask the user:
 
@@ -48,8 +49,9 @@ Compile a **project brief** — a concise summary (~30 lines max) containing onl
 - Error handling pattern (wizard Q5 answer, stored as `ERROR_HANDLINGS[]`)
 - API layer (wizard Q6 answer, stored as `API_LAYERS[]`)
 - Testing framework (wizard Q7 answer, stored as `TESTINGS[]`)
-- Module / directory organization (from the directory tree computed in §1.2)
 - Any pre-seeded findings from `.devforge/memory.md`
+
+Module/directory organization is NOT part of this brief — §1.2 computes it as a separate artifact (the module map), and §2's prompt template (line 83) feeds brief + module map to the tech-writer as distinct inputs.
 
 Do NOT include layer boundaries, domain entities, or naming conventions — those are sentinel-marked in `constitution.md` and are the tech-writer's job to DISCOVER during scan, not preconditions for the scan.
 
@@ -78,7 +80,7 @@ Based on total source file count:
 
 ## PHASE 2: Execute Onboarding Scan
 
-Launch the tech-writer agent via {{cli.subagent}} with the prompt built below. The tech-writer does ALL the heavy lifting.
+Launch the tech-writer agent via {{cli.subagent}} with the prompt built below. The tech-writer handles the scan + `docs/` writing. Verification and memory-append stay in the orchestrator's lane — see §3.
 
 **CRITICAL**: The tech-writer agent prompt must include:
 1. The project brief from Phase 1.1
@@ -105,6 +107,10 @@ You are operating in **ONBOARDING MODE**. This is NOT your normal task-documenta
 
 [Insert strategy from Phase 1.3: direct / subagent-per-module / two-pass / sample-based]
 
+## Mode
+
+[Insert mode from §1.0: `overwrite` — fresh write, replace any existing content in docs/ with scan output | `merge` — preserve user-modified prose in docs/overview.md and docs/architecture.md; update sentinels or empty sections only; features/ and api/ write unconstrained | `fresh` — no pre-existing content detected, write normally]
+
 ## Your Mission
 
 Generate complete project documentation in `docs/` that will serve as the **knowledge base for all agents**. Every agent reads from `docs/` before making changes. The quality of your documentation directly determines how well agents understand and work with this codebase.
@@ -112,6 +118,11 @@ Generate complete project documentation in `docs/` that will serve as the **know
 ## Documentation Requirements
 
 Docs save future per-task tokens: an agent should find what it needs in docs faster than re-deriving from source. Density target varies by read frequency — write tighter for files read often, allow more detail in files read only when relevant.
+
+**Mode handling** (honors the Mode declared above):
+
+- **`merge`** — for `docs/overview.md` and `docs/architecture.md`, read the existing file first. Preserve any prose that diverges from the wizard's baseline (user-authored content). Update only sentinels or empty sections with scan findings. Do NOT overwrite paragraphs that carry user edits. For `features/` and `api/` files, write normally — those are per-module/per-endpoint generated outputs, not user-owned.
+- **`overwrite`** or **`fresh`** — write per the Requirements below with no special preservation.
 
 **Read-frequency map** (informs how dense to write):
 
@@ -198,11 +209,14 @@ Do NOT silently proceed to §3.2 after reporting issues. Wait for the user's exp
 
 ### 3.2: Update Memory
 
-If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.devforge/memory.md` (cross-runtime shared file — both Claude and Codex read the same memory) under appropriate sections:
-- Module boundaries → under "Project Structure" or a new "Module Map" section
-- Dependency warnings → under "Known Pitfalls"
-- Areas of complexity → under "Known Pitfalls"
-- Inconsistencies → under "Known Pitfalls"
+If the tech-writer returned `MEMORY_ADDITIONS`, append them to `.devforge/memory.md` (cross-runtime shared file — both Claude and Codex read the same memory) under the appropriate existing sections of the scaffold:
+
+- **Module boundaries** → under `## Architecture Decisions` as a new sub-section `### Module boundaries (from onboard)` (alongside the wizard's `### Initial detection (from setup-wizard)` sub-section)
+- **Dependency warnings** → under `## Known Pitfalls`
+- **Areas of complexity** → under `## Known Pitfalls`
+- **Inconsistencies** → under `## Known Pitfalls`
+
+The scaffold has four top-level sections (Architecture Decisions, Known Pitfalls, What Worked, What Failed) — do NOT create new top-level sections; add content as sub-sections of existing ones.
 
 ## PHASE 4: Summary
 
