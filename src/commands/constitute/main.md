@@ -54,7 +54,13 @@ Load inputs from existing artifacts. Do NOT walk the codebase.
 
 5. **`.devforge/memory.md`** — check `## Architecture Decisions` and `## Known Pitfalls` for onboard findings (module boundaries, dependency warnings, complexity hotspots, inconsistencies).
 
-6. **Lint / type-check / test configs at project root** — if any exist (`.eslintrc*`, `tsconfig.json`, `pyproject.toml` linting sections, `rustfmt.toml`, `.golangci.yml`, `Cargo.toml` clippy sections, etc.), note which rules are ENFORCED by tooling. Rules derived from these get the `[enforced]` tag in Phase 4.
+6. **Lint / type-check / test configs at project root** — if any exist (`.eslintrc*`, `tsconfig.json`, `pyproject.toml` linting sections, `rustfmt.toml`, `.golangci.yml`, `Cargo.toml` clippy sections, etc.), **read each fully and enumerate every active rule, not just the file's existence**. For ESLint, capture the entire `rules:` map plus any `extends:` chain (record what the inherited configs enforce, even if you can't read them all — at minimum name the preset). For TypeScript, capture every flag in `compilerOptions` that affects strictness (`strict`, `noImplicitAny`, `strictNullChecks`, `noUnusedLocals`, `exactOptionalPropertyTypes`, etc.). Rules derived from these get the `[enforced]` tag in Phase 4 — under-indexing here means convention rules that should have been enforced get tagged weaker than they deserve.
+
+7. **Pre-commit / commit hooks** — check for `.husky/`, `lefthook.yml` / `lefthook.toml`, `.pre-commit-config.yaml`, `.git/hooks/` (only project-tracked ones), `pre-commit` packages declared in dev dependencies, or any equivalent for the language ecosystem (Rust `cargo-husky`, Python `pre-commit`, Go `go-pre-commit`, etc.). For each hook script found, read it and enumerate which checks run (lint, type-check, test, format, custom validators). Rules backed by hook execution get `[enforced]` in Phase 4.
+
+8. **CI / CD pipeline configs** — check for `.github/workflows/*.{yml,yaml}`, `.gitlab-ci.yml`, `.circleci/config.yml`, `azure-pipelines.yml`, `Jenkinsfile`, `bitbucket-pipelines.yml`, or any other CI-as-code in the repo. For each pipeline file, identify which checks block merge (lint, type-check, test, security scan, format check). CI-blocking checks are the strongest form of `[enforced]` — a rule the project's merge gate enforces is not optional.
+
+(Phase 1 steps 6–8 collectively constitute the **enforcement-source scan**. The breadth of [enforced] vs [convention] tagging in Phase 4 depends entirely on how thoroughly this scan runs. A constitution with 3 [enforced] rules in a project that has Husky + GitHub Actions + ESLint config probably under-scanned.)
 
 ## PHASE 2: Resolve Deferred Wizard Answers
 
@@ -151,6 +157,14 @@ Precedence — pick the most accurate tag for each rule:
 
 **§3.2 Error Handling** — wizard filled the top-line (`{{ERROR_HANDLING}}`). Add body details: how errors are created / propagated / surfaced per stack. For brownfield: cite observed patterns from `docs/architecture.md` "Error Handling" subsection if onboard populated it.
 
+**Header reconciliation (§3.2 / §3.4)** — the wizard wrote the `Pattern:` / `Framework:` line from the user's Q5 / Q7 answer, which reflects the **declared** stack. Onboard may have observed a different **primary** pattern in the actual code (e.g., Q5 was "purify-ts Either" but the code's primary path is an in-repo `Either<DataError, T>`, with purify-ts as secondary). When extracted rules in §3.2 / §3.4 describe a different primary than the header value:
+
+1. Do NOT silently rewrite the header — it carries the user's wizard answer.
+2. Surface the mismatch in the Phase 6 review summary under a new "Header reconciliation" subsection: `§3.2 header says X; extracted body describes Y as primary. Proposed updated header: 'Y (primary) + X (secondary)'.`
+3. Let the user accept, reject, or edit the proposed header at the review gate. On accept, update `§3.2 Pattern:` / `§3.4 Framework:` line in the same Phase 5 write.
+
+This protects against the "header from declared stack contradicts body from observed stack" trap, while keeping the user as the deciding authority.
+
 **§3.3 Naming Conventions** — from Q-naming answer + `LANGUAGES`. Concrete rules per language in multi-stack projects.
 
 **§3.4 Testing Requirements** — wizard filled the top-line (`{{TESTING}}`). Add body details: what must be tested (modulated by STRICTNESS), where tests live, naming conventions for test files, setup/teardown patterns if observed.
@@ -161,7 +175,38 @@ Precedence — pick the most accurate tag for each rule:
 
 **§4.3.1 PREFER** — 3–7 preference rules (softer than ALWAYS/NEVER; can be overridden with justification).
 
+**Pitfall promotion (brownfield with onboard)** — `.devforge/memory.md`'s `## Known Pitfalls` carries onboard's surfaced gotchas (silent failure modes, dual implementations, naming collisions, configuration peculiarities, runtime fragilities). Many of these are operational rules an agent needs at execute-task time but won't naturally derive from reading the code (the gotcha is precisely that the code looks reasonable). Walk the Known Pitfalls list and, for each entry that maps to actionable agent behavior, propose a `[convention]` rule under §4.2.1 NEVER or §4.3.1 PREFER, citing the memory.md entry.
+
+**Promote** (examples — adapt to actual pitfalls):
+- "Cache configured with `addTypename: false` — anything relying on `__typename` will silently fail" → §4.2.1 `Never assume __typename is present in cached objects; rely on generated types instead.`
+- "Subscription reconnect disabled — silent stop on disconnect" → §4.3.1 `Prefer page-reload-driven recovery over assuming subscriptions auto-reconnect.`
+- "Three parallel composables exist (`useX`, `useXAlt`, `useXPinia`); unclear when to choose" → §4.3.1 `Prefer <recommended-default-from-extracted-evidence> over the alternates unless the existing call site already uses one of them.`
+- "Two `Either` implementations co-exist; use cases sometimes import one, sometimes the other" → §4.3.1 `Prefer the in-repo Either at <path> over the dep version unless extending an existing call site.`
+
+**Skip** (examples — too fine-grained or non-actionable):
+- Typo in a single identifier name ("`UpdateUpdateQuoteTradeIn...`")
+- "BLoC X has 60 methods" (descriptive, not prescriptive)
+- "schema.graphql is 84 KB" (file-size observation)
+
+The output is proposed rules; surface them in the Phase 6 review summary under "Proposed pitfall-derived rules" so the user can accept, reject, or edit each individually before Phase 5 writes.
+
+### Citation neutrality across runtimes
+
+Constitution is read by both Claude and Codex agents. Rules and citations must use sigil-neutral and primer-neutral references:
+
+- ✅ RIGHT: `(\`docs/architecture.md\`, \`.devforge/memory.md\`)` — files exist in both runtimes
+- ✅ RIGHT: `(the runtime primer's "Wrapper Rules" section)` — semantic reference
+- ✅ RIGHT: `(\`CLAUDE.md\` / \`AGENTS.md\` Development Commands)` — both names listed
+- ❌ WRONG: `(\`AGENTS.md\` Wrapper Rules)` — Codex-only; misleads under Claude
+- ❌ WRONG: `(\`CLAUDE.md\` Development Commands)` — Claude-only; misleads under Codex
+- ❌ WRONG: `(\`/onboard\` discovered ...)` — Claude sigil
+- ❌ WRONG: `(\`$constitute\` next pass...)` — Codex sigil; use bare command name
+
+When a rule cites the runtime primer (which has identical content under both names via the dual-emit), use the dual form `CLAUDE.md / AGENTS.md` or the semantic phrase `the runtime primer`. Never cite a single runtime's primer file as if it were the only one.
+
 **§5 Domain Rules** — brownfield with onboard: extract from `docs/features/*.md` Key Types and Invariants. Greenfield / no-onboard-brownfield: use `DOMAIN_ENTITIES` from Q-domain if provided. If `DOMAIN_ENTITIES` is empty (user skipped), use the canonical empty-section marker with reason `user deferred` (see Zero-rules-per-section handling above).
+
+**Invariant promotion (brownfield with onboard)** — after listing the central aggregates, walk the `Invariants & gotchas` (or equivalent) section of every `docs/features/*.md` file and promote impactful entries into §5 as `[extracted]` rules with citations. "Impactful" means: status / lifecycle constraints (e.g., "quote can transition draft → sent → revised, never back to draft"), required-precondition rules (e.g., "an organization must be selected before any quote operation"), warning-vs-error semantic distinctions, or cross-aggregate constraints. Skip purely informational notes (e.g., "this BLoC has 60 methods"). Aim for 3–8 invariant rules per project — if you produce 0, the scan probably under-promoted; if you produce 20+, you're flooding §5 with noise.
 
 **§6.5 Deprecation Handling** — brownfield: check `docs/` or memory for existing deprecation patterns. If none observed, use language conventions (TS: JSDoc `@deprecated` + removal version; Python: `warnings.warn(DeprecationWarning)`; Rust: `#[deprecated(since=..., note=...)]`; etc.). Tag `[convention]` when unobserved.
 
@@ -350,6 +395,16 @@ Empty sections (no rules synthesized): [omit block if 0 empty sections]
 - [section] — reason: [insufficient observation / no applicable default / user deferred / not applicable]
 - ... [one line per empty section]
   → If any "insufficient observation" empty sections look wrong (rules WERE available), pick Revise to regenerate.
+
+Header reconciliation (§3.2 / §3.4): [omit block if no mismatches detected]
+- §[N.n] [section name] — header says: `[wizard value]`. Extracted body describes `[observed value]` as primary.
+  → Proposed updated header: `[observed (primary) + wizard (secondary)]`. Accept / reject / edit at the gate.
+
+Proposed pitfall-derived rules (from `.devforge/memory.md` Known Pitfalls): [omit block if 0 proposed]
+- §4.2.1 NEVER: `[rule text]` — citing `[memory entry]`
+- §4.3.1 PREFER: `[rule text]` — citing `[memory entry]`
+- ... [one line per proposed rule]
+  → Accept all / reject all / accept individual (list IDs) / edit before accept. Phase 5 writes only what you approve.
 
 Section previews (first 3–5 lines of each populated section — full content in `constitution.md`):
 
