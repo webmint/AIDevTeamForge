@@ -12,6 +12,7 @@ Responsibilities:
   - src/commands/onboard/main.md       → target/.agents/skills/onboard/SKILL.md
   - src/commands/onboard/references/*.md
                                        → target/.agents/skills/onboard/references/*.md
+  - src/commands/constitute/main.md    → target/.agents/skills/constitute/SKILL.md
   (both flat and folder-based sources supported during migration)
 
 Handled by other generators, not this emitter:
@@ -139,7 +140,7 @@ def emit(src: Path, target: Path) -> None:
     # add it here. Full generalized iteration (loop all src/commands/ entries)
     # stays commented below until every command has passed its CLI-agnostic +
     # audit passes — premature promotion would ship broken skills.
-    _PROMOTED = ("setup-wizard", "onboard")
+    _PROMOTED = ("setup-wizard", "onboard", "constitute")
 
     for cmd_name in _PROMOTED:
         source = load_command(src / "commands", cmd_name)
