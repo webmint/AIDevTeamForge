@@ -329,7 +329,35 @@ Empty sections (no rules synthesized): [omit block if 0 empty sections]
 - [section] — reason: [insufficient observation / no applicable default / user deferred / not applicable]
 - ... [one line per empty section]
   → If any "insufficient observation" empty sections look wrong (rules WERE available), pick Revise to regenerate.
+
+Section previews (first 3–5 lines of each populated section — full content in `constitution.md`):
+
+### §2.1 Layer Boundaries
+[first 3–5 lines of the section body — rules + tags]
+
+### §2.2 File Organization
+[... 3–5 lines ...]
+
+... [one preview block per populated section; skip empty-marker sections]
 ```
+
+**First-pass rendering**: show snippets (3–5 lines per populated section) as orientation. User reads `constitution.md` for full detail.
+
+**Revise-round rendering** (after user picks Revise and Phase 4 regenerates one section): in addition to the summary above, render a diff of the revised section:
+
+```
+### Diff — §[N.n] [section name]
+
+​```diff
+- [prior rule 1]
+- [prior rule 2]
++ [new rule 1]
++ [new rule 2]
+  [unchanged rule]
+​```
+```
+
+Before-content source for the diff: read the corresponding section from `.devforge/wip/constitute-prewrite.md` (first revision) or hold the previous-round synthesis in memory (subsequent revisions). Skip rendering a diff if the section is being seen for the first time (no prior state to diff against).
 
 Then ask the user:
 
