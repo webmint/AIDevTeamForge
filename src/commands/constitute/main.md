@@ -11,7 +11,7 @@ This command does NOT scan the codebase — onboard already did that for brownfi
 1. `{{cli.sigil}}setup-wizard` must have been run — `.devforge/project-config.json` exists with Q-answers populated.
 2. `constitution.md` must exist at the project root (placed by install, header populated by wizard §5.7).
 3. For brownfield projects: `{{cli.sigil}}onboard` should have run first — `docs/overview.md`, `docs/architecture.md`, and `.devforge/memory.md` contain scan findings. If onboard was skipped on a brownfield project, proceed anyway — the scan-derived sections fall back to user interview + convention-based rules with `[convention]` tagging (see Phase 4).
-4. The constitution must not already be populated — check `constitution.md`: if any `[project-specific]` section still contains the `_Run constitute to populate_` sentinel, proceed. If ALL `[project-specific]` sections are already populated, ask the user whether to re-constitute (overwrite) or abort.
+4. The constitution must not already be populated — check `constitution.md`: if any `[project-specific]` section still contains a sentinel string starting with `_Run constitute to populate` (bare form or any of the variants described in Phase 5 Step 1), proceed in Fresh-fill mode. If NO `[project-specific]` section contains such a sentinel (all already populated), ask the user whether to re-constitute (Full-rewrite mode) or abort.
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
@@ -31,7 +31,7 @@ Load inputs from existing artifacts. Do NOT walk the codebase.
    - `PACKAGES_DETECTED` / `PACKAGE_STACKS` for multi-package projects
 
 2. **`constitution.md`** — determine operation mode based on the user's answer to Prereq #4:
-   - **Fresh-fill mode** (some `[project-specific]` sections still carry `_Run constitute to populate_` sentinels): your targets are the sentinel-marked sections. Leave already-populated sections untouched.
+   - **Fresh-fill mode** (at least one `[project-specific]` section still carries a sentinel starting with `_Run constitute to populate` — bare form or any variant): your targets are the sentinel-marked sections. Leave already-populated sections untouched.
    - **Full-rewrite mode** (user chose "re-constitute" in Prereq #4 when all sections were already populated): your targets are every `[project-specific]` body section — regenerate content regardless of current state.
    
    In either mode, hold the current file body in memory so you can restore it on abort (Phase 6).
@@ -68,26 +68,33 @@ Two to three questions scoped to what wizard + onboard didn't capture. Use your 
 
 Store as `STRICTNESS`. This modulates how aggressive the ALWAYS / NEVER / PREFER rules are in Phase 4.
 
-### Q-naming (conditional): Naming Conventions
+### Q-naming (conditional, per category): Naming Conventions
 
-**Skip this question if onboard observed consistent naming patterns** — check `.devforge/memory.md` and `docs/architecture.md`. Use the observed convention with `[extracted]` tag.
+For each of four naming categories (types, functions / methods, files, constants), decide independently:
 
-Ask only if greenfield OR onboard found inconsistent / no clear naming pattern:
+- **If onboard observed a clear pattern for THIS category** (memory or `docs/architecture.md` explicitly names it — e.g., "all types PascalCase, observed in `src/domain/` and `src/features/`"): use the observed convention with `[extracted]` tag. Skip the question for this category.
+- **Otherwise** (greenfield, onboard skipped, or onboard findings are silent / inconsistent for this category): ask the user:
 
-> I need to establish naming conventions. Should I use:
+> For [category: types / functions / files / constants] in [LANGUAGES], should I use:
 >
-> - **Language / framework defaults** — I'll use the idiomatic conventions for [LANGUAGES]: e.g., PascalCase for types, camelCase for functions, snake_case for Python/Rust identifiers, SCREAMING_SNAKE for constants, kebab-case for files (adjusted per language).
-> - **Custom** — you specify the preferences you want (for types, functions, files, constants, any language-specific rules).
+> - **Language / framework defaults** — I'll apply the idiomatic convention (e.g., PascalCase types, camelCase functions, kebab-case or snake_case files per language, SCREAMING_SNAKE constants)
+> - **Custom** — specify your preference
 
-Store per-language overrides as `NAMING_OVERRIDES` if custom.
+Collect answers per category; store as `NAMING_CONVENTIONS` with keys `types`, `functions`, `files`, `constants`. Skip categories that onboard already resolved.
 
 ### Q-domain (conditional): Key Domain Entities
 
-**Skip if brownfield** — onboard extracted domain entities from code (they're in `docs/features/*.md` Key Types sections and `docs/architecture.md` Key Domain Types).
+**Skip this question if domain entities are already available from any source:**
 
-Ask only if greenfield / empty:
+- Brownfield WITH onboard: extracted from `docs/features/*.md` Key Types sections and `docs/architecture.md` Key Domain Types.
+- Anywhere else: if `.devforge/memory.md` contains a domain-related entry (e.g., under Architecture Decisions).
 
-> I have no code to extract domain context from. What are the 3–5 key business entities this project manages? (free text, e.g., "User, Order, Invoice, Subscription")
+**Ask this question when domain entities are NOT available from any source:**
+
+- Greenfield / empty (no code to scan).
+- Brownfield without onboard (onboard was skipped — Prereq #3's fallback path).
+
+> I have no extracted domain context available. What are the 3–5 key business entities this project manages? (free text, e.g., "User, Order, Invoice, Subscription")
 >
 > Answer `skip` if the domain isn't clear yet — Section 5 (Domain Rules) will remain minimal with a note to populate during `{{cli.sigil}}specify` runs.
 
@@ -255,8 +262,8 @@ All downstream commands now consult these rules when making decisions.
 ## IMPORTANT RULES
 
 1. **Read, don't scan** — this command consumes wizard + onboard output; it does NOT walk the codebase itself. If brownfield data is missing, ask the user rather than re-scanning.
-2. **Never modify `[universal]` sections** — those are installed verbatim. Your scope is `[project-specific]` sentinel sections only.
-3. **Never rewrite the header** — Section 1 Project Identity is owned by setup-wizard; don't touch it even when updating `Last updated:`.
+2. **Never modify `[universal]` sections** — those are installed verbatim. Your write scope is `[project-specific]` body sections only. In Fresh-fill mode that means sections carrying `_Run constitute to populate_` sentinels; in Full-rewrite mode that means every `[project-specific]` body section regardless of sentinel state. Either way, `[universal]` sections are off-limits.
+3. **Never rewrite Section 1 Project Identity** — name, type, framework, language, workspace mode, source root are owned by setup-wizard. Only the `Last updated:` line at the very top of the file gets modified (to today's date, per Phase 5 Step 7).
 4. **Every rule carries a source tag** — `[extracted]` / `[convention]` / `[enforced]` / `[recommended]`. No untagged rules.
 5. **Cite evidence for `[extracted]` rules** — file path, module name, or specific observation from onboard findings. A rule claiming `[extracted]` without citation is a fabrication; downgrade to `[convention]` if the observation is thin.
 6. **Name the tool for `[enforced]` rules** — which lint config, which type-checker option, which CI check. A rule tagged `[enforced]` without a named enforcement mechanism is ambiguous.
