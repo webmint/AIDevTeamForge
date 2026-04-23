@@ -523,6 +523,8 @@ The `CODEX_TIER_*_MODEL` keys stay as captured (null if user didn't override). P
 
 Write all arrays as native JSON arrays (not stringified). Write per-package records as objects.
 
+**`AC_VERIFICATION_MODE` is always an array** — even when the user picked exactly one mode in Q11. Write `["code-only"]` not `"code-only"`. See questions.md Q11 "Storage (always an array)" for the full contract; downstream consumers do array-membership checks and break silently if given a bare string.
+
 For values that don't apply to this project, use `"N/A"`. For multi-line values (like `ARCHITECTURE_DETAILS`, `COMMIT_ATTRIBUTION`), use `\n` for newlines in the JSON string.
 
 ## 5.6: Pre-populate Memory
@@ -534,7 +536,7 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
 **Procedure**:
 
 1. Read `.devforge/memory.md` (install placed the scaffold; it has four empty sections — `## Architecture Decisions`, `## Known Pitfalls`, `## What Worked`, `## What Failed`).
-2. Under `## Architecture Decisions`, insert a new `### Initial detection (from setup-wizard)` subsection **above** the existing `<!-- Populated during /constitute -->` sentinel. Do not remove the sentinel — `{{cli.sigil}}constitute` uses it to know where its decisions go.
+2. Under `## Architecture Decisions`, insert a new `### Initial detection (from setup-wizard)` subsection **above** the existing `<!-- Populated during constitute -->` sentinel. Do not remove the sentinel — `{{cli.sigil}}constitute` uses it to know where its decisions go.
 3. Preserve the empty sections `## Known Pitfalls`, `## What Worked`, `## What Failed` unchanged — those get populated during work / by later commands.
 
 **Subsection content** (use Phase 1 detection + Q3-Q7 answers; emit only lines that have real data, omit irrelevant ones):
@@ -568,7 +570,7 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
   - `services/api/` — Python / FastAPI
   - `packages/shared/` — TypeScript / (library)
 
-<!-- Populated during /constitute — records WHY decisions were made, not just what -->
+<!-- Populated during constitute — records WHY decisions were made, not just what -->
 
 ## Known Pitfalls
 <!-- Populated during work as mistakes are discovered -->
@@ -627,10 +629,21 @@ If `constitution.md` does not exist at the project root (presence check failed a
 **What NOT to do in this step:**
 
 - Do NOT touch sections marked `[project-specific]` with `_Run /constitute to populate_` sentinels — these are Section 2 (Architecture Rules), Section 3.1 (Type Safety), Section 3.3 (Naming Conventions), Section 5 (Domain Rules), Section 6.5 (Deprecation Handling), Section 6.6 (Project-Specific Workflow), and the per-section `[project-specific]` sub-bullets in 4.1.1 / 4.2.1 / 4.3.1 / 7. Those belong to `{{cli.sigil}}constitute`.
-- Do NOT substitute placeholders inside the informational blockquotes — the content explaining "_For multi-stack projects, `{{ERROR_HANDLING}}` renders as paired bullets..._" is meta-documentation for the user/template author, not a placeholder. Match the literal `{{PLACEHOLDER}}` tokens only where they appear as actual placeholders (section 1 fields, section 3.2 Pattern line, section 3.4 Framework line, title line).
+- Do NOT substitute placeholders inside the informational blockquotes (e.g., "_For multi-stack projects, `{{ERROR_HANDLING}}` renders as paired bullets..._"). They are template-authoring meta-prose, not real placeholders. They get stripped in the next step.
 - Do NOT rewrite any `[universal]` section (Sections 3.5, 3.6, 3.7, 4.1, 4.2, 4.3, 6.1–6.4). These are the pre-populated rules that apply to every project.
 
-**Validate after substitution:** read `constitution.md` back and confirm no `{{PLACEHOLDER}}` markers remain in the header. Body sentinels (`_Run /constitute to populate_`) are expected to remain — those are not placeholders.
+**Strip authoring meta-prose:**
+
+After substitution, remove the two informational blockquotes that describe multi-stack rendering — they are guidance for template authors, not project documentation. The user reading their own constitution should not see template internals leak through.
+
+Delete each of these blockquotes (entire blockquote line + the blank line that follows it):
+
+- The blockquote starting `> For multi-stack projects, \`{{ERROR_HANDLING}}\` renders as paired bullets` (immediately after `### 3.2 Error Handling`)
+- The blockquote starting `> For multi-stack projects, \`{{TESTING}}\` renders as paired bullets` (immediately after `### 3.4 Testing Requirements`)
+
+Strip both unconditionally — single-stack and multi-stack alike. The substituted scalar/paired bullet on the line above is self-explanatory; the blockquote adds nothing for the reader.
+
+**Validate after substitution:** read `constitution.md` back and confirm (a) no `{{PLACEHOLDER}}` markers remain in the header, (b) neither stripped blockquote string appears anywhere in the file. Body sentinels (`_Run /constitute to populate_`) are expected to remain — those are not placeholders.
 
 ## 5.8: Populate docs/overview.md and docs/architecture.md
 

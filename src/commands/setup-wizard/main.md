@@ -79,6 +79,20 @@ Present this summary to the user. **Substitute each `{VALUE}` placeholder below 
     2. Run {{cli.sigil}}constitute — turns your architectural preferences (and framework best-practice research) into enforceable rules in `constitution.md`. Skip {{cli.sigil}}onboard — there's nothing to scan yet.
     3. Start working with {{cli.sigil}}specify "your first feature"
 }
+
+{INCLUDE THE FOLLOWING BLOCK ONLY IF CODEX WAS INSTALLED (i.e., .codex/agents/ exists at the project root):
+
+### One-time Codex setup:
+Codex only reads `.codex/config.toml` from directories it trusts. Until you trust this directory, your wizard answers (model, reasoning effort, approval policy, project MCP servers) are silently ignored — Codex falls back to your global `~/.codex/config.toml`.
+
+Run this once before your first Codex session in this project:
+
+```
+codex --add-trusted-dir "$(pwd)"
+```
+
+Or, on first launch of `codex` here, accept the interactive trust prompt. Either action writes a `[projects."<abs-path>"] trust_level = "trusted"` entry to `~/.codex/config.toml` and Codex will start honoring this project's config.
+}
 ```
 
 **After presenting the summary**, write the setup-completion marker to `.devforge/setup-complete` with content:

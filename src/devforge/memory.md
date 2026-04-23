@@ -1,7 +1,7 @@
 # Project Memory
 
 ## Architecture Decisions
-<!-- Populated during /constitute — records WHY decisions were made, not just what -->
+<!-- Populated during constitute — records WHY decisions were made, not just what -->
 
 ## Known Pitfalls
 <!-- Populated during work as mistakes are discovered -->

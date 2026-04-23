@@ -1,5 +1,8 @@
 # Codex CLI project-level configuration.
-# Layers: MDM > system managed > CLI overrides > user config (~/.codex/config.toml).
+# Precedence (high → low): MDM > system managed > CLI overrides > project (.codex/config.toml, closest-to-cwd wins) > user (~/.codex/config.toml).
+# NOTE: project-level config is only loaded when the directory is trusted in
+# ~/.codex/config.toml ([projects."<abs-path>"] trust_level = "trusted"). Until
+# trusted, Codex parses this file but treats it as disabled (silent no-op).
 # This file is copied to .codex/config.toml at install; wizard populates the
 # {{PLACEHOLDERS}} from project-config answers.
 

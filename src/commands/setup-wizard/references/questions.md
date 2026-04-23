@@ -498,6 +498,20 @@ When the user runs `{{cli.sigil}}verify` after a task completes, how should acce
 
 Valid values inside the array: exactly `"code-only"`, `"tests"`, `"runtime-assisted"`, or `"off"`. No other strings. `"off"` can only appear as a single-element array `["off"]` — it is inherently exclusive of the other modes.
 
+**FORBIDDEN — bare string form:**
+
+```json
+"AC_VERIFICATION_MODE": "code-only"   // WRONG — bare string breaks downstream `"runtime-assisted" in AC_VERIFICATION_MODE` checks (substring match instead of membership)
+```
+
+**REQUIRED — array form even for one element:**
+
+```json
+"AC_VERIFICATION_MODE": ["code-only"]  // CORRECT — uniform array shape for all branches
+```
+
+When you write `.devforge/project-config.json` in Phase 3 (populate), the value MUST be a JSON array literal. If you find yourself about to write a bare string, stop and wrap it in `[...]`.
+
 ### If the user picks "Multiple"
 
 Ask a follow-up multi-select. `Off` is NOT in the follow-up options — `Off` is inherently exclusive; if the user wanted that they'd have picked it on the first screen:
