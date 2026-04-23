@@ -26,6 +26,7 @@ If any prerequisite is missing, inform the user and suggest running the missing 
 Load inputs from existing artifacts. Do NOT walk the codebase.
 
 1. **`.devforge/project-config.json`** — wizard answers. Retain in working memory:
+   - `SCHEMA_VERSION` (optional, string like `"1.0"`) — **schema-compatibility check** (see below)
    - `LANGUAGES` / `FRAMEWORKS` / `PRIMARY_LANGUAGE`
    - `ARCHITECTURES[]` (per-stack; may contain `"TBD"`)
    - `ERROR_HANDLINGS[]` (per-stack)
@@ -35,6 +36,11 @@ Load inputs from existing artifacts. Do NOT walk the codebase.
    - `PROJECT_STATE` — `brownfield` / `greenfield` / `empty`
    - `WORKSPACE_MODE`, `SOURCE_ROOT`
    - `PACKAGES_DETECTED` / `PACKAGE_STACKS` for multi-package projects
+
+   **Schema-compatibility check**: constitute expects `SCHEMA_VERSION = "1.0"` (major.minor). Handling:
+   - Field absent → assume `"1.0"` (older installs before versioning landed). Proceed.
+   - Major matches (e.g., `"1.x"`) → proceed; log the version seen.
+   - Major mismatch (e.g., `"2.0"`) → inform the user: the project-config was produced by a wizard version newer than this constitute command understands. Ask: abort (user should update the template and rerun the wizard) / proceed anyway (risk of reading wrong fields).
 
 2. **`constitution.md`** — determine operation mode based on the user's answer to Prereq #4:
    - **Fresh-fill mode** (at least one `[project-specific]` section still carries a sentinel starting with `_Run constitute to populate` — bare form or any variant): your targets are the sentinel-marked sections. Leave already-populated sections untouched.
@@ -268,11 +274,12 @@ Before any modification to `constitution.md`:
 4. Do NOT rewrite Section 1 Project Identity — wizard owns that.
 5. Every rule must carry its source tag (`[extracted]` / `[convention]` / `[enforced]` / `[recommended]`).
 6. Update the `Last updated:` line near the top of the file to today's ISO-8601 date.
-7. Write the composed content to `constitution.md.tmp` (adjacent to `constitution.md`).
-8. Verify the temp file was written successfully (check size > 0 or spot-check a known section heading is present).
-9. Atomically replace: `mv constitution.md.tmp constitution.md`.
+7. **Schema stamp**: add or update an HTML comment near the top of the file (directly under `Last updated:`) reading `<!-- SCHEMA_VERSION: constitute-1.0 -->`. If a previous constitute run's stamp is present, replace it; otherwise add it. This lets downstream commands detect the rule-schema version behind the constitution's body.
+8. Write the composed content to `constitution.md.tmp` (adjacent to `constitution.md`).
+9. Verify the temp file was written successfully (check size > 0 or spot-check a known section heading is present).
+10. Atomically replace: `mv constitution.md.tmp constitution.md`.
 
-If step 7 or 8 fails, the temp file may be left behind — delete it before aborting, and report the failure so the user can investigate. `constitution.md` itself stays untouched because the overwrite didn't complete.
+If step 8 or 9 fails, the temp file may be left behind — delete it before aborting, and report the failure so the user can investigate. `constitution.md` itself stays untouched because the overwrite didn't complete.
 
 ### 5.3: Update `project-config.json` (if needed)
 
@@ -375,3 +382,4 @@ All downstream commands now consult these rules when making decisions.
 8. **Multi-stack projects get per-stack blocks** — type safety, naming, layer boundaries vary per language. Render per-stack within each section (one sub-block per stack under a language sub-header).
 9. **User review is blocking** — do NOT consider the command complete until the user explicitly approves the draft. The review gate is a contract, not a suggestion.
 10. **Abort must be non-destructive** — Phase 5.1 writes `.devforge/wip/constitute-prewrite.md` before any modification. On abort, copy that file back over `constitution.md` (via the same temp+rename pattern used for writes) and delete the wip. On successful Accept, Phase 7 deletes the wip. Interrupted runs leave the wip behind — next run's Prereq #5 offers recovery.
+11. **Schema-version contract** — read `SCHEMA_VERSION` from `project-config.json` at Phase 1 (fallback to `"1.0"` if absent for backward compatibility). Abort on major mismatch; warn and proceed on minor ahead. Write `<!-- SCHEMA_VERSION: constitute-1.0 -->` into constitution.md at Phase 5 Step 7 so downstream commands can detect the rule-schema version.
