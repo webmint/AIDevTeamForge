@@ -40,19 +40,21 @@ Architecture: [architecture pattern]
 - ALL route/API files — full content
 - Implementation files — signatures, imports, exports ONLY (skip function bodies)
 - Test files — test names ONLY (skip test bodies)
-- Skip: generated files, assets, node_modules, dist
+- Skip: the ecosystem-aware ignore set from `detect.md` STEP 1 "Count source files" (build output, dependency trees, tool caches, cross-runtime artifacts across Rust / Java / .NET / Python / Ruby / Haskell ecosystems), plus generated files and assets
 
-## Return Format (STRICT — do not deviate)
+## Return Format
+
+**Mandatory sections** (always include, even if short):
 
 ### Module: [name]
 **Path**: [directory path]
 **Purpose**: [one sentence — what this module is responsible for]
 
-**Key Types/Interfaces**:
+**Key Types**:
 - `TypeName` — [one-line description]
 
 **Exports** (public API of this module):
-- `functionName(params): ReturnType` — [one-line description]
+- `functionName(params): ReturnType` — [one-line description; format per project's language]
 - `ClassName` — [one-line description]
 
 **Internal Dependencies** (other project modules this imports from):
@@ -61,23 +63,26 @@ Architecture: [architecture pattern]
 **External Dependencies** (npm / pip / cargo / gem / go-mod / maven / gradle / SwiftPM / CocoaPods packages, per the project's ecosystem):
 - `[package]` — [how it's used]
 
-**Patterns Used**:
-- [naming, error handling, state management patterns observed]
+**Conditional sections** (include only when present in this module — OMIT the section entirely if nothing to report; do NOT write "(none)" filler):
 
-**API Surface** (if this module exposes routes/endpoints):
-- `METHOD /path` — [description]
+**Patterns Used** — if the module demonstrates a non-obvious naming, error-handling, state-management, or similar convention worth recording:
+- [observed pattern]
 
-**Key Business Logic** (domain rules visible in types, validation, or function names):
+**API Surface** — if the module exposes routes / endpoints / gRPC services / GraphQL resolvers / WebSocket handlers:
+- `<identifier per protocol>` — [description]
+
+**Key Business Logic** — if domain rules or constraints are visible in types, validation, or function names:
 - [rule or constraint]
 
-**Notable** (anything unusual, complex, or important for someone modifying this code):
+**Notable** — if anything is unusual, complex, or important for someone modifying this code:
 - [observation]
+
+Do not reorder mandatory sections. Do not add sections beyond the conditional list above.
 ```
 
 **Rules for subagents:**
 - Each subagent returns MAX 50 lines
-- Do not launch more than 8 subagents in parallel (context + rate limits)
-- If there are more than 8 modules, batch them: launch 8, wait for results, then launch the next batch
+- Launch subagents in small batches, not all at once — respect your runtime's concurrency limits and avoid exhausting context. If module count exceeds your runtime's practical parallelism, batch: launch a chunk, wait for results, then launch the next chunk.
 - Aggregate all summaries before writing any docs
 
 ### For 1000+ File Projects — Sample-Based Scanning
@@ -92,216 +97,32 @@ When sample-based strategy is selected:
 
 ## A.2: Documentation Generation
 
-After scanning (directly or via subagent summaries), generate the following docs. Each file has a specific purpose for agents.
+After scanning (directly or via subagent summaries), generate the following docs:
 
-**Language / framework agnosticism**: the templates below lean TypeScript / web for historical reasons. Treat the examples as illustrative **structure**, not literal output — adapt file extensions, naming conventions, layer terminology, and syntax to match the actual project being onboarded. If the project is Rust, Go, Python, Swift, Kotlin, etc., substitute the ecosystem's equivalents. The rules about what each doc must cover (purpose, required sections, depth) apply equally regardless of language.
+- `docs/overview.md`
+- `docs/architecture.md`
+- `docs/features/<module>.md` (one per substantive module)
+- `docs/api/<resource>.md` (only if the project exposes an API)
 
-### `docs/overview.md` — Project Overview
+**Per-file structure and depth**: follow the **Documentation Requirements** section above in this same prompt. It specifies (a) the read-frequency map that drives density per file, (b) the per-file section layout for each of the four doc types, (c) the Depth principle (describe conventions and structure, not implementation), and (d) the "What NOT to document" list. That section is authoritative — do NOT extend, replace, or duplicate its specified structures here.
 
-**Purpose for agents**: First thing any agent reads. Quick orientation.
+**Language / framework agnosticism**: file extensions, code-fence languages, and naming conventions referenced in the Documentation Requirements are illustrative. Adapt to the project's actual language and framework. If the project is Rust, Go, Python, Swift, Kotlin, etc., substitute the ecosystem's equivalents for file suffixes, import syntax, type-definition form, and any code examples you quote. Every code example you include in docs must be **copied** from the actual codebase — never invent examples.
 
-```markdown
-# [Project Name]
+**Conditional outputs**:
 
-## What This Project Does
-[2-3 sentences explaining the project's purpose, who uses it, and what problem it solves]
-
-## Tech Stack
-| Layer | Technology |
-|---|---|
-| Language | [language + version if detectable] |
-| Framework | [framework] |
-| Build Tool | [build tool] |
-| Testing | [test framework] |
-| Styling | [styling approach] *(omit row if not a UI project)* |
-| Database | [database] *(omit row if not applicable)* |
-| API Style | [REST / GraphQL / gRPC / tRPC / WebSocket] *(omit row if not applicable)* |
-
-## Project Structure
-[Annotated directory tree showing what each top-level directory contains]
-
-```
-src/
-  auth/          # Authentication and authorization
-  cart/          # Shopping cart management
-  orders/        # Order processing and history
-  shared/        # Cross-cutting utilities and types
-```
-
-## Entry Points
-- **Application**: [main entry file and what it does]
-- **Routes/API**: [where routes are defined]
-- **Configuration**: [where config is loaded]
-
-## Key Commands
-[From the runtime primer (`{{cli.primer}}`) — dev, build, test, lint commands]
-
-## Module Map
-[One-line description of each module and its responsibility]
-- `auth` — User authentication, session management, role-based access
-- `cart` — Cart state, pricing calculations, inventory checks
-- `orders` — Order creation, payment processing, order history
-
-## Cross-Module Dependencies
-[Which modules depend on which — helps agents understand impact of changes]
-- `orders` → `cart` (reads cart state), `auth` (checks permissions)
-- `cart` → `auth` (user-scoped carts)
-```
-
-### `docs/architecture.md` — Architecture & Patterns
-
-**Purpose for agents**: Understanding HOW to write code that fits this project. Every agent reads this before making changes.
-
-```markdown
-# Architecture
-
-## Architecture Pattern
-[Pattern name and brief explanation of how it's applied in THIS project]
-
-## Layer Boundaries
-[Describe each layer and what belongs in it]
-[Specify allowed dependency directions]
-[Include a simple ASCII diagram if helpful]
-
-The diagram below is ONE example — Clean Architecture with a UI frontend. Replace it with the shape that matches the project's actual architecture pattern (hexagonal / ports-and-adapters, layered, MVC, event-driven, actor-model, microservices, etc.). Use the terminology the project itself uses (read `constitution.md` §2 and imports / folder structure for the project's own vocabulary).
-
-```
-Presentation → Domain → Data
-     ↓            ↓        ↓
-  Components   UseCases  Repositories
-  Views        Entities  API Clients
-  Stores       Interfaces  Mappers
-```
-
-## Module Structure
-[How a typical module is organized internally — follow the project's actual naming convention. Suffix-based in TS / JS (`.service.ts`, `.repo.ts`, `index.ts`), directory-based in Rust / Go (sub-crates or sub-packages with `mod.rs` / `package` declaration), type-prefix / filename-based in Python packages, framework-specific in Swift / Kotlin. Scan the codebase to identify the prevailing convention before writing this section.]
-
-Example (illustrative — TypeScript suffix-based):
-```
-src/[module-name]/
-  types.ts          # Type definitions and interfaces
-  [name].service.ts # Business logic
-  [name].repo.ts    # Data access
-  index.ts          # Public exports (barrel file)
-```
-
-## Key Patterns
-
-### Error Handling
-[How errors are created, propagated, and handled — with code example from the actual codebase]
-
-### State Management *(UI / stateful-application projects only; omit section otherwise)*
-[How state is structured and updated]
-
-### API Layer
-[How API calls are made — request/response patterns]
-
-### Data Flow
-[How data flows through the application — from entry point to response]
-
-### Type Patterns
-[How types are organized — shared types, module-specific types, DTOs, entities]
-
-## Key Domain Types
-[List the most important types / interfaces / traits / structs / protocols with brief descriptions — these help agents understand the data model]
-
-Copy a concrete example from the actual codebase in the project's language (fence with the project's language identifier — `typescript` / `rust` / `python` / `go` / `swift` / `kotlin` / etc.). One small example is enough; don't paste large type hierarchies.
-
-## Boundaries & Rules
-[What agents MUST NOT do when working in this codebase — extracted from constitution]
-- Never import from `data/` layer in `presentation/` — go through `domain/`
-- Never mutate state directly — use store actions
-- [other key boundaries]
-```
-
-### `docs/features/*.md` — Feature Documentation
-
-**Purpose for agents**: Understanding a specific area before modifying it. Created per logical feature area (NOT per file or per class).
-
-Create ONE file per identified module/feature. Name: `docs/features/[module-name].md`
-
-```markdown
-# [Feature/Module Name]
-
-## Overview
-[What this module does — 2-3 sentences]
-
-## Key Components
-[List the main files / classes / functions with one-line descriptions — file names and syntax per the project's language and naming convention]
-
-Example *(illustrative — TypeScript auth module; adapt file names + syntax to the project)*:
-- `auth.service.ts` — Core authentication logic: login, logout, token refresh
-- `auth.guard.ts` — Route guard that checks authentication status
-- `auth.types.ts` — User, Session, and Permission type definitions
-
-## How It Works
-[Explain the main flow — how data moves through this module]
-[Include a code example from the actual implementation showing the key pattern, fenced with the project's language]
-
-## Public API
-[What this module exports for other modules to use — format per the project's language (TS, Rust, Python, Go, etc.)]
-
-Example *(illustrative — TypeScript)*:
-- `authenticate(credentials): Either<AuthError, Session>` — Validates credentials and creates a session
-- `requireAuth(roles?: Role[]): Middleware` — Express middleware for route protection
-
-## Dependencies
-- **Uses**: [other modules this depends on]
-- **Used by**: [other modules that depend on this]
-
-## Key Types
-[Important types defined in this module — copy from actual code]
-
-## Business Rules
-[Domain rules embedded in this module — validation, constraints, calculations]
-```
-
-**Rules for feature docs:**
-- One file per logical feature area — group related files together
-- Do not create a file for `shared/` or `utils/` unless they contain significant domain logic — document them in `architecture.md` instead
-- If a module is tiny (1-2 files, no domain logic), mention it in `overview.md` instead of creating a separate file
-- Every code example must be copied from the actual implementation — never invent examples
-
-### `docs/api/*.md` — API Documentation (if applicable)
-
-**Only create if the project exposes an API** — HTTP REST, GraphQL, gRPC, tRPC, WebSocket, or other RPC protocols. Adapt the endpoint identifier and payload format to the protocol:
-
-- **REST**: `METHOD /path` (e.g. `GET /users/:id`), payloads usually JSON
-- **gRPC**: `service.method` (e.g. `UserService.GetUser`), payloads protobuf (document message types by name, don't paste protobuf)
-- **GraphQL**: query / mutation / subscription names, payloads schema-typed
-- **WebSocket**: event / message type names, payloads in the wire format the project uses
-- **tRPC**: procedure name + input / output types
-
-Create ONE file per API resource / domain area. Name: `docs/api/[resource-name].md`
-
-```markdown
-# [Resource Name] API
-
-## Endpoints / Procedures / Operations
-(pick the label that matches the protocol)
-
-### `<identifier>` — format per protocol (see above)
-**Description**: [what it does]
-**Auth**: [required / optional / none]
-**Request**:
-[Payload shape — fence with the protocol's format: `json` for REST, `protobuf` for gRPC, `graphql` for GraphQL, etc. Only fence if the payload is JSON / protobuf / GraphQL-schema; for WebSocket events describe the shape in prose if not structured.]
-
-**Response**: (same as Request — protocol-appropriate format)
-
-**Errors**: [error codes / status / error-type enum values and when they occur]
-
-## Types / Schema
-[Request / response types from the actual codebase — copy don't invent. Fence with the project's language.]
-
-## Notes
-[Rate limits, pagination, special headers, streaming semantics, idempotency, etc.]
-```
+- `docs/features/<module>.md` — produce one per substantive module surfaced in the scan. Skip a module if the scan found nothing substantial (Documentation Requirements' "better no doc than a stub").
+- `docs/api/<resource>.md` — only if the project exposes an API. Adapt the endpoint identifier to the protocol:
+  - **REST**: `METHOD /path` (e.g. `GET /users/:id`), JSON payloads
+  - **gRPC**: `service.method`, protobuf message types (document by name, don't paste protobuf)
+  - **GraphQL**: query / mutation / subscription names, schema-typed payloads
+  - **WebSocket**: event / message type names, wire format the project uses
+  - **tRPC**: procedure name + input / output types
 
 ## A.3: Quality Checks
 
 After generating all docs, verify:
 
-1. **Every file path mentioned exists** — use Glob to verify
+1. **Every file path mentioned exists** — verify using your runtime's file-discovery mechanism (file-listing tool, glob, or shell `ls` / `find` as available)
 2. **Every code example is from the actual codebase** — no invented code
 3. **Every module in the module map has documentation** (either in `features/`, `api/`, or mentioned in `overview.md`/`architecture.md`)
 4. **No docs reference non-existent files, functions, or types**
