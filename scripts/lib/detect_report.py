@@ -269,6 +269,17 @@ def coerce_value(raw: str) -> Any:
     return raw
 
 
+def _extract_source_path(value: str) -> str:
+    """Extract the file-path prefix from a runtime_url.source value.
+
+    Accepts both `vite.config.ts` and `vite.config.ts: server.host/port/https`
+    forms (the template shows the latter as an annotation-bearing sample).
+    The path portion is everything before the first `: ` separator.
+    """
+    idx = value.find(": ")
+    return value[:idx] if idx >= 0 else value
+
+
 def walk_to_parent(state: dict[str, Any], path: str) -> tuple[dict[str, Any], str]:
     """Walk a dotted path; return (parent_dict, final_key).
 
@@ -347,6 +358,18 @@ def cmd_set(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+
+    if args.field == "runtime_url.source" and isinstance(new_value, str):
+        if new_value != "framework-default":
+            config_path = _extract_source_path(new_value)
+            if not Path(config_path).is_file():
+                print(
+                    f"error: runtime_url.source {new_value!r} references a file "
+                    f"that does not exist (resolved path: {config_path!r}). "
+                    f"Use 'framework-default' if no dev-server config was found.",
+                    file=sys.stderr,
+                )
+                return 2
 
     parent[key] = new_value
 
