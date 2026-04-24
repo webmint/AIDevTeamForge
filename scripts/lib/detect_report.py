@@ -470,6 +470,11 @@ def cmd_compose(args: argparse.Namespace) -> int:
             print(f"  - {m}", file=sys.stderr)
         return 2
 
+    count_err = _check_package_count(state)
+    if count_err:
+        print(f"error: {count_err}", file=sys.stderr)
+        return 2
+
     yaml_text = emit_yaml(state)
 
     DEVFORGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -498,6 +503,32 @@ def _check_required(state: dict[str, Any]) -> list[str]:
         if not isinstance(value, list) or len(value) == 0:
             missing.append(f"{path} (must have ≥1 entry)")
     return missing
+
+
+def _check_package_count(state: dict[str, Any]) -> str | None:
+    """Finding 23B defense: len(packages) must match the declared manifest_count."""
+    declared = state.get("manifest_count")
+    packages = state.get("packages") or []
+    if not isinstance(declared, int):
+        return None  # required-field check handles "not set" already
+    actual = len(packages)
+    if actual == declared:
+        return None
+    delta = declared - actual
+    if delta > 0:
+        action = (
+            f"Add the remaining {delta} package(s) via add-package, or correct "
+            f"manifest_count."
+        )
+    else:
+        action = (
+            f"You added {-delta} more than declared. Correct manifest_count to "
+            f"{actual}, or remove the extra package record(s)."
+        )
+    return (
+        f"package count mismatch: manifest_count is {declared} but {actual} "
+        f"package record(s) were added. {action} No abbreviation allowed."
+    )
 
 
 # ─── YAML emitter (stdlib only) ──────────────────────────────────────────────
