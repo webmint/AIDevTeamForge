@@ -68,54 +68,61 @@ Remaining questions (Q4 architecture through Q11 AC verification) answered per t
 
 ### Findings
 
+Sorted HIGH → MEDIUM → LOW. IDs preserved from discovery order so cross-references stay intact.
+
 | # | Severity | Phase | Title |
 |---|---|---|---|
-| 1 | MEDIUM | 0 (prereq) | Claude auto-detected wrapper mode; Codex asked for confirmation (spec says ask) |
+| 4 | HIGH | 2 (interview) | Codex batches questions (4 + 8 observed) — breaks branching logic because conditional follow-ups must be pre-computed before user's answer is known |
 | 2 | HIGH | 1 (detect) | Codex used outer worktree's git for `DEFAULT_BRANCH`; should use inner source repo's git |
+| 8 | HIGH | 2 (interview) | Claude completely missed `purify-ts` + `Either<DataError, ...>` usage, proposed project adopt a Result pattern it already has. Codex detected it correctly. Asymmetric miss vs Finding 3 — Claude did NOT scan dependency manifests deeply for error-handling libraries. |
+| 14 | HIGH | 1+5 (detect/populate) | Per-package command depth: Claude reads each package's `package.json` scripts and records real commands per package (`vite build --mode raw`, `tsc --noEmit`, `eslint --ext .ts ./src`). Codex uses generic fallback (`yarn build`/`yarn check`/`yarn lint`) for every package uniformly. Downstream commands that operate per-package (constitute, execute-task) get different-fidelity info. |
+| 15 | HIGH | 1+5 (detect/populate) | Top-level BUILD_COMMAND / LINT_COMMAND disagreement: Claude `yarn build:raw` + `yarn lint:core && yarn lint:web`. Codex `yarn build:origin` + `yarn lint:web`. These are commands that would actually be run later; whichever runtime got it wrong produces a forge that fails builds/lints. User must verify which is correct by reading actual root `package.json`. |
 | 3 | MEDIUM | 1 (detect) | Detection granularity asymmetry — Claude deeper on build/test/auth tooling, Codex broader on frontend libs |
-| 4 | HIGH (escalated 2x) | 2 (interview) | Codex batches questions (4 + 8 observed) — breaks branching logic because conditional follow-ups must be pre-computed before user's answer is known |
-| 5 | LOW | 2 (interview) | Claude pre-computes "Recommended" defaults for one-click confirm; Codex shows context then asks for free-text answer |
 | 6 | MEDIUM | 2 (interview) | Architecture-pattern detection asymmetry — Codex proposed wrong default (`layered / BLoC + use-cases + repositories` from internal folder structure); Claude proposed correct default (`feature-modular monorepo` from workspace shape). Asymmetric with Finding 8 (opposite direction). |
 | 7 | MEDIUM | 2 (interview) | Runtime-URL detection asymmetry — Claude opened `apps/app-web/vite.config.ts` and extracted `server.host`/`port`/`https` to synthesize the correct URL. Codex used generic Vite default `http://localhost:5173`, missing the project-specific config. |
-| 8 | HIGH | 2 (interview) | Claude completely missed `purify-ts` + `Either<DataError, ...>` usage, proposed project adopt a Result pattern it already has. Codex detected it correctly. Asymmetric miss vs Finding 3 — Claude did NOT scan dependency manifests deeply for error-handling libraries. |
 | 9 | MEDIUM | 2 (interview) | Claude reshaped Q11 AC-verification options — dropped `Off` and `Multiple` branches, invented "Code-only + Tests" pre-combination not in spec. User forced into "Type something" fallback to get a spec-compliant multi-mode answer. |
 | 10 | MEDIUM | 4 (agent curation) | Husky pre-commit hooks detected by Claude (cited for devops-engineer); missed by Codex. Has downstream impact — Husky is a canonical `[enforced]` rule source per constitute's Phase 1 enforcement scan, so Codex-side constitute would under-index enforced rules. |
+| 16 | MEDIUM | 1+5 (detect/populate) | PACKAGES_DETECTED content drift: Codex includes `scripts/` as a package; Claude excludes it. Element ordering also differs (Claude alphabetic within categories; Codex apps-first then root then packages). |
+| 17 | MEDIUM | 5 (populate) | project-config.json free-text fields (`PROJECT_STRUCTURE`, `DEV_COMMANDS`, `ARCHITECTURE_DETAILS`, `WRAPPER_MODE_SECTION`, `AGENT_LIST`) filled differently: Claude = terse breadcrumb references (`"See \`## Project Structure\` in CLAUDE.md"`); Codex = extensive inline duplicated content. Spec expects the former (single source of truth in CLAUDE.md/AGENTS.md). Codex's behavior = content duplication + drift risk. |
+| 1 | MEDIUM | 0 (prereq) | Claude auto-detected wrapper mode; Codex asked for confirmation (spec says ask) |
+| 5 | LOW | 2 (interview) | Claude pre-computes "Recommended" defaults for one-click confirm; Codex shows context then asks for free-text answer |
 | 11 | LOW | 4 (agent curation) | Phase 4 override UX: Claude offered hedged alternate options (`Also keep mobile-engineer`/`Also keep backend-engineer`); Codex plain-text "confirm or override". Cosmetic. |
 | 12 | LOW | 5 (summary) | Codex's on-screen Phase 5 summary abbreviated "Populated Files" list (showed 2 items); on-disk `.devforge/setup-complete` marker has the correct full list (9+ items). Cosmetic reporting gap — artifacts are all present on disk. |
 | 13 | LOW | 1+5 (detect/summary) | Off-by-one package count — Claude says 25, Codex 26. Claude excludes `scripts/`, Codex includes it. Consistent within each runtime. Spec doesn't explicitly prescribe which. |
-| 14 | HIGH | 1+5 (detect/populate) | Per-package command depth: Claude reads each package's `package.json` scripts and records real commands per package (`vite build --mode raw`, `tsc --noEmit`, `eslint --ext .ts ./src`). Codex uses generic fallback (`yarn build`/`yarn check`/`yarn lint`) for every package uniformly. Downstream commands that operate per-package (constitute, execute-task) get different-fidelity info. |
-| 15 | HIGH | 1+5 (detect/populate) | Top-level BUILD_COMMAND / LINT_COMMAND disagreement: Claude `yarn build:raw` + `yarn lint:core && yarn lint:web`. Codex `yarn build:origin` + `yarn lint:web`. These are commands that would actually be run later; whichever runtime got it wrong produces a forge that fails builds/lints. User must verify which is correct by reading actual root `package.json`. |
-| 16 | MEDIUM | 1+5 (detect/populate) | PACKAGES_DETECTED content drift: Codex includes `scripts/` as a package; Claude excludes it. Element ordering also differs (Claude alphabetic within categories; Codex apps-first then root then packages). |
-| 17 | MEDIUM | 5 (populate) | project-config.json free-text fields (`PROJECT_STRUCTURE`, `DEV_COMMANDS`, `ARCHITECTURE_DETAILS`, `WRAPPER_MODE_SECTION`, `AGENT_LIST`) filled differently: Claude = terse breadcrumb references (`"See \`## Project Structure\` in CLAUDE.md"`); Codex = extensive inline duplicated content. Spec expects the former (single source of truth in CLAUDE.md/AGENTS.md). Codex's behavior = content duplication + drift risk. |
 | 18 | LOW | 5 (populate) | JSON formatting divergence: Codex pretty-prints (one field per line) while Claude uses compact objects. Both valid JSON. Causes noisy future diffs. |
 
 ---
 
-### Finding 1 — Phase 0: wrapper-mode confirmation asked differently
-
-**Severity**: MEDIUM (UX inconsistency; not a correctness bug since user can confirm in both)
-
-**Observed**:
-- Claude: auto-detected wrapper mode from nested `.git` and proceeded without confirming. Showed the detection result only.
-- Codex: showed the `{{ask}}` prompt and waited for `yes`/`no` before continuing Phase 1.
-
-**Spec reference**: `src/commands/setup-wizard/references/detect.md:39`
-
-> `{{ask "I found a nested git repository at [folder-name]/. Is this a wrapper workspace where template artifacts live at the outer root and the actual source code lives in that subfolder?"}}`
-
-The `{{ask}}` marker is spec-prescribed. Codex followed it; Claude short-circuited.
-
-**Root cause hypothesis**: Claude may interpret `{{ask}}` semantics as "present and proceed on reasonable default" rather than "required user-input stop." Or Claude's single-nested-git heuristic may be treated as unambiguous enough to skip the confirmation.
-
-**Impact**: if the user's inner repo is NOT meant to be the source root (e.g., it's a vendored submodule or a tool fixture), Claude would silently misconfigure wrapper mode. Codex catches this at the confirmation step.
-
-**Proposed fix**: audit how Claude interprets `{{ask}}` markers. If Claude systematically skips single-branch `{{ask}}` prompts, either:
-- (a) Add explicit "DO NOT SKIP THIS QUESTION" wording to the spec at critical confirmation points, OR
-- (b) Document in the spec that Claude auto-proceeds when inference is unambiguous, and explicitly flag which questions must never auto-proceed (wrapper mode, workflow enforcement, AC verification mode).
+Detailed entries below are sorted HIGH → MEDIUM → LOW to match the summary table. Only findings with deep-dive content have their own sections; findings whose summary-table entry captures everything (6, 7, 9, 10-18) are not duplicated here. IDs preserved from discovery order for cross-reference stability.
 
 ---
 
-### Finding 2 — Phase 1: default branch read from wrong git repo
+### Finding 4 — HIGH — Phase 2: Codex batches multiple questions into one combined prompt (4-question + 8-question batches observed)
+
+**Severity**: HIGH (escalated twice — initially LOW, then MEDIUM after Q0-Q3 batch observed, then HIGH after Q5-Q12 batch observed AND branching-logic consequence understood)
+
+**Observed**:
+- Claude: asks each question as a separate sequential turn.
+- Codex: presented Q0-Q3 as one combined prompt ("Please answer these in order..."), then presented Q5-Q12 as a second combined prompt of 8 questions.
+
+**Spec reference**: `src/commands/setup-wizard/references/questions.md` — each question is its own `## Q0`, `## Q1`, etc. section with its own `{{ask}}` block.
+
+**Root cause hypothesis**: Codex may have batched for efficiency (fewer turn-trips). Claude respected the per-question structure. Spec doesn't explicitly forbid batching but clearly structures questions as separate units.
+
+**Impact**:
+
+1. **UX**: user must hold more state in head; answers have to be typed in a numbered list format rather than one-at-a-time.
+2. **Branching logic breaks**: several wizard questions trigger conditional follow-ups. Q11 → Multiple → sub-follow-up for modes; Q11 → Runtime-assisted → sub-follow-up for URL. When Codex batches these, it **pre-computes the follow-up defaults AHEAD of the user's answer**. Observed in Run 1: Codex prefilled `http://localhost:5173` as the Q12 URL default inside the batched Q5-Q12 prompt — asking the URL question before the user had said they wanted runtime-assisted. If the user had picked `off`, that URL question shouldn't have been asked at all.
+3. **Downstream flattening**: this pattern will recur in every wizard / constitute / breakdown flow that has conditional branches. Constitute's Phase 2 (TBD resolution) and Phase 6 (revise loop) both depend on user-input stops between branches — batching flattens those.
+
+**Proposed fix**:
+- (a) Add explicit, prominent instruction in the wizard's Phase 2 spec (e.g., in `main.md` under IMPORTANT RULES): **"Ask each question in a separate turn. Do NOT batch multiple questions into a single prompt. Each `{{ask}}` block is exactly one user-input stop. For questions with conditional sub-follow-ups (e.g., Q11 Multiple, Q11 Runtime-assisted), wait for the user's answer to the primary question BEFORE computing or presenting the follow-up."**
+- (b) Extend to all commands that use `{{ask}}`-style interview blocks (constitute Phase 3, breakdown review, execute-task questions if any) — this is a runtime-wide spec-interpretation gap, not just wizard-specific.
+- (c) Consider a spec-language convention: prefix interactive blocks with something stronger than `{{ask}}` for conditional branches — e.g., `{{ask-stop}}` — to make the "must-not-batch" property explicit to the reading model.
+
+---
+
+### Finding 2 — HIGH — Phase 1: default branch read from wrong git repo
 
 **Severity**: HIGH (correctness bug; wrong value lands in project-config.json)
 
@@ -137,7 +144,39 @@ The user is testing parity via git worktrees: the outer worktree is on branch `c
 
 ---
 
-### Finding 3 — Phase 1: detection granularity asymmetry
+### Finding 8 — HIGH — Phase 2: Claude missed `purify-ts` + `Either<DataError, ...>` usage entirely
+
+**Severity**: HIGH (wrong detection → wrong default → could mislead user into adopting a pattern they already use)
+
+**Observed**:
+
+- **Claude**: at Q5 (error handling), presented: "I didn't find a dominant error-handling library (no `neverthrow`, no custom Result type) — it looks like standard try/catch + Apollo error handling." Recommended options were `Try/catch + Apollo` or "Introduce Result/Either pattern" (as if greenfield).
+- **Codex**: at the equivalent Q6 (in its numbering), detected correctly: "I see `Either<DataError, ...>` return types, `purify-ts` in dependencies, and `DataError` used in repository code."
+
+The project uses `purify-ts` extensively: imported in `CoreRepository`, threaded through every use case, folded in every BLoC. Visible in:
+- `apps/app-web/package.json` `purify-ts` dependency
+- Every package's `package.json` transitively depending on it
+- Source files `pkg-cse-core/src/**/data/*.ts` with `Either<DataError, T>` signatures
+
+**Spec reference**: detection spec implicitly says to identify error-handling library. Claude's limited search (probably grepping for `neverthrow` / `Result<T,E>` / known patterns) missed `purify-ts` — a less common but explicitly-named library in dependencies.
+
+**Root cause hypothesis**: Claude's detection may have a hardcoded lookup for common error-handling libraries (neverthrow, oxide.ts, ts-results). If `purify-ts` isn't in that list, it reports "no dominant library." Codex seems to have scanned actual code signatures — catching the pattern even though the library isn't in a canonical list.
+
+**Impact** (severe in this specific case):
+- User accepts Claude's "Recommended: Try/catch + Apollo" default → `project-config.json` stores wrong `ERROR_HANDLING` value → constitute later synthesizes error-handling rules against the wrong pattern → agents are told to use try/catch when the codebase uses `Either`. **Systemic rule-quality failure for any user who accepts the Recommended answer.**
+- User noticing the miss (as happened here) overrides manually. But users who don't know their own codebase deeply would miss this.
+
+**Proposed fix**: extend detection spec explicitly:
+- Grep for `purify-ts`, `neverthrow`, `fp-ts`, `oxide.ts`, `ts-results`, `result-type`, `monet` in all `package.json` / `pyproject.toml` / `Cargo.toml` etc. as a DEPENDENCY-level signal.
+- Grep source for patterns like `Either<`, `Result<`, `Maybe<`, `Task<` as a USAGE-level signal.
+- Combine: if dependency present OR usage pattern present, report the library by name. Never conclude "no library" unless BOTH checks return empty.
+- Applies to all detection categories, not just error handling — the same pattern may have missed state-management libs, validation libs, etc.
+
+**Cross-finding pattern**: combined with Finding 3 (Claude deeper-but-narrower vs Codex broader-but-shallower), this suggests Claude is optimizing for a shorter scan by relying on a canonical list of known patterns, while Codex does a broader grep. Explicit checklist (Finding 3 proposed fix) addresses both.
+
+---
+
+### Finding 3 — MEDIUM — Phase 1: detection granularity asymmetry
 
 **Severity**: MEDIUM (incomplete detection → incomplete downstream rules, asymmetric between runtimes)
 
@@ -182,36 +221,35 @@ Net: Claude went deeper-but-narrower; Codex broader-but-shallower.
 [ ] Manifest count
 ```
 
-Turning the "detection" into a filled-out checklist forces parity between runtimes.
+Turning the "detection" into a filled-out checklist forces parity between runtimes. This single fix would likely collapse Findings 3, 6, 7, 8, 10, 14, 15, 16.
 
 ---
 
-### Finding 4 — Phase 2: Codex batched Q0-Q3 into one combined prompt
+### Finding 1 — MEDIUM — Phase 0: wrapper-mode confirmation asked differently
 
-**Severity**: LOW (cosmetic UX; both get the same answers)
+**Severity**: MEDIUM (UX inconsistency; not a correctness bug since user can confirm in both)
 
 **Observed**:
-- Claude: asks Q0 (name), Q1 (description), Q2 (type), Q3 (langs/frameworks) as separate sequential questions.
-- Codex: presented all four as one combined prompt: "Please answer these in order: 1. Project name ... 2. Project description ... 3. Project type ... 4. Languages and frameworks".
+- Claude: auto-detected wrapper mode from nested `.git` and proceeded without confirming. Showed the detection result only.
+- Codex: showed the `{{ask}}` prompt and waited for `yes`/`no` before continuing Phase 1.
 
-**Spec reference**: `src/commands/setup-wizard/references/questions.md` — each question is its own `## Q0`, `## Q1`, etc. section with its own `{{ask}}` block.
+**Spec reference**: `src/commands/setup-wizard/references/detect.md:39`
 
-**Root cause hypothesis**: Codex may have batched for efficiency (fewer turn-trips). Claude respected the per-question structure. Spec doesn't explicitly forbid batching but clearly structures questions as separate units.
+> `{{ask "I found a nested git repository at [folder-name]/. Is this a wrapper workspace where template artifacts live at the outer root and the actual source code lives in that subfolder?"}}`
 
-**Impact** (escalated HIGH after Q5-Q12 batch observed):
+The `{{ask}}` marker is spec-prescribed. Codex followed it; Claude short-circuited.
 
-1. **UX**: user must hold more state in head; answers have to be typed in a numbered list format rather than one-at-a-time.
-2. **Branching logic breaks**: several wizard questions trigger conditional follow-ups. Q11 → Multiple → sub-follow-up for modes; Q11 → Runtime-assisted → sub-follow-up for URL. When Codex batches these, it **pre-computes the follow-up defaults AHEAD of the user's answer**. Observed in Run 1: Codex prefilled `http://localhost:5173` as the Q12 URL default inside the batched Q5-Q12 prompt — asking the URL question before the user had said they wanted runtime-assisted. If the user had picked `off`, that URL question shouldn't have been asked at all.
-3. **Downstream flattening**: this pattern will recur in every wizard / constitute / breakdown flow that has conditional branches. Constitute's Phase 2 (TBD resolution) and Phase 6 (revise loop) both depend on user-input stops between branches — batching flattens those.
+**Root cause hypothesis**: Claude may interpret `{{ask}}` semantics as "present and proceed on reasonable default" rather than "required user-input stop." Or Claude's single-nested-git heuristic may be treated as unambiguous enough to skip the confirmation.
 
-**Proposed fix**:
-- (a) Add explicit, prominent instruction in the wizard's Phase 2 spec (e.g., in `main.md` under IMPORTANT RULES): **"Ask each question in a separate turn. Do NOT batch multiple questions into a single prompt. Each `{{ask}}` block is exactly one user-input stop. For questions with conditional sub-follow-ups (e.g., Q11 Multiple, Q11 Runtime-assisted), wait for the user's answer to the primary question BEFORE computing or presenting the follow-up."**
-- (b) Extend to all commands that use `{{ask}}`-style interview blocks (constitute Phase 3, breakdown review, execute-task questions if any) — this is a runtime-wide spec-interpretation gap, not just wizard-specific.
-- (c) Consider a spec-language convention: prefix interactive blocks with something stronger than `{{ask}}` for conditional branches — e.g., `{{ask-stop}}` — to make the "must-not-batch" property explicit to the reading model.
+**Impact**: if the user's inner repo is NOT meant to be the source root (e.g., it's a vendored submodule or a tool fixture), Claude would silently misconfigure wrapper mode. Codex catches this at the confirmation step.
+
+**Proposed fix**: audit how Claude interprets `{{ask}}` markers. If Claude systematically skips single-branch `{{ask}}` prompts, either:
+- (a) Add explicit "DO NOT SKIP THIS QUESTION" wording to the spec at critical confirmation points, OR
+- (b) Document in the spec that Claude auto-proceeds when inference is unambiguous, and explicitly flag which questions must never auto-proceed (wrapper mode, workflow enforcement, AC verification mode).
 
 ---
 
-### Finding 5 — Phase 2: Claude offers "Recommended" one-click defaults; Codex asks for free-text
+### Finding 5 — LOW — Phase 2: Claude offers "Recommended" one-click defaults; Codex asks for free-text
 
 **Severity**: LOW (UX divergence; same final answers)
 
@@ -232,38 +270,6 @@ Turning the "detection" into a filled-out checklist forces parity between runtim
 - (b) Or leave divergent; document that Claude's `(Recommended)` UX is the flagship experience and Codex's free-text is the fallback. Document in README / onboarding notes.
 
 Pattern to watch across runs: if Finding 1 + Finding 5 both reflect "Claude auto-proceeds on inferred answers", that's a systemic framing gap worth addressing explicitly in the spec rather than finding-by-finding.
-
----
-
-### Finding 8 — Phase 2: Claude missed `purify-ts` + `Either<DataError, ...>` usage entirely
-
-**Severity**: HIGH (wrong detection → wrong default → could mislead user into adopting a pattern they already use)
-
-**Observed**:
-
-- **Claude**: at Q5 (error handling), presented: "I didn't find a dominant error-handling library (no `neverthrow`, no custom Result type) — it looks like standard try/catch + Apollo error handling." Recommended options were `Try/catch + Apollo` or "Introduce Result/Either pattern" (as if greenfield).
-- **Codex**: at the equivalent Q6 (in its numbering), detected correctly: "I see `Either<DataError, ...>` return types, `purify-ts` in dependencies, and `DataError` used in repository code."
-
-The project uses `purify-ts` extensively: imported in `CoreRepository`, threaded through every use case, folded in every BLoC. Visible in:
-- `apps/app-web/package.json` `purify-ts` dependency
-- Every package's `package.json` transitively depending on it
-- Source files `pkg-cse-core/src/**/data/*.ts` with `Either<DataError, T>` signatures
-
-**Spec reference**: detection spec implicitly says to identify error-handling library. Claude's limited search (probably grepping for `neverthrow` / `Result<T,E>` / known patterns) missed `purify-ts` — a less common but explicitly-named library in dependencies.
-
-**Root cause hypothesis**: Claude's detection may have a hardcoded lookup for common error-handling libraries (neverthrow, oxide.ts, ts-results). If `purify-ts` isn't in that list, it reports "no dominant library." Codex seems to have scanned actual code signatures — catching the pattern even though the library isn't in a canonical list.
-
-**Impact** (severe in this specific case):
-- User accepts Claude's "Recommended: Try/catch + Apollo" default → `project-config.json` stores wrong `ERROR_HANDLING` value → constitute later synthesizes error-handling rules against the wrong pattern → agents are told to use try/catch when the codebase uses `Either`. **Systemic rule-quality failure for any user who accepts the Recommended answer.**
-- User noticing the miss (as happened here) overrides manually. But users who don't know their own codebase deeply would miss this.
-
-**Proposed fix**: extend detection spec explicitly:
-- Grep for `purify-ts`, `neverthrow`, `fp-ts`, `oxide.ts`, `ts-results`, `result-type`, `monet` in all `package.json` / `pyproject.toml` / `Cargo.toml` etc. as a DEPENDENCY-level signal.
-- Grep source for patterns like `Either<`, `Result<`, `Maybe<`, `Task<` as a USAGE-level signal.
-- Combine: if dependency present OR usage pattern present, report the library by name. Never conclude "no library" unless BOTH checks return empty.
-- Applies to all detection categories, not just error handling — the same pattern may have missed state-management libs, validation libs, etc.
-
-**Cross-finding pattern**: combined with Finding 3 (Claude deeper-but-narrower vs Codex broader-but-shallower), this suggests Claude is optimizing for a shorter scan by relying on a canonical list of known patterns, while Codex does a broader grep. Explicit checklist (Finding 3 proposed fix) addresses both.
 
 ---
 
