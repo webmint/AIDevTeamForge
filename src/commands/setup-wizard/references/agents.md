@@ -92,7 +92,12 @@ Delete the rejected agent files from both runtime directories:
 
 ## 6.4: Populate Kept Agents
 
-For each kept agent, read the file and substitute all `{{PLACEHOLDER}}` markers per the rules below.
+For each kept agent, read the file and:
+
+1. **Substitute all `{{PLACEHOLDER}}` markers** in prose (inside YAML `description:` field and body content) per the rules below. These are text-level placeholders — `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{TYPE_SAFETY_RULES}}`, etc.
+2. **Replace the structural model / reasoning fields via key-based regex replacement** (separate from placeholder substitution — see "Agent-frontmatter model / reasoning fields" subsection later in this doc). These fields carry boot-safe defaults at install time; wizard overwrites with Q10 answers.
+
+The two mechanisms exist because text-level placeholders (prose) are parser-safe under both runtimes; structural fields (`model:`, `model = "..."`, `model_reasoning_effort = "..."`) must be boot-valid from install time onward.
 
 **Placement contract (for agent-template authors).** The 10 stack-aware placeholders — `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{ERROR_HANDLING}}`, `{{API_LAYER}}`, `{{TESTING}}`, `{{BUILD_TOOL}}`, `{{BUILD_COMMAND}}`, `{{TYPE_CHECK_COMMAND}}`, `{{LINT_COMMAND}}` — and `{{TYPE_SAFETY_RULES}}` may expand into multi-line content (paired bullets per stack, language-grouped sub-headers). They MUST appear in each agent template as **stand-alone block-level elements** — their own paragraph, list item, or section — not inline within a running sentence. Inline placement silently breaks Markdown rendering for multi-stack projects (sub-headers and bullets collapse into a sentence). If an agent template needs a short inline mention of, e.g., the primary language, author a separate single-value placeholder for that purpose rather than reusing these.
 
@@ -155,21 +160,31 @@ Ten placeholders read from per-stack arrays: `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{
     ```
 
     For unfamiliar languages in the list, generate generic rules under that language's sub-header (do not omit it).
-**Agent-frontmatter model placeholders** (emitted by `scripts/generate-agents.py` at install time, one per agent based on its `model_tier: think | do | verify`). The wizard substitutes them during Phase 4 using Q10 answers. Placeholder names are **runtime-qualified** — Claude stores model names, Codex stores reasoning enums separately from model-name overrides, so the keys cannot collapse into a single `{{MODEL_*}}` shape.
+**Agent-frontmatter model / reasoning fields** (emitted by `scripts/generate-agents.py` at install time with **boot-safe defaults**, one per agent based on its `model_tier: think | do | verify`). These are NOT placeholders — the runtime must parse the agent file at launch, so install-time files carry real values. The wizard REPLACES the values at Phase 4 using **key-based regex replacement** (not placeholder substitution) driven by Q10 answers.
 
-- `{{CLAUDE_TIER_THINK}}` / `{{CLAUDE_TIER_DO}}` / `{{CLAUDE_TIER_VERIFY}}` — Claude agent frontmatter `model:` field (in `.claude/agents/*.md`). Substitute Q10a's `CLAUDE_TIER_THINK` / `CLAUDE_TIER_DO` / `CLAUDE_TIER_VERIFY` (Claude model names, e.g., `"opus"`, `"sonnet"`, `"haiku"`). Each generated agent file contains exactly one of these based on its declared tier.
-- `{{CODEX_TIER_THINK}}` / `{{CODEX_TIER_DO}}` / `{{CODEX_TIER_VERIFY}}` — Codex agent TOML `model =` field (in `.codex/agents/*.toml`). Substitute Q10b's **model override** keys: `CODEX_TIER_THINK_MODEL` / `CODEX_TIER_DO_MODEL` / `CODEX_TIER_VERIFY_MODEL` if set; else `CODEX_DEFAULT_MODEL` from populate.md's "Drift-risk literals" section. Note the intentional asymmetry with Claude: Q10b stores the model override under a `_MODEL` suffix so the symmetric `CODEX_TIER_*` key can carry the reasoning-effort enum instead.
-- `{{CODEX_REASONING_THINK}}` / `{{CODEX_REASONING_DO}}` / `{{CODEX_REASONING_VERIFY}}` — Codex agent TOML `model_reasoning_effort =` field. Substitute Q10b's `CODEX_TIER_THINK` / `CODEX_TIER_DO` / `CODEX_TIER_VERIFY` (reasoning-effort enums, e.g., `"high"`, `"medium"`, `"low"`).
+**Why this is key-replacement, not placeholder substitution**: Codex parses `.codex/agents/*.toml` at launch (before the wizard can run). Shipping those files with `{{PLACEHOLDER}}` tokens would cause the TOML deserializer to fail — Codex prints "malformed agent role definition" and silently disables every agent. The wizard that would fix it can't execute because the runtime it depends on doesn't have working agents. Defaults break the chicken-and-egg loop. The trade-off: wizard must use regex replacement instead of simple `{{X}}→Y` text substitution.
 
-**Q10 → emitter-placeholder summary table:**
+**Install-time defaults** (source of truth: `scripts/lib/install_defaults.py`):
 
-| Emitted placeholder (in agent file)   | Wizard substitutes from              | Value shape                   |
-|---------------------------------------|--------------------------------------|-------------------------------|
-| `{{CLAUDE_TIER_<TIER>}}`              | `CLAUDE_TIER_<TIER>` (Q10a)          | Claude model name             |
-| `{{CODEX_TIER_<TIER>}}`                | `CODEX_TIER_<TIER>_MODEL` or `CODEX_DEFAULT_MODEL` | Codex model name  |
-| `{{CODEX_REASONING_<TIER>}}`          | `CODEX_TIER_<TIER>` (Q10b)           | Codex reasoning-effort enum   |
+- Claude agents `.claude/agents/*.md` frontmatter:
+  - `model: opus` (think tier), `model: sonnet` (do tier), `model: sonnet` (verify tier)
+- Codex agents `.codex/agents/*.toml`:
+  - `model = "gpt-5.4"` (same across all tiers by default)
+  - `model_reasoning_effort = "high"` (think), `"medium"` (do), `"medium"` (verify)
 
-**Must also add to `.devforge/project-config.json`:** the Codex reasoning keys above — `CODEX_REASONING_THINK`, `CODEX_REASONING_DO`, `CODEX_REASONING_VERIFY` — populated from Q10b's `CODEX_TIER_THINK` / `CODEX_TIER_DO` / `CODEX_TIER_VERIFY`. This lets downstream commands (and `update.sh`) read the resolved reasoning enum by the same key name the emitter used. Add matching entries to `src/devforge/project-config.json`.
+**Wizard replacement rules (Phase 4)**: for each kept agent file, determine the agent's tier (look at its source meta or map by name), then apply regex replacement per runtime:
+
+Claude file (`.claude/agents/<name>.md`):
+- Locate the line `model: <value>` in the YAML frontmatter (anchored between the two `---` delimiters).
+- Replace `<value>` with Q10a's `CLAUDE_TIER_<TIER>` answer (`opus` / `sonnet` / `haiku`).
+
+Codex file (`.codex/agents/<name>.toml`):
+- Locate `model = "<value>"` (top-level key, not inside a nested table or string literal). Replace `<value>` with Q10b's `CODEX_TIER_<TIER>_MODEL` override if set; else `CODEX_DEFAULT_MODEL` (see populate.md "Drift-risk literals").
+- Locate `model_reasoning_effort = "<value>"` (top-level key). Replace `<value>` with Q10b's `CODEX_TIER_<TIER>` (reasoning-effort enum: `minimal` / `low` / `medium` / `high` / `xhigh`).
+
+The replacement must be surgical — do NOT do broad `s/gpt-5.4/<new>/g` sweeps, because the model name literal may appear in agent prose too. Target only the `^model = "..."` and `^model_reasoning_effort = "..."` lines at the TOML root.
+
+**Must also add to `.devforge/project-config.json`:** the Codex reasoning keys — `CODEX_REASONING_THINK`, `CODEX_REASONING_DO`, `CODEX_REASONING_VERIFY` — populated from Q10b's `CODEX_TIER_THINK` / `CODEX_TIER_DO` / `CODEX_TIER_VERIFY`. This lets downstream commands (and `update.sh`) read the resolved reasoning enum by the same key name. Add matching entries to `src/devforge/project-config.json`.
 
 **Preserve ALL template content.** The templates contain carefully designed workflows, steps, and rules. Substitution replaces placeholders — it never removes or condenses sections.
 

@@ -3,18 +3,21 @@
 # NOTE: project-level config is only loaded when the directory is trusted in
 # ~/.codex/config.toml ([projects."<abs-path>"] trust_level = "trusted"). Until
 # trusted, Codex parses this file but treats it as disabled (silent no-op).
-# This file is copied to .codex/config.toml at install; wizard populates the
-# {{PLACEHOLDERS}} from project-config answers.
+#
+# Values below are boot-safe defaults at install time (source of truth:
+# scripts/lib/install_defaults.py). The wizard OVERWRITES `model`,
+# `model_reasoning_effort`, and `approval_policy` via key-based regex
+# replacement after collecting user answers — see populate.md §5.2.
 
 # Default model for plain prompts. Subagents override per-agent in .codex/agents/*.toml.
-model = "{{CODEX_MODEL_DEFAULT}}"
-model_reasoning_effort = "{{CODEX_REASONING_DEFAULT}}"
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
 
 # Approval policy — wizard maps from WORKFLOW_ENFORCEMENT (Q8):
 #   strict   → "untrusted"
 #   moderate → "on-request"
 #   light    → "never"
-approval_policy = "{{CODEX_APPROVAL_POLICY}}"
+approval_policy = "on-request"
 
 # Sandbox mode: "macos" (Seatbelt), "docker", or "none".
 # Default "none" for portability; tighten per-project if desired.

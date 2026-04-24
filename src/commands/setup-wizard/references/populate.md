@@ -10,7 +10,7 @@ This reference covers the file-substitution phase of the setup-wizard flow, load
 - `docs/overview.md` — placeholder substitution only (§5.8). Body sections stay untouched — `{{cli.sigil}}constitute`, `{{cli.sigil}}onboard`, and the tech-writer agent fill them later.
 - `docs/architecture.md` — placeholder substitution only (§5.8). Body sections stay untouched — same deferred-fill pattern.
 - `.claude/settings.json` — conditional permissions only, no placeholder substitution (if present)
-- `.codex/config.toml` — placeholder substitution + conditional MCP entry (if present)
+- `.codex/config.toml` — key-based regex replacement of boot-safe defaults + conditional MCP entry (if present). NOT placeholder substitution — see §5.2.
 - `.mcp.json` — conditional MCP entry (if present, Claude only)
 - `.devforge/baseline/CLAUDE.md` — new baseline copy
 - `.devforge/baseline/AGENTS.md` — new baseline copy
@@ -431,13 +431,22 @@ Skip this sub-section for placeholder substitution. Note that 5.4 (conditional M
 
 ### `.codex/config.toml` (if present)
 
-Substitute:
-- `{{CODEX_MODEL_DEFAULT}}` — if Q10b set `CODEX_TIER_DO_MODEL`, use that value. If `CODEX_TIER_DO_MODEL` is `null` (user accepted Codex default), use `CODEX_DEFAULT_MODEL` from the "Drift-risk literals" section at the top of this file. Codex `config.toml` behavior on a missing `model` key is not explicitly documented, so we ship the literal rather than omit the field.
-- `{{CODEX_REASONING_DEFAULT}}` — Q10b answer `CODEX_TIER_DO` (e.g. `"medium"`).
-- `{{CODEX_APPROVAL_POLICY}}` — map from Q8 `WORKFLOW_ENFORCEMENT`:
+This file ships with **boot-safe defaults** at install time (source of truth: `scripts/lib/install_defaults.py`), not `{{PLACEHOLDERS}}`. Codex parses this file at launch — any unsubstituted placeholder in a structural field (`model`, `model_reasoning_effort`, `approval_policy`) would crash Codex's config loader before the wizard could run. Default values break that chicken-and-egg: install-time defaults make Codex bootable; wizard OVERWRITES them here via **key-based regex replacement** using user answers.
+
+**Replacement rules (use surgical regex on each target line — NOT placeholder substitution):**
+
+- `^model = "..."` → replace value with:
+  - Q10b's `CODEX_TIER_DO_MODEL` if set, OR
+  - `CODEX_DEFAULT_MODEL` from the "Drift-risk literals" section at the top of this file if the override is null.
+- `^model_reasoning_effort = "..."` → replace value with Q10b's `CODEX_TIER_DO` (reasoning-effort enum; e.g., `"medium"`).
+- `^approval_policy = "..."` → replace value mapped from Q8 `WORKFLOW_ENFORCEMENT`:
   - `strict` → `"untrusted"`
   - `moderate` → `"on-request"`
   - `light` → `"never"`
+
+Anchor each regex at the **start of line** (`^`) to avoid matching `model` strings that appear in comments or MCP config blocks. Do not touch the sandbox, MCP server sections, or any other lines.
+
+**Why not placeholder substitution here:** see `agents.md` §6.4 for the chicken-and-egg explanation — identical rationale applies to this file.
 
 ## 5.3: Save Baselines
 
@@ -500,7 +509,7 @@ If `AC_RUNTIME_URL` is not set (Q11's `AC_VERIFICATION_MODE` array didn't includ
 
 Read `.devforge/project-config.json`. Replace every `null` value with the corresponding answer collected during Phase 1 (detection) and Phase 2 (questions). Use the same values you substituted into the files above. Keys match the placeholder names without `{{ }}`.
 
-New keys this file includes for runtime configs: `CODEX_MODEL_DEFAULT`, `CODEX_REASONING_DEFAULT`, `CODEX_APPROVAL_POLICY`. Use the same substituted values from 5.2.
+New keys this file includes for runtime configs: `CODEX_MODEL_DEFAULT`, `CODEX_REASONING_DEFAULT`, `CODEX_APPROVAL_POLICY`. Use the same computed values the wizard applies to `.codex/config.toml` in §5.2 (model from Q10b override or `CODEX_DEFAULT_MODEL`; reasoning from Q10b `CODEX_TIER_DO`; approval from Q8 mapping). These `project-config.json` fields are authoritative for downstream commands — they're the resolved wizard answers, independent of the regex-replacement values that land in `.codex/config.toml`.
 
 **Per-stack and per-package keys** (new with the package-detection work):
 - `LANGUAGES`, `FRAMEWORKS` — arrays from Q3

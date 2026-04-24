@@ -23,13 +23,25 @@ Fields in the meta block:
   - description  : when-to-use hint (required)
   - model_tier   : think | do | verify (required; semantic, not a runtime placeholder)
 
-Model tier is translated per runtime into wizard placeholders:
-  - Claude : model: {{CLAUDE_TIER_THINK}}
-  - Codex  : model = "{{CODEX_TIER_THINK}}"
-             model_reasoning_effort = "{{CODEX_REASONING_THINK}}"
+Model tier is translated per runtime into boot-safe defaults (NOT placeholders)
+so the runtime can parse these files at launch without error:
+  - Claude : model: opus | sonnet | sonnet        (per tier)
+  - Codex  : model = "gpt-5.4"                     (same across tiers)
+             model_reasoning_effort = "high" | "medium" | "medium"  (per tier)
 
-{{UPPERCASE}} placeholders in body pass through untouched — wizard substitutes
-them post-install with project-specific answers.
+Defaults live in `scripts/lib/install_defaults.py`. The wizard OVERWRITES
+these values via key-based regex replacement (not placeholder substitution)
+when it has user answers — see `setup-wizard/references/agents.md` §6.4.
+
+Why not placeholders: Codex parses `.codex/config.toml` + `.codex/agents/*.toml`
+at launch, before the wizard can run. Unsubstituted `{{CODEX_REASONING_*}}`
+tokens crash the parser; the wizard that would fix them can't start until
+the runtime starts. Defaults break that chicken-and-egg loop.
+
+{{UPPERCASE}} placeholders in body prose pass through untouched — wizard
+substitutes them post-install with project-specific answers (FRAMEWORK,
+LANGUAGE, ARCHITECTURE, etc.). Those are inside string fields, not structural,
+so the runtime parses them fine as literal text.
 
 Usage:
   python3 scripts/generate-agents.py --src src/agents --target /path/to/project
@@ -50,6 +62,10 @@ from pathlib import Path
 # {{cli.sigil}} into .claude/agents/ and .codex/agents/ outputs.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.variation_markers import substitute as substitute_markers  # noqa: E402
+from lib.install_defaults import (  # noqa: E402
+    CLAUDE_AGENT_DEFAULTS_BY_TIER,
+    CODEX_AGENT_DEFAULTS_BY_TIER,
+)
 
 # We intentionally don't use lib.frontmatter here — agent sources use a
 # ```yaml fenced meta block, not ---/--- frontmatter, to avoid mimicking
@@ -193,13 +209,23 @@ def _toml_multiline_literal(s: str) -> str:
 
 
 # ── Runtime emitters ─────────────────────────────────────────────────────
+#
+# Emit boot-safe defaults (not placeholder tokens). Values come from
+# `scripts/lib/install_defaults.py` — the single source of truth. The
+# wizard OVERWRITES these via key-based regex replacement when it has
+# user answers. See `setup-wizard/references/agents.md` §6.4.
 
-def _tier_model(runtime: str, tier: str) -> str:
-    return f"{{{{{runtime.upper()}_TIER_{tier.upper()}}}}}"
+
+def _claude_tier_model(tier: str) -> str:
+    return CLAUDE_AGENT_DEFAULTS_BY_TIER[tier]
 
 
-def _tier_reasoning(tier: str) -> str:
-    return f"{{{{CODEX_REASONING_{tier.upper()}}}}}"
+def _codex_tier_model(tier: str) -> str:
+    return CODEX_AGENT_DEFAULTS_BY_TIER[tier]["model"]
+
+
+def _codex_tier_reasoning(tier: str) -> str:
+    return CODEX_AGENT_DEFAULTS_BY_TIER[tier]["model_reasoning_effort"]
 
 
 def emit_claude(name: str, description: str, model_tier: str, body: str) -> str:
@@ -209,7 +235,7 @@ def emit_claude(name: str, description: str, model_tier: str, body: str) -> str:
         "---\n"
         f"name: {name}\n"
         f'description: "{_yaml_escape_double(description)}"\n'
-        f"model: {_tier_model('claude', model_tier)}\n"
+        f"model: {_claude_tier_model(model_tier)}\n"
         "---\n"
         "\n"
         + body
@@ -221,8 +247,8 @@ def emit_codex(name: str, description: str, model_tier: str, body: str) -> str:
     return (
         f'name = "{_toml_escape_basic(name)}"\n'
         f'description = "{_toml_escape_basic(description)}"\n'
-        f'model = "{_tier_model("codex", model_tier)}"\n'
-        f'model_reasoning_effort = "{_tier_reasoning(model_tier)}"\n'
+        f'model = "{_codex_tier_model(model_tier)}"\n'
+        f'model_reasoning_effort = "{_codex_tier_reasoning(model_tier)}"\n'
         f"developer_instructions = {_toml_multiline_literal(body)}\n"
     )
 
