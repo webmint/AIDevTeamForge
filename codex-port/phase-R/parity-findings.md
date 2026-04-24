@@ -319,7 +319,7 @@ Fixes applied between Run 1 and Run 2. Run 2 verification uses this list as its 
 ### R1 Resolution 1 — Finding 3 fix: forced structured Detection Report
 
 **Date**: 2026-04-24
-**Commit**: _pending_
+**Commit**: `44ce2a4`
 **Files changed**:
 - `src/commands/setup-wizard/references/detect.md` — added a required **Detection Report** section (fenced YAML emit) with 8 rules governing the emit.
 
@@ -373,6 +373,43 @@ Fixes applied between Run 1 and Run 2. Run 2 verification uses this list as its 
 10. Language ordering matches Run 1 direction (TypeScript first) on both runtimes.
 
 If the fix closed all 9 findings without regressions, move on to Finding 4 (no-batching rule). If any listed regression appears, log it as a new finding under `## Run 2 — <date>` and decide whether to revise this resolution before continuing.
+
+### R1 Resolution 2 — Finding 4 fix: `{{ask}}` no-batching rule (shared contract)
+
+**Date**: 2026-04-24
+**Commit**: _pending_
+**Files changed**:
+- `src/commands/setup-wizard/main.md` — tightened the `{{ask}}` marker contract in the "Variation markers" section (added three clauses: one-turn-per-ask, wait-before-compute for conditional follow-ups, applies to every command using `{{ask}}`); added IMPORTANT RULES #9 pointing back to the contract.
+
+**Approach** (considered but rejected):
+- Codex-only `{{#codex}}` conditional block, per-runtime emitter preamble, or Codex skill-global preamble — all would work, but the rule is a semantic contract of the `{{ask}}` marker itself, not a runtime patch. Shared placement is the semantically honest location; per-runtime treatment is the escalation path if Run 2 shows Codex still batches despite the shared rule. See conversation log 2026-04-24 for full tradeoff analysis.
+
+**What changed (substance)**:
+- `{{ask}}` marker definition now spells out: "One turn = one `{{ask}}`. Never batch, even adjacent questions. Wait-before-compute for conditional sub-follow-ups — do not pre-render follow-ups that depend on the primary answer."
+- Contract stated as belonging to the sigil itself, so it flows to every command that uses `{{ask}}` (wizard now; onboard, constitute, breakdown, specify, verify when each is reviewed per PLAN §4).
+- IMPORTANT RULES #9 gives the rule a second surface point so it's unmissable at load time.
+
+**Expected to close in Run 2**:
+- Finding 4 — Codex batches multiple `{{ask}}` blocks into one prompt (including Q0–Q3 batching AND Q11 follow-up pre-computation).
+
+**Not expected to close**:
+- onboard/constitute/breakdown/specify/verify — the contract applies there per its text, but those commands haven't been reviewed yet (PLAN §4: "After parity-batch closes"). When reviewed, their `{{ask}}` definitions should reference or inline the same contract.
+
+**Potential regressions to watch in Run 2**:
+- **Claude over-compliance**: Claude might add spurious turns if it interprets the rule too literally (e.g., breaking an existing confirmation into multiple turns). Watch for "Claude asks N+1 times than Run 1" in Q0–Q11.
+- **Finding 5 interaction**: Claude's "Recommended" one-click UX (Q1–Q3) is still allowed under the rule — each question is still one turn; "Recommended" is just the default option presented inside that turn. If Claude suppresses "Recommended" defaults in Run 2 thinking the rule forbids them, that's a regression — the rule governs turn count, not UX affordance.
+- **Codex may still batch despite the shared rule** — if Run 2 shows any batching, that's evidence prose alone doesn't hold for Codex, and we escalate to Codex-specific treatment: (i) `{{#codex}}` conditional block with stronger wording, (ii) Codex emitter prepends a runtime-level preamble, or (iii) Codex skill-global preamble. The escalation path is justified by Run 2 evidence, not pre-emptively.
+- **Over-strictness in non-wizard commands**: if a later-reviewed command (onboard/constitute) has legitimate reasons to group questions (e.g., pure acknowledgement prompts that require no branching), the rule may need a carve-out. Currently no such carve-out — add only if Run 2 or later phases show real need.
+
+**R2 verification checklist** (Codex side — Claude should remain unchanged):
+1. Codex presents Q0 as a standalone turn (was: batched with Q1–Q3 in Run 1).
+2. Codex presents Q5 through Q12 one per turn (was: batched 8-at-a-time in Run 1).
+3. For Q11 branching: Codex does NOT render a Q12 URL prompt (or any follow-up content) until AFTER the user's Q11 answer is received. If the user picks `Off` or `Code-only`, no URL prompt is rendered at all.
+4. Total Codex turns in Phase 2 increases from ~2 (Run 1: two batched prompts) to ~12 (one per question — roughly matching Claude's turn count).
+5. Claude's Phase 2 turn count is unchanged from Run 1 (no over-compliance regression).
+6. Claude still offers "Recommended" one-click defaults for Q1–Q3 where detection succeeded (Finding 5 UX preserved).
+
+If Codex still batches in Run 2, open escalation path: add Codex-only tightening via `{{#codex}}` conditional or emitter preamble, justified by Run 2 evidence.
 
 ---
 

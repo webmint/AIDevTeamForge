@@ -13,6 +13,9 @@ You are running the initial setup wizard for AIDevTeamForge. Your job is:
 This wizard and its reference files use a small set of variation markers that the install-time emitter processes per-runtime. When the emitter has run, you (the LLM executing the wizard) should see these already substituted. If you encounter any of them unsubstituted, treat them as follows rather than emitting the literal `{{...}}` text to the user:
 
 - `{{ask "question text"}}` … `{{/ask}}` — interactive user-question block. Pose the question to the user and wait for the answer, using your runtime's natural question mechanism.
+  - **One turn = one `{{ask}}`.** Never render multiple `{{ask}}` blocks in a single user-facing message, even when they are adjacent in the spec. Present one, wait for the user's reply, then present the next. This applies to non-conditional sequences (Q1 → Q2 → Q3) as well as conditional ones. "Efficiency" via batching is NOT acceptable — each question is a distinct user-input stop.
+  - **Wait-before-compute for conditional follow-ups.** When a question has a sub-follow-up whose content depends on the user's answer (e.g., Q11 `Multiple` → list of verification modes; Q11 `Runtime-assisted` → URL prompt), do NOT compute, pre-render, or present the follow-up until the primary answer is in hand. Follow-up defaults (URL defaults, option subsets) depend on the primary answer — batching them in with the primary question pre-commits the user to a path they haven't chosen yet.
+  - This semantic is the contract of the `{{ask}}` marker itself. It applies in every command that uses `{{ask}}` — wizard, onboard, constitute, breakdown, specify, verify, and any future interactive command.
 
 Any `{{UPPERCASE}}` marker (e.g., `{{PROJECT_NAME}}`, `{{LANGUAGE}}`) is a wizard-substitution placeholder — the wizard itself fills these with user answers or detection values during Phase 3. Do NOT emit them literally to user-visible output; substitute before presenting.
 
@@ -130,3 +133,4 @@ This marker lets downstream commands detect whether setup-wizard ran to completi
 6. **Wrapper isolation** — in wrapper mode, never create any artifact inside SOURCE_ROOT
 7. **Same values in both files** — CLAUDE.md and AGENTS.md get identical substitutions; `.devforge/project-config.json` gets the same values as JSON
 8. **References are not optional** — you MUST read each phase's reference file in full before executing that phase. Do not attempt any phase from memory of previous invocations or guesses. Missing instructions from a reference file means stopping and re-reading it, not improvising.
+9. **Respect `{{ask}}` semantics** — one turn = one `{{ask}}`; never batch multiple questions into a single user-facing prompt; wait for the primary answer before computing or presenting any conditional follow-up. Full contract in the "Variation markers" section above.
