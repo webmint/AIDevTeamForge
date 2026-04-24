@@ -921,6 +921,334 @@ Findings 1, 5, 11, 17, 18, 24 deferred to a later run — cosmetic or low-impact
 
 ---
 
+## Run 3 — 2026-04-24
+
+**Forge commit at run start**: `201b851` (spec substantively at `c6ceaa5`). Pre-R3 spec changes landed between R2 and R3:
+- `d038c24` Finding 23 — Detection Report as handoff (causal framing + visual markers + Phase 2 preflight)
+- `a195bba` Finding 26 — runner prefix sourced from Report
+- `d1bcef8` Finding 22 — Q11 URL reads Report first
+- `ab9b9e4` Finding 25 refined — detection-as-script framing
+- `ec76f91` Rule 5 (a) AND (b) workspace-member conjunction
+- `c6ceaa5` Rule 4 root-isolation + Rule 5 root-exception + Rule 9 README scope
+- `201b851` Finding 13 reframe (pkg-test hallucination, both-wrong)
+
+**Test infrastructure**:
+- `testParity/` on branch `claude-parity-run3` — Claude side, reset to pre-install `64bb325`, reinstalled with current spec
+- `testParity-codex/` on branch `codex-parity-run3` — Codex side, same
+- Source (`db-cse-ui-strata/`) pinned to `9354389c6` — matches R1/R2
+- Model: gpt-5.4 on both sides (held constant to isolate spec-variable from model-upgrade variable)
+
+**Scope**: setup-wizard phase only. Same answer sheet as R1/R2. Post-R3 interviews conducted against both runtimes' wizard-completion session for self-report diagnostics.
+
+### R3 Headline results
+
+1. **Finding 23 closed ASYMMETRICALLY** — Claude emitted the fenced YAML Detection Report as specified. Codex still skipped it. Spec text fixes moved Claude to compliance; did NOT move Codex.
+2. **Finding 22 closed on BOTH sides** — Codex now reads `vite.config.ts` and pre-fills the correct URL at Q11, matching Claude.
+3. **Finding 13 closed on BOTH sides** — Rule 5 (a) AND (b) conjunction held. Both runtimes emit 25 workspace members with identical sorted list.
+4. **6 findings closed total** (10, 13, 19, 20, 22, 23-on-Claude-only).
+5. **1 new HIGH finding surfaced** — Finding 27 (multi-stack mis-detection on Codex).
+6. **4 additional spec bugs uncovered via Claude's self-report** — Findings 28–31.
+7. **Path B validated by Codex's direct endorsement** — "Yes, a Python-composed approach would likely work better."
+
+### R3 Findings
+
+Continue numbering from Run 2 (ended at Finding 26).
+
+---
+
+### Finding 27 — NEW IN R3 — HIGH — Codex treats file extensions as separate languages without framework-convention understanding
+
+**Severity**: HIGH — cascades through Q4–Q7 as spurious multi-stack meta-questions and pollutes `LANGUAGES` / `FRAMEWORKS` arrays in `project-config.json`.
+
+**Observed (R3)**:
+
+Codex's Q3 detected 3 language stacks for the CSE project:
+1. TypeScript (~1908 files) with Vue 3 / Vite
+2. Vue (~470 files) with Vue 3 / Vite
+3. JavaScript (~103 files) with Lerna workspace scripts
+
+Claude's Q3 correctly detected 1 stack: TypeScript + Vue 3. Claude collapsed `.vue` files into the TypeScript stack (SFCs with `<script lang="ts">` contain TypeScript), and treated `.js` files as tooling scripts, not a separate app stack.
+
+**Cascade effect on Codex**:
+- Q4 architecture: "Does the same pattern apply across all 3 stacks?" (spurious meta-question not in spec)
+- Q5 error handling: same "across all 3 stacks" meta-branch
+- Q6 API layer: same
+- Q7 testing: same
+- Phase 5 summary: `Languages: TypeScript, Vue, JavaScript` / `Frameworks: Vue 3, Vite, Lerna Workspaces` — where `Lerna` is a monorepo coordinator (not a framework) and `Vue` isn't a language separate from TypeScript.
+
+**Root cause — confirmed via both runtime interviews**:
+
+- **Codex's self-report**: *"My effective algorithm: Detect manifests → count source files by extension → map extensions directly to language buckets → order by file count. The failure is at step 3. I treated .vue as its own 'language-ish' bucket instead of a framework-owned container format, and I treated .js tooling files as evidence of a third stack instead of infrastructure."*
+- **Claude's self-report** (contrast): *"Framework-convention knowledge, not a spec rule. There's no rule I can cite that says 'collapse .vue into the language of the embedded script'. My reasoning: .vue / .svelte / .astro are Single File Component containers — the language is whatever's inside `<script lang=\"...\">`."*
+
+Both runtimes confirm: the installed `detect.md` STEP 3 "Languages and runtimes" bullet maps `.ts/.tsx → TypeScript` etc. with "etc." doing all the work. No SFC-container collapsing rule. No tooling-script exclusion rule. No coordinator-exclusion rule for FRAMEWORKS[].
+
+**Proposed fix — merged text from both runtime interview answers**:
+
+Add to `detect.md` STEP 3 "Aggregated categories" before `LANGUAGES` / `FRAMEWORKS` emission:
+
+```
+**SFC-container and tooling-stack collapsing** — before emitting LANGUAGES[]:
+
+1. SFC-container collapse: `.vue`, `.svelte`, `.astro` files are NOT separate
+   languages. Count each file under the embedded script language. Sampling:
+   read up to 5 files per package for `<script lang="...">` directives.
+   lang="ts" → TypeScript; lang="js" or no lang → JavaScript; sample is
+   conclusive if ≥4 of 5 agree. If inconclusive, fall back to package's
+   typescript devDep + sibling tsconfig.json (both present → TypeScript).
+   Vue/Svelte/Astro appear in FRAMEWORKS, never in LANGUAGES.
+
+2. React-family extension collapse: `.tsx` → TypeScript, `.jsx` → JavaScript.
+   React is a framework, not a language.
+
+3. Tooling-script exclusion: `.js` / `.mjs` / `.cjs` files at the workspace
+   root or under a `scripts/` directory, in a project whose package manifest
+   declares TypeScript, are tooling (build helpers, codegen, env setup) — not
+   a separate application stack. Exclude from LANGUAGES aggregation. Note
+   them in `optional.tooling_scripts[]` in the Detection Report.
+
+4. Monorepo coordinator exclusion: monorepo coordinators (Lerna, Nx,
+   Turborepo, pnpm-workspaces, Cargo-workspace, Go-workspace) can populate
+   `monorepo_tool` but MUST NOT populate FRAMEWORKS[].
+
+5. A new language stack is emitted only when that language represents a
+   substantive application or library surface in one or more detected
+   packages — not incidental tooling.
+```
+
+**Expected R4 outcome**: Codex emits `LANGUAGES: [TypeScript]`, `FRAMEWORKS: [Vue 3]`, `monorepo_tool: Lerna`. Matches Claude. No spurious "across all stacks" meta-questions at Q4/Q5/Q6/Q7.
+
+---
+
+### Finding 28 — NEW IN R3 (surfaced via Claude interview) — MEDIUM — `PACKAGE_STACKS` table needs monorepo-scale collapse rule
+
+**Severity**: MEDIUM — user-facing CLAUDE.md / AGENTS.md becomes dominated by ~46 near-identical rows across two tables for a 25-package monorepo with uniform library stack. Readability degraded; drift surface increased.
+
+**Observed (Claude Q4 friction point)**:
+
+> *"populate.md:362-384 renders one row per package, two tables (conventions + tools), no collapse option. For CSE UI: 23 of the 25 packages have identical values in every non-path column. That's ~46 near-identical rows across two tables, dominating CLAUDE.md. The monorepo-scale hint exists for {{PROJECT_STRUCTURE}} ('6+ packages → collapse shared libraries to one line each') at populate.md:172 but doesn't carry over to {{PACKAGE_STACKS_SECTION}}."*
+
+**Proposed fix**: add symmetric collapse rule in `populate.md` §5.1 `{{PACKAGE_STACKS_SECTION}}`:
+
+> "When `len(PACKAGES_DETECTED) ≥ 6` AND `≥ 80%` of packages share identical non-path column values (language, framework, architecture, error-handling, API, testing, build tool, build command, type-check command, lint command), emit a single 'Defaults for all other library packages' row capturing the shared values, followed by one row per deviator package. Apps (framework != null) are always emitted as individual rows regardless of shared-value count."
+
+**Expected R4 outcome**: for CSE, CLAUDE.md shows 3 rows (1 app + 1 defaults + ~1 deviator like `package-starter`) instead of 25+.
+
+---
+
+### Finding 29 — NEW IN R3 (surfaced via Claude interview) — MEDIUM — `framework_hint: null` fallback chain wrong for library packages
+
+**Severity**: MEDIUM — library-package records incorrectly inherit app-primary framework in per-package tables.
+
+**Observed (Claude Q4 friction point)**:
+
+> *"populate.md:337 fallback: framework = p.framework_hint if set; else FRAMEWORKS[i]; else '—'. For CSE UI, FRAMEWORKS[0] = 'Vue 3'. Literally applying the rule would write 'Vue 3' into every pkg-cse-* library row — but those packages are plain TypeScript libraries consumed by the Vue app; they aren't Vue apps themselves. I wrote '—' for all of them, deviating from the spec."*
+
+**Root cause**: the fallback chain assumes package without explicit framework inherits primary. But `framework_hint: null` semantically means "this package has no app-level framework" — not "fall back to project primary."
+
+**Proposed fix**: in `populate.md:337` fallback chain:
+
+> "For per-package `framework`: use `p.framework_hint` if non-null. If `p.framework_hint == null`, emit `'—'` — do NOT fall back to `FRAMEWORKS[i]`. Library packages never inherit the app's framework by default. Only apps with explicit framework detection show a framework label."
+
+**Expected R4 outcome**: library packages (pkg-cse-*) show `—` for framework. Only `apps/app-web` shows `Vue 3`.
+
+---
+
+### Finding 30 — NEW IN R3 (surfaced via Claude interview) — MEDIUM — `type_check_command` needs `via-build` sentinel for library packages
+
+**Severity**: MEDIUM — per-package type-check commands either use wrong scope (whole-monorepo) or fall through to "—" which hides that type-checking actually happens.
+
+**Observed (Claude Q4 friction point)**:
+
+> *"For every pkg-cse-* library, I wrote '—' under Type Check. The spec's fallback is TYPE_CHECK_COMMANDS[i], which for TypeScript points at the root `yarn check` — which runs every package's check (not that one package's). Running the whole-monorepo check as a per-package type-check command is wrong for scope-aware verification. The packages don't have their own check scripts — they rely on the vue-tsc/tsc pass inside their vite build."*
+
+**Proposed fix**: add fourth sentinel value to per-package type_check_command semantics:
+
+> "Per-package `type_check_command` sentinel values:
+> - **manifest command** (e.g., `yarn workspace <name> typecheck`) — package has its own type-check script
+> - **`'via-build'`** — package's type-checking happens during its build step; the build command is the recovery path. Emit `via-build (run: <build_command>)` in the table.
+> - **`'—'`** — package has no type-checking (e.g., pure data/config).
+>
+> Do NOT fall back to stack-level `TYPE_CHECK_COMMANDS[0]` (whole-monorepo check) as a per-package command — wrong scope."
+
+**Expected R4 outcome**: library packages show `via-build (run: yarn workspace <name> build)` where applicable. Downstream `/execute-task` verification uses the correct per-package command.
+
+---
+
+### Finding 31 — NEW IN R3 (surfaced via Claude interview) — LOW — Template duplication between `CLAUDE.md` prose and `project-config.json` JSON keys
+
+**Severity**: LOW (functional, but drift risk).
+
+**Observed (Claude Q4 friction point)**:
+
+> *"Same five-bullet text in two places — one with real newlines, one with \\n escapes. Same for AGENT_LIST ({{AGENT_LIST}} in CLAUDE.md and AGENT_LIST key in project-config.json). Drift risk: if a later command edits only one, they diverge."*
+
+**Affected placeholders**: `{{COMMIT_ATTRIBUTION}}`, `{{AGENT_LIST}}`.
+
+**Proposed fix**: declare `project-config.json` as canonical source; `CLAUDE.md` / `AGENTS.md` render the prose form at read-time via template-include. Alternatively, if template-include is infrastructure cost, explicitly document duplication with rule: *"When these fields are updated, both copies MUST be updated in the same operation. `project-config.json` is authoritative on conflict."*
+
+Defer unless a follow-up command surfaces drift.
+
+---
+
+### Finding 23 sub-findings — surfaced via Claude interview
+
+Claude emitted the YAML Report but flagged two sub-issues worth spec-clarifying:
+
+**Finding 23A — HTML comment marker semantics ambiguous**
+
+Claude interpreted `<!-- >>> EMIT THIS YAML BLOCK TO USER — VERBATIM — BEFORE PHASE 2 <<< -->` and `<!-- >>> END OF REQUIRED EMIT <<< -->` as template-authoring meta-prose (similar to authoring blockquotes in `populate.md` §5.7 that get stripped from `constitution.md`). So Claude emitted the YAML inside the markers but NOT the markers themselves.
+
+**Ambiguity**: is the intent (a) markers are authoring anchors, strip them from emit; OR (b) markers are parser anchors, keep them in emit so a downstream tool can find the YAML block?
+
+**Proposed fix**: pick one interpretation and state explicitly in `detect.md`:
+- **Option A (authoring)**: "The `<!-- >>> EMIT <<< -->` markers are authoring anchors for spec readers. Do NOT emit them to the user — emit only the fenced YAML code block between them."
+- **Option B (parser)**: "The `<!-- >>> EMIT <<< -->` markers are parser anchors. Emit them verbatim as HTML comments around the YAML fence so downstream tools can locate the block."
+
+**Recommendation**: Option A. The YAML fence itself (```yaml ... ```) is already a parser anchor.
+
+**Finding 23B — `packages[]` array abbreviation in emit**
+
+Claude abbreviated the `packages[]` array in the YAML: listed first 3 entries fully, then `# ... additional 22 packages follow the same pattern` + name-only list. Judgment call for user-facing readability, but a machine reader parsing the YAML to populate `project-config.json.PACKAGE_STACKS` would get truncated data.
+
+**Proposed fix**: add explicit rule to `detect.md` Detection Report Rule 4 or as a new rule:
+
+> "**No abbreviation**: the `packages[]` array in the emitted Report MUST contain one entry per workspace member verbatim — no `# ...` stand-ins, no 'similar to above' shortcuts — even for large monorepos. The Report is consumed by `populate.md` §5.5 as the source of truth for `project-config.json.PACKAGE_STACKS`; abbreviation breaks that handoff."
+
+---
+
+### Finding 21 refinement (after Claude interview)
+
+Claude's self-report distinguishes two components of the Finding 21 fix:
+
+**Component 1** (enum gap): `detect.md:300` enum list lacks `clean`. This is a spec gap confirmed.
+
+**Component 2** (Q4 cue gap): Even with enum fixed, Claude reports it would still default to `hexagonal` because of "availability bias in TypeScript ecosystem prose" unless Q4's option text explicitly cues the distinguishing signals.
+
+Claude's specific observation:
+
+> *"I was pattern-matching on the shape (three layers + ports-and-adapters flavor) rather than the specifier signal (the cases/ subfolder, which is the Clean-specific artifact). [...] What I wouldn't want is for the spec to just add clean to the enum without language cueing the distinction; I'd still default to hexagonal by the availability bias above."*
+
+**Proposed fix — two parts**:
+
+1. Add `clean` to `detect.md:300` enum: `layered | feature-modular | monorepo | feature-modular-monorepo | clean | clean-feature-modular-monorepo | hexagonal | mvc | bloc | flat | other`.
+
+2. Add specifier-signal cues to Q4's option prose in `questions.md`:
+
+   > "**Clean Architecture** signals: `domain/cases/` or `use-cases/` subfolder within each feature module; repository pattern with interface-in-domain + implementation-in-data; dependency direction strictly inward (domain imports from nothing; data imports from domain; presentation imports from domain + data adapters). The `cases/` subfolder is the clearest Clean-specific artifact — distinguishes Clean from hexagonal even when both have three-layer structure."
+
+**Expected R4 outcome**: Claude offers `Clean Architecture` as the Recommended option when `domain/cases/` is detected. Codex emits `clean` or `clean-feature-modular-monorepo` in Report enum. Both converge without user override.
+
+---
+
+## R3 — Previous-finding resolution scoring
+
+| Finding | R2 status | R3 status | Mechanism |
+|---|---|---|---|
+| 2 (git -C) | ✅ Closed | ✅ Closed (held) | Rule 3 template |
+| 4 ({{ask}} no-batching) | ✅ Closed | ✅ Closed (held) | One turn per ask |
+| 8 (purify-ts) | ✅ Closed | ✅ Closed (held) | Dep+usage rule |
+| 9 (Q11 option reshape) | ✅ Closed (side-effect) | ✅ Closed (held) | {{ask}} rule side-effect |
+| 10 (Husky miss, Codex) | ❌ Open | ✅ **Closed** | Phase 4 citations now include `.husky/pre-commit` |
+| 12 (Codex summary abbrev) | ✅ Closed | ✅ Closed (held) | Unchanged |
+| 13 (packages set) | ❌ Open | ✅ **Closed both sides** | Rule 5 (a) AND (b) — identical 25-entry sorted list |
+| 14 (per-package commands) | ❌ Open | — Can't fully score without diff content | Need PACKAGE_STACKS inspection |
+| 15 build (Codex build:origin) | ❌ Open | — Need diff content | Diff is 656 lines; formatting dominates |
+| 15 lint | ✅ Partially closed (R2) | ✅ Closed (held) | Evidence rule |
+| 16 (ordering) | ❌ Open | ❌ Still open (cosmetic) | Not prioritized |
+| 17 (free-text fields) | ❌ Open | — Not decomposed from CLAUDE.md diff | Defer |
+| 18 (JSON formatting) | ❌ Open | ❌ Still open | Cosmetic; 656-line diff dominated by whitespace |
+| 19 (Q0 scaffold default) | ❌ Open | ✅ **Closed** | Both runtimes surface README `CSE UI` over manifest `root` |
+| 20 (Options collapse, Codex) | ❌ Open | ✅ **Closed (with Codex caveat)** | Codex presents canonical enums at Q2/Q6/Q7/Q8/Q9/Q11; Codex self-reports partial stability |
+| 21 (architecture enum) | ❌ Open | ❌ Still open | Needs enum + Q4 prose cue (refined per Claude interview) |
+| 22 (Q11 URL) | Claude ✅ / Codex ❌ | ✅ **Closed both sides** | Codex now reads vite.config.ts and pre-fills URL |
+| 23 (YAML emit) | ❌ Open | **Claude ✅ / Codex ❌** | Asymmetric: Claude emitted correctly; Codex skipped again per self-report |
+| 24 (README freshness) | ❌ Open | ❌ Still open (migration-engineer false-positive persists) | Defer |
+| 25 (script detection) | Framing refined R2 | — No explicit node one-liner observed in R3 paste | Inconclusive; defer |
+| 26 (runner prefix) | ❌ Open | — Need diff content | Depends on Finding 23 closure |
+
+## R3 — Closures
+
+- ✅ **Finding 10** — Codex Husky miss (devops-engineer rationale now cites `.husky/pre-commit`)
+- ✅ **Finding 13** — packages set divergence (both 25, identical sorted list; Rule 5 (a) AND (b) held)
+- ✅ **Finding 19** — Q0 scaffold default (both surface README `CSE UI` over manifest `root`)
+- ✅ **Finding 20** — Codex Options collapse (canonical enums now presented at Q2/Q6/Q7/Q8/Q9/Q11)
+- ✅ **Finding 22** — Q11 URL (both runtimes pre-fill from `vite.config.ts`)
+- ✅ **Finding 23 (Claude only)** — YAML Detection Report emitted correctly on Claude side
+
+## R3 — Still open from Run 1 and Run 2
+
+- ❌ **Finding 23 (Codex)** — Codex still skips YAML emit despite revised spec. Codex self-report: *"my execution policy still prioritized conversational progress over emitting the structured handoff artifact. [...] current textual reinforcement is not sufficient for me."* **Path A ceiling reached for this concern on Codex.**
+- ❌ Finding 21 — architecture enum + Q4 cue (fix drafted, not landed)
+- ❌ Finding 18 — JSON formatting (cosmetic)
+- ❌ Finding 24 — README freshness (migration-engineer false-positive persists)
+- Findings 14, 15-build, 26 — need project-config.json content diff to score definitively
+
+## R3 — New findings
+
+- **Finding 27** — multi-stack mis-detection (Codex); framework-collapsing rule drafted, endorsed by both runtimes
+- **Finding 28** — PACKAGE_STACKS monorepo-scale collapse rule missing (surfaced by Claude)
+- **Finding 29** — framework_hint null fallback chain wrong for library packages (surfaced by Claude)
+- **Finding 30** — type_check_command needs via-build sentinel (surfaced by Claude)
+- **Finding 31** — CLAUDE.md / project-config.json template duplication (surfaced by Claude)
+- **Finding 23A** — HTML comment marker semantics ambiguous (sub-finding from Claude Q2)
+- **Finding 23B** — packages[] abbreviation in emit (sub-finding from Claude Q2)
+
+## R3 — Parity verdict
+
+**`project-config.json` diff**: 656 lines (R2 was 659 — essentially unchanged in volume; semantic content has shifted).
+
+**Converged on R3**:
+- Description, project type, workspace mode, source root, default branch
+- Architecture (both users overrode to Clean Architecture, feature-modular monorepo — spec still missing `clean` in enum)
+- Error-handling library (purify-ts)
+- Testing framework, lint command
+- **Packages count and sorted set** (25 entries, identical members — R3 cleanup)
+- **Q11 URL** (R3 cleanup)
+
+**Divergent**:
+- **Languages / Frameworks arrays** — Codex 3-entry bloat per Finding 27 (Codex: TypeScript+Vue+JavaScript + Vue 3+Vite+Lerna Workspaces; Claude: TypeScript + Vue 3). Biggest R3 divergence.
+- **Architecture label** on Claude side — offered `hexagonal-style` not `clean` (Finding 21 component 2)
+- **JSON formatting** — Finding 18 unchanged
+- **BUILD_COMMANDS** runner prefix — likely still diverges (need diff content)
+
+**Semantic parity**: ~80% on the fields we can verify. Would rise to ~90%+ with Finding 27 + Finding 21 fixes landed.
+
+## R3 — Path B justification
+
+Codex's interview answer directly endorses Path B for Detection Report composition:
+
+> *"Yes, a Python-composed approach would likely work better. [...] structured field-by-field prompting is more reliable than 'emit a whole YAML report now.' If the helper constrained me to fill explicit fields one at a time, I would expect lower drift at the value level too."*
+
+Codex's preferred interface, ranked:
+1. Typed field-by-field helper with validation (enums, required null-reasons, package-record shapes; rejects invalid and reasks)
+2. One structured object with schema validation
+3. Field-by-field for high-risk sections only: `languages`, `frameworks`, `packages[]`, per-package commands, `runtime_url`, `architecture_shape` — "probably the best cost/benefit"
+
+**Decision**: Path B for Detection Report structural composition on Codex is evidence-justified. Path A continues for rules, vocabularies, flow-control, UX guidance — where R3 data shows it's working.
+
+## R3 — Next fix batch (priority ordered)
+
+**High — land pre-R4 (this session)**:
+1. **Finding 27** — framework-convention collapsing rule in `detect.md` STEP 3 (text from merged interview answers)
+2. **Finding 21** — add `clean` to enum + Q4 prose cue for Clean vs hexagonal distinction
+3. **Finding 23A** — clarify HTML marker semantics (recommend Option A: authoring-only, strip from emit)
+4. **Finding 23B** — explicit "no abbreviation" rule for `packages[]` in emit
+5. **Finding 29** — framework_hint null fallback fix in `populate.md`
+
+**Medium — also land pre-R4**:
+6. **Finding 28** — PACKAGE_STACKS monorepo-scale collapse rule in `populate.md`
+7. **Finding 30** — via-build sentinel for per-package type_check_command
+
+**Strategic — post-R4 if Finding 23 still open on Codex**:
+8. **Path B scaffolding** — Python helper in `scripts/lib/detect_report.py` using Codex's preferred field-by-field interface
+
+**Deferred**:
+9. Finding 31 — template duplication (structural; low priority)
+10. Finding 24 — README freshness (low priority)
+
+---
+
 ## How to run this test again
 
 ```bash
