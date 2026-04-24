@@ -230,7 +230,7 @@ Goal: reject the three concrete failure modes R1-R3 surfaced (Finding 13 halluci
 
 ---
 
-## Phase 6 — Integration test (R5 dry run)
+## Phase 6 — Integration test (R4 dry run)
 
 This is the evidence collection against §10.6 ship-criteria.
 
@@ -281,13 +281,13 @@ This is the evidence collection against §10.6 ship-criteria.
   - Finding 23B abbreviation caught at compose? (y/n)
   - Finding 21 free-form enum rejected at set-time? (y/n)
   - Latency ≤5% regression? (y/n)
-  - Codex-side Finding 23 closed in R5? (y/n)
+  - Codex-side Finding 23 closed in R4? (y/n)
 - **Self-verify**: scorecard complete with evidence references.
 - **Approval gate**: you decide ship or kill.
 
 ### Step 7.2 — If SHIP: merge to feature/codex-support
 - **Entry**: 7.1 → ship.
-- **Action**: merge `feature/codex-port-path-b` into `feature/codex-support`. Update PLAN.md: mark §10 as "shipped", close Finding 23, note any new findings discovered in R5.
+- **Action**: merge `feature/codex-port-path-b` into `feature/codex-support`. Update PLAN.md: mark §10 as "shipped", close Finding 23, note any new findings discovered in R4.
 - **Self-verify**: merge clean; PLAN.md updated.
 - **Approval gate**: final review before merge.
 
@@ -302,7 +302,7 @@ This is the evidence collection against §10.6 ship-criteria.
 ## Deferred decisions — revisit after Path B ship
 
 Decisions made during implementation for MVP simplicity, worth reconsidering
-once §10.6 ship criteria are met and Path B proves viable in R5.
+once §10.6 ship criteria are met and Path B proves viable in R4.
 
 1. **Enum tables location** (Step 2.1, decided 2026-04-25)
    - **Current**: enum tables live as module-level dicts inside `scripts/lib/detect_report.py`.
@@ -318,7 +318,7 @@ once §10.6 ship criteria are met and Path B proves viable in R5.
    - **Current**: emitter uses minimal-necessary quoting (`source_root: .`, `evidence: yarn.lock at SOURCE_ROOT`).
    - **Template uses defensive quoting** (`"."`, `"yarn.lock at SOURCE_ROOT"`).
    - Both parse identically; diverge only in how string readers render them.
-   - **Revisit when**: R5 parity diff results. If diff noise is non-trivial, tighten emitter to match template style.
+   - **Revisit when**: R4 parity diff results. If diff noise is non-trivial, tighten emitter to match template style.
 
 ---
 

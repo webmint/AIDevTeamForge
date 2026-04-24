@@ -896,12 +896,12 @@ Python composer MUST reject:
 - Prototype catches ALL of: Finding 13 hallucination (pkg-test case), Finding 23B abbreviation (3-entry + comment case), Finding 21 free-form label ("hexagonal-style" case).
 - Prototype adds acceptable latency (≤5% increase in wizard runtime) — field-by-field tool calls are cheap per call; total overhead mostly acceptable.
 - Python-runtime-dep decision is explicit YES.
-- R5 test (wizard with Path B integrated) shows Codex-side Finding 23 CLOSED (YAML emitted) and no regression on Claude side.
+- R4 test (wizard with Path B integrated) shows Codex-side Finding 23 CLOSED (YAML emitted) and no regression on Claude side.
 
 **Kill Path B if**:
 - Prototype reveals spec-surface complexity that duplicates Path A text (spec + code saying same things differently)
 - Python-runtime-dep decision is NO
-- R5 shows no structural improvement over Path A (unlikely given Codex's self-report, but possible)
+- R4 shows no structural improvement over Path A (unlikely given Codex's self-report, but possible)
 
 ### 10.7 Alternative if Python-runtime-dep NO (Path C — accept asymmetric)
 
