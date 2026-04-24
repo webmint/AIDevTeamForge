@@ -784,3 +784,167 @@ This cap exists to prevent future drift toward "while we're adding X, let's also
 4. **Near launch (evaluate then, not now)**: decide (a) / (b) / (c) for packaging. Default answer without new evidence: **(c)** via `uv tool install` from GitHub, following spec-kit's pattern — lowest-friction path to proper CLI UX without registry publishing overhead.
 
 No implementation work from §9 happens until §2 of this roadmap.
+
+---
+
+## 10. Path B — Generator-level Detection Report composition (design, not built)
+
+**Status**: designed, not built. Decision-pending. Picked up by a new chat session when the Python-runtime-dep question is resolved.
+
+### 10.1 Context
+
+R3 (2026-04-24) produced asymmetric closure on Finding 23 (Detection Report YAML emit):
+- **Claude-R3**: emitted the fenced YAML Report correctly (with two minor sub-issues: skipped HTML comment markers, abbreviated `packages[]` array). Finding 23 closed on Claude side.
+- **Codex-R3**: did NOT emit the YAML. Folded Phase 1 detection into Q0's prompt narrative. Finding 23 still open on Codex.
+
+Codex's post-R3 self-report (from `codex-r3-interview.md`) gave direct evidence:
+
+> "my execution policy still prioritized conversational progress over emitting the structured handoff artifact. current textual reinforcement is not sufficient for me. My R2 prediction was too optimistic."
+
+And Codex explicitly endorsed Path B as the forward direction:
+
+> "Yes, a Python-composed approach would likely work better. [...] structured field-by-field prompting is more reliable than 'emit a whole YAML report now.' If the helper constrained me to fill explicit fields one at a time, I would expect lower drift at the value level too."
+
+**Conclusion**: Path A (pure spec-text iteration) has a ceiling for Codex on emission existence. More spec prose — even with visual markers, causal framing, Phase 2 preflight, no-abbreviation rule — does not change Codex's execution policy. Path B (Python composes YAML from LLM-provided field values) is the evidence-backed next step.
+
+### 10.2 Open decision (must resolve before building)
+
+**Python-runtime-dep on target machine**: yes or no?
+
+- **Current state**: zero runtime Python required. Wizard is LLM-driven end-to-end; spec is markdown; LLM reads + reasons + emits. Install-time needs Python (install.sh, generate-agents.py, emitters) but runtime on target machine does not.
+- **Path B adds**: target machine needs `python3` available at wizard runtime for `scripts/lib/detect_report.py` to run.
+- **Availability**: macOS 12.3+ ships `/usr/bin/python3`. Most Linux distros default. Windows users often need explicit install.
+- **Tradeoff**: better Codex structural parity vs. one more prerequisite for some users.
+
+**Must be decided YES before building Path B.** If NO, skip to §10.7 alternatives.
+
+### 10.3 Proposed design — Option B1 (field-by-field CLI, Codex's stated preference)
+
+Protocol:
+- LLM reads `detect.md` spec, performs detection reasoning (scans files, identifies libraries, applies rules).
+- For each Detection Report field, LLM calls:
+  ```
+  python3 scripts/lib/detect_report.py set <field> --value <value>
+  ```
+- For each workspace package, LLM calls:
+  ```
+  python3 scripts/lib/detect_report.py add-package \
+    --path <path> --manifest <file> \
+    --language-hint <lang> --framework-hint <fw-or-null> \
+    --build-command <cmd> --type-check-command <cmd> \
+    --lint-command <cmd> --test-command <cmd> \
+    --command-source <manifest|fallback>
+  ```
+- LLM calls `python3 scripts/lib/detect_report.py status` to check progress (which fields still unset).
+- LLM calls `python3 scripts/lib/detect_report.py compose` when done.
+- Python composer validates everything, writes `.devforge/detection_report.yaml` deterministically.
+- Phase 2 preflight reads from `.devforge/detection_report.yaml` (file) instead of conversation history.
+
+Helper state: intermediate state stored in `.devforge/.detection-report-state.json` (deleted by successful `compose`). Allows multi-call field assembly.
+
+### 10.4 Validation rules enforced at set-time
+
+Python composer MUST reject:
+- Enum mismatches (e.g., `architecture_shape: "hexagonal-style"` when enum is `[layered, feature-modular, ..., hexagonal, ...]`)
+- Required field missing at compose time
+- Null value without accompanying reason string
+- `add-package` with non-existent `path/manifest` filesystem check (catches hallucinations like R2's `pkg-test`)
+- `packages[]` count mismatch with `manifest_count` (catches abbreviation like R3's `# ... 22 more follow same pattern`)
+- Library-category field non-null without `evidence` sub-field populated
+- Invalid `runtime_url.source` (must be concrete config file path when `source != framework-default`)
+
+### 10.5 Implementation plan (5-day prototype)
+
+**Day 1** — Python module skeleton:
+- `scripts/lib/detect_report.py` with CLI dispatch (`set`, `add-package`, `status`, `compose`)
+- Schema definition (Python dataclasses or nested dict)
+- State file management (`.devforge/.detection-report-state.json`)
+- Manual YAML emission (stdlib only — no `pyyaml` dep per locked decision #5)
+
+**Day 2** — Validation logic:
+- Enum validation per field
+- Required-field tracking
+- Null-with-reason enforcement
+- Path/manifest filesystem check on `add-package`
+- Package count vs `manifest_count` cross-check at compose
+
+**Day 3** — Integrate into spec:
+- Rewrite `detect.md` Detection Report section: replace YAML emit description with CLI protocol description
+- Remove `<!-- >>> EMIT <<< -->` markers + YAML template (template becomes code, schema stays as human-readable reference)
+- Add `install.sh` check for `python3 --version`, fail early if missing
+
+**Day 4** — Downstream readers:
+- Update `questions.md` Phase 2 preflight to read from `.devforge/detection_report.yaml` (file-based) not conversation memory
+- Update `populate.md` §5.5 to read Report fields from file
+
+**Day 5** — Test & iterate:
+- Reinstall `testParity/` and `testParity-codex/` worktrees
+- Run wizard on both sides
+- Verify identical `.devforge/detection_report.yaml` on both
+- Run post-wizard diffs; confirm R3 findings closed
+
+### 10.6 Integration criteria — ship Path B if AND only if
+
+- Prototype catches ALL of: Finding 13 hallucination (pkg-test case), Finding 23B abbreviation (3-entry + comment case), Finding 21 free-form label ("hexagonal-style" case).
+- Prototype adds acceptable latency (≤5% increase in wizard runtime) — field-by-field tool calls are cheap per call; total overhead mostly acceptable.
+- Python-runtime-dep decision is explicit YES.
+- R5 test (wizard with Path B integrated) shows Codex-side Finding 23 CLOSED (YAML emitted) and no regression on Claude side.
+
+**Kill Path B if**:
+- Prototype reveals spec-surface complexity that duplicates Path A text (spec + code saying same things differently)
+- Python-runtime-dep decision is NO
+- R5 shows no structural improvement over Path A (unlikely given Codex's self-report, but possible)
+
+### 10.7 Alternative if Python-runtime-dep NO (Path C — accept asymmetric)
+
+- Keep current Path A spec fixes (commit `4402435` + earlier).
+- Accept that Codex does not emit structured YAML Detection Report.
+- Downstream phases (Phase 3 populate) continue reading detection context from conversation memory on Codex (works per R3 evidence — `project-config.json` populated correctly despite missing YAML emit).
+- Cross-runtime parity at the `.devforge/detection_report.yaml` **artifact** level is not achieved; parity at `project-config.json` + `CLAUDE.md` / `AGENTS.md` **content** level is ~80–90% and improvable via continued Path A tightening.
+- Document Codex's asymmetric behavior in `parity-findings.md` as a known limitation; close Finding 23 as "Path A ceiling reached; accept as-is."
+
+Path C is honest engineering if Python-at-runtime is rejected. Not defeat.
+
+### 10.8 Rollback strategy
+
+Current state (pre-Path-B) is preserved in git:
+- Branch: `feature/codex-support`
+- Checkpoint commit: `4402435` ("setup-wizard: pre-R4 spec fixes")
+- Tag (to be added): `r3-complete-path-a`
+
+If Path B is built and fails integration:
+- Delete the Path B work branch
+- `feature/codex-support` is unchanged and ready for Path C framing or continued Path A iteration
+
+If Path B is built and succeeds:
+- Merge Path B branch into `feature/codex-support`
+- Continue R4+ testing with Path B integrated
+- Tag remains as historical anchor
+
+### 10.9 Files Path B would touch
+
+- **New**: `scripts/lib/detect_report.py`
+- **Modified**: `src/commands/setup-wizard/references/detect.md` (Detection Report section rewritten)
+- **Modified**: `src/commands/setup-wizard/references/questions.md` (Phase 2 preflight reads file)
+- **Modified**: `src/commands/setup-wizard/references/populate.md` §5.5 (reads from file)
+- **Maybe modified**: `install.sh` (Python 3 presence check at install time)
+
+### 10.10 Scope — what Path B does NOT solve
+
+- **Value-level drift**: if LLM picks `hexagonal` when evidence indicates `clean`, Python validates enum membership (both valid) but can't judge correctness. Still requires Path A's Q4 cues in `questions.md`.
+- **Downstream Phase 4/5 divergences**: Path B only covers Detection Report. Phase 4 agent curation and Phase 5 summary remain fully LLM-driven.
+- **Cross-runtime answer-sheet consistency**: if Claude and Codex interpret the same question differently (e.g., Q0 scaffold-default), Path B doesn't mediate. Path A only.
+- **Findings 28/29/30/31** — populate.md fixes already in Path A (commit `4402435`). Path B doesn't reach these.
+
+### 10.11 Pickup instructions for new chat
+
+A fresh chat session taking this on should:
+
+1. Read `codex-port/PLAN.md` §10 (this section) in full.
+2. Read `codex-port/phase-R/parity-findings.md` R3 section (starts at "Run 3 — 2026-04-24") and R3 findings + Resolutions table.
+3. Optionally read interview transcripts: `claude-r3-interview.md` and `codex-r3-interview.md` (in forge repo root; delete after reading — they're temporary).
+4. Resolve §10.2 Python-runtime-dep decision before writing any code.
+5. If YES → create new branch from `r3-complete-path-a` tag (or `feature/codex-support` HEAD at commit `4402435`) and follow §10.5 implementation plan.
+6. If NO → document Path C framing per §10.7, close Finding 23 with known-limitation wording, continue Path A iteration.
+
+No implementation work from §10 has happened yet. Everything below Path A commit `4402435` is design/analysis only.
