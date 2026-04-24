@@ -807,16 +807,24 @@ And Codex explicitly endorsed Path B as the forward direction:
 
 **Conclusion**: Path A (pure spec-text iteration) has a ceiling for Codex on emission existence. More spec prose — even with visual markers, causal framing, Phase 2 preflight, no-abbreviation rule — does not change Codex's execution policy. Path B (Python composes YAML from LLM-provided field values) is the evidence-backed next step.
 
-### 10.2 Open decision (must resolve before building)
+### 10.2 Decision — RESOLVED YES (2026-04-24)
 
-**Python-runtime-dep on target machine**: yes or no?
+**Python-runtime-dep on target machine**: **YES**. Committing to `python3` as a wizard-time prerequisite.
 
 - **Current state**: zero runtime Python required. Wizard is LLM-driven end-to-end; spec is markdown; LLM reads + reasons + emits. Install-time needs Python (install.sh, generate-agents.py, emitters) but runtime on target machine does not.
 - **Path B adds**: target machine needs `python3` available at wizard runtime for `scripts/lib/detect_report.py` to run.
 - **Availability**: macOS 12.3+ ships `/usr/bin/python3`. Most Linux distros default. Windows users often need explicit install.
 - **Tradeoff**: better Codex structural parity vs. one more prerequisite for some users.
 
-**Must be decided YES before building Path B.** If NO, skip to §10.7 alternatives.
+**Resolution rationale**:
+- Codex self-report in `codex-r3-interview.md` is direct evidence Path A has a ceiling on artifact emission ("current textual reinforcement is not sufficient for me").
+- Target audience (Claude Code / Codex CLI users) has near-universal Python 3 availability.
+- `install.sh` preflight gates Python presence at install time — turns silent wizard-time failure into loud install-time gate.
+- 0-runtime-deps positioning tradeoff accepted for the structural-parity win.
+
+**Windows**: in scope. Launcher (`scripts/lib/detect_report`) is a POSIX shell wrapper that selects `python3` / `py -3` / `python` — same shell-environment assumption install.sh already makes (Git Bash or WSL). No separate Windows phase needed.
+
+**Execution plan**: see `codex-port/PATH-B-IMPLEMENTATION.md` — 37 atomic steps across 8 phases, each with approval gate.
 
 ### 10.3 Proposed design — Option B1 (field-by-field CLI, Codex's stated preference)
 
