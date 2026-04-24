@@ -311,23 +311,51 @@ Aligned `src/agents/tech-writer.md` with its invoking commands (onboard + pendin
 
 ## 4. What's next
 
-### Immediate (next session)
-- **Continue agent review one-by-one** — tech-writer is done. Remaining 15 agents in `src/agents/` need the same de-web-bias + alignment treatment against their invoking commands, using the pattern established for tech-writer. Suggested order: specialized agents that are straightforward (security-reviewer, code-reviewer) before heavier ones (architect, backend-engineer, frontend-engineer).
-- **Test end-to-end**: install into `testSpawn` (both with and without `--runtime` flag), run wizard + onboard under Claude, verify full output including agent-frontmatter substitutions landing correctly. Same under Codex.
+### Context for the next session (continuing from a new terminal)
 
-### After that
-- Promote commands from `src/_pending/` one-by-one. Sequence TBD — likely `/constitute` next (wizard's Phase 5 routes to it after onboard, so it's the next logical workflow step), or `/fix` (smallest blast radius).
-- Run wizard + onboard under Codex, compare parity with Claude output.
+**What's been done as of this handoff**:
+- `/setup-wizard`, `/onboard`, `/constitute` promoted and production-usable (commands folder, not `_pending/`).
+- `tech-writer` agent reviewed + aligned. Remaining 15 agents still need the same treatment.
+- First cross-runtime parity test completed (wizard phase only) — **18 divergences** logged in `codex-port/phase-R/parity-findings.md` (summary table + 6 detailed entries, sorted HIGH → MEDIUM → LOW).
+- Install-time placeholder blocker fixed (`scripts/lib/install_defaults.py` + generate-agents.py + config.toml + wizard spec rewrite). Fresh installs now boot without manual patching.
+- Positioning locked as Option C (portability-first) and CLI surface capped at 3 commands — see `§9` in this file.
+
+**Test infrastructure still live** (git worktrees under `~/Projects/`):
+- `testParity/` on branch `claude-parity` — post-wizard Claude-side state committed
+- `testParity-codex/` on branch `codex-parity` — post-wizard Codex-side state committed
+- Both share one `.git/` (at `testParity/.git/`). Source (`db-cse-ui-strata/`) duplicated in each, pinned to the same commit `9354389c6`.
+- Ready for Run 2 whenever the spec fixes land. See "How to run this test again" in `codex-port/phase-R/parity-findings.md`.
+
+### Immediate (next session)
+
+Priority ordered — HIGH parity findings cluster at the top, single-leverage fix for Finding 3 first:
+
+1. **Finding 3 — forced detection checklist** (single highest-leverage change; proposed fix collapses Findings 3, 6, 7, 8, 10, 14, 15, 16 — eight findings at once). Add explicit per-category checklist to `src/commands/setup-wizard/references/detect.md` that both runtimes must fill out as structured output, not free-form prose. See Finding 3's "Proposed fix" in parity-findings.md for the exact checklist template.
+
+2. **Finding 4 — no-batching rule for `{{ask}}` blocks** (HIGH, affects every interactive command). Add prominent instruction to `setup-wizard/main.md` IMPORTANT RULES: "Each `{{ask}}` block is exactly one user-input stop. Do NOT batch multiple questions into a single prompt. For conditional sub-follow-ups (Q11 Multiple, Q11 Runtime-assisted), wait for the primary answer before computing the follow-up." Extend same rule to `constitute/main.md`, `onboard/main.md`, and any future command using `{{ask}}`.
+
+3. **Finding 2 — wrapper-mode git commands anchor on SOURCE_ROOT** (HIGH, correctness bug). In `detect.md`, explicitly state that all git operations in wrapper mode MUST target `$SOURCE_ROOT/.git`. Add concrete command template: `git -C "$SOURCE_ROOT" rev-parse --abbrev-ref HEAD`.
+
+4. **Finding 15 — verify which top-level build/lint command is actually correct** for the CSE source. Whichever runtime got it wrong is writing commands that will later fail. Worth resolving before Run 2 so the signal in Run 2 isn't polluted by known-wrong inputs.
+
+5. **Run 2** — reset both worktrees (remove forge artifacts, reinstall, rerun wizard with same answer sheet). Diff against Run 1 baseline and against each other. Verify the 4 fixes above closed the findings they target, and log new findings in `parity-findings.md` under `## Run 2 — <date>`.
+
+### After parity-batch closes
+
+- **Continue agent review one-by-one** — 15 remaining agents in `src/agents/` need the de-web-bias + alignment treatment (same pattern as tech-writer). Priority: agents that commands dispatch to (architect, frontend/backend/db engineer, ac-verifier) before rarely-invoked ones.
+- **Promote next command** from `src/_pending/` — likely `/specify` next (wizard's Phase 5 + constitute's Phase 7 both route to it as the next workflow step).
+- **Run parity test against onboard + constitute phases** (Run 2 or Run 3, after the wizard-phase batch closes). Those phases weren't in Run 1's scope.
 
 ### Medium-term
 - Promote remaining 20+ commands one-by-one.
-- **IMPORTANT: Wire WORKFLOW_ENFORCEMENT into every gated command.** Currently collected by wizard (Q8: strict/moderate/light) and stored in `.devforge/project-config.json`, but NO command reads it — all commands are hardcoded to strict flow. Each command with gates (execute-task, specify, plan, breakdown, verify, fix, refactor) needs to read `WORKFLOW_ENFORCEMENT` and branch: strict = all gates, moderate = spec + breakdown gates only, light = spec gate only.
-- Parity test harness.
-- update.sh multi-runtime support (currently `expand_templateOwned_pairs` handles pair-based mappings, but `templateDerived` three-way merge for `generated:agents` and `generated:coreLLM` sources isn't implemented yet).
+- **Wire WORKFLOW_ENFORCEMENT into every gated command.** Collected by wizard (Q8) and stored in `project-config.json`, but no command currently reads it — all hardcoded to strict flow. Each gated command (execute-task, specify, plan, breakdown, verify, fix, refactor) needs to read it and branch: strict = all gates, moderate = spec + breakdown gates only, light = spec gate only.
+- Parity test harness — turn the manual Run 1 workflow into a scripted re-runnable check.
+- update.sh multi-runtime support (currently `expand_templateOwned_pairs` handles pair-based mappings; `templateDerived` three-way merge for `generated:agents` and `generated:coreLLM` not yet implemented).
 
 ### Longer-term
 - Cursor / Gemini emitters.
 - Desktop native agent (if demand emerges).
+- §9 items (single-runtime default, `add <runtime>` command, packaging decision) — in that order, after agent audits + parity testing stabilize.
 
 ---
 
