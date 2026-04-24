@@ -168,6 +168,43 @@ def clear_state() -> None:
         STATE_FILE.unlink()
 
 
+# ─── Validation tables ───────────────────────────────────────────────────────
+# Strict enums enforced at `set` time. Null passes (enum check runs only on
+# non-None values). Soft enums (package_manager.tool, test_runner) are
+# free-form per detect.md — not validated here.
+#
+# Deferred-decision note: these tables may relocate to a shared JSON schema
+# (see PATH-B-IMPLEMENTATION.md "Deferred decisions") once Path B ships.
+
+_ENUMS: dict[str, set[str]] = {
+    "workspace_mode": {"standalone", "wrapper"},
+    "project_state": {"empty", "greenfield", "brownfield"},
+    "architecture_shape": {
+        "layered",
+        "feature-modular",
+        "monorepo",
+        "feature-modular-monorepo",
+        "clean",
+        "clean-feature-modular-monorepo",
+        "hexagonal",
+        "mvc",
+        "bloc",
+        "flat",
+        "other",
+    },
+    "monorepo_tool": {
+        "Lerna",
+        "Turborepo",
+        "Nx",
+        "pnpm-workspaces",
+        "Cargo-workspace",
+        "Go-workspace",
+    },
+}
+
+_FRAMEWORK_ROLES = ("frontend", "backend", "library", "plugin")
+
+
 # ─── Value coercion + path walking ───────────────────────────────────────────
 
 
@@ -241,7 +278,19 @@ def cmd_set(args: argparse.Namespace) -> int:
         )
         return 2
 
-    parent[key] = coerce_value(args.value)
+    new_value = coerce_value(args.value)
+
+    if args.field in _ENUMS and new_value is not None:
+        allowed = _ENUMS[args.field]
+        if new_value not in allowed:
+            print(
+                f"error: {new_value!r} is not a valid value for {args.field!r}.\n"
+                f"  allowed: {', '.join(sorted(allowed))}",
+                file=sys.stderr,
+            )
+            return 2
+
+    parent[key] = new_value
 
     if args.reason is not None:
         reasons = state.setdefault("_reasons", {})
@@ -527,7 +576,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_fw = sub.add_parser("add-framework", help="Append one entry to frameworks[].")
     p_fw.add_argument("--name", required=True)
-    p_fw.add_argument("--role", help="frontend | backend | library | plugin")
+    p_fw.add_argument("--role", choices=_FRAMEWORK_ROLES)
     p_fw.add_argument("--evidence")
     p_fw.set_defaults(func=cmd_add_framework)
 
