@@ -204,6 +204,23 @@ _ENUMS: dict[str, set[str]] = {
 
 _FRAMEWORK_ROLES = ("frontend", "backend", "library", "plugin")
 
+# compose refuses unless every required scalar appears in state["_set_fields"]
+# (explicit `set` calls) and every required non-empty list has ≥1 entry.
+_REQUIRED_SCALARS: tuple[str, ...] = (
+    "workspace_mode",
+    "source_root",
+    "project_state",
+    "default_branch",
+    "file_count",
+    "manifest_count",
+    "primary_language",
+    "package_manager.tool",
+    "architecture_shape",
+    "architecture_evidence",
+    "runtime_url.value",
+)
+_REQUIRED_NONEMPTY_LISTS: tuple[str, ...] = ("languages", "packages")
+
 
 # ─── Value coercion + path walking ───────────────────────────────────────────
 
@@ -295,6 +312,10 @@ def cmd_set(args: argparse.Namespace) -> int:
     if args.reason is not None:
         reasons = state.setdefault("_reasons", {})
         reasons[args.field] = args.reason
+
+    set_fields = state.setdefault("_set_fields", [])
+    if args.field not in set_fields:
+        set_fields.append(args.field)
 
     save_state(state)
     return 0
@@ -408,6 +429,14 @@ def _render_field(path: str, value: Any) -> list[str]:
 
 def cmd_compose(args: argparse.Namespace) -> int:
     state = load_state()
+
+    missing = _check_required(state)
+    if missing:
+        print("error: compose refused — required fields unset:", file=sys.stderr)
+        for m in missing:
+            print(f"  - {m}", file=sys.stderr)
+        return 2
+
     yaml_text = emit_yaml(state)
 
     DEVFORGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -419,6 +448,23 @@ def cmd_compose(args: argparse.Namespace) -> int:
     clear_state()
     print(f"wrote {OUTPUT_FILE}")
     return 0
+
+
+# ─── Required-field check ────────────────────────────────────────────────────
+
+
+def _check_required(state: dict[str, Any]) -> list[str]:
+    """Return a list of missing required paths; empty if all satisfied."""
+    missing: list[str] = []
+    set_fields = set(state.get("_set_fields", []))
+    for path in _REQUIRED_SCALARS:
+        if path not in set_fields:
+            missing.append(path)
+    for path in _REQUIRED_NONEMPTY_LISTS:
+        value = state.get(path)
+        if not isinstance(value, list) or len(value) == 0:
+            missing.append(f"{path} (must have ≥1 entry)")
+    return missing
 
 
 # ─── YAML emitter (stdlib only) ──────────────────────────────────────────────
