@@ -710,7 +710,7 @@ Both runtimes optimized past the emit because the spec didn't make proceeding-wi
 | 7 (runtime_url) | ✅ | Claude ✅ / Codex ❌ | Claude's "must read config" rule leaked to prose; Codex ignored |
 | 8 (purify-ts) | ✅ | ✅ Closed | Dep+usage rule held independently of Detection Report |
 | 10 (Husky) | ✅ | Claude ✅ / Codex ❌ | Codex has no `enforcement_tooling[]` to emit without DR |
-| 13 (packages set) | ✅ | ❌ Open | Codex includes `scripts/`, excludes `packages/pkg-test` |
+| 13 (packages set) | ✅ | ❌ Open | BOTH wrong in opposite directions — see reframe below |
 | 14 (per-package cmds) | ✅ | ❌ Open (partial) | No per-package structured emit to verify |
 | 15 (build/lint top-level) | ✅ | Build ❌ / Lint ✅ | Lint closed via evidence rule; build still wrong on Codex |
 | 16 (packages[] ordering) | ✅ | ❌ Open | Both sides have different orderings from each other AND from R1 |
@@ -846,7 +846,7 @@ CSE has `yarn.lock` at SOURCE_ROOT. `detect.md` STEP 3 "Command-runner selection
 - ❌ Finding 7 — Codex `runtime_url` blank (**Finding 22 root cause**)
 - ❌ Finding 10 — Codex Husky miss (cascade of Finding 23)
 - ❌ Finding 11 — Phase 4 override UX (cosmetic, unchanged)
-- ❌ Finding 13 — packages set divergence (Codex: `scripts/`, no `pkg-test`; Claude correct) — cascade of Finding 23
+- ❌ Finding 13 — packages set divergence (BOTH wrong, opposite directions: Claude hallucinated `pkg-test`; Codex over-included `scripts/`. Correct answer: 25 members. See Finding 13 reframe below.)
 - ❌ Finding 14 — per-package commands (not yet fully diffed — see R3 scoring)
 - ❌ Finding 15 build-side — Codex emits wrong build command (`build:origin` vs `build:raw`)
 - ❌ Finding 16 — packages[] ordering (different orderings; both different from R1's pattern)
@@ -873,6 +873,37 @@ Divergent:
 - JSON formatting (Finding 18, cosmetic)
 
 **CLAUDE.md ↔ AGENTS.md diff**: 481 lines — not yet decomposed into semantic-vs-formatting breakdown. Open for R3.
+
+## Run 2 — Finding 13 reframe (post-verification)
+
+**Date**: 2026-04-24 (post-R2, pre-R3)
+**Source**: user verification of `packages/pkg-test/package.json` existence in CSE source. File does NOT exist. This inverts Finding 13's original framing.
+
+**Original framing (R1 and early R2)**: "Claude excludes `scripts/` (correct); Codex includes `scripts/` (wrong). Codex off-by-one."
+
+**Corrected framing**: BOTH runtimes err on `PACKAGES_DETECTED` — in opposite directions. The coincidence that both totaled 26 hid that they have different 26-member sets.
+
+- **Claude**: 25 workspace members + 1 **hallucinated entry** (`packages/pkg-test` — directory matches the `packages/*` glob but has NO `package.json`). Treated glob-match alone as sufficient for inclusion.
+- **Codex**: 25 workspace members + 1 **over-included utility** (`scripts/` — has `package.json` but NOT declared in `package.json`'s `workspaces: ["packages/*", "apps/*"]`). Treated manifest-presence alone as sufficient.
+- **Correct answer**: 25 members total (1 root `.` + 1 `apps/app-web` + 23 `packages/` workspace members with manifests).
+
+Both runtimes failed to apply the conjunction: workspace-member membership requires (a) workspace-declaration match AND (b) manifest file present. Each interpreted Rule 5 as a single-sided test.
+
+**Codex self-confirmed** (via post-R2 interrogation): *"packages/pkg-test matches the packages/* glob, but it has no package.json, so it is not a valid workspace package in the practical Yarn/Lerna sense. Its omission from PACKAGES_DETECTED is consistent with the current Phase 1 definition."* Codex's exclusion was actually correct; its `scripts/` inclusion was the only error on Codex side.
+
+**Claude self-report**: not obtained yet. Claude's hallucination of `pkg-test` has no self-diagnosis on record. Candidate questions for future Claude interrogation: "What signal told you `packages/pkg-test/` was a workspace package despite no manifest?"
+
+**Fix landed**: `ec76f91` (Rule 5 (a) AND (b) conjunction) + `c6ceaa5` (workspace-root exception + related tightenings).
+
+**R3 verification**:
+- Both runtimes emit exactly **25 entries** in `packages[]` (not 26 on either side)
+- Neither side includes `packages/pkg-test` (glob-match without manifest → skip)
+- Neither side includes `scripts/` in `packages[]` — it moves to `optional.utility_manifests[]` (manifest without workspace declaration)
+- Root `.` retained in `packages[]` via workspace-root exception
+
+**Why this matters for scoring**: "both 26" in R2 project-config.json diff looked like numeric parity. It wasn't — the two 26-member sets differed by 2 entries. R3's 25-member emits on both sides will be real parity if they also match member-for-member.
+
+---
 
 ## Run 2 — Next fix batch (priority ordered)
 
