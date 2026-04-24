@@ -251,9 +251,60 @@ def cmd_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def _coerce_opt(v: Any) -> Any:
+    """Apply coerce_value to an optional arg; passthrough None."""
+    return None if v is None else coerce_value(v)
+
+
 def cmd_add_package(args: argparse.Namespace) -> int:
-    print("add-package: not implemented", file=sys.stderr)
-    return 2
+    state = load_state()
+    entry = {
+        "path": args.path,
+        "manifest": args.manifest,
+        "language_hint": args.language_hint,
+        "framework_hint": _coerce_opt(args.framework_hint),
+        "build_command": _coerce_opt(args.build_command),
+        "type_check_command": _coerce_opt(args.type_check_command),
+        "lint_command": _coerce_opt(args.lint_command),
+        "test_command": _coerce_opt(args.test_command),
+        "command_source": args.command_source,
+    }
+    state["packages"].append(entry)
+    save_state(state)
+    return 0
+
+
+def cmd_add_language(args: argparse.Namespace) -> int:
+    state = load_state()
+    state["languages"].append(
+        {
+            "name": args.name,
+            "file_count": args.file_count,  # argparse already coerced int
+            "runtime": _coerce_opt(args.runtime),
+        }
+    )
+    save_state(state)
+    return 0
+
+
+def cmd_add_framework(args: argparse.Namespace) -> int:
+    state = load_state()
+    state["frameworks"].append(
+        {
+            "name": args.name,
+            "role": _coerce_opt(args.role),
+            "evidence": _coerce_opt(args.evidence),
+        }
+    )
+    save_state(state)
+    return 0
+
+
+def cmd_add_enforcement_tool(args: argparse.Namespace) -> int:
+    state = load_state()
+    state["enforcement_tooling"].append(args.value)
+    save_state(state)
+    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -290,6 +341,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--test-command")
     p_add.add_argument("--command-source", choices=["manifest", "fallback"], required=True)
     p_add.set_defaults(func=cmd_add_package)
+
+    p_lang = sub.add_parser("add-language", help="Append one entry to languages[].")
+    p_lang.add_argument("--name", required=True)
+    p_lang.add_argument("--file-count", type=int, default=0)
+    p_lang.add_argument("--runtime")
+    p_lang.set_defaults(func=cmd_add_language)
+
+    p_fw = sub.add_parser("add-framework", help="Append one entry to frameworks[].")
+    p_fw.add_argument("--name", required=True)
+    p_fw.add_argument("--role", help="frontend | backend | library | plugin")
+    p_fw.add_argument("--evidence")
+    p_fw.set_defaults(func=cmd_add_framework)
+
+    p_tool = sub.add_parser(
+        "add-enforcement-tool", help="Append one string to enforcement_tooling[]."
+    )
+    p_tool.add_argument("--value", required=True)
+    p_tool.set_defaults(func=cmd_add_enforcement_tool)
 
     p_status = sub.add_parser("status", help="Show which fields are set/unset.")
     p_status.set_defaults(func=cmd_status)
