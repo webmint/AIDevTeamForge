@@ -414,7 +414,7 @@ If Codex still batches in Run 2, open escalation path: add Codex-only tightening
 ### R1 Resolution 3 — Finding 2 fix: `git -C "$SOURCE_ROOT"` templates in STEP 2
 
 **Date**: 2026-04-24
-**Commit**: _pending_
+**Commit**: `df47349`
 **Files changed**:
 - `src/commands/setup-wizard/references/detect.md` — STEP 2 rewritten to use concrete `git -C "$SOURCE_ROOT" …` templates; added a top-of-STEP-2 "Git-command targeting rule" principle; removed the now-redundant wrapper-mode prose note that was failing to hold on Codex.
 
@@ -445,7 +445,7 @@ If Codex still batches in Run 2, open escalation path: add Codex-only tightening
 ### R1 Resolution 4 — Finding 15: ground truth recorded for CSE test project
 
 **Date**: 2026-04-24
-**Commit**: _pending_
+**Commit**: `cfc7a59`
 **Files changed**: `codex-port/phase-R/parity-findings.md` only (data recording; no spec change).
 
 **Why this is separate from a spec fix**: Finding 15 is not a spec-interpretation problem — it's a data-correctness problem. Run 1 showed Claude and Codex disagreeing on the top-level build/lint commands for the CSE project. R1 Resolution 1 (Detection Report + evidence rule) is the mechanism that will make both runtimes cite their sources in Run 2, but without independently-verified ground truth, R2 scoring can only measure convergence, not correctness. This resolution records the ground truth.
@@ -489,6 +489,393 @@ If Codex still batches in Run 2, open escalation path: add Codex-only tightening
 3. Claude Detection Report: `lint_command: yarn lint:core && yarn lint:web`, evidence notes absence of bare `lint`.
 4. Codex Detection Report: `lint_command: yarn lint:core && yarn lint:web` (not `yarn lint:web` alone).
 5. Either runtime choosing `yarn check` for typecheck should flag in evidence that it also builds pkg-* (side effect).
+
+---
+
+## Run 2 — 2026-04-24
+
+**Forge commit at run start**: `cfc7a59` (after R1 Resolutions 1–4 — Findings 3/4/2/15 fixes landed).
+
+**Test infrastructure**:
+- `testParity/` on branch `claude-parity-run2` — Claude side (reset to pre-install `64bb325`, reinstalled with current spec)
+- `testParity-codex/` on branch `codex-parity-run2` — Codex side (same)
+- Source (`db-cse-ui-strata/`) pinned to same commit `9354389c6` as Run 1
+
+**Scope**: setup-wizard phase (same as Run 1). R1 Resolution 1–4 verification checklists scored at end of run.
+
+**Findings logged live (continue numbering from Run 1; Run 1 ended at Finding 18)**:
+
+### Finding 19 — NEW IN RUN 2 — MEDIUM — Phase 2 Q0: project-name detection blindly trusts `manifest:name`
+
+**Severity**: MEDIUM (both runtimes land wrong default; user-facing outcome degraded from Run 1)
+
+**Observed (Run 2)**:
+- **Codex-R2**: proposed `root` verbatim from `db-cse-ui-strata/package.json:name` for Q0. Spec-adherent (per `questions.md` Q0 lines 42–52).
+- **Claude-R2**: refused `root` as "not descriptive", surfaced three alternative candidates (`db-cse-ui-strata` / `Strata` / `DB CSE UI`) with cited evidence — directory name, pipeline-file suffix (`strata_dev_pipeline.yml`), and `package.json:repository` field. Dropped README as a source.
+- **Neither runtime** surfaced `CSE UI` — the value both runtimes converged on in Run 1.
+
+**Comparison to Run 1**:
+- **Claude-R1**: proposed `CSE UI` (README-derived). **Off-spec** per Q0 (spec says manifest-only), but landed a user-friendly answer.
+- **Codex-R1**: Q0 was batched with Q1–Q3; user typed `CSE UI` directly. Codex's actual per-question Q0 default was never visible. → Codex-R2's `root` proposal is **new visibility**, not a regression.
+- **User-facing outcome worse in R2**: both runtimes in R1 yielded `CSE UI` (one via off-spec READ, one via batched free-text input). In R2 neither surfaces it.
+
+**Not caused by R1 Resolutions 1–4**: none of those four fixes touched Q0. `detect.md` STEP 2 (Finding 2 fix) is branch detection; Detection Report (Finding 3 fix) does not require `project_name` as a field; `{{ask}}` semantics (Finding 4 fix) does not change question source hierarchy; ground-truth recording (Finding 15) is data only.
+
+**Root cause — `questions.md` Q0 spec is too narrow** (lines 42–52):
+
+> If a manifest file exists at SOURCE_ROOT and contains a name field:
+> "I found the project name `[detected name]` in `[manifest file]`. Confirm or override."
+
+Three gaps:
+
+1. **No scaffold-default blocklist.** Monorepo root manifests commonly declare `"name": "root"`, `"name": "workspace"`, `"name": "monorepo"`, `"name": "project"`, etc. — scaffold artifacts, not meaningful names. Spec treats them identically to real project names and presents them verbatim to the user.
+2. **No fallback hierarchy.** If `manifest:name` is missing OR a scaffold default, spec has no guidance on where to look next (README `# Heading`, `manifest:repository` / `manifest:homepage` URL path segment, directory basename).
+3. **Single-source rigidity.** Spec presents exactly ONE candidate (or free-text ask). Claude-R2's multi-option approach with cited evidence is arguably better UX, but spec neither endorses nor forbids it — which is itself a cross-runtime divergence source. Codex reads the spec literally (single candidate); Claude exercises judgment (multi-option).
+
+**Why this was invisible in Run 1**:
+- Claude's off-spec README consultation happened to land the right answer.
+- Codex's batching hid its per-question behavior — user's free-text input papered over the spec-default proposal.
+- R1 Resolution 2 (`{{ask}}` no-batching) made Codex's per-question behavior visible for the first time, which is how this gap surfaced now.
+
+**Impact**:
+- `PROJECT_NAME` lands as `root` (Codex) or `db-cse-ui-strata` (Claude) if user confirms — wrong value flows to CLAUDE.md / AGENTS.md / `project-config.json`.
+- User must override on both runtimes to get a meaningful name. Cross-runtime parity at Q0 is NOT achieved.
+
+**Proposed fix**:
+
+1. Add scaffold-default blocklist in Q0: treat `root`, `workspace`, `monorepo`, `project`, `app`, `main`, `source`, `template`, `new-project`, `my-app` as "effectively null" — fall through to hierarchy step 2.
+2. Add explicit source hierarchy (first non-null wins; all others presented as alternatives with cited evidence):
+   - a. `manifest:name` (if present AND not scaffold-default)
+   - b. README title — first `# Heading` in `README.md` / `README.rst` / `README.txt` at SOURCE_ROOT
+   - c. `manifest:repository` / `manifest:homepage` URL → extract last path segment, titleize
+   - d. Directory basename (SOURCE_ROOT), titleized (kebab/snake → Title Case)
+   - e. Free-text ask (no default)
+3. When multiple sources yield distinct candidates, present all with cited evidence — codifies Claude-R2's behavior, makes spec-compliant rather than off-spec.
+
+**Expected R3 verification**: both runtimes propose `CSE UI` (or equivalent README-title-derived name) as the top candidate for the CSE test project. Cross-runtime delta on Q0 collapses.
+
+---
+
+### Finding 20 — NEW IN RUN 2 — MEDIUM — Phase 2 Q2: Codex omits Options list because ask-boundary is spec-ambiguous
+
+**Severity**: MEDIUM (user asked an enumerated-choice question without seeing the choices — forced to free-text or guess)
+
+**Observed (Run 2)**:
+- **Codex-R2**: presented Q2 evidence-rich lead-in and the closing question "What type of project is this?" — but **omitted the Options list** entirely. No bullet choices shown. (User confirmed via back-channel during the run.)
+- **Claude-R2**: lead-in + 3 enumerated options with descriptions (Frontend / Full-stack / Library), "Recommended" marker on option 1, "Type something" + "Chat about this" fallbacks. Spec-adherent.
+
+**Comparison to Run 1**:
+- **Codex-R1**: Q0–Q3 batched; unknown whether Options were embedded in the combined prompt. User's answer `Frontend / web application` suggests Options were visible somehow (or user answered from memory).
+- **Claude-R1**: presented Options as selectable, user picked Recommended. Consistent with R2.
+- **Codex-R2 behavior is new visibility** (exposed by R1 Resolution 2's no-batching rule), not a regression.
+
+**Not caused by R1 Resolutions 1–4**: none of the four fixes touched `questions.md` Q2. This is a pre-existing spec gap made visible now that Codex asks questions individually.
+
+**Root cause** — `questions.md` Q2 (lines 70–92) structure:
+
+```
+**If concrete indicators were found:**
+
+> Based on what I found — [quote...] — this looks like a [proposed type]. What type of project is this?
+>
+> Options:
+> - Frontend / web application
+> - Backend API / service
+> - ...
+```
+
+The question is rendered as a markdown blockquote. The Options list is continued-blockquote (still prefixed with `>`) but visually separated by a blank-blockquote line. There is NO explicit `{{ask "..."}}` / `{{/ask}}` wrapping around the full question + options.
+
+Codex appears to parse the ask-boundary at "What type of project is this?" and treat the Options list as trailing context — so it asks the question but omits the choices. Claude renders the whole blockquote (including Options) as one choice block via its structured-select UI primitive. Both interpretations are defensible given the loose markdown; the spec is ambiguous about where the ask ends.
+
+**Cross-question scope (observed in full Run 2)**:
+
+| Question | Options format in spec | Codex-R2 behavior |
+|---|---|---|
+| Q2 (project type) | Separate `Options:` bullet list | ❌ Omitted — collapsed to meta-options |
+| Q3 (languages) | Confirm-detection (no canonical enum) | ✅ N/A — not a canonical-enum question |
+| Q4 (architecture) | Separate `Options:` bullet list | ❌ Omitted — collapsed to meta-options |
+| Q5 (error handling) | Confirm-detection | ✅ Meta-options (spec-appropriate) |
+| Q6 (API layer) | Confirm-detection | ✅ Meta-options (spec-appropriate) |
+| Q7 (testing) | Confirm-detection | ✅ Meta-options (spec-appropriate) |
+| Q8 (enforcement) | Separate `Options:` bullet list | ❌ Omitted — collapsed to meta-options |
+| Q9 (AI attribution) | Binary yes/no | ❌ Meta-options with **inverted default direction** |
+| Q10b (Codex tiers) | **Inline** in question text | ✅ Rendered correctly |
+| Q11 primary (AC verification) | Separate `Options:` bullet list | ✅ Rendered correctly (inconsistent with Q2/Q4/Q8) |
+| Q11 follow-up (which modes) | Separate `Options:` bullet list | ✅ Rendered correctly |
+
+**Updated hypothesis**: behavior is **stochastic** with list-format Options, not strictly structural. Q11 has the same markdown shape as Q2/Q4/Q8 but renders correctly. Q10's inline-in-text format always renders. This strengthens Finding 20's Option A (explicit `{{ask}}` / `{{/ask}}` wrapping) over Option B (formatting): Option B assumes a structural distinction that Codex doesn't consistently honor; Option A removes interpretation entirely.
+
+**Impact**:
+- Users on Codex are asked to choose among options they cannot see. Either they type from memory (fragile) or skip to free-text (losing enumerated structure).
+- `PROJECT_TYPE` (and downstream fields if the same bug repeats at Q3–Q11) may land as free-text rather than one of the spec's canonical enumerated values → downstream commands that branch on exact-match enum values break.
+- Cross-runtime parity on enumerated answers is NOT achieved by current spec.
+
+**Relationship to R1 Resolution 2**: the no-batching rule made this visible but didn't cause it. The deeper gap — implicit ask boundaries in `questions.md` — was always there. This argues for extending R1 Resolution 2's `{{ask}}` contract by requiring every interview question to be a single `{{ask}}`…`{{/ask}}` block with options inside it, rather than loose markdown.
+
+**Proposed fix** (three options):
+
+- **Option A (structural — recommended)**: wrap every question's content in explicit `{{ask "question text"}}` ... `{{/ask}}` markers with Options as a bullet list inside. Both runtimes parse the full ask as one unit. Composes cleanly with R1 Resolution 2 ("one turn = one `{{ask}}`") — combined, the spec contract becomes: every `{{ask}}` block includes the lead-in + options + fallback text; each is one turn; never batched.
+- **Option B (formatting only)**: restructure Options to be unambiguously inside the blockquote (e.g., numbered list wrapped in the same blockquote text, no blank-blockquote separator line). Lower effort, weaker guarantee — still relies on markdown-parsing interpretation.
+- **Option C (louder prose)**: add an IMPORTANT RULE to `setup-wizard/main.md`: "When a question spec lists Options, ALWAYS present every option to the user as selectable choices, regardless of surrounding markdown structure." Runtime-behavior rule, not a structural fix.
+
+**Recommendation**: Option A. Aligns with R1 Resolution 2's direction (`{{ask}}` as the unit of interaction), removes interpretation, touches all affected questions in one edit pass.
+
+**Expected R3 verification**: Codex presents every enumerated Options list in full at every choice question (Q2–Q11 where applicable). Cross-runtime delta collapses on option-presentation.
+
+---
+
+### Finding 21 — NEW IN RUN 2 — MEDIUM — Architecture enum missing `clean`; also needs to allow compound labels
+
+**Severity**: MEDIUM (both runtimes land wrong or no architecture label; polluted project-config downstream)
+
+**Observed (Run 2)**:
+- **Claude-R2**: proposed `"feature-modular monorepo with hexagonal layering"` — reached for `hexagonal` as nearest enum bucket despite the evidence (`data/ + domain/ + domain/cases/ + presentation/` with repository pattern and use-cases) being **Clean Architecture**, not hexagonal.
+- **Codex-R2**: refused to propose any specific architecture; asked user to choose Confirm / Override / Defer with no bucket named.
+- **User manually overrode** to `"Clean Architecture, feature-modular monorepo"` on both sides.
+
+**Correction to Finding 6 (R1)**: Finding 6's "Claude correct, Codex wrong" narrative was itself wrong. Claude-R1's `feature-modular monorepo` answer was **also incomplete** — missed the Clean Arch layering. Codex-R1's `layered / BLoC + use-cases + repositories` was poorly labeled but actually described Clean Arch in substance. Neither runtime has ever correctly labeled this codebase in either run.
+
+**Root cause**: R1 Resolution 1's `architecture_shape` enum list is incomplete:
+
+```
+layered | feature-modular | monorepo | feature-modular-monorepo | hexagonal | mvc | bloc | flat | other
+```
+
+Missing: `clean` (Clean Architecture — domain/use-cases/adapters with inward dependency direction). Claude reached for `hexagonal` as the nearest plausible bucket. Codex, encountering a no-fit situation, bailed to meta-options rather than picking a wrong bucket. Both behaviors are defensible given the gap.
+
+**Secondary issue — no compound labels**: the CSE codebase is genuinely `clean + feature-modular-monorepo` simultaneously. R1 Resolution 1's enum is a scalar (`architecture_shape: feature-modular-monorepo`), not an array. Real codebases often combine patterns; the scalar enum forces a lossy choice.
+
+**Proposed fix**:
+1. Add `clean` to the enum with evidence cues in detect.md: "Clean Architecture indicators: `use-cases` directory or `domain/cases/`, repository pattern with interface in domain + implementation in data, dependency direction strictly inward (domain imports nothing from adapters)."
+2. Change `architecture_shape` from scalar to array in Detection Report schema: `architecture_shape: [clean, feature-modular-monorepo]`. Populate.md's rendering should join with `+`: `"Clean Architecture + feature-modular monorepo"`.
+3. Add rule: "When evidence supports multiple patterns, emit all that apply. When NO enum bucket fits, emit `[other]` with explicit `architecture_evidence` citation."
+4. Refresh Finding 6's "correct answer" narrative in the Run 1 section of this file (or note superseded by Finding 21).
+
+**Expected R3 verification**: both runtimes emit `architecture_shape: [clean, feature-modular-monorepo]` (or equivalent compound) for CSE; no manual user override needed.
+
+---
+
+### Finding 22 — NEW IN RUN 2 — HIGH — Phase 1 ↔ Phase 2 field linkage missing (Q11 URL is the visible failure)
+
+**Severity**: HIGH (lands wrong/blank value in `AC_RUNTIME_URL` on Codex; cascades to runtime-assisted verification failure)
+
+**Observed (Run 2)**:
+- **Claude-R2 Q11 URL**: opened `apps/app-web/vite.config.ts`, extracted `server: { host, port, https }`, proposed `https://okta.local.dev.dice-tools.com:8080` — correct. ✅
+- **Codex-R2 Q11 URL**: asked blank — no URL proposed, no evidence, no mention of vite.config.ts. Worse than Run 1 (R1 at least guessed `http://localhost:5173`; R2 proposes nothing).
+
+**Root cause**: two linked gaps:
+
+1. **Detection Report not emitted** (Finding 23). R1 Resolution 1's Detection Report required a `runtime_url` field populated from dev-server config. If Codex had emitted it, `runtime_url` would be available for Phase 2 to reference.
+2. **Even if Phase 1 populated `runtime_url`, `questions.md` Q11 doesn't link to it.** Q11's conditional URL follow-up is spec'd as a fresh free-text ask, not as "present the detected `runtime_url` as default and confirm/override." So even with a working Detection Report, Phase 2 would still ignore it.
+
+**Why this cascades**: the pattern repeats for any Phase-2 question whose answer might be detectable in Phase 1. `default_branch` (Q0 area), `project_description` from README (Q1), architecture (Q4), error-handling library (Q5), API layer (Q6), testing framework (Q7) — all are potential Phase 1 detection outputs. Spec currently re-asks each via Phase 2 without referencing Phase 1 outputs.
+
+Claude happens to consult its Phase 1 memory organically during Phase 2 (which is why Q11 URL worked on Claude in both runs). Codex treats Phase 2 as independent from Phase 1 detection. Spec doesn't force the linkage either way.
+
+**Proposed fix**:
+
+1. **Per-question linkage notes** in `questions.md` — for every question whose answer has a Phase 1 detection counterpart, add a "Phase 1 source" line:
+   > **Phase 1 source**: `detection_report.runtime_url` (from `vite.config.ts` / `next.config.js` / dev-server config). If populated, present as pre-filled default with confirm/override. If null, ask free-text.
+2. **Phase 2 preamble rule** in `main.md`: "Before asking any question, check whether the Detection Report has a field populating the answer. If yes, present the detected value as the default; ask to confirm/override. If no, ask fresh."
+3. **Depends on Finding 23 closure** — without a Detection Report, there's nothing to reference. Finding 22 closure requires Finding 23 closed first.
+
+**Expected R3 verification**: Codex Q11 URL presents `https://okta.local.dev.dice-tools.com:8080` as pre-filled default (matching Claude), sourced from Detection Report.
+
+---
+
+### Finding 23 — NEW IN RUN 2 — HIGH (blocker) — Both runtimes skip the required YAML Detection Report emit
+
+**Severity**: HIGH — this is the largest single failure mode in Run 2. R1 Resolution 1's centerpiece fix (structured YAML emit) did not land on either runtime. All closures claimed via this mechanism need separate evidence.
+
+**Observed (Run 2)**:
+- **detect.md says**: "Before moving to Phase 2, emit a single structured Detection Report as a fenced YAML code block. This is required output, not optional prose."
+- **Claude-R2 emitted**: a "Phase 1 Detection Summary" as a structured-prose bullet list (readable, thoughtful, but NOT fenced YAML). Contents correct; shape wrong.
+- **Codex-R2 emitted**: free-form status sentence ("I have the verification mode and runtime URL. I'm finishing the detection data..."). No structured form at all.
+- **Neither rendered the YAML template** specified in detect.md as a filled, fenced code block.
+
+**Root cause**: the spec language describes the requirement but doesn't enforce it:
+- Says "required output, not optional prose" — but doesn't state the consequence of omission (no HALT, no re-prompt, no Phase 2 precondition)
+- Presents the YAML template as a fillable shape, but runtimes read it as reference documentation rather than an action-required emit
+- No Phase 2 preflight check for the Detection Report's existence
+
+Both runtimes optimized past the emit because the spec didn't make proceeding-without-it impossible. Each substituted its own summary style (prose bullet list / free-form sentence) as "equivalent."
+
+**Cascade impact** — closures claimed via Detection Report and their actual Run 2 status:
+
+| Finding | Claimed via R1 Res 1 | Actual R2 status | Mechanism of actual status |
+|---|---|---|---|
+| 3 (detection granularity) | ✅ | Partial | Prose summaries more consistent, but not mechanically comparable |
+| 6 (architecture) | ✅ | ❌ Open (Finding 21) | Enum gap, no bucket for Clean Arch |
+| 7 (runtime_url) | ✅ | Claude ✅ / Codex ❌ | Claude's "must read config" rule leaked to prose; Codex ignored |
+| 8 (purify-ts) | ✅ | ✅ Closed | Dep+usage rule held independently of Detection Report |
+| 10 (Husky) | ✅ | Claude ✅ / Codex ❌ | Codex has no `enforcement_tooling[]` to emit without DR |
+| 13 (packages set) | ✅ | ❌ Open | Codex includes `scripts/`, excludes `packages/pkg-test` |
+| 14 (per-package cmds) | ✅ | ❌ Open (partial) | No per-package structured emit to verify |
+| 15 (build/lint top-level) | ✅ | Build ❌ / Lint ✅ | Lint closed via evidence rule; build still wrong on Codex |
+| 16 (packages[] ordering) | ✅ | ❌ Open | Both sides have different orderings from each other AND from R1 |
+
+**Net**: only Finding 8 cleanly closed via R1 Resolution 1. Findings 3, 6, 13, 14, 16 remained open because the structured emit never happened. Findings 7, 10, 15 partially closed via surgical sub-rules that leaked into prose behavior.
+
+**Proposed fix — three combined changes**:
+
+1. **HALT language in detect.md**:
+   > "You MUST emit this Detection Report as a fenced YAML code block. This is the FINAL action of Phase 1. Do NOT proceed to Phase 2 until the YAML block has been rendered verbatim to the user. A prose summary does NOT satisfy this requirement. If you have not emitted the block, return to Phase 1 and emit it before any Phase 2 activity."
+
+2. **Visual emit markers** bracketing the template:
+   ```
+   # >>> EMIT THIS BLOCK VERBATIM TO USER BEFORE PHASE 2 <<<
+   detection_report:
+     ...
+   # >>> END OF EMIT <<<
+   ```
+
+3. **Phase 2 preflight check** in `questions.md` opening or `main.md`:
+   > "Before asking Q0: verify the Phase 1 Detection Report was emitted as a fenced YAML block. If not visible in conversation, return to Phase 1 and emit it."
+
+4. **Consider generator-level structural fix (Path B from strategic eval)**: move Detection Report composition out of LLM-trust. LLM provides field values; a Python helper in `scripts/lib/` composes the YAML. Higher engineering cost, structural guarantee. Tracked separately from this spec fix.
+
+**Expected R3 verification**: both runtimes emit a fenced YAML Detection Report before Phase 2. Structural comparison becomes possible. Findings 13, 14, 16 closure mechanically verifiable via field-level diff.
+
+---
+
+### Finding 24 — NEW IN RUN 2 — LOW — Detection doesn't assess freshness of README/doc evidence
+
+**Severity**: LOW (false-positive agent, user can override; low-volume impact)
+
+**Observed (Run 2)**: both runtimes kept `migration-engineer` agent based on README's "Strata cutover from cse-ui" section. User noted this section is **stale** — the cutover is legacy documentation, not active work. Both runtimes treated README as current/authoritative without freshness check.
+
+**Root cause**: `agents.md` Phase 4 treats README mentions as authoritative evidence without cross-referencing:
+- Git history of the relevant directories / files
+- Presence of migration-specific artifacts (migration scripts, dual-write code, cutover tooling)
+- Date of last meaningful activity in areas the README describes
+
+**Proposed fix**:
+- Add to `agents.md`: "When citing README content as evidence for keeping an agent, verify the content is current. Signals: recent git commits to referenced directories; presence of artifacts matching the README claim; absence of 'DONE' / 'COMPLETED' markers. If README content appears historical, present the agent as 'suggested — please verify' rather than auto-keep."
+- Accept false positives as low-impact when user can override; don't over-engineer.
+
+---
+
+### Finding 25 — NEW IN RUN 2 — MEDIUM — Codex uses shell + language-runtime execution for detection tasks where direct file reads suffice
+
+**Severity**: MEDIUM (portability + fragility + potential silent partial failures)
+
+**Observed (Run 2)**: Codex-R2 invoked `node -e '<complex fs operations>'` during Phase 3 to enumerate per-package records — a 16+ line JavaScript one-liner with `fs.readdirSync` / `fs.existsSync`. **The command errored** (`[eval]:1` syntax error in output). Codex had to retry or silently work around. Claude-R2 accomplished the same task via direct Read tool + conversational memory carried from Phase 1.
+
+**Impact**:
+- **Portability**: requires node to be installed at detection time. CSE has node, so worked (after error). Pure-Python / pure-Rust / pure-Go target projects would have Codex's detection fail outright.
+- **Fragility**: complex one-liners are prone to syntax errors; a single failure can silently corrupt detection (partial package enumeration → incomplete `PACKAGES_DETECTED`).
+- **Unnatural for the template**: AIDevTeamForge's `scripts/` uses Python per locked decision #5. Detection shouldn't require runtime-specific JS execution.
+- **Plausible contributor to Finding 13**: Codex missed `packages/pkg-test`, likely because its node enumeration filter excluded it for some reason (empty src? naming heuristic?). Direct file reads don't apply silent filters.
+
+**Proposed fix** — add to `detect.md` and `populate.md`:
+> "Per-package enumeration and similar file-scan tasks MUST use direct file reads (one read per manifest), NOT shell scripts or language-runtime one-liners. Detection must work on ANY target project language ecosystem — do not require node / python / ruby / etc. at detection time on the target machine."
+
+Applies beyond per-package work — any Phase 1 / Phase 3 detection step.
+
+---
+
+### Finding 26 — NEW IN RUN 2 — MEDIUM — Command runner divergence: Codex ignores lockfile-based runner selection
+
+**Severity**: MEDIUM (commands in `project-config.json` and downstream CLAUDE.md/AGENTS.md don't match project convention; users running them get "yarn not found" or "engine mismatch")
+
+**Observed (Run 2)** — from `project-config.json` diff:
+
+| Command | Claude-R2 | Codex-R2 | Correct per lockfile |
+|---|---|---|---|
+| BUILD_COMMANDS | `yarn build:raw` | `npm run build:origin` | `yarn` (yarn.lock at SOURCE_ROOT) |
+| TYPE_CHECK_COMMANDS | `yarn check` | `npm run check` | `yarn` |
+| LINT_COMMANDS | `yarn lint:core && yarn lint:web` | `npm run lint:core && npm run lint:web` | `yarn` |
+
+CSE has `yarn.lock` at SOURCE_ROOT. `detect.md` STEP 3 "Command-runner selection" rule explicitly says: `yarn.lock → yarn`. Codex ignored this.
+
+**Root cause hypothesis**: Codex's Phase 3 population used its own implementation (likely the node shell enumeration from Finding 25), which defaulted to `npm run` without checking for lockfile. The spec's heuristic lives in detect.md but Codex's Phase 3 logic doesn't read back to detection outputs for runner choice.
+
+**Related to Finding 23**: if Detection Report were emitted, `package_manager.tool: yarn` would be a field. Phase 3 would read from there instead of re-implementing. Tied to Finding 22 (Phase 1↔2 linkage) too.
+
+**Impact**:
+- `project-config.json` commands unusable as-written if user tries to run them.
+- Downstream verification / execute-task commands will fail with `npm run build:origin` in a yarn-managed project.
+- Breaks the "wizard writes real commands that actually run" contract (IMPORTANT RULE #4 in setup-wizard/main.md).
+
+**Proposed fix**:
+1. Strengthen `detect.md` Command-runner selection: "Before emitting any `BUILD_COMMAND` / `LINT_COMMAND` / `TYPE_CHECK_COMMAND` / `TEST_COMMAND`, verify the chosen runner matches observable lockfile signals at SOURCE_ROOT. Emit per the lockfile rule, not per runtime preference."
+2. Tie to Finding 23 closure: Detection Report emit enforces `package_manager.tool` field with evidence; Phase 3 reads from there.
+3. Add `populate.md` rule: "Per-command emit reads `package_manager.tool` from Detection Report. Compose runner prefix from that value, not from defaults."
+
+**Expected R3 verification**: Codex emits `yarn build:raw`, `yarn check`, `yarn lint:core && yarn lint:web` — matching Claude.
+
+---
+
+## Run 2 — R1 Resolution Scoring
+
+| Resolution | Findings targeted | Result |
+|---|---|---|
+| **R1 Res 1** — Detection Report + rules | 3, 6, 7, 8, 10, 13, 14, 15, 16 | **Partially failed** — YAML emit skipped by both runtimes (Finding 23). Surgical sub-rules landed independently where prose could carry them: dep+usage rule closed Finding 8 ✅; `runtime_url` rule closed Finding 7 on Claude (not Codex). Most expected closures remain open — see Finding 23 cascade table. |
+| **R1 Res 2** — `{{ask}}` no-batching | 4 | **Closed** ✅ — held across all 11 questions including Q11 conditional URL branch. Also closed Findings 1 and 9 as side-effects. |
+| **R1 Res 3** — `git -C "$SOURCE_ROOT"` templates | 2 | **Closed** ✅ — Codex now targets SOURCE_ROOT correctly for default-branch detection. |
+| **R1 Res 4** — ground truth recorded for CSE | 15 (scoring anchor) | **Useful** — lint-side closed (Codex now emits `lint:core && lint:web`); build-side still wrong (Codex: `build:origin`, ground truth: `build:raw`). Ground-truth recording enabled definitive scoring. |
+
+## Run 2 — Closures (findings closed or confirmed in R2)
+
+- ✅ **Finding 2** — git-command targeting (R1 Res 3)
+- ✅ **Finding 4** — Codex batching (R1 Res 2)
+- ✅ **Finding 8** — Claude purify-ts miss (R1 Res 1 dep+usage rule)
+- ✅ **Finding 9** — Claude Q11 option reshape (side-effect of R1 Res 2)
+- ✅ **Finding 12** — Codex summary abbreviation (resolved without explicit fix)
+- Partially: **Finding 15 lint side** (Codex now emits correct lint command)
+- Partially: **Finding 7 Claude side** (Claude consistently reads vite.config.ts)
+
+## Run 2 — Still open from Run 1
+
+- ❌ Finding 1 — wrapper-confirm (works in R2 via side-effect, not structural fix)
+- ❌ Finding 3 — API_LAYERS: Codex still `"GraphQL"` not `"Apollo Client"`
+- ❌ Finding 5 — Recommended-default UX (cosmetic, unchanged)
+- ❌ Finding 6 — architecture misdetection (**superseded by Finding 21** — root cause is enum gap)
+- ❌ Finding 7 — Codex `runtime_url` blank (**Finding 22 root cause**)
+- ❌ Finding 10 — Codex Husky miss (cascade of Finding 23)
+- ❌ Finding 11 — Phase 4 override UX (cosmetic, unchanged)
+- ❌ Finding 13 — packages set divergence (Codex: `scripts/`, no `pkg-test`; Claude correct) — cascade of Finding 23
+- ❌ Finding 14 — per-package commands (not yet fully diffed — see R3 scoring)
+- ❌ Finding 15 build-side — Codex emits wrong build command (`build:origin` vs `build:raw`)
+- ❌ Finding 16 — packages[] ordering (different orderings; both different from R1's pattern)
+- ❌ Finding 17 — free-text fields (not yet fully diffed via CLAUDE.md ↔ AGENTS.md)
+- ❌ Finding 18 — JSON formatting (cosmetic, unchanged)
+
+## Run 2 — Parity verdict (Path A: semantic output match)
+
+**`project-config.json` semantic fields: ~80–85% match.**
+
+Converged:
+- description, type, frameworks, languages
+- architecture (after user override to Clean Arch on both sides)
+- error-handling library (same library, different phrasing)
+- testing framework, lint command, typecheck command (semantically — runner differs)
+- workspace mode, source root, default branch
+- runtime URL (after user provided on Codex side)
+
+Divergent:
+- `PACKAGES_DETECTED` set (Codex wrong on 2 entries) + ordering
+- `BUILD_COMMANDS` (Codex wrong: `build:origin`)
+- `API_LAYERS` (Codex missing Apollo Client)
+- Command runner (yarn vs npm run — Finding 26)
+- JSON formatting (Finding 18, cosmetic)
+
+**CLAUDE.md ↔ AGENTS.md diff**: 481 lines — not yet decomposed into semantic-vs-formatting breakdown. Open for R3.
+
+## Run 2 — Next fix batch (priority ordered)
+
+1. **Finding 23** (HIGH, blocker) — Detection Report HALT language + visual emit markers + Phase 2 preflight. Highest leverage: closes Findings 13, 14, 15 build-side, 16 structurally; unblocks Findings 22, 26 which depend on it.
+2. **Finding 26** (MEDIUM) — Command-runner selection tie-in to Detection Report. Closes BUILD / TYPE_CHECK / LINT command parity.
+3. **Finding 22** (HIGH) — Phase 1 ↔ Phase 2 field linkage in questions.md. Closes Codex runtime_url blank. Depends on Finding 23.
+4. **Finding 21** (MEDIUM) — architecture enum: add `clean`, allow compound labels. Closes Findings 6 and native Clean Arch detection.
+5. **Finding 19** (MEDIUM) — Q0 scaffold-default blocklist + fallback hierarchy.
+6. **Finding 20** (MEDIUM) — `{{ask}}` wrap for canonical-enum questions (Option A).
+7. **Finding 25** (MEDIUM) — prohibit shell+language-runtime execution in detection.
+
+Findings 1, 5, 11, 17, 18, 24 deferred to a later run — cosmetic or low-impact.
+
+**Expected effort**: Finding 23 is ~50 lines of spec edit. Findings 26, 22, 21 each ~20–30 lines. Total next batch: ~150 lines, one commit cycle. Then Run 3.
 
 ---
 
