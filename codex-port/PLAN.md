@@ -685,3 +685,74 @@ No inter-instance coordination, no filesystem artifacts between passes, no exter
 - **Dependency graph accuracy.** Getting inter-package deps right from manifest analysis is tractable for npm/pnpm workspaces, harder for mixed-language monorepos (e.g., Python service consumed by a JS app via HTTP — no declared dep). Edge cases need the heuristic or user-fallback path.
 - **Order-independent packages.** Two packages with no dep relation and no cross-cutting concern serialize for no benefit. Probably acceptable overhead, but flag if observed.
 - **Very large committees on Codex.** 5+ package feature means 5+ sequential passes in one Turn — context window may get crowded. May need "split into two features" guidance if observed. Hard limit unclear without real-world testing.
+
+---
+
+## 9. Positioning & packaging (post-MVP — deferred to launch prep)
+
+### Positioning: Option C — portability-first
+
+Strategic framing: this is a **CLI-portable workflow kit where portability IS the differentiator**, not a multi-runtime template that happens to also be portable.
+
+Implications:
+
+- **Default install behavior becomes single-runtime**, not "both." Users install for the CLI they actually use; interop becomes a visible upgrade moment via a dedicated `add <runtime>` command.
+- **The wow-moment is the second-runtime add**: user runs the add command against an existing Claude-powered project and sees their state, specs, docs, constitution, memory, and agents immediately accessible from Codex. That moment is the marketable story ("your workflow just became portable") — invisible if both ship at once.
+- **Marketing/README leads with the portability story**, not the "works with both" frame. "Works with your CLI — becomes portable when you want."
+
+Current default ("install both unless `--runtime` specified") is author-convenience: we built both, easiest to ship both. Kept during development; changed before first public exposure.
+
+### Packaging: stay curl-based during development; decide at launch
+
+Current install: `curl | bash` template copy. No binary on PATH. Users don't re-invoke the installer in normal use, so single-command install is adequate for the current "template-install, mostly touch-and-go" model.
+
+Packaging options at launch:
+
+- **(a)** Stay curl-based. `add` implemented as flag: `curl ... | bash -s -- --add=codex`. No new infrastructure. UX rougher — users remember URL, no tab completion, no discoverability.
+- **(b)** Drop a thin wrapper at `.devforge/bin/aidevteamforge` during install; user gets a CLI command without full packaging. Minor PATH concern. Installer self-updates the wrapper on re-run.
+- **(c)** Publish as a real package. Prior art: GitHub spec-kit ships `specify-cli` installable via `uv tool install` or `pipx` (direct from GitHub — PyPI publish explicitly disclaimed). First-class CLI, upgrade via package manager, proper subcommand tree.
+
+Deferral rationale: packaging for a user base that doesn't exist is premature. Curl-based install stays until development stabilizes; option choice happens when nearing launch.
+
+### Prior art: GitHub spec-kit (github/spec-kit)
+
+Relevant mechanics worth borrowing:
+
+- **Interactive AI-CLI picker** when `--ai` / `--integration` flag omitted. Arrow-key select over available integrations, sensible default highlighted (currently `copilot`). Source: `src/specify_cli/__init__.py:1151-1158`.
+- **Pluggable integration model**: each AI CLI is a `BaseIntegration` subclass (~30 integrations in `src/specify_cli/integrations/`). Maps directly to our per-runtime emitter pattern (`scripts/emitters/<runtime>.py`).
+- **First-class incremental add / switch / upgrade**: `specify integration install <key>`, `uninstall`, `switch`, `upgrade`. Our proposed `aidevteamforge add <runtime>` is the direct analog.
+- **Single-project centralized dir + per-agent native dirs**: spec-kit uses `.specify/` for shared state + `.claude/skills/`, `.cursor/skills/`, etc. for per-agent artifacts. We already follow this structurally (`.devforge/` shared + `.claude/` / `.codex/` / `.agents/` per-runtime).
+- **`uv tool install` from GitHub direct** (no PyPI publish) — lower-friction path than full-registry publish while still giving package-manager UX.
+
+Divergence to be explicit about:
+
+- Spec-kit has ~30 integrations; we have 2 (Claude, Codex) planned, with Cursor/Gemini as later work. Don't over-engineer an integration abstraction for 2 — current emitter pattern is right-sized.
+- Spec-kit's surface is broader (presets, workflows, extensions, skills). Our scope is tighter (one workflow: spec → plan → breakdown → execute → verify). Don't inherit surface area just because they have it.
+- Spec-kit's skills-mode uses `$speckit-<cmd>` invocation under Codex; we use `$<cmd>` directly. Namespacing choice — revisit only if collision becomes a real issue.
+
+### Maximum CLI surface — hard cap
+
+Even at launch, the CLI surface stays minimal. **Three commands total, hard ceiling**:
+
+1. **`install`** — scaffold template into project (what `install.sh` already does).
+2. **`add <runtime>`** — retrofit existing single-runtime install with another runtime. Enables the upgrade-moment UX.
+3. **`upgrade`** — pull the latest template files into an existing project (optional; only if we see demand).
+
+**Explicitly out of scope**, even long-term:
+- Integration `switch` / `uninstall` — removing a runtime isn't a workflow we need to support. User can `rm -rf .codex/` themselves.
+- Extensions / plugins / presets / custom workflows — we ship one workflow, not a framework for workflows.
+- Self-upgrade subcommand — `curl | bash` or `uv tool install --force` handles it if we're packaged; scripts handle it if we're not.
+- Integration list / info / search — with 2 runtimes (maybe 4 later), a README table is sufficient.
+
+The spec-kit lesson is about **install mechanism** (`uv tool install` direct-from-GitHub, no PyPI), NOT about surface area. If we end up packaging, a minimal Python entry point or a persistent shell wrapper handles 3 commands without needing Typer / Click / Rich or a plugin framework.
+
+This cap exists to prevent future drift toward "while we're adding X, let's also add Y." The tool's value is the spec-driven workflow and the cross-runtime portability. Everything else is noise.
+
+### Roadmap — ordered
+
+1. **Now through end of development**: curl-based install, current default ("both"). No positioning or packaging changes.
+2. **After agent audits + cross-runtime parity testing complete**: implement single-runtime default in `install.sh` (detect installed CLI, prompt interactively if ambiguous, keep `--runtime` flag for CI/scripted use). Add install-time messaging explaining what was and wasn't created.
+3. **Before first public exposure**: implement `aidevteamforge add <runtime>` command (still curl-based by default). Rewrite README/landing copy around the portability narrative.
+4. **Near launch (evaluate then, not now)**: decide (a) / (b) / (c) for packaging. Default answer without new evidence: **(c)** via `uv tool install` from GitHub, following spec-kit's pattern — lowest-friction path to proper CLI UX without registry publishing overhead.
+
+No implementation work from §9 happens until §2 of this roadmap.
