@@ -221,6 +221,12 @@ _REQUIRED_SCALARS: tuple[str, ...] = (
 )
 _REQUIRED_NONEMPTY_LISTS: tuple[str, ...] = ("languages", "packages")
 
+# When the LLM sets these paths to null, --reason is mandatory. Narrow by
+# design: these are fields where null signals a deliberate project property
+# ("no web runtime: backend-only service") rather than absence-of-check.
+# Can expand in Phase 4 if R5 evidence shows a gap.
+_NULL_REASON_REQUIRED: tuple[str, ...] = ("runtime_url.value",)
+
 
 # ─── Value coercion + path walking ───────────────────────────────────────────
 
@@ -306,6 +312,14 @@ def cmd_set(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 2
+
+    if new_value is None and args.field in _NULL_REASON_REQUIRED and args.reason is None:
+        print(
+            f"error: {args.field!r} cannot be set to null without --reason. "
+            f"Null here must document why (e.g. --reason \"backend-only, no web UI\").",
+            file=sys.stderr,
+        )
+        return 2
 
     parent[key] = new_value
 
