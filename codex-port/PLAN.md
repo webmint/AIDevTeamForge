@@ -811,8 +811,8 @@ And Codex explicitly endorsed Path B as the forward direction:
 
 **Python-runtime-dep on target machine**: **YES**. Committing to `python3` as a wizard-time prerequisite.
 
-- **Current state**: zero runtime Python required. Wizard is LLM-driven end-to-end; spec is markdown; LLM reads + reasons + emits. Install-time needs Python (install.sh, generate-agents.py, emitters) but runtime on target machine does not.
-- **Path B adds**: target machine needs `python3` available at wizard runtime for `scripts/lib/detect_report.py` to run.
+- **Current state**: target machine already needs `python3` at install-time (install.sh invokes `scripts/generate.sh` → `generate-agents.py` / `generate-corellm.py`). This is a silent requirement today — `install.sh` does not preflight for it; failures surface as generate.sh errors. Wizard runtime (post-install) is Python-free: LLM-driven end-to-end, spec is markdown, LLM reads + reasons + emits.
+- **Path B adds**: target machine needs `python3` at *wizard-time* too, not just install-time. Persists the existing dependency temporally. `scripts/lib/detect_report.py` runs during Phase 1.
 - **Availability**: macOS 12.3+ ships `/usr/bin/python3`. Most Linux distros default. Windows users often need explicit install.
 - **Tradeoff**: better Codex structural parity vs. one more prerequisite for some users.
 
