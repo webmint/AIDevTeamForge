@@ -358,8 +358,140 @@ def _render_field(path: str, value: Any) -> list[str]:
 
 
 def cmd_compose(args: argparse.Namespace) -> int:
-    print("compose: not implemented", file=sys.stderr)
-    return 2
+    state = load_state()
+    yaml_text = emit_yaml(state)
+
+    DEVFORGE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = OUTPUT_FILE.with_suffix(OUTPUT_FILE.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        f.write(yaml_text)
+    os.replace(tmp, OUTPUT_FILE)
+
+    clear_state()
+    print(f"wrote {OUTPUT_FILE}")
+    return 0
+
+
+# ─── YAML emitter (stdlib only) ──────────────────────────────────────────────
+# Produces block-style YAML matching the detect.md template shape.
+# Not a general-purpose emitter — handles only what DetectionReport contains:
+# scalars (str/int/None), dicts, lists of str, lists of dict with scalar values.
+
+_YAML_RESERVED = {
+    "null", "Null", "NULL", "~",
+    "true", "True", "TRUE", "false", "False", "FALSE",
+    "yes", "Yes", "YES", "no", "No", "NO",
+    "on", "On", "ON", "off", "Off", "OFF",
+}
+_YAML_SPECIAL_CHARS = set(":#{}[],&*!|>'\"%@`")
+
+
+def emit_yaml(state: dict[str, Any]) -> str:
+    """Render the detection_report YAML from a state dict."""
+    lines: list[str] = ["detection_report:"]
+    skip = {"_reasons"}
+    for key, value in state.items():
+        if key in skip:
+            continue
+        if key == "optional" and isinstance(value, dict):
+            _emit_optional(key, value, lines, indent=2)
+        else:
+            _emit_field(key, value, lines, indent=2)
+    return "\n".join(lines) + "\n"
+
+
+def _emit_optional(key: str, value: dict[str, Any], lines: list[str], indent: int) -> None:
+    """Flatten OptionalSection.extra into the optional: block to match template."""
+    flat: dict[str, Any] = {}
+    for k, v in value.items():
+        if k == "extra":
+            if isinstance(v, dict):
+                flat.update(v)  # merge extra contents at optional level
+            continue
+        flat[k] = v
+    lines.append(" " * indent + f"{key}:")
+    for k, v in flat.items():
+        _emit_field(k, v, lines, indent=indent + 2)
+
+
+def _emit_field(key: str, value: Any, lines: list[str], indent: int) -> None:
+    prefix = " " * indent
+    if isinstance(value, dict):
+        lines.append(f"{prefix}{key}:")
+        for k, v in value.items():
+            _emit_field(k, v, lines, indent=indent + 2)
+        return
+    if isinstance(value, list):
+        if not value:
+            lines.append(f"{prefix}{key}: []")
+            return
+        lines.append(f"{prefix}{key}:")
+        for item in value:
+            _emit_list_item(item, lines, indent=indent + 2)
+        return
+    lines.append(f"{prefix}{key}: {_yaml_scalar(value)}")
+
+
+def _emit_list_item(item: Any, lines: list[str], indent: int) -> None:
+    prefix = " " * indent
+    if isinstance(item, dict):
+        first = True
+        for k, v in item.items():
+            leader = "- " if first else "  "
+            first = False
+            if isinstance(v, (dict, list)):
+                # Not expected in current schema, but emit gracefully.
+                lines.append(f"{prefix}{leader}{k}:")
+                if isinstance(v, dict):
+                    for sk, sv in v.items():
+                        _emit_field(sk, sv, lines, indent=indent + 4)
+                else:
+                    for sub in v:
+                        _emit_list_item(sub, lines, indent=indent + 4)
+            else:
+                lines.append(f"{prefix}{leader}{k}: {_yaml_scalar(v)}")
+        return
+    lines.append(f"{prefix}- {_yaml_scalar(item)}")
+
+
+def _yaml_scalar(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return _yaml_str(value)
+    return _yaml_str(str(value))
+
+
+def _yaml_str(s: str) -> str:
+    """Emit a YAML-safe scalar string, double-quoting when necessary."""
+    if s == "":
+        return '""'
+    if s in _YAML_RESERVED:
+        return f'"{s}"'
+    # Numeric-looking strings must be quoted to avoid type coercion by readers.
+    try:
+        int(s)
+        return f'"{s}"'
+    except ValueError:
+        pass
+    try:
+        float(s)
+        return f'"{s}"'
+    except ValueError:
+        pass
+    needs_quote = (
+        s != s.strip()
+        or any(c in _YAML_SPECIAL_CHARS for c in s)
+        or s[0] in "-?"
+    )
+    if needs_quote:
+        escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return s
 
 
 def build_parser() -> argparse.ArgumentParser:
