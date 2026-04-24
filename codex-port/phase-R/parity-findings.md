@@ -377,7 +377,7 @@ If the fix closed all 9 findings without regressions, move on to Finding 4 (no-b
 ### R1 Resolution 2 — Finding 4 fix: `{{ask}}` no-batching rule (shared contract)
 
 **Date**: 2026-04-24
-**Commit**: _pending_
+**Commit**: `3177259`
 **Files changed**:
 - `src/commands/setup-wizard/main.md` — tightened the `{{ask}}` marker contract in the "Variation markers" section (added three clauses: one-turn-per-ask, wait-before-compute for conditional follow-ups, applies to every command using `{{ask}}`); added IMPORTANT RULES #9 pointing back to the contract.
 
@@ -410,6 +410,37 @@ If the fix closed all 9 findings without regressions, move on to Finding 4 (no-b
 6. Claude still offers "Recommended" one-click defaults for Q1–Q3 where detection succeeded (Finding 5 UX preserved).
 
 If Codex still batches in Run 2, open escalation path: add Codex-only tightening via `{{#codex}}` conditional or emitter preamble, justified by Run 2 evidence.
+
+### R1 Resolution 3 — Finding 2 fix: `git -C "$SOURCE_ROOT"` templates in STEP 2
+
+**Date**: 2026-04-24
+**Commit**: _pending_
+**Files changed**:
+- `src/commands/setup-wizard/references/detect.md` — STEP 2 rewritten to use concrete `git -C "$SOURCE_ROOT" …` templates; added a top-of-STEP-2 "Git-command targeting rule" principle; removed the now-redundant wrapper-mode prose note that was failing to hold on Codex.
+
+**What changed (substance)**:
+- All three detection commands (`symbolic-ref refs/remotes/origin/HEAD`, `symbolic-ref HEAD`, `branch --show-current`) now include `-C "$SOURCE_ROOT"` explicitly. No more reliance on runtime interpretation of "run against the inner repo."
+- `$SOURCE_ROOT` = `.` in standalone, inner folder name in wrapper — `-C` form is safe and correct in both cases, so no branching required.
+- Explicit clarifier added: "substitute the actual `SOURCE_ROOT` value before invoking — do NOT emit the literal string `$SOURCE_ROOT` to the shell" — guards against a runtime treating the placeholder as literal.
+
+**Expected to close in Run 2**:
+- Finding 2 — wrapper-mode git commands anchored on wrong repo (Codex read outer worktree's `.git`).
+
+**Not expected to close**:
+- Any other finding — Finding 2 is narrow.
+
+**Potential regressions to watch in Run 2**:
+- **`$SOURCE_ROOT` emitted literal**: if either runtime passes `git -C "$SOURCE_ROOT"` as a literal string to shell (without substituting the value), git errors out. Mitigation: explicit clarifier in the principle text. Watch for `fatal: cannot change to '$SOURCE_ROOT': No such file or directory` in Run 2.
+- **Cwd drift**: `git -C "."` resolves relative to the runtime's cwd. If the wizard invocation runs from a non-workspace cwd (shouldn't per install convention), detection targets wrong repo. No known case; monitor if Run 2 reports a branch name that matches neither outer nor inner repo.
+- **Standalone mode regression**: the `-C "."` form is a mild change from implicit cwd. If any runtime has an edge-case issue with it, `DEFAULT_BRANCH` may come back empty or wrong even in standalone. Unlikely (standard git behavior), but watch.
+- **No impact on Claude expected** — Claude already detected correctly in Run 1 by reading the inner repo. The `-C` form just removes ambiguity; Claude's behavior should be unchanged.
+
+**R2 verification checklist**:
+1. Codex reports `DEFAULT_BRANCH = dev` for the CSE test project (was `codex-parity` in Run 1).
+2. Claude still reports `DEFAULT_BRANCH = dev` (no regression).
+3. `.devforge/project-config.json` on both sides contains `"default_branch": "dev"`.
+4. No literal-`$SOURCE_ROOT` shell errors surfaced in either runtime's Phase 1 trace.
+5. Detection Report (R1 Resolution 1) `default_branch` field populated with `dev` on both sides.
 
 ---
 

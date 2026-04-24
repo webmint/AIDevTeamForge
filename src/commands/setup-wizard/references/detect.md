@@ -121,15 +121,15 @@ Store the result as `PROJECT_STATE`. This controls detection depth in STEP 3 and
 
 Detect first, ask only if detection fails. Matches the rest of Phase 1's "detect-first, confirm on ambiguity" posture.
 
+**Git-command targeting rule (applies to every git invocation in this phase):** use the `git -C "$SOURCE_ROOT"` form for all git commands. `$SOURCE_ROOT` is `.` in standalone mode and the inner folder name (e.g., `client-project`) in wrapper mode. The `-C` flag makes the target repo explicit in both cases so wrapper mode can't accidentally read the outer workspace's `.git`. Substitute the actual `SOURCE_ROOT` value before invoking — do NOT emit the literal string `$SOURCE_ROOT` to the shell.
+
 ### 2.1: Detect
 
 Try these signals in order; stop at the first that produces a branch name:
 
-1. **`git symbolic-ref refs/remotes/origin/HEAD`** — canonical source when a remote is configured. Output like `refs/remotes/origin/main` → parse the trailing segment as the branch name.
-2. **`git symbolic-ref HEAD`** — fallback for repos without a remote. Output like `refs/heads/main` → parse the trailing segment. (On a detached HEAD this returns non-zero; fall through.)
-3. **`git branch --show-current`** — final git-based fallback; returns the current branch name or empty.
-
-**Wrapper mode**: run the detection against the `SOURCE_ROOT` repo (inner folder's `.git`), since that is the repo downstream commands operate on for source-code git operations. If wrapper mode AND the outer workspace also has a `.git`, the inner repo's default branch is the one that matters.
+1. **`git -C "$SOURCE_ROOT" symbolic-ref refs/remotes/origin/HEAD`** — canonical source when a remote is configured. Output like `refs/remotes/origin/main` → parse the trailing segment as the branch name.
+2. **`git -C "$SOURCE_ROOT" symbolic-ref HEAD`** — fallback for repos without a remote. Output like `refs/heads/main` → parse the trailing segment. (On a detached HEAD this returns non-zero; fall through.)
+3. **`git -C "$SOURCE_ROOT" branch --show-current`** — final git-based fallback; returns the current branch name or empty.
 
 ### 2.2: Confirm or ask
 
