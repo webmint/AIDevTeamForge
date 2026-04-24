@@ -55,6 +55,15 @@ Read `CLAUDE.md` and `AGENTS.md` at project root — **whichever exist**. Each c
 - `{{TYPE_CHECK_COMMAND}}` — render from `TYPE_CHECK_COMMANDS` array (see per-stack rendering rule below). Single-stack: `TYPE_CHECK_COMMANDS[0]`. Multi-stack: paired rendering inline.
 - `{{LINT_COMMAND}}` — render from `LINT_COMMANDS` array (see per-stack rendering rule below). Single-stack: `LINT_COMMANDS[0]`. Multi-stack: paired rendering inline.
 
+**Runner prefix source for all command emissions** (applies to the 4 placeholders above + per-package commands in `{{PACKAGE_STACKS_SECTION}}` + `{{DEV_COMMANDS}}` + any other command composed during populate):
+
+When composing any command string, the runner prefix (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / etc.) comes from `detection_report.package_manager.tool` in the Phase 1 Detection Report. Phase 1 already selected the runner from observable lockfile signals at SOURCE_ROOT (see `detect.md` → "Command-runner selection") and encoded it in the Report. Re-deriving the runner here — from defaults, heuristics, or re-inspecting lockfiles — opens a runtime-to-runtime drift surface and is the root cause of past inconsistencies where one runtime emitted `yarn build` and another emitted `npm run build` on the same project.
+
+- Multi-command ecosystems (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / `pdm` / `uv` / `bundle exec` for Ruby): render as `<runner> run <script>` or `<runner> <script>` per the ecosystem convention (e.g., `yarn build:raw`, `poetry run build`, `bundle exec rake test`).
+- Single-command ecosystems (`cargo`, `go`, `swift`): bare command, no runner prefix (e.g., `cargo build`, `go build ./...`, `swift build`).
+
+Phase 1's `BUILD_COMMANDS` / `TYPE_CHECK_COMMANDS` / `LINT_COMMANDS` / `TEST_COMMANDS` arrays already carry the correct runner prefix for each stack — use them verbatim. Only compose fresh runner-prefixed commands when those arrays lack coverage (e.g., constructing a per-package command that isn't in the stack arrays, or deriving a dev-server command for `{{DEV_COMMANDS}}`) — and in that case, read the runner from `detection_report.package_manager.tool`, not from re-inspection.
+
 **Per-stack rendering rule for the 4 placeholders above** (applies when `len(LANGUAGES) > 1`):
 
 Each element pairs with its language identifier so readers can tell which command applies where:
@@ -196,7 +205,7 @@ Extract actual dev / build / test / lint commands. Rendering branches primarily 
 
 #### Single-package (`len(PACKAGES_DETECTED) <= 1`)
 
-Flat markdown list from the single package's (or SOURCE_ROOT's) manifest scripts. Use `BUILD_COMMANDS[0]` / `TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` from Phase 1 for non-dev commands; extract `scripts.dev` (or the language equivalent — e.g., `pyproject.toml [tool.poetry.scripts]` for Python, Procfile `dev:` target for Ruby, etc.) from the manifest for the dev-server command. Use the correct command runner (`npm` / `yarn` / `pnpm` / `cargo` / `go` / `make` / `poetry`, etc.) based on lockfiles and manifest.
+Flat markdown list from the single package's (or SOURCE_ROOT's) manifest scripts. Use `BUILD_COMMANDS[0]` / `TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` from Phase 1 for non-dev commands; extract `scripts.dev` (or the language equivalent — e.g., `pyproject.toml [tool.poetry.scripts]` for Python, Procfile `dev:` target for Ruby, etc.) from the manifest for the dev-server command. Apply the runner prefix per "Runner prefix source for all command emissions" above (5.1) — read it from `detection_report.package_manager.tool`, do not re-derive from lockfiles here.
 
 Example:
 ```markdown
