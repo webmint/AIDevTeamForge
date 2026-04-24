@@ -168,12 +168,87 @@ def clear_state() -> None:
         STATE_FILE.unlink()
 
 
-# ─── CLI handlers (still stubs) ──────────────────────────────────────────────
+# ─── Value coercion + path walking ───────────────────────────────────────────
+
+
+def coerce_value(raw: str) -> Any:
+    """Map shell string to a typed Python value. No validation — shape only.
+
+    Rules (applied in order):
+      - "null"            → None
+      - integer literal   → int
+      - float literal     → float
+      - otherwise         → str (raw)
+
+    Bool coercion is intentionally absent: no top-level schema field is bool.
+    """
+    if raw == "null":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    return raw
+
+
+def walk_to_parent(state: dict[str, Any], path: str) -> tuple[dict[str, Any], str]:
+    """Walk a dotted path; return (parent_dict, final_key).
+
+    Raises KeyError for unknown intermediate segment, TypeError if an
+    intermediate segment resolves to something other than a dict.
+    """
+    parts = path.split(".")
+    cur: Any = state
+    for p in parts[:-1]:
+        if not isinstance(cur, dict):
+            raise TypeError(f"path segment {p!r} parent is not a dict")
+        if p not in cur:
+            raise KeyError(f"unknown field segment {p!r}")
+        cur = cur[p]
+    if not isinstance(cur, dict):
+        raise TypeError(f"final parent for {path!r} is not a dict")
+    return cur, parts[-1]
+
+
+# ─── CLI handlers ────────────────────────────────────────────────────────────
 
 
 def cmd_set(args: argparse.Namespace) -> int:
-    print(f"set: not implemented (field={args.field}, value={args.value})", file=sys.stderr)
-    return 2
+    state = load_state()
+    try:
+        parent, key = walk_to_parent(state, args.field)
+    except (KeyError, TypeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    if key not in parent:
+        print(
+            f"error: unknown field {args.field!r}. Use `status` to list known fields.",
+            file=sys.stderr,
+        )
+        return 2
+
+    current = parent[key]
+    if isinstance(current, list):
+        print(
+            f"error: field {args.field!r} is a list; use the appropriate add-* "
+            f"subcommand instead of `set`.",
+            file=sys.stderr,
+        )
+        return 2
+
+    parent[key] = coerce_value(args.value)
+
+    if args.reason is not None:
+        reasons = state.setdefault("_reasons", {})
+        reasons[args.field] = args.reason
+
+    save_state(state)
+    return 0
 
 
 def cmd_add_package(args: argparse.Namespace) -> int:
