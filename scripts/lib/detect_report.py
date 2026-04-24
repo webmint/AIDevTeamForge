@@ -11,9 +11,21 @@ Stdlib only. No third-party dependencies. Target Python: 3.8+.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
+
+
+# ─── Paths ───────────────────────────────────────────────────────────────────
+# The wizard invokes this tool from the target project root. `.devforge/` is
+# created by install.sh; we still mkdir defensively for ad-hoc / test use.
+
+DEVFORGE_DIR = Path(".devforge")
+STATE_FILE = DEVFORGE_DIR / ".detection-report-state.json"
+OUTPUT_FILE = DEVFORGE_DIR / "detection_report.yaml"
 
 
 # ─── Schema ──────────────────────────────────────────────────────────────────
@@ -119,6 +131,41 @@ class DetectionReport:
     packages: list[Package] = field(default_factory=list)
 
     optional: OptionalSection = field(default_factory=OptionalSection)
+
+
+# ─── State file RW ───────────────────────────────────────────────────────────
+# State between set / add-package / status / compose calls is persisted as
+# JSON. Shape mirrors dataclasses.asdict(DetectionReport()). The state file
+# is ephemeral — compose deletes it after successful emit.
+
+
+def default_state() -> dict[str, Any]:
+    """Return a fresh state dict matching the DetectionReport default shape."""
+    return asdict(DetectionReport())
+
+
+def load_state() -> dict[str, Any]:
+    """Load existing state, or return default shape if no state file exists."""
+    if not STATE_FILE.exists():
+        return default_state()
+    with STATE_FILE.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_state(state: dict[str, Any]) -> None:
+    """Write state atomically (temp file + rename) to resist partial writes."""
+    DEVFORGE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = STATE_FILE.with_suffix(STATE_FILE.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, sort_keys=False)
+        f.write("\n")
+    os.replace(tmp, STATE_FILE)
+
+
+def clear_state() -> None:
+    """Delete the state file. Called by compose after successful emit."""
+    if STATE_FILE.exists():
+        STATE_FILE.unlink()
 
 
 # ─── CLI handlers (still stubs) ──────────────────────────────────────────────
