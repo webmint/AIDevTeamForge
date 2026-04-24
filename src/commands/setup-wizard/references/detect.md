@@ -301,7 +301,17 @@ Phase 1 ends with emitting a structured Detection Report. This is the handoff fr
 
 4. **Per-package commands are per-package-specific.** Each `packages[]` entry requires `build_command` / `lint_command` / `type_check_command` / `test_command` read from THAT package's own `scripts` block (or manifest equivalent). A generic fallback (e.g., `yarn build` applied uniformly) is allowed only if that package's manifest has no scripts AND a language default applies — in which case set `command_source: fallback`. Otherwise `command_source: manifest`.
 
-5. **Workspace members vs utility manifests.** Only directories that are declared workspace members (in `package.json` `workspaces`, `pnpm-workspace.yaml`, `lerna.json`, Cargo workspace members, Go workspace `use` directives, etc.) go in `packages[]`. Directories with a manifest but not declared as workspace members (ad-hoc script folders, vendored tools) go in `optional.utility_manifests[]`. If the repo has no workspace declaration, every manifest location is a package.
+5. **Workspace members vs utility manifests.** Workspace-member membership requires TWO conditions to both hold:
+   - **(a)** The directory matches a workspace-declaration entry (`packages/*` glob, `apps/*` glob, or explicit listing in `package.json` `workspaces` / `pnpm-workspace.yaml` / `lerna.json` / Cargo `[workspace] members` / Go workspace `use`).
+   - **(b)** The directory contains a valid manifest file (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.).
+
+   Resolution table:
+   - **(a) AND (b)** → goes in `packages[]` as a workspace member.
+   - **(a) only** (glob-match with no manifest): skip entirely — do NOT include in `packages[]` OR `optional.utility_manifests[]`. The directory is an empty placeholder, not a workspace member.
+   - **(b) only** (manifest with no workspace declaration, e.g., `scripts/package.json` in a `workspaces: ["packages/*", "apps/*"]` repo): goes in `optional.utility_manifests[]`.
+   - **Neither**: skip.
+
+   If the repo has no workspace declaration at all, every directory containing a manifest is a package (condition (a) is vacuous).
 
 6. **Wrapper-mode prefix** (`cd SOURCE_ROOT && ...`) applies to per-package commands as well as stack-level commands.
 
