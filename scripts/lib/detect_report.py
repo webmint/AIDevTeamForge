@@ -341,6 +341,25 @@ def _coerce_opt(v: Any) -> Any:
 
 
 def cmd_add_package(args: argparse.Namespace) -> int:
+    pkg_dir = Path(args.path)
+    manifest_path = pkg_dir / args.manifest
+
+    if not pkg_dir.is_dir():
+        print(
+            f"error: --path {args.path!r} is not a directory under the current "
+            f"working directory. Run `add-package` from the target project root "
+            f"and pass a relative path that exists on disk.",
+            file=sys.stderr,
+        )
+        return 2
+    if not manifest_path.is_file():
+        print(
+            f"error: manifest {str(manifest_path)!r} does not exist. "
+            f"Check --path and --manifest point to a real file.",
+            file=sys.stderr,
+        )
+        return 2
+
     state = load_state()
     entry = {
         "path": args.path,
