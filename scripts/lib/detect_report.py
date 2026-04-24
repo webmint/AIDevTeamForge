@@ -308,8 +308,53 @@ def cmd_add_enforcement_tool(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    print("status: not implemented", file=sys.stderr)
-    return 2
+    state = load_state()
+    for line in render_status(state):
+        print(line)
+    return 0
+
+
+def render_status(state: dict[str, Any]) -> list[str]:
+    """Produce one line per top-level field (recursing into nested dicts).
+
+    - Scalar None        → `<path>: UNSET`
+    - Scalar set         → `<path>: <value>`
+    - List field         → `<path>: N entries`
+    - Nested dict        → recurse, prefixing keys with `<path>.`
+    - `_reasons` footer  → trailing line if any reasons stashed
+    """
+    out: list[str] = []
+    # Iterate dataclass field order for parity-diff stability.
+    for f in _report_field_names():
+        if f == "_reasons":
+            continue
+        out.extend(_render_field(f, state.get(f)))
+
+    reasons = state.get("_reasons")
+    if reasons:
+        n = len(reasons)
+        out.append(f"_reasons: {n} {'entry' if n == 1 else 'entries'}")
+    return out
+
+
+def _report_field_names() -> list[str]:
+    from dataclasses import fields as dc_fields
+
+    return [f.name for f in dc_fields(DetectionReport)]
+
+
+def _render_field(path: str, value: Any) -> list[str]:
+    if value is None:
+        return [f"{path}: UNSET"]
+    if isinstance(value, list):
+        n = len(value)
+        return [f"{path}: {n} {'entry' if n == 1 else 'entries'}"]
+    if isinstance(value, dict):
+        lines: list[str] = []
+        for sub_key, sub_val in value.items():
+            lines.extend(_render_field(f"{path}.{sub_key}", sub_val))
+        return lines
+    return [f"{path}: {value}"]
 
 
 def cmd_compose(args: argparse.Namespace) -> int:
