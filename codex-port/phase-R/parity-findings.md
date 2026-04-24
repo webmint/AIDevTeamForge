@@ -756,22 +756,33 @@ Both runtimes optimized past the emit because the spec didn't make proceeding-wi
 
 ---
 
-### Finding 25 — NEW IN RUN 2 — MEDIUM — Codex uses shell + language-runtime execution for detection tasks where direct file reads suffice
+### Finding 25 — NEW IN RUN 2 — MEDIUM — Codex implements brownfield detection as a generated script, not as per-manifest LLM reasoning
 
-**Severity**: MEDIUM (portability + fragility + potential silent partial failures)
+**Severity**: MEDIUM (applies hidden filters/defaults not spec-derived; causes Findings 13/16/26-style divergence downstream)
 
-**Observed (Run 2)**: Codex-R2 invoked `node -e '<complex fs operations>'` during Phase 3 to enumerate per-package records — a 16+ line JavaScript one-liner with `fs.readdirSync` / `fs.existsSync`. **The command errored** (`[eval]:1` syntax error in output). Codex had to retry or silently work around. Claude-R2 accomplished the same task via direct Read tool + conversational memory carried from Phase 1.
+**Framing refined via direct inquiry** (user asked Codex to self-report its tool usage during the session):
+- Codex has no structured Read tool. All file reads route through `exec_command` (shell). Primary read pattern: `sed -n 'start,endp' <file>`. Primary search: `rg --files` / `rg -n`. Primary directory enumeration: `find` / `ls -la`. These are fine.
+- Writes go through `apply_patch` (proper diff tool) — also fine.
+- The problem pattern is **bulk-parse-via-script**: Codex used `node -e '<complex fs operations>'` a few times to parse many `package.json` files at once and generate structured output (`PACKAGES_DETECTED` / `PACKAGE_STACKS` metadata). One node one-liner errored mid-run (`[eval]:1`) but Codex continued.
+
+So the real issue isn't "Codex uses node" — it's **detection-as-script vs detection-as-reasoning**. Claude carries per-manifest content in conversational memory and reasons about each one individually. Codex generates a script that iterates all manifests and emits derived data. Scripts apply filters and defaults that aren't spec-derived.
+
+**Observed downstream consequences (from Run 2 diffs)**:
+- **Finding 13** (missing `packages/pkg-test`): Codex's enumeration script applied some filter that dropped it. A per-manifest LLM read wouldn't have a filter.
+- **Finding 16** (unusual ordering): script's iteration order (probably alphabetic within categories) rather than workspace-declaration order.
+- **Finding 26** (`npm run` defaults): script's default runner, not lockfile-aware. The spec rule "yarn.lock → yarn" lives in `detect.md` but the script doesn't read `detect.md`.
 
 **Impact**:
-- **Portability**: requires node to be installed at detection time. CSE has node, so worked (after error). Pure-Python / pure-Rust / pure-Go target projects would have Codex's detection fail outright.
-- **Fragility**: complex one-liners are prone to syntax errors; a single failure can silently corrupt detection (partial package enumeration → incomplete `PACKAGES_DETECTED`).
-- **Unnatural for the template**: AIDevTeamForge's `scripts/` uses Python per locked decision #5. Detection shouldn't require runtime-specific JS execution.
-- **Plausible contributor to Finding 13**: Codex missed `packages/pkg-test`, likely because its node enumeration filter excluded it for some reason (empty src? naming heuristic?). Direct file reads don't apply silent filters.
+- **Portability**: bulk-parse scripts require a language runtime (node in this case) installed at detection time. Pure-Python / pure-Rust / pure-Go target projects have Codex's bulk-parse approach fail outright.
+- **Fragility**: complex one-liners prone to syntax errors; a single failure can silently corrupt detection.
+- **Hidden drift from spec**: script-applied filters/defaults bypass spec rules because the spec is for the LLM, not for a script the LLM generates.
 
-**Proposed fix** — add to `detect.md` and `populate.md`:
-> "Per-package enumeration and similar file-scan tasks MUST use direct file reads (one read per manifest), NOT shell scripts or language-runtime one-liners. Detection must work on ANY target project language ecosystem — do not require node / python / ruby / etc. at detection time on the target machine."
+**Proposed fix** (post-R3; wait to see if Findings 13/16/26 close first via R3's batch):
 
-Applies beyond per-package work — any Phase 1 / Phase 3 detection step.
+Add to `detect.md` and `populate.md`:
+> "Detection is per-manifest reasoning, not per-project scripting. When populating `packages[]`, `per_package_commands`, or any other structured Report field, read each manifest file individually and populate the Report fields directly from what you observed — do not generate a script that emits the structured data as bulk output. Per-file reasoning keeps the detection accountable to spec rules on each entry (workspace-member check per Rule 5, lockfile-based runner selection, dep+usage double-check per Rule 2, etc.). This does NOT forbid shell use for individual reads (`sed -n`), searches (`rg`), or directory listings (`find` / `ls`) — those are the correct tools for file-by-file interaction. What's forbidden is the script-as-detection pattern: `node -e '...fs.readdirSync...emit JSON...'` or equivalent in any language."
+
+**R4 priority** — pick up only if R3 still shows Findings 13/16/26 divergence despite their direct fixes landing. If R3 closes those via the Finding 23/26/22 fixes, this Finding 25 is moot (symptom disappears when detection-as-reasoning is structurally enforced via Detection Report emit).
 
 ---
 
