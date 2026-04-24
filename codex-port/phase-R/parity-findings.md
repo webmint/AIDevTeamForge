@@ -442,6 +442,54 @@ If Codex still batches in Run 2, open escalation path: add Codex-only tightening
 4. No literal-`$SOURCE_ROOT` shell errors surfaced in either runtime's Phase 1 trace.
 5. Detection Report (R1 Resolution 1) `default_branch` field populated with `dev` on both sides.
 
+### R1 Resolution 4 — Finding 15: ground truth recorded for CSE test project
+
+**Date**: 2026-04-24
+**Commit**: _pending_
+**Files changed**: `codex-port/phase-R/parity-findings.md` only (data recording; no spec change).
+
+**Why this is separate from a spec fix**: Finding 15 is not a spec-interpretation problem — it's a data-correctness problem. Run 1 showed Claude and Codex disagreeing on the top-level build/lint commands for the CSE project. R1 Resolution 1 (Detection Report + evidence rule) is the mechanism that will make both runtimes cite their sources in Run 2, but without independently-verified ground truth, R2 scoring can only measure convergence, not correctness. This resolution records the ground truth.
+
+**Source**: `/Users/mykolakudlyk/Projects/testParity/db-cse-ui-strata/package.json` at pinned commit `9354389c6` (shared across both worktrees per PLAN §4).
+
+**Observed facts about the root manifest**:
+- No script named `build` (bare). Variants present: `build:ci`, `build:raw`, `build:core:raw`, `build:web:raw`, `build:dev`, `build:qa`, `build:prod`, `build:origin`, `build:force`.
+- No script named `lint` (bare). Variants present: `lint:core` (`lerna run --scope pkg-* lint`), `lint:web` (`lerna run --scope app-web lint`).
+- No script named `typecheck` (bare). Related: `check` (`lerna run --scope pkg-* check && lerna run --scope pkg-* build && lerna run --scope app-* check` — NB: also triggers pkg-* build, not a pure typecheck), `check-web` (app-* check only).
+- `build:ci` = `npm run bootstrap && npm run build:raw` → CI pipeline's canonical build is `build:raw`.
+
+**Ground truth (what the root-level commands SHOULD be)**:
+
+| Field | Correct value | Reasoning |
+|---|---|---|
+| `BUILD_COMMAND` | `yarn build:raw` | CI pipeline calls this path (`build:ci` → `build:raw`). Produces pkg-* raw + app-web raw. |
+| `LINT_COMMAND` | `yarn lint:core && yarn lint:web` | No bare `lint` script; correct answer is the union of pkg-* + app-web lint. |
+| `TYPE_CHECK_COMMAND` | `yarn check` (ambiguous — also builds pkg-*) OR per-package `vue-tsc --noEmit` | No clean top-level typecheck script. `check` runs builds as a side effect. Per-package `vue-tsc --noEmit` is the cleanest pure typecheck. |
+
+**Run 1 scoring against ground truth**:
+
+| Command | Claude (Run 1) | Codex (Run 1) | Ground truth | Claude correct? | Codex correct? |
+|---|---|---|---|---|---|
+| BUILD | `yarn build:raw` | `yarn build:origin` | `yarn build:raw` | ✅ | ❌ (`:origin` is not the CI path) |
+| LINT | `yarn lint:core && yarn lint:web` | `yarn lint:web` | `yarn lint:core && yarn lint:web` | ✅ | ❌ (missing `lint:core` — pkg-* packages unlinted) |
+| TYPECHECK | `vue-tsc --noEmit` (per-package) | _not reported_ | `yarn check` or `vue-tsc --noEmit` | ✅ (valid per-package) | n/a |
+
+**Finding**: Codex's root-level commands in Run 1 were **incorrect**, not just different. `yarn build:origin` is a secondary build variant, not the canonical one. `yarn lint:web` is incomplete — it skips linting of all pkg-* packages. These commands would fail in real use: a developer running them expecting "build everything" or "lint everything" would get partial results.
+
+**Root-cause hypothesis**: Codex likely picked the *first or shortest* matching script name without evaluating which script is canonical. Claude's scan went deeper — cross-referenced `build:ci` to determine the CI path, and composed `lint:core && lint:web` as a union when no bare `lint` existed.
+
+**R2 expected outcome** (with R1 Resolution 1's evidence rule applied):
+- Both runtimes must emit `build_command` with an `evidence:` citation. Correct emits will quote `package.json scripts.build:raw` (or reference `build:ci → build:raw` chain).
+- Both runtimes must emit `lint_command` with evidence. Correct emits will note the absence of a bare `lint` script and compose the pkg-* + app-web union explicitly.
+- If either runtime still emits `yarn build:origin` or `yarn lint:web` alone in R2, that's a Finding-3-fix regression — the evidence rule is being followed in form but not substance, and the spec needs tighter composition guidance (e.g., "when no bare `build` / `lint` script exists, report the CI-referenced script for build and the comprehensive-scope union for lint").
+
+**R2 verification checklist** (merges into R1 Resolution 1's checklist):
+1. Claude Detection Report: `build_command: yarn build:raw`, evidence cites `scripts.build:raw` or `build:ci` chain.
+2. Codex Detection Report: `build_command: yarn build:raw` (not `build:origin`), evidence cites the same.
+3. Claude Detection Report: `lint_command: yarn lint:core && yarn lint:web`, evidence notes absence of bare `lint`.
+4. Codex Detection Report: `lint_command: yarn lint:core && yarn lint:web` (not `yarn lint:web` alone).
+5. Either runtime choosing `yarn check` for typecheck should flag in evidence that it also builds pkg-* (side effect).
+
 ---
 
 ## How to run this test again
