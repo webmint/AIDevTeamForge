@@ -39,6 +39,22 @@ For every question that applies, do NOT silently default. Do NOT infer answers. 
 
 **Where answers are stored.** As you walk through the questions below, track the user's answers in your working context. At the end of the wizard, every collected answer is written to `.devforge/project-config.json`. That file is the canonical record — every command under every CLI (Claude, Codex, and later runtimes), plus `update.sh`, reads from it. Use the variable names noted in each question (e.g. `SOURCE_ROOT`, `PROJECT_NAME`, `CLAUDE_TIER_THINK`) as the keys.
 
+## Phase 2 preflight
+
+Before asking Q0, look back through the conversation for a fenced YAML code block starting with `detection_report:`. That block is the output of Phase 1 (see `references/detect.md` → "Detection Report — Phase 1 output"). If you do not see it in the conversation history, Phase 1 didn't complete the emit — return to `references/detect.md`, emit the Detection Report as specified, then start Phase 2.
+
+Q0 through Q11 reference Report fields for their defaults:
+- Q0 (project name) → `detection_report.packages[0].manifest` + `name` field
+- Q1 (description) → README content read during Phase 1
+- Q3 (languages / frameworks) → `detection_report.languages` + `.frameworks`
+- Q4 (architecture) → `detection_report.architecture_shape` + `.architecture_evidence`
+- Q5 (error handling) → `detection_report.error_handling`
+- Q6 (API layer) → `detection_report.api_client`
+- Q7 (testing) → `detection_report.test_runner`
+- Q11 runtime URL → `detection_report.runtime_url`
+
+Without the Report, these reference-based defaults fall back to re-asking or guessing, which pollutes `project-config.json` with values the user didn't actually consent to.
+
 ## Question 0: Project Name (REQUIRED)
 
 **If a manifest file exists at SOURCE_ROOT** (`package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `pubspec.yaml`, `*.csproj`, `mix.exs`, `deno.json`, or equivalent) **and contains a name field:**

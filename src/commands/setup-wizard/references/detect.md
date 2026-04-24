@@ -284,9 +284,9 @@ Based on what you find, identify each of the following. Mark any category that g
 
 Do not invent details or fill categories with plausible-sounding defaults. An honest "uncertain — will ask the user" beats a confident wrong guess. Do not limit yourself to the indicators mentioned above — examine whatever is actually present, in whatever ecosystem the project uses.
 
-### Detection Report — required structured emit
+### Detection Report — Phase 1 output
 
-Before moving to Phase 2, emit a single **structured Detection Report** as a fenced YAML code block. This is required output, not optional prose. Both runtimes must produce the same shape so the result is mechanically comparable across runtimes and across runs. Free-form prose summaries are NOT a substitute.
+Phase 1 ends with emitting a structured Detection Report. This is the handoff from detection to Phase 2 (questions) and Phase 3 (population): both phases reference fields in the Report to avoid re-asking the user about things already detected, and Phase 3 reads Report fields to populate `.devforge/project-config.json`. A prose summary does not populate those fields — the Report is emitted as a fenced YAML code block so downstream phases can read it. Runtime-to-runtime parity of downstream artifacts (`project-config.json`, `CLAUDE.md`, `AGENTS.md`) depends on both runtimes emitting the Report in the same shape.
 
 **Rules** (apply to every report):
 
@@ -310,6 +310,8 @@ Before moving to Phase 2, emit a single **structured Detection Report** as a fen
 8. **`runtime_url` must read dev-server config** if one is present (`vite.config.ts`, `webpack.config.js` `devServer`, `next.config.js`, `angular.json` `serve`, Django `settings.py` `ALLOWED_HOSTS`, etc.). Framework defaults (`http://localhost:5173`, etc.) are acceptable ONLY when no dev-server config is detected — and must be flagged `source: framework-default`.
 
 **Shape** (fill with actual detected values; shown here with placeholder values and the rule comments removed):
+
+<!-- >>> EMIT THIS YAML BLOCK TO USER — VERBATIM — BEFORE PHASE 2 <<< -->
 
 ```yaml
 detection_report:
@@ -381,6 +383,8 @@ detection_report:
     # plus any stack-specific slots not in the core list (e.g., mobile_platform, ml_framework).
     # Keep key names stable across runs so parity diffs stay comparable.
 ```
+
+<!-- >>> END OF REQUIRED EMIT <<< -->
 
 After emitting the report, proceed to Phase 2. Phase 3 (`references/populate.md`) reads these fields when populating `.devforge/project-config.json`; the mapping from report fields to config fields is defined there.
 
