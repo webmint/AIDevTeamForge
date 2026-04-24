@@ -334,14 +334,14 @@ For each package `p` in `PACKAGES_DETECTED` (from Phase 1), compose a record by 
 2. Compose the record with these fields:
    - `path` — `p.path` (relative to SOURCE_ROOT)
    - `language` — `p.language_hint` (displayed verbatim as captured)
-   - `framework` — `p.framework_hint` if set; else `FRAMEWORKS[i]` if `i >= 0`; else `"—"`
+   - `framework` — `p.framework_hint` if non-null. If `p.framework_hint == null`, emit `"—"` — do NOT fall back to `FRAMEWORKS[i]`. Library packages never inherit the app's framework: `framework_hint: null` means "this package has no app-level framework," not "fall back to project primary." Only apps with explicit framework detection show a framework label. (Fix from R3 Finding 29.)
    - `architecture` — `ARCHITECTURES[i]` if `i >= 0`; else `"—"`
    - `error_handling` — `ERROR_HANDLINGS[i]` if `i >= 0`; else `"—"`
    - `api_layer` — `API_LAYERS[i]` if `i >= 0`; else `"—"`
    - `testing` — `TESTINGS[i]` if `i >= 0`; else `"—"`
    - `build_tool` — from manifest scan of `p.path/p.manifest` if a tool is clearly declared (e.g., `"vite"` in `devDependencies` → `"Vite"`); else `BUILD_TOOLS[i]` if `i >= 0`; else `"—"`
    - `build_command` — from manifest scripts (e.g., `package.json` `scripts.build` → `"npm run build"` with actual script content; `pyproject.toml [tool.poetry.scripts]` for Poetry packages); else `BUILD_COMMANDS[i]` if `i >= 0`; else `"—"`
-   - `type_check_command` — from manifest if the package declares a custom type-check (rare; e.g., a custom tsc invocation in `scripts.typecheck`); else `TYPE_CHECK_COMMANDS[i]` if `i >= 0`; else `"—"`
+   - `type_check_command` — from manifest if the package declares a custom type-check (e.g., `scripts.typecheck` / `scripts.check`). If no dedicated script exists, check whether type-checking happens during the package's build step (common for TS library packages using `vite build` with `vite-plugin-dts` or `tsc --build` inside the build, or Vue packages using `vue-tsc` inside the build). If yes, emit `"via-build"` with the package's `build_command` as the recovery path — display as `via-build (run: <build_command>)` in the rendered table. Do NOT fall back to stack-level `TYPE_CHECK_COMMANDS[i]` (which for monorepos is usually whole-project scope — wrong for per-package verification). Use `"—"` only when the package has genuinely no type-checking (pure data/config packages). (Fix from R3 Finding 30.)
    - `lint_command` — from manifest scripts (e.g., `scripts.lint`) if custom; else `LINT_COMMANDS[i]` if `i >= 0`; else `"—"`
 
 The last four fields' fallback chain is **manifest override → per-stack array → "—"**. The manifest override captures packages with custom scripts (common in monorepos where `apps/admin` might build differently from `apps/web` even though both are TS). The per-stack array is the language default (from C.1 detection). Use `"N/A"` for fields the language has no tool for (already represented as `"N/A"` in the per-stack arrays for type-check/lint when applicable).
@@ -357,7 +357,19 @@ Store the aggregated `PACKAGE_STACKS` array in conversational memory for use in 
 
 - `len(PACKAGES_DETECTED) == 0` → replace `{{PACKAGE_STACKS_SECTION}}` with empty string. No packages means no table.
 - `len(PACKAGES_DETECTED) == 1` → replace with empty string. Single-package projects are covered by `{{ARCHITECTURE_DETAILS}}`; a 1-row table adds noise.
-- `len(PACKAGES_DETECTED) >= 2` → render the full section (header + intro + table) as below.
+- `len(PACKAGES_DETECTED) >= 2` → render the full section (header + intro + table) as below, subject to the monorepo-scale collapse rule.
+
+**Monorepo-scale collapse rule** (large, uniform monorepos produce noise otherwise; fix from R3 Finding 28):
+
+When `len(PACKAGES_DETECTED) >= 6` AND **≥80% of packages share identical non-path column values** (all of: `language`, `framework`, `architecture`, `error_handling`, `api_layer`, `testing`, `build_tool`, `build_command`, `type_check_command`, `lint_command` — compared verbatim), collapse repetitive rows into a single defaults entry:
+
+- Emit a single row labeled `_library packages (default)_` (or `_<count> library packages_`) with the shared values for each column where ≥80% of packages agree.
+- Emit one row per **deviator** — packages whose column values differ from the shared set on any field (apps with `framework != null` are always treated as deviators and rendered as individual rows regardless of shared-value count).
+- Emit one row for the workspace root (`.`) regardless of shared-value count — it's semantically distinct.
+
+The result for a 25-package uniform-library monorepo with 1 app: 3 rows (root + app deviator + defaults for ~23 library packages) instead of 25.
+
+If fewer than 80% of packages share identical values, render per-package rows as normal (no collapse). The 80% threshold is deliberate — a small minority of deviators doesn't justify collapse because readers would have to scan for the odd one out across many rows; collapse only makes sense when MOST packages are uniform.
 
 **Rendering format (multi-package):**
 

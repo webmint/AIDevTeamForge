@@ -195,6 +195,18 @@ Ask once, producing `ARCHITECTURES = [answer]` (array of length 1).
 > - Name a pattern (Clean Architecture, MVC, feature-modular, hexagonal, etc.)
 > - Defer — decide as features get built
 
+### Distinguishing Clean Architecture from hexagonal (important)
+
+Three-layer `data/`/`domain/`/`presentation/` splits can look like either Clean Architecture or hexagonal at first glance. Before presenting the detected pattern as `hexagonal`, check for Clean-specific artifacts:
+
+- **`domain/cases/` or `use-cases/` subfolder** within each feature module — this is the Clean-specific artifact (Uncle Bob's use-case layer). Its presence strongly signals Clean, not hexagonal.
+- **Repository pattern with interface-in-domain + implementation-in-data split** — data layer implements interfaces declared in domain. This is Clean's dependency inversion.
+- **Strict inward dependency direction** — domain imports from nothing; data imports from domain; presentation imports from domain + data adapters. No framework leakage into domain.
+
+When `domain/cases/` OR `use-cases/` subfolder is present alongside the three-layer split, present the detected pattern as **`Clean Architecture`**, NOT `hexagonal`. If the project is ALSO a feature-modular monorepo (packages/* with each package following this split), use **`Clean Architecture, feature-modular monorepo`** as the detected pattern label.
+
+Hexagonal (ports-and-adapters) has a similar three-layer shape but without the use-case layer — domain services are the unit of interaction, not explicit use-case classes. When in doubt and `cases/` is absent, presenting the option as "hexagonal-style" is acceptable, but when `cases/` is present, do not call it hexagonal.
+
 ### Multi-stack (`len(LANGUAGES) > 1`)
 
 First, offer the cross-stack shortcut — many monorepos apply the same architectural convention across stacks (e.g., "everything is hexagonal"):

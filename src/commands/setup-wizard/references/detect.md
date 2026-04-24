@@ -284,6 +284,26 @@ Based on what you find, identify each of the following. Mark any category that g
 
 Do not invent details or fill categories with plausible-sounding defaults. An honest "uncertain — will ask the user" beats a confident wrong guess. Do not limit yourself to the indicators mentioned above — examine whatever is actually present, in whatever ecosystem the project uses.
 
+### SFC-container and tooling-stack collapsing — BEFORE emitting `LANGUAGES[]`
+
+File-extension counts alone mislead when certain extensions are framework-owned container formats (Vue/Svelte SFCs) or when certain file classes are infrastructure not a separate app stack (tooling scripts). Apply these collapsing rules BEFORE emitting `LANGUAGES[]` and `FRAMEWORKS[]`:
+
+1. **SFC-container collapse** — `.vue`, `.svelte`, `.astro` files are NOT separate languages. Count each under the embedded script language:
+   - **Sampling**: read up to 5 files per package for `<script lang="...">` directives.
+   - `lang="ts"` → TypeScript; `lang="js"` or no `lang` → JavaScript; sample is conclusive if ≥4 of 5 agree.
+   - If inconclusive, fall back to package's `typescript` devDep + sibling `tsconfig.json` (both present → TypeScript; neither → JavaScript).
+   - Vue/Svelte/Astro appear in `FRAMEWORKS[]`, never in `LANGUAGES[]`.
+
+2. **React-family extension collapse** — `.tsx` → TypeScript, `.jsx` → JavaScript. React is a framework (goes in `FRAMEWORKS[]`), not a language.
+
+3. **Tooling-script exclusion** — `.js` / `.mjs` / `.cjs` files located at the workspace root or under a `scripts/` directory, in a project whose package manifest declares TypeScript as primary, are tooling (build helpers, codegen, env setup) — NOT a separate application stack. Exclude from `LANGUAGES[]` aggregation. Record them in the Detection Report's `optional.tooling_scripts[]` field if the user might care.
+
+4. **Monorepo coordinator exclusion** — monorepo coordinators (`Lerna`, `Nx`, `Turborepo`, `pnpm-workspaces`, `Cargo-workspace`, `Go-workspace`) populate the Detection Report's `monorepo_tool` field. They MUST NOT populate `FRAMEWORKS[]`. Coordinators are infrastructure, not frameworks.
+
+5. **Threshold rule for new language stacks** — emit a new entry in `LANGUAGES[]` only when that language represents a substantive application or library surface in one or more detected packages, not incidental tooling. Rough threshold: a language should correspond to ≥1 package whose primary source files are in that language AND which is imported/consumed by the application surface. Pure tooling does NOT qualify.
+
+**Expected outcome**: for a Vue 3 + TypeScript monorepo with Lerna coordinator, Vite build tool, and some root-level `.js` scripts, emit `LANGUAGES: [TypeScript]`, `FRAMEWORKS: [Vue 3]`, `monorepo_tool: Lerna`. Not `[TypeScript, Vue, JavaScript]` / `[Vue 3, Vite, Lerna Workspaces]`.
+
 ### Detection Report — Phase 1 output
 
 Phase 1 ends with emitting a structured Detection Report. This is the handoff from detection to Phase 2 (questions) and Phase 3 (population): both phases reference fields in the Report to avoid re-asking the user about things already detected, and Phase 3 reads Report fields to populate `.devforge/project-config.json`. A prose summary does not populate those fields — the Report is emitted as a fenced YAML code block so downstream phases can read it. Runtime-to-runtime parity of downstream artifacts (`project-config.json`, `CLAUDE.md`, `AGENTS.md`) depends on both runtimes emitting the Report in the same shape.
@@ -297,11 +317,15 @@ Phase 1 ends with emitting a structured Detection Report. This is the handoff fr
    - validation: `zod`, `yup`, `joi`, `ajv`, `pydantic`, `marshmallow`, `class-validator`
    - Use the same pattern for any library category — dep name shortlist + source-grep; never decide "none" from only one check.
 
-3. **Architecture bucket is enumerated.** `architecture_shape` MUST be one of: `layered`, `feature-modular`, `monorepo`, `feature-modular-monorepo`, `hexagonal`, `mvc`, `bloc`, `flat`, `other`. No free-form labels (e.g., `"BLoC + use-cases + repositories"` is not valid — pick the closest bucket and cite the specific indicators in `architecture_evidence`). If no bucket fits, use `other` with explicit evidence.
+3. **Architecture bucket is enumerated.** `architecture_shape` MUST be one of: `layered`, `feature-modular`, `monorepo`, `feature-modular-monorepo`, `clean`, `clean-feature-modular-monorepo`, `hexagonal`, `mvc`, `bloc`, `flat`, `other`. No free-form labels (e.g., `"BLoC + use-cases + repositories"` is not valid — pick the closest bucket and cite the specific indicators in `architecture_evidence`). If no bucket fits, use `other` with explicit evidence.
+
+   **Clean Architecture — specifier signals** (distinguishes `clean` from `hexagonal`): `domain/cases/` or `use-cases/` subfolder within each feature module; repository pattern with interface-in-domain + implementation-in-data split; dependency direction strictly inward (domain imports from nothing; data imports from domain; presentation imports from domain + data adapters). The `cases/` subfolder is the clearest Clean-specific artifact — distinguishes Clean from hexagonal even when both exhibit three-layer structure. When `cases/` is present alongside feature-modular monorepo layout, emit `clean-feature-modular-monorepo`, not `hexagonal`.
 
 4. **Per-package commands are per-package-specific.** Each `packages[]` entry requires `build_command` / `lint_command` / `type_check_command` / `test_command` read from THAT package's own `scripts` block (or manifest equivalent). A generic fallback (e.g., `yarn build` applied uniformly) is allowed only if that package's manifest has no scripts AND a language default applies — in which case set `command_source: fallback`. Otherwise `command_source: manifest`.
 
    **Root-scripts isolation.** Do not infer per-package commands from root / workspace-coordinator scripts when the package manifest contains its own scripts. Root scripts are stack-level only (they populate `build_command` at the Detection Report top level, not per-package) and MUST NOT be copied into `packages[]` entries. If a package's manifest has its own `scripts.build` etc., use those verbatim for that package's record — never fall back to the root's `scripts.build` when the package has its own.
+
+   **No abbreviation in emitted `packages[]`.** The `packages[]` array in the emitted YAML Report MUST contain one entry per workspace member verbatim — no `# ... additional N packages follow the same pattern` comment stand-ins, no "similar to above" shortcuts, no name-only summary lists. Even for large monorepos (25+, 50+ packages), emit every record in full. The Report is consumed by `populate.md` §5.5 as the source of truth for `project-config.json.PACKAGE_STACKS`; abbreviation breaks that handoff and silently drops per-package detail from downstream rendering.
 
 5. **Workspace members vs utility manifests.** Workspace-member membership requires TWO conditions to both hold:
    - **(a)** The directory matches a workspace-declaration entry (`packages/*` glob, `apps/*` glob, or explicit listing in `package.json` `workspaces` / `pnpm-workspace.yaml` / `lerna.json` / Cargo `[workspace] members` / Go workspace `use`).
@@ -325,9 +349,11 @@ Phase 1 ends with emitting a structured Detection Report. This is the handoff fr
 
 9. **README scope — descriptive prose only.** README content is authoritative ONLY where a question in `references/questions.md` explicitly names it as a source (currently: Q1 `PROJECT_DESCRIPTION` quotes README first paragraph). For every other Detection Report field — commands, architecture, package membership, runtime URL, API layer, error handling, etc. — README text is NOT an authoritative source. Structured detection values come from manifests, lockfiles, config files, and spec rules (runner selection, workspace-member rule, dep+usage check, etc.). When README and manifest-based detection agree, cite the manifest evidence; when they conflict, follow the spec rule and ignore the README. Do not let README prose concreteness bias command emission, architecture labeling, or other structured-field population.
 
-**Shape** (fill with actual detected values; shown here with placeholder values and the rule comments removed):
+**Shape** (fill with actual detected values; shown here with placeholder values and the rule comments removed).
 
-<!-- >>> EMIT THIS YAML BLOCK TO USER — VERBATIM — BEFORE PHASE 2 <<< -->
+**About the `<!-- >>> EMIT <<< -->` markers**: these are authoring anchors for spec readers, NOT content to emit. Render only the fenced YAML code block between them. Strip the HTML comment markers from your output — the YAML fence (```` ```yaml ... ``` ````) is itself the parser anchor for downstream tooling.
+
+<!-- >>> EMIT THIS YAML BLOCK TO USER — VERBATIM — BEFORE PHASE 2 — STRIP THESE COMMENT MARKERS <<< -->
 
 ```yaml
 detection_report:
