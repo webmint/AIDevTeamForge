@@ -55,6 +55,8 @@ Q0 through Q11 reference Report fields for their defaults:
 
 Without the Report, these reference-based defaults fall back to re-asking or guessing, which pollutes `project-config.json` with values the user didn't actually consent to.
 
+**General rule for Report-referenced questions.** For every question listed above with a Report counterpart, the flow is: read the Report field → present its value as the default → ask the user to confirm or override. This applies even when the question's own prose describes a fallback detection path — the Report field is the primary source; the fallback runs only when the Report field is `null` or explicitly flagged as a low-confidence default (e.g., `source: framework-default` on `runtime_url`). Never skip the Report and jump straight to fallback detection — that re-opens the runtime-to-runtime drift surface the Report was designed to close.
+
 ## Question 0: Project Name (REQUIRED)
 
 **If a manifest file exists at SOURCE_ROOT** (`package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `pubspec.yaml`, `*.csproj`, `mix.exs`, `deno.json`, or equivalent) **and contains a name field:**
@@ -585,7 +587,19 @@ For projects that legitimately span multiple categories (e.g., a mobile app with
 
 Pre-detect a suggested dev-server URL from Phase 1 detection, then ask the user to confirm or override.
 
-**Pre-detection logic** (use these signals in order; stop at the first match):
+**Primary source — Detection Report's `runtime_url` field.** Read `detection_report.runtime_url` from the Phase 1 Detection Report. If `value` is populated AND `source` is not `framework-default`, use it verbatim as the suggested URL and skip the fallback logic below:
+
+> I found your dev server URL at `<runtime_url.value>` (from `<runtime_url.source>`). Confirm or override?
+>
+> Options:
+> - Confirm
+> - Override — enter a different URL
+
+Store the confirmed URL as `AC_RUNTIME_URL`.
+
+If the Report's `runtime_url.value` is `null` OR its `source` is `framework-default`, fall through to the fallback logic below — the Report didn't find a concrete dev-server config, so we guess from scripts or framework defaults.
+
+**Fallback pre-detection logic** (use only when the Detection Report's `runtime_url` is `null` or flagged `framework-default` — these signals in order; stop at the first match):
 
 1. **Explicit port flag in scripts**: scan the primary `package.json`'s `scripts.dev` / `scripts.start` for `--port <N>` or `PORT=<N>` — if found, use `<N>`.
 2. **Framework defaults** (from detected `FRAMEWORKS[0]` or `PACKAGE_STACKS` for the frontend package):
