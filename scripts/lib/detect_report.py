@@ -227,6 +227,20 @@ _REQUIRED_NONEMPTY_LISTS: tuple[str, ...] = ("languages", "packages")
 # Can expand in Phase 4 if R5 evidence shows a gap.
 _NULL_REASON_REQUIRED: tuple[str, ...] = ("runtime_url.value",)
 
+# Library-category scalars. When set to a non-null value, --evidence must
+# accompany the call. Evidence is stashed in state["_evidence"] and enforces
+# LLM discipline per detect.md Rule 6 (dep+usage double-check); evidence is
+# not emitted to the YAML today (schema promotion to {value, evidence}
+# objects deferred to Phase 4 if R5 shows populate.md wants it).
+_LIBRARY_CATEGORY_FIELDS: tuple[str, ...] = (
+    "auth_layer",
+    "api_client",
+    "state_management",
+    "styling",
+    "routing",
+    "validation_library",
+)
+
 
 # ─── Value coercion + path walking ───────────────────────────────────────────
 
@@ -321,11 +335,28 @@ def cmd_set(args: argparse.Namespace) -> int:
         )
         return 2
 
+    if (
+        new_value is not None
+        and args.field in _LIBRARY_CATEGORY_FIELDS
+        and args.evidence is None
+    ):
+        print(
+            f"error: library-category field {args.field!r} cannot be set to a "
+            f"non-null value without --evidence. Cite the dep + usage signal "
+            f"(e.g. --evidence \"@okta/okta-vue in deps + plugin install\").",
+            file=sys.stderr,
+        )
+        return 2
+
     parent[key] = new_value
 
     if args.reason is not None:
         reasons = state.setdefault("_reasons", {})
         reasons[args.field] = args.reason
+
+    if args.evidence is not None:
+        evidence = state.setdefault("_evidence", {})
+        evidence[args.field] = args.evidence
 
     set_fields = state.setdefault("_set_fields", [])
     if args.field not in set_fields:
@@ -664,6 +695,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_set.add_argument("field", help="Field name (supports dotted paths, e.g. runtime_url.source).")
     p_set.add_argument("--value", required=True, help="Value to set.")
     p_set.add_argument("--reason", help="Required when value is null for null-allowed fields.")
+    p_set.add_argument("--evidence", help="Required for library-category fields set to non-null.")
     p_set.set_defaults(func=cmd_set)
 
     p_add = sub.add_parser("add-package", help="Append one package record to packages[].")
