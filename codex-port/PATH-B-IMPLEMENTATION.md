@@ -299,6 +299,29 @@ This is the evidence collection against §10.6 ship-criteria.
 
 ---
 
+## Deferred decisions — revisit after Path B ship
+
+Decisions made during implementation for MVP simplicity, worth reconsidering
+once §10.6 ship criteria are met and Path B proves viable in R5.
+
+1. **Enum tables location** (Step 2.1, decided 2026-04-25)
+   - **Current**: enum tables live as module-level dicts inside `scripts/lib/detect_report.py`.
+   - **Alternative considered**: extract to a schema file (e.g. `src/commands/setup-wizard/references/detect_schema.json`) so spec and composer share one source of truth.
+   - **Revisit when**: Path B ships successfully (Phase 7 passes §10.6). At that point the spec will reference the composer CLI heavily — single-source schema would reduce drift risk between spec-stated enums and composer-enforced enums.
+
+2. **`OptionalSection.extra` field** (Step 1.2, flagged 1.7)
+   - **Current**: `OptionalSection.extra: dict[str, Any]` exists in schema but no CLI path populates it; emitter skips when empty.
+   - **Alternative**: drop field entirely if Phase 2 doesn't need it.
+   - **Revisit when**: end of Phase 2. If still unused, propose a cleanup commit.
+
+3. **YAML quoting style vs template** (Step 1.7, flagged)
+   - **Current**: emitter uses minimal-necessary quoting (`source_root: .`, `evidence: yarn.lock at SOURCE_ROOT`).
+   - **Template uses defensive quoting** (`"."`, `"yarn.lock at SOURCE_ROOT"`).
+   - Both parse identically; diverge only in how string readers render them.
+   - **Revisit when**: R5 parity diff results. If diff noise is non-trivial, tighten emitter to match template style.
+
+---
+
 ## Step-count summary
 
 - Phase 0: 3 steps
