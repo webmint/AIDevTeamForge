@@ -301,6 +301,8 @@ Phase 1 ends with emitting a structured Detection Report. This is the handoff fr
 
 4. **Per-package commands are per-package-specific.** Each `packages[]` entry requires `build_command` / `lint_command` / `type_check_command` / `test_command` read from THAT package's own `scripts` block (or manifest equivalent). A generic fallback (e.g., `yarn build` applied uniformly) is allowed only if that package's manifest has no scripts AND a language default applies — in which case set `command_source: fallback`. Otherwise `command_source: manifest`.
 
+   **Root-scripts isolation.** Do not infer per-package commands from root / workspace-coordinator scripts when the package manifest contains its own scripts. Root scripts are stack-level only (they populate `build_command` at the Detection Report top level, not per-package) and MUST NOT be copied into `packages[]` entries. If a package's manifest has its own `scripts.build` etc., use those verbatim for that package's record — never fall back to the root's `scripts.build` when the package has its own.
+
 5. **Workspace members vs utility manifests.** Workspace-member membership requires TWO conditions to both hold:
    - **(a)** The directory matches a workspace-declaration entry (`packages/*` glob, `apps/*` glob, or explicit listing in `package.json` `workspaces` / `pnpm-workspace.yaml` / `lerna.json` / Cargo `[workspace] members` / Go workspace `use`).
    - **(b)** The directory contains a valid manifest file (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.).
@@ -313,11 +315,15 @@ Phase 1 ends with emitting a structured Detection Report. This is the handoff fr
 
    If the repo has no workspace declaration at all, every directory containing a manifest is a package (condition (a) is vacuous).
 
+   **Workspace-root exception.** When a workspace declaration exists at the root, the root directory's manifest is included in `packages[]` as a workspace member even though the root is not matched by its own member globs (e.g., `workspaces: ["packages/*", "apps/*"]` does not glob-match `.` itself). The root's workspace-coordinator role is sufficient for inclusion. Only applies to repos WITH a workspace declaration; in single-package or non-workspace repos, the root is trivially the sole package.
+
 6. **Wrapper-mode prefix** (`cd SOURCE_ROOT && ...`) applies to per-package commands as well as stack-level commands.
 
 7. **Evidence required for every non-null value.** A file path, a dep name, or a usage-pattern excerpt — so the user (and later parity diffs) can verify. Either as an inline `# evidence: ...` comment or as a structured `evidence:` sub-field.
 
 8. **`runtime_url` must read dev-server config** if one is present (`vite.config.ts`, `webpack.config.js` `devServer`, `next.config.js`, `angular.json` `serve`, Django `settings.py` `ALLOWED_HOSTS`, etc.). Framework defaults (`http://localhost:5173`, etc.) are acceptable ONLY when no dev-server config is detected — and must be flagged `source: framework-default`.
+
+9. **README scope — descriptive prose only.** README content is authoritative ONLY where a question in `references/questions.md` explicitly names it as a source (currently: Q1 `PROJECT_DESCRIPTION` quotes README first paragraph). For every other Detection Report field — commands, architecture, package membership, runtime URL, API layer, error handling, etc. — README text is NOT an authoritative source. Structured detection values come from manifests, lockfiles, config files, and spec rules (runner selection, workspace-member rule, dep+usage check, etc.). When README and manifest-based detection agree, cite the manifest evidence; when they conflict, follow the spec rule and ignore the README. Do not let README prose concreteness bias command emission, architecture labeling, or other structured-field population.
 
 **Shape** (fill with actual detected values; shown here with placeholder values and the rule comments removed):
 
