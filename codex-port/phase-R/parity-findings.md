@@ -312,6 +312,70 @@ Neither runtime alone produces reliable detection. This is the core insight: the
 
 ---
 
+## Run 1 Resolutions
+
+Fixes applied between Run 1 and Run 2. Run 2 verification uses this list as its checklist — each resolution names what it should close AND what could regress, so Run 2 can detect both "fix worked" and "fix broke something else."
+
+### R1 Resolution 1 — Finding 3 fix: forced structured Detection Report
+
+**Date**: 2026-04-24
+**Commit**: _pending_
+**Files changed**:
+- `src/commands/setup-wizard/references/detect.md` — added a required **Detection Report** section (fenced YAML emit) with 8 rules governing the emit.
+
+**What changed (substance)**:
+- Phase 1 now ends with a required structured Detection Report. Free-form prose summary is explicitly NOT a substitute. Both runtimes emit the same YAML shape.
+- Every field is required. `null` must carry a one-line reason — never omitted.
+- **Dep+usage double-check** rule for library-category fields (auth, api-client, state-mgmt, styling, routing, error-handling, validation): `null` only if BOTH dep-manifest scan AND source-usage grep return empty. Canonical library/pattern shortlists listed inline.
+- **Architecture bucket enumerated**: `layered | feature-modular | monorepo | feature-modular-monorepo | hexagonal | mvc | bloc | flat | other`. No free-form labels.
+- **Per-package commands are per-package-specific**: every `packages[]` entry must read its `build_command` / `lint_command` / `type_check_command` / `test_command` from THAT package's manifest. Generic fallback allowed only when the manifest has no scripts, and must be marked `command_source: fallback`.
+- **Workspace-member vs utility-manifest distinction**: only workspace-declared directories go in `packages[]`; ad-hoc script/utility manifests go in `optional.utility_manifests[]`.
+- **`runtime_url` must read dev-server config** if present (vite.config.ts, next.config.js, etc.); framework defaults are acceptable ONLY when no dev-server config exists and must be flagged `source: framework-default`.
+- Evidence sub-field or inline comment required for every non-null value.
+- Wrapper-mode prefix applies to per-package commands too.
+
+**Expected to close in Run 2** (9 findings from Run 1):
+- Finding 3 — detection granularity asymmetry (structured emit forces parity)
+- Finding 6 — architecture misdetection (enumerated bucket prevents invented labels)
+- Finding 7 — runtime-URL generic default (explicit "must read dev-server config" rule)
+- Finding 8 — purify-ts miss (dep+usage double-check rule)
+- Finding 10 — Husky missed by Codex (`enforcement_tooling[]` is a required field)
+- Finding 13 — off-by-one package count (workspace-member vs utility rule)
+- Finding 14 — per-package commands uniform fallback (per-package required command fields)
+- Finding 15 — wrong top-level build/lint command (evidence requirement + scripts-block rule)
+- Finding 16 — `PACKAGES_DETECTED` content drift (workspace-member vs utility rule)
+
+**Not expected to close** (orthogonal; need their own fixes):
+- Finding 2 — wrong git repo for default branch (needs STEP 2.1 command-template change)
+- Finding 4 — Codex batches questions (needs Phase 2 `{{ask}}` rule change)
+- Finding 1 — wrapper confirm skipped by Claude (needs Phase 0 spec wording change)
+- Finding 5 — Recommended-default UX divergence (cosmetic; deferred)
+- Finding 9 — Q11 AC-verification option reshape (needs Phase 2 question spec tightening)
+- Finding 11, 12, 17, 18 — populate/summary formatting divergences (need populate.md spec changes)
+
+**Potential regressions to watch in Run 2**:
+- **Stack fit**: unusual stacks (non-Vue/TS, non-monorepo, non-web) squeezing into the canonical field set. `optional:` is the escape hatch — if either runtime leaves fields empty where stack-specific values should appear, flag it. Parity test is single-project today; stack-fit will surface when test matrix grows.
+- **Architecture bucket coerced**: runtime may pick the closest-looking bucket when evidence actually says `other`. Check `architecture_evidence` against the bucket in Run 2.
+- **Token cost**: structured emit is longer than prose summary. Watch for Codex truncation (Codex `high`-reasoning context budget). If truncation happens, consider trimming optional fields or splitting the emit across phases.
+- **Over-reporting**: dep+usage double-check could produce false positives (a lib in `devDependencies` but not actually used). Evidence field should disambiguate; mark regression if a library is named that has no source-code usage.
+- **Enforcement-tooling noise**: every detected hook/linter/formatter now required as an entry. Watch that `enforcement_tooling[]` doesn't over-include (e.g., listing Prettier/ESLint without confirming they're actively enforced, not just installed).
+
+**R2 verification checklist** (run after rerunning wizard on both sides):
+1. Both runtimes emit a fenced YAML Detection Report at end of Phase 1 — same shape, same field set.
+2. No field missing. `null` values carry a `# reason: ...` comment.
+3. `error_handling.library == "purify-ts"` on BOTH runtimes (Run 1: Claude missed).
+4. `packages[]` entries have per-package-specific commands on BOTH runtimes (Run 1: Codex uniform fallback).
+5. `architecture_shape == "feature-modular-monorepo"` (or `monorepo` if the enumerated set is revised) on BOTH runtimes (Run 1: Codex picked wrong free-form label).
+6. `runtime_url.source` references `apps/app-web/vite.config.ts` on BOTH runtimes (Run 1: Codex fell to framework default).
+7. `enforcement_tooling[]` includes Husky on BOTH runtimes (Run 1: Codex missed).
+8. `packages[]` excludes `scripts/` (listed in `optional.utility_manifests[]` instead) on BOTH runtimes — assuming `scripts/` is not declared as a workspace member.
+9. `package_manager.tool` and `package_manager.outer_tool` both populated correctly for the wrapper-mode CSE test project (outer: npm, inner: yarn).
+10. Language ordering matches Run 1 direction (TypeScript first) on both runtimes.
+
+If the fix closed all 9 findings without regressions, move on to Finding 4 (no-batching rule). If any listed regression appears, log it as a new finding under `## Run 2 — <date>` and decide whether to revise this resolution before continuing.
+
+---
+
 ## How to run this test again
 
 ```bash

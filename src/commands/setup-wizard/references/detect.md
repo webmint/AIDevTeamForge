@@ -284,6 +284,106 @@ Based on what you find, identify each of the following. Mark any category that g
 
 Do not invent details or fill categories with plausible-sounding defaults. An honest "uncertain — will ask the user" beats a confident wrong guess. Do not limit yourself to the indicators mentioned above — examine whatever is actually present, in whatever ecosystem the project uses.
 
+### Detection Report — required structured emit
+
+Before moving to Phase 2, emit a single **structured Detection Report** as a fenced YAML code block. This is required output, not optional prose. Both runtimes must produce the same shape so the result is mechanically comparable across runtimes and across runs. Free-form prose summaries are NOT a substitute.
+
+**Rules** (apply to every report):
+
+1. **Every field below is required.** If a field has no value, emit `null` plus a one-line reason (as an inline YAML comment: `# reason: ...`). Never omit a field. "I didn't detect one" is not a valid outcome — emit `null` with the specific signals checked.
+
+2. **Dep+usage double-check for library-category fields.** For `auth_layer`, `api_client`, `state_management`, `styling`, `routing`, `error_handling`, `validation_library`: run BOTH a dependency-manifest scan AND a source-code usage-pattern grep. Emit `null` only when both return empty. If either returns a hit, name the library. Canonical usage patterns to grep for the harder-to-detect categories:
+   - error_handling: `Either<`, `Result<`, `Maybe<`, `Task<`, `Try<`, `neverthrow`, `purify-ts`, `fp-ts`, `oxide.ts`, `ts-results`, `monet`
+   - validation: `zod`, `yup`, `joi`, `ajv`, `pydantic`, `marshmallow`, `class-validator`
+   - Use the same pattern for any library category — dep name shortlist + source-grep; never decide "none" from only one check.
+
+3. **Architecture bucket is enumerated.** `architecture_shape` MUST be one of: `layered`, `feature-modular`, `monorepo`, `feature-modular-monorepo`, `hexagonal`, `mvc`, `bloc`, `flat`, `other`. No free-form labels (e.g., `"BLoC + use-cases + repositories"` is not valid — pick the closest bucket and cite the specific indicators in `architecture_evidence`). If no bucket fits, use `other` with explicit evidence.
+
+4. **Per-package commands are per-package-specific.** Each `packages[]` entry requires `build_command` / `lint_command` / `type_check_command` / `test_command` read from THAT package's own `scripts` block (or manifest equivalent). A generic fallback (e.g., `yarn build` applied uniformly) is allowed only if that package's manifest has no scripts AND a language default applies — in which case set `command_source: fallback`. Otherwise `command_source: manifest`.
+
+5. **Workspace members vs utility manifests.** Only directories that are declared workspace members (in `package.json` `workspaces`, `pnpm-workspace.yaml`, `lerna.json`, Cargo workspace members, Go workspace `use` directives, etc.) go in `packages[]`. Directories with a manifest but not declared as workspace members (ad-hoc script folders, vendored tools) go in `optional.utility_manifests[]`. If the repo has no workspace declaration, every manifest location is a package.
+
+6. **Wrapper-mode prefix** (`cd SOURCE_ROOT && ...`) applies to per-package commands as well as stack-level commands.
+
+7. **Evidence required for every non-null value.** A file path, a dep name, or a usage-pattern excerpt — so the user (and later parity diffs) can verify. Either as an inline `# evidence: ...` comment or as a structured `evidence:` sub-field.
+
+8. **`runtime_url` must read dev-server config** if one is present (`vite.config.ts`, `webpack.config.js` `devServer`, `next.config.js`, `angular.json` `serve`, Django `settings.py` `ALLOWED_HOSTS`, etc.). Framework defaults (`http://localhost:5173`, etc.) are acceptable ONLY when no dev-server config is detected — and must be flagged `source: framework-default`.
+
+**Shape** (fill with actual detected values; shown here with placeholder values and the rule comments removed):
+
+```yaml
+detection_report:
+  workspace_mode: standalone            # standalone | wrapper
+  source_root: "."
+  project_state: brownfield             # empty | greenfield | brownfield
+  default_branch: main                  # from SOURCE_ROOT/.git (inner repo in wrapper mode)
+  file_count: 0                         # under SOURCE_ROOT, per STEP 1.1 exclusions
+  manifest_count: 0
+
+  languages:
+    - name: TypeScript
+      file_count: 0
+      runtime: Node
+  primary_language: TypeScript
+
+  frameworks:
+    - name: Vue 3
+      role: frontend                    # frontend | backend | library | plugin
+      evidence: "apps/app-web/package.json: vue@^3"
+
+  package_manager:
+    tool: yarn                          # npm | yarn | pnpm | bun | pip | poetry | cargo | go | ...
+    outer_tool: null                    # set only if wrapper and outer uses a different pm
+    evidence: "yarn.lock at SOURCE_ROOT"
+  monorepo_tool: null                   # Lerna | Turborepo | Nx | pnpm-workspaces | Cargo-workspace | null
+
+  build_tool: null
+  build_command: null
+  type_check_command: null
+  lint_command: null
+  test_runner: null
+
+  # Library-category fields — dep+usage double-check rule applies.
+  auth_layer: null                      # e.g., "Okta" (evidence: @okta/okta-vue in deps + plugin install)
+  api_client: null                      # e.g., "Apollo GraphQL" (evidence: @apollo/client + gql tags in src/)
+  state_management: null                # e.g., "Pinia" (evidence: pinia in deps + defineStore in src/)
+  styling: null                         # e.g., "Tailwind + SCSS"
+  routing: null                         # e.g., "vue-router"
+  error_handling:
+    library: null                       # e.g., "purify-ts"
+    usage_pattern: null                 # e.g., "Either<DataError, ...> in pkg-cse-core/src/**/data/*.ts"
+  validation_library: null
+
+  architecture_shape: flat              # enumerated — see Rule 3
+  architecture_evidence: ""             # file paths + indicators
+
+  enforcement_tooling: []               # e.g., ["Husky (pre-commit)", "lint-staged", "commitlint"]
+  ci_cd: null                           # e.g., "GitHub Actions" (evidence: .github/workflows/*.yml)
+  containerization: null                # e.g., "Dockerfile + docker-compose.yml"
+
+  runtime_url:
+    value: null                         # e.g., "https://app.local:8080"
+    source: null                        # "vite.config.ts: server.host/port/https" | "framework-default" | null
+
+  packages:
+    - path: "."                         # workspace member, relative to SOURCE_ROOT
+      manifest: package.json
+      language_hint: TypeScript
+      framework_hint: null
+      build_command: null               # read from THIS package's scripts
+      type_check_command: null
+      lint_command: null
+      test_command: null
+      command_source: manifest          # manifest | fallback (see Rule 4)
+
+  optional:
+    utility_manifests: []               # manifests outside workspace declaration (see Rule 5)
+    # plus any stack-specific slots not in the core list (e.g., mobile_platform, ml_framework).
+    # Keep key names stable across runs so parity diffs stay comparable.
+```
+
+After emitting the report, proceed to Phase 2. Phase 3 (`references/populate.md`) reads these fields when populating `.devforge/project-config.json`; the mapping from report fields to config fields is defined there.
+
 ---
 
 Detection phase complete. Proceed to Phase 2 (`references/questions.md`).
