@@ -1,279 +1,253 @@
-# {{cli.sigil}}onboard — Deep Codebase Onboarding & Documentation Generation
+# {{cli.sigil}}onboard — Codebase Documentation Generation
 
-You are running the onboarding process for an existing codebase. This command scans the project's structure and a representative sample of its source to generate comprehensive documentation that serves as the **knowledge base for all agents**. Scan depth scales by project size — see §1.3.
+You are running the onboarding process for an existing codebase. This command produces comprehensive documentation in `docs/` that serves as the **knowledge base for all agents**. Every agent reads from `docs/` before making changes; the quality and coverage of your documentation directly determines how well agents understand and work with this codebase.
 
-This command is typically run once after `{{cli.sigil}}setup-wizard` for brownfield projects — the wizard's Phase 5 summary suggests running it when `PROJECT_STATE` is `brownfield`. You can re-run it later when the codebase changes substantially (new modules, major refactor, new framework introduced); the pre-scan check in §1.0 protects existing docs on re-runs. It delegates the scan and `docs/` writing to the **tech-writer agent** operating in **onboarding mode**; the orchestrator handles pre-scan checks, post-scan verification, and memory updates.
+This command runs once after `{{cli.sigil}}setup-wizard` for brownfield projects. Re-run when the codebase changes substantially; the pre-scan check (§1.0) protects user-edited docs across re-runs.
+
+## CORE PRINCIPLE — COVER ALL CODE
+
+**Every package, every meaningful source folder, every external interface gets a documentation home.** No sample-based silence. No skipping at scale. No "we'll cluster these into one file" merges that drop substance.
+
+If the project has 23 packages, the result is 23 package docs. If it has 4 large composite packages, the result is 4 doc folders, each with sub-docs for internal concerns. The depth adapts; the coverage does not.
+
+The docs are a **substitute for first-pass code reading**. An agent should be able to read `docs/<package>/index.md` and:
+- Know what the package provides (Overview)
+- See real code (lifted, not paraphrased) for every public export
+- Identify "to add a new X, I touch Y" — from the doc alone
+- Know the dependencies before importing
+- See a real consumer pattern before writing new consumer code
+
+…all without opening source files. Source becomes a verification step, not a discovery step.
 
 ## Prerequisites
 
-1. `{{cli.sigil}}setup-wizard` must have been run — the runtime primer (`{{cli.primer}}`), agents directory, runtime config, and `.devforge/` scaffold must exist
-2. `docs/` folder must exist (placed by install, populated by setup wizard)
-3. This is an **existing project** — check `.devforge/project-config.json` for `"PROJECT_STATE": "brownfield"`. For `"greenfield"` or `"empty"` projects, skip onboard — the wizard's Phase 5 summary already routes these cases to `{{cli.sigil}}constitute` + `{{cli.sigil}}specify`, and docs emerge per-task as features ship.
+1. `{{cli.sigil}}setup-wizard` must have been run — runtime primer (`{{cli.primer}}`), agents directory, runtime config, and `.devforge/` scaffold must exist.
+2. `docs/` folder must exist (placed by install, populated by setup wizard).
+3. Project is **brownfield** — `.devforge/project-config.json` has `"PROJECT_STATE": "brownfield"`. Greenfield/empty projects skip onboard; the wizard's Phase 5 summary routes those to `{{cli.sigil}}constitute` + `{{cli.sigil}}specify`.
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
+---
+
 ## PHASE 1: Prepare Onboarding Context
 
-### 1.0: Existing-Documentation Check (pre-scan)
+### 1.0: Pre-scan Baseline Check (across all `docs/*` outputs)
 
-Before proceeding with the scan, check whether `docs/overview.md` and `docs/architecture.md` contain non-stub content. The wizard places them as stubs with placeholders substituted; an updated "real" version means someone edited them post-install.
+Before any scan, check whether `docs/` carries user-edited content from a prior onboard run.
 
-**Non-stub detection** (diff against baseline — deterministic):
+**Detection** (deterministic — diff against baseline):
 
-For each of `docs/overview.md` and `docs/architecture.md`, compare the current file against its snapshot at `.devforge/baseline/docs/<name>.md` (the wizard saves these in populate.md §5.3 as just-after-populate baselines). If the current file differs beyond trivial whitespace, treat it as **modified** — someone edited it post-install, so it has non-stub content.
+For every existing file under `docs/` (recursive), compare against its snapshot at `.devforge/baseline/docs/<...same-relative-path...>`. If the file differs beyond trivial whitespace, treat it as **user-modified**.
 
-If `.devforge/baseline/docs/<name>.md` is missing (file was placed outside the wizard's flow, or baseline was removed), do NOT silently assume stub-or-modified. Ask the user: "I can't determine whether `docs/<name>.md` carries pre-existing content — the wizard's baseline snapshot is missing. How should I proceed?" Offer the same three options: Overwrite / Merge / Abort. Fail closed rather than guess.
+If a baseline file is missing for an existing `docs/` file, do NOT silently assume stub-or-modified. Ask the user: "I can't determine whether `docs/<path>` carries pre-existing content — the baseline snapshot is missing. How should I proceed?" Offer the same three options below; fail closed.
 
-**If real content is detected** in either file, pause and ask the user:
+**If user-modified content is detected anywhere under `docs/`**, pause and ask the user once for the whole set:
 
-- **Overwrite** — discard existing content; regenerate from scan
-- **Merge** — keep existing content; tech-writer appends / updates only where safe, leaves user prose intact
-- **Abort** — skip onboard entirely
+- **Overwrite** — discard existing content; regenerate from scan.
+- **Merge** — preserve user-edited prose; regenerate only sections matching the baseline.
+- **Abort** — skip onboard; user reconciles manually.
 
-Default when uncertain: abort and let the user decide. Do not proceed silently.
+Default when uncertain: abort. Do not proceed silently.
 
-**Scope note for the user prompt**: this check covers `docs/overview.md` and `docs/architecture.md` only. Any existing files under `docs/features/` and `docs/api/` will be regenerated from scan output regardless of the choice above (features and api outputs are considered per-module/per-endpoint regenerable artifacts, not user-owned prose). If the user has hand-edited content under those directories that must be preserved, they should pick **Abort** here and reconcile manually before re-running.
-
-**If only stubs are detected**, proceed with the scan normally (§1.1).
+**If only stubs are detected** (or `docs/` is empty beyond what the wizard placed), proceed to §1.1.
 
 ### 1.1: Gather Project Knowledge
 
-Read the following files and extract the key information the tech-writer will need:
+Read the following and extract what the tech-writer needs:
 
 1. **Runtime primer** (`{{cli.primer}}`) — project name, type, framework, language, project structure, dev commands.
-2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules (Sections 3.5–3.7, 4.1–4.3, 6.1–6.4 — installed verbatim). The `[project-specific]` sections (§2 Architecture, §3.1 Type Safety, §3.3 Naming, §4.1.1/4.2.1/4.3.1 patterns, §5 Domain Rules, §6.5/6.6 workflow) are still sentinel-marked at this stage — those get populated later by `{{cli.sigil}}constitute`, which reads onboard's findings (in `docs/` and `.devforge/memory.md`) plus user-stated preferences.
-3. **`.devforge/memory.md`** — any pre-seeded knowledge from setup wizard (cross-runtime shared file — both Claude and Codex read the same memory)
+2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules. The `[project-specific]` sections are sentinel-marked at this stage; `{{cli.sigil}}constitute` populates them later from onboard's findings + user preferences.
+3. **`.devforge/project-config.json`** — wizard-detected facts: `LANGUAGES[]`, `FRAMEWORKS[]`, `WORKSPACE_MODE` (`standalone`/`wrapper`), `SOURCE_ROOT`, `manifest_count`, `packages[]`, etc.
+4. **`.devforge/memory.md`** — pre-seeded knowledge from setup wizard (cross-runtime shared file).
 
-Compile a **project brief** — a concise summary (~30 lines max) containing only what's already extractable at this stage:
+Compile a **project brief** — concise summary (~30 lines max) of what's already known: project name, type, stack, architecture pattern (if wizard captured), error handling pattern, API layer, testing framework, pre-seeded findings.
 
-- Project name, type, stack (from runtime primer + `.devforge/project-config.json`)
-- Architecture pattern (wizard Q4 answer, stored as `ARCHITECTURES[]`)
-- Error handling pattern (wizard Q5 answer, stored as `ERROR_HANDLINGS[]`)
-- API layer (wizard Q6 answer, stored as `API_LAYERS[]`)
-- Testing framework (wizard Q7 answer, stored as `TESTINGS[]`)
-- Any pre-seeded findings from `.devforge/memory.md`
+Do NOT include layer boundaries, domain entities, or naming conventions — those are the tech-writer's job to DISCOVER during scan, not preconditions.
 
-Module/directory organization is NOT part of this brief — §1.2 computes it as a separate artifact (the module map), and §2's prompt template (line 83) feeds brief + module map to the tech-writer as distinct inputs.
+### 1.2: Discover Documentation Units
 
-Do NOT include layer boundaries, domain entities, or naming conventions — those are sentinel-marked in `constitution.md` and are the tech-writer's job to DISCOVER during scan, not preconditions for the scan.
+Read `.devforge/detection_report.yaml` (or `project-config.json` if the wizard exposes it differently) to get the `packages[]` array. Each entry has a `path` field — the actual filesystem location of a manifest (package.json, Cargo.toml, pyproject.toml, go.mod, pom.xml, *.csproj, Gemfile, composer.json).
 
-### 1.2: Map Project Structure
+**A documentation unit is one of:**
 
-**Source Root awareness**: If the runtime primer specifies a Source Root other than `.` (check `{{cli.primer}}`, or `.devforge/project-config.json` `SOURCE_ROOT` field as the canonical source), use that path as the starting point for the source tree scan. All module paths will be relative to the workspace root (e.g., `SOURCE_ROOT/src/auth/`, not `src/auth/`). Cross-runtime artifacts (`specs/`, `docs/`, `.devforge/`, `constitution.md`) remain at the workspace root.
+- Each entry in `packages[]` (one unit per detected manifest).
+- If `packages[]` is empty or has only one entry pointing to the workspace/source root, **the project itself is the single unit** (single-source-tree projects).
 
-Get the full directory tree of source files. **Exclude** the ecosystem-aware ignore set setup-wizard's detection phase already uses (see `detect.md` STEP 1 "Count source files" — covers build output, dependency trees, tool caches, and cross-runtime artifacts across Rust/Java/.NET/Python/Ruby/Haskell ecosystems), plus `.claude`, `.codex`, `.devforge`, `specs`, `docs`, lock files, and binary/asset files. If the project uses an ecosystem whose build/dependency directory isn't covered there, add it to both places (canonical list lives in `detect.md`).
+**The unit's doc location** = `docs/<unit-path>/index.md`, mirroring whatever path the wizard found:
 
-From the tree, identify **module boundaries** — top-level source directories or feature directories that represent distinct areas of the codebase. Examples:
-- `src/auth/`, `src/cart/`, `src/orders/` → 3 modules
-- `src/components/`, `src/hooks/`, `src/services/`, `src/utils/` → 4 modules
-- `packages/api/`, `packages/web/`, `packages/shared/` → 3 modules (monorepo)
-- `app/models/`, `app/views/`, `app/controllers/` → 3 modules (MVC)
+- npm package at `packages/pkg-foo/` → `docs/packages/pkg-foo/index.md`
+- Rust crate at root (`my-cli/`) → `docs/my-cli/index.md`
+- Rust crate in custom folder (`workspace/crates/my-lib/`) → `docs/workspace/crates/my-lib/index.md`
+- Go module at root (path = `.`) → `docs/index.md`
+- Java module at `services/billing/` → `docs/services/billing/index.md`
+- Single-app project (`packages[]` = `[{path: "."}]`) → `docs/index.md`
 
-### 1.3: Determine Scan Strategy
+**WORKSPACE_MODE** (`standalone` or `wrapper`) is irrelevant to unit discovery — it encodes only whether LLM tooling lives inside or alongside the project folder.
 
-Based on total source file count:
+### 1.3: Determine Subagent Strategy
 
-| Source Files | Strategy | Subagents |
-|---|---|---|
-| **< 50** | Single tech-writer scans everything directly | 0 (direct scan) |
-| **50–200** | Split by top-level source dirs, one subagent per module | 1 per module |
-| **200–1000** | Two-pass: structural scan first, then subagents with smart extraction | 1 per module |
-| **1000+** | Sample-based: entry points + type files + 2-3 representative files per module | 1 per module |
+| Source files | Strategy |
+|---|---|
+| < 50 | Direct: orchestrator writes everything itself, no subagents. |
+| 50–500 | One subagent per documentation unit. Sequential or small parallel batches respecting runtime concurrency limits. |
+| 500+ | One subagent per unit, parallel batches. |
 
-## PHASE 2: Execute Onboarding Scan
-
-Launch the tech-writer agent via {{cli.subagent}} with the prompt built below. The tech-writer handles the scan + `docs/` writing. Verification and memory-append stay in the orchestrator's lane — see §3.
-
-**CRITICAL**: The tech-writer agent prompt must include:
-1. The project brief from Phase 1.1
-2. The module map from Phase 1.2
-3. The scan strategy from Phase 1.3
-4. The complete onboarding instructions (Section A below)
-
-### Prompt Template for Tech-Writer Agent
-
-Build the agent prompt using this structure:
-
-```
-You are operating in **ONBOARDING MODE**. This is NOT your normal task-documentation workflow. You are performing a one-time deep scan of an existing codebase to generate comprehensive project documentation.
-
-## Project Brief
-
-[Insert project brief from Phase 1.1]
-
-## Module Map
-
-[Insert module list from Phase 1.2]
-
-## Scan Strategy
-
-[Insert strategy from Phase 1.3: direct / subagent-per-module / two-pass / sample-based]
-
-## Mode
-
-[Insert mode from §1.0: `overwrite` — fresh write, replace any existing content in docs/ with scan output | `merge` — preserve user-modified prose in docs/overview.md and docs/architecture.md; update sentinels or empty sections only; features/ and api/ write unconstrained | `fresh` — no pre-existing content detected, write normally]
-
-## Your Mission
-
-Generate complete project documentation in `docs/` that will serve as the **knowledge base for all agents**. Every agent reads from `docs/` before making changes. The quality of your documentation directly determines how well agents understand and work with this codebase.
-
-## Documentation Requirements
-
-Docs save future per-task tokens: an agent should find what it needs in docs faster than re-deriving from source. Density target varies by read frequency.
-
-**Audience note.** The primary consumer of `docs/` is an AI agent executing downstream tasks, not a human skimmer. Humans benefit from conventions + diagrams because they explore freely with free-cost `grep` and `find`. Agents pay for every discovery read, so agent-oriented docs must **enumerate the public surface** — method / function / handler / operation names grouped by concern — not just describe conventions. An enumerated surface of ~200 lines loaded once saves thousands of discovery tokens across the hundreds of downstream tasks that touch the capability; it pays back after ~2 tasks. Staleness is self-healing in this workflow because the constitution mandates read-before-write and tech-writer updates on behavior change.
-
-**Density policy by file type**:
-
-- `docs/overview.md` — read every task. **Tight but not sparse.** Target 40–80 lines. Contains the navigation map (Features list) that routes the agent to the right feature file. Do NOT duplicate the runtime primer's tech-stack or project tree — those are loaded with the primer in every session anyway.
-- `docs/architecture.md` — read on any task touching structure. **Conventions-level, not surface-level.** Describe layer rules, dependency direction, naming patterns, cross-cutting concerns. Do NOT enumerate per-capability surface here — that belongs in `docs/features/<capability>.md`.
-- `docs/features/<capability>.md` — read only when a task touches that capability. **Surface-level, dense.** Target 100–250 lines per file. Enumerate public surface grouped by concern; the agent uses this as a navigation map before touching source.
-- `docs/api/<resource>.md` — read only when a task touches that external interface. **Operation catalog + shapes.** Enumerate every externally-exposed operation with one-line purpose; include type-level request / response shapes, not every field.
-
-**Mode handling** (honors the Mode declared above):
-
-- **`merge`** — for `docs/overview.md` and `docs/architecture.md`, read the existing file first. Preserve any prose that diverges from the wizard's baseline (user-authored content). Update only sentinels or empty sections with scan findings. Do NOT overwrite paragraphs that carry user edits. For `features/` and `api/` files, write normally — those are regenerated outputs, not user-owned.
-- **`overwrite`** or **`fresh`** — write per the Requirements below with no special preservation.
-
-### `docs/overview.md`
-
-The reader's **table of contents** for the whole project. Target ~40–80 lines. Required sections in order:
-
-1. **What + who** (1 paragraph): what the project does, who uses it, what domain it serves.
-2. **Why** (1 paragraph): the defining architectural decision + its rationale.
-3. **Key entry points** (3–7 bullets): the first files to read to understand how the runtime starts. One file per bullet, with a one-line note about what it sets up. Adapt to the project's ecosystem — a process entry, a server bootstrap, a root module, a main executable, an init script.
-4. **Features** (required): one-line-per-capability list that points to `docs/features/<capability>.md`. This is the navigation map the agent uses to decide which feature doc to load for a task. Example format: `- **[<Capability>](features/<capability>.md)** — <one-line summary>`.
-5. **How to run** (1–2 lines): point to the runtime primer (`{{cli.primer}}`) for build / test / dev commands. Do not enumerate commands here.
-
-**Forbidden in overview.md** (lives in the runtime primer — duplication rots):
-- Tech-stack tables.
-- Full project / source tree.
-- Per-environment build command lists.
-- Dependency or package lists.
-
-If the scan didn't surface clear entry points, omit that section rather than guess. The Features list is mandatory — if no business capabilities exist (pure library, single-domain app), list the top-level modules instead.
-
-### `docs/architecture.md`
-
-1. **Module map**: each top-level source directory + one sentence — what it handles, what it can/can't import
-2. **Layer boundaries & dependency rules**: which direction imports flow; which crossings are forbidden
-3. **Conventions**: naming, file organization, import style
-4. **Cross-cutting concerns** (conditional — include only if the scan surfaced clear patterns, at least 3+ concordant observations): error propagation, authentication/authorization flow, data flow, state management. Skip any concern the scan didn't resolve cleanly — better absent than speculative.
-
-### `docs/features/<capability>.md` — one per business capability, NOT per package
-
-A "feature" file documents a **business capability** the product offers — not a package, directory, or module. A single capability often cuts across multiple source locations; the feature doc unifies that view so an agent working on the capability has one file to load instead of discovering the surface through search.
-
-**Capability discovery**: derive the capability list from scan signals — see `references/tech-writer-onboarding.md` §A.2.0. Do this before writing any feature file. The orchestrator's module map (Phase 1.2) is a scan-parallelism unit, not a documentation unit; do not reuse it as the feature-file list.
-
-**Audience**: these files are primarily consumed by AI agents executing downstream tasks (`{{cli.sigil}}plan`, `{{cli.sigil}}execute-task`, etc.). Write for an agent that will use this file as a navigation map and surface reference, and will load the actual source files only for the specific function / method / type it needs to touch. **Enumerate the public surface densely.** Do not describe implementation bodies; describe what exists at the boundary.
-
-**Target length**: 100–250 lines per capability, driven by surface size. A capability with 60+ public methods lands closer to 250; a thin capability with 5 methods lands closer to 100. Anything under 80 lines probably isn't a real capability — consider merging it into a parent capability or moving it into `shared-infrastructure.md`.
-
-**Per-capability file** — required sections in order:
-
-1. **What the capability does** — one sentence + one paragraph of user-facing context.
-2. **Where it lives** — the source locations that implement this capability. List cross-cutting locations explicitly (a capability often spans multiple top-level directories).
-3. **Public surface** — enumerated public boundary, **grouped by concern**. "Public boundary" means the project's natural external shape — the exact form depends on the ecosystem (e.g., methods on a service / controller / manager class for OO projects; exported functions and handlers for functional / procedural projects; route or command handlers for request-driven projects; message consumers for event-driven projects; public types + constructors for library projects). One line per item: name + signature (or type-level shape) + one-line purpose. Group items by responsibility (CRUD operations, state transitions, validation, computation, lifecycle, etc.) so an agent adding a parallel operation can locate the nearest pattern.
-4. **Key types & data shapes** — the principal types this capability owns (domain types, state shapes, request/response shapes, event shapes — whichever apply). Type-level only, not full field lists for large types; link to the source file for exhaustive detail. The goal is for an agent to know what shape it's dealing with without reading the type definition file.
-5. **API / external operations** (conditional — include only if the capability exposes operations outside its own code): enumerate route / RPC / GraphQL operation / CLI command / published event / subscription names with one-line purpose each. Do not document full payload schemas here — that's `docs/api/<resource>.md`'s job.
-6. **External dependencies** — other capabilities or shared infrastructure this capability consumes. One line per dependency: what's used, for what.
-7. **Extension points** — **REQUIRED**. "To add a new <X>, touch these N places." Anchors pattern-fill tasks — the single highest-value section for downstream agents doing feature work. Do NOT skip this section; if the scan genuinely surfaced no extension patterns, write a single line explaining why ("This capability exposes no add/extend pattern; modifications are ad-hoc per type-change.") rather than omitting the heading.
-
-   For each extension scenario the capability supports, write one numbered list with concrete file paths (not abstract layer names). Derive scenarios from what you actually observed:
-   - Did you see `add<X>`, `create<X>`, `register<X>` methods / handlers? Those are extension points.
-   - Did you see a dispatch table, plugin registry, route list, or enum that controls feature behavior? Those are extension points.
-   - Does adding a new field / operation / event require touching multiple files (type definition + handler + registration + schema)? Document that chain.
-
-   Worked-shape examples (illustrative — adapt to the project's ecosystem and use its actual paths):
-   - "To add a new operation exposing data of type `X`: (1) add the operation to the type definition in `path/to/types.ext`, (2) implement the handler in `path/to/handlers/`, (3) register it in `path/to/registry.ext`, (4) regenerate bindings via `<build command>`, (5) add a test in `path/to/tests/`."
-   - "To add a new field to the <principal-type> aggregate: (1) extend the type in `path/to/entities/`, (2) add a transition method on the state container in `path/to/presentation/`, (3) extend the persistence shape in `path/to/data/`, (4) update the external operation in `path/to/schema.ext` if applicable."
-   - "To add a new state transition to `<ThingBLoC>`: (1) add the use case class in `path/to/domain/cases/`, (2) inject it via the provider in `path/to/provide<Thing>.ext`, (3) call it from the presentation class in `path/to/presentation/`."
-8. **Invariants or gotchas** — only things the scan actually observed (silent failures, unusual patterns, dual implementations, known TODOs in the capability's source). Skip if nothing surfaced.
-
-**Fallback** — if capability discovery finds 0–1 business capabilities (pure library, single-domain app, infrastructure-only repo), fall back to one feature file per top-level source directory using the same section layout. Prefer fallback over inventing capabilities the code doesn't actually express.
-
-**Pure-infrastructure consolidation** — cross-cutting infrastructure (logging, caching, error pipeline, codegen, build tooling, wiring / dependency-injection, shared base types) lives in a single `docs/features/shared-infrastructure.md`. Do not produce one file per infrastructure module — that's `docs/architecture.md`'s module-map territory.
-
-Skip any capability the scan found nothing substantial about — better no doc than a stub.
-
-### `docs/api/<resource>.md` — only for projects that expose an external interface
-
-An "external interface" is any surface consumed from outside the project's own code: HTTP / REST routes, GraphQL schema, RPC services, WebSocket streams, published events, CLI subcommands, message-queue consumers / producers. The operation identifier shape varies by protocol (`METHOD /path` for HTTP, `service.method` for RPC, operation name for GraphQL, event / topic name for pub-sub, subcommand name for CLI) — see `references/tech-writer-onboarding.md` §A.2 for the per-protocol identifier form.
-
-**Required sections** per resource / interface file:
-
-1. **What this interface exposes** — one paragraph of scope: what the interface is for, who consumes it, what it does NOT cover.
-2. **Operation catalog** — enumerated list of every externally-reachable operation, one line each: identifier + one-line purpose. Group by the natural grouping the protocol uses (resource for REST, service for RPC, root field for GraphQL, topic for pub-sub, subcommand group for CLI).
-3. **Auth / authorization requirements** — which operations require what credentials / scopes / roles.
-4. **Type-level request / response shapes** — the principal input and output types each operation uses. Link to the source file for exhaustive field lists; do not paste full type definitions here.
-5. **Wiring** (conditional — include if the protocol involves non-trivial client / server setup): where the dispatch layer lives, how operations are registered, how generated bindings connect to handlers.
-6. **Invariants or gotchas** (conditional) — cross-operation invariants, known legacy operations, TODOs in the interface layer.
-
-**Target length**: 80–200 lines depending on operation count. The operation catalog is the reason this file exists — if it's thin, the file isn't pulling its weight.
-
-## Depth principle
-
-Docs cover two things:
-
-1. **Conventions and structure** — things that persist when implementation changes. Layer rules, directory patterns, naming conventions, dependency direction. Belongs in `docs/architecture.md`.
-2. **Public surface** — names of operations, methods, handlers, types, events that exist at module boundaries. Belongs in `docs/features/<capability>.md` and `docs/api/<resource>.md`. Enumerated surface is signal, not noise — it lets an agent plan a task without discovery reads.
-
-What's explicitly OUT of scope: implementation **bodies**. A method's body (algorithm, loops, branches) is not doc material; that's what the source file is for.
-
-- ✅ YES: "`ReportService.generate(input: ReportInput): Either<ReportError, Report>` — builds a report from the input. One of the CRUD operations in `features/reports.md`." (Names the surface; survives body changes.)
-- ✅ YES: "Handlers live in `src/handlers/`; each implements the interface from `src/interfaces/`." (Convention; survives refactoring.)
-- ❌ NO: "`ReportService.generate` first validates the input, then queries the database, then renders each section by calling helper X which loops over the sections..." (Implementation body leaking into docs — rots on first refactor.)
-
-## What NOT to document
-
-- Implementation bodies — code is the source of truth for how something works internally.
-- Private helpers / internal-only functions — name the function well; skip the doc.
-- Duplicated rules from `constitution.md` — docs describe what EXISTS and how it's organized; constitution describes the RULES. No overlap.
-- Tech-stack / dev-command duplication from the runtime primer — primer is the source of truth for stack and commands.
-- Anything the scan is uncertain about — better silent than wrong.
-
-[Insert full Section A instructions below]
-```
+**Subagent dispatch rule**: invoke subagents WITHOUT full-history fork. Each subagent receives a self-contained prompt with: unit identifier, scope path, project brief from §1.1, per-doc template (Section A.2), write target. They do not need the orchestrator's conversation history.
 
 ---
 
-## SECTION A: Tech-Writer Onboarding Instructions
+## PHASE 2: Execute Onboarding Scan
 
-Read `references/tech-writer-onboarding.md` and include its full content in the tech-writer agent prompt where `[Insert full Section A instructions below]` appears. The path is rewritten to the runtime-native location at install time (alongside this command's main body). This file contains the complete onboarding workflow: scanning rules, smart extraction tables, subagent templates, doc generation templates (overview, architecture, features, API), quality checks, and memory enrichment.
+Launch the tech-writer agent via `{{cli.subagent}}` with the prompt below. The tech-writer handles the scan + `docs/` writing per the mirror-folder shape derived in §1.2. Verification (§3) and memory-append (§3.6) stay in the orchestrator's lane.
+
+For each documentation unit, dispatch one subagent (or, for small projects, run direct).
+
+### Prompt template
+
+```
+You are operating in ONBOARDING MODE. This is NOT your normal task-documentation workflow. You are performing a one-time deep scan of an existing codebase to generate comprehensive project documentation.
+
+## Project Brief
+
+[Insert project brief from §1.1]
+
+## Documentation Unit Assigned
+
+Unit path: [absolute or workspace-relative path]
+Write target: docs/<unit-path>/
+
+## Your Mission
+
+Generate complete documentation for this unit at the write target. Every agent reads docs/ before making changes; the quality of your documentation directly determines how well agents understand and work with this codebase.
+
+## CORE MANDATE — COVER ALL CODE
+
+Every meaningful source folder under this unit gets a documentation home. No sample-based silence. No skipping at scale. No "we'll cluster these into one file" merges that drop substance.
+
+Density adapts to size — a small utility folder gets a short section; a complex multi-concern subfolder gets its own file with substantive depth — but every meaningful source folder is documented.
+
+If you are tempted to merge two distinct concerns into one doc with a compound name (e.g. "auth-and-routing.md", "stores-and-services.md"), STOP — that's the failure mode this command is designed to prevent. Each distinct concern gets its own file. Compound names with "and" are a red flag; split them.
+
+## Mode
+
+[Insert mode from §1.0: overwrite | merge | fresh]
+
+## Documentation Shape
+
+Mirror the unit's folder structure under docs/<unit-path>/.
+
+1. The unit gets `docs/<unit-path>/index.md` — the unit's main doc.
+2. Within the unit, find the source root by ecosystem convention (the LLM observes per language):
+   - JS/TS/PHP-PSR4: src/
+   - Rust: src/
+   - Ruby: lib/
+   - Java/Kotlin: src/main/java/<groupId>/<pkg>/ (collapse boilerplate path segments to start at the meaningful level)
+   - Python: src/<pkg>/ or <pkg>/
+   - Go: unit root (no source-folder convention; subfolders like cmd/, pkg/, internal/ are direct concerns)
+   - C#/.NET: project folder directly
+3. Mirror the source root's substantive subfolders as sub-docs at `docs/<unit-path>/<concern>.md` (or `docs/<unit-path>/<concern>/index.md` + further sub-docs when the concern has its own substantial sub-tree).
+4. Trivial subfolders (1-2 files, single-purpose utilities) fold into the parent doc rather than getting their own files.
+5. Stop at file granularity. Files don't get individual docs; they're enumerated within their folder's doc.
+
+## Per-Doc Template (required sections, in order)
+
+For each `docs/<unit-path>/index.md` and each meaningful concern sub-doc:
+
+1. `# <unit or concern name>`
+2. `## Overview` — 1 paragraph: what this provides, who consumes it.
+3. `## Directory Structure` — annotated tree of the source layout (the actual paths). Mark non-exported subdirs explicitly (e.g., "`<subdir>/` — internal, not exported").
+4. `## Main Exports` (or `Public Surface`, `Public API`) — every exported symbol grouped by concern. For each: signature + a code block lifted from real source with a `<!-- path/file.ext:line-range -->` reference comment. Group by concern (CRUD, lifecycle, validation, etc.) so an agent adding a parallel operation can locate the nearest pattern.
+5. `## Types` (or `Data Shapes`) — principal types this exposes, full inline definitions. Not "see types.ts" — the actual type definitions inline.
+6. `## Dependencies` — workspace-internal and external dependencies. Workspace-internal entries hyperlink to their docs (e.g., `[pkg-bar](../pkg-bar/index.md)`); each entry gets one line about what's used. External deps named with version, no link.
+7. `## Usage Example` — lifted from a real consumer file in the codebase. End-to-end pattern showing how the unit is consumed.
+
+## Code-Block Discipline
+
+Every code block in the docs MUST be lifted from actual source. Add a `<!-- path/to/file.ext:line-range -->` reference comment immediately above each block. Never invent code. Never paraphrase. If the LLM-generated text reads "here's an example" but the example came from your head — delete it and find a real one in the source.
+
+Annotate non-exported subdirs explicitly. These annotations help downstream agents avoid false leads.
+
+## Boundary Surface, Not Implementation
+
+Document what crosses module/package/component boundaries: exported functions, public class members, route handlers, type definitions, props/emits/slots. Do NOT document private helpers, internal-only utilities, or implementation bodies.
+
+The visibility model is the language's, not ours. The LLM knows each language's idiomatic boundary mechanism (TS `export`, Python `_` convention / `__all__`, Vue parent-contract via `defineExpose`/`props`/`emits`, Go capitalization, Rust `pub`, C# `public`/`internal`, Java member modifiers, etc.). Apply that language's mechanism. Skip what doesn't cross the boundary.
+
+- ✅ YES: "`ReportService.generate(input: ReportInput): Either<ReportError, Report>` — builds a report from the input. <!-- src/services/report.ts:24-38 -->"
+- ❌ NO: "`generate` first validates the input, then queries the database, then renders each section by calling helper X which loops..."
+
+## What NOT to Document
+
+- Implementation bodies — code is the source of truth for how something works internally.
+- Private helpers / internal-only functions — name them well in code; skip the doc.
+- Duplicated rules from `constitution.md` — docs describe what EXISTS; constitution describes the RULES.
+- Tech-stack / dev-command duplication from the runtime primer — primer is the source of truth.
+- Anything the scan is uncertain about — better silent than wrong.
+
+[Insert full Section A instructions below — A.1 Smart Extraction, A.2 Per-Doc Templates, A.3 Sigil Neutrality, A.4 Quality Checks, A.5 Memory Enrichment.]
+```
+
+After all subagents return, the orchestrator additionally produces:
+
+- **`docs/architecture.md`** at workspace root of `docs/` — workspace-level overview, observed architectural patterns (multi-pattern when present), conventions, dependency-direction rules. See A.2 architecture.md template.
+- **Optional `docs/cross-cutting/<topic>.md`** — only when the LLM observes a pattern that genuinely spans units without a folder home.
 
 ---
 
 ## PHASE 3: Process Results
 
-### 3.1: Verify Documentation Created
+### 3.1: Coverage Check (FIRST gate)
 
-Verify the tech-writer's output matches the Documentation Requirements above. Check:
+**Coverage failure blocks proceed.**
 
-- **Presence**: `docs/overview.md` and `docs/architecture.md` exist with real content; `docs/features/*.md` files exist per substantive capability (absent is acceptable for small/monolithic projects — architecture.md suffices); `docs/api/*.md` exist only if the project has an external interface.
-- **Per-file structure**: each file follows its section layout from Requirements. Specifically for `docs/features/*.md`, every file must contain all required headings in order: **Overview** (or What the capability does) · **Where it lives** · **Public surface** · **Key types / entities** · **API / external operations** (conditional) · **External dependencies** · **Extension points** · **Invariants / gotchas**. The `Extension points` section is load-bearing for downstream pattern-fill tasks — flag its absence as a verification failure even if every other section is present.
-- **Cross-runtime sigil hygiene**: grep every `docs/*.md` for `/onboard`, `/constitute`, `/specify`, `/plan`, `/breakdown`, `/execute-task`, `/verify`, `$onboard`, `$constitute`, `$specify`, `$plan`, `$breakdown`, `$execute-task`, `$verify`. Any match is a failure — `docs/` is cross-runtime and must use bare command names (see `references/tech-writer-onboarding.md` §A.2.1).
-- **"What NOT to document" violations**: stub markers left behind, per-file implementation detail, rules duplicated from `constitution.md`.
-- **Cross-file consistency**: the project described in `overview.md` aligns with `architecture.md` and any `features/` files — obvious story conflicts suggest the scan misinterpreted something substantial.
+1. For every entry in `packages[]`, confirm `docs/<unit-path>/index.md` exists with substantive content (>30 lines or >2 sections beyond title).
+2. For every meaningful source subfolder of every unit, confirm a corresponding doc exists (sub-doc OR section in parent's index.md covering it).
+3. `docs/architecture.md` exists with substantive content.
+4. Listing-diff produces miss list. Any miss = failure.
 
-If any check fails, report the findings to the user (file path + what's wrong + what to correct) and **ask explicitly** how to proceed, using your runtime's natural question mechanism. Offer three options:
+If coverage fails, do NOT silently proceed. Report which units / subfolders are missing or thin, and ask the user:
 
-- **Proceed** — accept the output as-is despite the issues (user's call)
-- **Re-run the tech-writer** — rebuild the prompt with corrections and re-invoke the tech-writer agent for the specific files that failed verification (preserve the ones that passed)
-- **Abort** — stop onboard entirely; user will investigate manually
+- **Re-run the tech-writer** to fill gaps.
+- **Accept** — user explicitly waives the gap.
+- **Abort** — user reconciles manually.
 
-Do NOT silently proceed to §3.2 after reporting issues. Wait for the user's explicit choice.
+### 3.2: Structural-Completeness Check
 
-### 3.2: Update Memory
+For every generated doc file: verify it contains the required sections from A.2's per-doc template — Overview present and substantive, Main Exports section with code blocks, Types section, Dependencies, Usage Example. A doc missing types-inline OR missing real code blocks fails verification even if the file exists.
 
-If the tech-writer returned `MEMORY_ADDITIONS` — a category-keyed structure with entries under each of the four categories below — append them to `.devforge/memory.md` (cross-runtime shared file — both Claude and Codex read the same memory) under the appropriate existing sections of the scaffold:
+### 3.3: Code-Block Sourcing Check
 
-- **Module boundaries** → under `## Architecture Decisions` as a new sub-section `### Module boundaries (from onboard)` (alongside the wizard's `### Initial detection (from setup-wizard)` sub-section)
-- **Dependency warnings** → under `## Known Pitfalls`
-- **Areas of complexity** → under `## Known Pitfalls`
-- **Inconsistencies** → under `## Known Pitfalls`
+Spot-check 5 random code blocks across `docs/`. Each must have a `<!-- path/file.ext:line-range -->` reference comment OR a clearly-cited source path in surrounding prose. Any unsourced block = failure.
 
-The scaffold has four top-level sections (Architecture Decisions, Known Pitfalls, What Worked, What Failed) — do NOT create new top-level sections; add content as sub-sections of existing ones.
+### 3.4: Cross-Link Existence Check
+
+Spot-check 5 random Markdown links in `docs/*.md` resolve to existing files. Broken links = failure.
+
+### 3.5: Term + Sigil Hygiene
+
+- **Term hygiene**: locked terminology (Glossary below) used precisely. "package", "module", "feature", "concern" — no loose interchange.
+- **Sigil hygiene**: no `/<command>` or `$<command>` strings in any `docs/*.md`. Cross-runtime artifacts use bare command names. See A.3.
+
+If any check (3.2–3.5) fails, report findings (file path + what's wrong + what to correct) and ask **Proceed** / **Re-run** / **Abort**.
+
+### 3.6: Update Memory
+
+If the tech-writer returned `MEMORY_ADDITIONS` — a category-keyed structure with entries — append them to `.devforge/memory.md` (cross-runtime shared file) under existing scaffold sections:
+
+- **Module/package boundaries** → `## Architecture Decisions` as new sub-section `### Module boundaries (from onboard)`.
+- **Dependency warnings** → `## Known Pitfalls`.
+- **Areas of complexity** → `## Known Pitfalls`.
+- **Inconsistencies** → `## Known Pitfalls`.
+
+Scaffold has four top-level sections (Architecture Decisions, Known Pitfalls, What Worked, What Failed) — do NOT create new top-level sections; add as sub-sections.
+
+The tech-writer mandate (per A.5): report observations from EVERY unit, not a curated subset.
+
+### 3.7: Drop Baselines
+
+For each generated `docs/<path>` file, copy it to `.devforge/baseline/docs/<path>` so future re-runs detect user edits.
+
+---
 
 ## PHASE 4: Summary
 
@@ -283,30 +257,172 @@ Present to the user:
 ## Onboarding Complete
 
 ### Documentation Generated
-- `docs/overview.md`
+- [N] documentation units mirrored under `docs/`
 - `docs/architecture.md`
-- `docs/features/` — [N] files  [omit this line if N == 0]
-- `docs/api/` — [N] files  [omit this line if N == 0]
+- [list optional `docs/cross-cutting/*` if any]
 
 ### Scan
-- [count] source files across [count] modules ([strategy])
+- [count] source files across [count] units (subagent-strategy: [direct | per-unit | parallel-per-unit])
 
 ### Memory Updated
-Summarize in 1–3 lines what was appended to `.devforge/memory.md`. Group naturally by category — e.g., "4 module boundaries, 2 known pitfalls from inconsistent import patterns, 1 complexity hotspot flagged in `services/orders/`".
+[Summarize in 1-3 lines what was appended to .devforge/memory.md.]
 
 ### Next Steps
 1. Review `docs/` and adjust as needed
-2. Run `{{cli.sigil}}constitute` — turn scan findings and your architectural preferences into enforceable rules populated into the `[project-specific]` sections of `constitution.md`
+2. Run `{{cli.sigil}}constitute` — turn scan findings + your architectural preferences into enforceable rules in `constitution.md`
 3. Start working: `{{cli.sigil}}specify "your first feature"`
 ```
 
+---
+
+## SECTION A: Tech-Writer Onboarding Instructions
+
+These instructions are inlined into the tech-writer agent prompt at the placeholder above (Phase 2).
+
+**Source Root**: All source code scanning targets the Source Root specified in the runtime primer (`{{cli.primer}}`), or canonically in `.devforge/project-config.json` `SOURCE_ROOT` field. For wrapper-mode projects, this is a subfolder.
+
+### A.1: Smart Extraction — What to Read from Each File Type
+
+Context is finite. Extract the high-information content from each file type; skip the rest.
+
+| File Type | What to Extract | What to Skip |
+|---|---|---|
+| Type/interface/trait/protocol definitions (`.d.ts`, `types.ts`, `.pyi`, `interfaces/`, `entities/`; Rust `trait`/`struct`/`enum`; Python `Protocol`/`TypedDict`/dataclass; Go `type`; Swift `protocol`/`struct`; Kotlin `sealed`/`data class`) | Read full content — highest information density | Nothing |
+| Index/barrel/module entry files (`index.ts`, `__init__.py`, `mod.rs`, `lib.rs`; Go `package`; Swift `@_exported import`; Java/Kotlin module-info) | Read full content — defines module boundaries | Nothing |
+| Route/API definitions (HTTP routes, gRPC services, GraphQL resolvers, RPC controllers, message handlers) | Read full content — defines API surface | Nothing |
+| Config files (`.env.example`, config modules, framework config) | Read full content | `.env` (secrets) |
+| Implementation files (services, repositories, helpers) | Function/method signatures, class/struct/trait definitions, imports, exports | Function bodies |
+| UI component files (`.vue`, `.tsx`, `.svelte`, `.dart`; Android `@Composable` + XML; SwiftUI `View`; native mobile view classes) | Props/interface, template/view structure, emits/events, composable/hook usage | Template HTML/CSS details, style internals |
+| Test files (JS/TS `describe`/`it`, Python `def test_*`, Rust `#[test]`, Go `func TestXxx`, JUnit `@Test`, XCTest, RSpec) | Test names only — these reveal WHAT the code does | Test bodies, assertions, mocks |
+| Migrations/schemas (SQL, Alembic, Prisma, TypeORM, ActiveRecord, Flyway, Liquibase) | Schema definitions, table/type structures | Individual migration steps |
+| Generated/vendored code (protobuf outputs, GraphQL codegen, SwiftGen, vendored deps) | Skip entirely | Everything |
+| Assets (images, fonts, static) | Skip entirely | Everything |
+
+**Ignore set** (never scan, never count): `node_modules/`, `target/`, `build/`, `dist/`, `.next/`, `.nuxt/`, `vendor/`, `.gradle/`, `.cargo/`, `__pycache__/`, `.venv/`, `venv/`, `.tox/`, `.mypy_cache/`, `.ruff_cache/`, `coverage/`, `.coverage`, `.cache/`, `tmp/`, `.tmp/`, `bin/`, `obj/`, `Pods/`, `.bundle/`, `.dart_tool/`, plus the cross-runtime artifacts (`.claude/`, `.codex/`, `.devforge/`, `specs/`, `docs/`), lock files, and binary/asset files.
+
+### A.2: Per-Doc Templates
+
+#### A.2.1 — Per-unit / per-concern doc template
+
+For each `docs/<unit-path>/index.md` and each meaningful concern sub-doc, the template defined in Phase 2's prompt applies (Overview / Directory Structure / Main Exports with sourced code blocks / Types inline / Dependencies with cross-links / Usage Example).
+
+Length adapts to scope:
+- Tiny utility folder: 30–80 lines (folded into parent if even smaller).
+- Small library / single-concern subdir: 80–200 lines.
+- Mid-size unit: 200–400 lines.
+- Composite unit (multi-concern): main `index.md` is overview + directory + cross-references to sub-docs; sub-docs carry per-concern depth.
+
+#### A.2.2 — `docs/architecture.md` template
+
+`architecture.md` carries the project's actual architectural patterns, dependency directions, naming conventions, decision rules — observed from the codebase, not prescribed by the spec.
+
+Required sections:
+
+1. **Architecture overview** — what the project IS at the architectural level.
+2. **Module/package structure** — workspace layout, how units relate.
+3. **Patterns** — every architectural pattern observed in the codebase. **A project may legitimately have multiple coexisting patterns** (e.g., MVC in backend services + Clean Architecture in frontend; legacy procedural code being phased out alongside modern layered code; different paradigms in different microservices). When multiple patterns coexist, document each with explicit "where it applies" scope:
+   ```
+   ### <Pattern A> (applies in: <unit-paths or module-paths>)
+   <observed description, conventions, decision rules>
+
+   ### <Pattern B> (applies in: <other paths>)
+   <observed description>
+   ```
+   Do NOT force-fit the project into a single pattern when more than one exists.
+4. **Conventions** — naming, file organization, import style, error handling — all observed. If conventions vary across patterns, scope each accordingly.
+5. **Cross-cutting concerns** — auth flow, data flow, state management, error propagation — all observed.
+6. **Dependency direction rules** — observed (where inward/outward dependencies go); per-pattern when patterns diverge.
+7. **Dependency overview** — high-level "who depends on whom" listing across all units. Mermaid graph OR plain bullet list. Bird's-eye view complementing per-unit `Dependencies` sections.
+
+**Per-unit overrides**: a unit's `index.md` MAY contain a "Pattern" section when that unit follows a distinct pattern worth calling out at unit level (cross-reference `docs/architecture.md` for workspace context).
+
+**Optional split**: when one or more patterns warrant their own deep document, split into `docs/architecture/<pattern>.md` per pattern; `docs/architecture.md` becomes the index pointing at each.
+
+#### A.2.3 — `docs/cross-cutting/<topic>.md` (optional)
+
+Only when the LLM observes a pattern that genuinely spans multiple units without a folder home (e.g., authentication flow that touches an auth package, a router config in an app, and middleware in another service). Each cross-cutting topic explicitly hyperlinks into every unit it touches.
+
+### A.3: Cross-Runtime Sigil Neutrality (MANDATORY)
+
+`docs/` is read by both Claude and Codex runtimes. Any prose in any `docs/*.md` that names a command — `onboard`, `constitute`, `specify`, `plan`, `breakdown`, `execute-task`, `verify`, or any other workflow command — must use the **bare command name**. Never prefix with `/` (Claude's sigil) or `$` (Codex's sigil). The runtime-specific sigil belongs in user-facing command output (wizard summaries, command headers), not in project documentation.
+
+- ✅ RIGHT: "Run onboard again after significant changes."
+- ❌ WRONG: "Run `/onboard` again..." or "Run `$onboard`..."
+
+If you need to show a literal command invocation, phrase it sigil-neutrally: "invoke the `onboard` command in your runtime."
+
+### A.4: Quality Checks (your self-check before returning)
+
+Before returning, verify:
+
+1. **Coverage**: every meaningful source folder under your assigned unit has a doc home. **This is the load-bearing check.**
+2. **Structural completeness**: every doc has the required template sections — Overview, Directory Structure, Main Exports with sourced code blocks, Types inline, Dependencies, Usage Example.
+3. **Real code only**: every code block in docs is copied from actual source with a `<!-- path/file.ext:line-range -->` reference. No invented code.
+4. **Boundary surface only**: docs enumerate what crosses module/class/component boundaries. Internals stay in source.
+5. **Cross-references resolve**: workspace-internal `Dependencies` entries link to their package docs; broken links not allowed.
+6. **No constitution duplication**: docs describe HOW the code is organized; constitution describes the RULES.
+7. **No primer duplication**: tech-stack and dev-command tables live in `{{cli.primer}}`; do not repeat them in `docs/`.
+8. **Sigil neutrality**: no `/<cmd>` or `$<cmd>` strings anywhere in `docs/`.
+9. **Inline annotations**: subdirs that exist in source but are NOT exported are explicitly annotated in directory trees.
+10. **No source modifications**: onboarding mode does NOT modify source files. Only `docs/` and (via the orchestrator) `.devforge/memory.md`.
+
+### A.5: Memory Enrichment
+
+After generating docs, return a summary of findings to be added to `.devforge/memory.md`. **Cover every unit, not a curated subset.**
+
+Include:
+
+- **Module/package boundaries** — every unit's responsibility in 1 line.
+- **Cross-package dependency warnings** — tightly coupled areas, circular imports, brittle interfaces observed.
+- **Areas of complexity** — units or concerns with many dependencies, unusual patterns, or unclear conventions.
+- **Inconsistencies** — self-contradictions within observed code (different error-handling styles in the same unit, divergent naming, etc.), or deviations from constitution's `[universal]` sections.
+
+**Return format:**
+
+```
+## MEMORY_ADDITIONS
+
+### Module/package boundaries
+- <unit-1>: <one-line responsibility>
+- <unit-2>: <one-line responsibility>
+- ... (every unit, not a sample)
+
+### Dependency warnings
+- <observation>
+
+### Areas of complexity
+- <unit/area>: <why it's complex>
+
+### Inconsistencies
+- <what was expected vs what was found>
+```
+
+---
+
+## Glossary (locked terminology)
+
+These terms have precise meanings in onboard's output and downstream consumers:
+
+| Term | Means |
+|---|---|
+| **package** | A self-contained unit detected by the wizard — one entry in `packages[]`. Has its own manifest (package.json, Cargo.toml, etc.). |
+| **unit** (documentation unit) | A package, OR the project itself if `packages[]` has only a root entry. The thing onboard generates a `docs/<unit-path>/` folder for. |
+| **concern** | A meaningful subfolder within a unit's source root (e.g., `components/`, `services/`, `routing/`, `handlers/`). Each substantive concern gets its own sub-doc. |
+| **boundary surface** | Symbols that cross a file/class/component boundary (exports, public class members, props/emits/slots, route handlers). What docs enumerate. |
+| **module** | Used loosely to mean a directory inside a unit; not a fixed-meaning term in this command's output. Prefer "concern" for sub-folder docs and "package"/"unit" for top-level. |
+
+---
+
 ## IMPORTANT RULES
 
-1. **Tech-writer owns scan + docs writing** — this command orchestrates. The tech-writer agent handles the codebase scan and writes to `docs/`. Verification (§3.1) and memory append (§3.2) are the orchestrator's job, not the tech-writer's.
-2. **Never modify source files** — onboarding writes only to `docs/` and `.devforge/memory.md`. No inline docs in source, no code changes
-3. **Context safety** — follow the scan strategy thresholds strictly. Do NOT read all files in a 500-file project in a single agent
-4. **Accuracy over coverage** — if you can't determine a pattern from the scan, SKIP it. Stubs and speculative content are worse than omission (better absent than speculative)
-5. **Real code only** — every code example in docs must be copied from the actual codebase, never invented
-6. **No constitution duplication** — docs describe HOW the code works. The constitution describes the RULES. Don't repeat constitution rules in docs
-7. **Preserve existing docs** — if `docs/` already has real content (not stubs), do NOT overwrite silently. §1.0 detects non-stub content pre-scan and asks the user to pick Overwrite / Merge / Abort. All three are valid user choices; the rule is "ask, don't assume"
-8. **This is for agents** — the primary audience is the agents running subsequent commands, not humans. Write docs that help an AI understand the codebase quickly: be explicit, structured, and precise. Avoid vague descriptions
+1. **Cover all code** — every package or meaningful source folder gets a doc home. Coverage failure is verification failure.
+2. **Tech-writer owns scan + docs writing** — orchestrator handles pre-scan, post-scan verification, memory append, baseline drop.
+3. **Never modify source files** — onboarding writes only to `docs/`, `.devforge/memory.md`, and `.devforge/baseline/`.
+4. **Code blocks lifted from real source** — every block has a `<!-- path/file.ext:line-range -->` reference. No invented code.
+5. **Boundary surface, not implementation** — what crosses module boundaries. Skip internals.
+6. **Mirror folder structure** — `docs/<unit-path>/...` mirrors the source layout. Path-from-source = path-to-docs.
+7. **No bundled pattern assumptions** — `architecture.md` observes the project's actual patterns; spec mandates structure not content. Document multi-pattern projects honestly.
+8. **Preserve user-edited docs** — §1.0 detects user edits via baseline diff. Re-runs ask Overwrite/Merge/Abort, never silently overwrite.
+9. **Sigil-neutral prose in `docs/`** — `docs/` is cross-runtime; use bare command names.
+10. **No constitution / primer duplication** — docs describe what EXISTS; constitution + primer carry their own concerns.
+11. **This is for agents** — primary audience is the agents running subsequent commands. Be explicit, structured, precise. Documents must be a substitute for first-pass code reading.
