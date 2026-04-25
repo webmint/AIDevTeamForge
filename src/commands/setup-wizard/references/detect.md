@@ -80,14 +80,24 @@ Auto-detect project state before asking. STEP 1 is a read-only detection step �
 
 ### 1.1: Count source files
 
-Count source files under SOURCE_ROOT, excluding:
+Count source files under SOURCE_ROOT using this **canonical algorithm** (all runtimes must produce the same count for the same project — drift between runtimes is a parity bug):
 
-- VCS / tooling directories: `.git`, hidden directories (starting with `.`)
-- Dependency trees: `node_modules`, `vendor`, `.venv`, `venv`, `__pycache__`, `.gradle`, `target` (Rust/Java build output)
-- Build artifacts: `dist`, `build`, `out`, `.next`, `.nuxt`, `coverage`
-- Root-level config / metadata files (`package.json`, `tsconfig.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `README*`, `.gitignore`, `Dockerfile`, lockfiles, etc.)
+**Excluded directories** (canonical list — no extensions to it):
+- VCS / tooling: `.git/`, any directory starting with `.` (e.g., `.idea/`, `.vscode/`, `.devforge/`, `.husky/`)
+- Dependency trees: `node_modules/`, `vendor/`, `.venv/`, `venv/`, `__pycache__/`, `.gradle/`, `target/`, `Pods/`, `DerivedData/`
+- Build artifacts: `dist/`, `build/`, `out/`, `.next/`, `.nuxt/`, `coverage/`, `.turbo/`, `.cache/`
 
-"Source files" means actual code files (`.ts`, `.tsx`, `.js`, `.jsx`, `.py`, `.rs`, `.go`, `.java`, `.kt`, `.swift`, `.rb`, `.php`, `.cs`, `.vue`, `.svelte`, `.dart`, `.ex`, `.exs`, etc.) — not configs, not docs, not assets.
+**Excluded files** (canonical list):
+- All lockfiles (`*.lock`, `*.lockb`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `poetry.lock`, `Gemfile.lock`, `composer.lock`)
+- Manifests / config (`package.json`, `tsconfig*.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `go.sum`, `pom.xml`, `build.gradle*`, `Gemfile`, `composer.json`, `mix.exs`, `pubspec.yaml`)
+- Docs / metadata (`README*`, `LICENSE*`, `CHANGELOG*`, `.gitignore`, `.gitattributes`, `.editorconfig`, `Dockerfile*`, `docker-compose*.y*ml`)
+
+**Counted file extensions** (canonical list — count files matching ANY of these):
+`.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.vue`, `.svelte`, `.astro`, `.py`, `.rs`, `.go`, `.java`, `.kt`, `.kts`, `.swift`, `.rb`, `.php`, `.cs`, `.fs`, `.dart`, `.ex`, `.exs`, `.erl`, `.scala`, `.clj`, `.cljs`, `.hs`, `.ml`, `.lua`, `.r`, `.R`, `.jl`, `.zig`, `.nim`, `.cr`, `.v`, `.sol`
+
+If you encounter an extension not in the list above, do NOT count it (treat as non-source). The list is closed — additions need a spec change, not LLM judgment. Configs, docs, assets, generated code (e.g., `*.gen.ts`, `*.g.dart`), and vendored / submoduled directories (when at SOURCE_ROOT depth > 1) are NOT counted.
+
+The count goes into `detection_report.file_count` via `set file_count --value <N>` after summing across all `packages[]` entries (per "Aggregated categories" below).
 
 ### 1.2: Classify
 
@@ -263,7 +273,30 @@ Capture `BUILD_TOOLS`, `BUILD_COMMANDS`, `TYPE_CHECK_COMMANDS`, `LINT_COMMANDS` 
 
 Based on what you find, identify each of the following. Mark any category that genuinely doesn't apply as **N/A**. If you're uncertain, note the uncertainty and raise it with the user in Phase 2 (`references/questions.md`) rather than guessing.
 
-- **Languages and runtimes** — detect all present by aggregating file counts **across `PACKAGES_DETECTED`** (not flat-tree scanning of SOURCE_ROOT). For each package, enumerate source files under its `path` directory by extension, classify by language (`.ts`/`.tsx` → TypeScript, `.py` → Python, `.go` → Go, `.rs` → Rust, `.kt` → Kotlin, `.swift` → Swift, etc.), then sum per language across all packages. Order the resulting `LANGUAGES` array by total file count descending (most files first). This avoids dependency-like packages (e.g., a large generated-SDK package in TS) drowning out the smaller-but-more-critical primary package (e.g., a Python API service). Note the associated runtime per language (TypeScript → Node, Python → Python 3, Dart → Flutter, etc.).
+- **Languages and runtimes** — detect all present by aggregating file counts **across `PACKAGES_DETECTED`** (not flat-tree scanning of SOURCE_ROOT). For each package, enumerate source files under its `path` directory by extension, classify by language (`.ts`/`.tsx` → TypeScript, `.py` → Python, `.go` → Go, `.rs` → Rust, `.kt` → Kotlin, `.swift` → Swift, etc.), then sum per language across all packages. Order the resulting `LANGUAGES` array by total file count descending (most files first). This avoids dependency-like packages (e.g., a large generated-SDK package in TS) drowning out the smaller-but-more-critical primary package (e.g., a Python API service).
+
+  **Canonical `runtime` value per language** (use the value below verbatim when calling `add-language --runtime <value>` — both runtimes must produce identical values for the same language):
+
+  | Language | Canonical `runtime` |
+  |---|---|
+  | TypeScript | `Node` |
+  | JavaScript | `Node` |
+  | Python | `Python 3` |
+  | Rust | `Rust` |
+  | Go | `Go` |
+  | Java | `JVM` |
+  | Kotlin | `JVM` (or `Android` if Android project) |
+  | Swift | `iOS` (or `macOS` if Mac project) |
+  | Dart | `Flutter` (or `Dart VM` for non-Flutter) |
+  | Ruby | `Ruby` |
+  | PHP | `PHP` |
+  | C# | `.NET` |
+  | Elixir | `BEAM` |
+  | Scala | `JVM` |
+  | Clojure | `JVM` (or `JS` for ClojureScript) |
+  | Haskell | `GHC` |
+
+  Do NOT use compound or context-flavored values like `Node.js`, `browser + node`, `Node (Vite/vue-tsc)` — the canonical short form above is the parity-stable choice. Browser-versus-server distinction belongs in `frameworks[]` (e.g., framework `role: frontend` implies browser context), not in `runtime`. If a language not in the table appears, use the language name itself as a reasonable default (e.g., `Zig` → `Zig`).
 
   **Scale cap**: if a package's directory contains more than ~500 source files, don't enumerate exhaustively — use the package's manifest (from `PACKAGES_DETECTED.manifest`) + `language_hint` as the primary classifier for that package, and estimate file count via a coarse signal (shell directory listing, `find` with depth limit, or single-directory scan). The goal is **ordering by magnitude**, not exact counts — off-by-10% is acceptable, wrong-by-dominant-language is not.
 
@@ -281,6 +314,24 @@ Based on what you find, identify each of the following. Mark any category that g
 - **Error handling pattern** (for existing projects, from representative source)
 - **CI/CD presence** and tooling (GitHub Actions, GitLab CI, etc.)
 - **Containerization** (Dockerfile, docker-compose, buildpacks, etc.)
+- **Enforcement tooling** — populated via `add-enforcement-tool --value <s>` (one call per tool present). **Scan exhaustively**: list every tool from the canonical signal set below that has a presence signal in the project. Do NOT stop at the most obvious one (e.g., Husky alone). Both runtimes must produce the same list; missing a tool on one side and not the other is a parity bug.
+
+  **Canonical enforcement-tooling signals** (add each present one):
+  - `Husky (pre-commit)` — `.husky/` directory OR `husky` in devDependencies + a `prepare` script
+  - `lint-staged` — `lint-staged` in devDependencies OR `.lintstagedrc*` config OR `lint-staged` config block in `package.json`
+  - `commitlint` — `@commitlint/*` in devDependencies OR `commitlint.config.*` file
+  - `ESLint` — `eslint` in devDependencies OR `.eslintrc*` / `eslint.config.*` file (mention preset/config when distinctive, e.g., `ESLint (airbnb-base + airbnb-typescript + vue plugin)`)
+  - `Prettier` — `prettier` in devDependencies OR `.prettierrc*` / `prettier.config.*` file
+  - `tsc strict mode` / `vue-tsc strict mode` — `"strict": true` (or any of the strict-* flags) in `tsconfig*.json`. Use `vue-tsc` when the project uses Vue + has `vue-tsc` in scripts; otherwise `tsc`.
+  - `Stylelint` — `stylelint` in devDependencies OR `.stylelintrc*` / `stylelint.config.*` file
+  - `mypy` (Python) — `mypy` in dev deps OR `mypy.ini` / `pyproject.toml [tool.mypy]`
+  - `ruff` (Python) — `ruff` in dev deps OR `ruff.toml` / `pyproject.toml [tool.ruff]`
+  - `black` (Python) — `black` in dev deps OR `pyproject.toml [tool.black]`
+  - `golangci-lint` (Go) — `.golangci.y*ml` config OR project script invokes it
+  - `clippy` (Rust) — `cargo clippy` invoked in CI OR root `clippy.toml`
+  - `rustfmt` (Rust) — `rustfmt.toml` OR `cargo fmt` in CI
+
+  If you find an enforcement tool not on this list, still add it (canonical signal set is non-exclusive — but treat the items above as a required minimum-scan checklist, not a sample). For each tool, the value passed to `add-enforcement-tool` should be the canonical name from the bullets above (e.g., `Husky (pre-commit)`, not just `Husky`) so cross-runtime parity is byte-comparable.
 
 Do not invent details or fill categories with plausible-sounding defaults. An honest "uncertain — will ask the user" beats a confident wrong guess. Do not limit yourself to the indicators mentioned above — examine whatever is actually present, in whatever ecosystem the project uses.
 
@@ -314,7 +365,11 @@ The Report is **composed via field-by-field CLI calls**, not emitted as a YAML b
 
 1. **Every required field must be set explicitly.** Call `scripts/lib/detect_report set <field> --value <value>` for each scalar; call `add-package` / `add-language` / `add-framework` / `add-enforcement-tool` for each list entry. The helper rejects `compose` if any required field is unset. "I didn't detect one" is not a valid skip — set the field to `null` (with `--reason` where the helper requires it) or to the appropriate empty value, citing the specific signals checked.
 
-2. **Dep+usage double-check for library-category fields.** For `auth_layer`, `api_client`, `state_management`, `styling`, `routing`, `error_handling`, `validation_library`: run BOTH a dependency-manifest scan AND a source-code usage-pattern grep. Set the field to `null` only when both return empty. If either returns a hit, name the library and pass `--evidence "<dep + usage signal>"`. The helper rejects non-null library-category sets without `--evidence`. Canonical usage patterns to grep for the harder-to-detect categories:
+2. **Dep+usage double-check for library-category fields.** For `auth_layer`, `api_client`, `state_management`, `styling`, `routing`, `error_handling`, `validation_library`: run BOTH a dependency-manifest scan AND a source-code usage-pattern grep. Set the field to `null` only when both return empty. If either returns a hit, name the library and pass `--evidence "<dep + usage signal>"`. The helper rejects non-null library-category sets without `--evidence`.
+
+   **Multi-layer rule for `styling`** (and any other field where multiple layers commonly coexist): if 2+ styling technologies are detected together — e.g., a utility framework + a CSS preprocessor (Tailwind + Sass), or a CSS-in-JS library + a global stylesheet system, or a UI component library + custom CSS — list ALL of them in the field value, joined by ` + ` in detection order (most prominent first). Examples: `Tailwind CSS + Sass`, `styled-components + global CSS`, `Tailwind CSS + PostCSS + CSS Modules`. Do NOT pick only the most prominent and drop the rest — both runtimes (Claude and Codex) must surface the same complete layer list, otherwise downstream `CLAUDE.md` / `AGENTS.md` substitutions diverge.
+
+   Canonical usage patterns to grep for the harder-to-detect categories:
    - error_handling: `Either<`, `Result<`, `Maybe<`, `Task<`, `Try<`, `neverthrow`, `purify-ts`, `fp-ts`, `oxide.ts`, `ts-results`, `monet`
    - validation: `zod`, `yup`, `joi`, `ajv`, `pydantic`, `marshmallow`, `class-validator`
    - Use the same pattern for any library category — dep name shortlist + source-grep; never decide "none" from only one check.
