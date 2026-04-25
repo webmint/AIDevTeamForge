@@ -606,11 +606,15 @@ _YAML_SPECIAL_CHARS = set(":#{}[],&*!|>'\"%@`")
 
 
 def emit_yaml(state: dict[str, Any]) -> str:
-    """Render the detection_report YAML from a state dict."""
+    """Render the detection_report YAML from a state dict.
+
+    Internal-state keys (any key starting with `_` — `_reasons`, `_evidence`,
+    `_set_fields`, etc.) are skipped: they're tracking maps used by validation
+    layers, not part of the schema downstream readers consume.
+    """
     lines: list[str] = ["detection_report:"]
-    skip = {"_reasons"}
     for key, value in state.items():
-        if key in skip:
+        if key.startswith("_"):
             continue
         if key == "optional" and isinstance(value, dict):
             _emit_optional(key, value, lines, indent=2)
