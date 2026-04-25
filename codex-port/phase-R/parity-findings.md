@@ -1249,6 +1249,114 @@ Codex's preferred interface, ranked:
 
 ---
 
+## Run 4 — 2026-04-25 (Path B integration test)
+
+First run with Path B (Python-composed Detection Report) integrated on both runtimes. Wizard executed in:
+- Claude: `~/Projects/testParity/` on branch `claude-parity-run4`
+- Codex: `~/Projects/testParity-codex/` on branch `codex-parity-run4`
+
+Both branches cut from the shared baseline `64bb325` ("Initialize parity test repo"); R3 results preserved on `claude-parity-run3` / `codex-parity-run3`.
+
+### R4 — §10.6 ship-criteria scorecard
+
+| Criterion | Claude R4 | Codex R4 |
+|---|---|---|
+| Finding 23 — Detection Report file emitted | ✅ `.devforge/detection_report.yaml` (10162 B) | ✅ `.devforge/detection_report.yaml` (14581 B) |
+| Finding 23B — no abbreviation, package count match | ✅ 25 packages, `manifest_count: 25` | ✅ 25 packages, `manifest_count: 25` |
+| Finding 21 — enum `architecture_shape` | ✅ `clean-feature-modular-monorepo` | ✅ `clean-feature-modular-monorepo` (identical value, both runtimes) |
+| Finding 13 — no hallucinated packages | ✅ Step 2.4 filesystem gate held | ✅ `pkg-test` (no manifest) caught by gate + filtered |
+| State cleanup post-compose | ✅ `.detection-report-state.json` deleted | ✅ Same |
+| No internal-state leak in YAML | ✅ After Step 1.7-fix patch | ✅ Same patch on Codex side |
+| Latency ≤5% regression | ✅ Within range | ✅ Within range (validation retries negligible) |
+
+### R4 — Structural parity (9-field side-by-side)
+
+| Field | Claude R4 | Codex R4 | Match |
+|---|---|---|---|
+| `workspace_mode` | wrapper | wrapper | ✅ |
+| `source_root` | db-cse-ui-strata | db-cse-ui-strata | ✅ |
+| `project_state` | brownfield | brownfield | ✅ |
+| `default_branch` | dev | dev | ✅ |
+| `manifest_count` | 25 | 25 | ✅ |
+| `architecture_shape` | clean-feature-modular-monorepo | clean-feature-modular-monorepo | ✅ |
+| `runtime_url.source` | `vite.config.ts: server.host/port/https` | same | ✅ |
+| `monorepo_tool` | Lerna | Lerna | ✅ |
+| `package_manager.tool` | yarn | yarn | ✅ |
+
+### R4 — Value-level differences (NOT structural failures, NOT addressed by Path B)
+
+| Field | Claude R4 | Codex R4 | Notes |
+|---|---|---|---|
+| `file_count` | 2260 | 2235 | Different scan rule between runtimes |
+| `languages[0].runtime` | Node.js | browser + node | LLM phrasing |
+| `styling` | Tailwind CSS + Sass | Tailwind CSS | Codex missed Sass |
+| `enforcement_tooling` | 3 items (Husky, ESLint, vue-tsc) | 1 item (Husky) | Codex less exhaustive |
+| `architecture_evidence` | Cites `domain/cases` paths | Cites `domain/cases` + `domain/data` paths | Both rich; Codex slightly more verbose |
+
+These are LLM-judgment differences. Path B is explicitly out of scope for value-level parity (per §10.10). Path A iteration handles them.
+
+### R4 — Codex execution-policy flip (the key R3 → R4 win)
+
+R3 self-report (from `codex-r3-interview.md`):
+> *"my execution policy still prioritized conversational progress over emitting the structured handoff artifact. current textual reinforcement is not sufficient for me."*
+
+R4 behavior, captured live during wizard:
+> *"The report helper starts empty, so I need to populate every required field explicitly before the wizard can move on."*
+> *"If the helper rejects any field, I'll use its validation error to tighten the inputs before I ask Q0, rather than carrying a bad report into the later phases."*
+
+The CLI helper functioned as a validation feedback channel that Codex actively interrogated (`status`, `set --help`, `add-package --help`) and used to retry until composition succeeded.
+
+### R4 — Validation feedback loop functional
+
+Codex hit two rejections during R4 Phase 1, recovered cleanly each time:
+1. **Path format rejection**: Codex's first `add-package` calls used wrong relative paths. Helper rejected with the actual computed path; Codex inferred the join rule and retried.
+2. **Hallucinated package rejection** (Finding 13 closure live): Codex's defensive Python loop tried to read `packages/pkg-test/package.json` — `FileNotFoundError`. Codex filtered the package list to actual workspace members with manifests, then re-ran.
+
+R3-Codex would have emitted bad data through these scenarios; R4-Codex is structurally constrained from doing so.
+
+### R4 — Bug found and fixed during this run (Step 1.7-fix)
+
+Initial Claude R4 wizard run emitted `_set_fields` and `_evidence` keys at the bottom of the YAML — the emitter only skipped `_reasons` (the only underscore key existing at Step 1.7 implementation time, before Steps 2.2 and 2.6 added new internal-state maps). Patched the emitter to skip any `_`-prefixed key (Python convention). Re-ran wizard; YAML clean.
+
+The bug was caught BY the test cycle Path B was designed to enable (machine-comparable artifact emission). Self-correcting design.
+
+### R4 — Closures (findings closed structurally via Path B)
+
+- **Finding 23** (HIGH, blocker since R2): CLOSED. Detection Report YAML now emitted as a file artifact via CLI composer, on both runtimes.
+- **Finding 23A** (HTML marker semantics): CLOSED by Path B Phase 4 spec rewrite — markers removed from spec entirely; CLI protocol description replaces them.
+- **Finding 23B** (no abbreviation): CLOSED. Composer cross-checks `len(packages) == manifest_count` at compose time; refuses to emit on mismatch.
+- **Finding 21** (enum architecture): CLOSED. Composer rejects free-form labels at set-time; both runtimes now emit `clean-feature-modular-monorepo`.
+- **Finding 13** (hallucinated packages): CLOSED. Composer's filesystem-existence check on `add-package` rejects paths that don't exist on disk.
+
+### R4 — Still open from earlier runs
+
+- **Finding 22** (Phase 1 ↔ Phase 2 field linkage): partially addressed by file-based read in questions.md preflight (Phase 5 of Path B implementation). Validation that Q11 URL specifically reads from `runtime_url.value` cleanly: pending downstream-diff inspection of project-config.json.
+- **Finding 27** (multi-stack collapsing): Path A spec text addressed in detect.md "SFC-container collapse" section. R4 evidence: both runtimes correctly emit single-language stack (TypeScript only), no `.vue` or `.js` separate stacks. PROVISIONALLY CLOSED — confirm if no regression in subsequent runs.
+- **Findings 28, 29, 30, 31** (population-side per-package details): Path A fixes already in `populate.md`; not directly tested by R4 structural focus. Inspect downstream diffs if needed.
+
+### R4 — Parity verdict
+
+**Structural parity at emission level: ACHIEVED.** Both runtimes produce comparable, validated, file-based Detection Reports. Cross-runtime diff is now a tractable engineering operation (`diff a.yaml b.yaml`), not a fundamental drift risk.
+
+**Value-level parity: residual ~80-90%, varies by field.** Same as R3; not regressed; not in Path B scope.
+
+**Cross-runtime stability across reruns: confirmed on Claude side, observed but not stress-tested on Codex side.** User report: Claude shows stable answers and discoveries across multiple R4 reruns of the same project.
+
+### R4 — Decision: Path B SHIPS
+
+`feature/codex-port-path-b` merged into `feature/codex-support` 2026-04-25. PLAN.md §10 marked SHIPPED. Future work returns to Path A iteration for value-level discipline (file_count algorithm, styling exhaustiveness, enforcement_tooling completeness, etc.).
+
+### R4 — Insight: harness hierarchy across runtimes
+
+Observation from R3 → R4 evidence:
+- **Markdown spec** is necessary, sufficient for Claude (R3 already emitted YAML correctly).
+- **Markdown spec** is necessary, INSUFFICIENT for Codex (R3 confirmed). Code-level validation channels are needed to constrain Codex's execution policy.
+- **Both layers together** deliver tool-like reproducibility within a single project + spec setup.
+
+Design heuristic: when authoring instructions across multiple LLM runtimes, design for the runtime with the lowest execution-policy floor. Code-validated channels handle that runtime; markdown-strong runtimes get the same structural guarantees for free. This generalizes beyond setup-wizard — it's a portability strategy for any spec-driven workflow.
+
+---
+
 ## How to run this test again
 
 ```bash
