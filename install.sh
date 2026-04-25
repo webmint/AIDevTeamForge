@@ -118,6 +118,23 @@ if [ "$WRAPPER_MODE" = true ]; then
   fi
 fi
 
+# ── Python 3 preflight ─────────────────────────────────────────────────────
+# Install-time generators (scripts/generate.sh → generate-agents.py /
+# generate-corellm.py / emitters) and the wizard-time Detection Report
+# composer (scripts/lib/detect_report.py) all require Python 3. Surface the
+# dependency now rather than letting it fail mid-install.
+if command -v python3 >/dev/null 2>&1; then
+  : # python3 ok
+elif command -v py >/dev/null 2>&1; then
+  : # Windows Python launcher routes to 3.x
+elif command -v python >/dev/null 2>&1 && [ "$(python -c 'import sys; print(sys.version_info[0])' 2>/dev/null)" = "3" ]; then
+  : # bare python is 3.x
+else
+  echo "AIDevTeamForge requires Python 3 on the target machine." >&2
+  echo "Install Python 3.8+ (https://www.python.org/downloads/) and re-run." >&2
+  exit 1
+fi
+
 echo "Installing AIDevTeamForge into: $TARGET_DIR"
 
 # ── Copy cross-runtime scaffolding (.devforge/) ──────────────────────────
