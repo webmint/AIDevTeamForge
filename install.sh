@@ -147,6 +147,13 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 # The `src/devforge/.` + trailing `/` syntax copies CONTENTS (not the
 # folder itself) so this is idempotent regardless of whether .devforge/
 # pre-exists.
+#
+# .devforge/ ownership: install.sh creates eagerly because the cp -R below
+# requires the directory to exist. The wizard-time composer
+# (scripts/lib/detect_report.py) also calls mkdir(exist_ok=True) defensively
+# so standalone composer use (without install.sh) and update flows still
+# work. Belt-and-suspenders by design — see PATH-B-IMPLEMENTATION.md
+# Step 3.3 decision (option c).
 mkdir -p "$TARGET_DIR/.devforge"
 cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
 

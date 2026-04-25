@@ -153,7 +153,13 @@ def load_state() -> dict[str, Any]:
 
 
 def save_state(state: dict[str, Any]) -> None:
-    """Write state atomically (temp file + rename) to resist partial writes."""
+    """Write state atomically (temp file + rename) to resist partial writes.
+
+    The mkdir is defensive: install.sh creates .devforge/ eagerly, but this
+    composer is also exercised standalone (tests) and via update flows
+    where install.sh may not have re-run. Belt-and-suspenders per
+    PATH-B-IMPLEMENTATION.md Step 3.3 (option c).
+    """
     DEVFORGE_DIR.mkdir(parents=True, exist_ok=True)
     tmp = STATE_FILE.with_suffix(STATE_FILE.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
