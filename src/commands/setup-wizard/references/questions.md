@@ -1,6 +1,6 @@
 # Phase 2 — Questions
 
-This reference covers the interactive Q&A phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 2 executes. Walk the user through Q0 → Q11 in order; later questions depend on earlier answers. Phase 1 detection outputs should already be in conversational memory — use them when presenting findings.
+This reference covers the interactive Q&A phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 2 executes. Walk the user through Q0 → Q11 in order; later questions depend on earlier answers. Phase 1 detection outputs live in `.devforge/detection_report.yaml` (composed by `scripts/lib/detect_report` at the end of Phase 1) — read fields from that file when presenting findings. The Phase 2 preflight section below covers this explicitly.
 
 ## Outputs to retain in conversational memory
 

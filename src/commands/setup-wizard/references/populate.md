@@ -57,7 +57,7 @@ Read `CLAUDE.md` and `AGENTS.md` at project root — **whichever exist**. Each c
 
 **Runner prefix source for all command emissions** (applies to the 4 placeholders above + per-package commands in `{{PACKAGE_STACKS_SECTION}}` + `{{DEV_COMMANDS}}` + any other command composed during populate):
 
-When composing any command string, the runner prefix (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / etc.) comes from `detection_report.package_manager.tool` in the Phase 1 Detection Report. Phase 1 already selected the runner from observable lockfile signals at SOURCE_ROOT (see `detect.md` → "Command-runner selection") and encoded it in the Report. Re-deriving the runner here — from defaults, heuristics, or re-inspecting lockfiles — opens a runtime-to-runtime drift surface and is the root cause of past inconsistencies where one runtime emitted `yarn build` and another emitted `npm run build` on the same project.
+When composing any command string, the runner prefix (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / etc.) comes from `detection_report.package_manager.tool` in `.devforge/detection_report.yaml` (the Phase 1 Detection Report file, written by `scripts/lib/detect_report compose`). Phase 1 already selected the runner from observable lockfile signals at SOURCE_ROOT (see `detect.md` → "Command-runner selection") and encoded it in the Report. Re-deriving the runner here — from defaults, heuristics, or re-inspecting lockfiles — opens a runtime-to-runtime drift surface and is the root cause of past inconsistencies where one runtime emitted `yarn build` and another emitted `npm run build` on the same project.
 
 - Multi-command ecosystems (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / `pdm` / `uv` / `bundle exec` for Ruby): render as `<runner> run <script>` or `<runner> <script>` per the ecosystem convention (e.g., `yarn build:raw`, `poetry run build`, `bundle exec rake test`).
 - Single-command ecosystems (`cargo`, `go`, `swift`): bare command, no runner prefix (e.g., `cargo build`, `go build ./...`, `swift build`).
@@ -351,7 +351,7 @@ Three distinct sentinels at display time (apply to all fields):
 - `"N/A"` — not applicable for that stack (passed through verbatim; e.g., library with no API layer, or plain JavaScript with no type checker)
 - `"—"` — no data (language of package not in `LANGUAGES`; rare, usually indicates user-override in Q3 removed a language Phase 1 detected)
 
-Store the aggregated `PACKAGE_STACKS` array in conversational memory for use in 5.5 and downstream commands.
+Store the aggregated `PACKAGE_STACKS` array in working state for use in 5.5 and downstream commands. (`PACKAGE_STACKS` is *derived* during this phase from the per-package records in `.devforge/detection_report.yaml`; it is not stored back in that file.)
 
 **Rendering rule (by package count):**
 
@@ -529,6 +529,8 @@ If `AC_RUNTIME_URL` is not set (Q11's `AC_VERIFICATION_MODE` array didn't includ
 ## 5.5: Populate Project Config
 
 Read `.devforge/project-config.json`. Replace every `null` value with the corresponding answer collected during Phase 1 (detection) and Phase 2 (questions). Use the same values you substituted into the files above. Keys match the placeholder names without `{{ }}`.
+
+**Source of Phase 1 values.** Read structured detection values from `.devforge/detection_report.yaml` (the file written by `scripts/lib/detect_report compose` at the end of Phase 1) — not from your conversation memory of the detection. The file is the canonical source for fields like `package_manager.tool`, `architecture_shape`, `languages[]`, `frameworks[]`, `packages[]`, `runtime_url.value`, etc. Phase 2 question answers are stored in your working tracking of user responses; they're not in the YAML file.
 
 New keys this file includes for runtime configs: `CODEX_MODEL_DEFAULT`, `CODEX_REASONING_DEFAULT`, `CODEX_APPROVAL_POLICY`. Use the same computed values the wizard applies to `.codex/config.toml` in §5.2 (model from Q10b override or `CODEX_DEFAULT_MODEL`; reasoning from Q10b `CODEX_TIER_DO`; approval from Q8 mapping). These `project-config.json` fields are authoritative for downstream commands — they're the resolved wizard answers, independent of the regex-replacement values that land in `.codex/config.toml`.
 

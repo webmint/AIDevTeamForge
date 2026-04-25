@@ -2,9 +2,9 @@
 
 This reference covers the read-only / confirm-level detection work of the setup-wizard flow, loaded by the wizard orchestrator when Phase 1 executes. Read it fully, then execute STEPs 0 through 3 in order.
 
-## Outputs to retain in conversational memory
+## Outputs of this phase
 
-This phase produces the following values. Hold them in conversational memory for use by Phase 2 (questions), Phase 3 (population), and Phase 4 (agents):
+This phase produces the following structured values. They are written to `.devforge/detection_report.yaml` via the `scripts/lib/detect_report` CLI helper (see "Detection Report — Phase 1 output" below). Phase 2 (questions), Phase 3 (population), and Phase 4 (agents) read these values from the file, not from conversation memory:
 
 - `SOURCE_ROOT` — `.` for standalone, inner folder name for wrapper (e.g., `client-project`)
 - `WORKSPACE_MODE` — `standalone` or `wrapper`
