@@ -118,6 +118,23 @@ if [ "$WRAPPER_MODE" = true ]; then
   fi
 fi
 
+# ── Python 3 preflight ─────────────────────────────────────────────────────
+# Install-time generators (scripts/generate.sh → generate-agents.py /
+# generate-corellm.py / emitters) and the wizard-time Detection Report
+# composer (scripts/lib/detect_report.py) all require Python 3. Surface the
+# dependency now rather than letting it fail mid-install.
+if command -v python3 >/dev/null 2>&1; then
+  : # python3 ok
+elif command -v py >/dev/null 2>&1; then
+  : # Windows Python launcher routes to 3.x
+elif command -v python >/dev/null 2>&1 && [ "$(python -c 'import sys; print(sys.version_info[0])' 2>/dev/null)" = "3" ]; then
+  : # bare python is 3.x
+else
+  echo "AIDevTeamForge requires Python 3 on the target machine." >&2
+  echo "Install Python 3.8+ (https://www.python.org/downloads/) and re-run." >&2
+  exit 1
+fi
+
 echo "Installing AIDevTeamForge into: $TARGET_DIR"
 
 # ── Copy cross-runtime scaffolding (.devforge/) ──────────────────────────
@@ -130,8 +147,25 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 # The `src/devforge/.` + trailing `/` syntax copies CONTENTS (not the
 # folder itself) so this is idempotent regardless of whether .devforge/
 # pre-exists.
+#
+# .devforge/ ownership: install.sh creates eagerly because the cp -R below
+# requires the directory to exist. The wizard-time composer
+# (scripts/lib/detect_report.py) also calls mkdir(exist_ok=True) defensively
+# so standalone composer use (without install.sh) and update flows still
+# work. Belt-and-suspenders by design — see PATH-B-IMPLEMENTATION.md
+# Step 3.3 decision (option c).
 mkdir -p "$TARGET_DIR/.devforge"
 cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
+
+# ── Copy setup-wizard runtime helpers ───────────────────────────────────────
+# scripts/lib/detect_report{,.py} compose the Phase 1 Detection Report at
+# wizard-time. The launcher (no extension) picks a Python 3 interpreter; the
+# .py module is the composer. Both must land on the target — generators
+# elsewhere in scripts/ stay template-internal.
+mkdir -p "$TARGET_DIR/scripts/lib"
+cp "$TEMPLATE_DIR/scripts/lib/detect_report" "$TARGET_DIR/scripts/lib/detect_report"
+cp "$TEMPLATE_DIR/scripts/lib/detect_report.py" "$TARGET_DIR/scripts/lib/detect_report.py"
+chmod +x "$TARGET_DIR/scripts/lib/detect_report"
 
 # ── Place constitution.md at project root (presence-guarded) ──────────────
 # Brownfield safety: if the target already has a constitution.md, leave it

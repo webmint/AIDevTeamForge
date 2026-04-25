@@ -32,7 +32,7 @@ Execute these phases in order. Each phase's detailed instructions live in a dedi
 - STEP 2: Default Branch
 - STEP 3: Auto-Detect Project Structure (languages, frameworks, tooling)
 
-Retain all detection outputs in conversational memory for use in later phases (keys enumerated in `references/detect.md`).
+Detection outputs are written to `.devforge/detection_report.yaml` via the `scripts/lib/detect_report` CLI helper at the end of Phase 1 (keys enumerated in `references/detect.md`). Later phases read this file directly — no conversational-memory handoff for structured detection values.
 
 ### Phase 2 — Questions (interactive)
 
@@ -50,7 +50,7 @@ Retain every captured answer in conversational memory under the keys documented 
 
 ### Phase 5 — Summary
 
-Present this summary to the user. **Substitute each `{VALUE}` placeholder below with the actual captured value from conversational memory** — do NOT emit the literal `{VALUE}` text. For `{N}` in the Packages line, compute `len(PACKAGES_DETECTED)`. Labels use plurals so they read naturally whether the project has one or many stacks. Include the `Packages:` line only when `PACKAGES_DETECTED` has 2 or more entries (multi-package project) — omit it for single-package projects.
+Present this summary to the user. **Substitute each `{VALUE}` placeholder below with the actual captured value** — do NOT emit the literal `{VALUE}` text. Detection-derived values come from `.devforge/detection_report.yaml`; Phase 2 question answers come from your working tracking. For `{N}` in the Packages line, compute `len(PACKAGES_DETECTED)`. Labels use plurals so they read naturally whether the project has one or many stacks. Include the `Packages:` line only when `PACKAGES_DETECTED` has 2 or more entries (multi-package project) — omit it for single-package projects.
 
 ```
 ## Setup Complete

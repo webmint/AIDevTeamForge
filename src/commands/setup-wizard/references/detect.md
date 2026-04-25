@@ -2,9 +2,9 @@
 
 This reference covers the read-only / confirm-level detection work of the setup-wizard flow, loaded by the wizard orchestrator when Phase 1 executes. Read it fully, then execute STEPs 0 through 3 in order.
 
-## Outputs to retain in conversational memory
+## Outputs of this phase
 
-This phase produces the following values. Hold them in conversational memory for use by Phase 2 (questions), Phase 3 (population), and Phase 4 (agents):
+This phase produces the following structured values. They are written to `.devforge/detection_report.yaml` via the `scripts/lib/detect_report` CLI helper (see "Detection Report — Phase 1 output" below). Phase 2 (questions), Phase 3 (population), and Phase 4 (agents) read these values from the file, not from conversation memory:
 
 - `SOURCE_ROOT` — `.` for standalone, inner folder name for wrapper (e.g., `client-project`)
 - `WORKSPACE_MODE` — `standalone` or `wrapper`
@@ -306,129 +306,122 @@ File-extension counts alone mislead when certain extensions are framework-owned 
 
 ### Detection Report — Phase 1 output
 
-Phase 1 ends with emitting a structured Detection Report. This is the handoff from detection to Phase 2 (questions) and Phase 3 (population): both phases reference fields in the Report to avoid re-asking the user about things already detected, and Phase 3 reads Report fields to populate `.devforge/project-config.json`. A prose summary does not populate those fields — the Report is emitted as a fenced YAML code block so downstream phases can read it. Runtime-to-runtime parity of downstream artifacts (`project-config.json`, `CLAUDE.md`, `AGENTS.md`) depends on both runtimes emitting the Report in the same shape.
+Phase 1 ends by composing a structured Detection Report into `.devforge/detection_report.yaml` via the `scripts/lib/detect_report` CLI helper. This is the handoff from detection to Phase 2 (questions) and Phase 3 (population): both phases read fields from this file to avoid re-asking the user about things already detected, and Phase 3 reads Report fields when populating `.devforge/project-config.json`. Runtime-to-runtime parity of downstream artifacts depends on both runtimes producing the same Report.
+
+The Report is **composed via field-by-field CLI calls**, not emitted as a YAML block in the conversation. The helper validates each field at call-time (enums, required fields, evidence, file existence) and writes the final YAML deterministically when `compose` is called.
 
 **Rules** (apply to every report):
 
-1. **Every field below is required.** If a field has no value, emit `null` plus a one-line reason (as an inline YAML comment: `# reason: ...`). Never omit a field. "I didn't detect one" is not a valid outcome — emit `null` with the specific signals checked.
+1. **Every required field must be set explicitly.** Call `scripts/lib/detect_report set <field> --value <value>` for each scalar; call `add-package` / `add-language` / `add-framework` / `add-enforcement-tool` for each list entry. The helper rejects `compose` if any required field is unset. "I didn't detect one" is not a valid skip — set the field to `null` (with `--reason` where the helper requires it) or to the appropriate empty value, citing the specific signals checked.
 
-2. **Dep+usage double-check for library-category fields.** For `auth_layer`, `api_client`, `state_management`, `styling`, `routing`, `error_handling`, `validation_library`: run BOTH a dependency-manifest scan AND a source-code usage-pattern grep. Emit `null` only when both return empty. If either returns a hit, name the library. Canonical usage patterns to grep for the harder-to-detect categories:
+2. **Dep+usage double-check for library-category fields.** For `auth_layer`, `api_client`, `state_management`, `styling`, `routing`, `error_handling`, `validation_library`: run BOTH a dependency-manifest scan AND a source-code usage-pattern grep. Set the field to `null` only when both return empty. If either returns a hit, name the library and pass `--evidence "<dep + usage signal>"`. The helper rejects non-null library-category sets without `--evidence`. Canonical usage patterns to grep for the harder-to-detect categories:
    - error_handling: `Either<`, `Result<`, `Maybe<`, `Task<`, `Try<`, `neverthrow`, `purify-ts`, `fp-ts`, `oxide.ts`, `ts-results`, `monet`
    - validation: `zod`, `yup`, `joi`, `ajv`, `pydantic`, `marshmallow`, `class-validator`
    - Use the same pattern for any library category — dep name shortlist + source-grep; never decide "none" from only one check.
 
-3. **Architecture bucket is enumerated.** `architecture_shape` MUST be one of: `layered`, `feature-modular`, `monorepo`, `feature-modular-monorepo`, `clean`, `clean-feature-modular-monorepo`, `hexagonal`, `mvc`, `bloc`, `flat`, `other`. No free-form labels (e.g., `"BLoC + use-cases + repositories"` is not valid — pick the closest bucket and cite the specific indicators in `architecture_evidence`). If no bucket fits, use `other` with explicit evidence.
+3. **Architecture bucket is enumerated.** `architecture_shape` MUST be one of: `layered`, `feature-modular`, `monorepo`, `feature-modular-monorepo`, `clean`, `clean-feature-modular-monorepo`, `hexagonal`, `mvc`, `bloc`, `flat`, `other`. The helper rejects free-form labels (e.g., `"BLoC + use-cases + repositories"` is not valid) at set-time. If no bucket fits, use `other` and document the indicators in `architecture_evidence`.
 
-   **Clean Architecture — specifier signals** (distinguishes `clean` from `hexagonal`): `domain/cases/` or `use-cases/` subfolder within each feature module; repository pattern with interface-in-domain + implementation-in-data split; dependency direction strictly inward (domain imports from nothing; data imports from domain; presentation imports from domain + data adapters). The `cases/` subfolder is the clearest Clean-specific artifact — distinguishes Clean from hexagonal even when both exhibit three-layer structure. When `cases/` is present alongside feature-modular monorepo layout, emit `clean-feature-modular-monorepo`, not `hexagonal`.
+   **Clean Architecture — specifier signals** (distinguishes `clean` from `hexagonal`): `domain/cases/` or `use-cases/` subfolder within each feature module; repository pattern with interface-in-domain + implementation-in-data split; dependency direction strictly inward (domain imports from nothing; data imports from domain; presentation imports from domain + data adapters). The `cases/` subfolder is the clearest Clean-specific artifact — distinguishes Clean from hexagonal even when both exhibit three-layer structure. When `cases/` is present alongside feature-modular monorepo layout, set `architecture_shape: clean-feature-modular-monorepo`, not `hexagonal`.
 
-4. **Per-package commands are per-package-specific.** Each `packages[]` entry requires `build_command` / `lint_command` / `type_check_command` / `test_command` read from THAT package's own `scripts` block (or manifest equivalent). A generic fallback (e.g., `yarn build` applied uniformly) is allowed only if that package's manifest has no scripts AND a language default applies — in which case set `command_source: fallback`. Otherwise `command_source: manifest`.
+4. **Per-package commands are per-package-specific.** Each `add-package` call requires `--build-command` / `--type-check-command` / `--lint-command` / `--test-command` read from THAT package's own `scripts` block (or manifest equivalent). Use `--command-source manifest` when the values come from the package's own scripts. A generic fallback (e.g., `yarn build` applied uniformly) is allowed only if that package's manifest has no scripts AND a language default applies — set `--command-source fallback` in that case.
 
-   **Root-scripts isolation.** Do not infer per-package commands from root / workspace-coordinator scripts when the package manifest contains its own scripts. Root scripts are stack-level only (they populate `build_command` at the Detection Report top level, not per-package) and MUST NOT be copied into `packages[]` entries. If a package's manifest has its own `scripts.build` etc., use those verbatim for that package's record — never fall back to the root's `scripts.build` when the package has its own.
+   **Root-scripts isolation.** Do not infer per-package commands from root / workspace-coordinator scripts when the package manifest contains its own. Root scripts are stack-level only (populate them at the top level via `set build_command`, etc.) and MUST NOT be copied into per-package `add-package` calls. If a package's manifest has its own `scripts.build` etc., pass those verbatim — never fall back to root scripts when the package has its own.
 
-   **No abbreviation in emitted `packages[]`.** The `packages[]` array in the emitted YAML Report MUST contain one entry per workspace member verbatim — no `# ... additional N packages follow the same pattern` comment stand-ins, no "similar to above" shortcuts, no name-only summary lists. Even for large monorepos (25+, 50+ packages), emit every record in full. The Report is consumed by `populate.md` §5.5 as the source of truth for `project-config.json.PACKAGE_STACKS`; abbreviation breaks that handoff and silently drops per-package detail from downstream rendering.
+   **No abbreviation.** Call `add-package` once per workspace member, in full — no exceptions, no "similar to above" shortcuts, no name-only summary lists. The helper cross-checks `len(packages) == manifest_count` at compose time and refuses to emit if they differ. Set `manifest_count` once (`set manifest_count --value <N>`) and add exactly N packages. Even for large monorepos (25+, 50+ packages), every record is required.
 
 5. **Workspace members vs utility manifests.** Workspace-member membership requires TWO conditions to both hold:
    - **(a)** The directory matches a workspace-declaration entry (`packages/*` glob, `apps/*` glob, or explicit listing in `package.json` `workspaces` / `pnpm-workspace.yaml` / `lerna.json` / Cargo `[workspace] members` / Go workspace `use`).
    - **(b)** The directory contains a valid manifest file (`package.json`, `Cargo.toml`, `pyproject.toml`, etc.).
 
    Resolution table:
-   - **(a) AND (b)** → goes in `packages[]` as a workspace member.
-   - **(a) only** (glob-match with no manifest): skip entirely — do NOT include in `packages[]` OR `optional.utility_manifests[]`. The directory is an empty placeholder, not a workspace member.
-   - **(b) only** (manifest with no workspace declaration, e.g., `scripts/package.json` in a `workspaces: ["packages/*", "apps/*"]` repo): goes in `optional.utility_manifests[]`.
+   - **(a) AND (b)** → call `add-package` for it.
+   - **(a) only** (glob-match with no manifest): skip entirely — neither `add-package` nor `optional.utility_manifests`. The directory is an empty placeholder, not a workspace member.
+   - **(b) only** (manifest with no workspace declaration, e.g., `scripts/package.json` in a `workspaces: ["packages/*", "apps/*"]` repo): would go in `optional.utility_manifests` — note that today the CLI does not have an `add-utility-manifest` subcommand, so this list is documented in the schema but not populated by MVP. Skip these manifests for now.
    - **Neither**: skip.
 
-   If the repo has no workspace declaration at all, every directory containing a manifest is a package (condition (a) is vacuous).
+   If the repo has no workspace declaration at all, every directory containing a manifest is a package (condition (a) is vacuous). The helper's `add-package` filesystem check rejects hallucinated paths — both `--path` (must be a directory) and `--path/--manifest` (must be a file) are stat'd.
 
-   **Workspace-root exception.** When a workspace declaration exists at the root, the root directory's manifest is included in `packages[]` as a workspace member even though the root is not matched by its own member globs (e.g., `workspaces: ["packages/*", "apps/*"]` does not glob-match `.` itself). The root's workspace-coordinator role is sufficient for inclusion. Only applies to repos WITH a workspace declaration; in single-package or non-workspace repos, the root is trivially the sole package.
+   **Workspace-root exception.** When a workspace declaration exists at the root, the root directory's manifest is included via `add-package` even though the root is not matched by its own member globs (e.g., `workspaces: ["packages/*", "apps/*"]` does not glob-match `.` itself). The root's workspace-coordinator role is sufficient for inclusion. Only applies to repos WITH a workspace declaration; in single-package or non-workspace repos, the root is trivially the sole package.
 
 6. **Wrapper-mode prefix** (`cd SOURCE_ROOT && ...`) applies to per-package commands as well as stack-level commands.
 
-7. **Evidence required for every non-null value.** A file path, a dep name, or a usage-pattern excerpt — so the user (and later parity diffs) can verify. Either as an inline `# evidence: ...` comment or as a structured `evidence:` sub-field.
+7. **Evidence is required at set-time for library-category fields** (Rule 2 enforces via `--evidence`). For other fields, evidence lives in dedicated fields:
+   - `package_manager.evidence` (lockfile path)
+   - `frameworks[].evidence` (set via `add-framework --evidence`)
+   - `architecture_evidence` (file paths + indicators that justify the chosen `architecture_shape`)
 
-8. **`runtime_url` must read dev-server config** if one is present (`vite.config.ts`, `webpack.config.js` `devServer`, `next.config.js`, `angular.json` `serve`, Django `settings.py` `ALLOWED_HOSTS`, etc.). Framework defaults (`http://localhost:5173`, etc.) are acceptable ONLY when no dev-server config is detected — and must be flagged `source: framework-default`.
+   The helper rejects:
+   - `set <library-cat-field> --value <non-null>` without `--evidence`
+   - `add-package` with non-existent `--path` or `--path/--manifest`
+   - `set runtime_url.value --value null` without `--reason`
+   - `set runtime_url.source --value <path>` when the path doesn't exist (use `framework-default` literal if no config detected)
+
+8. **`runtime_url` must read dev-server config** if one is present (`vite.config.ts`, `webpack.config.js` `devServer`, `next.config.js`, `angular.json` `serve`, Django `settings.py` `ALLOWED_HOSTS`, etc.). Set the two sub-fields separately:
+   - `set runtime_url.value --value <url>` (or `--value null --reason "<why no web runtime>"` for backend/library projects)
+   - `set runtime_url.source --value <config-file-path>` (must exist on disk) — append `: <field-descriptor>` annotation if helpful (e.g., `"vite.config.ts: server.host/port/https"`).
+   - Use `--value framework-default` (literal) for `runtime_url.source` ONLY when no dev-server config is detected. Framework defaults (`http://localhost:5173`, etc.) are acceptable only in this case.
 
 9. **README scope — descriptive prose only.** README content is authoritative ONLY where a question in `references/questions.md` explicitly names it as a source (currently: Q1 `PROJECT_DESCRIPTION` quotes README first paragraph). For every other Detection Report field — commands, architecture, package membership, runtime URL, API layer, error handling, etc. — README text is NOT an authoritative source. Structured detection values come from manifests, lockfiles, config files, and spec rules (runner selection, workspace-member rule, dep+usage check, etc.). When README and manifest-based detection agree, cite the manifest evidence; when they conflict, follow the spec rule and ignore the README. Do not let README prose concreteness bias command emission, architecture labeling, or other structured-field population.
 
-**Shape** (fill with actual detected values; shown here with placeholder values and the rule comments removed).
+### Compose protocol
 
-**About the `<!-- >>> EMIT <<< -->` markers**: these are authoring anchors for spec readers, NOT content to emit. Render only the fenced YAML code block between them. Strip the HTML comment markers from your output — the YAML fence (```` ```yaml ... ``` ````) is itself the parser anchor for downstream tooling.
+Phase 1 ends with these calls, in order:
 
-<!-- >>> EMIT THIS YAML BLOCK TO USER — VERBATIM — BEFORE PHASE 2 — STRIP THESE COMMENT MARKERS <<< -->
-
-```yaml
-detection_report:
-  workspace_mode: standalone            # standalone | wrapper
-  source_root: "."
-  project_state: brownfield             # empty | greenfield | brownfield
-  default_branch: main                  # from SOURCE_ROOT/.git (inner repo in wrapper mode)
-  file_count: 0                         # under SOURCE_ROOT, per STEP 1.1 exclusions
-  manifest_count: 0
-
-  languages:
-    - name: TypeScript
-      file_count: 0
-      runtime: Node
-  primary_language: TypeScript
-
-  frameworks:
-    - name: Vue 3
-      role: frontend                    # frontend | backend | library | plugin
-      evidence: "apps/app-web/package.json: vue@^3"
-
-  package_manager:
-    tool: yarn                          # npm | yarn | pnpm | bun | pip | poetry | cargo | go | ...
-    outer_tool: null                    # set only if wrapper and outer uses a different pm
-    evidence: "yarn.lock at SOURCE_ROOT"
-  monorepo_tool: null                   # Lerna | Turborepo | Nx | pnpm-workspaces | Cargo-workspace | null
-
-  build_tool: null
-  build_command: null
-  type_check_command: null
-  lint_command: null
-  test_runner: null
-
-  # Library-category fields — dep+usage double-check rule applies.
-  auth_layer: null                      # e.g., "Okta" (evidence: @okta/okta-vue in deps + plugin install)
-  api_client: null                      # e.g., "Apollo GraphQL" (evidence: @apollo/client + gql tags in src/)
-  state_management: null                # e.g., "Pinia" (evidence: pinia in deps + defineStore in src/)
-  styling: null                         # e.g., "Tailwind + SCSS"
-  routing: null                         # e.g., "vue-router"
-  error_handling:
-    library: null                       # e.g., "purify-ts"
-    usage_pattern: null                 # e.g., "Either<DataError, ...> in pkg-cse-core/src/**/data/*.ts"
-  validation_library: null
-
-  architecture_shape: flat              # enumerated — see Rule 3
-  architecture_evidence: ""             # file paths + indicators
-
-  enforcement_tooling: []               # e.g., ["Husky (pre-commit)", "lint-staged", "commitlint"]
-  ci_cd: null                           # e.g., "GitHub Actions" (evidence: .github/workflows/*.yml)
-  containerization: null                # e.g., "Dockerfile + docker-compose.yml"
-
-  runtime_url:
-    value: null                         # e.g., "https://app.local:8080"
-    source: null                        # "vite.config.ts: server.host/port/https" | "framework-default" | null
-
-  packages:
-    - path: "."                         # workspace member, relative to SOURCE_ROOT
-      manifest: package.json
-      language_hint: TypeScript
-      framework_hint: null
-      build_command: null               # read from THIS package's scripts
-      type_check_command: null
-      lint_command: null
-      test_command: null
-      command_source: manifest          # manifest | fallback (see Rule 4)
-
-  optional:
-    utility_manifests: []               # manifests outside workspace declaration (see Rule 5)
-    # plus any stack-specific slots not in the core list (e.g., mobile_platform, ml_framework).
-    # Keep key names stable across runs so parity diffs stay comparable.
+```
+scripts/lib/detect_report status      # human-readable list of every field's set/unset state
+scripts/lib/detect_report compose     # validate + write .devforge/detection_report.yaml
 ```
 
-<!-- >>> END OF REQUIRED EMIT <<< -->
+`compose` refuses if:
+- Any required scalar is unset (lists every missing path)
+- Required lists `languages` or `packages` are empty
+- `len(packages) != manifest_count`
+- (any prior validation that was deferred to compose)
 
-After emitting the report, proceed to Phase 2. Phase 3 (`references/populate.md`) reads these fields when populating `.devforge/project-config.json`; the mapping from report fields to config fields is defined there.
+On success, the helper writes `.devforge/detection_report.yaml` and deletes the intermediate state file. The wizard then proceeds to Phase 2.
+
+### Schema reference
+
+Top-level scalars (set via `detect_report set <name> --value <value>`):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `workspace_mode` | enum | `standalone` \| `wrapper` |
+| `source_root` | path | `.` for non-wrapper, inner-folder name for wrapper |
+| `project_state` | enum | `empty` \| `greenfield` \| `brownfield` |
+| `default_branch` | string | from `SOURCE_ROOT/.git` |
+| `file_count` | int | files under SOURCE_ROOT (per STEP 1.1 exclusions) |
+| `manifest_count` | int | total manifests detected; cross-checked against `len(packages)` at compose |
+| `primary_language` | string | one of the `languages[].name` values |
+| `monorepo_tool` | enum \| null | `Lerna` \| `Turborepo` \| `Nx` \| `pnpm-workspaces` \| `Cargo-workspace` \| `Go-workspace` \| null |
+| `build_tool` | string \| null | e.g., `Vite`, `webpack` |
+| `build_command` / `type_check_command` / `lint_command` / `test_runner` | string \| null | stack-level fallbacks |
+| `auth_layer` / `api_client` / `state_management` / `styling` / `routing` / `validation_library` | string \| null | library-category — `--evidence` required when non-null |
+| `architecture_shape` | enum | 11 values (see Rule 3) |
+| `architecture_evidence` | string | file paths + indicators |
+| `ci_cd` / `containerization` | string \| null | |
+
+Nested scalars (dotted paths):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `package_manager.tool` | string | `npm` \| `yarn` \| `pnpm` \| `bun` \| `pip` \| `poetry` \| `cargo` \| `go` \| ... |
+| `package_manager.outer_tool` | string \| null | only set in wrapper mode if outer uses a different pm |
+| `package_manager.evidence` | string | lockfile path |
+| `error_handling.library` / `error_handling.usage_pattern` | string \| null | |
+| `runtime_url.value` | url \| null | `null` requires `--reason` |
+| `runtime_url.source` | string \| null | `<config-file-path>` (must exist), `<path>: <fields>`, or `framework-default` literal |
+
+Lists (populated via `add-*` subcommands):
+
+| Field | Subcommand | Notes |
+|-------|-----------|-------|
+| `languages[]` | `add-language --name <s> --file-count <n> --runtime <s>` | required ≥1 |
+| `frameworks[]` | `add-framework --name <s> --role <enum> --evidence <s>` | role: `frontend` \| `backend` \| `library` \| `plugin` |
+| `enforcement_tooling[]` | `add-enforcement-tool --value <s>` | e.g., `Husky (pre-commit)`, `lint-staged` |
+| `packages[]` | `add-package --path <dir> --manifest <file> --language-hint <s> [--framework-hint <s>] [--build-command <s>] [--type-check-command <s>] [--lint-command <s>] [--test-command <s>] --command-source {manifest\|fallback}` | required ≥1; path + path/manifest must exist on disk; `len(packages)` must equal `manifest_count` at compose |
+
+After `compose` succeeds, proceed to Phase 2 (`references/questions.md`). Phase 3 (`references/populate.md`) reads `.devforge/detection_report.yaml` when populating `.devforge/project-config.json`; the mapping from report fields to config fields is defined there.
 
 ---
 

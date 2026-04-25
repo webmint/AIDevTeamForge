@@ -1,6 +1,6 @@
 # Phase 2 — Questions
 
-This reference covers the interactive Q&A phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 2 executes. Walk the user through Q0 → Q11 in order; later questions depend on earlier answers. Phase 1 detection outputs should already be in conversational memory — use them when presenting findings.
+This reference covers the interactive Q&A phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 2 executes. Walk the user through Q0 → Q11 in order; later questions depend on earlier answers. Phase 1 detection outputs live in `.devforge/detection_report.yaml` (composed by `scripts/lib/detect_report` at the end of Phase 1) — read fields from that file when presenting findings. The Phase 2 preflight section below covers this explicitly.
 
 ## Outputs to retain in conversational memory
 
@@ -41,9 +41,9 @@ For every question that applies, do NOT silently default. Do NOT infer answers. 
 
 ## Phase 2 preflight
 
-Before asking Q0, look back through the conversation for a fenced YAML code block starting with `detection_report:`. That block is the output of Phase 1 (see `references/detect.md` → "Detection Report — Phase 1 output"). If you do not see it in the conversation history, Phase 1 didn't complete the emit — return to `references/detect.md`, emit the Detection Report as specified, then start Phase 2.
+Before asking Q0, read `.devforge/detection_report.yaml`. That file is the output of Phase 1's `scripts/lib/detect_report compose` call (see `references/detect.md` → "Detection Report — Phase 1 output"). If the file is missing or empty, Phase 1 didn't complete — return to `references/detect.md`, run the Phase 1 detection + composition flow, then start Phase 2.
 
-Q0 through Q11 reference Report fields for their defaults:
+Q0 through Q11 read Report fields directly from the YAML file for their defaults:
 - Q0 (project name) → `detection_report.packages[0].manifest` + `name` field
 - Q1 (description) → README content read during Phase 1
 - Q3 (languages / frameworks) → `detection_report.languages` + `.frameworks`
@@ -53,9 +53,9 @@ Q0 through Q11 reference Report fields for their defaults:
 - Q7 (testing) → `detection_report.test_runner`
 - Q11 runtime URL → `detection_report.runtime_url`
 
-Without the Report, these reference-based defaults fall back to re-asking or guessing, which pollutes `project-config.json` with values the user didn't actually consent to.
+Without the Report file, these reference-based defaults fall back to re-asking or guessing, which pollutes `project-config.json` with values the user didn't actually consent to.
 
-**General rule for Report-referenced questions.** For every question listed above with a Report counterpart, the flow is: read the Report field → present its value as the default → ask the user to confirm or override. This applies even when the question's own prose describes a fallback detection path — the Report field is the primary source; the fallback runs only when the Report field is `null` or explicitly flagged as a low-confidence default (e.g., `source: framework-default` on `runtime_url`). Never skip the Report and jump straight to fallback detection — that re-opens the runtime-to-runtime drift surface the Report was designed to close.
+**General rule for Report-referenced questions.** For every question listed above with a Report counterpart, the flow is: read the Report field from `.devforge/detection_report.yaml` → present its value as the default → ask the user to confirm or override. This applies even when the question's own prose describes a fallback detection path — the Report field is the primary source; the fallback runs only when the Report field is `null` or explicitly flagged as a low-confidence default (e.g., `source: framework-default` on `runtime_url`). Never skip the Report and jump straight to fallback detection — that re-opens the runtime-to-runtime drift surface the Report was designed to close.
 
 ## Question 0: Project Name (REQUIRED)
 

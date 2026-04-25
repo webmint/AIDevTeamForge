@@ -787,9 +787,9 @@ No implementation work from §9 happens until §2 of this roadmap.
 
 ---
 
-## 10. Path B — Generator-level Detection Report composition (design, not built)
+## 10. Path B — Generator-level Detection Report composition (SHIPPED 2026-04-25)
 
-**Status**: designed, not built. Decision-pending. Picked up by a new chat session when the Python-runtime-dep question is resolved.
+**Status**: SHIPPED. R4 integration test (2026-04-25) confirmed §10.6 ship criteria on both runtimes. Findings 23, 23B, 21, 13 structurally closed. See §10.12 for R4 scorecard, `codex-port/phase-R/parity-findings.md` Run 4 section for full evidence.
 
 ### 10.1 Context
 
@@ -807,16 +807,24 @@ And Codex explicitly endorsed Path B as the forward direction:
 
 **Conclusion**: Path A (pure spec-text iteration) has a ceiling for Codex on emission existence. More spec prose — even with visual markers, causal framing, Phase 2 preflight, no-abbreviation rule — does not change Codex's execution policy. Path B (Python composes YAML from LLM-provided field values) is the evidence-backed next step.
 
-### 10.2 Open decision (must resolve before building)
+### 10.2 Decision — RESOLVED YES (2026-04-24)
 
-**Python-runtime-dep on target machine**: yes or no?
+**Python-runtime-dep on target machine**: **YES**. Committing to `python3` as a wizard-time prerequisite.
 
-- **Current state**: zero runtime Python required. Wizard is LLM-driven end-to-end; spec is markdown; LLM reads + reasons + emits. Install-time needs Python (install.sh, generate-agents.py, emitters) but runtime on target machine does not.
-- **Path B adds**: target machine needs `python3` available at wizard runtime for `scripts/lib/detect_report.py` to run.
+- **Current state**: target machine already needs `python3` at install-time (install.sh invokes `scripts/generate.sh` → `generate-agents.py` / `generate-corellm.py`). This is a silent requirement today — `install.sh` does not preflight for it; failures surface as generate.sh errors. Wizard runtime (post-install) is Python-free: LLM-driven end-to-end, spec is markdown, LLM reads + reasons + emits.
+- **Path B adds**: target machine needs `python3` at *wizard-time* too, not just install-time. Persists the existing dependency temporally. `scripts/lib/detect_report.py` runs during Phase 1.
 - **Availability**: macOS 12.3+ ships `/usr/bin/python3`. Most Linux distros default. Windows users often need explicit install.
 - **Tradeoff**: better Codex structural parity vs. one more prerequisite for some users.
 
-**Must be decided YES before building Path B.** If NO, skip to §10.7 alternatives.
+**Resolution rationale**:
+- Codex self-report in `codex-r3-interview.md` is direct evidence Path A has a ceiling on artifact emission ("current textual reinforcement is not sufficient for me").
+- Target audience (Claude Code / Codex CLI users) has near-universal Python 3 availability.
+- `install.sh` preflight gates Python presence at install time — turns silent wizard-time failure into loud install-time gate.
+- 0-runtime-deps positioning tradeoff accepted for the structural-parity win.
+
+**Windows**: in scope. Launcher (`scripts/lib/detect_report`) is a POSIX shell wrapper that selects `python3` / `py -3` / `python` — same shell-environment assumption install.sh already makes (Git Bash or WSL). No separate Windows phase needed.
+
+**Execution plan**: see `codex-port/PATH-B-IMPLEMENTATION.md` — 37 atomic steps across 8 phases, each with approval gate.
 
 ### 10.3 Proposed design — Option B1 (field-by-field CLI, Codex's stated preference)
 
@@ -888,12 +896,12 @@ Python composer MUST reject:
 - Prototype catches ALL of: Finding 13 hallucination (pkg-test case), Finding 23B abbreviation (3-entry + comment case), Finding 21 free-form label ("hexagonal-style" case).
 - Prototype adds acceptable latency (≤5% increase in wizard runtime) — field-by-field tool calls are cheap per call; total overhead mostly acceptable.
 - Python-runtime-dep decision is explicit YES.
-- R5 test (wizard with Path B integrated) shows Codex-side Finding 23 CLOSED (YAML emitted) and no regression on Claude side.
+- R4 test (wizard with Path B integrated) shows Codex-side Finding 23 CLOSED (YAML emitted) and no regression on Claude side.
 
 **Kill Path B if**:
 - Prototype reveals spec-surface complexity that duplicates Path A text (spec + code saying same things differently)
 - Python-runtime-dep decision is NO
-- R5 shows no structural improvement over Path A (unlikely given Codex's self-report, but possible)
+- R4 shows no structural improvement over Path A (unlikely given Codex's self-report, but possible)
 
 ### 10.7 Alternative if Python-runtime-dep NO (Path C — accept asymmetric)
 
@@ -947,4 +955,42 @@ A fresh chat session taking this on should:
 5. If YES → create new branch from `r3-complete-path-a` tag (or `feature/codex-support` HEAD at commit `4402435`) and follow §10.5 implementation plan.
 6. If NO → document Path C framing per §10.7, close Finding 23 with known-limitation wording, continue Path A iteration.
 
-No implementation work from §10 has happened yet. Everything below Path A commit `4402435` is design/analysis only.
+~~No implementation work from §10 has happened yet.~~ Path B implemented and shipped 2026-04-25. See §10.12 below.
+
+### 10.12 R4 ship scorecard (2026-04-25)
+
+R4 integration test ran the wizard with Path B integrated on both runtimes (Claude in `~/Projects/testParity/`, Codex in `~/Projects/testParity-codex/`). Both produced `.devforge/detection_report.yaml` with all required fields, all packages, all enum values valid.
+
+**§10.6 ship criteria — all PASS:**
+
+| Criterion | R3 (pre-Path-B) | R4 (with Path B) |
+|---|---|---|
+| Finding 23 — YAML file emitted | Claude partial, Codex did not emit | ✅ Both runtimes wrote `.devforge/detection_report.yaml` |
+| Finding 23B — no abbreviation, count match | Claude `# ... 22 more`, Codex folded | ✅ Both 25/25 packages, `manifest_count` cross-checked at compose |
+| Finding 21 — enum architecture | Claude `hexagonal-style`, Codex `feature-modular monorepo` | ✅ Both `clean-feature-modular-monorepo` (enum-pinned, identical value) |
+| Finding 13 — no hallucinated packages | `pkg-test` emitted by both | ✅ Step 2.4 filesystem gate caught + filtered live during R4 |
+| Latency ≤5% regression | (R3 baseline) | ✅ Within range; Codex retry overhead negligible |
+
+**Codex execution-policy flip (the key risk going in):**
+
+R3 self-report:
+> "my execution policy still prioritized conversational progress over emitting the structured handoff artifact. current textual reinforcement is not sufficient for me."
+
+R4 behavior (live during wizard):
+> "The report helper starts empty, so I need to populate every required field explicitly before the wizard can move on."
+> "If the helper rejects any field, I'll use its validation error to tighten the inputs before I ask Q0, rather than carrying a bad report into the later phases."
+
+The CLI helper functioned as a validation feedback channel that Codex actively used. R3 ceiling fully broken.
+
+**Bug found and fixed during R4** (Step 1.7-fix):
+- Initial Claude R4 emitted `_set_fields` and `_evidence` as YAML output (emitter only skipped `_reasons`, the only underscore key existing at Step 1.7 design time). Patched: emitter now skips any key starting with `_`. Re-run produced clean YAML.
+
+**Residual gaps NOT addressed by Path B (per §10.10, by design):**
+- Value-level drift: Claude `file_count: 2260` vs Codex `2235`; Claude `Tailwind CSS + Sass` vs Codex `Tailwind CSS`; Claude `enforcement_tooling: 3 items` vs Codex `1 item`. Path A iteration is the right tool for these.
+- `optional.utility_manifests[]` MVP gap (no `add-utility-manifest` subcommand) — documented in detect.md Rule 5, deferred per Phase 4 option (b) decision.
+
+**Stability and machine-comparability** (new properties not present pre-R4):
+- User reported Claude side stable across multiple R4 reruns (same answers, same discoveries).
+- Both runtimes now produce a comparable structured artifact (`.devforge/detection_report.yaml`) — parity testing shifts from LLM-vs-LLM eyeballing to `diff` of two YAML files.
+
+**Conclusion**: Path B works as designed. Structural parity at the emission level is achieved. Cross-runtime diff is now a tractable engineering problem rather than a fundamental drift risk. Merging into `feature/codex-support` and continuing Path A work for value-level discipline.

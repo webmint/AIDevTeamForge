@@ -38,8 +38,17 @@ fi
 # Default: all runtimes with emitters present in scripts/emitters/.
 RUNTIMES="${RUNTIMES:-claude codex}"
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "error: python3 is required for runtime emitters" >&2
+# Resolve a Python 3 interpreter. Same selector as install.sh and the wizard
+# launcher: prefer python3, fall back to Windows py launcher, then bare python
+# if it reports 3.x.
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON3="python3"
+elif command -v py >/dev/null 2>&1; then
+  PYTHON3="py -3"
+elif command -v python >/dev/null 2>&1 && [ "$(python -c 'import sys; print(sys.version_info[0])' 2>/dev/null)" = "3" ]; then
+  PYTHON3="python"
+else
+  echo "error: Python 3 not found (tried python3, py -3, python). Install Python 3.8+ and re-run." >&2
   exit 1
 fi
 
@@ -47,14 +56,14 @@ fi
 # Forward RUNTIMES filter so a single-runtime install doesn't produce the
 # other runtime's CLAUDE.md / AGENTS.md file.
 echo "→ Generating coreLLM files"
-python3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
+$PYTHON3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
   --src "$SRC_DIR/files/coreLLM" \
   --out "$TARGET_DIR" \
   --runtimes "$RUNTIMES"
 
 # ── Agents: generate per-runtime agent files from universal sources ──────
 echo "→ Generating agents"
-python3 "$TEMPLATE_DIR/scripts/generate-agents.py" \
+$PYTHON3 "$TEMPLATE_DIR/scripts/generate-agents.py" \
   --src "$SRC_DIR/agents" \
   --target "$TARGET_DIR" \
   --runtimes "$RUNTIMES"
@@ -64,7 +73,7 @@ for runtime in $RUNTIMES; do
   emitter="$EMITTERS_DIR/${runtime}.py"
   if [ -f "$emitter" ]; then
     echo "→ Emitting for $runtime"
-    python3 "$emitter" --src "$SRC_DIR" --target "$TARGET_DIR"
+    $PYTHON3 "$emitter" --src "$SRC_DIR" --target "$TARGET_DIR"
   else
     echo "  (no emitter for $runtime at $emitter, skipping)" >&2
   fi
