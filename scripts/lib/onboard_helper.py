@@ -17,11 +17,10 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 2.2 adds: per-concern decomposition gate. For each registered package,
-detects substantive source subfolders (concern-name heuristic + file count)
-and requires an add-concern-doc registration for each. Closes Codex R6's
-collapsed-monolith failure mode (one mega-file index.md instead of
-decomposed concern files).
+Step 2.3 adds: block-count vs ref-count equality gates (Claude's R5 Q10
+self-validation pattern). Two layers — register-time simple equality
+rejection + compose-time content recount that catches LLM lies about
+self-reported counts.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -31,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -197,8 +197,29 @@ def cmd_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_block_ref_equality(label: str, block_count: int, ref_count: int) -> Optional[int]:
+    """Register-time gate: block_count must equal ref_count.
+
+    Returns exit code (2) if rejection, or None to continue.
+    """
+    if block_count != ref_count:
+        print(
+            f"onboard_helper: register-time validation failed for {label}: "
+            f"block_count={block_count} != ref_count={ref_count}. "
+            f"Per spec, every fenced code block must have a corresponding "
+            f"<!-- path/file.ext:line-range --> reference comment. "
+            f"Recount and resubmit.",
+            file=sys.stderr,
+        )
+        return 2
+    return None
+
+
 def cmd_add_package_doc(args: argparse.Namespace) -> int:
     """Register one package-level index.md."""
+    rc = _check_block_ref_equality(f"package '{args.unit}'", args.block_count, args.ref_count)
+    if rc is not None:
+        return rc
     state = load_state()
     state.package_docs[args.unit] = PackageDoc(
         unit=args.unit,
@@ -214,6 +235,9 @@ def cmd_add_package_doc(args: argparse.Namespace) -> int:
 
 def cmd_add_concern_doc(args: argparse.Namespace) -> int:
     """Register one concern doc within a package."""
+    rc = _check_block_ref_equality(f"concern '{args.unit}/{args.concern}'", args.block_count, args.ref_count)
+    if rc is not None:
+        return rc
     state = load_state()
     state.concern_docs.append(ConcernDoc(
         unit=args.unit,
@@ -229,6 +253,9 @@ def cmd_add_concern_doc(args: argparse.Namespace) -> int:
 
 def cmd_add_architecture_doc(args: argparse.Namespace) -> int:
     """Register the workspace architecture.md (overwrites if called twice)."""
+    rc = _check_block_ref_equality("architecture", args.block_count, args.ref_count)
+    if rc is not None:
+        return rc
     state = load_state()
     state.architecture_doc = DocEntry(
         content=args.content,
@@ -361,7 +388,93 @@ def _validate_compose(state: OnboardState) -> list[str]:
     errors: list[str] = []
     errors.extend(_gate_per_package_coverage(state))
     errors.extend(_gate_per_concern_decomposition(state))
-    # Future gates (Steps 2.3-2.7) extend this list.
+    errors.extend(_gate_block_ref_count_accuracy(state))
+    # Future gates (Steps 2.4-2.7) extend this list.
+    return errors
+
+
+# Source-reference HTML comment pattern: <!-- path/file.ext:N --> or
+# <!-- path/file.ext:N-M -->. Requires file extension before colon and
+# digits after, which catches real refs while excluding generic comments.
+_SRC_REF_RE = re.compile(r"<!--\s*\S+\.\w+:\d+(?:-\d+)?\s*-->")
+
+
+def _count_fenced_blocks_requiring_refs(content: str) -> int:
+    """Count fenced code blocks that require a source reference.
+
+    State-machine walk over lines. Mermaid-tagged blocks are exempt — they
+    are LLM-synthesized diagrams, not lifted code.
+    """
+    in_block = False
+    is_mermaid = False
+    count = 0
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if not in_block:
+                lang = stripped[3:].strip().lower()
+                in_block = True
+                is_mermaid = (lang == "mermaid")
+            else:
+                if not is_mermaid:
+                    count += 1
+                in_block = False
+                is_mermaid = False
+    return count
+
+
+def _count_source_refs(content: str) -> int:
+    """Count <!-- path/file.ext:line-range --> reference comments in content."""
+    return len(_SRC_REF_RE.findall(content))
+
+
+def _gate_block_ref_count_accuracy(state: OnboardState) -> list[str]:
+    """Step 2.3: declared block_count and ref_count must match content reality.
+
+    For each registered doc:
+    - Recount fenced code blocks (excluding Mermaid).
+    - Recount source-ref HTML comments matching path/file.ext:line pattern.
+    - Compare against declared block_count and ref_count.
+
+    Register-time gate already enforces declared block_count == ref_count.
+    This compose-time gate catches lies about the declared values.
+    """
+    errors: list[str] = []
+
+    def check(label: str, content: str, declared_blocks: int, declared_refs: int) -> None:
+        actual_blocks = _count_fenced_blocks_requiring_refs(content)
+        actual_refs = _count_source_refs(content)
+        if actual_blocks != declared_blocks:
+            errors.append(
+                f"block-count accuracy: {label} declared block_count={declared_blocks} "
+                f"but content has {actual_blocks} fenced code blocks (excluding mermaid). "
+                f"Recount and resubmit."
+            )
+        if actual_refs != declared_refs:
+            errors.append(
+                f"ref-count accuracy: {label} declared ref_count={declared_refs} "
+                f"but content has {actual_refs} <!-- path:line --> reference comments. "
+                f"Recount and resubmit."
+            )
+        if actual_blocks != actual_refs:
+            errors.append(
+                f"block-vs-ref equality: {label} content has {actual_blocks} fenced blocks "
+                f"but {actual_refs} reference comments. Each block needs a "
+                f"<!-- path/file.ext:line-range --> comment immediately above it."
+            )
+
+    for unit, pkg in state.package_docs.items():
+        check(f"package '{unit}'", pkg.content, pkg.block_count, pkg.ref_count)
+    for c in state.concern_docs:
+        check(f"concern '{c.unit}/{c.concern}'", c.content, c.block_count, c.ref_count)
+    if state.architecture_doc is not None:
+        check(
+            "architecture",
+            state.architecture_doc.content,
+            state.architecture_doc.block_count,
+            state.architecture_doc.ref_count,
+        )
+
     return errors
 
 
