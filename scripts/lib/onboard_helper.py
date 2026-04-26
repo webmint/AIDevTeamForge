@@ -17,10 +17,10 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 2.4 adds: boilerplate-overview detector. Scans Overview sections for
-template phrases (e.g., "is a documentation unit", "feature boundaries,
-presentation adapters, and supporting domain contracts") and rejects
-docs whose overview is template-shaped rather than project-specific.
+Step 2.5 adds: principal-type presence heuristic. If a doc declares
+ownership of a BLoC (via `class XBLoC` or `provideXBLoC`), it must
+include the corresponding `XState` type definition in the same doc.
+Catches Codex R5's "first-match parser missed QuoteOwnersState" failure.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -390,7 +390,8 @@ def _validate_compose(state: OnboardState) -> list[str]:
     errors.extend(_gate_per_concern_decomposition(state))
     errors.extend(_gate_block_ref_count_accuracy(state))
     errors.extend(_gate_boilerplate_overview(state))
-    # Future gates (Steps 2.5-2.7) extend this list.
+    errors.extend(_gate_principal_type_presence(state))
+    # Future gates (Steps 2.6-2.7) extend this list.
     return errors
 
 
@@ -427,6 +428,71 @@ def _count_fenced_blocks_requiring_refs(content: str) -> int:
 def _count_source_refs(content: str) -> int:
     """Count <!-- path/file.ext:line-range --> reference comments in content."""
     return len(_SRC_REF_RE.findall(content))
+
+
+# BLoC base classes — names not to count as ownership signals.
+_BLOC_BASE_CLASSES = {"BLoC", "BLoCAlt", "BLoCAltSecond"}
+
+# Pattern: `class XBLoC` (TypeScript class declaration).
+_BLOC_CLASS_DECL_RE = re.compile(r"\bclass\s+(\w+BLoC)\b")
+
+# Pattern: `provideXBLoC` (Clean Architecture factory naming).
+_BLOC_FACTORY_RE = re.compile(r"\b(provide\w+BLoC)\b")
+
+
+def _detect_owned_blocs(content: str) -> set[str]:
+    """Detect BLoCs this doc *owns* (vs. just mentions/consumes).
+
+    Ownership signals:
+    - `class XBLoC` declaration in a code block.
+    - `provideXBLoC` factory mention (the doc owning the BLoC owns its
+      factory; consumers don't typically write the factory name).
+
+    Excludes base classes (BLoC, BLoCAlt, BLoCAltSecond).
+    """
+    owned: set[str] = set()
+    for m in _BLOC_CLASS_DECL_RE.finditer(content):
+        owned.add(m.group(1))
+    for m in _BLOC_FACTORY_RE.finditer(content):
+        name = m.group(1)[len("provide"):]  # strip "provide" prefix
+        if name:
+            owned.add(name)
+    return owned - _BLOC_BASE_CLASSES
+
+
+def _gate_principal_type_presence(state: OnboardState) -> list[str]:
+    """Step 2.5: docs owning a BLoC must include the corresponding State type.
+
+    For each registered doc, detect owned BLoCs (via class decl or provide
+    factory). For each owned BLoC, expect the matching `XState` type name
+    somewhere in the same doc. If missing, error.
+
+    Catches Codex R5's QuoteOwnersState miss: the parser surfaced helper
+    types instead of the principal state type. Forcing State-presence per
+    BLoC is the structural fix.
+    """
+    errors: list[str] = []
+
+    def check(label: str, content: str) -> None:
+        owned_blocs = _detect_owned_blocs(content)
+        for bloc in owned_blocs:
+            expected_state = bloc.replace("BLoC", "State")
+            # Substring search; case-sensitive (TS type names are case-sensitive).
+            if expected_state not in content:
+                errors.append(
+                    f"principal-type presence: {label} declares ownership of '{bloc}' "
+                    f"but does not include the corresponding state type '{expected_state}' "
+                    f"in this doc. Add '{expected_state}' to the Types section with its "
+                    f"inline definition (interface or type alias)."
+                )
+
+    for unit, pkg in state.package_docs.items():
+        check(f"package '{unit}'", pkg.content)
+    for c in state.concern_docs:
+        check(f"concern '{c.unit}/{c.concern}'", c.content)
+    # Architecture is workspace-level; no BLoC-ownership expected.
+
+    return errors
 
 
 # Boilerplate overview phrases observed in Codex R5/R6 output. Adding to
