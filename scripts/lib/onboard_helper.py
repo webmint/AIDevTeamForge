@@ -17,8 +17,9 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 1.2 adds: schema dataclasses + state R/W with atomic write. Subcommand
-handlers remain stubs; wiring lands in Step 1.3.
+Step 1.3 adds: subcommand handlers wired to state R/W. No validation gates
+yet — those land in Phase 2. compose-onboard remains a stub; atomic write
+lands in Step 1.5.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -161,39 +162,123 @@ def _state_from_dict(raw: dict[str, Any]) -> OnboardState:
     return state
 
 
-# ─── Subcommand handlers (stubs — wiring lands in Step 1.3) ──────────────────
+# ─── Subcommand handlers ─────────────────────────────────────────────────────
 
 
 def _not_implemented(name: str) -> int:
-    print(f"onboard_helper: '{name}' not implemented yet (Step 1.2 skeleton).", file=sys.stderr)
+    print(f"onboard_helper: '{name}' not implemented yet (current step skeleton).", file=sys.stderr)
     return 2
 
 
 def cmd_set(args: argparse.Namespace) -> int:
-    return _not_implemented("set")
+    """Update a top-level scalar on the state."""
+    state = load_state()
+    field_name = args.field
+    if field_name == "mode":
+        state.mode = args.value
+    else:
+        # No validation gate yet (lands in Phase 2). Accept any field name and
+        # set it as a generic attribute. Currently only `mode` is recognized;
+        # unknown fields print a warning but do not fail.
+        print(
+            f"onboard_helper: warning — unknown top-level field '{field_name}'. "
+            f"Currently only 'mode' is recognized. Stored anyway for forward compat.",
+            file=sys.stderr,
+        )
+        # Use setattr for forward-compat with future top-level fields.
+        setattr(state, field_name, args.value)
+    save_state(state)
+    print(f"set {field_name} = {args.value}")
+    return 0
 
 
 def cmd_add_package_doc(args: argparse.Namespace) -> int:
-    return _not_implemented("add-package-doc")
+    """Register one package-level index.md."""
+    state = load_state()
+    state.package_docs[args.unit] = PackageDoc(
+        unit=args.unit,
+        path=args.path,
+        content=args.content,
+        block_count=args.block_count,
+        ref_count=args.ref_count,
+    )
+    save_state(state)
+    print(f"add-package-doc {args.unit} (path={args.path}, blocks={args.block_count}, refs={args.ref_count})")
+    return 0
 
 
 def cmd_add_concern_doc(args: argparse.Namespace) -> int:
-    return _not_implemented("add-concern-doc")
+    """Register one concern doc within a package."""
+    state = load_state()
+    state.concern_docs.append(ConcernDoc(
+        unit=args.unit,
+        concern=args.concern,
+        content=args.content,
+        block_count=args.block_count,
+        ref_count=args.ref_count,
+    ))
+    save_state(state)
+    print(f"add-concern-doc {args.unit}/{args.concern} (blocks={args.block_count}, refs={args.ref_count})")
+    return 0
 
 
 def cmd_add_architecture_doc(args: argparse.Namespace) -> int:
-    return _not_implemented("add-architecture-doc")
+    """Register the workspace architecture.md (overwrites if called twice)."""
+    state = load_state()
+    state.architecture_doc = DocEntry(
+        content=args.content,
+        block_count=args.block_count,
+        ref_count=args.ref_count,
+    )
+    save_state(state)
+    print(f"add-architecture-doc (blocks={args.block_count}, refs={args.ref_count})")
+    return 0
 
 
 def cmd_add_memory_finding(args: argparse.Namespace) -> int:
-    return _not_implemented("add-memory-finding")
+    """Register one memory observation."""
+    state = load_state()
+    state.memory_findings.append(MemoryFinding(
+        category=args.category,
+        unit=args.unit,
+        observation=args.observation,
+    ))
+    save_state(state)
+    print(f"add-memory-finding [{args.category}] {args.unit}: {args.observation[:60]}...")
+    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    return _not_implemented("status")
+    """Print machine-readable progress.
+
+    Format: one field per line, `field: value`. Consumable by the LLM
+    orchestrator to decide whether more registrations are needed before
+    compose-onboard.
+    """
+    state = load_state()
+    print(f"mode: {state.mode if state.mode else 'UNSET'}")
+    print(f"package_docs: {len(state.package_docs)}")
+    print(f"concern_docs: {len(state.concern_docs)}")
+    print(f"architecture_doc: {'SET' if state.architecture_doc else 'UNSET'}")
+    print(f"memory_findings: {len(state.memory_findings)}")
+    # Per-package concern-doc counts (helps the orchestrator see which units
+    # have decomposition coverage).
+    if state.concern_docs:
+        per_unit_concerns: dict[str, int] = {}
+        for c in state.concern_docs:
+            per_unit_concerns[c.unit] = per_unit_concerns.get(c.unit, 0) + 1
+        print("concern_docs_by_unit:")
+        for unit, count in sorted(per_unit_concerns.items()):
+            print(f"  {unit}: {count}")
+    return 0
 
 
 def cmd_compose_onboard(args: argparse.Namespace) -> int:
+    """Validate state and atomically write all registered docs.
+
+    Step 1.5 implements atomic write. Phase 2 layers in validation gates.
+    Currently a stub.
+    """
     return _not_implemented("compose-onboard")
 
 
