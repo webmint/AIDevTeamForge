@@ -19,11 +19,73 @@ The docs are a **substitute for first-pass code reading**. An agent should be ab
 
 …all without opening source files. Source becomes a verification step, not a discovery step.
 
+## HELPER INVOCATION CONTRACT (load-bearing)
+
+**You MUST register every doc through `scripts/lib/onboard_helper`. Direct file writes to `docs/` are not part of this command's contract.**
+
+The helper exposes 7 verbs. These are the only sanctioned doc-write paths:
+
+| Verb | Used for | Required args |
+|---|---|---|
+| `set` | top-level scalar (mode = overwrite\|merge\|fresh) | `<field> --value <v>` |
+| `add-package-doc` | one package's index.md | `--unit --path --content --block-count --ref-count` |
+| `add-concern-doc` | one concern doc inside a package | `--unit --concern --content --block-count --ref-count` |
+| `add-architecture-doc` | workspace `docs/architecture.md` | `--content --block-count --ref-count` |
+| `add-memory-finding` | one observation for `.devforge/memory.md` | `--category --unit --observation` |
+| `status` | machine-readable progress | (none) |
+| `compose-onboard` | atomic finalization with all validation gates | (none) |
+
+**Why this contract exists.** R5/R6 evidence shows that "produce N similar artifacts" framings activate generator-build defaults that produce mechanically-extracted, semantically-thin output. The helper's verb surface forces per-unit + per-concern dispatch (one tool call per doc) and enforces 7 validation gates at compose time:
+
+1. Per-package coverage (every detected package has a doc).
+2. Per-concern decomposition (every substantive subfolder has its own concern doc).
+3. Block-count vs ref-count equality (every fenced code block has a `<!-- path/file.ext:line-range -->` reference).
+4. Boilerplate-overview detector (rejects template-shape phrases like "is a documentation unit").
+5. Principal-type presence (BLoC ownership requires the corresponding State type inline).
+6. Type dedup within docs (each exported name appears at most once per doc).
+7. Cross-link existence + sigil hygiene.
+
+**Compose-onboard rejects non-compliant state with explicit per-error guidance.** State is preserved on rejection; you fix the registration and re-invoke compose. Bulk-script writes to `docs/` cannot satisfy these gates because the helper only knows what it's been told via verb invocations.
+
+**Invocation example** (run from project root):
+
+```bash
+scripts/lib/onboard_helper add-package-doc \
+  --unit pkg-foo \
+  --path packages/pkg-foo \
+  --content "$(cat <<'EOF'
+# pkg-foo
+
+## Overview
+pkg-foo provides X for the workflow.
+
+## Main Exports
+<!-- packages/pkg-foo/src/index.ts:1-9 -->
+\`\`\`ts
+export const provideFooBLoC = ...
+\`\`\`
+
+[... rest of the per-doc template ...]
+EOF
+)" \
+  --block-count 1 \
+  --ref-count 1
+```
+
+After all per-package, per-concern, and per-architecture invocations + all `add-memory-finding` calls, finalize with:
+
+```bash
+scripts/lib/onboard_helper compose-onboard
+```
+
+If validation fails, the helper prints the error list and exits 2 with state preserved. Read the errors, fix the affected registration(s) by re-invoking `add-*-doc` for the relevant unit/concern (re-registration overwrites), and re-run `compose-onboard`.
+
 ## Prerequisites
 
 1. `{{cli.sigil}}setup-wizard` must have been run — runtime primer (`{{cli.primer}}`), agents directory, runtime config, and `.devforge/` scaffold must exist.
 2. `docs/` folder must exist (placed by install, populated by setup wizard).
 3. Project is **brownfield** — `.devforge/project-config.json` has `"PROJECT_STATE": "brownfield"`. Greenfield/empty projects skip onboard; the wizard's Phase 5 summary routes those to `{{cli.sigil}}constitute` + `{{cli.sigil}}specify`.
+4. `scripts/lib/onboard_helper` must be present and executable. install.sh copies it; verify with `ls scripts/lib/onboard_helper`. If missing, the install is incomplete.
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
@@ -98,14 +160,23 @@ Read `.devforge/detection_report.yaml` (or `project-config.json` if the wizard e
 
 ## PHASE 2: Execute Onboarding Scan
 
-Launch the tech-writer agent via `{{cli.subagent}}` with the prompt below. The tech-writer handles the scan + `docs/` writing per the mirror-folder shape derived in §1.2. Verification (§3) and memory-append (§3.6) stay in the orchestrator's lane.
+Phase 2 runs as **four distinct passes**, each with its own prompt template. **The orchestrator never writes to `docs/` directly** — every doc registration goes through `scripts/lib/onboard_helper`. This separation is load-bearing: each pass has its own focus and its own per-doc template.
 
-For each documentation unit, dispatch one subagent (or, for small projects, run direct).
+| Pass | Dispatch shape | Helper verb |
+|---|---|---|
+| **2A — Per-package** | One subagent per documentation unit (parallel-per-unit per §1.3) | `add-package-doc` (one per package) + `add-concern-doc` (per substantive subfolder) |
+| **2B — Architecture** | Single dispatch (orchestrator or one subagent) | `add-architecture-doc` (single call) |
+| **2C — Memory archaeology** | Single dispatch with explicit source-reading mandate | `add-memory-finding` × N (multiple calls) |
+| **2D — Compose** | Orchestrator | `compose-onboard` (validation + atomic write) |
 
-### Prompt template
+The passes run in order. 2A and 2B can be parallelized; 2C must run after 2A so its source-reading pass is informed by what was registered (but it does NOT summarize the docs — it reads source for archaeology). 2D runs last.
+
+### Pass 2A — Per-package subagent prompt
+
+For each documentation unit, dispatch one subagent (or run direct for small projects per §1.3). Subagent prompt:
 
 ```
-You are operating in ONBOARDING MODE. This is NOT your normal task-documentation workflow. You are performing a one-time deep scan of an existing codebase to generate comprehensive project documentation.
+You are operating in ONBOARDING MODE — pass 2A (per-package). Generate complete documentation for ONE unit by registering content through the onboard_helper CLI.
 
 ## Project Brief
 
@@ -113,41 +184,50 @@ You are operating in ONBOARDING MODE. This is NOT your normal task-documentation
 
 ## Documentation Unit Assigned
 
-Unit path: [absolute or workspace-relative path]
-Write target: docs/<unit-path>/
+Unit name: [unit identifier]
+Unit path: [path relative to SOURCE_ROOT, e.g. packages/pkg-foo]
+
+## Pre-seeded findings (from prior memory.md)
+
+[Insert any .devforge/memory.md entries that mention this unit. If none, omit this section.]
 
 ## Your Mission
 
-Generate complete documentation for this unit at the write target. Every agent reads docs/ before making changes; the quality of your documentation directly determines how well agents understand and work with this codebase.
+Register one package doc + concern docs for this unit's substantive subfolders by calling `scripts/lib/onboard_helper`. You MUST NOT write directly to docs/. The helper enforces 7 validation gates; non-compliant registrations are rejected at compose time with explicit guidance.
 
 ## CORE MANDATE — COVER ALL CODE
 
-Every meaningful source folder under this unit gets a documentation home. No sample-based silence. No skipping at scale. No "we'll cluster these into one file" merges that drop substance.
+Every meaningful source folder under this unit gets a documentation home (via `add-concern-doc`). No sample-based silence. No skipping at scale. No "we'll cluster these into one file" merges that drop substance.
 
-Density adapts to size — a small utility folder gets a short section; a complex multi-concern subfolder gets its own file with substantive depth — but every meaningful source folder is documented.
+Density adapts to size — a small utility folder gets a short section; a complex multi-concern subfolder gets its own file with substantive depth — but every meaningful source folder gets its own helper invocation.
 
-If you are tempted to merge two distinct concerns into one doc with a compound name (e.g. "auth-and-routing.md", "stores-and-services.md"), STOP — that's the failure mode this command is designed to prevent. Each distinct concern gets its own file. Compound names with "and" are a red flag; split them.
+If you are tempted to merge two distinct concerns into one doc with a compound name (e.g. "auth-and-routing", "stores-and-services") — STOP — split them. Each `add-concern-doc` call covers one concern.
 
 ## Mode
 
 [Insert mode from §1.0: overwrite | merge | fresh]
 
+You can persist the mode at the start of the unit's pass:
+`scripts/lib/onboard_helper set mode --value [overwrite|merge|fresh]`
+
 ## Documentation Shape
 
-Mirror the unit's folder structure under docs/<unit-path>/.
+For your assigned unit:
 
-1. The unit gets `docs/<unit-path>/index.md` — the unit's main doc.
-2. Within the unit, find the source root by ecosystem convention (the LLM observes per language):
+1. Identify the source root by ecosystem convention:
    - JS/TS/PHP-PSR4: src/
    - Rust: src/
    - Ruby: lib/
-   - Java/Kotlin: src/main/java/<groupId>/<pkg>/ (collapse boilerplate path segments to start at the meaningful level)
+   - Java/Kotlin: src/main/java/<groupId>/<pkg>/ (collapse boilerplate path segments)
    - Python: src/<pkg>/ or <pkg>/
-   - Go: unit root (no source-folder convention; subfolders like cmd/, pkg/, internal/ are direct concerns)
+   - Go: unit root (subfolders like cmd/, pkg/, internal/ are direct concerns)
    - C#/.NET: project folder directly
-3. Mirror the source root's substantive subfolders as sub-docs at `docs/<unit-path>/<concern>.md` (or `docs/<unit-path>/<concern>/index.md` + further sub-docs when the concern has its own substantial sub-tree).
-4. Trivial subfolders (1-2 files, single-purpose utilities) fold into the parent doc rather than getting their own files.
-5. Stop at file granularity. Files don't get individual docs; they're enumerated within their folder's doc.
+2. Call `add-package-doc --unit <name> --path <unit-path> --content "$(cat ...)" --block-count N --ref-count N` once for the unit's index.md.
+3. For each substantive subfolder of the source root (multiple files OR clear architectural role like components/, services/, routing/, handlers/, daos/, models/, views/, stores/, composables/, hooks/, plugins/, controllers/, presentation/, domain/, data/, repositories/, entities/), call `add-concern-doc --unit <name> --concern <subfolder-name> --content "$(cat ...)" --block-count N --ref-count N`.
+4. Trivial subfolders (1-2 files, single-purpose utilities) fold into the package's index.md content. Don't call add-concern-doc for them.
+5. Files never get individual concern docs; enumerate them within their folder's concern doc.
+
+The helper's per-concern-decomposition gate (gate 2.2) checks the source filesystem for substantive subfolders and rejects compose if any are missing add-concern-doc registrations. The "concern mentioned inside index.md" satisfy-cheaply pattern does not pass this gate.
 
 ## Per-Doc Template (required sections, in order)
 
@@ -161,11 +241,24 @@ For each `docs/<unit-path>/index.md` and each meaningful concern sub-doc:
 6. `## Dependencies` — workspace-internal and external dependencies. Workspace-internal entries hyperlink to their docs (e.g., `[pkg-bar](../pkg-bar/index.md)`); each entry gets one line about what's used. External deps named with version, no link.
 7. `## Usage Example` — lifted from a real consumer file in the codebase. End-to-end pattern showing how the unit is consumed.
 
-## Code-Block Discipline
+## Code-Block Discipline (with mandatory self-validation)
 
-Every code block in the docs MUST be lifted from actual source. Add a `<!-- path/to/file.ext:line-range -->` reference comment immediately above each block. Never invent code. Never paraphrase. If the LLM-generated text reads "here's an example" but the example came from your head — delete it and find a real one in the source.
+Every fenced code block in the docs MUST be lifted from actual source. Add a `<!-- path/to/file.ext:line-range -->` reference comment immediately above each block. Never invent code. Never paraphrase. If you cannot find a real example, omit the block rather than fabricating one.
 
-Annotate non-exported subdirs explicitly. These annotations help downstream agents avoid false leads.
+**Before invoking `add-package-doc` or `add-concern-doc`, you MUST count:**
+
+1. Number of fenced code blocks in your content (` ``` ` opening lines, excluding ` ```mermaid ` blocks).
+2. Number of `<!-- path/file.ext:line-range -->` reference comments.
+
+These two counts MUST be equal. Pass them as `--block-count N --ref-count N`. The helper rejects any registration where they differ. If they're not equal:
+
+- Either you're missing a reference comment for some block (add it).
+- Or you have an extra reference (delete it).
+- Or a "block" is actually a Mermaid diagram (which doesn't need a ref) — verify by checking the opening fence.
+
+The helper's compose-time gate ALSO recounts your content and rejects if your declared numbers don't match the actual counts. **Self-validating count IS the discipline. Lying about counts gets caught.**
+
+Annotate non-exported subdirs explicitly in the Directory Structure section. These annotations help downstream agents avoid false leads.
 
 ## Boundary Surface, Not Implementation
 
@@ -184,68 +277,134 @@ The visibility model is the language's, not ours. The LLM knows each language's 
 - Tech-stack / dev-command duplication from the runtime primer — primer is the source of truth.
 - Anything the scan is uncertain about — better silent than wrong.
 
-[Insert full Section A instructions below — A.1 Smart Extraction, A.2 Per-Doc Templates, A.3 Sigil Neutrality, A.4 Quality Checks, A.5 Memory Enrichment.]
+[Insert full Section A instructions below — A.1 Smart Extraction, A.2 Per-Doc Templates, A.3 Sigil Neutrality, A.4 Quality Checks.]
+
+After your registrations complete, return a brief summary noting how many add-package-doc + add-concern-doc calls you made.
 ```
 
-After all subagents return, the orchestrator additionally produces:
+### Pass 2B — Architecture subagent prompt
 
-- **`docs/architecture.md`** at workspace root of `docs/` — workspace-level overview, observed architectural patterns (multi-pattern when present), conventions, dependency-direction rules. See A.2 architecture.md template.
-- **Optional `docs/cross-cutting/<topic>.md`** — only when the LLM observes a pattern that genuinely spans units without a folder home.
+Single dispatch (orchestrator runs direct, or one subagent). Prompt:
+
+```
+You are operating in ONBOARDING MODE — pass 2B (architecture). Your job is to register the workspace-level architecture.md by calling `scripts/lib/onboard_helper add-architecture-doc`.
+
+This is a DIFFERENT prompt from pass 2A. Do NOT use the per-package per-doc template. The architecture template observes patterns that exist across the whole workspace, not within one package.
+
+## Project Brief
+
+[Insert project brief from §1.1]
+
+## What was registered in pass 2A
+
+[Insert: list of unit names + their paths from state. The orchestrator can get this via `scripts/lib/onboard_helper status`.]
+
+## Your Mission
+
+Register `docs/architecture.md` once via:
+`scripts/lib/onboard_helper add-architecture-doc --content "$(cat ...)" --block-count N --ref-count N`
+
+The architecture doc carries the project's actual architectural patterns, dependency directions, naming conventions, decision rules — observed from the codebase, not prescribed by this spec.
+
+Required sections (per A.2.2):
+
+1. Architecture overview — what the project IS at the architectural level.
+2. Module/package structure — workspace layout, how units relate.
+3. Patterns — every architectural pattern observed; multi-pattern when present, scoped explicitly with "applies in: <paths>".
+4. Conventions — naming, file organization, import style, error handling.
+5. Cross-cutting concerns — auth flow, data flow, state management, error propagation.
+6. Dependency direction rules — observed inward/outward dependencies.
+7. Dependency overview — Mermaid graph or bullet list of who-depends-on-whom across all units.
+
+DO NOT include a "Main Exports" section here. Architecture is workspace-level, not surface-enumeration-of-one-unit. Avoid the failure mode where reusing the per-package template forces a misleading "Main Exports" section into architecture.md.
+
+Same code-block self-validation rule applies: count fenced blocks, count refs, pass --block-count and --ref-count.
+
+[Insert full Section A instructions below — A.1 Smart Extraction, A.2.2 architecture template, A.3 Sigil Neutrality, A.4 Quality Checks.]
+```
+
+### Pass 2C — Memory archaeology subagent prompt
+
+Single dispatch with explicit source-reading mandate. Prompt:
+
+```
+You are operating in ONBOARDING MODE — pass 2C (memory archaeology).
+
+This pass is NOT a postscript over the docs you generated in pass 2A. It is a SEPARATE source-reading pass with the explicit purpose of finding project archaeology that downstream agents need but can't grep for: latent bugs, naming hazards, V1/V2 coexistence, performance traps, dead code, dependency gotchas.
+
+You will READ SOURCE FILES, not summarize the docs already generated. The helper rejects observations that match prose already written to docs/ (heuristic: discourage summarization-of-generated-content).
+
+## Project Brief
+
+[Insert project brief from §1.1]
+
+## Pre-seeded findings (from prior memory.md)
+
+[Insert any existing memory findings. Re-confirm them by reading source. Add new findings.]
+
+## Your Mission
+
+Walk source files (with the standard ignore set) looking for:
+
+1. **Latent bugs** — typos in field names, silent error swallowing (e.g., console.log instead of structured error), wrong-type-but-compiles patterns, off-by-one logic errors visible at the boundary.
+2. **Naming hazards** — class names that mislead (e.g., "InMemoryRepository" actually wrapping Apollo or LocalStorage), package descriptions copy-pasted from other packages, duplicate index.js/index.ts artifacts.
+3. **V1/V2 coexistence** — same operation with V1 and V2 variants live simultaneously, often with different mappers/Either types/return shapes. Map every coexistence pair.
+4. **Performance/complexity warnings** — classes >500 lines, constructors with >20 parameters, deep-clone-on-every-state-change patterns, module-level shared timers, unusual factory wiring.
+5. **Cross-package operation duplication** — same GraphQL operation / API endpoint / use case implemented in multiple places.
+6. **Type-safety gaps** — `any` returns where the interface declares a typed result, `// @ts-ignore` usage, `as any as X` casts.
+7. **Inconsistencies** — Either bifurcation (purify-ts vs local Either), conflicting error-handling styles within the same unit, divergent naming patterns.
+
+For each finding, call:
+`scripts/lib/onboard_helper add-memory-finding --category <module-boundaries|dependency-warnings|complexity|inconsistencies> --unit <unit-name-or-workspace> --observation "<one-line finding>"`
+
+Cover EVERY unit, not a curated subset. Even thin packages get at least one boundary observation.
+
+[Insert full Section A instructions below — A.1 Smart Extraction, A.5 Memory Enrichment.]
+```
+
+### Pass 2D — Compose
+
+After 2A, 2B, 2C all complete, the orchestrator invokes:
+
+`scripts/lib/onboard_helper compose-onboard`
+
+This runs all 7 validation gates and atomically writes registered content to `docs/` if validation passes. State is preserved on failure for retry. Errors are LLM-readable with specific guidance per failure.
+
+If compose fails, the orchestrator reports the errors to the user and offers:
+- **Re-run the relevant pass** to fix the errors.
+- **Accept** — user explicitly waives the gap (rare).
+- **Abort** — user reconciles manually.
+
+Optional `docs/cross-cutting/<topic>.md` files are NOT part of this command's output by default. They're created in a follow-up if the architecture pass surfaces a pattern that genuinely spans units without a folder home; covered in a later spec amendment.
 
 ---
 
 ## PHASE 3: Process Results
 
-### 3.1: Coverage Check (FIRST gate)
+The helper's `compose-onboard` already enforces all 7 validation gates (per-package coverage / per-concern decomposition / block-ref count equality / boilerplate-overview / principal-type presence / type dedup / cross-link + sigil hygiene), atomically writes docs to `docs/`, appends memory findings to `.devforge/memory.md`, and drops baselines to `.devforge/baseline/docs/`. The orchestrator's job in Phase 3 is to report the compose result and handle re-run flow if validation failed.
 
-**Coverage failure blocks proceed.**
+### 3.1: Report compose result
 
-1. For every entry in `packages[]`, confirm `docs/<unit-path>/index.md` exists with substantive content (>30 lines or >2 sections beyond title).
-2. For every meaningful source subfolder of every unit, confirm a corresponding doc exists (sub-doc OR section in parent's index.md covering it).
-3. `docs/architecture.md` exists with substantive content.
-4. Listing-diff produces miss list. Any miss = failure.
+If `compose-onboard` exited 0:
+- Read the helper's stdout summary (count of doc files written, baselines dropped, memory findings appended).
+- Run `find docs/ -name "*.md"` to confirm written files.
+- Proceed to Phase 4 summary.
 
-If coverage fails, do NOT silently proceed. Report which units / subfolders are missing or thin, and ask the user:
+If `compose-onboard` exited 2 (validation failed):
+- Read the error list from stderr.
+- Identify which pass produced the offending registration (per-package, per-concern, architecture, memory).
+- Re-dispatch the relevant pass with explicit error context (the specific gate failures).
+- Re-invoke `compose-onboard`.
+- Repeat until pass or user chooses Abort/Accept.
 
-- **Re-run the tech-writer** to fill gaps.
-- **Accept** — user explicitly waives the gap.
-- **Abort** — user reconciles manually.
+### 3.2: Spot-check (post-compose, optional sanity)
 
-### 3.2: Structural-Completeness Check
+The helper has already validated structurally and semantically. Spot-checks here are optional sanity-only:
+- Confirm `docs/architecture.md` exists.
+- Confirm `.devforge/baseline/docs/` mirrors `docs/`.
+- Confirm `.devforge/memory.md` has new dated subsections.
 
-For every generated doc file: verify it contains the required sections from A.2's per-doc template — Overview present and substantive, Main Exports section with code blocks, Types section, Dependencies, Usage Example. A doc missing types-inline OR missing real code blocks fails verification even if the file exists.
-
-### 3.3: Code-Block Sourcing Check
-
-Spot-check 5 random code blocks across `docs/`. Each must have a `<!-- path/file.ext:line-range -->` reference comment OR a clearly-cited source path in surrounding prose. Any unsourced block = failure.
-
-### 3.4: Cross-Link Existence Check
-
-Spot-check 5 random Markdown links in `docs/*.md` resolve to existing files. Broken links = failure.
-
-### 3.5: Term + Sigil Hygiene
-
-- **Term hygiene**: locked terminology (Glossary below) used precisely. "package", "module", "feature", "concern" — no loose interchange.
-- **Sigil hygiene**: no `/<command>` or `$<command>` strings in any `docs/*.md`. Cross-runtime artifacts use bare command names. See A.3.
-
-If any check (3.2–3.5) fails, report findings (file path + what's wrong + what to correct) and ask **Proceed** / **Re-run** / **Abort**.
-
-### 3.6: Update Memory
-
-If the tech-writer returned `MEMORY_ADDITIONS` — a category-keyed structure with entries — append them to `.devforge/memory.md` (cross-runtime shared file) under existing scaffold sections:
-
-- **Module/package boundaries** → `## Architecture Decisions` as new sub-section `### Module boundaries (from onboard)`.
-- **Dependency warnings** → `## Known Pitfalls`.
-- **Areas of complexity** → `## Known Pitfalls`.
-- **Inconsistencies** → `## Known Pitfalls`.
-
-Scaffold has four top-level sections (Architecture Decisions, Known Pitfalls, What Worked, What Failed) — do NOT create new top-level sections; add as sub-sections.
-
-The tech-writer mandate (per A.5): report observations from EVERY unit, not a curated subset.
-
-### 3.7: Drop Baselines
-
-For each generated `docs/<path>` file, copy it to `.devforge/baseline/docs/<path>` so future re-runs detect user edits.
+If any of these are missing despite compose returning 0, the helper has a bug — report and abort rather than proceed silently.
 
 ---
 
@@ -415,14 +574,17 @@ These terms have precise meanings in onboard's output and downstream consumers:
 
 ## IMPORTANT RULES
 
-1. **Cover all code** — every package or meaningful source folder gets a doc home. Coverage failure is verification failure.
-2. **Tech-writer owns scan + docs writing** — orchestrator handles pre-scan, post-scan verification, memory append, baseline drop.
-3. **Never modify source files** — onboarding writes only to `docs/`, `.devforge/memory.md`, and `.devforge/baseline/`.
-4. **Code blocks lifted from real source** — every block has a `<!-- path/file.ext:line-range -->` reference. No invented code.
-5. **Boundary surface, not implementation** — what crosses module boundaries. Skip internals.
-6. **Mirror folder structure** — `docs/<unit-path>/...` mirrors the source layout. Path-from-source = path-to-docs.
-7. **No bundled pattern assumptions** — `architecture.md` observes the project's actual patterns; spec mandates structure not content. Document multi-pattern projects honestly.
-8. **Preserve user-edited docs** — §1.0 detects user edits via baseline diff. Re-runs ask Overwrite/Merge/Abort, never silently overwrite.
-9. **Sigil-neutral prose in `docs/`** — `docs/` is cross-runtime; use bare command names.
-10. **No constitution / primer duplication** — docs describe what EXISTS; constitution + primer carry their own concerns.
-11. **This is for agents** — primary audience is the agents running subsequent commands. Be explicit, structured, precise. Documents must be a substitute for first-pass code reading.
+1. **All doc writes go through `scripts/lib/onboard_helper`** — this is the only sanctioned write path. Direct `Write` tool calls to `docs/` are not part of this command's contract. The helper enforces 7 validation gates at compose time; bulk-script writes cannot satisfy them.
+2. **Self-validate code-block counts before every registration** — count fenced blocks, count `<!-- path:line -->` reference comments, pass `--block-count N --ref-count N`. The helper rejects mismatches at registration AND at compose (content recount).
+3. **Cover all code** — every package or meaningful source folder gets a helper invocation. Coverage failure is a compose-time gate failure.
+4. **Architecture and memory are SEPARATE passes** — different prompts, different per-doc templates. Don't reuse the per-package template for architecture.md (forces wrong section shape). Memory is source-archaeology, not summarization-of-generated-docs.
+5. **Tech-writer subagents register; orchestrator composes** — orchestrator handles pre-scan, dispatch coordination, compose invocation, error report + re-run flow.
+6. **Never modify source files** — onboarding writes only to `docs/`, `.devforge/memory.md`, and `.devforge/baseline/` (all via helper).
+7. **Code blocks lifted from real source** — every fenced block has a `<!-- path/file.ext:line-range -->` reference. Mermaid blocks are exempt. No invented code.
+8. **Boundary surface, not implementation** — what crosses module boundaries. Skip internals.
+9. **Mirror folder structure** — `docs/<unit-path>/...` mirrors the source layout. Path-from-source = path-to-docs.
+10. **No bundled pattern assumptions** — `architecture.md` observes the project's actual patterns; spec mandates structure not content. Document multi-pattern projects honestly.
+11. **Preserve user-edited docs** — §1.0 detects user edits via baseline diff. Re-runs ask Overwrite/Merge/Abort, never silently overwrite.
+12. **Sigil-neutral prose in `docs/`** — `docs/` is cross-runtime; use bare command names.
+13. **No constitution / primer duplication** — docs describe what EXISTS; constitution + primer carry their own concerns.
+14. **This is for agents** — primary audience is the agents running subsequent commands. Be explicit, structured, precise. Documents must be a substitute for first-pass code reading.
