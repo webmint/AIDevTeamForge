@@ -17,10 +17,11 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 2.5 adds: principal-type presence heuristic. If a doc declares
-ownership of a BLoC (via `class XBLoC` or `provideXBLoC`), it must
-include the corresponding `XState` type definition in the same doc.
-Catches Codex R5's "first-match parser missed QuoteOwnersState" failure.
+Step 2.6 adds: type dedup within a doc. Rejects docs that declare the
+same exported type multiple times (Codex R5's FooterChargeLine 2x +
+CalcOptions 3x failure — generator emitted overlapping line ranges
+without dedup). Same exported name appearing more than once in the
+same doc is a structural defect, not a stylistic choice.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -391,7 +392,8 @@ def _validate_compose(state: OnboardState) -> list[str]:
     errors.extend(_gate_block_ref_count_accuracy(state))
     errors.extend(_gate_boilerplate_overview(state))
     errors.extend(_gate_principal_type_presence(state))
-    # Future gates (Steps 2.6-2.7) extend this list.
+    errors.extend(_gate_type_dedup(state))
+    # Future gates (Step 2.7) extend this list.
     return errors
 
 
@@ -428,6 +430,52 @@ def _count_fenced_blocks_requiring_refs(content: str) -> int:
 def _count_source_refs(content: str) -> int:
     """Count <!-- path/file.ext:line-range --> reference comments in content."""
     return len(_SRC_REF_RE.findall(content))
+
+
+# Exported type/interface/class/enum declaration patterns. Multi-language:
+# - TypeScript: `export (abstract )?(interface|type|class|enum) XName`
+# - Python: `class XName:` or `class XName(`
+# - Rust: `pub struct|enum|trait XName`
+# - Go: `type XName struct|interface|...`
+_EXPORT_TYPE_PATTERNS = [
+    re.compile(r"^\s*export\s+(?:abstract\s+|default\s+)?(?:interface|type|class|enum)\s+(\w+)", re.MULTILINE),
+    re.compile(r"^\s*pub\s+(?:struct|enum|trait|fn)\s+(\w+)", re.MULTILINE),
+    re.compile(r"^\s*type\s+(\w+)\s+(?:struct|interface)", re.MULTILINE),  # Go
+    re.compile(r"^\s*class\s+(\w+)\s*[\(:]", re.MULTILINE),  # Python (and some TS-like)
+]
+
+
+def _gate_type_dedup(state: OnboardState) -> list[str]:
+    """Step 2.6: each exported type name should appear at most once per doc.
+
+    Codex R5 emitted FooterChargeLine twice (line ranges 20-28 and 24-28)
+    and CalcOptions three times (3-11, 4-11, 5-11) because its parser
+    walked overlapping line ranges and didn't dedup at emit time. The
+    structural defect: same name declared multiple times in the same doc.
+    """
+    errors: list[str] = []
+
+    def check(label: str, content: str) -> None:
+        seen: dict[str, int] = {}
+        for pattern in _EXPORT_TYPE_PATTERNS:
+            for m in pattern.findall(content):
+                seen[m] = seen.get(m, 0) + 1
+        duplicates = {name: count for name, count in seen.items() if count > 1}
+        for name, count in sorted(duplicates.items()):
+            errors.append(
+                f"type dedup: {label} declares '{name}' {count} times in the same doc. "
+                f"Each exported type should appear once. Remove the duplicate code "
+                f"block(s)."
+            )
+
+    for unit, pkg in state.package_docs.items():
+        check(f"package '{unit}'", pkg.content)
+    for c in state.concern_docs:
+        check(f"concern '{c.unit}/{c.concern}'", c.content)
+    if state.architecture_doc is not None:
+        check("architecture", state.architecture_doc.content)
+
+    return errors
 
 
 # BLoC base classes — names not to count as ownership signals.
