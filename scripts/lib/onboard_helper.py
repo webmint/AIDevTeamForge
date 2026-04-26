@@ -17,9 +17,8 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 1.3 adds: subcommand handlers wired to state R/W. No validation gates
-yet — those land in Phase 2. compose-onboard remains a stub; atomic write
-lands in Step 1.5.
+Step 1.5 adds: compose-onboard atomic write to docs/, baseline drops, and
+memory append. No validation gates yet — those land in Phase 2.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -29,9 +28,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Optional
 
@@ -274,12 +275,143 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_compose_onboard(args: argparse.Namespace) -> int:
-    """Validate state and atomically write all registered docs.
+    """Atomically write all registered docs to docs/, drop baselines, append
+    memory findings, and clear state on success. No validation gates yet
+    (those layer in Phase 2)."""
+    state = load_state()
+    written: list[Path] = []
 
-    Step 1.5 implements atomic write. Phase 2 layers in validation gates.
-    Currently a stub.
+    # 1. Package docs.
+    for unit, pkg in state.package_docs.items():
+        target = DOCS_DIR / pkg.path / "index.md"
+        _write_doc_atomically(target, pkg.content)
+        written.append(target)
+
+    # 2. Concern docs (resolved against parent package's path).
+    skipped_concerns: list[str] = []
+    for concern in state.concern_docs:
+        parent = state.package_docs.get(concern.unit)
+        if parent is None:
+            skipped_concerns.append(f"{concern.unit}/{concern.concern}")
+            continue
+        target = DOCS_DIR / parent.path / f"{concern.concern}.md"
+        _write_doc_atomically(target, concern.content)
+        written.append(target)
+
+    # 3. Architecture doc.
+    if state.architecture_doc is not None:
+        target = DOCS_DIR / "architecture.md"
+        _write_doc_atomically(target, state.architecture_doc.content)
+        written.append(target)
+
+    # 4. Memory findings.
+    memory_appended = _append_memory_findings(state.memory_findings)
+
+    # 5. Drop baselines.
+    for target in written:
+        rel = target.relative_to(DOCS_DIR)
+        baseline_path = BASELINE_DIR / rel
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, baseline_path)
+
+    # 6. Clear state on success.
+    clear_state()
+
+    # 7. Report.
+    print(
+        f"compose-onboard: wrote {len(written)} doc files; "
+        f"baselines dropped at {BASELINE_DIR}; "
+        f"memory findings appended: {memory_appended}"
+    )
+    if skipped_concerns:
+        print(
+            f"  warning: {len(skipped_concerns)} concern doc(s) skipped (no parent package): "
+            f"{', '.join(skipped_concerns)}",
+            file=sys.stderr,
+        )
+    return 0
+
+
+# ─── compose-onboard internals ───────────────────────────────────────────────
+
+
+def _write_doc_atomically(target: Path, content: str) -> None:
+    """Write content to target via temp file in same dir + os.replace."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".onboard-doc-", suffix=".md", dir=str(target.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, target)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+# Memory category → (parent section heading, subsection-heading-format).
+# Subsection heading is dated so re-runs append rather than collide.
+_MEMORY_SECTION_MAP = {
+    "module-boundaries": ("## Architecture Decisions", "### Module boundaries (from onboard {date})"),
+    "dependency-warnings": ("## Known Pitfalls", "### Dependency warnings (from onboard {date})"),
+    "complexity": ("## Known Pitfalls", "### Areas of complexity (from onboard {date})"),
+    "inconsistencies": ("## Known Pitfalls", "### Inconsistencies (from onboard {date})"),
+}
+
+
+def _append_memory_findings(findings: list[MemoryFinding]) -> int:
+    """Insert findings into .devforge/memory.md under scaffold sections.
+
+    Returns count of findings appended. If memory.md doesn't exist, prints a
+    warning and returns 0.
     """
-    return _not_implemented("compose-onboard")
+    if not findings:
+        return 0
+
+    memory_file = DEVFORGE_DIR / "memory.md"
+    if not memory_file.exists():
+        print(
+            f"warning: {memory_file} not found; memory findings not persisted",
+            file=sys.stderr,
+        )
+        return 0
+
+    today = date.today().isoformat()
+
+    # Group findings by category.
+    by_category: dict[str, list[MemoryFinding]] = {}
+    for f in findings:
+        by_category.setdefault(f.category, []).append(f)
+
+    existing = memory_file.read_text(encoding="utf-8")
+    updated = existing
+    appended = 0
+
+    for category, items in by_category.items():
+        if category not in _MEMORY_SECTION_MAP:
+            continue
+        parent_heading, sub_heading_fmt = _MEMORY_SECTION_MAP[category]
+        sub_heading = sub_heading_fmt.format(date=today)
+        bullets = "\n".join(f"- `{f.unit}`: {f.observation}" for f in items)
+        block = f"\n{sub_heading}\n{bullets}\n"
+
+        # Insert immediately after the parent heading line if it exists;
+        # otherwise append at end with parent heading prepended.
+        if parent_heading in updated:
+            idx = updated.index(parent_heading) + len(parent_heading)
+            line_end = updated.index("\n", idx)
+            updated = updated[: line_end + 1] + block + updated[line_end + 1 :]
+        else:
+            updated += f"\n{parent_heading}\n{block}"
+
+        appended += len(items)
+
+    memory_file.write_text(updated, encoding="utf-8")
+    return appended
 
 
 # ─── Argparse setup ──────────────────────────────────────────────────────────
