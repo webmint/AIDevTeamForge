@@ -17,10 +17,10 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 2.3 adds: block-count vs ref-count equality gates (Claude's R5 Q10
-self-validation pattern). Two layers — register-time simple equality
-rejection + compose-time content recount that catches LLM lies about
-self-reported counts.
+Step 2.4 adds: boilerplate-overview detector. Scans Overview sections for
+template phrases (e.g., "is a documentation unit", "feature boundaries,
+presentation adapters, and supporting domain contracts") and rejects
+docs whose overview is template-shaped rather than project-specific.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -389,7 +389,8 @@ def _validate_compose(state: OnboardState) -> list[str]:
     errors.extend(_gate_per_package_coverage(state))
     errors.extend(_gate_per_concern_decomposition(state))
     errors.extend(_gate_block_ref_count_accuracy(state))
-    # Future gates (Steps 2.4-2.7) extend this list.
+    errors.extend(_gate_boilerplate_overview(state))
+    # Future gates (Steps 2.5-2.7) extend this list.
     return errors
 
 
@@ -426,6 +427,73 @@ def _count_fenced_blocks_requiring_refs(content: str) -> int:
 def _count_source_refs(content: str) -> int:
     """Count <!-- path/file.ext:line-range --> reference comments in content."""
     return len(_SRC_REF_RE.findall(content))
+
+
+# Boilerplate overview phrases observed in Codex R5/R6 output. Adding to
+# this list closes more template-shape failure modes. Phrases are matched
+# case-insensitively against the Overview section text.
+_BOILERPLATE_PHRASES = [
+    "is a documentation unit",
+    "feature boundaries, presentation adapters",
+    "and supporting domain contracts",
+    "presentation adapters, and supporting domain contracts",
+    "this documentation unit",
+    "this is a documentation unit",
+]
+
+
+def _extract_overview_section(content: str) -> str:
+    """Return the text under '## Overview' until the next '## ' heading.
+
+    Returns empty string if no Overview section. Comparison is
+    case-insensitive on the heading.
+    """
+    in_overview = False
+    captured: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not in_overview:
+            if stripped.lower().startswith("## overview"):
+                in_overview = True
+            continue
+        if stripped.startswith("## "):  # next H2 ends the section
+            break
+        captured.append(line)
+    return "\n".join(captured)
+
+
+def _gate_boilerplate_overview(state: OnboardState) -> list[str]:
+    """Step 2.4: reject docs whose Overview contains template-shape phrases.
+
+    Catches Codex's R5/R6 "X is a documentation unit inside CSE UI" pattern
+    where the generator emits a template-shaped overview that describes how
+    the doc is organized rather than what the package does.
+    """
+    errors: list[str] = []
+
+    def check(label: str, content: str) -> None:
+        overview = _extract_overview_section(content)
+        if not overview:
+            return  # Per-doc structural-completeness gate covers missing Overview.
+        overview_lower = overview.lower()
+        for phrase in _BOILERPLATE_PHRASES:
+            if phrase.lower() in overview_lower:
+                errors.append(
+                    f"boilerplate overview: {label} Overview contains template phrase "
+                    f"'{phrase}'. Rewrite the Overview to be project-specific — "
+                    f"what does this unit actually provide, who consumes it, what "
+                    f"are the principal responsibilities."
+                )
+                return  # One error per doc is enough
+
+    for unit, pkg in state.package_docs.items():
+        check(f"package '{unit}'", pkg.content)
+    for c in state.concern_docs:
+        check(f"concern '{c.unit}/{c.concern}'", c.content)
+    if state.architecture_doc is not None:
+        check("architecture", state.architecture_doc.content)
+
+    return errors
 
 
 def _gate_block_ref_count_accuracy(state: OnboardState) -> list[str]:
