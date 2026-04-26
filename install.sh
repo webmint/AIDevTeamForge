@@ -157,15 +157,24 @@ echo "Installing AIDevTeamForge into: $TARGET_DIR"
 mkdir -p "$TARGET_DIR/.devforge"
 cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
 
-# ── Copy setup-wizard runtime helpers ───────────────────────────────────────
+# ── Copy setup-wizard + onboard runtime helpers ────────────────────────────
 # scripts/lib/detect_report{,.py} compose the Phase 1 Detection Report at
 # wizard-time. The launcher (no extension) picks a Python 3 interpreter; the
 # .py module is the composer. Both must land on the target — generators
 # elsewhere in scripts/ stay template-internal.
+#
+# scripts/lib/onboard_helper{,.py} register doc artifacts and atomically
+# compose docs/ at onboard-time. Same launcher-pattern. The helper enforces
+# 7 validation gates (per-package coverage, per-concern decomposition,
+# block/ref count equality, boilerplate-overview, principal-type presence,
+# type dedup, cross-link + sigil hygiene) at compose time.
 mkdir -p "$TARGET_DIR/scripts/lib"
 cp "$TEMPLATE_DIR/scripts/lib/detect_report" "$TARGET_DIR/scripts/lib/detect_report"
 cp "$TEMPLATE_DIR/scripts/lib/detect_report.py" "$TARGET_DIR/scripts/lib/detect_report.py"
 chmod +x "$TARGET_DIR/scripts/lib/detect_report"
+cp "$TEMPLATE_DIR/scripts/lib/onboard_helper" "$TARGET_DIR/scripts/lib/onboard_helper"
+cp "$TEMPLATE_DIR/scripts/lib/onboard_helper.py" "$TARGET_DIR/scripts/lib/onboard_helper.py"
+chmod +x "$TARGET_DIR/scripts/lib/onboard_helper"
 
 # ── Place constitution.md at project root (presence-guarded) ──────────────
 # Brownfield safety: if the target already has a constitution.md, leave it
