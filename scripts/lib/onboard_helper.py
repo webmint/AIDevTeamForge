@@ -17,10 +17,11 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 2.1 adds: per-package coverage gate at compose-onboard. Reads
-detected packages from .devforge/project-config.json PACKAGES_DETECTED
-and rejects compose if any detected package lacks an add-package-doc
-registration. Other validation gates layer in Steps 2.2-2.7.
+Step 2.2 adds: per-concern decomposition gate. For each registered package,
+detects substantive source subfolders (concern-name heuristic + file count)
+and requires an add-concern-doc registration for each. Closes Codex R6's
+collapsed-monolith failure mode (one mega-file index.md instead of
+decomposed concern files).
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -359,7 +360,8 @@ def _validate_compose(state: OnboardState) -> list[str]:
     """Run all validation gates. Returns list of error strings (empty = pass)."""
     errors: list[str] = []
     errors.extend(_gate_per_package_coverage(state))
-    # Future gates (Steps 2.2-2.7) extend this list.
+    errors.extend(_gate_per_concern_decomposition(state))
+    # Future gates (Steps 2.3-2.7) extend this list.
     return errors
 
 
@@ -404,6 +406,124 @@ def _gate_per_package_coverage(state: OnboardState) -> list[str]:
             errors.append(
                 f"per-package coverage: no add-package-doc registration for detected package "
                 f"path='{path}' (manifest={entry.get('manifest', '?')})"
+            )
+    return errors
+
+
+# Concern-name heuristic: subfolders matching these names are always
+# considered substantive regardless of file count. Lowercase set for
+# case-insensitive comparison.
+_CONCERN_NAMES = {
+    "components", "services", "routing", "router", "handlers", "daos",
+    "models", "views", "pages", "stores", "composables", "hooks", "plugins",
+    "controllers", "presenter", "presentation", "domain", "data",
+    "infrastructure", "repositories", "entities", "helpers", "utils",
+    "adapters", "middleware", "actions", "reducers", "selectors", "queries",
+    "mutations", "subscriptions", "guards", "interceptors", "filters",
+}
+
+# Subfolders never counted as substantive (build/cache/dependency artifacts).
+_IGNORE_SUBDIRS = {
+    "node_modules", "target", "build", "dist", ".next", ".nuxt", "vendor",
+    "__pycache__", ".venv", "venv", ".tox", "coverage", ".cache", "tmp",
+    "bin", "obj", "Pods", ".bundle", ".dart_tool", ".gradle", ".cargo",
+    ".mypy_cache", ".ruff_cache", "test", "tests", "__tests__", "__test__",
+    "spec", "specs",
+}
+
+# File-count threshold for "substantive" when the subfolder name doesn't
+# match the concern heuristic. Tunable.
+_SUBSTANTIVE_FILE_THRESHOLD = 4
+
+
+def _detect_substantive_subfolders(pkg_path: str) -> list[str]:
+    """Identify substantive source subfolders within a package.
+
+    Tries common source roots in order (src, lib, then unit root for Go-style
+    layouts). For each immediate child directory of the source root:
+    - Skip ignore set + dot-prefixed dirs.
+    - Mark substantive if the lowercased name is in _CONCERN_NAMES.
+    - Mark substantive if it contains _SUBSTANTIVE_FILE_THRESHOLD+ files
+      (recursive count, ignoring nested ignore-set dirs).
+
+    Returns the substantive subfolder names sorted alphabetically. Empty list
+    if the package directory doesn't exist or has no substantive children.
+    """
+    pkg_root = Path(pkg_path)
+    if not pkg_root.is_dir():
+        return []
+
+    source_root: Optional[Path] = None
+    for candidate in ("src", "lib"):
+        cand = pkg_root / candidate
+        if cand.is_dir():
+            source_root = cand
+            break
+    if source_root is None:
+        source_root = pkg_root
+
+    substantive: list[str] = []
+    try:
+        children = list(source_root.iterdir())
+    except (OSError, PermissionError):
+        return []
+
+    for child in children:
+        if not child.is_dir():
+            continue
+        if child.name.startswith("."):
+            continue
+        if child.name in _IGNORE_SUBDIRS:
+            continue
+        # Concern-name heuristic.
+        if child.name.lower() in _CONCERN_NAMES:
+            substantive.append(child.name)
+            continue
+        # File-count heuristic.
+        try:
+            file_count = 0
+            for entry in child.rglob("*"):
+                # Skip files inside ignored nested dirs.
+                if any(part in _IGNORE_SUBDIRS for part in entry.parts):
+                    continue
+                if entry.is_file():
+                    file_count += 1
+                    if file_count >= _SUBSTANTIVE_FILE_THRESHOLD:
+                        break
+        except (OSError, PermissionError):
+            file_count = 0
+        if file_count >= _SUBSTANTIVE_FILE_THRESHOLD:
+            substantive.append(child.name)
+
+    return sorted(substantive)
+
+
+def _gate_per_concern_decomposition(state: OnboardState) -> list[str]:
+    """Step 2.2: every substantive source subfolder must have a concern doc.
+
+    For each registered package, detect substantive subfolders. For each,
+    require a matching add-concern-doc registration (unit + concern name).
+    Missing concern docs = error, with explicit miss list.
+
+    Closes Codex R6's "concern mentioned inside index.md" monolith collapse:
+    the LLM cannot satisfy this gate by adding more text to index.md; it
+    must call add-concern-doc for each substantive subfolder.
+    """
+    errors: list[str] = []
+    for unit, pkg in state.package_docs.items():
+        substantive = _detect_substantive_subfolders(pkg.path)
+        if not substantive:
+            continue
+        registered_concerns = {
+            c.concern for c in state.concern_docs if c.unit == unit
+        }
+        missing = [s for s in substantive if s not in registered_concerns]
+        for sub in missing:
+            errors.append(
+                f"per-concern decomposition: package '{unit}' (path={pkg.path}) "
+                f"has substantive subfolder '{sub}' but no add-concern-doc "
+                f"registration. Call: onboard_helper add-concern-doc "
+                f"--unit {unit} --concern {sub} ..."
             )
     return errors
 
