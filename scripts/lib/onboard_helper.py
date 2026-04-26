@@ -17,8 +17,10 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 1.5 adds: compose-onboard atomic write to docs/, baseline drops, and
-memory append. No validation gates yet — those land in Phase 2.
+Step 2.1 adds: per-package coverage gate at compose-onboard. Reads
+detected packages from .devforge/project-config.json PACKAGES_DETECTED
+and rejects compose if any detected package lacks an add-package-doc
+registration. Other validation gates layer in Steps 2.2-2.7.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -44,6 +46,7 @@ from typing import Any, Optional
 
 DEVFORGE_DIR = Path(".devforge")
 STATE_FILE = DEVFORGE_DIR / ".onboard-state.json"
+PROJECT_CONFIG = DEVFORGE_DIR / "project-config.json"
 DOCS_DIR = Path("docs")
 BASELINE_DIR = DEVFORGE_DIR / "baseline" / "docs"
 
@@ -275,10 +278,27 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_compose_onboard(args: argparse.Namespace) -> int:
-    """Atomically write all registered docs to docs/, drop baselines, append
-    memory findings, and clear state on success. No validation gates yet
-    (those layer in Phase 2)."""
+    """Validate state and atomically write all registered docs.
+
+    Validation gates run before any write. If validation fails, errors are
+    printed and the helper exits 2 with state preserved (so the LLM can
+    register missing items and re-invoke compose).
+    """
     state = load_state()
+
+    # ── Validation gates ────────────────────────────────────────────────
+    errors = _validate_compose(state)
+    if errors:
+        print("compose-onboard: validation failed:", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+        print(
+            f"\n{len(errors)} validation error(s). State preserved; "
+            "register missing items and re-invoke compose-onboard.",
+            file=sys.stderr,
+        )
+        return 2
+
     written: list[Path] = []
 
     # 1. Package docs.
@@ -333,6 +353,59 @@ def cmd_compose_onboard(args: argparse.Namespace) -> int:
 
 
 # ─── compose-onboard internals ───────────────────────────────────────────────
+
+
+def _validate_compose(state: OnboardState) -> list[str]:
+    """Run all validation gates. Returns list of error strings (empty = pass)."""
+    errors: list[str] = []
+    errors.extend(_gate_per_package_coverage(state))
+    # Future gates (Steps 2.2-2.7) extend this list.
+    return errors
+
+
+def _load_detected_packages() -> list[dict[str, Any]]:
+    """Load PACKAGES_DETECTED from .devforge/project-config.json.
+
+    Returns empty list if file missing (tests / ad-hoc use). The
+    per-package coverage gate handles "no detected packages" as a no-op
+    pass — the LLM can register packages without wizard pre-detection.
+    """
+    if not PROJECT_CONFIG.exists():
+        return []
+    try:
+        cfg = json.loads(PROJECT_CONFIG.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        # Fail loud — this is a setup-wizard contract violation.
+        print(
+            f"onboard_helper: corrupt {PROJECT_CONFIG}: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return cfg.get("PACKAGES_DETECTED") or []
+
+
+def _gate_per_package_coverage(state: OnboardState) -> list[str]:
+    """Step 2.1: every detected package must have an add-package-doc registration.
+
+    Match by path (state.package_docs[unit].path == detected[].path). If a
+    detected package has no matching registration, that's a coverage failure.
+    """
+    detected = _load_detected_packages()
+    if not detected:
+        return []  # No detection report → no coverage requirement.
+
+    registered_paths = {pkg.path for pkg in state.package_docs.values()}
+    errors: list[str] = []
+    for entry in detected:
+        path = entry.get("path")
+        if not path:
+            continue
+        if path not in registered_paths:
+            errors.append(
+                f"per-package coverage: no add-package-doc registration for detected package "
+                f"path='{path}' (manifest={entry.get('manifest', '?')})"
+            )
+    return errors
 
 
 def _write_doc_atomically(target: Path, content: str) -> None:
