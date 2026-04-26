@@ -17,9 +17,8 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-This is a Step 1.1 SKELETON. All subcommand handlers are stubs that print
-"not implemented" and exit 2. Schema, state, validation, and write
-implementation land in subsequent steps.
+Step 1.2 adds: schema dataclasses + state R/W with atomic write. Subcommand
+handlers remain stubs; wiring lands in Step 1.3.
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -27,14 +26,19 @@ Stdlib only. No third-party dependencies. Target Python: 3.8+.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
+import tempfile
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any, Optional
 
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 # The onboard command invokes this tool from the target project root.
 # `.devforge/` is created by install.sh; we mkdir defensively for ad-hoc / test
-# use (added in Step 1.2 alongside state file RW).
+# use (in load_state / save_state).
 
 DEVFORGE_DIR = Path(".devforge")
 STATE_FILE = DEVFORGE_DIR / ".onboard-state.json"
@@ -42,11 +46,126 @@ DOCS_DIR = Path("docs")
 BASELINE_DIR = DEVFORGE_DIR / "baseline" / "docs"
 
 
-# ─── Subcommand handlers (stubs — Step 1.1) ──────────────────────────────────
+# ─── Schema ──────────────────────────────────────────────────────────────────
+# State persisted between invocations. Each invocation reads → mutates →
+# writes back. compose-onboard consumes the final state and clears it.
+
+
+@dataclass
+class DocEntry:
+    """Common shape for package / concern / architecture doc registrations."""
+    content: str = ""
+    block_count: int = 0
+    ref_count: int = 0
+
+
+@dataclass
+class PackageDoc(DocEntry):
+    """A package-level index.md registration."""
+    unit: str = ""
+    path: str = ""  # Source path relative to SOURCE_ROOT.
+
+
+@dataclass
+class ConcernDoc(DocEntry):
+    """A concern-level doc registration nested within a package."""
+    unit: str = ""
+    concern: str = ""
+
+
+@dataclass
+class MemoryFinding:
+    """One observation for .devforge/memory.md."""
+    category: str = ""  # module-boundaries | dependency-warnings | complexity | inconsistencies
+    unit: str = ""  # or 'workspace' for cross-cutting
+    observation: str = ""
+
+
+@dataclass
+class OnboardState:
+    """All registered onboard artifacts. Persisted as .devforge/.onboard-state.json."""
+    mode: Optional[str] = None  # overwrite | merge | fresh
+    package_docs: dict[str, PackageDoc] = field(default_factory=dict)  # keyed by unit name
+    concern_docs: list[ConcernDoc] = field(default_factory=list)
+    architecture_doc: Optional[DocEntry] = None
+    memory_findings: list[MemoryFinding] = field(default_factory=list)
+
+
+# ─── State R/W (atomic) ──────────────────────────────────────────────────────
+
+
+def load_state() -> OnboardState:
+    """Read state from STATE_FILE; return empty OnboardState if missing."""
+    if not STATE_FILE.exists():
+        return OnboardState()
+    try:
+        raw = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(
+            f"onboard_helper: corrupt state file {STATE_FILE}: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return _state_from_dict(raw)
+
+
+def save_state(state: OnboardState) -> None:
+    """Atomically write state to STATE_FILE via temp file + os.replace."""
+    DEVFORGE_DIR.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(asdict(state), indent=2, sort_keys=False)
+    # Write to a sibling temp file in the same directory for atomic rename.
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".onboard-state-", suffix=".json", dir=str(DEVFORGE_DIR)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp_path, STATE_FILE)
+    except Exception:
+        # Clean up the temp file if rename failed.
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def clear_state() -> None:
+    """Remove the state file. Called by compose-onboard on success."""
+    if STATE_FILE.exists():
+        STATE_FILE.unlink()
+
+
+def _state_from_dict(raw: dict[str, Any]) -> OnboardState:
+    """Reconstruct OnboardState from the JSON-loaded dict.
+
+    Hand-written rather than asdict-inverse because dataclass nesting needs
+    explicit reconstruction for list[X] / dict[str, X] fields.
+    """
+    state = OnboardState(mode=raw.get("mode"))
+
+    pkg_docs_raw = raw.get("package_docs") or {}
+    for unit, doc_raw in pkg_docs_raw.items():
+        state.package_docs[unit] = PackageDoc(**doc_raw)
+
+    for c_raw in raw.get("concern_docs") or []:
+        state.concern_docs.append(ConcernDoc(**c_raw))
+
+    arch_raw = raw.get("architecture_doc")
+    if arch_raw is not None:
+        state.architecture_doc = DocEntry(**arch_raw)
+
+    for m_raw in raw.get("memory_findings") or []:
+        state.memory_findings.append(MemoryFinding(**m_raw))
+
+    return state
+
+
+# ─── Subcommand handlers (stubs — wiring lands in Step 1.3) ──────────────────
 
 
 def _not_implemented(name: str) -> int:
-    print(f"onboard_helper: '{name}' not implemented yet (Step 1.1 skeleton).", file=sys.stderr)
+    print(f"onboard_helper: '{name}' not implemented yet (Step 1.2 skeleton).", file=sys.stderr)
     return 2
 
 
