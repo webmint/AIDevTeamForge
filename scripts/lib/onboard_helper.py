@@ -17,11 +17,10 @@ Verbs:
   status                Print machine-readable progress
   compose-onboard       Validate + atomically write all registered docs
 
-Step 2.6 adds: type dedup within a doc. Rejects docs that declare the
-same exported type multiple times (Codex R5's FooterChargeLine 2x +
-CalcOptions 3x failure — generator emitted overlapping line ranges
-without dedup). Same exported name appearing more than once in the
-same doc is a structural defect, not a stylistic choice.
+Step 2.7 adds: cross-link existence + sigil hygiene. Final pair of
+gates. Cross-link checks that markdown link targets resolve to docs
+being written or existing files. Sigil hygiene rejects /<cmd> or
+$<cmd> workflow command prefixes in docs (cross-runtime artifact rule).
 
 Stdlib only. No third-party dependencies. Target Python: 3.8+.
 """
@@ -393,7 +392,116 @@ def _validate_compose(state: OnboardState) -> list[str]:
     errors.extend(_gate_boilerplate_overview(state))
     errors.extend(_gate_principal_type_presence(state))
     errors.extend(_gate_type_dedup(state))
-    # Future gates (Step 2.7) extend this list.
+    errors.extend(_gate_cross_link_existence(state))
+    errors.extend(_gate_sigil_hygiene(state))
+    return errors
+
+
+# Markdown link pattern: [text](path-or-url).
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+# Sigil-prefixed workflow command pattern. Negative lookbehind excludes
+# URL-y characters (slash/dot/word) so "https://example.com/onboard" or
+# "./packages/onboard/" don't trigger. Standalone /onboard or $onboard
+# does trigger.
+_WORKFLOW_COMMANDS = (
+    "onboard", "setup-wizard", "constitute", "specify",
+    "plan", "breakdown", "execute-task", "verify",
+)
+_SIGIL_RE = re.compile(
+    r"(?<![\w/.])([/$])(" + "|".join(_WORKFLOW_COMMANDS) + r")\b"
+)
+
+
+def _will_write_targets(state: OnboardState) -> set[Path]:
+    """Compute the set of doc paths that compose-onboard will write."""
+    targets: set[Path] = set()
+    for pkg in state.package_docs.values():
+        targets.add(DOCS_DIR / pkg.path / "index.md")
+    for c in state.concern_docs:
+        parent = state.package_docs.get(c.unit)
+        if parent is None:
+            continue  # per-concern decomp gate already errors on this case
+        targets.add(DOCS_DIR / parent.path / f"{c.concern}.md")
+    if state.architecture_doc is not None:
+        targets.add(DOCS_DIR / "architecture.md")
+    return targets
+
+
+def _gate_cross_link_existence(state: OnboardState) -> list[str]:
+    """Step 2.7a: every relative markdown link must resolve.
+
+    Resolves each link relative to its doc's intended location, then
+    checks: target is in WILL-write set OR exists on disk OR is an
+    external URL/anchor. Else error.
+    """
+    errors: list[str] = []
+    will_write = {p.resolve() for p in _will_write_targets(state)}
+
+    def check(label: str, content: str, doc_dir: Path) -> None:
+        for match in _MD_LINK_RE.finditer(content):
+            target = match.group(2).strip()
+            # Skip external links + anchor-only + mailto.
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            # Strip in-page anchors.
+            target_no_anchor = target.split("#", 1)[0]
+            if not target_no_anchor:
+                continue
+            # Resolve relative to the doc's directory.
+            try:
+                resolved = (doc_dir / target_no_anchor).resolve()
+            except OSError:
+                continue
+            if resolved in will_write:
+                continue
+            if resolved.exists():
+                continue
+            errors.append(
+                f"cross-link: {label} links to '{target}' which doesn't resolve "
+                f"to a doc being written or an existing file. Verify the path."
+            )
+
+    for unit, pkg in state.package_docs.items():
+        check(f"package '{unit}'", pkg.content, DOCS_DIR / pkg.path)
+    for c in state.concern_docs:
+        parent = state.package_docs.get(c.unit)
+        if parent is None:
+            continue
+        check(f"concern '{c.unit}/{c.concern}'", c.content, DOCS_DIR / parent.path)
+    if state.architecture_doc is not None:
+        check("architecture", state.architecture_doc.content, DOCS_DIR)
+
+    return errors
+
+
+def _gate_sigil_hygiene(state: OnboardState) -> list[str]:
+    """Step 2.7b: reject /<cmd> or $<cmd> workflow-command sigils in doc content.
+
+    docs/ is cross-runtime; sigil-prefixed forms break for the other
+    runtime. Bare command names ('onboard', 'constitute') are required.
+    """
+    errors: list[str] = []
+
+    def check(label: str, content: str) -> None:
+        matches = _SIGIL_RE.findall(content)
+        if not matches:
+            return
+        # matches is a list of (sigil, command) tuples.
+        offenders = sorted({f"{sigil}{cmd}" for sigil, cmd in matches})
+        errors.append(
+            f"sigil hygiene: {label} contains workflow-command sigils: "
+            f"{', '.join(offenders)}. docs/ is cross-runtime; use bare command "
+            f"names (e.g., 'onboard') not sigil-prefixed forms."
+        )
+
+    for unit, pkg in state.package_docs.items():
+        check(f"package '{unit}'", pkg.content)
+    for c in state.concern_docs:
+        check(f"concern '{c.unit}/{c.concern}'", c.content)
+    if state.architecture_doc is not None:
+        check("architecture", state.architecture_doc.content)
+
     return errors
 
 
