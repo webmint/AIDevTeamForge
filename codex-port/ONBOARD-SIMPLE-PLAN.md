@@ -2,7 +2,7 @@
 
 **Premise**: User produced ~7035 lines of documentation in one reference monorepo and ~370KB in another by *just asking the LLM* to "read everything, document everything." Current /onboard's elaborate prompt under-emits across runtimes, projects (R1 + cross-version 1.28.0 + cross-machine evidence). The redesign hypothesis: a simpler prompt mandating cover-all-code with mirror-folder structure produces the prior-framework's quality without helper apparatus.
 
-**Comparison branch**: `feature/onboard-path-b` (5 commits, paused at Step 1.1) holds the elaborate Path-B-style design with helper-mediated extraction. After this simple approach is implemented and tested, R3 outputs are compared against R1 baseline and reference outputs to decide which to merge.
+**Comparison branch**: `feature/onboard-path-b` (5 commits, paused at Step 1.1) holds the elaborate Path-B-style design with helper-mediated extraction. After this simple approach is implemented and tested, R5 outputs are compared against the current-main baseline and reference outputs to decide which to merge.
 
 **Branch**: `feature/onboard-simple` cut from `feature/codex-support` HEAD `3b2c838` (same starting point as path-b branch).
 
@@ -317,9 +317,9 @@ Mechanics:
 - Absolute-from-docs-root acceptable when relative would be confusing: `[stores](docs/apps/<frontend>/stores.md)`.
 - All cross-link targets must exist (verified in S5's hygiene check; **add**: cross-link existence check spot-samples 5 random links per run).
 
-### S9 — Cross-runtime parity testing (R3) *(resolved 2026-04-26)*
+### S9 — Cross-runtime parity testing (R5) *(resolved 2026-04-26)*
 
-**Choice**: same protocol as R1 baseline measurement. Run new /onboard on `~/Projects/testParity/` (Claude) and `~/Projects/testParity-codex/` (Codex). Compare:
+**Choice**: same protocol as baseline measurement of current main. Run new /onboard on `~/Projects/testParity/` (Claude) and `~/Projects/testParity-codex/` (Codex). Compare:
 
 - Coverage (every package has a doc on both runtimes)
 - Volume (lines per package; ratio of doc lines per source file)
@@ -327,7 +327,7 @@ Mechanics:
 - Density target met (Reference A's ~3.2 lines per source file is the reference)
 - F1 / F2 closure evidence
 
-Append R3 section to `codex-port/phase-R/parity-findings.md` with F1–F6 closure status.
+Append R5 section to `codex-port/phase-R/parity-findings.md` with F1–F6 closure status.
 
 ---
 
@@ -372,9 +372,9 @@ Steps are atomic. Each has entry / action / self-verify / approval-gate. Approva
 - **Entry**: 1.3 approved.
 - **Action**: run the generator that produces installed `.claude/commands/onboard/...` and `.agents/skills/onboard/...` artifacts from `src/`.
 - **Self-verify**: installed copies match src; Codex installation no longer has a `references/` subfolder; Claude installation likewise.
-- **Approval gate**: ready for R3.
+- **Approval gate**: ready for R5.
 
-### Phase 2 — R3 measurement
+### Phase 2 — R5 measurement
 
 #### Step 2.1 — Reinstall testParity (Claude side)
 - **Entry**: Phase 1 complete + approved.
@@ -394,19 +394,19 @@ Steps are atomic. Each has entry / action / self-verify / approval-gate. Approva
 - **Self-verify**: same expectations; F1 + F2 closures evident.
 - **Approval gate**: review output.
 
-#### Step 2.4 — Structural diff R3 outputs
+#### Step 2.4 — Structural diff R5 outputs
 - **Entry**: 2.3 approved.
 - **Action**: compare:
-  - Both R3 outputs to each other (Claude vs Codex, expect near-identical mirror-folder structure)
-  - R3 vs R1 baseline (Claude 1450 lines, Codex ~700 lines — expect substantial increase)
-  - R3 vs Reference A baseline (~7035 lines — expect roughly comparable density per source file)
-  - R3 vs path-b R2 if path-b implementation has been continued and tested (probably not yet — leave blank)
+  - Both R5 outputs to each other (Claude vs Codex, expect near-identical mirror-folder structure)
+  - R5 vs baseline (current main, current-main onboard baseline: Claude 1450 lines, Codex ~700 lines — expect substantial increase)
+  - R5 vs Reference A baseline (~7035 lines — expect roughly comparable density per source file)
+  - R5 vs path-b R6 if path-b implementation has been continued and tested (probably not yet — leave blank)
 - **Self-verify**: comparison table covers all known runs.
 - **Approval gate**: numbers reviewed.
 
-#### Step 2.5 — Append R3 section to `codex-port/phase-R/parity-findings.md`
+#### Step 2.5 — Append R5 section to `codex-port/phase-R/parity-findings.md`
 - **Entry**: 2.4 approved.
-- **Action**: write R3 section using R4 (Path B) as the template. Score F1–F6 closures + new findings.
+- **Action**: write R5 section using R4 (Path B) as the template. Score F1–F6 closures + new findings.
 - **Self-verify**: section present; each F-finding has explicit closure status.
 - **Approval gate**: review.
 
@@ -414,7 +414,7 @@ Steps are atomic. Each has entry / action / self-verify / approval-gate. Approva
 
 #### Step 3.1 — Compare simple vs path-b vs current
 - **Entry**: Phase 2 complete.
-- **Action**: produce side-by-side comparison: `feature/codex-support` (current main onboard, R1), `feature/onboard-simple` (this branch, R3), `feature/onboard-path-b` (path-b branch, R2 if run by then). Quality, complexity, maintenance burden, cross-runtime parity, code surface added, alignment with reference outputs.
+- **Action**: produce side-by-side comparison: `feature/codex-support` (current main onboard, R1), `feature/onboard-simple` (this branch, R5), `feature/onboard-path-b` (path-b branch, R6 if run by then). Quality, complexity, maintenance burden, cross-runtime parity, code surface added, alignment with reference outputs.
 - **Self-verify**: comparison covers all branches.
 - **Approval gate**: ready for ship/kill decision.
 
