@@ -70,13 +70,42 @@ When asked for an audit, review, or critical evaluation:
 
 Don't batch findings into a single wall of text. Don't recommend without explaining. Don't proceed to the next finding before the user has reacted to the current one.
 
+## Meta-discipline
+
+These rules govern how all other discipline rules are written and applied. Violating a meta-rule erodes every rule downstream.
+
+### Zero-escape-hatch policy
+
+No discipline rule may contain an escape clause. Any rule with "OR", "if X except Y", "use judgment", "when reasonable", "unless trivial", or any equivalent slip-path creates a place I will drop in. When defining or revising a rule: name a single mandatory action, no carve-outs.
+
+Past examples of escape hatches eliminated:
+- "Use the claude-code-guide agent OR `docs.claude.com`" → "invoke the agent" (claimed-but-unperformed checks are unfalsifiable)
+- "For non-trivial python edits, invoke reviewer" → "for ALL python edits, invoke reviewer" ("non-trivial" is a judgment call I've gotten wrong)
+- "Trivial functions (≤5 lines, no branches, no I/O) may skip explicit test" → "every function gets a test" (the bugs we hit fit in <10 lines)
+
+When proposing or revising any rule, apply this check: does the rule have an OR / if / except / unless / when-reasonable clause? If yes, the rule has an escape hatch — close it before adopting.
+
+### No-underspecification when delegating to agents
+
+When invoking any agent (Task tool, subagent invocation, etc.), provide complete context the agent needs to succeed. The agent doesn't have your conversation history, your mental model of the architecture, or your knowledge of constraints — it sees only what you brief it with.
+
+Before delegating, gather:
+- The goal (what does success look like?)
+- Integration context (where does this fit; what consumes its output)
+- Constraints (what conventions / patterns must it follow; what existing code/files matter)
+- Edge cases YOU know of (don't make the agent rediscover what you already know)
+- Success criteria (how will the agent know it's done; what's the verification step)
+- What NOT to do (out-of-scope changes, anti-patterns to avoid)
+
+"Sane" calibration: match brief depth to task complexity. A 10-line helper doesn't need a 5000-word brief; a multi-file refactor needs one. But never under-deliver — agents diverging from intent because of a thin brief is the orchestrator's failure, not the agent's. If the agent surfaces a question or makes a wrong assumption, the brief was incomplete.
+
 ## Code & spec discipline
 
 These rules apply to all framework work — not just audits. Audit findings are the consequence of violating these; following them prevents most findings from existing in the first place.
 
 ### Test-immediately-after-write for python helpers
 
-Every python function in `scripts/lib/*.py` (or any helper script) must have a test written + actually run in the same turn as the function. "I think this passes" is not verification. Tests must use input shapes matching what the function will receive in production — for parsers reading another tool's output, round-trip via the real producer (e.g., `detect_report compose` → file → `wizard_render` parser), not hand-authored fixtures. Trivial functions (≤5 lines, no branches, no I/O) may skip the explicit test if a caller's test exercises them — note inline "no test, covered by X."
+Every python function in `scripts/lib/*.py` (or any helper script) must have a test written + actually run in the same turn as the function. No exceptions for size, complexity, "trivial" functions, or "covered by caller test" — every function gets its own test that runs. "I think this passes" is not verification. Tests must use input shapes matching what the function will receive in production — for parsers reading another tool's output, round-trip via the real producer (e.g., `detect_report compose` → file → `wizard_render` parser), not hand-authored fixtures.
 
 ### Sentence-level hallucination check for spec docs
 
