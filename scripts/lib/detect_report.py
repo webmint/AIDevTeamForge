@@ -470,6 +470,21 @@ def cmd_add_enforcement_tool(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reset(args: argparse.Namespace) -> int:
+    """Delete the state file. Idempotent — no-op if missing.
+
+    Call at the start of any fresh detection run to clear stale state from a
+    previous interrupted run. Without this, `add-*` calls would append to
+    existing arrays, producing silent duplicates.
+    """
+    if STATE_FILE.exists():
+        STATE_FILE.unlink()
+        print(f"cleared stale state at {STATE_FILE}", file=sys.stderr)
+    else:
+        print("no state file to clear", file=sys.stderr)
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     state = load_state()
     for line in render_status(state):
@@ -760,6 +775,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_tool.add_argument("--value", required=True)
     p_tool.set_defaults(func=cmd_add_enforcement_tool)
+
+    p_reset = sub.add_parser("reset", help="Delete state file. Call at run start to clear stale state from a previous interrupted run.")
+    p_reset.set_defaults(func=cmd_reset)
 
     p_status = sub.add_parser("status", help="Show which fields are set/unset.")
     p_status.set_defaults(func=cmd_status)

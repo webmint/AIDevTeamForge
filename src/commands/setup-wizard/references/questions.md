@@ -72,19 +72,15 @@ Store as `PROJECT_NAME`.
 
 **If README.md (or README.rst, README.txt) exists at SOURCE_ROOT and contains a meaningful description (not just a scaffolded heading):**
 
-Invoke AskUserQuestion with the README quote in the question body and 2 options:
+Bypass the tool — Q1's confirm-or-replace pattern doesn't fit AskUserQuestion's option model cleanly. The natural choice is "accept this text" or "type something else," but a synthetic second option labeled "Write my own" would duplicate the auto-Other affordance (violating main.md's "no explicit Other" contract). Plain prompt is the right shape — show the README quote and let the user confirm or replace:
 
-> Question: I found this in your README:
+> I found this in your README:
 >
 > > [quote the first paragraph or summary section — max ~3 sentences]
 >
-> Does this describe the project well?
->
-> Options:
-> - **Use the README quote (Recommended)** — store it verbatim as `PROJECT_DESCRIPTION`
-> - **Write my own** — user supplies a 1–3 sentence replacement via the auto "Other" affordance
+> Reply with "yes" to use this verbatim as the project description, or supply a 1-3 sentence replacement — what does this project do, who is it for?
 
-If the user picks "Other" with a free-text reply, use that as `PROJECT_DESCRIPTION`. If they pick "Use the README quote", store the quoted text verbatim.
+If the user replies with "yes" (or equivalent confirmation), store the README quote verbatim as `PROJECT_DESCRIPTION`. Otherwise store the user's free-text reply.
 
 **If no README or README is empty/boilerplate:**
 
@@ -114,16 +110,7 @@ The auto-Other affordance handles "describe my own" — user types a custom cate
 
 **If Phase 1 had nothing** (empty project, greenfield with no signals, or low-confidence detection):
 
-Invoke AskUserQuestion with 1 explicit option:
-
-> Question: I couldn't detect enough from the files alone to guess your project type. Pick from the full list, or describe your own?
->
-> Options:
-> - **Pick from full list (Recommended)** — open the 13-category list (L2 fallback below)
-
-Auto-Other handles "describe my own" — user types a custom category.
-
-(AskUserQuestion requires at least 2 options. When detection produced nothing, present the single "Pick from full list" option and rely on auto-Other for the second path. If the tool rejects the single-option call, fall through to L2 directly without asking L1.)
+Skip L1 entirely — there's no "Use suggestion" path to offer, and AskUserQuestion's 2-option minimum makes a single-option L1 structurally impossible (the call would always be rejected). Go straight to L2 (the plain-prose 13-category list below) and let the user pick by name or describe their own.
 
 ### L2: Plain-prose fallback (only when user picks "Pick from full list")
 

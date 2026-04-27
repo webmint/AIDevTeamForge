@@ -35,6 +35,17 @@ Any `{{UPPERCASE}}` marker (e.g., `{{PROJECT_NAME}}`, `{{LANGUAGE}}`) is a wizar
 
 Execute these phases in order. Each phase's detailed instructions live in a dedicated reference file; **read the reference file fully before executing the phase.** Do not attempt any phase from memory or guesses.
 
+### Phase 0 — Reset stale helper state
+
+Before invoking any helper setter, clear any state files left over from a previous interrupted wizard run:
+
+```
+scripts/lib/detect_report reset
+scripts/lib/wizard_render reset
+```
+
+Both commands are idempotent — they delete the state file if present, no-op otherwise. Skipping this risks silent duplication: `add-language`, `add-architecture`, etc. append to whatever's already in state, so a re-run after interruption would produce `["TypeScript", "TypeScript"]` etc. and compose would emit corrupted output without complaint.
+
 ### Phase 1 — Detection (read-only)
 
 **Read `references/detect.md` and follow it.** Covers:

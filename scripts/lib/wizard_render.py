@@ -516,6 +516,22 @@ def cmd_apply_agents(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reset(args: argparse.Namespace) -> int:
+    """Delete the state file. Idempotent — no-op if missing.
+
+    Call at the start of any fresh wizard run to clear stale state from a
+    previous interrupted run. Without this, `add-*` calls would append to
+    existing arrays, producing silent duplicates (e.g., languages =
+    ["TypeScript", "TypeScript"]).
+    """
+    if STATE_FILE.exists():
+        STATE_FILE.unlink()
+        info(f"cleared stale state at {STATE_FILE}")
+    else:
+        info("no state file to clear")
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     state = load_state()
     print("== Wizard Render state ==\n")
@@ -1254,6 +1270,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_agents = sub.add_parser("apply-agents", help="Record kept + removed agent decisions and substitutions.")
     p_agents.add_argument("--substitutions-file", required=True)
     p_agents.set_defaults(func=cmd_apply_agents)
+
+    p_reset = sub.add_parser("reset", help="Delete state file. Call at wizard start to clear stale state from a previous interrupted run.")
+    p_reset.set_defaults(func=cmd_reset)
 
     p_status = sub.add_parser("status", help="Show set/unset state and compose readiness.")
     p_status.set_defaults(func=cmd_status)
