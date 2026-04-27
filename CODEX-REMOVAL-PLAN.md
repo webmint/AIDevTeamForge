@@ -103,9 +103,13 @@ Remove the AGENTS.md branch entirely. Function should produce only `CLAUDE.md`. 
 **Commit**: `step 04: drop .codex/agents generation, .claude/agents only`
 **Tag**: `codex-remove/04-agents-claude-only`
 
-### Step 05 — strip variation markers + delete variation_markers.py
+### Step 05 — strip variation markers + delete variation_markers.py + flatten generate-corellm.py
 
-**Replace throughout** `src/commands/`, `src/agents/`, `src/files/`:
+Two marker systems get killed in this step. Both exist purely to enable runtime variation that no longer exists in a Claude-only forge.
+
+**5a. `{{cli.X}}` markers (variation_markers.py system).**
+
+Replace throughout `src/commands/`, `src/agents/`, `src/files/`:
 - `{{cli.sigil}}onboard` → `/onboard`
 - `{{cli.sigil}}setup-wizard` → `/setup-wizard`
 - `{{cli.sigil}}constitute` → `/constitute`
@@ -114,16 +118,28 @@ Remove the AGENTS.md branch entirely. Function should produce only `CLAUDE.md`. 
 - `{{cli.primer}}` → `CLAUDE.md`
 - Any other `{{cli.<key>}}` → static Claude value
 
-**Delete** `scripts/lib/variation_markers.py` entirely.
+Delete `scripts/lib/variation_markers.py` entirely. Modify any Python that imported it (`scripts/emitters/claude.py`) — remove the substitute call, content is now direct.
 
-**Modify** any Python that imported it (`scripts/emitters/claude.py`) — remove the substitute call, content is now direct.
+**5b. `{{output.X}}` markers (generate-corellm.py system).**
+
+In `src/files/coreLLM/SOURCE.md`:
+- `{{output.filename}}` → `CLAUDE.md` (line 1 title)
+- `{{output.intro}}` → literal intro string
+- `{{output.sigil}}` → `/` (~30 occurrences)
+
+After 5a + 5b, **`generate-corellm.py` has nothing left to substitute** (uppercase wizard placeholders aren't its job). Two finish options:
+- (a) Delete `generate-corellm.py`, rename `src/files/coreLLM/SOURCE.md` → `src/files/coreLLM/CLAUDE.md`, have `generate.sh` `cp` it into target.
+- (b) Keep `generate-corellm.py` as a trivial copy script. Inferior — dead architecture.
+
+Pick (a).
 
 **Verify**:
 - `grep -rn "{{cli\." src/` returns nothing
-- Install into fresh dir produces files with `/onboard` etc. directly readable
-- `grep -c "variation_markers" scripts/lib/` is zero or only matches a deletion
+- `grep -rn "{{output\." src/` returns nothing
+- Install into fresh dir produces CLAUDE.md with `/onboard` etc. directly readable
+- `find scripts/ -name 'variation_markers.py' -o -name 'generate-corellm.py'` returns nothing
 
-**Commit**: `step 05: strip {{cli.*}} variation markers, delete variation_markers.py`
+**Commit**: `step 05: strip {{cli.*}} + {{output.*}} markers, delete variation_markers.py + generate-corellm.py`
 **Tag**: `codex-remove/05-no-variation`
 
 ### Step 06 — strip cross-runtime prose from specs

@@ -54,8 +54,7 @@ fi
 echo "→ Generating coreLLM files"
 $PYTHON3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
   --src "$SRC_DIR/files/coreLLM" \
-  --out "$TARGET_DIR" \
-  --runtimes "$RUNTIME"
+  --out "$TARGET_DIR"
 
 # ── Agents: generate agent files from universal sources ──────────────────
 echo "→ Generating agents"

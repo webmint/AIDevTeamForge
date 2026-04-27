@@ -56,7 +56,6 @@ Standalone (no spec required):
 - `{{output.sigil}}audit` — Adversarial whole-codebase quality review
 - `{{output.sigil}}research "topic"` — Feasibility check before specifying
 
-{{#claude}}
 ### Command Details
 
 #### `{{output.sigil}}research "topic or idea"` (optional)
@@ -131,10 +130,6 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 #### Additional Commands
 
 - `{{output.sigil}}setup-wizard` — Re-run initial project setup (regenerates config files)
-{{/claude}}
-{{#codex}}
-See `.agents/skills/*/SKILL.md` for detailed command instructions.
-{{/codex}}
 
 ## Available Agents
 
