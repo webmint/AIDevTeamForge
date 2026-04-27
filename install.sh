@@ -166,6 +166,11 @@ for f in overview.md architecture.md; do
   fi
 done
 
+# ── Place CLAUDE.md primer at project root ────────────────────────────────
+# The wizard later substitutes the {{UPPERCASE}} placeholders inside it
+# with project-specific answers (PROJECT_NAME, FRAMEWORK, etc.).
+cp "$TEMPLATE_DIR/src/files/coreLLM/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
+
 # ── Build runtime-specific files via the generator ─────────────────────────
 # install.sh is intentionally dumb: it scaffolds shared dirs and delegates
 # all runtime-specific work (Claude, Codex, later Cursor/Gemini) to the

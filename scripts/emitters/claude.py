@@ -39,9 +39,6 @@ from lib.command_source import (  # noqa: E402
     processed as process_source,
     write_references,
 )
-from lib.variation_markers import substitute as substitute_markers  # noqa: E402
-
-
 def emit(src: Path, target: Path) -> None:
     """Emit Claude-runtime files into target from src."""
     commands_dir = target / ".claude" / "commands"
@@ -60,8 +57,6 @@ def emit(src: Path, target: Path) -> None:
         refs_dir = commands_dir / source.name / "references"
         refs_prefix = f".claude/commands/{source.name}/references"
         body, refs = process_source(source, refs_prefix)
-        body = substitute_markers(body, "claude")
-        refs = {name: substitute_markers(content, "claude") for name, content in refs.items()}
         (commands_dir / f"{source.name}.md").write_text(body)
         n_refs = write_references(refs, refs_dir)
         layout = "folder" if source.is_folder else "flat"

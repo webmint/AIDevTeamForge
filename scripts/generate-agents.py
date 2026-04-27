@@ -46,12 +46,7 @@ import argparse
 import sys
 from pathlib import Path
 
-# Shared helper for {{cli.*}} marker substitution (sigil, attribution,
-# primer, subagent). Agent sources use these markers the same way commands
-# do; emitting them literally would leak unsubstituted {{cli.sigil}} into
-# .claude/agents/ outputs.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.variation_markers import substitute as substitute_markers  # noqa: E402
 from lib.install_defaults import CLAUDE_AGENT_DEFAULTS_BY_TIER  # noqa: E402
 
 # We intentionally don't use lib.frontmatter here — agent sources use a
@@ -206,13 +201,6 @@ def _render_one(src_file: Path, target: Path) -> str:
         )
     if not body.strip():
         raise ValueError(f"{src_file}: empty body — agent has no instructions")
-
-    # Substitute {{cli.*}} markers (sigil, attribution, primer, subagent)
-    # in description and body before emit. Frontmatter tier markers
-    # ({{CLAUDE_TIER_*}}) stay untouched — the wizard substitutes those
-    # at install time per agents.md §6.4.
-    description = substitute_markers(description, "claude")
-    body = substitute_markers(body, "claude")
 
     rendered = emit_claude(
         name=name,

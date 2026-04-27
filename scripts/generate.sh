@@ -48,12 +48,6 @@ else
   exit 1
 fi
 
-# ── CoreLLM: generate CLAUDE.md from single source ───────────────────────
-echo "→ Generating coreLLM files"
-$PYTHON3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
-  --src "$SRC_DIR/files/coreLLM" \
-  --out "$TARGET_DIR"
-
 # ── Agents: generate agent files from universal sources ──────────────────
 echo "→ Generating agents"
 $PYTHON3 "$TEMPLATE_DIR/scripts/generate-agents.py" \

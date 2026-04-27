@@ -125,7 +125,7 @@ Purpose: document the branches `constitute/main.md` must cover, with concrete in
 - But if the LLM chooses NOT to emit a convention rule (e.g., user-declared minimal strictness + no observed pattern), Phase 4 produces no rules for §6.5
 
 **Expected structural properties**:
-- §6.5's body is the canonical empty marker: `_No rules synthesized — no applicable default. Rerun {{cli.sigil}}constitute with Full-rewrite mode after adding context..._`
+- §6.5's body is the canonical empty marker: `_No rules synthesized — no applicable default. Rerun /constitute with Full-rewrite mode after adding context..._`
 - Marker does NOT start with `_Run constitute to populate` (so a re-run in Fresh-fill mode won't re-target it)
 - Phase 6 summary's "Empty sections" block includes §6.5 with reason `no applicable default`
 
@@ -162,7 +162,7 @@ Purpose: document the branches `constitute/main.md` must cover, with concrete in
 No automation yet — these are manual-verification fixtures. Typical flow:
 
 1. Set up a sandbox project matching the scenario's setup.
-2. Run `{{cli.sigil}}constitute` against it.
+2. Run `/constitute` against it.
 3. Walk through the "Expected structural properties" checklist.
 4. If anything fails, file a finding and add to the next audit pass.
 

@@ -30,7 +30,7 @@ All collected answers are written to `.devforge/project-config.json` during Phas
 Present what you detected in Phase 1 in a clear summary (or, if `PROJECT_STATE` is empty, skip the summary and go straight to questions). Walk the user through each question in order (Q0 → Q11; later questions depend on earlier answers). Every question is labeled with exactly one of three markers:
 
 - **REQUIRED** — must be answered. Offer **confirm / override**. Defer is not allowed; downstream commands depend on the value.
-- **OPTIONAL** — user may answer or explicitly defer. Offer **confirm / override / defer**. "Defer" marks the field as `TBD` and downstream commands will ask when the field becomes relevant (e.g., when `{{cli.sigil}}specify` needs an architecture decision for a specific feature). A small number of OPTIONAL questions are free-text only (e.g. "anything else I should know?") — those are noted explicitly and allow an empty response.
+- **OPTIONAL** — user may answer or explicitly defer. Offer **confirm / override / defer**. "Defer" marks the field as `TBD` and downstream commands will ask when the field becomes relevant (e.g., when `/specify` needs an architecture decision for a specific feature). A small number of OPTIONAL questions are free-text only (e.g. "anything else I should know?") — those are noted explicitly and allow an empty response.
 - **CONDITIONAL** — may not apply to this project. If it doesn't apply, skip it and record the natural default (this is the one case where a silent default is permitted; the marker acknowledges it). If it does apply, treat as REQUIRED (confirm / override — no silent guess).
 
 For every question that applies, do NOT silently default. Do NOT infer answers. The user's confirmed answers are the canonical input across all runtimes — that's what keeps outputs consistent between Claude, Codex, and any future runtime.
@@ -424,13 +424,13 @@ Store each answer as `TESTINGS[i]`. Per-stack `"N/A"` is valid (e.g., a shared-t
 
 ## Question 8: Workflow Enforcement Level (REQUIRED)
 
-This controls how many user-approval gates appear in the workflow and how strict post-edit verification is. The underlying verification mechanism varies per runtime — on some runtimes it's automatic after every edit, on others it's an explicit `{{cli.sigil}}verify` step — but the behaviors below are the same regardless.
+This controls how many user-approval gates appear in the workflow and how strict post-edit verification is. The underlying verification mechanism varies per runtime — on some runtimes it's automatic after every edit, on others it's an explicit `/verify` step — but the behaviors below are the same regardless.
 
 > How strict should workflow enforcement be?
 >
 > Options:
 > - **Strict** — user approval required at every phase gate (specify → plan → breakdown → execute → verify). Verification runs after every code-writing step.
-> - **Moderate** — user approval at spec and task-breakdown gates only. Verification runs after every code-writing step, but running `{{cli.sigil}}verify` explicitly is optional.
+> - **Moderate** — user approval at spec and task-breakdown gates only. Verification runs after every code-writing step, but running `/verify` explicitly is optional.
 > - **Light** — user approval at the initial spec only. Verification runs, but fewer interactive gates.
 
 Recommend Strict for new users. This field is required because it directly shapes downstream command behavior.
@@ -443,7 +443,7 @@ Store as `WORKFLOW_ENFORCEMENT`. This value is consumed by every command that ha
 >
 > Options:
 > - No — commits will have no AI attribution (recommended default)
-> - Yes — commits will include the trailer: `{{cli.attribution}}`
+> - Yes — commits will include the trailer: `Co-Authored-By: Claude <noreply@anthropic.com>`
 
 Store as `AI_ATTRIBUTION` — lowercase string `"no"` (default) or `"yes"` (matching populate.md's branch condition for `{{COMMIT_ATTRIBUTION}}` substitution). Case-sensitive — do NOT store as boolean, capitalized string, or other format. Both the question's producer (here) and the consumer (populate.md Phase 3) must agree on this format.
 
@@ -508,7 +508,7 @@ Override the underlying model per tier only if the user explicitly asks — othe
 
 ## Question 11: Acceptance Criteria Verification (REQUIRED)
 
-When the user runs `{{cli.sigil}}verify` after a task completes, how should acceptance criteria be checked? The user can pick one mode (simplest — what most projects need) or combine multiple (defense in depth — stronger signal, slower per-task verification).
+When the user runs `/verify` after a task completes, how should acceptance criteria be checked? The user can pick one mode (simplest — what most projects need) or combine multiple (defense in depth — stronger signal, slower per-task verification).
 
 **Trade-off to surface in the prompt**: each additional mode adds per-task verification time. Runtime-assisted especially adds 10–30s per task for dev-server boot + UI drive. Pick "Multiple" only when multiple signals genuinely matter for this project.
 
@@ -582,9 +582,9 @@ Branch by the project type confirmed in Q2 (not what Phase 1 detected — Q2's a
 | Infrastructure-as-code / config management | **No automatable runtime** (see below) |
 | Other (free text) | ask user for a specific category; if still unclear, fall back to **Code-only** |
 
-**No automatable runtime branch**: for project types where `{{cli.sigil}}verify` has no meaningful runtime artifact to exercise (libraries consumed by other code, plugins hosted by a third-party app, batch jobs without a live server, IaC executed by external runners, ML training with no serving endpoint), inform the user:
+**No automatable runtime branch**: for project types where `/verify` has no meaningful runtime artifact to exercise (libraries consumed by other code, plugins hosted by a third-party app, batch jobs without a live server, IaC executed by external runners, ML training with no serving endpoint), inform the user:
 
-> Runtime-assisted verification doesn't fit this project type — there's no launchable artifact `{{cli.sigil}}verify` can drive. I recommend **Tests** (if the project has a test suite) or **Code-only** (otherwise).
+> Runtime-assisted verification doesn't fit this project type — there's no launchable artifact `/verify` can drive. I recommend **Tests** (if the project has a test suite) or **Code-only** (otherwise).
 
 Then:
 
@@ -593,7 +593,7 @@ Then:
 - If the user picked Multiple with Runtime-assisted AND other modes (e.g., `["tests", "runtime-assisted"]`), drop Runtime-assisted and keep the remaining modes (→ `["tests"]`). No additional question needed — the user already explicitly selected the other modes.
 - Do NOT store any `AC_RUNTIME_*` key in this branch (frontend URL / API base / CLI command are all runtime-assisted-specific).
 
-For projects that legitimately span multiple categories (e.g., a mobile app with its own backend, or a monorepo containing a web frontend + a CLI + shared libs) and Q2 only captured one of them, ask the user which ONE scope `{{cli.sigil}}verify` should primarily target, then use that branch. Additional scopes require manual verification — note this for the user so they know what's covered vs. not.
+For projects that legitimately span multiple categories (e.g., a mobile app with its own backend, or a monorepo containing a web frontend + a CLI + shared libs) and Q2 only captured one of them, ask the user which ONE scope `/verify` should primarily target, then use that branch. Additional scopes require manual verification — note this for the user so they know what's covered vs. not.
 
 **Web frontend:**
 
@@ -681,7 +681,7 @@ Store as `AC_RUNTIME_CLI_COMMAND`.
 
 **Mobile / desktop / game / other non-automatable:**
 
-> Runtime-assisted verification for this project type is largely manual — `{{cli.sigil}}verify` will describe what to check, but the user will run the checks themselves. Confirm Runtime-assisted mode, or switch to Code-only / Tests.
+> Runtime-assisted verification for this project type is largely manual — `/verify` will describe what to check, but the user will run the checks themselves. Confirm Runtime-assisted mode, or switch to Code-only / Tests.
 
 No follow-up storage needed beyond `AC_VERIFICATION_MODE` in this case.
 

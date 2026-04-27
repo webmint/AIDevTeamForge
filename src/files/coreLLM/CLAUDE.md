@@ -8,8 +8,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 - **Name**: {{PROJECT_NAME}}
 - **Type**: {{PROJECT_TYPE}}
-- **Framework**: {{FRAMEWORK}}
-- **Language**: {{LANGUAGE}}
+- **Frameworks**: {{FRAMEWORK}}
+- **Languages**: {{LANGUAGE}}
 - **Build Tool**: {{BUILD_TOOL}}
 - **Build Command**: `{{BUILD_COMMAND}}`
 - **Type Check Command**: `{{TYPE_CHECK_COMMAND}}`
@@ -29,6 +29,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 ## Architecture
 
 {{ARCHITECTURE_DETAILS}}
+
+{{PACKAGE_STACKS_SECTION}}
 
 ## Workflow
 
@@ -261,4 +263,4 @@ If a task execution is interrupted (power loss, terminal crash, network drop), t
 - [Constitution](constitution.md) — Project rules and patterns
 - [Specs](specs/) — Feature specifications, plans, and tasks
 - [Memory](.devforge/memory.md) — Persistent learnings
-- [Project Config](.devforge/project-config.json) — Wizard answers
+- [Project Config](.devforge/project-config.json) — Wizard answers plus per-stack arrays (`LANGUAGES`, `FRAMEWORKS`, `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`) and per-package `PACKAGE_STACKS` records

@@ -6,8 +6,8 @@ This reference covers the file-substitution phase of the setup-wizard flow, load
 
 - `CLAUDE.md` — placeholder substitution (if present)
 - `AGENTS.md` — placeholder substitution (if present)
-- `constitution.md` — header-placeholder substitution only (§5.7). Body sections stay untouched — `{{cli.sigil}}constitute` (separate command) fills them later.
-- `docs/overview.md` — placeholder substitution only (§5.8). Body sections stay untouched — `{{cli.sigil}}constitute`, `{{cli.sigil}}onboard`, and the tech-writer agent fill them later.
+- `constitution.md` — header-placeholder substitution only (§5.7). Body sections stay untouched — `/constitute` (separate command) fills them later.
+- `docs/overview.md` — placeholder substitution only (§5.8). Body sections stay untouched — `/constitute`, `/onboard`, and the tech-writer agent fill them later.
 - `docs/architecture.md` — placeholder substitution only (§5.8). Body sections stay untouched — same deferred-fill pattern.
 - `.claude/settings.json` — conditional permissions only, no placeholder substitution (if present)
 - `.codex/config.toml` — key-based regex replacement of boot-safe defaults + conditional MCP entry (if present). NOT placeholder substitution — see §5.2.
@@ -437,7 +437,7 @@ Do NOT include any AI attribution in commits. Specifically:
 **If `AI_ATTRIBUTION == "yes"`**: replace with:
 ```
 Include AI attribution in every commit by appending this trailer:
-`{{cli.attribution}}`
+`Co-Authored-By: Claude <noreply@anthropic.com>`
 ```
 
 ## 5.2: Populate Runtime Config Files
@@ -446,7 +446,7 @@ Two runtime-native config files may be in place. For each, check presence first 
 
 ### `.claude/settings.json` (if present)
 
-**No placeholder substitution needed.** The template emits a complete static `.claude/settings.json` with no `{{PLACEHOLDER}}` markers — the PostToolUse type-check hook was removed in favor of scope-aware end-of-task verification (see the Verification section rendered in CLAUDE.md / AGENTS.md, populated in 5.1 via the unified `{{ARCHITECTURE_DETAILS}}` + `{{PACKAGE_STACKS_SECTION}}` prose; the behavior itself is implemented in `{{cli.sigil}}execute-task`'s verification phase).
+**No placeholder substitution needed.** The template emits a complete static `.claude/settings.json` with no `{{PLACEHOLDER}}` markers — the PostToolUse type-check hook was removed in favor of scope-aware end-of-task verification (see the Verification section rendered in CLAUDE.md / AGENTS.md, populated in 5.1 via the unified `{{ARCHITECTURE_DETAILS}}` + `{{PACKAGE_STACKS_SECTION}}` prose; the behavior itself is implemented in `/execute-task`'s verification phase).
 
 Skip this sub-section for placeholder substitution. Note that 5.4 (conditional MCP servers + permissions) may still append entries to this file when Q11 runtime-assisted AC verification is selected for a web frontend — that's the only modification populate.md makes to `.claude/settings.json`.
 
@@ -478,7 +478,7 @@ For each of `CLAUDE.md`, `AGENTS.md`, `constitution.md`, `docs/overview.md`, and
 4. If `docs/overview.md` exists → copy to `.devforge/baseline/docs/overview.md` (create `.devforge/baseline/docs/` first)
 5. If `docs/architecture.md` exists → copy to `.devforge/baseline/docs/architecture.md`
 
-Create `.devforge/baseline/` (and `.devforge/baseline/docs/` for step 4–5) if they don't exist. These baselines are the wizard output before any manual user edits (and before `{{cli.sigil}}constitute`, `{{cli.sigil}}onboard`, or tech-writer fills body sections). `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
+Create `.devforge/baseline/` (and `.devforge/baseline/docs/` for step 4–5) if they don't exist. These baselines are the wizard output before any manual user edits (and before `/constitute`, `/onboard`, or tech-writer fills body sections). `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
 
 **Note:** `.claude/settings.json` and `.codex/config.toml` are **projectOwned** — update.sh never overwrites them — so they don't need baselines. The three template-driven-header / body-filled-later files (`constitution.md`, `docs/overview.md`, `docs/architecture.md`) get baselines because the header/stub section is template-owned even though the body is user/command/agent-owned; the baseline captures just-after-wizard state so future template updates to the stub can three-way merge cleanly.
 
@@ -568,7 +568,7 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
 **Procedure**:
 
 1. Read `.devforge/memory.md` (install placed the scaffold; it has four empty sections — `## Architecture Decisions`, `## Known Pitfalls`, `## What Worked`, `## What Failed`).
-2. Under `## Architecture Decisions`, insert a new `### Initial detection (from setup-wizard)` subsection **above** the existing `<!-- Populated during constitute -->` sentinel. Do not remove the sentinel — `{{cli.sigil}}constitute` uses it to know where its decisions go.
+2. Under `## Architecture Decisions`, insert a new `### Initial detection (from setup-wizard)` subsection **above** the existing `<!-- Populated during constitute -->` sentinel. Do not remove the sentinel — `/constitute` uses it to know where its decisions go.
 3. Preserve the empty sections `## Known Pitfalls`, `## What Worked`, `## What Failed` unchanged — those get populated during work / by later commands.
 
 **Subsection content** (use Phase 1 detection + Q3-Q7 answers; emit only lines that have real data, omit irrelevant ones):
@@ -642,25 +642,25 @@ Emit only the lines that carry real data. If a concern was all-TBD/all-N/A/all-n
 
 ## 5.7: Populate constitution.md header
 
-`constitution.md` was placed at the project root by `install.sh` (presence-guarded — brownfield projects with a pre-existing constitution keep theirs). This step fills only the **header placeholders** at the top of the file. Body sections stay untouched: every subsection marked `_Run /constitute to populate_` is the sentinel `{{cli.sigil}}constitute` uses later to detect unpopulated regions — do NOT replace these strings, do NOT add body content, do NOT invent rules beyond the placeholders listed here.
+`constitution.md` was placed at the project root by `install.sh` (presence-guarded — brownfield projects with a pre-existing constitution keep theirs). This step fills only the **header placeholders** at the top of the file. Body sections stay untouched: every subsection marked `_Run /constitute to populate_` is the sentinel `/constitute` uses later to detect unpopulated regions — do NOT replace these strings, do NOT add body content, do NOT invent rules beyond the placeholders listed here.
 
 If `constitution.md` does not exist at the project root (presence check failed at install time, or user removed it), skip this step silently. Do not error.
 
 **Placeholders to substitute:**
 
 - `{{PROJECT_NAME}}` — Q0 answer. Appears twice (title + Section 1).
-- `{{DATE}}` — current date, ISO-8601 (`YYYY-MM-DD`). Appears twice (Generated + Last updated); use the same value for both — they diverge later only when `{{cli.sigil}}constitute` or the user manually edits the document.
+- `{{DATE}}` — current date, ISO-8601 (`YYYY-MM-DD`). Appears twice (Generated + Last updated); use the same value for both — they diverge later only when `/constitute` or the user manually edits the document.
 - `{{PROJECT_TYPE}}` — Q2 answer (same value substituted into CLAUDE.md / AGENTS.md in §5.1).
 - `{{FRAMEWORK}}` — render from `FRAMEWORKS` array using the **same rule as CLAUDE.md §5.1**: single value for single-stack, comma-joined for multi-stack (skip `null` entries). The section-1 label reads "Framework(s)" so the joined rendering fits naturally.
 - `{{LANGUAGE}}` — same rule: scalar for single-stack, comma-joined for multi-stack.
 - `{{WORKSPACE_MODE}}` — Phase 1 detection (`"standalone"` or `"wrapper"`).
 - `{{SOURCE_ROOT}}` — Phase 1 detection (`"."` for standalone, inner folder name for wrapper).
-- `{{ERROR_HANDLING}}` — single-stack: `ERROR_HANDLINGS[0]` verbatim (or `"TBD"` if deferred — wizard emits the literal `"TBD"` here, `{{cli.sigil}}constitute` resolves it). Multi-stack: paired rendering with stack labels, matching agents.md §6.4's multi-stack format for non-architect scalars — e.g., `"neverthrow Result<T,E> (TypeScript/Next.js), exceptions + returns.Result (Python/FastAPI)"`. Skip `"TBD"` entries; keep `"N/A"` entries with their stack label.
+- `{{ERROR_HANDLING}}` — single-stack: `ERROR_HANDLINGS[0]` verbatim (or `"TBD"` if deferred — wizard emits the literal `"TBD"` here, `/constitute` resolves it). Multi-stack: paired rendering with stack labels, matching agents.md §6.4's multi-stack format for non-architect scalars — e.g., `"neverthrow Result<T,E> (TypeScript/Next.js), exceptions + returns.Result (Python/FastAPI)"`. Skip `"TBD"` entries; keep `"N/A"` entries with their stack label.
 - `{{TESTING}}` — same rule as `{{ERROR_HANDLING}}`. For multi-stack keep `"N/A"` stack entries with their label (libraries with no tests still need the label so it's explicit).
 
 **What NOT to do in this step:**
 
-- Do NOT touch sections marked `[project-specific]` with `_Run /constitute to populate_` sentinels — these are Section 2 (Architecture Rules), Section 3.1 (Type Safety), Section 3.3 (Naming Conventions), Section 5 (Domain Rules), Section 6.5 (Deprecation Handling), Section 6.6 (Project-Specific Workflow), and the per-section `[project-specific]` sub-bullets in 4.1.1 / 4.2.1 / 4.3.1 / 7. Those belong to `{{cli.sigil}}constitute`.
+- Do NOT touch sections marked `[project-specific]` with `_Run /constitute to populate_` sentinels — these are Section 2 (Architecture Rules), Section 3.1 (Type Safety), Section 3.3 (Naming Conventions), Section 5 (Domain Rules), Section 6.5 (Deprecation Handling), Section 6.6 (Project-Specific Workflow), and the per-section `[project-specific]` sub-bullets in 4.1.1 / 4.2.1 / 4.3.1 / 7. Those belong to `/constitute`.
 - Do NOT substitute placeholders inside the informational blockquotes (e.g., "_For multi-stack projects, `{{ERROR_HANDLING}}` renders as paired bullets..._"). They are template-authoring meta-prose, not real placeholders. They get stripped in the next step.
 - Do NOT rewrite any `[universal]` section (Sections 3.5, 3.6, 3.7, 4.1, 4.2, 4.3, 6.1–6.4). These are the pre-populated rules that apply to every project.
 
@@ -679,7 +679,7 @@ Strip both unconditionally — single-stack and multi-stack alike. The substitut
 
 ## 5.8: Populate docs/overview.md and docs/architecture.md
 
-Both files are placed at `docs/` by `install.sh` (per-file presence-guarded — brownfield projects with pre-existing `docs/overview.md` or `docs/architecture.md` keep their versions). This step fills placeholders in each file. Body sections marked `_Populated by ..._` stay untouched — they're sentinel strings that `{{cli.sigil}}constitute`, `{{cli.sigil}}onboard`, and the tech-writer agent use later.
+Both files are placed at `docs/` by `install.sh` (per-file presence-guarded — brownfield projects with pre-existing `docs/overview.md` or `docs/architecture.md` keep their versions). This step fills placeholders in each file. Body sections marked `_Populated by ..._` stay untouched — they're sentinel strings that `/constitute`, `/onboard`, and the tech-writer agent use later.
 
 If either file does not exist at `docs/<name>.md` (presence check failed at install time, or user removed it), skip THAT file silently. Do not error. Handle each file independently — one may be present while the other isn't.
 
@@ -696,8 +696,8 @@ The stub deliberately does NOT carry stack facts (`LANGUAGE`, `FRAMEWORK`, `WORK
 
 **What NOT to do in this step:**
 
-- Do NOT write body content for `## Architectural Decisions`, `## Layer Boundaries & Dependency Rules`, `## Data Flow`, `## Cross-cutting Concerns`, `## What this project is for`, `## How it's used`. These sentinel blocks are how `{{cli.sigil}}constitute` / `{{cli.sigil}}onboard` / tech-writer detect unpopulated regions.
-- Do NOT create `docs/features/`, `docs/api/`, `docs/guides/`, or any other subdirectory. Those emerge lazily when tech-writer creates the first file inside them during `{{cli.sigil}}execute-task` / `{{cli.sigil}}summarize` / `{{cli.sigil}}finalize`.
+- Do NOT write body content for `## Architectural Decisions`, `## Layer Boundaries & Dependency Rules`, `## Data Flow`, `## Cross-cutting Concerns`, `## What this project is for`, `## How it's used`. These sentinel blocks are how `/constitute` / `/onboard` / tech-writer detect unpopulated regions.
+- Do NOT create `docs/features/`, `docs/api/`, `docs/guides/`, or any other subdirectory. Those emerge lazily when tech-writer creates the first file inside them during `/execute-task` / `/summarize` / `/finalize`.
 - Do NOT invent placeholders that aren't listed above. If a placeholder appears in the stub but isn't in this list, that's a template drift — flag it and leave the placeholder unsubstituted rather than guessing.
 
 **Validate after substitution:** read both files back and confirm no `{{PLACEHOLDER}}` markers remain. The `_Populated by ..._` sentinels are expected to remain — those are not placeholders.

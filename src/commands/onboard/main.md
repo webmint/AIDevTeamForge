@@ -1,8 +1,8 @@
-# {{cli.sigil}}onboard — Codebase Documentation Generation
+# /onboard — Codebase Documentation Generation
 
 You are running the onboarding process for an existing codebase. This command produces comprehensive documentation in `docs/` that serves as the **knowledge base for all agents**. Every agent reads from `docs/` before making changes; the quality and coverage of your documentation directly determines how well agents understand and work with this codebase.
 
-This command runs once after `{{cli.sigil}}setup-wizard` for brownfield projects. Re-run when the codebase changes substantially; the pre-scan check (§1.0) protects user-edited docs across re-runs.
+This command runs once after `/setup-wizard` for brownfield projects. Re-run when the codebase changes substantially; the pre-scan check (§1.0) protects user-edited docs across re-runs.
 
 ## CORE PRINCIPLE — COVER ALL CODE
 
@@ -82,9 +82,9 @@ If validation fails, the helper prints the error list and exits 2 with state pre
 
 ## Prerequisites
 
-1. `{{cli.sigil}}setup-wizard` must have been run — runtime primer (`{{cli.primer}}`), agents directory, runtime config, and `.devforge/` scaffold must exist.
+1. `/setup-wizard` must have been run — runtime primer (`CLAUDE.md`), agents directory, runtime config, and `.devforge/` scaffold must exist.
 2. `docs/` folder must exist (placed by install, populated by setup wizard).
-3. Project is **brownfield** — `.devforge/project-config.json` has `"PROJECT_STATE": "brownfield"`. Greenfield/empty projects skip onboard; the wizard's Phase 5 summary routes those to `{{cli.sigil}}constitute` + `{{cli.sigil}}specify`.
+3. Project is **brownfield** — `.devforge/project-config.json` has `"PROJECT_STATE": "brownfield"`. Greenfield/empty projects skip onboard; the wizard's Phase 5 summary routes those to `/constitute` + `/specify`.
 4. `scripts/lib/onboard_helper` must be present and executable. install.sh copies it; verify with `ls scripts/lib/onboard_helper`. If missing, the install is incomplete.
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
@@ -117,8 +117,8 @@ Default when uncertain: abort. Do not proceed silently.
 
 Read the following and extract what the tech-writer needs:
 
-1. **Runtime primer** (`{{cli.primer}}`) — project name, type, framework, language, project structure, dev commands.
-2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules. The `[project-specific]` sections are sentinel-marked at this stage; `{{cli.sigil}}constitute` populates them later from onboard's findings + user preferences.
+1. **Runtime primer** (`CLAUDE.md`) — project name, type, framework, language, project structure, dev commands.
+2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules. The `[project-specific]` sections are sentinel-marked at this stage; `/constitute` populates them later from onboard's findings + user preferences.
 3. **`.devforge/project-config.json`** — wizard-detected facts: `LANGUAGES[]`, `FRAMEWORKS[]`, `WORKSPACE_MODE` (`standalone`/`wrapper`), `SOURCE_ROOT`, `manifest_count`, `packages[]`, etc.
 4. **`.devforge/memory.md`** — pre-seeded knowledge from setup wizard (cross-runtime shared file).
 
@@ -428,8 +428,8 @@ Present to the user:
 
 ### Next Steps
 1. Review `docs/` and adjust as needed
-2. Run `{{cli.sigil}}constitute` — turn scan findings + your architectural preferences into enforceable rules in `constitution.md`
-3. Start working: `{{cli.sigil}}specify "your first feature"`
+2. Run `/constitute` — turn scan findings + your architectural preferences into enforceable rules in `constitution.md`
+3. Start working: `/specify "your first feature"`
 ```
 
 ---
@@ -438,7 +438,7 @@ Present to the user:
 
 These instructions are inlined into the tech-writer agent prompt at the placeholder above (Phase 2).
 
-**Source Root**: All source code scanning targets the Source Root specified in the runtime primer (`{{cli.primer}}`), or canonically in `.devforge/project-config.json` `SOURCE_ROOT` field. For wrapper-mode projects, this is a subfolder.
+**Source Root**: All source code scanning targets the Source Root specified in the runtime primer (`CLAUDE.md`), or canonically in `.devforge/project-config.json` `SOURCE_ROOT` field. For wrapper-mode projects, this is a subfolder.
 
 ### A.1: Smart Extraction — What to Read from Each File Type
 
@@ -520,7 +520,7 @@ Before returning, verify:
 4. **Boundary surface only**: docs enumerate what crosses module/class/component boundaries. Internals stay in source.
 5. **Cross-references resolve**: workspace-internal `Dependencies` entries link to their package docs; broken links not allowed.
 6. **No constitution duplication**: docs describe HOW the code is organized; constitution describes the RULES.
-7. **No primer duplication**: tech-stack and dev-command tables live in `{{cli.primer}}`; do not repeat them in `docs/`.
+7. **No primer duplication**: tech-stack and dev-command tables live in `CLAUDE.md`; do not repeat them in `docs/`.
 8. **Sigil neutrality**: no `/<cmd>` or `$<cmd>` strings anywhere in `docs/`.
 9. **Inline annotations**: subdirs that exist in source but are NOT exported are explicitly annotated in directory trees.
 10. **No source modifications**: onboarding mode does NOT modify source files. Only `docs/` and (via the orchestrator) `.devforge/memory.md`.

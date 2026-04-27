@@ -1,19 +1,19 @@
-# {{cli.sigil}}constitute — Establish project rules from scan + preferences
+# /constitute — Establish project rules from scan + preferences
 
-You are populating the project's `constitution.md` body sections with enforceable rules. The constitution is the authoritative source of HOW code must be written in this project; every downstream command (`{{cli.sigil}}plan`, `{{cli.sigil}}execute-task`, `{{cli.sigil}}review`, `{{cli.sigil}}fix`, etc.) reads it before acting.
+You are populating the project's `constitution.md` body sections with enforceable rules. The constitution is the authoritative source of HOW code must be written in this project; every downstream command (`/plan`, `/execute-task`, `/review`, `/fix`, etc.) reads it before acting.
 
-`{{cli.sigil}}constitute` is the **establishment phase** — it takes what already exists (setup-wizard's answers, onboard's discovery findings, the constitution scaffold) plus a small number of questions the user alone can answer, and synthesizes per-language ALWAYS / NEVER / PREFER rules, layer boundaries, naming conventions, and domain rules into the constitution's `[project-specific]` sections.
+`/constitute` is the **establishment phase** — it takes what already exists (setup-wizard's answers, onboard's discovery findings, the constitution scaffold) plus a small number of questions the user alone can answer, and synthesizes per-language ALWAYS / NEVER / PREFER rules, layer boundaries, naming conventions, and domain rules into the constitution's `[project-specific]` sections.
 
 This command does NOT scan the codebase — onboard already did that for brownfield projects. This command does NOT re-ask questions the wizard already captured (architecture pattern, error handling, API layer, testing framework). It reads those as inputs and produces rules that reflect them.
 
 ## Prerequisites
 
-1. `{{cli.sigil}}setup-wizard` must have been run — `.devforge/project-config.json` exists with Q-answers populated.
+1. `/setup-wizard` must have been run — `.devforge/project-config.json` exists with Q-answers populated.
 2. `constitution.md` must exist at the project root (placed by install, header populated by wizard §5.7).
-3. For brownfield projects: `{{cli.sigil}}onboard` should have run first — `docs/overview.md`, `docs/architecture.md`, and `.devforge/memory.md` contain scan findings. If onboard was skipped on a brownfield project, proceed anyway — the scan-derived sections fall back to user interview + convention-based rules with `[convention]` tagging (see Phase 4).
+3. For brownfield projects: `/onboard` should have run first — `docs/overview.md`, `docs/architecture.md`, and `.devforge/memory.md` contain scan findings. If onboard was skipped on a brownfield project, proceed anyway — the scan-derived sections fall back to user interview + convention-based rules with `[convention]` tagging (see Phase 4).
 4. The constitution must not already be populated — check `constitution.md`: if any `[project-specific]` section still contains a sentinel string starting with `_Run constitute to populate` (bare form or any of the variants described in Phase 5 Step 1), proceed in Fresh-fill mode. If NO `[project-specific]` section contains such a sentinel (all already populated), ask the user whether to re-constitute (Full-rewrite mode) or abort.
 
-5. **Crash-recovery check**: if `.devforge/wip/constitute-prewrite.md` exists, a previous `{{cli.sigil}}constitute` run was interrupted (crashed, context-exhausted, terminal closed mid-write, etc.). Constitution.md may be in a partial state. Ask the user:
+5. **Crash-recovery check**: if `.devforge/wip/constitute-prewrite.md` exists, a previous `/constitute` run was interrupted (crashed, context-exhausted, terminal closed mid-write, etc.). Constitution.md may be in a partial state. Ask the user:
    - **Recover** — restore `constitution.md` from `.devforge/wip/constitute-prewrite.md` (that's the snapshot taken just before the previous run's write), delete the wip file, then proceed with THIS run normally.
    - **Continue anyway** — accept the current constitution.md state, delete the wip file, proceed with this run as if nothing happened.
    - **Abort** — stop; user will investigate the partial state manually.
@@ -114,7 +114,7 @@ Collect answers per category; store as `NAMING_CONVENTIONS` with keys `types`, `
 
 > I have no extracted domain context available. What are the 3–5 key business entities this project manages? (free text, e.g., "User, Order, Invoice, Subscription")
 >
-> Answer `skip` if the domain isn't clear yet — Section 5 (Domain Rules) will remain minimal with a note to populate during `{{cli.sigil}}specify` runs.
+> Answer `skip` if the domain isn't clear yet — Section 5 (Domain Rules) will remain minimal with a note to populate during `/specify` runs.
 
 Store as `DOMAIN_ENTITIES` (may be empty).
 
@@ -210,7 +210,7 @@ When a rule cites the runtime primer (which has identical content under both nam
 
 **§6.5 Deprecation Handling** — brownfield: check `docs/` or memory for existing deprecation patterns. If none observed, use language conventions (TS: JSDoc `@deprecated` + removal version; Python: `warnings.warn(DeprecationWarning)`; Rust: `#[deprecated(since=..., note=...)]`; etc.). Tag `[convention]` when unobserved.
 
-**§6.6 Project-Specific Workflow** — derive from `WORKFLOW_ENFORCEMENT` + any CI/CD patterns onboard observed. Keep short — don't duplicate the command flow documented in the runtime primer (`{{cli.primer}}`); add only project-specific workflow deviations here.
+**§6.6 Project-Specific Workflow** — derive from `WORKFLOW_ENFORCEMENT` + any CI/CD patterns onboard observed. Keep short — don't duplicate the command flow documented in the runtime primer (`CLAUDE.md`); add only project-specific workflow deviations here.
 
 **§7 Scaffolding Guide (greenfield only)** — propose a directory structure based on `ARCHITECTURES[0]` + `FRAMEWORKS[0]`. Include:
 - Proposed initial directory tree
@@ -225,7 +225,7 @@ When a rule cites the runtime primer (which has identical content under both nam
   
   For an architecture not listed above, propose an order that respects the pattern's own dependency direction (things depended-on first, things depending last) and name the pattern you're applying. Do NOT default to the clean-architecture order for an arbitrary pattern.
 - Pattern reference (one concrete example per chosen pattern)
-- "When to re-constitute" note: run `{{cli.sigil}}constitute` again when the project reaches 20+ source files to replace convention-based rules with extracted ones from the then-existing codebase.
+- "When to re-constitute" note: run `/constitute` again when the project reaches 20+ source files to replace convention-based rules with extracted ones from the then-existing codebase.
 
 For brownfield, write the canonical empty-section marker with reason `not applicable` (see Zero-rules-per-section handling above), OR structurally omit §7 if the constitution template's §7 heading isn't present at all — matching whichever the current file does.
 
@@ -266,16 +266,16 @@ A section legitimately has no rules to synthesize when one of these holds:
 In those cases, write a **canonical empty-section marker** as the section's body — NOT a sentinel, NOT invented filler:
 
 ```
-_No rules synthesized — [reason]. Rerun `{{cli.sigil}}constitute` with Full-rewrite mode after adding context (e.g., running onboard, resolving the deferred wizard answer, or manually writing rules)._
+_No rules synthesized — [reason]. Rerun `/constitute` with Full-rewrite mode after adding context (e.g., running onboard, resolving the deferred wizard answer, or manually writing rules)._
 ```
 
 The empty marker does NOT start with `_Run constitute to populate` — so re-running in Fresh-fill mode won't target it for regeneration (the LLM already decided nothing was available; re-running without new context produces the same decision). Use Full-rewrite mode, or manual edit, to revisit.
 
 **Applied to the specific pre-defined cases:**
 
-- **§5 Domain Rules, greenfield, user skipped Q-domain**: `_No rules synthesized — no domain context provided (user skipped Q-domain). Will be populated during {{cli.sigil}}specify runs as features get built, or rerun {{cli.sigil}}constitute with Full-rewrite mode after domain entities are identified._`
+- **§5 Domain Rules, greenfield, user skipped Q-domain**: `_No rules synthesized — no domain context provided (user skipped Q-domain). Will be populated during /specify runs as features get built, or rerun /constitute with Full-rewrite mode after domain entities are identified._`
 - **§7 Scaffolding Guide, brownfield**: `_No rules synthesized — not applicable (brownfield project; scaffolding already exists)._` Alternatively, structurally omit the §7 heading entirely for brownfield (either is valid; matching the rest of the constitution's section structure is preferable).
-- **Phase 2 deferred TBD × section**: `_No rules synthesized — user deferred the "[concern]" question for stack [LANGUAGES[i]] / [FRAMEWORKS[i]]. Rerun {{cli.sigil}}constitute after deciding._`
+- **Phase 2 deferred TBD × section**: `_No rules synthesized — user deferred the "[concern]" question for stack [LANGUAGES[i]] / [FRAMEWORKS[i]]. Rerun /constitute after deciding._`
 
 User review (Phase 6) surfaces empty sections so the user can challenge lazy "insufficient observation" skips where rules WERE available.
 
@@ -441,7 +441,7 @@ Then ask the user:
 >
 > - **Accept** — constitution is ready; finalize
 > - **Revise section X** — name a section AND describe what should change (e.g., "§4.2.1 NEVER — add a rule about avoiding callbacks, prefer async/await" or "§3.1 Type Safety — too strict, reduce to High-level rules"). I'll regenerate that section incorporating your feedback.
-> - **Abort** — discard the draft; constitution reverts to its pre-`{{cli.sigil}}constitute` state (sentinels restored)
+> - **Abort** — discard the draft; constitution reverts to its pre-`/constitute` state (sentinels restored)
 
 Wait for the user's choice. On **Accept** → Phase 7. On **Revise** → capture the user's feedback as additional synthesis input; re-enter Phase 4 for the named section only, incorporating the feedback on top of Phase 1–3 inputs; then re-run Phase 5 (backup → write) and re-present. If the user revises the same section repeatedly, feedback accumulates — don't lose earlier feedback on the next revise round. On **Abort** → copy `.devforge/wip/constitute-prewrite.md` back over `constitution.md` (same temp+rename pattern as Phase 5.2 for safety), delete the wip file, report "aborted — no changes written" and exit.
 
@@ -469,7 +469,7 @@ Present to the user:
 
 ### Next Steps
 1. Review `constitution.md` and adjust any rules as needed
-2. Start working with `{{cli.sigil}}specify "your first feature"`
+2. Start working with `/specify "your first feature"`
 
 All downstream commands now consult these rules when making decisions.
 ```

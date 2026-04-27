@@ -1,4 +1,4 @@
-# {{cli.sigil}}setup-wizard — Project Initialization Wizard
+# /setup-wizard — Project Initialization Wizard
 
 You are running the initial setup wizard for AIDevTeamForge. Your job is:
 
@@ -75,12 +75,12 @@ Present this summary to the user. **Substitute each `{VALUE}` placeholder below 
 1. Review CLAUDE.md and AGENTS.md — adjust if needed
 {BRANCH ON PROJECT_STATE:
   if PROJECT_STATE == "brownfield":
-    2. Run {{cli.sigil}}onboard — scans your codebase and populates `docs/` + `.devforge/memory.md` with observed patterns, module boundaries, and pitfalls
-    3. Run {{cli.sigil}}constitute — turns onboard's findings and your architectural preferences into enforceable rules in `constitution.md`
-    4. Start working with {{cli.sigil}}specify "your first feature"
+    2. Run /onboard — scans your codebase and populates `docs/` + `.devforge/memory.md` with observed patterns, module boundaries, and pitfalls
+    3. Run /constitute — turns onboard's findings and your architectural preferences into enforceable rules in `constitution.md`
+    4. Start working with /specify "your first feature"
   else (PROJECT_STATE == "greenfield" or "empty"):
-    2. Run {{cli.sigil}}constitute — turns your architectural preferences (and framework best-practice research) into enforceable rules in `constitution.md`. Skip {{cli.sigil}}onboard — there's nothing to scan yet.
-    3. Start working with {{cli.sigil}}specify "your first feature"
+    2. Run /constitute — turns your architectural preferences (and framework best-practice research) into enforceable rules in `constitution.md`. Skip /onboard — there's nothing to scan yet.
+    3. Start working with /specify "your first feature"
 }
 
 {INCLUDE THE FOLLOWING BLOCK ONLY IF CODEX WAS INSTALLED (i.e., .codex/agents/ exists at the project root):
