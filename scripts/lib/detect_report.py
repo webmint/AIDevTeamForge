@@ -566,17 +566,38 @@ def cmd_compose(args: argparse.Namespace) -> int:
 # ─── Required-field check ────────────────────────────────────────────────────
 
 
+_EMPTY_PROJECT_SKIPPED_SCALARS: frozenset[str] = frozenset({
+    "primary_language",
+    "architecture_shape",
+    "architecture_evidence",
+    "package_manager.tool",
+    "runtime_url.value",
+})
+
+
 def _check_required(state: dict[str, Any]) -> list[str]:
-    """Return a list of missing required paths; empty if all satisfied."""
+    """Return a list of missing required paths; empty if all satisfied.
+
+    For empty projects (`project_state == "empty"`, 0 source files) several
+    required fields don't apply: there's no detectable primary language,
+    architecture, package manager, or runtime URL until the user answers
+    Phase 2 questions. Skip those scalars and the non-empty-list checks
+    when the project is empty — Phase 2 Q3 / Phase 3 wizard_render setters
+    populate the per-stack arrays from user answers.
+    """
     missing: list[str] = []
     set_fields = set(state.get("_set_fields", []))
+    is_empty = state.get("project_state") == "empty"
     for path in _REQUIRED_SCALARS:
+        if is_empty and path in _EMPTY_PROJECT_SKIPPED_SCALARS:
+            continue
         if path not in set_fields:
             missing.append(path)
-    for path in _REQUIRED_NONEMPTY_LISTS:
-        value = state.get(path)
-        if not isinstance(value, list) or len(value) == 0:
-            missing.append(f"{path} (must have ≥1 entry)")
+    if not is_empty:
+        for path in _REQUIRED_NONEMPTY_LISTS:
+            value = state.get(path)
+            if not isinstance(value, list) or len(value) == 0:
+                missing.append(f"{path} (must have ≥1 entry)")
     return missing
 
 

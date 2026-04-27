@@ -913,9 +913,15 @@ def derive_placeholder(
         return str(v) if v is not None else "N/A"
     if key == "PROJECT_PATHS":
         packages = report.get("packages") or []
+        source_root = report.get("source_root") or "."
+        workspace_mode = report.get("workspace_mode") or "standalone"
         if not packages:
-            source_root = report.get("source_root") or "."
             return f"- `{source_root}/`"
+        # In wrapper mode, packages[].path is relative to SOURCE_ROOT (e.g.,
+        # `apps/web`). Agents run from outer-root CWD, so prefix with
+        # source_root so the paths resolve correctly.
+        if workspace_mode == "wrapper":
+            return "\n".join(f"- `{source_root}/{p.get('path', '?')}/`" for p in packages)
         return "\n".join(f"- `{p.get('path', '?')}/`" for p in packages)
 
     return None

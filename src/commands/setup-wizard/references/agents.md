@@ -156,7 +156,7 @@ The helper auto-derives values for these placeholders by scanning each kept agen
 | `{{LINT_COMMAND}}` | `state.lint_commands[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
 | `{{STYLING}}` | `detection_report.styling` | direct passthrough | direct passthrough |
 | `{{STATE_MANAGEMENT}}` | `detection_report.state_management` | direct passthrough | direct passthrough |
-| `{{PROJECT_PATHS}}` | `detection_report.packages[].path` | bullet list of all package paths | bullet list of all package paths |
+| `{{PROJECT_PATHS}}` | `detection_report.packages[].path` | bullet list of all package paths (prefixed with `source_root/` in wrapper mode) | bullet list of all package paths (prefixed with `source_root/` in wrapper mode) |
 
 **Architect-exception details:** the helper detects architect by name (`agent_name == "architect"`) AND multi-stack (`len(state.languages) > 1`). For single-stack projects, architect renders primary-only — same as other agents — there's no second stack to pair against.
 
