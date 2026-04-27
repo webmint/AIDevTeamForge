@@ -91,13 +91,14 @@ Remove the AGENTS.md branch entirely. Function should produce only `CLAUDE.md`. 
 
 ### Step 04 — drop .codex/agents/ generation from generate-agents.py
 
-**File**: `scripts/generate-agents.py`
-
-Remove the `.codex/agents/` TOML emit branch. Output only to `.claude/agents/`.
+**Files**:
+- `scripts/generate-agents.py` — remove the `.codex/agents/` TOML emit branch + the `CODEX_AGENT_DEFAULTS_BY_TIER` import + its uses (model / reasoning helpers). Output only to `.claude/agents/`.
+- `scripts/lib/install_defaults.py` — delete `CODEX_AGENT_DEFAULTS_BY_TIER` symbol (deferred from step 02 because deleting the symbol before its consumer would break Python import).
 
 **Verify**:
 - Install into fresh dir produces only `.claude/agents/` with .md files
 - No `.codex/` dir created
+- `python3 -c "from scripts.lib import install_defaults"` imports clean
 
 **Commit**: `step 04: drop .codex/agents generation, .claude/agents only`
 **Tag**: `codex-remove/04-agents-claude-only`

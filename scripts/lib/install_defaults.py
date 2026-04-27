@@ -33,17 +33,6 @@ runtime-parse-critical field:
 from __future__ import annotations
 
 
-# ── Codex project-level config (.codex/config.toml) ────────────────────────
-# These are the Codex CLI's own documented defaults. Shipping them as-is
-# means a just-installed project behaves identically to having no project
-# config at all — until the user runs the wizard and picks different values.
-CODEX_CONFIG_DEFAULTS: dict[str, str] = {
-    "model": "gpt-5.4",  # verified 2026-04-22; revisit on Codex release bumps
-    "model_reasoning_effort": "medium",  # Codex's built-in default
-    "approval_policy": "on-request",     # Codex's built-in default; safe middle ground
-}
-
-
 # ── Codex per-tier agent defaults (.codex/agents/*.toml) ───────────────────
 # `model` stays the same across tiers (project uses one model by default);
 # `model_reasoning_effort` varies by tier. Wizard's Q10b may override both
