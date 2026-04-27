@@ -146,7 +146,7 @@ chmod +x "$TARGET_DIR/scripts/lib/onboard_helper"
 # and /constitute (later) fills body sections — both operate on whatever
 # file is present.
 if [ ! -f "$TARGET_DIR/constitution.md" ]; then
-  cp "$TEMPLATE_DIR/src/files/constitution.md" "$TARGET_DIR/constitution.md"
+  cp "$TEMPLATE_DIR/src/constitution.md" "$TARGET_DIR/constitution.md"
 else
   echo "  existing constitution.md detected — leaving as-is"
 fi
@@ -160,7 +160,7 @@ fi
 mkdir -p "$TARGET_DIR/docs"
 for f in overview.md architecture.md; do
   if [ ! -f "$TARGET_DIR/docs/$f" ]; then
-    cp "$TEMPLATE_DIR/src/files/docs/$f" "$TARGET_DIR/docs/$f"
+    cp "$TEMPLATE_DIR/src/docs/$f" "$TARGET_DIR/docs/$f"
   else
     echo "  existing docs/$f detected — leaving as-is"
   fi
@@ -169,7 +169,7 @@ done
 # ── Place CLAUDE.md primer at project root ────────────────────────────────
 # The wizard later substitutes the {{UPPERCASE}} placeholders inside it
 # with project-specific answers (PROJECT_NAME, FRAMEWORK, etc.).
-cp "$TEMPLATE_DIR/src/files/coreLLM/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
+cp "$TEMPLATE_DIR/src/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
 
 # ── Build Claude files via the generator ──────────────────────────────────
 # install.sh is intentionally dumb: it scaffolds shared dirs and delegates
@@ -179,9 +179,9 @@ cp "$TEMPLATE_DIR/src/files/coreLLM/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
 # ── Copy Claude config files ──────────────────────────────────────────────
 #   .mcp.json             — MCP servers (project-scope)
 #   .claude/settings.json — hooks, permissions, plugins
-cp "$TEMPLATE_DIR/src/files/mcp.json" "$TARGET_DIR/.mcp.json"
+cp "$TEMPLATE_DIR/src/mcp.json" "$TARGET_DIR/.mcp.json"
 mkdir -p "$TARGET_DIR/.claude"
-cp "$TEMPLATE_DIR/src/files/settings.template.json" "$TARGET_DIR/.claude/settings.json"
+cp "$TEMPLATE_DIR/src/settings.template.json" "$TARGET_DIR/.claude/settings.json"
 
 # # ── Copy project-level scaffolding ─────────────────────────────────────────
 # # These directories belong at the target root (not under .claude/).
