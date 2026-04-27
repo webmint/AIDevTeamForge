@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Agent generator for AIDevTeamForge.
 
-Reads src/agents/*.md as a universal authoring source and produces per-runtime
-agent files. Each source is treated as SEMANTIC DATA — outputs are constructed
-from scratch for every runtime; none is privileged or passed through unchanged.
+Reads src/agents/*.md as a universal authoring source and produces
+.claude/agents/*.md files. Each source is treated as SEMANTIC DATA — the
+output is constructed from scratch, not passed through unchanged.
 
 Source format: a fenced yaml meta block at the top of the file, then the
 body as markdown prose. The fenced block is deliberately distinct from
 Claude's '---'-delimited native agent frontmatter — the source is not a
-Claude file, a Codex file, or any runtime's native format.
+Claude file but authoring data.
 
     ```yaml
     name: architect
@@ -23,31 +23,21 @@ Fields in the meta block:
   - description  : when-to-use hint (required)
   - model_tier   : think | do | verify (required; semantic, not a runtime placeholder)
 
-Model tier is translated per runtime into boot-safe defaults (NOT placeholders)
-so the runtime can parse these files at launch without error:
-  - Claude : model: opus | sonnet | sonnet        (per tier)
-  - Codex  : model = "gpt-5.4"                     (same across tiers)
-             model_reasoning_effort = "high" | "medium" | "medium"  (per tier)
+Model tier is translated into Claude boot-safe defaults (NOT placeholders)
+so Claude Code can parse these files at launch without error:
+  opus | sonnet | sonnet (per tier)
 
 Defaults live in `scripts/lib/install_defaults.py`. The wizard OVERWRITES
 these values via key-based regex replacement (not placeholder substitution)
 when it has user answers — see `setup-wizard/references/agents.md` §6.4.
 
-Why not placeholders: Codex parses `.codex/config.toml` + `.codex/agents/*.toml`
-at launch, before the wizard can run. Unsubstituted `{{CODEX_REASONING_*}}`
-tokens crash the parser; the wizard that would fix them can't start until
-the runtime starts. Defaults break that chicken-and-egg loop.
-
 {{UPPERCASE}} placeholders in body prose pass through untouched — wizard
 substitutes them post-install with project-specific answers (FRAMEWORK,
 LANGUAGE, ARCHITECTURE, etc.). Those are inside string fields, not structural,
-so the runtime parses them fine as literal text.
+so Claude parses them fine as literal text.
 
 Usage:
   python3 scripts/generate-agents.py --src src/agents --target /path/to/project
-
-Adding a new runtime: add an entry to RUNTIMES below with its emit function.
-No other changes required.
 """
 
 from __future__ import annotations
@@ -56,16 +46,13 @@ import argparse
 import sys
 from pathlib import Path
 
-# Shared helper for per-runtime {{cli.*}} marker substitution (sigil,
-# attribution, primer, subagent). Agent sources use these markers the
-# same way commands do; emitting them literally would leak unsubstituted
-# {{cli.sigil}} into .claude/agents/ and .codex/agents/ outputs.
+# Shared helper for {{cli.*}} marker substitution (sigil, attribution,
+# primer, subagent). Agent sources use these markers the same way commands
+# do; emitting them literally would leak unsubstituted {{cli.sigil}} into
+# .claude/agents/ outputs.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.variation_markers import substitute as substitute_markers  # noqa: E402
-from lib.install_defaults import (  # noqa: E402
-    CLAUDE_AGENT_DEFAULTS_BY_TIER,
-    CODEX_AGENT_DEFAULTS_BY_TIER,
-)
+from lib.install_defaults import CLAUDE_AGENT_DEFAULTS_BY_TIER  # noqa: E402
 
 # We intentionally don't use lib.frontmatter here — agent sources use a
 # ```yaml fenced meta block, not ---/--- frontmatter, to avoid mimicking
@@ -73,6 +60,8 @@ from lib.install_defaults import (  # noqa: E402
 
 
 VALID_TIERS = {"think", "do", "verify"}
+
+TARGET_SUBDIR = ".claude/agents"
 
 
 # ── Source parser ────────────────────────────────────────────────────────
@@ -169,46 +158,7 @@ def _yaml_escape_double(s: str) -> str:
     return "".join(out)
 
 
-def _toml_escape_basic(s: str) -> str:
-    """Escape a string for a TOML single-line basic string."""
-    out = []
-    for ch in s:
-        code = ord(ch)
-        if ch == "\\":
-            out.append("\\\\")
-        elif ch == '"':
-            out.append('\\"')
-        elif ch == "\n":
-            out.append("\\n")
-        elif ch == "\r":
-            out.append("\\r")
-        elif ch == "\t":
-            out.append("\\t")
-        elif code < 0x20:
-            out.append(f"\\u{code:04X}")
-        else:
-            out.append(ch)
-    return "".join(out)
-
-
-def _toml_multiline_literal(s: str) -> str:
-    """Emit a string as a TOML multi-line literal string '''...'''.
-
-    No escape processing inside literal strings — safe for arbitrary markdown
-    content (backslashes, backticks, quotes). If the body itself contains the
-    sequence ''' (vanishingly rare in agent prose), fall back to a basic
-    multi-line string with minimal escaping.
-    """
-    if "'''" in s:
-        # Fallback: basic multi-line. Escape backslashes, and escape any
-        # occurrence of """ (TOML spec allows up to two consecutive unescaped
-        # double-quotes inside """...""", so 3+ must be broken up).
-        escaped = s.replace("\\", "\\\\").replace('"""', '""\\"')
-        return f'"""\n{escaped}"""' if escaped.endswith("\n") else f'"""\n{escaped}\n"""'
-    return f"'''\n{s}'''" if s.endswith("\n") else f"'''\n{s}\n'''"
-
-
-# ── Runtime emitters ─────────────────────────────────────────────────────
+# ── Emitter ──────────────────────────────────────────────────────────────
 #
 # Emit boot-safe defaults (not placeholder tokens). Values come from
 # `scripts/lib/install_defaults.py` — the single source of truth. The
@@ -218,14 +168,6 @@ def _toml_multiline_literal(s: str) -> str:
 
 def _claude_tier_model(tier: str) -> str:
     return CLAUDE_AGENT_DEFAULTS_BY_TIER[tier]
-
-
-def _codex_tier_model(tier: str) -> str:
-    return CODEX_AGENT_DEFAULTS_BY_TIER[tier]["model"]
-
-
-def _codex_tier_reasoning(tier: str) -> str:
-    return CODEX_AGENT_DEFAULTS_BY_TIER[tier]["model_reasoning_effort"]
 
 
 def emit_claude(name: str, description: str, model_tier: str, body: str) -> str:
@@ -242,34 +184,9 @@ def emit_claude(name: str, description: str, model_tier: str, body: str) -> str:
     )
 
 
-def emit_codex(name: str, description: str, model_tier: str, body: str) -> str:
-    """Build a Codex subagent TOML file from scratch."""
-    return (
-        f'name = "{_toml_escape_basic(name)}"\n'
-        f'description = "{_toml_escape_basic(description)}"\n'
-        f'model = "{_codex_tier_model(model_tier)}"\n'
-        f'model_reasoning_effort = "{_codex_tier_reasoning(model_tier)}"\n'
-        f"developer_instructions = {_toml_multiline_literal(body)}\n"
-    )
-
-
-RUNTIMES: dict[str, dict] = {
-    "claude": {
-        "target_subdir": ".claude/agents",
-        "ext": ".md",
-        "emit": emit_claude,
-    },
-    "codex": {
-        "target_subdir": ".codex/agents",
-        "ext": ".toml",
-        "emit": emit_codex,
-    },
-}
-
-
 # ── Main ─────────────────────────────────────────────────────────────────
 
-def _render_one(src_file: Path, runtime: str, cfg: dict, target: Path) -> str:
+def _render_one(src_file: Path, target: Path) -> str:
     text = src_file.read_text()
     try:
         meta, body = _parse_source(text)
@@ -290,23 +207,23 @@ def _render_one(src_file: Path, runtime: str, cfg: dict, target: Path) -> str:
     if not body.strip():
         raise ValueError(f"{src_file}: empty body — agent has no instructions")
 
-    # Substitute per-runtime {{cli.*}} markers (sigil, attribution, primer,
-    # subagent) in both description and body before emit. Frontmatter tier
-    # markers ({{CLAUDE_TIER_*}} / {{CODEX_TIER_*}}) stay untouched — the
-    # wizard substitutes those at install time per agents.md §6.4.
-    description = substitute_markers(description, runtime)
-    body = substitute_markers(body, runtime)
+    # Substitute {{cli.*}} markers (sigil, attribution, primer, subagent)
+    # in description and body before emit. Frontmatter tier markers
+    # ({{CLAUDE_TIER_*}}) stay untouched — the wizard substitutes those
+    # at install time per agents.md §6.4.
+    description = substitute_markers(description, "claude")
+    body = substitute_markers(body, "claude")
 
-    rendered = cfg["emit"](
+    rendered = emit_claude(
         name=name,
         description=description,
         model_tier=model_tier,
         body=body,
     )
 
-    out_dir = target / cfg["target_subdir"]
+    out_dir = target / TARGET_SUBDIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{name}{cfg['ext']}"
+    out_path = out_dir / f"{name}.md"
     out_path.write_text(rendered)
     return str(out_path)
 
@@ -319,11 +236,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--target", type=Path, required=True,
-        help="Target project dir (outputs go under .claude/agents and .codex/agents)",
-    )
-    parser.add_argument(
-        "--runtimes", type=str, default="",
-        help="Space-separated runtimes to emit. Empty = all registered runtimes.",
+        help="Target project dir (outputs go under .claude/agents)",
     )
     args = parser.parse_args()
 
@@ -334,32 +247,16 @@ def main() -> int:
         print(f"error: --target '{args.target}' is not a directory", file=sys.stderr)
         return 1
 
-    # Resolve runtime filter.
-    selected = [r for r in args.runtimes.split() if r]
-    if selected:
-        unknown = [r for r in selected if r not in RUNTIMES]
-        if unknown:
-            print(
-                f"error: unknown runtime(s): {', '.join(unknown)}. "
-                f"Known: {', '.join(RUNTIMES)}",
-                file=sys.stderr,
-            )
-            return 1
-    else:
-        selected = list(RUNTIMES.keys())
-
     sources = sorted(p for p in args.src.glob("*.md"))
     if not sources:
         print(f"warning: no agent sources in {args.src}", file=sys.stderr)
         return 0
 
-    for runtime in selected:
-        cfg = RUNTIMES[runtime]
-        count = 0
-        for src_file in sources:
-            _render_one(src_file, runtime, cfg, args.target)
-            count += 1
-        print(f"  {runtime} → {count} agents in {args.target / cfg['target_subdir']}")
+    count = 0
+    for src_file in sources:
+        _render_one(src_file, args.target)
+        count += 1
+    print(f"  claude → {count} agents in {args.target / TARGET_SUBDIR}")
 
     return 0
 

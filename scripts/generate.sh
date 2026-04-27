@@ -34,8 +34,6 @@ if [ ! -d "$SRC_DIR" ]; then
   exit 1
 fi
 
-RUNTIME="claude"
-
 # Resolve a Python 3 interpreter. Same selector as install.sh and the wizard
 # launcher: prefer python3, fall back to Windows py launcher, then bare python
 # if it reports 3.x.
@@ -60,9 +58,8 @@ $PYTHON3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
 echo "→ Generating agents"
 $PYTHON3 "$TEMPLATE_DIR/scripts/generate-agents.py" \
   --src "$SRC_DIR/agents" \
-  --target "$TARGET_DIR" \
-  --runtimes "$RUNTIME"
+  --target "$TARGET_DIR"
 
 # ── Claude emitter (commands) ────────────────────────────────────────────
-echo "→ Emitting for $RUNTIME"
-$PYTHON3 "$EMITTERS_DIR/${RUNTIME}.py" --src "$SRC_DIR" --target "$TARGET_DIR"
+echo "→ Emitting for claude"
+$PYTHON3 "$EMITTERS_DIR/claude.py" --src "$SRC_DIR" --target "$TARGET_DIR"
