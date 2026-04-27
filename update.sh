@@ -78,6 +78,16 @@ if ! command -v perl >/dev/null 2>&1; then
   exit 1
 fi
 
+# ── Detect Python 3 (required for agent regeneration) ────────────────────
+PYTHON3_CMD=""
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON3_CMD="python3"
+elif command -v py >/dev/null 2>&1; then
+  PYTHON3_CMD="py"
+elif command -v python >/dev/null 2>&1 && [ "$(python -c 'import sys; print(sys.version_info[0])' 2>/dev/null)" = "3" ]; then
+  PYTHON3_CMD="python"
+fi
+
 # ── Load manifest ──────────────────────────────────────────────────────────
 MANIFEST="$TEMPLATE_DIR/src/manifest.json"
 if [ ! -f "$MANIFEST" ]; then
@@ -452,7 +462,30 @@ while [ "$i" -lt "$DERIVED_COUNT" ]; do
   tgt_path="$(jq -r ".templateDerived.mappings[$i].target" "$MANIFEST")"
   strip="$(jq -r ".templateDerived.mappings[$i].strip_suffix // \"\"" "$MANIFEST")"
 
-  if [ -f "$TEMPLATE_DIR/$src_path" ]; then
+  if [ "$src_path" = "generated:agents" ]; then
+    # Enumerate agents from installed snapshot in .devforge/template/
+    # Only agents that exist in target (project chose which to install)
+    if [ -d "$TARGET_DIR/.devforge/template/$tgt_path" ]; then
+      find "$TARGET_DIR/.devforge/template/$tgt_path" -name "*.md" -type f | while IFS= read -r fp; do
+        name="$(basename "$fp")"
+        tgt_rel="$tgt_path/$name"
+        if [ -f "$TARGET_DIR/$tgt_rel" ]; then
+          printf "AGENT\t%s\t%s\t%s\n" "$name" "$tgt_rel" "$i"
+        fi
+      done
+    fi
+  elif [ "$src_path" = "generated:coreLLM" ]; then
+    # Map sentinel to actual source file; AGENTS.md (Codex) is dropped
+    real_src="src/CLAUDE.md"
+    tgt_rel="$tgt_path"
+    if [ "$tgt_rel" = "CLAUDE.md" ] && [ -f "$TEMPLATE_DIR/$real_src" ]; then
+      if [ -f "$TARGET_DIR/$tgt_rel" ]; then
+        printf "%s\t%s\t%s\n" "$real_src" "$tgt_rel" "$i"
+      else
+        printf "MISSING\t%s\t%s\t%s\n" "$real_src" "$tgt_rel" "$i"
+      fi
+    fi
+  elif [ -f "$TEMPLATE_DIR/$src_path" ]; then
     # Single-file mapping (e.g., CLAUDE.template.md → CLAUDE.md)
     src_rel="$src_path"
     tgt_rel="$tgt_path"
@@ -543,18 +576,16 @@ done
 # Template-derived (three-way merge)
 echo "$DERIVED_UPDATE" | while IFS= read -r line; do
   [ -z "$line" ] && continue
-  tgt="$(echo "$line" | cut -f2)"
-  tgt_dirname="$(dirname "$tgt")"
-  if [ "$tgt_dirname" = "." ]; then
-    baseline_dir="$TARGET_DIR/.claude/.baseline"
+  entry_type="$(printf '%s' "$line" | cut -f1)"
+  if [ "$entry_type" = "AGENT" ]; then
+    tgt="$(printf '%s' "$line" | cut -f3)"
   else
-    baseline_dir="$TARGET_DIR/$tgt_dirname/.baseline"
+    tgt="$(printf '%s' "$line" | cut -f2)"
   fi
-  baseline_name="$(basename "$tgt")"
-  if [ -f "$baseline_dir/$baseline_name" ]; then
+  if [ -f "$TARGET_DIR/.devforge/template/$tgt" ]; then
     merged "THREE-WAY MERGE  $tgt (template diff applied, project customizations preserved)"
   else
-    info "BASELINE INIT  $tgt (agent unchanged — baseline saved for future three-way merges)"
+    info "BASELINE INIT  $tgt (snapshot will be saved; future updates will three-way merge)"
   fi
 done
 
@@ -592,66 +623,112 @@ done
 
 # ── Execute: templateDerived (update generated files from templates) ───────
 # Three-way merge for template-derived files:
-# - Generates a substituted "new" template
-# - If baseline exists: applies only the template diff (baseline→new) to the current file,
-#   preserving all project customizations (wizard-added items, manual edits)
-# - If no baseline: saves baseline for future merges, leaves current file unchanged
-# - Validates no unresolved {{PLACEHOLDER}} remain before writing
-echo "$DERIVED_UPDATE" | while IFS= read -r line; do
-  [ -z "$line" ] && continue
-  src="$(echo "$line" | cut -f1)"
-  tgt="$(echo "$line" | cut -f2)"
-  mkdir -p "$TARGET_DIR/$(dirname "$tgt")"
+# - baseline = .devforge/template/<path> (snapshot of last installed version, raw/un-substituted)
+# - new      = re-generated / sourced template (substituted with current project config)
+# - current  = live file in target (may have project customizations)
+# Applies only the template diff (baseline→new) to current, preserving project customizations.
+# Baseline is created at install time, so the first update can merge immediately (no gap).
 
-  # Generate substituted template ("new" version)
-  new_agent="$(mktemp)"
-  cp "$TEMPLATE_DIR/$src" "$new_agent"
-  if [ "$HAS_CONFIG" = true ]; then
-    substitute_placeholders "$new_agent" "$PROJECT_CONFIG"
-  fi
-
-  # Validate substitution succeeded
-  if grep -q '{{[A-Z_]*}}' "$new_agent"; then
-    warn "Skipped $tgt — unresolved placeholders (check project-config.json)"
-    rm -f "$new_agent"
-    continue
-  fi
-
-  # Three-way merge with baseline
-  # Baselines stored alongside the target: .claude/agents/.baseline/ for agents,
-  # .claude/.baseline/ for top-level files like CLAUDE.md
-  tgt_dirname="$(dirname "$tgt")"
-  if [ "$tgt_dirname" = "." ]; then
-    baseline_dir="$TARGET_DIR/.claude/.baseline"
-  else
-    baseline_dir="$TARGET_DIR/$tgt_dirname/.baseline"
-  fi
-  mkdir -p "$baseline_dir"
-  baseline_name="$(basename "$tgt")"
-  baseline="$baseline_dir/$baseline_name"
-
-  if [ -f "$baseline" ]; then
-    # Baseline exists → three-way merge
-    tmp_current="$(mktemp)"
-    cp "$TARGET_DIR/$tgt" "$tmp_current"
-    if git merge-file "$tmp_current" "$baseline" "$new_agent" 2>/dev/null; then
-      mv "$tmp_current" "$TARGET_DIR/$tgt"
-      merged "Three-way merged: $tgt"
-      # Update baseline to new template version (only on successful merge)
-      cp "$new_agent" "$baseline"
-    else
-      # Conflicts — keep current agent AND baseline unchanged so next update retries the merge
-      rm -f "$tmp_current"
-      warn "Merge conflicts in $tgt — agent and baseline unchanged, review template changes manually"
+# Pre-generate agents once if any AGENT entries exist in this update run.
+REGEN_AGENTS_DIR=""
+if echo "$DERIVED_UPDATE" | grep -q '^AGENT	'; then
+  if [ -n "$PYTHON3_CMD" ]; then
+    REGEN_AGENTS_DIR="$(mktemp -d)"
+    if ! $PYTHON3_CMD "$TEMPLATE_DIR/scripts/generate-agents.py" \
+         --src "$TEMPLATE_DIR/src/agents" \
+         --target "$REGEN_AGENTS_DIR" >/dev/null 2>&1; then
+      warn "Agent regeneration failed — agent files will not be updated this run"
+      rm -rf "$REGEN_AGENTS_DIR"
+      REGEN_AGENTS_DIR=""
     fi
   else
-    # No baseline → save it, leave agent unchanged
-    cp "$new_agent" "$baseline"
-    info "Baseline saved for $tgt (agent unchanged — future updates will three-way merge)"
+    warn "Python 3 not found — agent files will not be updated this run"
+  fi
+fi
+
+echo "$DERIVED_UPDATE" | while IFS= read -r line; do
+  [ -z "$line" ] && continue
+
+  # Parse entry: AGENT entries have an extra leading type field
+  entry_type="$(printf '%s' "$line" | cut -f1)"
+  if [ "$entry_type" = "AGENT" ]; then
+    agent_name="$(printf '%s' "$line" | cut -f2)"
+    tgt="$(printf '%s' "$line" | cut -f3)"
+  else
+    src="$(printf '%s' "$line" | cut -f1)"
+    tgt="$(printf '%s' "$line" | cut -f2)"
   fi
 
-  rm -f "$new_agent"
+  mkdir -p "$TARGET_DIR/$(dirname "$tgt")"
+  baseline_raw="$TARGET_DIR/.devforge/template/$tgt"
+
+  # Build "new" substituted version
+  new_tpl="$(mktemp)"
+  if [ "$entry_type" = "AGENT" ]; then
+    if [ -z "$REGEN_AGENTS_DIR" ]; then
+      rm -f "$new_tpl"; continue
+    fi
+    regen_src="$REGEN_AGENTS_DIR/.claude/agents/$agent_name"
+    if [ ! -f "$regen_src" ]; then
+      warn "Regenerated agent not found: $agent_name — skipping"
+      rm -f "$new_tpl"; continue
+    fi
+    cp "$regen_src" "$new_tpl"
+  else
+    cp "$TEMPLATE_DIR/$src" "$new_tpl"
+  fi
+  if [ "$HAS_CONFIG" = true ]; then
+    substitute_placeholders "$new_tpl" "$PROJECT_CONFIG"
+  fi
+
+  # Validate no unresolved placeholders
+  if grep -q '{{[A-Z_]*}}' "$new_tpl"; then
+    warn "Skipped $tgt — unresolved placeholders (check project-config.json)"
+    rm -f "$new_tpl"; continue
+  fi
+
+  # Three-way merge against .devforge/template/ baseline
+  if [ -f "$baseline_raw" ]; then
+    baseline_sub="$(mktemp)"
+    cp "$baseline_raw" "$baseline_sub"
+    if [ "$HAS_CONFIG" = true ]; then
+      substitute_placeholders "$baseline_sub" "$PROJECT_CONFIG"
+    fi
+
+    tmp_current="$(mktemp)"
+    cp "$TARGET_DIR/$tgt" "$tmp_current"
+    if git merge-file "$tmp_current" "$baseline_sub" "$new_tpl" 2>/dev/null; then
+      mv "$tmp_current" "$TARGET_DIR/$tgt"
+      merged "Three-way merged: $tgt"
+      # Refresh snapshot with new raw (un-substituted) template
+      if [ "$entry_type" = "AGENT" ]; then
+        cp "$REGEN_AGENTS_DIR/.claude/agents/$agent_name" "$baseline_raw"
+      else
+        cp "$TEMPLATE_DIR/$src" "$baseline_raw"
+      fi
+    else
+      rm -f "$tmp_current"
+      warn "Merge conflicts in $tgt — file unchanged, review template changes manually"
+    fi
+    rm -f "$baseline_sub"
+  else
+    # No snapshot yet (old install before this feature) — save baseline, leave file unchanged
+    mkdir -p "$(dirname "$baseline_raw")"
+    if [ "$entry_type" = "AGENT" ]; then
+      cp "$REGEN_AGENTS_DIR/.claude/agents/$agent_name" "$baseline_raw"
+    else
+      cp "$TEMPLATE_DIR/$src" "$baseline_raw"
+    fi
+    info "Snapshot saved for $tgt (file unchanged — future updates will three-way merge)"
+  fi
+
+  rm -f "$new_tpl"
 done
+
+# Cleanup agent regeneration temp dir
+if [ -n "$REGEN_AGENTS_DIR" ]; then
+  rm -rf "$REGEN_AGENTS_DIR"
+fi
 
 # ── Execute: mergeFiles ────────────────────────────────────────────────────
 

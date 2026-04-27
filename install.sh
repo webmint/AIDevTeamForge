@@ -176,6 +176,14 @@ cp "$TEMPLATE_DIR/src/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
 # Claude file generation (commands, agents) to scripts/generate.sh.
 "$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
 
+# ── Snapshot template output to .devforge/template/ ───────────────────────
+# Stores raw (un-substituted) generated files so update.sh can three-way
+# merge on the very first update — fixes the first-update gap where the old
+# scattered .baseline/ approach skipped merging until the second update.
+mkdir -p "$TARGET_DIR/.devforge/template/.claude/agents"
+cp -R "$TARGET_DIR/.claude/agents/." "$TARGET_DIR/.devforge/template/.claude/agents/"
+cp "$TARGET_DIR/CLAUDE.md" "$TARGET_DIR/.devforge/template/CLAUDE.md"
+
 # ── Copy Claude config files ──────────────────────────────────────────────
 #   .mcp.json             — MCP servers (project-scope)
 #   .claude/settings.json — hooks, permissions, plugins
