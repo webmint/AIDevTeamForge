@@ -34,9 +34,7 @@ if [ ! -d "$SRC_DIR" ]; then
   exit 1
 fi
 
-# Runtime registry. Override with e.g. RUNTIMES="claude" to emit only one.
-# Default: all runtimes with emitters present in scripts/emitters/.
-RUNTIMES="${RUNTIMES:-claude codex}"
+RUNTIME="claude"
 
 # Resolve a Python 3 interpreter. Same selector as install.sh and the wizard
 # launcher: prefer python3, fall back to Windows py launcher, then bare python
@@ -52,29 +50,20 @@ else
   exit 1
 fi
 
-# ── CoreLLM: generate CLAUDE.md + AGENTS.md from single source ───────────
-# Forward RUNTIMES filter so a single-runtime install doesn't produce the
-# other runtime's CLAUDE.md / AGENTS.md file.
+# ── CoreLLM: generate CLAUDE.md from single source ───────────────────────
 echo "→ Generating coreLLM files"
 $PYTHON3 "$TEMPLATE_DIR/scripts/generate-corellm.py" \
   --src "$SRC_DIR/files/coreLLM" \
   --out "$TARGET_DIR" \
-  --runtimes "$RUNTIMES"
+  --runtimes "$RUNTIME"
 
-# ── Agents: generate per-runtime agent files from universal sources ──────
+# ── Agents: generate agent files from universal sources ──────────────────
 echo "→ Generating agents"
 $PYTHON3 "$TEMPLATE_DIR/scripts/generate-agents.py" \
   --src "$SRC_DIR/agents" \
   --target "$TARGET_DIR" \
-  --runtimes "$RUNTIMES"
+  --runtimes "$RUNTIME"
 
-# ── Per-runtime emitters (commands/skills only) ──────────────────────────
-for runtime in $RUNTIMES; do
-  emitter="$EMITTERS_DIR/${runtime}.py"
-  if [ -f "$emitter" ]; then
-    echo "→ Emitting for $runtime"
-    $PYTHON3 "$emitter" --src "$SRC_DIR" --target "$TARGET_DIR"
-  else
-    echo "  (no emitter for $runtime at $emitter, skipping)" >&2
-  fi
-done
+# ── Claude emitter (commands) ────────────────────────────────────────────
+echo "→ Emitting for $RUNTIME"
+$PYTHON3 "$EMITTERS_DIR/${RUNTIME}.py" --src "$SRC_DIR" --target "$TARGET_DIR"
