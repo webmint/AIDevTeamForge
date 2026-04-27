@@ -295,6 +295,8 @@ Phase 3 leaves this as `"(pending Phase 4 curation)"`. Phase 4 (`references/agen
 
 Helper-owned. `compose` copies CLAUDE.md / constitution.md / docs/overview.md / docs/architecture.md to `.devforge/baseline/` for every file that exists at compose time. No LLM action needed.
 
+**Order note:** the baseline copy runs AFTER §6.6's AGENT_LIST swap-back (not at §5.3 ordering as the section number suggests) — this ensures the baseline captures the final CLAUDE.md state with the real agent list, not the staging-string intermediate. Section number `5.3` reflects logical responsibility; runtime order is at §6.6's tail. `update.sh`'s three-way merge depends on baselines matching final wizard output.
+
 `.claude/settings.json` is **projectOwned** — `update.sh` never overwrites it — so it doesn't need a baseline.
 
 ## 5.4: MCP servers + permissions (conditional)

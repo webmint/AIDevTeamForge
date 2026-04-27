@@ -206,7 +206,14 @@ def read_detection_report() -> dict[str, Any]:
             f"Run Phase 1 (`scripts/lib/detect_report compose`) first."
         )
     text = DETECTION_REPORT.read_text(encoding="utf-8")
-    return _parse_yaml_subset(text)
+    parsed = _parse_yaml_subset(text)
+    # detect_report compose emits with `detection_report:` as the top-level
+    # wrapper key. Unwrap it so callers can access fields directly via
+    # report.get("source_root") etc. Tolerate unwrapped shape for tests
+    # and hand-authored fixtures (no wrapper key present).
+    if "detection_report" in parsed and isinstance(parsed["detection_report"], dict):
+        return parsed["detection_report"]
+    return parsed
 
 
 def _parse_yaml_subset(text: str) -> dict[str, Any]:
@@ -218,7 +225,11 @@ def _parse_yaml_subset(text: str) -> dict[str, Any]:
     skipped.
     """
     result: dict[str, Any] = {}
-    stack: list[tuple[int, Any]] = [(-1, result)]  # (indent, container)
+    # Stack entries: (indent, container, container_parent, container_key_in_parent).
+    # container_parent + container_key let us swap a container in place — needed
+    # when we discover an empty-value key was actually intended as a list (we
+    # only know once the first `- ` child appears).
+    stack: list[tuple[int, Any, Any, Any]] = [(-1, result, None, None)]
     pending_list_item: dict[str, Any] | None = None
 
     for raw_line in text.splitlines():
@@ -241,14 +252,30 @@ def _parse_yaml_subset(text: str) -> dict[str, Any]:
         # Pop stack until current indent fits
         while stack and stack[-1][0] >= indent:
             stack.pop()
-        parent_indent, parent = stack[-1] if stack else (-1, result)
+        if not stack:
+            stack = [(-1, result, None, None)]
+        parent_indent, parent, parent_owner, parent_owner_key = stack[-1]
 
         if line.startswith("- "):
-            # List item — start of a new dict in a list
+            # List item — convert parent dict→list if needed (empty-value key
+            # was actually a list, not a dict — only discoverable here).
             container = parent
+            container_owner = parent_owner
+            container_owner_key = parent_owner_key
             if not isinstance(container, list):
-                # The previous key declared an empty list parent; skip
-                continue
+                if (
+                    isinstance(container, dict)
+                    and len(container) == 0
+                    and container_owner is not None
+                    and container_owner_key is not None
+                ):
+                    new_list: list[Any] = []
+                    container_owner[container_owner_key] = new_list
+                    stack[-1] = (parent_indent, new_list, container_owner, container_owner_key)
+                    container = new_list
+                else:
+                    # Can't convert (parent isn't an empty dict at the right place); skip.
+                    continue
             # Parse the inline first key=value of the list item
             inline = line[2:]
             item: dict[str, Any] = {}
@@ -257,7 +284,7 @@ def _parse_yaml_subset(text: str) -> dict[str, Any]:
             if ":" in inline:
                 k, _, v = inline.partition(":")
                 item[k.strip()] = _coerce_yaml_scalar(v.strip())
-            stack.append((indent, item))
+            stack.append((indent, item, container, len(container) - 1))
             continue
 
         if ":" not in line:
@@ -271,10 +298,10 @@ def _parse_yaml_subset(text: str) -> dict[str, Any]:
             continue
 
         if value == "":
-            # Nested container — peek next non-blank line to decide list vs dict
-            # We use a heuristic: assume dict; switch to list when first child is `- `
+            # Nested container — assume dict; the `- ` handler above will
+            # convert to list if the first child line proves otherwise.
             target[key] = {}
-            stack.append((indent, target[key]))
+            stack.append((indent, target[key], target, key))
         elif value == "[]":
             target[key] = []
         elif value == "{}":
@@ -656,21 +683,6 @@ def cmd_compose(args: argparse.Namespace) -> int:
     else:
         skipped.append(str(CLAUDE_MD))
 
-    # 5.3 — baseline copies
-    BASELINE_DIR.mkdir(parents=True, exist_ok=True)
-    for src in (CLAUDE_MD, CONSTITUTION_MD):
-        if src.exists():
-            dst = BASELINE_DIR / src.name
-            shutil.copy2(src, dst)
-            written.append(str(dst))
-    docs_baseline = BASELINE_DIR / "docs"
-    docs_baseline.mkdir(parents=True, exist_ok=True)
-    for src in (DOCS_OVERVIEW, DOCS_ARCHITECTURE):
-        if src.exists():
-            dst = docs_baseline / src.name
-            shutil.copy2(src, dst)
-            written.append(str(dst))
-
     # 5.4 — chrome-devtools MCP entries (conditional)
     if state.get("ac_runtime_url"):
         if MCP_FILE.exists():
@@ -779,6 +791,24 @@ def cmd_compose(args: argparse.Namespace) -> int:
         if "(pending Phase 4 curation)" in text:
             text = text.replace("(pending Phase 4 curation)", agent_list_md)
             write_atomic(CLAUDE_MD, text)
+
+    # 5.3 — baseline copies (deferred from §5.3 ordering until AFTER §6.6
+    # AGENT_LIST swap-back so the baseline captures the final CLAUDE.md state,
+    # not the staging-string intermediate. update.sh's three-way merge depends
+    # on baselines matching the final wizard output.
+    BASELINE_DIR.mkdir(parents=True, exist_ok=True)
+    for src in (CLAUDE_MD, CONSTITUTION_MD):
+        if src.exists():
+            dst = BASELINE_DIR / src.name
+            shutil.copy2(src, dst)
+            written.append(str(dst))
+    docs_baseline = BASELINE_DIR / "docs"
+    docs_baseline.mkdir(parents=True, exist_ok=True)
+    for src in (DOCS_OVERVIEW, DOCS_ARCHITECTURE):
+        if src.exists():
+            dst = docs_baseline / src.name
+            shutil.copy2(src, dst)
+            written.append(str(dst))
 
     # Write setup-complete marker
     write_setup_complete(written)
@@ -917,12 +947,20 @@ def derive_placeholder(
         workspace_mode = report.get("workspace_mode") or "standalone"
         if not packages:
             return f"- `{source_root}/`"
-        # In wrapper mode, packages[].path is relative to SOURCE_ROOT (e.g.,
-        # `apps/web`). Agents run from outer-root CWD, so prefix with
-        # source_root so the paths resolve correctly.
-        if workspace_mode == "wrapper":
-            return "\n".join(f"- `{source_root}/{p.get('path', '?')}/`" for p in packages)
-        return "\n".join(f"- `{p.get('path', '?')}/`" for p in packages)
+
+        def _format(path: str) -> str:
+            # In wrapper mode, packages[].path is relative to SOURCE_ROOT
+            # (e.g., `apps/web` for `client-app/apps/web/`). Agents run from
+            # outer-root CWD, so prefix with source_root. Special-case `.`
+            # (the root package) → just source_root, no `/./` suffix.
+            if workspace_mode == "wrapper":
+                if path == "." or path == "":
+                    return f"- `{source_root}/`"
+                return f"- `{source_root}/{path}/`"
+            # Standalone: paths are already relative to project root.
+            return f"- `{path}/`"
+
+        return "\n".join(_format(p.get("path", "?")) for p in packages)
 
     return None
 

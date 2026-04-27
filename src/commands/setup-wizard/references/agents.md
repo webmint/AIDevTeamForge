@@ -240,7 +240,7 @@ scripts/lib/wizard_render compose     # write all files atomically
 
 On success, `compose` does all of the following atomically:
 - §5.1 — substitutes CLAUDE.md placeholders (helper derives the 6 stack-aware ones; uses LLM-composed multi-line renders for the rest)
-- §5.3 — copies CLAUDE.md / constitution.md / docs/* to `.devforge/baseline/`
+- §5.3 — copies CLAUDE.md / constitution.md / docs/* to `.devforge/baseline/` (runs AFTER §6.6 swap-back so baselines capture the final CLAUDE.md state, not the staging-string intermediate)
 - §5.4 — conditionally injects chrome-devtools entry into `.mcp.json` and chrome-devtools permissions into `.claude/settings.json` (only if `ac_runtime_url` set)
 - §5.5 — assembles `.devforge/project-config.json` from state + detection report
 - §5.6 — inserts memory seed above the constitute sentinel in `.devforge/memory.md`
