@@ -10,12 +10,24 @@ You are running the initial setup wizard for AIDevTeamForge. Your job is:
 
 ## Variation markers (template syntax)
 
-This wizard and its reference files use a small set of variation markers that the install-time emitter processes. When the emitter has run, you (the LLM executing the wizard) should see these already substituted. If you encounter any of them unsubstituted, treat them as follows rather than emitting the literal `{{...}}` text to the user:
+This wizard and its reference files use a small set of variation markers that the install-time emitter processes. When the emitter has run, you should see these already substituted. If you encounter any of them unsubstituted, treat them as follows rather than emitting the literal `{{...}}` text to the user:
 
-- `{{ask "question text"}}` … `{{/ask}}` — interactive user-question block. Pose the question to the user and wait for the answer, using your runtime's natural question mechanism.
-  - **One turn = one `{{ask}}`.** Never render multiple `{{ask}}` blocks in a single user-facing message, even when they are adjacent in the spec. Present one, wait for the user's reply, then present the next. This applies to non-conditional sequences (Q1 → Q2 → Q3) as well as conditional ones. "Efficiency" via batching is NOT acceptable — each question is a distinct user-input stop.
-  - **Wait-before-compute for conditional follow-ups.** When a question has a sub-follow-up whose content depends on the user's answer (e.g., Q11 `Multiple` → list of verification modes; Q11 `Runtime-assisted` → URL prompt), do NOT compute, pre-render, or present the follow-up until the primary answer is in hand. Follow-up defaults (URL defaults, option subsets) depend on the primary answer — batching them in with the primary question pre-commits the user to a path they haven't chosen yet.
-  - This semantic is the contract of the `{{ask}}` marker itself. It applies in every command that uses `{{ask}}` — wizard, onboard, constitute, breakdown, specify, verify, and any future interactive command.
+- `{{ask "question text"}}` … `{{/ask}}` — interactive user-question block. **Invoke the AskUserQuestion tool to present this question.** The marker's bullet list (the `- option` lines between the `{{ask}}` and `{{/ask}}` tags) maps directly to the tool's `options` array. The same contract applies to questions described in prose `>` blockquotes inside the reference files (questions.md Q0–Q11, etc.) — they are interactive questions and follow the same rules even though they do not use the literal `{{ask}}` marker.
+
+  **AskUserQuestion mechanics — apply to every interactive question:**
+
+  - **Option count must be 2–4.** The tool rejects more than 4 options. If the spec lists 5+ options, restructure (split into a two-step funnel, collapse into broader buckets, or drop the question to a plain prompt) — do NOT silently truncate the option list.
+  - **Never include an "Other" option in the list.** The tool injects "Other" automatically as a free-text affordance. Listing it explicitly wastes a slot.
+  - **Use `multiSelect: true` for multi-pick questions.** No more "pick one or pick Multiple → follow-up" workarounds — model multi-pick natively (e.g., Q11 verification modes).
+  - **Bypass the tool when AskUserQuestion can't represent the question.** Two cases: (1) **free-text-only** — the question has no enumerable options (e.g., "Describe this project in 1–3 sentences", "What languages will you use?") and AskUserQuestion requires at least 2 options. (2) **>4-option exceptions** — questions whose full taxonomy genuinely doesn't fit 4 options and doesn't fit a funnel/bucket restructure (e.g., Q2 with 13 project-type categories). For >4-option exceptions, prefer a two-tier flow: small AskUserQuestion at L1 ("use suggestion / browse full list") with a plain-prose listing at L2 only when the user opts in. Either case uses a plain `>` blockquote prompt instead of the tool.
+  - **Recommended option goes first** with a `(Recommended)` suffix on the label.
+  - **Batch only the 3-tier model question (Q10).** AskUserQuestion accepts 1–4 questions per call and Q10's three tier picks (Think / Do / Verify) are independent and presented together — batch them in a single call. Every other question is its own call.
+
+  **One turn = one AskUserQuestion call** (except Q10's batched tier picks). Never present multiple unrelated questions in a single call even though the tool allows up to 4 — each question is a distinct user-input stop with its own answer-dependent follow-ups.
+
+  **Wait-before-compute for conditional follow-ups.** When a question has a sub-follow-up whose content depends on the user's answer (e.g., Q11 `Runtime-assisted` selected → URL prompt; wrapper-mode selected → folder-name prompt), do NOT compute, pre-render, or present the follow-up until the primary answer is in hand. Follow-up defaults (URL defaults, option subsets) depend on the primary answer — batching them in with the primary question pre-commits the user to a path they haven't chosen yet.
+
+  This contract applies in every command that uses `{{ask}}` or describes interactive questions in prose — wizard, onboard, constitute, breakdown, specify, verify, and any future interactive command.
 
 Any `{{UPPERCASE}}` marker (e.g., `{{PROJECT_NAME}}`, `{{LANGUAGE}}`) is a wizard-substitution placeholder — the wizard itself fills these with user answers or detection values during Phase 3. Do NOT emit them literally to user-visible output; substitute before presenting.
 
@@ -42,7 +54,7 @@ Retain every captured answer in conversational memory under the keys documented 
 
 ### Phase 3 — Population (file substitution)
 
-**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / runtime configs / baselines / MCP permissions / project config / memory seed / constitution header (§5.7) / docs stubs (§5.8), using the answers from Phase 2 and the detection data from Phase 1.
+**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / Claude config files / baselines / MCP permissions / project config / memory seed / constitution header (§5.7) / docs stubs (§5.8), using the answers from Phase 2 and the detection data from Phase 1.
 
 ### Phase 4 — Agent Curation
 

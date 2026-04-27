@@ -33,7 +33,7 @@ You are a senior code reviewer with expertise in {{FRAMEWORK}}, {{LANGUAGE}}, an
 - Error handling consistent with project pattern
 
 ### 3. Type Safety
-{{TYPE_SAFETY_RULES}}
+For project-specific type-safety rules, consult `constitution.md` §3.1. If §3.1 still carries the `_Run /constitute to populate_` sentinel, fall back to the language's standard idiomatic safety practices and flag the gap to the user.
 
 ### 4. Security Basics
 - No hardcoded secrets, API keys, or credentials

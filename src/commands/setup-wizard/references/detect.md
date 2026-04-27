@@ -57,8 +57,9 @@ If the user picks "Wrapper workspace", follow up with a second ask: "Which folde
 - Wrapper around [folder-1]
 - Wrapper around [folder-2]
 - Wrapper around [folder-3]
-- ... (one wrapper option per detected folder)
 {{/ask}}
+
+AskUserQuestion caps options at 4; show Standalone + the 3 most-likely wrapper candidates (rank by file count under each folder, descending). Additional candidates are reachable via the auto "Other" affordance — the user types the folder name. If 4 or fewer candidates exist, list all of them.
 
 Multi-root wrapper (coordinating across several of the nested repos simultaneously) is not currently supported. If the user indicates that's what they want, tell them to pick one primary root for now and raise the multi-root case as a feature request.
 
@@ -80,7 +81,7 @@ Auto-detect project state before asking. STEP 1 is a read-only detection step �
 
 ### 1.1: Count source files
 
-Count source files under SOURCE_ROOT using this **canonical algorithm** (all runtimes must produce the same count for the same project — drift between runtimes is a parity bug):
+Count source files under SOURCE_ROOT using this **canonical algorithm** (deterministic across runs — same project, same count):
 
 **Excluded directories** (canonical list — no extensions to it):
 - VCS / tooling: `.git/`, any directory starting with `.` (e.g., `.idea/`, `.vscode/`, `.devforge/`, `.husky/`)

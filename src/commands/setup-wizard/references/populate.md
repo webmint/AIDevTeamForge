@@ -1,138 +1,123 @@
 # Phase 3 — Population
 
-This reference covers the file-substitution phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 3 executes. All files are already in place; this phase only populates placeholders and, conditionally, appends MCP / permission entries. **Do not create new files.**
+This reference covers the file-substitution phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 3 executes. **All file writes are owned by the `scripts/lib/wizard_render` helper.** Your job is to compose values (per-stack rendering, multi-line prose, conditional sections) and pass them to the helper via field-by-field CLI calls. The helper validates, substitutes, and writes — atomically — when you call `compose`. You never read or write the populated files directly.
 
-## Files modified by this phase
+## Why a helper owns the writes
+
+Placeholder substitution, sentinel preservation, atomic write, and "no `{{...}}` markers remain" validation are mechanical concerns. Doing them in the LLM burns tokens, allows drift between runs, and risks failure modes (forgot to escape a backtick, dropped a placeholder, double-substituted) that gate-language can't fully prevent. The helper produces byte-identical output every run for the same inputs. You compose values; it owns shape.
+
+This mirrors the Phase 1 pattern: `scripts/lib/detect_report set <field> --value <X>` → `compose`. Same shape; same discipline.
+
+## Files written by `wizard_render compose`
 
 - `CLAUDE.md` — placeholder substitution (if present)
-- `constitution.md` — header-placeholder substitution only (§5.7). Body sections stay untouched — `/constitute` (separate command) fills them later.
-- `docs/overview.md` — placeholder substitution only (§5.8). Body sections stay untouched — `/constitute`, `/onboard`, and the tech-writer agent fill them later.
-- `docs/architecture.md` — placeholder substitution only (§5.8). Body sections stay untouched — same deferred-fill pattern.
-- `.claude/settings.json` — conditional permissions only, no placeholder substitution (if present)
-- `.mcp.json` — conditional MCP entry (if present)
-- `.devforge/baseline/CLAUDE.md` — new baseline copy
-- `.devforge/baseline/constitution.md` — new baseline copy
-- `.devforge/baseline/docs/overview.md` — new baseline copy
-- `.devforge/baseline/docs/architecture.md` — new baseline copy
-- `.devforge/memory.md` — pre-populate with Phase 1 detection findings
-- `.devforge/project-config.json` — populate null values with collected answers
+- `constitution.md` — header-placeholder substitution + strip 2 authoring blockquotes (§5.7). Body sentinels stay untouched.
+- `docs/overview.md`, `docs/architecture.md` — placeholder substitution only (§5.8). Body sentinels stay untouched.
+- `.claude/settings.json` — conditional permissions append only, no placeholder substitution (if present)
+- `.mcp.json` — conditional chrome-devtools entry (if present)
+- `.devforge/baseline/CLAUDE.md`, `.devforge/baseline/constitution.md`, `.devforge/baseline/docs/overview.md`, `.devforge/baseline/docs/architecture.md` — baseline copies
+- `.devforge/baseline/agents/<name>.md` — per-kept-agent baseline copies (Phase 4)
+- `.devforge/memory.md` — pre-populate with seed prose above the constitute sentinel
+- `.devforge/project-config.json` — assembled from state + detection report
+- `.devforge/setup-complete` — completion marker
 
-Each file is presence-guarded: skip missing files silently without error.
+Each file is presence-guarded: helper skips missing files silently without error.
 
 ---
 
 ## Drift-risk literals
 
-These values depend on upstream defaults or package names that change without notice. Treat them as the single source of truth for this file — §5.4 below references them by name instead of repeating the literal. Review on every Anthropic-MCP integration touch; update the literal and the `last verified` date here in one place.
+These values depend on upstream defaults or package names that change without notice. The helper has its own copy in `scripts/lib/wizard_render.py` (constant `CHROME_DEVTOOLS_MCP_PACKAGE`); review on every Anthropic-MCP integration touch and update both copies in lock-step.
 
 - **`CHROME_DEVTOOLS_MCP_PACKAGE`** = `"chrome-devtools-mcp"` — the Anthropic-authored Chrome DevTools MCP server npm package (unscoped). Verified via `npm view` on 2026-04-22.
-
-If this literal goes stale, the emitted `.mcp.json` entry becomes wrong. When updating, also update the `last verified` date.
 
 ---
 
 ## How to run this phase
 
-All files are already in place. Your job is substitution only — **do not create new files**. Read each file, replace every `{{PLACEHOLDER}}` marker with the corresponding value, and write it back.
+Execute in three stages:
 
-For each file mentioned below, check presence first; skip the file if it doesn't exist. Do not error.
+1. **Compose values** — work through §5.1–§5.8 below. For each placeholder or per-stack array, compose the value following the rules in that section, then call `wizard_render set <field> --value <v>`, `wizard_render set-render <field> --stdin` (preferred for multi-line), or the appropriate `add-*` call. Order doesn't matter; the helper accumulates state across calls.
+2. **Status check** — run `scripts/lib/wizard_render status`. Confirm everything required is set (✓) and `Validation (compose readiness): ✓ ready to compose` is shown.
+3. **Compose** — run `scripts/lib/wizard_render compose`. The helper validates, substitutes every `{{PLACEHOLDER}}`, copies baselines, conditionally injects MCP entries, writes the memory seed, writes `project-config.json`, and emits the completion marker — atomically. On error it reports the field that failed validation and exits non-zero; fix and re-run.
 
-## 5.1: Populate CLAUDE.md
+**Phase 4 (agents) layers on top.** Phase 4's `references/agents.md` describes how to build the agent-substitutions JSON; you call `wizard_render apply-agents --substitutions-file <path>` once after Phase 4 selection. `compose` then applies all agent substitutions, deletes rejected agents, saves agent baselines, and swaps `{{AGENT_LIST}}` in CLAUDE.md.
 
-Read `CLAUDE.md` at project root. It contains `{{PLACEHOLDER}}` markers; substitute ALL of them with the values below:
+---
 
-- `{{PROJECT_DESCRIPTION}}` — Q1 answer: the 1-3 sentence project description
-- `{{PROJECT_NAME}}` — Q0 answer: project name
-- `{{PROJECT_TYPE}}` — Q2 answer (e.g., "Frontend application", "Backend API", "Full-stack web application")
-- `{{FRAMEWORK}}` — render from the full `FRAMEWORKS` array captured in Q3, joined with `, ` (e.g., `"Next.js"` for single-stack, `"Next.js, FastAPI"` for multi-stack, `"Next.js, FastAPI, Swift"` for three stacks). Preserve the full stack list (not just the primary) so `CLAUDE.md` gives Claude complete project context. Skip `null` entries in the array.
-- `{{LANGUAGE}}` — render from the full `LANGUAGES` array captured in Q3, joined with `, ` (e.g., `"TypeScript"` for single-stack, `"TypeScript, Python"` for multi-stack).
-- `{{BUILD_TOOL}}` — render from `BUILD_TOOLS` array (see per-stack rendering rule below). Single-stack: `BUILD_TOOLS[0]`. Multi-stack: paired rendering inline.
-- `{{BUILD_COMMAND}}` — render from `BUILD_COMMANDS` array (see per-stack rendering rule below). Single-stack: `BUILD_COMMANDS[0]`. Multi-stack: paired rendering inline.
-- `{{TYPE_CHECK_COMMAND}}` — render from `TYPE_CHECK_COMMANDS` array (see per-stack rendering rule below). Single-stack: `TYPE_CHECK_COMMANDS[0]`. Multi-stack: paired rendering inline.
-- `{{LINT_COMMAND}}` — render from `LINT_COMMANDS` array (see per-stack rendering rule below). Single-stack: `LINT_COMMANDS[0]`. Multi-stack: paired rendering inline.
+## 5.1: CLAUDE.md placeholders
 
-**Runner prefix source for all command emissions** (applies to the 4 placeholders above + per-package commands in `{{PACKAGE_STACKS_SECTION}}` + `{{DEV_COMMANDS}}` + any other command composed during populate):
+CLAUDE.md is the primary populated document. It contains 17 distinct `{{PLACEHOLDER}}` markers; this section names each one and the value (or composition rule) you pass to the helper.
 
-When composing any command string, the runner prefix (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / etc.) comes from `detection_report.package_manager.tool` in `.devforge/detection_report.yaml` (the Phase 1 Detection Report file, written by `scripts/lib/detect_report compose`). Phase 1 already selected the runner from observable lockfile signals at SOURCE_ROOT (see `detect.md` → "Command-runner selection") and encoded it in the Report. Re-deriving the runner here — from defaults, heuristics, or re-inspecting lockfiles — opens a drift surface against the Report's authoritative value.
+### Direct-value scalars
+
+For each, call `wizard_render set <field> --value <v>`:
+
+| Placeholder | Field | Source |
+|---|---|---|
+| `{{PROJECT_NAME}}` | `project_name` | Q0 answer |
+| `{{PROJECT_DESCRIPTION}}` | `project_description` | Q1 answer |
+| `{{PROJECT_TYPE}}` | `project_type` | Q2 answer |
+
+`{{SOURCE_ROOT}}` and `{{WRAPPER_MODE_SECTION}}` are derived by the helper from `detection_report.yaml`'s `source_root` + `workspace_mode` fields — you don't pass them.
+
+### Helper-derived stack-aware placeholders
+
+`{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{BUILD_TOOL}}`, `{{BUILD_COMMAND}}`, `{{TYPE_CHECK_COMMAND}}`, `{{LINT_COMMAND}}` are **derived by the helper** from the per-stack arrays you populate via `add-language` + `add-build-tool` / `add-build-command` / `add-type-check-command` / `add-lint-command`. You don't compose the rendered form — the helper applies the right rendering rule (joined-comma for FRAMEWORK/LANGUAGE; paired multi-stack with `(<language>)` label for the 4 commands; primary scalar for single-stack). Same registry handles per-agent rendering with the architect-exception (paired with `(<language>/<framework>)` label) — see `references/agents.md` §6.4.
+
+**Per-stack array setters you must call** (once per stack, in declaration order to preserve parallel indexing):
+
+```
+wizard_render add-language --name "TypeScript" --framework "Next.js"
+wizard_render add-language --name "Python" --framework "FastAPI"
+wizard_render add-build-tool --value "Vite"
+wizard_render add-build-tool --value "Poetry"
+wizard_render add-build-command --value "npm run build"
+wizard_render add-build-command --value "poetry run build"
+wizard_render add-type-check-command --value "tsc --noEmit --pretty 2>&1 | head -20"
+wizard_render add-type-check-command --value "mypy ."
+wizard_render add-lint-command --value "eslint ."
+wizard_render add-lint-command --value "ruff check ."
+```
+
+The helper enforces parallel-indexing at compose time (`len(languages) == len(frameworks)`); per-stack invariant checking for the other arrays is the LLM's responsibility.
+
+**Runner prefix source for all command values** (applies to the 4 command arrays + per-package commands you compose for `{{PACKAGE_STACKS_SECTION}}` + `{{DEV_COMMANDS}}`):
+
+When composing any command string, the runner prefix (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / etc.) comes from `detection_report.package_manager.tool` in `.devforge/detection_report.yaml`. Phase 1 already selected the runner from observable lockfile signals at SOURCE_ROOT (see `detect.md` → "Command-runner selection") and encoded it in the Report. Re-deriving the runner here — from defaults, heuristics, or re-inspecting lockfiles — opens a drift surface against the Report's authoritative value.
 
 - Multi-command ecosystems (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / `pdm` / `uv` / `bundle exec` for Ruby): render as `<runner> run <script>` or `<runner> <script>` per the ecosystem convention (e.g., `yarn build:raw`, `poetry run build`, `bundle exec rake test`).
 - Single-command ecosystems (`cargo`, `go`, `swift`): bare command, no runner prefix (e.g., `cargo build`, `go build ./...`, `swift build`).
 
-Phase 1's `BUILD_COMMANDS` / `TYPE_CHECK_COMMANDS` / `LINT_COMMANDS` / `TEST_COMMANDS` arrays already carry the correct runner prefix for each stack — use them verbatim. Only compose fresh runner-prefixed commands when those arrays lack coverage (e.g., constructing a per-package command that isn't in the stack arrays, or deriving a dev-server command for `{{DEV_COMMANDS}}`) — and in that case, read the runner from `detection_report.package_manager.tool`, not from re-inspection.
+Phase 1's per-stack command arrays already carry the correct runner prefix per stack — use them verbatim when calling the `add-*-command` setters.
 
-**Per-stack rendering rule for the 4 placeholders above** (applies when `len(LANGUAGES) > 1`):
+**`null` / `"N/A"` / `"TBD"` semantics** (the helper distinguishes all three):
 
-Each element pairs with its language identifier so readers can tell which command applies where:
+- `null` at index `i` means "unresolved for this stack" — helper skips the entry in joined-comma and paired rendering. `{{PACKAGE_STACKS_SECTION}}` (which you compose) falls back to `"—"` for `null`.
+- `"N/A"` means "user-confirmed absence" (e.g., plain JavaScript has no type checker) — helper skips in paired rendering, displays verbatim in `{{PACKAGE_STACKS_SECTION}}`.
+- `"TBD"` means "user deferred" — helper skips in paired rendering for the 8 stack-aware non-FRAMEWORK/LANGUAGE placeholders, displays verbatim in `{{PACKAGE_STACKS_SECTION}}`.
 
-- Format per pair: `` `<command>` (<language>) `` for command-type placeholders; `<tool> (<language>)` for `BUILD_TOOL` (no backticks on a tool name).
-- **Skip `"N/A"` entries entirely** — don't show languages that have no command for this concern (e.g., plain JS in the type-check array).
-- **Skip `null` entries** — don't render placeholders for unresolved languages (shouldn't normally happen).
-- If **all** entries are `"N/A"` or `null`, render the placeholder as `"N/A"` (single value) — graceful degradation.
-- Wrapper-mode prefix (`cd SOURCE_ROOT && `) is already applied per-element in Phase 1 — do NOT re-prefix.
+### Composed multi-line renders
 
-**Consolidated note on `null` array entries** (applies across all per-stack arrays in this section and throughout populate.md):
-
-`null` at some index `i` in a per-stack array means "unresolved for this stack" — most commonly `FRAMEWORKS[i] == null` for a language with no framework (e.g., a plain Python CLI), or `BUILD_TOOLS[i] == null` / `BUILD_COMMANDS[i] == null` etc. when detection couldn't resolve a tool/command for that language. The handling pattern:
-
-- **Joined-comma placeholders** (`{{FRAMEWORK}}`, `{{LANGUAGE}}` in CLAUDE.md Project Overview): skip `null` entries entirely.
-- **Paired-rendering placeholders** (the 4 command/tool placeholders here in 5.1; 8 stack-aware placeholders for architect in agents.md 6.4): skip `null` entries entirely.
-- **`{{PACKAGE_STACKS_SECTION}}` aggregation**: `null` in a per-stack array at the matching index → fall back to `"—"` in the per-package record (see 5.1 `{{PACKAGE_STACKS_SECTION}}` aggregation rules).
-- **Architect paired rendering with `FRAMEWORKS[i] == null`** (agents.md 6.4): show language only, e.g., `` "hexagonal (Python)" `` — this is the documented behavior when framework is missing but language is present.
-
-`null` is NOT the same as `"N/A"` (user-confirmed absence) or `"TBD"` (user deferred) — those are strings with verbatim display; `null` means "no data" and triggers skip-or-fallback logic.
-
-Example for a TS+Python monorepo (2 stacks, both have all commands):
+For each of the multi-line renders below, compose the prose per the rules in its subsection, then pass via stdin:
 
 ```
-- **Build Tool**: Vite (TypeScript), Poetry (Python)
-- **Build Command**: `npm run build` (TypeScript), `poetry run build` (Python)
-- **Type Check Command**: `tsc --noEmit --pretty 2>&1 | head -20` (TypeScript), `mypy .` (Python)
-- **Lint Command**: `eslint .` (TypeScript), `ruff check .` (Python)
+wizard_render set-render <field> --stdin <<'EOF'
+<your composed prose>
+EOF
 ```
 
-Example for a plain JavaScript + Ruby project (no type checker in either language):
+Field names: `project_structure`, `dev_commands`, `architecture_details`, `package_stacks_section`.
 
-```
-- **Type Check Command**: N/A
-```
+### `{{WRAPPER_MODE_SECTION}}` (helper-derived — you don't pass it)
 
-Single-stack example (unchanged format from before per-stack arrays):
+The helper checks `detection_report.workspace_mode`. Standalone → empty string. Wrapper → it emits a fixed prose block with `{{SOURCE_ROOT}}` substituted. No LLM composition needed.
 
-```
-- **Build Command**: `npm run build`
-- **Type Check Command**: `tsc --noEmit --pretty 2>&1 | head -20`
-```
-- `{{SOURCE_ROOT}}` — `SOURCE_ROOT` set in Phase 1 (`.` for standalone, inner folder name for wrapper, e.g. `client-project`)
-- `{{WRAPPER_MODE_SECTION}}` — see below
-- `{{PROJECT_STRUCTURE}}` — see below
-- `{{DEV_COMMANDS}}` — see below
-- `{{ARCHITECTURE_DETAILS}}` — see below
-- `{{PACKAGE_STACKS_SECTION}}` — see below (conditional: rendered only for multi-package projects)
-- `{{AGENT_LIST}}` — staging placeholder: `"(pending Phase 4 curation)"`. Phase 4 (see `references/agents.md` section 6.6) replaces this with the actual curated agent list once agents are finalized.
-- `{{COMMIT_ATTRIBUTION}}` — see below
+### `{{PROJECT_STRUCTURE}}` (`set-render project_structure --stdin`)
 
-### `{{WRAPPER_MODE_SECTION}}`
+Generate a project-structure tree readable as an orientation aid. Branch on `len(packages)` (read from `detection_report.packages`).
 
-**If standalone project**: replace with empty string.
-
-**If wrapper mode**: replace with:
-```markdown
-## Wrapper Mode
-
-This workspace wraps a client-owned project. All workflow artifacts live here; source code lives in `{{SOURCE_ROOT}}/`.
-
-### Wrapper Rules
-1. **Never create workflow artifacts inside `{{SOURCE_ROOT}}/`** — no `.devforge/`, `specs/`, `docs/`, or `constitution.md` files
-2. **All source scanning** targets `{{SOURCE_ROOT}}/` as the base path
-3. **Git auto-commits** apply to both repos — wrapper gets workflow commits, source repo gets WIP commits per task that are squashed into one clean commit when finalize runs
-4. **File paths** in specs and tasks use workspace-relative paths (e.g., `{{SOURCE_ROOT}}/src/components/Button.tsx`)
-```
-
-### `{{PROJECT_STRUCTURE}}`
-
-Generate a project-structure tree readable as an orientation aid. Branch on `len(PACKAGES_DETECTED)`.
-
-#### Single-package or no-manifest projects (`len(PACKAGES_DETECTED) <= 1`)
+#### Single-package or no-manifest projects (`len(packages) <= 1`)
 
 Flat tree of SOURCE_ROOT. Show directories and key files (entry points, configs, manifests). Collapse large directories (e.g., `src/components/ (47 files)`). **Keep under 30 lines.**
 
@@ -153,9 +138,9 @@ package.json
 tsconfig.json
 ```
 
-#### Multi-package (monorepo) projects (`len(PACKAGES_DETECTED) >= 2`)
+#### Multi-package (monorepo) projects (`len(packages) >= 2`)
 
-Use `PACKAGES_DETECTED` as the structural anchor. For each package, render:
+Use `packages[]` from the Detection Report as the structural anchor. For each package, render:
 - Package path + manifest filename (or short label after `#`)
 - 2–5 most-salient files within the package (entry point, key modules)
 - Collapsed counts for large subdirectories
@@ -167,41 +152,17 @@ For projects with **more than ~10 packages**:
 - **Expand detail** for the most-substantive packages (largest file count, or user-designated primary from Q3)
 - **Collapse shared libraries** to one line each: `packages/<name>/ — <language>, <framework or "library">`
 
-Example for a 3-package TS + Python monorepo:
-```
-apps/
-  web/                                   # TypeScript / Next.js
-    app/
-      layout.tsx
-      page.tsx
-    components/ (23 files)
-    package.json
-    tsconfig.json
-services/
-  api/                                   # Python / FastAPI
-    app/
-      main.py
-      routers/ (6 files)
-    pyproject.toml
-packages/
-  shared/                                # TypeScript (library)
-    src/index.ts
-    package.json
-pnpm-workspace.yaml
-package.json                             # workspace root
-```
-
 #### Greenfield / empty projects
 
-Show whatever exists (possibly just the manifest file and a `src/` stub). Same ≤30-line cap as the single-package case. For empty monorepos (workspace-root manifest present but no member packages yet), still list the workspace root + any placeholder directories the user may have scaffolded.
+Show whatever exists (possibly just the manifest file and a `src/` stub). Same ≤30-line cap as the single-package case. For empty monorepos, list the workspace root + any placeholder directories the user may have scaffolded.
 
-### `{{DEV_COMMANDS}}`
+### `{{DEV_COMMANDS}}` (`set-render dev_commands --stdin`)
 
-Extract actual dev / build / test / lint commands. Rendering branches primarily on `len(PACKAGES_DETECTED)` (package count), not `len(LANGUAGES)` (language count) — because a monorepo with 3 all-TypeScript packages is structurally "multi-package single-stack" and needs per-package rendering, even though the language count is 1.
+Extract actual dev / build / test / lint commands. Branch primarily on `len(packages)` (package count), not language count — a monorepo with 3 all-TypeScript packages is structurally "multi-package single-stack" and needs per-package rendering.
 
-#### Single-package (`len(PACKAGES_DETECTED) <= 1`)
+#### Single-package (`len(packages) <= 1`)
 
-Flat markdown list from the single package's (or SOURCE_ROOT's) manifest scripts. Use `BUILD_COMMANDS[0]` / `TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` from Phase 1 for non-dev commands; extract `scripts.dev` (or the language equivalent — e.g., `pyproject.toml [tool.poetry.scripts]` for Python, Procfile `dev:` target for Ruby, etc.) from the manifest for the dev-server command. Apply the runner prefix per "Runner prefix source for all command emissions" above (5.1) — read it from `detection_report.package_manager.tool`, do not re-derive from lockfiles here.
+Flat markdown list from the single package's (or SOURCE_ROOT's) manifest scripts. Use `BUILD_COMMANDS[0]` / `TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` from Phase 1 for non-dev commands; extract `scripts.dev` (or the language equivalent — e.g., `pyproject.toml [tool.poetry.scripts]` for Python, Procfile `dev:` target for Ruby, etc.) from the manifest for the dev-server command. Apply the runner prefix per "Runner prefix source" above.
 
 Example:
 ```markdown
@@ -211,63 +172,24 @@ Example:
 - `npm run lint` — Run linter
 ```
 
-#### Multi-package (`len(PACKAGES_DETECTED) >= 2`) — regardless of language count
+#### Multi-package (`len(packages) >= 2`) — regardless of language count
 
 Grouped per-package blocks, one sub-section per package. Label each sub-section with the package path + language + framework. Use that package's commands — from its own manifest scripts when declared, else fall back to its `PACKAGE_STACKS` record's per-package command fields. If the package has no dev server (e.g., a library package), omit the dev-server entry (keep build / test / lint).
 
 If a **monorepo orchestrator** is detected in Phase 1 (`nx`, `turbo`, `pnpm` workspaces, `lerna`, Cargo workspaces, Go workspaces), list the orchestrator's all-packages command at the top as a shortcut before per-package sections.
 
-Example for an all-TypeScript monorepo (3 packages, pnpm workspaces):
-```markdown
-**All packages** (via pnpm workspaces):
-- `pnpm -r build` — Build all packages
-- `pnpm -r test` — Run all test suites
+**Greenfield note** (single-package and multi-package): if no scripts exist yet, generate defaults based on the chosen framework(s) + build tool(s) per stack / per package. Mark defaults inline: `<!-- default, update after scaffolding -->`.
 
-**`apps/web`** — TypeScript / Next.js:
-- `pnpm --filter web dev` — Start web dev server
-- `pnpm --filter web build` — Build web app
-- `pnpm --filter web test` — Run web tests
+### `{{ARCHITECTURE_DETAILS}}` (`set-render architecture_details --stdin`)
 
-**`apps/admin`** — TypeScript / Remix:
-- `pnpm --filter admin dev` — Start admin dev server
-- `pnpm --filter admin build` — Build admin app
-- `pnpm --filter admin test` — Run admin tests
-
-**`packages/shared`** — TypeScript (library, no dev server):
-- `pnpm --filter shared build` — Build shared lib
-- `pnpm --filter shared test` — Run shared tests
-```
-
-Example for a mixed TS + Python monorepo (2 packages, pnpm workspaces + Poetry):
-```markdown
-**All packages** (via pnpm workspaces — TS side only; Python uses Poetry):
-- `pnpm -r build` — Build all TS packages
-
-**`apps/web`** — TypeScript / Next.js:
-- `pnpm --filter web dev` — Start frontend dev server
-- `pnpm --filter web build` — Build web app
-- `pnpm --filter web test` — Run web tests
-- `eslint .` — Lint TS files
-
-**`services/api`** — Python / FastAPI:
-- `poetry run uvicorn app:main --reload` — Start backend dev server
-- `poetry run build` — Build Python package
-- `pytest` — Run Python tests
-- `ruff check .` — Lint Python files
-```
-
-**Greenfield note** (applies to both single-package and multi-package): if no scripts exist yet, generate defaults based on the chosen framework(s) + build tool(s) per stack / per package. The Phase 1 arrays (`BUILD_COMMANDS`, `TYPE_CHECK_COMMANDS`, `LINT_COMMANDS`, `TESTINGS`) already fall back to language-standard tools in empty / greenfield projects — use those values. For multi-package greenfield, use each package's `PACKAGE_STACKS` record fields. Mark defaults inline: `<!-- default, update after scaffolding -->`.
-
-### `{{ARCHITECTURE_DETAILS}}`
-
-Generate a bullet list of architecture facts relevant to this project. Branch on `len(LANGUAGES)`. Do not include fields that don't apply — skip `"N/A"` and `"TBD"` entries entirely. Draw from Phase 1 detection results and Q4 (Architecture) / Q5 (Error Handling) / Q6 (API Layer) / Q7 (Testing) answers. Add any other relevant architectural facts you discovered (e.g., database, monorepo tool, CI/CD).
+Generate a bullet list of architecture facts relevant to this project. Branch on `len(LANGUAGES)`. Skip `"N/A"` and `"TBD"` entries entirely. Draw from Phase 1 detection results and Q4–Q7 answers.
 
 Sources:
 - `ARCHITECTURES[i]` from Q4 (per-stack array)
 - `ERROR_HANDLINGS[i]` from Q5 (per-stack array)
 - `API_LAYERS[i]` from Q6 (per-stack array)
 - `TESTINGS[i]` from Q7 (per-stack array)
-- Detected State Management / Styling / database / CI / containerization from Phase 1 (per-stack where applicable)
+- Detected State Management / Styling / database / CI / containerization from Phase 1
 
 #### Single-stack (`len(LANGUAGES) == 1`)
 
@@ -283,93 +205,60 @@ Example for a Vue frontend:
 - **Styling**: Tailwind CSS
 ```
 
-Example for a Rust CLI:
-```markdown
-- **Pattern**: Layered (CLI → service → domain)
-- **Error Handling**: thiserror + anyhow, ? operator throughout
-- **Testing**: cargo test
-```
-
 #### Multi-stack (`len(LANGUAGES) > 1`)
 
-Per-stack grouped blocks. One top-level bullet per stack (language/framework label), with indented bullets for Pattern / Error Handling / API Layer / Testing / State Management / Styling pulled from the matching array index. Skip any `"N/A"` / `"TBD"` indented bullet (but keep the stack's top-level bullet as long as it has at least one concrete concern).
+Per-stack grouped blocks. One top-level bullet per stack (language/framework label), with indented bullets for each concern pulled from the matching array index. Skip `"N/A"` / `"TBD"` indented bullets.
 
-Example for a TS frontend + Python backend monorepo:
-```markdown
-- **TypeScript / Next.js**
-  - Pattern: feature-sliced
-  - Error Handling: neverthrow Result<T,E>
-  - API Layer: tRPC client
-  - Testing: vitest
-  - State Management: Zustand
-  - Styling: Tailwind CSS
+Cross-cutting facts (database, monorepo tool, CI/CD) go at the end as flat bullets below the stack blocks when they apply project-wide.
 
-- **Python / FastAPI**
-  - Pattern: hexagonal
-  - Error Handling: exceptions + returns.Result
-  - API Layer: REST + OpenAPI
-  - Testing: pytest
-```
+### `{{PACKAGE_STACKS_SECTION}}` (`set-render package_stacks_section --stdin`)
 
-Cross-cutting facts (database, monorepo tool, CI/CD) go at the end as flat bullets below the stack blocks when they apply project-wide:
-```markdown
-- **Database**: PostgreSQL via Prisma (TS) / SQLAlchemy (Python)
-- **Monorepo tool**: pnpm workspaces + Poetry
-- **CI**: GitHub Actions
-```
+Conditional section rendering a per-package stack table for multi-package projects.
 
-### `{{PACKAGE_STACKS_SECTION}}`
+**Aggregation step (compute `PACKAGE_STACKS` before rendering):**
 
-Conditional section rendering a per-package stack table for multi-package projects. Matches the `{{WRAPPER_MODE_SECTION}}` pattern: the section header is part of the substituted content, not fixed in the source template.
-
-**Aggregation step (compute `PACKAGE_STACKS` before substitution):**
-
-For each package `p` in `PACKAGES_DETECTED` (from Phase 1), compose a record by looking up the matching per-stack answer by language:
+For each package `p` in `detection_report.packages`, compose a record by looking up the matching per-stack answer by language:
 
 1. Find stack index: `i = LANGUAGES.indexOf(p.language_hint)` using **case-insensitive** comparison (e.g., `"TypeScript"` matches `"typescript"`).
 2. Compose the record with these fields:
    - `path` — `p.path` (relative to SOURCE_ROOT)
    - `language` — `p.language_hint` (displayed verbatim as captured)
-   - `framework` — `p.framework_hint` if non-null. If `p.framework_hint == null`, emit `"—"` — do NOT fall back to `FRAMEWORKS[i]`. Library packages never inherit the app's framework: `framework_hint: null` means "this package has no app-level framework," not "fall back to project primary." Only apps with explicit framework detection show a framework label. (Fix from R3 Finding 29.)
+   - `framework` — `p.framework_hint` if non-null. If `p.framework_hint == null`, emit `"—"` — do NOT fall back to `FRAMEWORKS[i]`. Library packages never inherit the app's framework.
    - `architecture` — `ARCHITECTURES[i]` if `i >= 0`; else `"—"`
    - `error_handling` — `ERROR_HANDLINGS[i]` if `i >= 0`; else `"—"`
    - `api_layer` — `API_LAYERS[i]` if `i >= 0`; else `"—"`
    - `testing` — `TESTINGS[i]` if `i >= 0`; else `"—"`
-   - `build_tool` — from manifest scan of `p.path/p.manifest` if a tool is clearly declared (e.g., `"vite"` in `devDependencies` → `"Vite"`); else `BUILD_TOOLS[i]` if `i >= 0`; else `"—"`
-   - `build_command` — from manifest scripts (e.g., `package.json` `scripts.build` → `"npm run build"` with actual script content; `pyproject.toml [tool.poetry.scripts]` for Poetry packages); else `BUILD_COMMANDS[i]` if `i >= 0`; else `"—"`
-   - `type_check_command` — from manifest if the package declares a custom type-check (e.g., `scripts.typecheck` / `scripts.check`). If no dedicated script exists, check whether type-checking happens during the package's build step (common for TS library packages using `vite build` with `vite-plugin-dts` or `tsc --build` inside the build, or Vue packages using `vue-tsc` inside the build). If yes, emit `"via-build"` with the package's `build_command` as the recovery path — display as `via-build (run: <build_command>)` in the rendered table. Do NOT fall back to stack-level `TYPE_CHECK_COMMANDS[i]` (which for monorepos is usually whole-project scope — wrong for per-package verification). Use `"—"` only when the package has genuinely no type-checking (pure data/config packages). (Fix from R3 Finding 30.)
+   - `build_tool` — from manifest scan of `p.path/p.manifest` if a tool is clearly declared; else `BUILD_TOOLS[i]` if `i >= 0`; else `"—"`
+   - `build_command` — from manifest scripts; else `BUILD_COMMANDS[i]` if `i >= 0`; else `"—"`
+   - `type_check_command` — from manifest if the package declares a custom type-check (e.g., `scripts.typecheck`). If no dedicated script exists, check whether type-checking happens during the package's build step. If yes, emit `"via-build"` with the package's `build_command` as the recovery path — display as `via-build (run: <build_command>)` in the rendered table. Do NOT fall back to stack-level `TYPE_CHECK_COMMANDS[i]` (whole-project scope — wrong for per-package verification). Use `"—"` only when the package has genuinely no type-checking.
    - `lint_command` — from manifest scripts (e.g., `scripts.lint`) if custom; else `LINT_COMMANDS[i]` if `i >= 0`; else `"—"`
 
-The last four fields' fallback chain is **manifest override → per-stack array → "—"**. The manifest override captures packages with custom scripts (common in monorepos where `apps/admin` might build differently from `apps/web` even though both are TS). The per-stack array is the language default (from C.1 detection). Use `"N/A"` for fields the language has no tool for (already represented as `"N/A"` in the per-stack arrays for type-check/lint when applicable).
+The last four fields' fallback chain is **manifest override → per-stack array → "—"**.
 
-Three distinct sentinels at display time (apply to all fields):
-- `"TBD"` — user deferred in Phase 2 (Q4/Q5/Q6/Q7 only; build/typecheck/lint are detection-driven, no user defer)
-- `"N/A"` — not applicable for that stack (passed through verbatim; e.g., library with no API layer, or plain JavaScript with no type checker)
-- `"—"` — no data (language of package not in `LANGUAGES`; rare, usually indicates user-override in Q3 removed a language Phase 1 detected)
-
-Store the aggregated `PACKAGE_STACKS` array in working state for use in 5.5 and downstream commands. (`PACKAGE_STACKS` is *derived* during this phase from the per-package records in `.devforge/detection_report.yaml`; it is not stored back in that file.)
+Three distinct sentinels at display time:
+- `"TBD"` — user deferred in Phase 2
+- `"N/A"` — not applicable for that stack
+- `"—"` — no data (rare; usually indicates user-override in Q3 removed a language Phase 1 detected)
 
 **Rendering rule (by package count):**
 
-- `len(PACKAGES_DETECTED) == 0` → replace `{{PACKAGE_STACKS_SECTION}}` with empty string. No packages means no table.
-- `len(PACKAGES_DETECTED) == 1` → replace with empty string. Single-package projects are covered by `{{ARCHITECTURE_DETAILS}}`; a 1-row table adds noise.
-- `len(PACKAGES_DETECTED) >= 2` → render the full section (header + intro + table) as below, subject to the monorepo-scale collapse rule.
+- `len(packages) == 0` → set the render to empty string. No packages means no table.
+- `len(packages) == 1` → set the render to empty string. Single-package projects are covered by `{{ARCHITECTURE_DETAILS}}`.
+- `len(packages) >= 2` → render the full section (header + intro + 2 tables) as below, subject to the monorepo-scale collapse rule.
 
-**Monorepo-scale collapse rule** (large, uniform monorepos produce noise otherwise; fix from R3 Finding 28):
+**Monorepo-scale collapse rule** (large, uniform monorepos):
 
-When `len(PACKAGES_DETECTED) >= 6` AND **≥80% of packages share identical non-path column values** (all of: `language`, `framework`, `architecture`, `error_handling`, `api_layer`, `testing`, `build_tool`, `build_command`, `type_check_command`, `lint_command` — compared verbatim), collapse repetitive rows into a single defaults entry:
+When `len(packages) >= 6` AND **≥80% of packages share identical non-path column values** (all of: `language`, `framework`, `architecture`, `error_handling`, `api_layer`, `testing`, `build_tool`, `build_command`, `type_check_command`, `lint_command`), collapse repetitive rows into a single defaults entry:
 
-- Emit a single row labeled `_library packages (default)_` (or `_<count> library packages_`) with the shared values for each column where ≥80% of packages agree.
-- Emit one row per **deviator** — packages whose column values differ from the shared set on any field (apps with `framework != null` are always treated as deviators and rendered as individual rows regardless of shared-value count).
-- Emit one row for the workspace root (`.`) regardless of shared-value count — it's semantically distinct.
+- Emit a single row labeled `_library packages (default)_` with the shared values for each column where ≥80% of packages agree.
+- Emit one row per **deviator** (apps with `framework != null` are always deviators).
+- Emit one row for the workspace root (`.`) regardless of shared-value count — semantically distinct.
 
-The result for a 25-package uniform-library monorepo with 1 app: 3 rows (root + app deviator + defaults for ~23 library packages) instead of 25.
-
-If fewer than 80% of packages share identical values, render per-package rows as normal (no collapse). The 80% threshold is deliberate — a small minority of deviators doesn't justify collapse because readers would have to scan for the odd one out across many rows; collapse only makes sense when MOST packages are uniform.
+If fewer than 80% of packages share identical values, render per-package rows as normal.
 
 **Rendering format (multi-package):**
 
-Render two tables under a single `## Packages` header. Splitting into Conventions + Tools keeps each table narrow enough to read on typical screens (7 and 5 columns respectively) while preserving all per-package data.
+Two tables under a single `## Packages` header. Splitting into Conventions + Tools keeps each table narrow enough to read on typical screens.
 
 ```markdown
 ## Packages
@@ -381,148 +270,89 @@ This project is organized as a multi-package structure. Each package's technical
 | Path | Language | Framework | Architecture | Error Handling | API Layer | Testing |
 |---|---|---|---|---|---|---|
 | `<path>` | <language> | <framework> | <architecture> | <error_handling> | <api_layer> | <testing> |
-| ... | ... | ... | ... | ... | ... | ... |
 
 **Build / check / lint tools by package:**
 
 | Path | Build Tool | Build Command | Type Check | Lint |
 |---|---|---|---|---|
 | `<path>` | <build_tool> | <build_command> | <type_check_command> | <lint_command> |
-| ... | ... | ... | ... | ... |
 ```
 
-One row per entry in `PACKAGE_STACKS` in each table. `Path` values wrap in backticks; command values in the Tools table wrap in backticks (they're shell commands). Other columns plain text. Preserve `"TBD"`, `"N/A"`, `"—"` sentinels verbatim.
+`Path` values wrap in backticks; command values in the Tools table wrap in backticks (they're shell commands). Other columns plain text. Preserve `"TBD"`, `"N/A"`, `"—"` sentinels verbatim.
 
-Example for a TS-frontend + Python-backend monorepo with a shared-types package:
+### `{{COMMIT_ATTRIBUTION}}` (helper-derived from `ai_attribution`)
 
-```markdown
-## Packages
+The helper composes the right block based on Q9's `ai_attribution` value (`"yes"` or `"no"`) — you only `set ai_attribution`. No render call needed.
 
-This project is organized as a multi-package structure. Each package's technical stack and conventions are listed below. Cross-package decisions (API contracts, shared types, dependency direction) should respect these per-package boundaries.
+### `{{AGENT_LIST}}` (helper-derived after Phase 4)
 
-**Architectural conventions by package:**
+Phase 3 leaves this as `"(pending Phase 4 curation)"`. Phase 4 (`references/agents.md`) replaces it via `apply-agents` + `compose`. You don't pass it.
 
-| Path | Language | Framework | Architecture | Error Handling | API Layer | Testing |
-|---|---|---|---|---|---|---|
-| `apps/web` | TypeScript | Next.js | feature-sliced | Result<T,E> via neverthrow | tRPC client | vitest |
-| `services/api` | Python | FastAPI | hexagonal | exceptions + returns.Result | REST + OpenAPI | pytest |
-| `packages/shared` | TypeScript | — | — | — | N/A | vitest |
+## 5.2: `.claude/settings.json`
 
-**Build / check / lint tools by package:**
+**No placeholder substitution needed.** The template emits a complete static file with no `{{PLACEHOLDER}}` markers. The helper modifies it only in §5.4 below (conditional permissions append for chrome-devtools).
 
-| Path | Build Tool | Build Command | Type Check | Lint |
-|---|---|---|---|---|
-| `apps/web` | Vite | `npm run build` | `tsc --noEmit --pretty 2>&1 \| head -20` | `eslint .` |
-| `services/api` | Poetry | `poetry run build` | `mypy .` | `ruff check .` |
-| `packages/shared` | N/A | N/A | `tsc --noEmit --pretty 2>&1 \| head -20` | `eslint .` |
+## 5.3: Baseline copies
+
+Helper-owned. `compose` copies CLAUDE.md / constitution.md / docs/overview.md / docs/architecture.md to `.devforge/baseline/` for every file that exists at compose time. No LLM action needed.
+
+`.claude/settings.json` is **projectOwned** — `update.sh` never overwrites it — so it doesn't need a baseline.
+
+## 5.4: MCP servers + permissions (conditional)
+
+Helper-owned. If you've called `wizard_render set ac_runtime_url --value <url>` (Q11's `AC_VERIFICATION_MODE` array included `"runtime-assisted"` AND the project's Q2 type routed through the **web frontend** or **full-stack web application** Runtime-assisted branch, which captures a frontend URL), `compose` injects the chrome-devtools entry into `.mcp.json` and appends the chrome-devtools permission allowlist into `.claude/settings.json`. Both files are presence-guarded.
+
+If `ac_runtime_url` is not set, `compose` skips this step.
+
+## 5.5: `.devforge/project-config.json`
+
+Helper-owned. `compose` assembles the canonical answers record from your `set` / `add-*` calls + Phase 1's `detection_report.yaml`. No LLM rendering needed — every field has a setter.
+
+**Per-stack arrays** (Q3–Q7 answers — call once per stack in declaration order; for the build/check/lint command arrays see §5.1 above which lists the same 4 setters used to feed CLAUDE.md derivation):
+
+```
+wizard_render add-language --name "TypeScript" --framework "Next.js"
+wizard_render add-language --name "Python" --framework "FastAPI"
+wizard_render add-architecture --value "feature-sliced"
+wizard_render add-architecture --value "hexagonal"
+wizard_render add-error-handling --value "neverthrow Result<T,E>"
+wizard_render add-error-handling --value "exceptions + returns.Result"
+wizard_render add-api-layer --value "tRPC client"
+wizard_render add-api-layer --value "REST + OpenAPI"
+wizard_render add-testing --value "vitest"
+wizard_render add-testing --value "pytest"
 ```
 
-### `{{COMMIT_ATTRIBUTION}}`
+The 4 build/check/lint setters from §5.1 (`add-build-tool` / `add-build-command` / `add-type-check-command` / `add-lint-command`) populate the same `project-config.json` automatically — no separate calls needed here. All per-stack arrays land in the JSON output via `compose`.
 
-Based on Q9 answer (stored as `AI_ATTRIBUTION` — lowercase string `"no"` or `"yes"`, per Q9's storage rule in `references/questions.md`):
+**AC verification** (call once per selected mode):
 
-**If `AI_ATTRIBUTION == "no"` (default)**: replace with:
 ```
-Do NOT include any AI attribution in commits. Specifically:
-- No Co-Authored-By trailers referencing the AI assistant, its vendor, or similar identifiers
-- No "Generated by", "Created by" + AI name, or similar text in commit title or body
-- Do not set or change git `user.name` or `user.email` to reference the AI assistant
-- This rule overrides any system-level defaults about AI attribution in commits
+wizard_render add-ac-mode --value "code-only"
+wizard_render add-ac-mode --value "tests"
 ```
 
-**If `AI_ATTRIBUTION == "yes"`**: replace with:
+The helper enforces `"off"`-exclusivity at compose time (`["off"]` + others → validation error).
+
+**Tier model assignments** (Q10):
+
 ```
-Include AI attribution in every commit by appending this trailer:
-`Co-Authored-By: Claude <noreply@anthropic.com>`
-```
-
-## 5.2: Populate Runtime Config Files
-
-### `.claude/settings.json` (if present)
-
-**No placeholder substitution needed.** The template emits a complete static `.claude/settings.json` with no `{{PLACEHOLDER}}` markers — the PostToolUse type-check hook was removed in favor of scope-aware end-of-task verification (see the Verification section rendered in CLAUDE.md, populated in 5.1 via the unified `{{ARCHITECTURE_DETAILS}}` + `{{PACKAGE_STACKS_SECTION}}` prose; the behavior itself is implemented in `/execute-task`'s verification phase).
-
-Skip this sub-section for placeholder substitution. Note that 5.4 (conditional MCP servers + permissions) may still append entries to this file when Q11 runtime-assisted AC verification is selected for a web frontend — that's the only modification populate.md makes to `.claude/settings.json`.
-
-## 5.3: Save Baselines
-
-For each of `CLAUDE.md`, `constitution.md`, `docs/overview.md`, and `docs/architecture.md` that exists, save a baseline copy to `.devforge/baseline/`:
-1. If `CLAUDE.md` exists → copy to `.devforge/baseline/CLAUDE.md`
-2. If `constitution.md` exists → copy to `.devforge/baseline/constitution.md`
-3. If `docs/overview.md` exists → copy to `.devforge/baseline/docs/overview.md` (create `.devforge/baseline/docs/` first)
-4. If `docs/architecture.md` exists → copy to `.devforge/baseline/docs/architecture.md`
-
-Create `.devforge/baseline/` (and `.devforge/baseline/docs/` for step 3–4) if they don't exist. These baselines are the wizard output before any manual user edits (and before `/constitute`, `/onboard`, or tech-writer fills body sections). `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
-
-**Note:** `.claude/settings.json` is **projectOwned** — update.sh never overwrites it — so it doesn't need a baseline. The three template-driven-header / body-filled-later files (`constitution.md`, `docs/overview.md`, `docs/architecture.md`) get baselines because the header/stub section is template-owned even though the body is user/command/agent-owned; the baseline captures just-after-wizard state so future template updates to the stub can three-way merge cleanly.
-
-## 5.4: Add MCP Servers + Permissions (conditional)
-
-If `AC_RUNTIME_URL` is set (Q11's `AC_VERIFICATION_MODE` array included `"runtime-assisted"` AND the project's Q2 type routed through the **web frontend** or **full-stack web application** Runtime-assisted branch, which captures a frontend URL), add the chrome-devtools server and its permissions to the Claude config files **that exist**:
-
-The package name used below is `CHROME_DEVTOOLS_MCP_PACKAGE` from the "Drift-risk literals" section at the top of this file. If Anthropic renames the package, update the literal there — both entries below read from the same source.
-
-**1. Add to `.mcp.json` (Claude MCP servers)** — insert this entry under the existing `mcpServers` object (substitute `CHROME_DEVTOOLS_MCP_PACKAGE`):
-```
-"chrome-devtools": {
-  "command": "npx",
-  "args": ["-y", "chrome-devtools-mcp"]
-}
+wizard_render set-tier think --value opus
+wizard_render set-tier do --value sonnet
+wizard_render set-tier verify --value sonnet
 ```
 
-**2. Append to `.claude/settings.json` under `permissions.allow[]`** (Claude needs explicit tool-name allowlist entries for each chrome-devtools MCP tool to auto-approve them):
-```
-"mcp__chrome-devtools__take_screenshot",
-"mcp__chrome-devtools__take_snapshot",
-"mcp__chrome-devtools__evaluate_script",
-"mcp__chrome-devtools__navigate_page",
-"mcp__chrome-devtools__list_pages",
-"mcp__chrome-devtools__select_page",
-"mcp__chrome-devtools__click",
-"mcp__chrome-devtools__fill",
-"mcp__chrome-devtools__fill_form",
-"mcp__chrome-devtools__wait_for",
-"mcp__chrome-devtools__press_key",
-"mcp__chrome-devtools__hover",
-"mcp__chrome-devtools__list_console_messages",
-"mcp__chrome-devtools__list_network_requests",
-"mcp__chrome-devtools__get_network_request"
-```
+**Per-stack array invariant** — `compose` rejects if `len(languages) != len(frameworks)`. Other per-stack arrays should also be parallel (one entry per language) but the helper only enforces languages/frameworks parity at the moment.
 
-If `AC_RUNTIME_URL` is not set (Q11's `AC_VERIFICATION_MODE` array didn't include `"runtime-assisted"`, or the project's Q2 type routed to a Runtime-assisted branch with no frontend URL — backend-only / CLI / mobile-desktop / no-automatable-runtime), skip this entire step.
+## 5.6: `.devforge/memory.md` seed
 
-## 5.5: Populate Project Config
-
-Read `.devforge/project-config.json`. Replace every `null` value with the corresponding answer collected during Phase 1 (detection) and Phase 2 (questions). Use the same values you substituted into the files above. Keys match the placeholder names without `{{ }}`.
-
-**Source of Phase 1 values.** Read structured detection values from `.devforge/detection_report.yaml` (the file written by `scripts/lib/detect_report compose` at the end of Phase 1) — not from your conversation memory of the detection. The file is the canonical source for fields like `package_manager.tool`, `architecture_shape`, `languages[]`, `frameworks[]`, `packages[]`, `runtime_url.value`, etc. Phase 2 question answers are stored in your working tracking of user responses; they're not in the YAML file.
-
-**Per-stack and per-package keys** (new with the package-detection work):
-- `LANGUAGES`, `FRAMEWORKS` — arrays from Q3
-- `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS` — per-stack arrays from Q4/Q5/Q6/Q7
-- `BUILD_TOOLS`, `BUILD_COMMANDS`, `TYPE_CHECK_COMMANDS`, `LINT_COMMANDS` — per-stack arrays. Source depends on `PROJECT_STATE`: for non-empty projects (greenfield / brownfield) the values come from **Phase 1 detection** (detect.md STEP 3 "Per-stack tool detection"); for empty projects Phase 1 leaves these unset and **Phase 2 Q3 re-sync** (questions.md Q3 "Array re-sync on Q3 override", add-a-language path) populates them using language defaults. Each parallel to `LANGUAGES`; sentinel `"N/A"` where a language has no such tool, `null` where unresolved.
-- `PACKAGES_DETECTED` — array of per-package records from Phase 1 (path, manifest, language_hint, framework_hint)
-- `PACKAGE_STACKS` — aggregated per-package structured records computed in 5.1 (same shape used to render the `{{PACKAGE_STACKS_SECTION}}` table). Storing this avoids re-derivation by downstream commands.
-
-Write all arrays as native JSON arrays (not stringified). Write per-package records as objects.
-
-**`AC_VERIFICATION_MODE` is always an array** — even when the user picked exactly one mode in Q11. Write `["code-only"]` not `"code-only"`. See questions.md Q11 "Storage (always an array)" for the full contract; downstream consumers do array-membership checks and break silently if given a bare string.
-
-For values that don't apply to this project, use `"N/A"`. For multi-line values (like `ARCHITECTURE_DETAILS`, `COMMIT_ATTRIBUTION`), use `\n` for newlines in the JSON string.
-
-## 5.6: Pre-populate Memory
-
-Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting their first task have project context immediately (instead of re-deriving from CLAUDE.md / `PACKAGE_STACKS` every session).
+Compose the seed prose following the rules below, then call `wizard_render set-render memory_seed --stdin`. The helper inserts your prose immediately above the `<!-- Populated during constitute` sentinel in `.devforge/memory.md` (preserving the sentinel — `/constitute` reads it).
 
 `.devforge/memory.md` is the project's shared learnings file — Claude reads it across sessions. Seeded content here is project-factual.
 
-**Procedure**:
+**Subsection content** (use Phase 1 detection + Q3-Q7 answers; emit only lines that have real data):
 
-1. Read `.devforge/memory.md` (install placed the scaffold; it has four empty sections — `## Architecture Decisions`, `## Known Pitfalls`, `## What Worked`, `## What Failed`).
-2. Under `## Architecture Decisions`, insert a new `### Initial detection (from setup-wizard)` subsection **above** the existing `<!-- Populated during constitute -->` sentinel. Do not remove the sentinel — `/constitute` uses it to know where its decisions go.
-3. Preserve the empty sections `## Known Pitfalls`, `## What Worked`, `## What Failed` unchanged — those get populated during work / by later commands.
-
-**Subsection content** (use Phase 1 detection + Q3-Q7 answers; emit only lines that have real data, omit irrelevant ones):
+Insert under `## Architecture Decisions`, header `### Initial detection (from setup-wizard)`:
 
 - `**Languages**`: comma-joined `LANGUAGES` (primary first)
 - `**Frameworks**`: comma-joined `FRAMEWORKS` (parallel to languages; skip `null` entries)
@@ -530,16 +360,31 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
 - `**Error handling**`: primary `ERROR_HANDLINGS[0]` (skip line if `"TBD"`). Same parenthetical for multi-stack.
 - `**API layer**`: primary `API_LAYERS[0]` (skip if `"N/A"` or `"TBD"`). Same parenthetical for multi-stack.
 - `**Testing**`: primary `TESTINGS[0]` (skip if `"N/A"` or `"TBD"`).
-- `**Packages detected**`: `N packages` (where `N = len(PACKAGES_DETECTED)`). For `N >= 2`, append: `(see CLAUDE.md ## Packages for the full table)`. Omit this line entirely when `N == 0`.
-- `**Key source paths**`: one bullet per package from `PACKAGES_DETECTED`: `` `<path>/` — <language> / <framework-or-library> ``. For `N == 0` (empty project), render a single line: `none yet — greenfield project, populated via /specify`.
+- `**Packages detected**`: `N packages` (where `N = len(packages)`). For `N >= 2`, append: `(see CLAUDE.md ## Packages for the full table)`. Omit this line entirely when `N == 0`.
+- `**Key source paths**`: one bullet per package: `` `<path>/` — <language> / <framework-or-library> ``. For `N == 0` (empty project), render a single line: `none yet — greenfield project, populated via /specify`.
 
-**Example result for a TS + Python monorepo** (multi-stack, 3 packages):
+### Other observations (spillover bullet — capped at 5)
+
+If during Phase 1 detection you discovered project facts that don't fit the structured fields above (an unusual build pattern, a notable directory convention, a project-shape signal worth surfacing), append an **Other observations** sub-bullet at the end of the seed:
 
 ```markdown
-# Project Memory
+- **Other observations**:
+  - <observation> (source: <file/signal>)
+  - <observation> (source: <file/signal>)
+```
 
-## Architecture Decisions
+**Discipline rules** (enforce in your composition — helper does not validate this section):
 
+- **Cap at 5 entries.** If you have more, drop the least-load-bearing ones. Memory.md is a project-context file, not a dump.
+- **Each entry must cite a concrete source signal** — file path, dep name, config key. Anti-hallucination rule applies.
+- **Skip the bullet entirely if you have nothing to add.** Don't pad.
+- **Don't duplicate** facts already captured in the structured bullets above (Languages, Frameworks, etc.).
+
+This bullet exists so worthwhile detection signals aren't lost just because they don't have a structured field. It's the escape valve, not the main event.
+
+**Example seed for a TS + Python monorepo** (multi-stack, 3 packages, with 2 spillover observations):
+
+```markdown
 ### Initial detection (from setup-wizard)
 - **Languages**: TypeScript, Python
 - **Frameworks**: Next.js, FastAPI
@@ -552,34 +397,12 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
   - `apps/web/` — TypeScript / Next.js
   - `services/api/` — Python / FastAPI
   - `packages/shared/` — TypeScript / (library)
-
-<!-- Populated during constitute — records WHY decisions were made, not just what -->
-
-## Known Pitfalls
-<!-- Populated during work as mistakes are discovered -->
-
-## What Worked
-<!-- Patterns and approaches that solved problems well -->
-
-## What Failed
-<!-- Approaches that were tried and didn't work — avoid repeating these -->
+- **Other observations**:
+  - Repo uses git-submodules for the shared protobuf schema in `protos/` (source: `.gitmodules`)
+  - Custom Vite plugin in `tools/build-time-i18n.ts` injects translations at build (source: `apps/web/vite.config.ts`)
 ```
 
-**Single-stack single-package example** (shorter, no multi-stack parentheticals):
-
-```markdown
-### Initial detection (from setup-wizard)
-- **Languages**: TypeScript
-- **Frameworks**: Next.js
-- **Architecture pattern**: feature-sliced
-- **Error handling**: Result<T,E> via neverthrow
-- **API layer**: REST
-- **Testing**: vitest
-- **Key source paths**:
-  - `./` — TypeScript / Next.js
-```
-
-**Empty project** (user declared languages via Q3, `PACKAGES_DETECTED == []`):
+**Empty project** (greenfield, `len(packages) == 0`):
 
 ```markdown
 ### Initial detection (from setup-wizard)
@@ -589,69 +412,57 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
 - **Key source paths**: none yet — greenfield project, populated via /specify
 ```
 
-Emit only the lines that carry real data. If a concern was all-TBD/all-N/A/all-null across stacks, omit that bullet entirely (graceful skip).
+Emit only lines that carry real data. If a concern was all-TBD/all-N/A/all-null across stacks, omit that bullet entirely.
 
-## 5.7: Populate constitution.md header
+## 5.7: `constitution.md` header
 
-`constitution.md` was placed at the project root by `install.sh` (presence-guarded — brownfield projects with a pre-existing constitution keep theirs). This step fills only the **header placeholders** at the top of the file. Body sections stay untouched: every subsection marked `_Run /constitute to populate_` is the sentinel `/constitute` uses later to detect unpopulated regions — do NOT replace these strings, do NOT add body content, do NOT invent rules beyond the placeholders listed here.
+Helper-owned substitution + blockquote stripping. You don't render anything new — the helper composes the substitutions from your existing `set` / `add-*` calls + `detection_report.yaml`.
 
-If `constitution.md` does not exist at the project root (presence check failed at install time, or user removed it), skip this step silently. Do not error.
+What `compose` does for `constitution.md`:
 
-**Placeholders to substitute:**
+1. Strips the two informational blockquotes (`> For multi-stack projects, \`{{ERROR_HANDLING}}\` renders as paired bullets...` and the matching `\`{{TESTING}}\`` blockquote) — unconditionally, whether single-stack or multi-stack.
+2. Substitutes header placeholders: `{{PROJECT_NAME}}`, `{{DATE}}` (today's ISO-8601 date), `{{PROJECT_TYPE}}`, `{{FRAMEWORK}}` (joined-comma rendering, same as CLAUDE.md), `{{LANGUAGE}}` (same), `{{WORKSPACE_MODE}}`, `{{SOURCE_ROOT}}`, `{{ERROR_HANDLING}}` (paired-or-scalar from `error_handlings[]`), `{{TESTING}}` (paired-or-scalar from `testings[]`).
+3. Validates no `{{...}}` markers remain in the substituted output (body sentinels like `_Run /constitute to populate_` use `_..._` so they don't trigger).
 
-- `{{PROJECT_NAME}}` — Q0 answer. Appears twice (title + Section 1).
-- `{{DATE}}` — current date, ISO-8601 (`YYYY-MM-DD`). Appears twice (Generated + Last updated); use the same value for both — they diverge later only when `/constitute` or the user manually edits the document.
-- `{{PROJECT_TYPE}}` — Q2 answer (same value substituted into CLAUDE.md in §5.1).
-- `{{FRAMEWORK}}` — render from `FRAMEWORKS` array using the **same rule as CLAUDE.md §5.1**: single value for single-stack, comma-joined for multi-stack (skip `null` entries). The section-1 label reads "Framework(s)" so the joined rendering fits naturally.
-- `{{LANGUAGE}}` — same rule: scalar for single-stack, comma-joined for multi-stack.
-- `{{WORKSPACE_MODE}}` — Phase 1 detection (`"standalone"` or `"wrapper"`).
-- `{{SOURCE_ROOT}}` — Phase 1 detection (`"."` for standalone, inner folder name for wrapper).
-- `{{ERROR_HANDLING}}` — single-stack: `ERROR_HANDLINGS[0]` verbatim (or `"TBD"` if deferred — wizard emits the literal `"TBD"` here, `/constitute` resolves it). Multi-stack: paired rendering with stack labels, matching agents.md §6.4's multi-stack format for non-architect scalars — e.g., `"neverthrow Result<T,E> (TypeScript/Next.js), exceptions + returns.Result (Python/FastAPI)"`. Skip `"TBD"` entries; keep `"N/A"` entries with their stack label.
-- `{{TESTING}}` — same rule as `{{ERROR_HANDLING}}`. For multi-stack keep `"N/A"` stack entries with their label (libraries with no tests still need the label so it's explicit).
+Body sections marked `[project-specific]` with `_Run /constitute to populate_` sentinels stay untouched — `/constitute` fills them later.
 
-**What NOT to do in this step:**
+If `constitution.md` doesn't exist at the project root, `compose` skips it silently.
 
-- Do NOT touch sections marked `[project-specific]` with `_Run /constitute to populate_` sentinels — these are Section 2 (Architecture Rules), Section 3.1 (Type Safety), Section 3.3 (Naming Conventions), Section 5 (Domain Rules), Section 6.5 (Deprecation Handling), Section 6.6 (Project-Specific Workflow), and the per-section `[project-specific]` sub-bullets in 4.1.1 / 4.2.1 / 4.3.1 / 7. Those belong to `/constitute`.
-- Do NOT substitute placeholders inside the informational blockquotes (e.g., "_For multi-stack projects, `{{ERROR_HANDLING}}` renders as paired bullets..._"). They are template-authoring meta-prose, not real placeholders. They get stripped in the next step.
-- Do NOT rewrite any `[universal]` section (Sections 3.5, 3.6, 3.7, 4.1, 4.2, 4.3, 6.1–6.4). These are the pre-populated rules that apply to every project.
+## 5.8: `docs/overview.md` and `docs/architecture.md`
 
-**Strip authoring meta-prose:**
+Helper-owned. `compose` substitutes:
 
-After substitution, remove the two informational blockquotes that describe multi-stack rendering — they are guidance for template authors, not project documentation. The user reading their own constitution should not see template internals leak through.
+- `docs/overview.md`: `{{PROJECT_NAME}}` and `{{PROJECT_DESCRIPTION}}`
+- `docs/architecture.md`: `{{PROJECT_NAME}}` (appears twice — title heading + orientation blockquote)
 
-Delete each of these blockquotes (entire blockquote line + the blank line that follows it):
+Each file is presence-guarded. Body sections marked `_Populated by ..._` stay untouched.
 
-- The blockquote starting `> For multi-stack projects, \`{{ERROR_HANDLING}}\` renders as paired bullets` (immediately after `### 3.2 Error Handling`)
-- The blockquote starting `> For multi-stack projects, \`{{TESTING}}\` renders as paired bullets` (immediately after `### 3.4 Testing Requirements`)
+The stub deliberately does NOT carry stack facts (`LANGUAGE`, `FRAMEWORK`, `WORKSPACE_MODE`, `SOURCE_ROOT`, `PROJECT_TYPE`) — those live in `CLAUDE.md`. `architecture.md` is the decisions / rules / flow document, not a duplicate of stack context.
 
-Strip both unconditionally — single-stack and multi-stack alike. The substituted scalar/paired bullet on the line above is self-explanatory; the blockquote adds nothing for the reader.
+---
 
-**Validate after substitution:** read `constitution.md` back and confirm (a) no `{{PLACEHOLDER}}` markers remain in the header, (b) neither stripped blockquote string appears anywhere in the file. Body sentinels (`_Run /constitute to populate_`) are expected to remain — those are not placeholders.
+## Compose protocol
 
-## 5.8: Populate docs/overview.md and docs/architecture.md
+After you've made all the `set` / `set-render` / `set-tier` / `add-*` calls for §5.1–§5.6, run:
 
-Both files are placed at `docs/` by `install.sh` (per-file presence-guarded — brownfield projects with pre-existing `docs/overview.md` or `docs/architecture.md` keep their versions). This step fills placeholders in each file. Body sections marked `_Populated by ..._` stay untouched — they're sentinel strings that `/constitute`, `/onboard`, and the tech-writer agent use later.
+```
+scripts/lib/wizard_render status      # verify ✓ ready to compose
+scripts/lib/wizard_render compose     # write all files atomically
+```
 
-If either file does not exist at `docs/<name>.md` (presence check failed at install time, or user removed it), skip THAT file silently. Do not error. Handle each file independently — one may be present while the other isn't.
+`compose` refuses if:
+- Any required scalar (`project_name`, `project_description`, `project_type`, `workflow_enforcement`, `ai_attribution`) is unset
+- Any required render (FRAMEWORK rendered, LANGUAGE rendered, BUILD_*, TYPE_CHECK_*, LINT_*, project_structure, dev_commands, architecture_details, memory_seed) is unset
+- Any tier (`think` / `do` / `verify`) is unset
+- `languages` is empty
+- `len(languages) != len(frameworks)` (parallel-array invariant)
+- `ac_modes` is empty
+- `ac_modes` contains `"off"` alongside other modes
+- `agents_kept` is empty (Phase 4 must have at least the always-keep set)
 
-**Placeholders in `docs/overview.md`:**
+On success, `compose` writes every populated file, deletes the intermediate state file, and emits `.devforge/setup-complete`. The wizard then proceeds to Phase 4 (`references/agents.md`).
 
-- `{{PROJECT_NAME}}` — Q0 answer (same value as constitution §5.7 / CLAUDE.md §5.1).
-- `{{PROJECT_DESCRIPTION}}` — Q1 answer (the 1-3 sentence description).
-
-**Placeholders in `docs/architecture.md`:**
-
-- `{{PROJECT_NAME}}` — Q0 answer. Appears twice (title heading + orientation blockquote); use the same value in both.
-
-The stub deliberately does NOT carry stack facts (`LANGUAGE`, `FRAMEWORK`, `WORKSPACE_MODE`, `SOURCE_ROOT`, `PROJECT_TYPE`) — those live in `CLAUDE.md` which the agent has in its session primer. architecture.md is the decisions / rules / flow document, not a duplicate of runtime stack context. If you find yourself needing a stack-fact placeholder here, add it to CLAUDE.md instead and cross-link.
-
-**What NOT to do in this step:**
-
-- Do NOT write body content for `## Architectural Decisions`, `## Layer Boundaries & Dependency Rules`, `## Data Flow`, `## Cross-cutting Concerns`, `## What this project is for`, `## How it's used`. These sentinel blocks are how `/constitute` / `/onboard` / tech-writer detect unpopulated regions.
-- Do NOT create `docs/features/`, `docs/api/`, `docs/guides/`, or any other subdirectory. Those emerge lazily when tech-writer creates the first file inside them during `/execute-task` / `/summarize` / `/finalize`.
-- Do NOT invent placeholders that aren't listed above. If a placeholder appears in the stub but isn't in this list, that's a template drift — flag it and leave the placeholder unsubstituted rather than guessing.
-
-**Validate after substitution:** read both files back and confirm no `{{PLACEHOLDER}}` markers remain. The `_Populated by ..._` sentinels are expected to remain — those are not placeholders.
+For Phase 4's `apply-agents` call (which writes per-agent substitutions to state for `compose` to apply), see `references/agents.md` §6.4.
 
 ---
 

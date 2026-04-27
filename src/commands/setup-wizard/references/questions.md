@@ -72,13 +72,23 @@ Store as `PROJECT_NAME`.
 
 **If README.md (or README.rst, README.txt) exists at SOURCE_ROOT and contains a meaningful description (not just a scaffolded heading):**
 
-> I found this in your README:
+Invoke AskUserQuestion with the README quote in the question body and 2 options:
+
+> Question: I found this in your README:
 >
 > > [quote the first paragraph or summary section — max ~3 sentences]
 >
-> Does this describe the project well? Confirm, or give me a better description in 1-3 sentences — what does it do, who is it for?
+> Does this describe the project well?
+>
+> Options:
+> - **Use the README quote (Recommended)** — store it verbatim as `PROJECT_DESCRIPTION`
+> - **Write my own** — user supplies a 1–3 sentence replacement via the auto "Other" affordance
+
+If the user picks "Other" with a free-text reply, use that as `PROJECT_DESCRIPTION`. If they pick "Use the README quote", store the quoted text verbatim.
 
 **If no README or README is empty/boilerplate:**
+
+Bypass the tool — this is free-text-only. Use a plain prompt:
 
 > Describe this project in 1-3 sentences — what does it do, who is it for?
 
@@ -86,13 +96,41 @@ Store as `PROJECT_DESCRIPTION`. This is placed in the Project Overview section o
 
 ## Question 2: Project Type (REQUIRED)
 
-Present the question to the user. If Phase 1 detection surfaced concrete indicators, quote them explicitly; if nothing was detected (or `PROJECT_STATE` is empty), say so plainly and just ask. Do not invent.
+Q2's full taxonomy has 13 options — exceeds AskUserQuestion's 4-option cap. Q2 is the documented exception to the cap (see main.md "Variation markers" — ">4-option questions that don't fit a funnel/bucket pattern"). The flow is two-tier: a small AskUserQuestion at L1, with a plain-prose fallback at L2 when the user wants to browse the full list.
 
-**If concrete indicators were found:**
+### L1: AskUserQuestion (conditional shape based on detection state)
 
-> Based on what I found — [quote 2–5 specific observed facts: exact dep names, exact file paths, exact config markers] — this looks like a [proposed type]. What type of project is this?
+**If Phase 1 produced a confident project-type guess** (concrete indicators surfaced — exact dep names, file paths, config markers point to one of the 13 categories with reasonable confidence):
+
+Invoke AskUserQuestion with 2 explicit options:
+
+> Question: Based on what I found — [quote 2–5 specific observed facts: exact dep names, exact file paths, exact config markers] — this looks like a **[proposed type]**. Confirm, browse the full list, or describe your own?
 >
 > Options:
+> - **Use suggestion: [proposed type] (Recommended)** — confirm Phase 1's guess
+> - **Pick from full list** — open the 13-category list (L2 fallback below)
+
+The auto-Other affordance handles "describe my own" — user types a custom category in free text.
+
+**If Phase 1 had nothing** (empty project, greenfield with no signals, or low-confidence detection):
+
+Invoke AskUserQuestion with 1 explicit option:
+
+> Question: I couldn't detect enough from the files alone to guess your project type. Pick from the full list, or describe your own?
+>
+> Options:
+> - **Pick from full list (Recommended)** — open the 13-category list (L2 fallback below)
+
+Auto-Other handles "describe my own" — user types a custom category.
+
+(AskUserQuestion requires at least 2 options. When detection produced nothing, present the single "Pick from full list" option and rely on auto-Other for the second path. If the tool rejects the single-option call, fall through to L2 directly without asking L1.)
+
+### L2: Plain-prose fallback (only when user picks "Pick from full list")
+
+Bypass the tool — this is the >4-option exception. Present the full 13-category list as a plain prose blockquote and ask the user to pick by name or describe their own:
+
+> Which category fits this project? Pick by name, or describe your own (e.g., "firmware", "Figma plugin", "browser extension", "Slack bot"):
+>
 > - Frontend / web application
 > - Backend API / service
 > - Full-stack web application
@@ -106,13 +144,12 @@ Present the question to the user. If Phase 1 detection surfaced concrete indicat
 > - Game
 > - Infrastructure-as-code / config management
 > - Documentation / static site
-> - Other — user describes their own category (e.g., "firmware", "Figma plugin", "browser extension", "Slack bot")
 
-**If nothing was detected (empty / greenfield / unclear):**
+Wait for the user's answer (a name from the list or a free-text custom category). Store as `PROJECT_TYPE`.
 
-> I couldn't detect enough from the files alone to guess. What type of project is this?
->
-> Options: [same list as above]
+### Storage
+
+Whichever path the user took (L1 confirm / L1 auto-Other / L2 select / L2 free-text), store the resulting category string verbatim as `PROJECT_TYPE`. Downstream consumers — especially Q11's project-type → AC-verification-branch mapping — read this value, so it must match one of the 13 canonical names when the user picked from the list, and is preserved as-is when free-text.
 
 ## Question 3: Languages & Frameworks (REQUIRED)
 
@@ -423,7 +460,7 @@ Store each answer as `TESTINGS[i]`. Per-stack `"N/A"` is valid (e.g., a shared-t
 
 ## Question 8: Workflow Enforcement Level (REQUIRED)
 
-This controls how many user-approval gates appear in the workflow and how strict post-edit verification is. The underlying verification mechanism varies per runtime — on some runtimes it's automatic after every edit, on others it's an explicit `/verify` step — but the behaviors below are the same regardless.
+This controls how many user-approval gates appear in the workflow and how strict post-edit verification is. Verification runs as an explicit `/verify` step.
 
 > How strict should workflow enforcement be?
 >
@@ -477,23 +514,28 @@ Recommended defaults: opus / sonnet / sonnet. Store in config as:
 
 When the user runs `/verify` after a task completes, how should acceptance criteria be checked? The user can pick one mode (simplest — what most projects need) or combine multiple (defense in depth — stronger signal, slower per-task verification).
 
-**Trade-off to surface in the prompt**: each additional mode adds per-task verification time. Runtime-assisted especially adds 10–30s per task for dev-server boot + UI drive. Pick "Multiple" only when multiple signals genuinely matter for this project.
+**Trade-off to surface in the prompt**: each additional mode adds per-task verification time. Runtime-assisted especially adds 10–30s per task for dev-server boot + UI drive. Pick more than one mode only when multiple signals genuinely matter for this project.
 
+Invoke AskUserQuestion with `multiSelect: true` and exactly these 4 options:
+
+> Question: How should `/verify` check acceptance criteria? Select one or more modes (combine for defense in depth, slower per-task).
+>
 > Options:
-> - **Code-only** — verify by reading code against the AC spec. No execution. Works for any project type; safe pick if unsure.
+> - **Code-only (Recommended)** — verify by reading code against the AC spec. No execution. Works for any project type; safe pick if unsure.
 > - **Tests** — run the project's test suite; failures indicate AC violations. Good fit when the project has meaningful tests.
 > - **Runtime-assisted** — run the built artifact and interact with it. Good fit when the artifact is easily launchable (web app, backend, CLI) and AC is observable at runtime.
 > - **Off** — skip AC verification; user handles manually. Only choose this if the user explicitly wants to opt out.
-> - **Multiple** — combine two or three modes (defense in depth). Follow-up asks which.
+
+**Off-exclusivity (post-tool validation).** `"off"` is inherently exclusive of the other modes. If the user's selection includes `"off"` alongside any other mode, treat the answer as `["off"]` alone (drop the other selections silently — `off` wins). Off is never combined.
 
 ### Storage (always an array)
 
-`AC_VERIFICATION_MODE` is always stored as a JSON array of strings in `.devforge/project-config.json` — single-mode picks store a one-element array for uniform downstream iteration. Examples:
+`AC_VERIFICATION_MODE` is always stored as a JSON array of strings in `.devforge/project-config.json`. Examples:
 
 - Single pick: `["code-only"]`, `["tests"]`, `["runtime-assisted"]`, or `["off"]`
-- Multiple pick: `["code-only", "tests"]`, `["tests", "runtime-assisted"]`, or `["code-only", "tests", "runtime-assisted"]`
+- Multi-pick: `["code-only", "tests"]`, `["tests", "runtime-assisted"]`, or `["code-only", "tests", "runtime-assisted"]`
 
-Valid values inside the array: exactly `"code-only"`, `"tests"`, `"runtime-assisted"`, or `"off"`. No other strings. `"off"` can only appear as a single-element array `["off"]` — it is inherently exclusive of the other modes.
+Valid values inside the array: exactly `"code-only"`, `"tests"`, `"runtime-assisted"`, or `"off"`. No other strings. `"off"` only ever appears as `["off"]` per the exclusivity rule above.
 
 **FORBIDDEN — bare string form:**
 
@@ -509,24 +551,9 @@ Valid values inside the array: exactly `"code-only"`, `"tests"`, `"runtime-assis
 
 When you write `.devforge/project-config.json` in Phase 3 (populate), the value MUST be a JSON array literal. If you find yourself about to write a bare string, stop and wrap it in `[...]`.
 
-### If the user picks "Multiple"
-
-Ask a follow-up multi-select. `Off` is NOT in the follow-up options — `Off` is inherently exclusive; if the user wanted that they'd have picked it on the first screen:
-
-> Which modes? Select two or three (Runtime-assisted follow-ups will fire if Runtime-assisted is among them):
-> - Code-only
-> - Tests
-> - Runtime-assisted
-
-Use the runtime's multi-select mechanism if available, otherwise ask the user to list the modes they want. Store the selected set as the `AC_VERIFICATION_MODE` array.
-
-### If the user picks a single mode (Code-only / Tests / Runtime-assisted / Off)
-
-Store as a one-element array (e.g., `["code-only"]`). Proceed directly to the mode-specific follow-ups.
-
 ### Runtime-assisted follow-ups (only if `"runtime-assisted"` is in `AC_VERIFICATION_MODE`)
 
-Run these follow-ups whenever the `AC_VERIFICATION_MODE` array contains `"runtime-assisted"` — whether Runtime-assisted was picked as the sole mode OR as part of a Multiple combination. Skip them entirely otherwise.
+Run these follow-ups whenever the `AC_VERIFICATION_MODE` array contains `"runtime-assisted"`. Skip them entirely otherwise.
 
 Branch by the project type confirmed in Q2 (not what Phase 1 detected — Q2's answer is canonical). Map Q2's answer to exactly one follow-up branch using the table below; every Q2 option has a defined destination so the wizard never silently skips the follow-up.
 
@@ -557,7 +584,7 @@ Then:
 
 - **Remove `"runtime-assisted"` from the `AC_VERIFICATION_MODE` array** (since it can't apply for this project type).
 - If the user picked Runtime-assisted alone (array was `["runtime-assisted"]`), ask them to pick Tests or Code-only and store it as `["tests"]` or `["code-only"]`.
-- If the user picked Multiple with Runtime-assisted AND other modes (e.g., `["tests", "runtime-assisted"]`), drop Runtime-assisted and keep the remaining modes (→ `["tests"]`). No additional question needed — the user already explicitly selected the other modes.
+- If the user selected Runtime-assisted alongside other modes (e.g., `["tests", "runtime-assisted"]`), drop Runtime-assisted and keep the remaining modes (→ `["tests"]`). No additional question needed — the user already explicitly selected the other modes.
 - Do NOT store any `AC_RUNTIME_*` key in this branch (frontend URL / API base / CLI command are all runtime-assisted-specific).
 
 For projects that legitimately span multiple categories (e.g., a mobile app with its own backend, or a monorepo containing a web frontend + a CLI + shared libs) and Q2 only captured one of them, ask the user which ONE scope `/verify` should primarily target, then use that branch. Additional scopes require manual verification — note this for the user so they know what's covered vs. not.

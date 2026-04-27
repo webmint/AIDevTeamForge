@@ -86,74 +86,82 @@ Delete the rejected agent files:
 
 ## 6.4: Populate Kept Agents
 
-For each kept agent, read the file and:
+Agent population is helper-driven. After §6.1 selection and §6.2 user confirmation, the LLM passes a single JSON file describing kept + removed agents to `wizard_render apply-agents`; `wizard_render compose` then derives all per-agent substitutions, applies them, regex-replaces the `model:` line per Q10 tier choices, and saves baselines.
 
-1. **Substitute all `{{PLACEHOLDER}}` markers** in prose (inside YAML `description:` field and body content) per the rules below. These are text-level placeholders — `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{TYPE_SAFETY_RULES}}`, etc.
-2. **Replace the structural `model:` field via key-based regex replacement** (separate from placeholder substitution — see "Agent-frontmatter model field" subsection later in this doc). The field carries a boot-safe default at install time; wizard overwrites with Q10 answers.
+### apply-agents JSON shape
 
-The two mechanisms exist because text-level placeholders (prose) are parser-safe; the structural `model:` field must be boot-valid from install time onward — Claude parses `.claude/agents/*.md` at launch, so an unsubstituted `{{PLACEHOLDER}}` there would break agent loading before the wizard could run.
+Write this JSON file (e.g., `.devforge/.agents-apply.json`) and call `wizard_render apply-agents --substitutions-file <path>`:
 
-**Placement contract (for agent-template authors).** The 10 stack-aware placeholders — `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{ERROR_HANDLING}}`, `{{API_LAYER}}`, `{{TESTING}}`, `{{BUILD_TOOL}}`, `{{BUILD_COMMAND}}`, `{{TYPE_CHECK_COMMAND}}`, `{{LINT_COMMAND}}` — and `{{TYPE_SAFETY_RULES}}` may expand into multi-line content (paired bullets per stack, language-grouped sub-headers). They MUST appear in each agent template as **stand-alone block-level elements** — their own paragraph, list item, or section — not inline within a running sentence. Inline placement silently breaks Markdown rendering for multi-stack projects (sub-headers and bullets collapse into a sentence). If an agent template needs a short inline mention of, e.g., the primary language, author a separate single-value placeholder for that purpose rather than reusing these.
+```json
+{
+  "kept": {
+    "architect": { "tier": "think" },
+    "code-reviewer": { "tier": "verify" },
+    "backend-engineer": { "tier": "do" },
+    "frontend-engineer": { "tier": "do" }
+  },
+  "removed": ["mobile-engineer", "design-auditor"]
+}
+```
 
-### Per-agent rendering rules for stack-aware placeholders
+Each kept entry is `{ "tier": "think|do|verify" }`. Tier maps to Q10's `CLAUDE_TIER_<TIER>` value (the helper looks it up from state — you don't pass the model name).
 
-Ten placeholders read from per-stack arrays: `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{ERROR_HANDLING}}`, `{{API_LAYER}}`, `{{TESTING}}`, `{{BUILD_TOOL}}`, `{{BUILD_COMMAND}}`, `{{TYPE_CHECK_COMMAND}}`, `{{LINT_COMMAND}}`. Rendering depends on both the agent and the stack count.
+**Optional `substitutions` field** — for the rare case where an agent template introduces a `{{PLACEHOLDER}}` the helper doesn't know how to derive (e.g., a brand-new agent with novel placeholder names not yet in the registry), pass it explicitly:
 
-**Architect-exception** (applies when substituting into `architect.md`):
+```json
+{
+  "kept": {
+    "novel-agent": {
+      "tier": "do",
+      "substitutions": { "NOVEL_PLACEHOLDER": "value" }
+    }
+  },
+  "removed": []
+}
+```
 
-- **Single-stack** (`len(LANGUAGES) == 1`): render primary-only (`[0]` index) — same as other agents. No special formatting.
-- **Multi-stack** (`len(LANGUAGES) > 1`):
-  - `{{FRAMEWORK}}` / `{{LANGUAGE}}` render as **joined-comma** — e.g., `"Next.js, FastAPI"`, `"TypeScript, Python"`. They ARE the stack identifier; joining them plainly is unambiguous. Matches CLAUDE.md rendering (Phase 3 in `references/populate.md`, section 5.1).
-  - The remaining **eight** placeholders (`{{ARCHITECTURE}}`, `{{ERROR_HANDLING}}`, `{{API_LAYER}}`, `{{TESTING}}`, `{{BUILD_TOOL}}`, `{{BUILD_COMMAND}}`, `{{TYPE_CHECK_COMMAND}}`, `{{LINT_COMMAND}}`) render as **paired rendering** — each element paired with its stack identifier so architect can tell which value applies to which stack:
-    - **2 stacks**: single-line, comma-separated pairs in the form `"<value> (<language>/<framework>)"`.
-      - Example `{{ARCHITECTURE}}`: `"hexagonal (Python/FastAPI), feature-sliced (TypeScript/Next.js)"`
-      - Example `{{BUILD_COMMAND}}` (commands in backticks, label plain): `` `npm run build` (TypeScript/Next.js), `poetry run build` (Python/FastAPI) ``
-    - **3+ stacks**: multiline bullet list, one bullet per stack.
-      - Example `{{TYPE_CHECK_COMMAND}}`:
-        ```
-        - `tsc --noEmit --pretty 2>&1 | head -20` (TypeScript/Next.js)
-        - `mypy .` (Python/FastAPI)
-        - `swift build` (Swift/SwiftUI)
-        ```
-    - Skip `"TBD"` entries entirely (user deferred; nothing actionable). For the 4 command/tool placeholders `"TBD"` doesn't apply — they're detection-driven, no user defer.
-    - Keep `"N/A"` entries with their stack label (e.g., `` "`N/A` (TypeScript/shared-lib)" `` for a library package with no build command) so architect knows where a concern doesn't apply.
-    - If `FRAMEWORKS[i]` is `null` for a given stack, show only language: `"hexagonal (Python)"` or `` "`poetry run build` (Python)" ``.
+LLM-supplied `substitutions` override helper-derived values for the same key. If the helper finds a `{{KEY}}` in a template that it can't derive AND the LLM didn't supply, `compose` errors with a clear message naming the agent and the missing key.
 
-**Other agents** (everything except `architect`): render primary-only (`[0]` index from each array) for all ten stack-aware placeholders. As each agent is reviewed individually, it may be migrated to its own array-rendering rule (following the same paired/joined pattern as architect or a simpler variant appropriate to that agent's scope).
+### What the helper derives
 
-### Placeholders
+The helper auto-derives values for these placeholders by scanning each kept agent's template for `{{KEY}}` markers and looking up `KEY` in its registry (`scripts/lib/wizard_render.py` → `derive_placeholder`):
 
-- `{{FRAMEWORK}}` — from `FRAMEWORKS` array (Q3). Architect per rule above (joined-comma for multi-stack). Other agents: `FRAMEWORKS[0]`.
-- `{{LANGUAGE}}` — from `LANGUAGES` array (Q3). Architect per rule above (joined-comma for multi-stack). Other agents: `LANGUAGES[0]`.
-- `{{ARCHITECTURE}}` — from `ARCHITECTURES` array (Q4). Architect per rule above (paired for multi-stack). Other agents: `ARCHITECTURES[0]` (or `"TBD"` if deferred).
-- `{{ERROR_HANDLING}}` — from `ERROR_HANDLINGS` array (Q5). Architect per rule above (paired for multi-stack). Other agents: `ERROR_HANDLINGS[0]` (or `"TBD"` if deferred).
-- `{{API_LAYER}}` — from `API_LAYERS` array (Q6). Architect per rule above (paired for multi-stack). Other agents: `API_LAYERS[0]` (or `"N/A"` / `"TBD"`). Only appears in `api-designer`, `architect`, `backend-engineer`.
-- `{{TESTING}}` — from `TESTINGS` array (Q7). Architect per rule above (paired for multi-stack). Other agents: `TESTINGS[0]`.
-- `{{PROJECT_PATHS}}` — actual source paths from the project (scan SOURCE_ROOT)
-- `{{BUILD_TOOL}}` — from `BUILD_TOOLS` array (Phase 1 detection). Architect per rule above (paired for multi-stack). Other agents: `BUILD_TOOLS[0]` (or `"N/A"` if the primary stack has no build tool).
-- `{{BUILD_COMMAND}}` — from `BUILD_COMMANDS` array (Phase 1 detection). Architect per rule above (paired for multi-stack). Other agents: `BUILD_COMMANDS[0]` (or `"N/A"`).
-- `{{TYPE_CHECK_COMMAND}}` — from `TYPE_CHECK_COMMANDS` array (Phase 1 detection). Architect per rule above (paired for multi-stack). Other agents: `TYPE_CHECK_COMMANDS[0]` (or `"N/A"` if the primary language has no type checker).
-- `{{LINT_COMMAND}}` — from `LINT_COMMANDS` array (Phase 1 detection). Architect per rule above (paired for multi-stack). Other agents: `LINT_COMMANDS[0]` (or `"N/A"`).
-- `{{STYLING}}` — detected styling approach (only in `frontend-engineer`, `design-auditor`)
-- `{{STATE_MANAGEMENT}}` — detected state management (only in `frontend-engineer`, `mobile-engineer`)
-- `{{TYPE_SAFETY_RULES}}` — generate per the agent's language scope:
-  - **Non-architect agents** (primary-only scope): generate 3-5 bullet points based on `LANGUAGES[0]` (primary language). Cover escape-hatch types to avoid, null/optional safety, unsafe casts, language-specific concerns. If the primary language is unfamiliar, generate generic rules.
-  - **Architect, single-stack** (`len(LANGUAGES) == 1`): same as above — 3-5 bullets for the single language.
-  - **Architect, multi-stack** (`len(LANGUAGES) > 1`): generate a grouped block with 2-3 bullets per language, under a language-named sub-header. Type systems are structurally different across languages (TS structural + optional chaining, Python dynamic + optional typing, Rust ownership, etc.) — a flat shared list is either too generic to help or too long to be actionable. Example:
+| Placeholder | Source | Architect (multi-stack) | Other agents / single-stack |
+|---|---|---|---|
+| `{{FRAMEWORK}}` | `state.frameworks[]` | joined-comma of all entries | primary (`[0]`) |
+| `{{LANGUAGE}}` | `state.languages[]` | joined-comma of all entries | primary (`[0]`) |
+| `{{ARCHITECTURE}}` | `state.architectures[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{ERROR_HANDLING}}` | `state.error_handlings[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{API_LAYER}}` | `state.api_layers[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{TESTING}}` | `state.testings[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{BUILD_TOOL}}` | `state.build_tools[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{BUILD_COMMAND}}` | `state.build_commands[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{TYPE_CHECK_COMMAND}}` | `state.type_check_commands[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{LINT_COMMAND}}` | `state.lint_commands[]` | paired with `(<lang>/<fw>)` label | primary (`[0]`) |
+| `{{STYLING}}` | `detection_report.styling` | direct passthrough | direct passthrough |
+| `{{STATE_MANAGEMENT}}` | `detection_report.state_management` | direct passthrough | direct passthrough |
+| `{{PROJECT_PATHS}}` | `detection_report.packages[].path` | bullet list of all package paths | bullet list of all package paths |
 
-    ```
-    **TypeScript type safety:**
-    - Avoid `any`; use `unknown` and narrow explicitly
-    - Use `?.` / `??` for optional chaining; never `!` assertion on values that could be null
-    - Prefer discriminated unions over enums for runtime-checked variants
+**Architect-exception details:** the helper detects architect by name (`agent_name == "architect"`) AND multi-stack (`len(state.languages) > 1`). For single-stack projects, architect renders primary-only — same as other agents — there's no second stack to pair against.
 
-    **Python type safety:**
-    - Annotate all public function signatures (`def foo(x: int) -> str:`)
-    - Use `Optional[T]` not bare `None` returns; never `cast()` without justification
-    - Run `mypy --strict` on domain modules
-    ```
+**`null` / `"N/A"` / `"TBD"` semantics:**
+- `null` — skipped in joined-comma and paired rendering; "N/A" emitted only if all entries are null.
+- `"N/A"` — skipped in paired rendering (the concern doesn't apply for that stack); displayed verbatim as primary value.
+- `"TBD"` — skipped in paired rendering for the 8 non-FRAMEWORK/LANGUAGE placeholders.
+- Helper falls back to `"N/A"` when an entire array is empty or all-null.
 
-    For unfamiliar languages in the list, generate generic rules under that language's sub-header (do not omit it).
+### Adding a new placeholder to an agent template
+
+If you add a `{{NEW_PLACEHOLDER}}` to an agent template, choose one:
+1. **Helper-derives it** (preferred when the value comes from state or detection_report) — add a branch to `derive_placeholder` in `scripts/lib/wizard_render.py` so the registry knows the new key.
+2. **LLM provides it** — pass via `substitutions` in apply-agents. Use only when the value isn't mechanically derivable from existing state.
+
+Helper-discovered unknown placeholders fail compose with a clear error pointing at the offending agent and the missing key — no silent unsubstituted markers ship.
+
+**Placement contract (for agent-template authors).** The 10 stack-aware placeholders may expand into multi-line content (paired bullets per stack for architect-multi). They MUST appear in each agent template as **stand-alone block-level elements** — their own paragraph, list item, or section — not inline within a running sentence. Inline placement silently breaks Markdown rendering for multi-stack projects.
+
+**Type safety is intentionally not a wizard placeholder.** Project-specific type-safety rules live in `constitution.md` §3.1 (a `[project-specific]` section that `/constitute` populates). Agents consult constitution.md at task time — the agent templates contain a one-line pointer instead of an embedded `{{TYPE_SAFETY_RULES}}` placeholder. This avoids two problems: (a) baked-in rules drifting from the project's evolving conventions, (b) language-general training-knowledge rules contradicting projects with established non-default conventions (custom Result-monad libraries, disabled `strictNullChecks`, mid-migration `as`-assertion practice, etc.). Single source of truth = constitution.md.
+
 **Agent-frontmatter model field** (emitted by `scripts/generate-agents.py` at install time with a **boot-safe default**, one per agent based on its `model_tier: think | do | verify`). This is NOT a placeholder — Claude must parse the agent file at launch, so install-time files carry real values. The wizard REPLACES the value at Phase 4 using **key-based regex replacement** (not placeholder substitution) driven by Q10 answers.
 
 **Why this is key-replacement, not placeholder substitution**: Claude parses `.claude/agents/*.md` at launch (before the wizard can run). Shipping those files with `{{PLACEHOLDER}}` tokens in the YAML frontmatter would cause Claude to fail to load the agent — the wizard that would fix it can't execute because Claude doesn't have working agents. Defaults break the chicken-and-egg loop. The trade-off: wizard must use regex replacement instead of simple `{{X}}→Y` text substitution.
