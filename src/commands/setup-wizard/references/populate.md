@@ -5,33 +5,29 @@ This reference covers the file-substitution phase of the setup-wizard flow, load
 ## Files modified by this phase
 
 - `CLAUDE.md` — placeholder substitution (if present)
-- `AGENTS.md` — placeholder substitution (if present)
 - `constitution.md` — header-placeholder substitution only (§5.7). Body sections stay untouched — `/constitute` (separate command) fills them later.
 - `docs/overview.md` — placeholder substitution only (§5.8). Body sections stay untouched — `/constitute`, `/onboard`, and the tech-writer agent fill them later.
 - `docs/architecture.md` — placeholder substitution only (§5.8). Body sections stay untouched — same deferred-fill pattern.
 - `.claude/settings.json` — conditional permissions only, no placeholder substitution (if present)
-- `.codex/config.toml` — key-based regex replacement of boot-safe defaults + conditional MCP entry (if present). NOT placeholder substitution — see §5.2.
-- `.mcp.json` — conditional MCP entry (if present, Claude only)
+- `.mcp.json` — conditional MCP entry (if present)
 - `.devforge/baseline/CLAUDE.md` — new baseline copy
-- `.devforge/baseline/AGENTS.md` — new baseline copy
 - `.devforge/baseline/constitution.md` — new baseline copy
 - `.devforge/baseline/docs/overview.md` — new baseline copy
 - `.devforge/baseline/docs/architecture.md` — new baseline copy
-- `.devforge/memory.md` — pre-populate with Phase 1 detection findings (single shared file; both runtimes read it)
+- `.devforge/memory.md` — pre-populate with Phase 1 detection findings
 - `.devforge/project-config.json` — populate null values with collected answers
 
-Each file is presence-guarded: if an install was single-runtime (`--runtime claude` or `--runtime codex`), only that runtime's files exist. Skip missing files silently without error.
+Each file is presence-guarded: skip missing files silently without error.
 
 ---
 
 ## Drift-risk literals
 
-These values depend on upstream defaults or package names that change without notice. Treat them as the single source of truth for this file — §5.2 and §5.4 below reference them by name instead of repeating the literal. Review on every Codex or Anthropic-MCP integration touch; update the literal and the `last verified` date here in one place.
+These values depend on upstream defaults or package names that change without notice. Treat them as the single source of truth for this file — §5.4 below references them by name instead of repeating the literal. Review on every Anthropic-MCP integration touch; update the literal and the `last verified` date here in one place.
 
-- **`CODEX_DEFAULT_MODEL`** = `"gpt-5.4"` — Codex CLI's documented default model at the time of authoring. Used when Q10b leaves `CODEX_TIER_DO_MODEL` as `null`. Last verified: 2026-04-22.
 - **`CHROME_DEVTOOLS_MCP_PACKAGE`** = `"chrome-devtools-mcp"` — the Anthropic-authored Chrome DevTools MCP server npm package (unscoped). Verified via `npm view` on 2026-04-22.
 
-If either literal goes stale, both the emitted `.codex/config.toml` / `.mcp.json` entries become wrong in the same run. When updating, also update the `last verified` date.
+If this literal goes stale, the emitted `.mcp.json` entry becomes wrong. When updating, also update the `last verified` date.
 
 ---
 
@@ -39,16 +35,16 @@ If either literal goes stale, both the emitted `.codex/config.toml` / `.mcp.json
 
 All files are already in place. Your job is substitution only — **do not create new files**. Read each file, replace every `{{PLACEHOLDER}}` marker with the corresponding value, and write it back.
 
-**Single-runtime installs:** if install was run with `--runtime claude` or `--runtime codex`, only that runtime's files exist. For each file mentioned below, check presence first; skip the file if it doesn't exist. Do not error.
+For each file mentioned below, check presence first; skip the file if it doesn't exist. Do not error.
 
-## 5.1: Populate CLAUDE.md and AGENTS.md
+## 5.1: Populate CLAUDE.md
 
-Read `CLAUDE.md` and `AGENTS.md` at project root — **whichever exist**. Each contains the same `{{PLACEHOLDER}}` markers; substitute ALL of them with the same values:
+Read `CLAUDE.md` at project root. It contains `{{PLACEHOLDER}}` markers; substitute ALL of them with the values below:
 
 - `{{PROJECT_DESCRIPTION}}` — Q1 answer: the 1-3 sentence project description
 - `{{PROJECT_NAME}}` — Q0 answer: project name
 - `{{PROJECT_TYPE}}` — Q2 answer (e.g., "Frontend application", "Backend API", "Full-stack web application")
-- `{{FRAMEWORK}}` — render from the full `FRAMEWORKS` array captured in Q3, joined with `, ` (e.g., `"Next.js"` for single-stack, `"Next.js, FastAPI"` for multi-stack, `"Next.js, FastAPI, Swift"` for three stacks). Preserve the full stack list (not just the primary) so both `CLAUDE.md` and `AGENTS.md` give their respective runtimes — Claude and Codex — complete project context. Each file is the project-context source for its own runtime; they receive the same substituted value but are otherwise independent. Skip `null` entries in the array.
+- `{{FRAMEWORK}}` — render from the full `FRAMEWORKS` array captured in Q3, joined with `, ` (e.g., `"Next.js"` for single-stack, `"Next.js, FastAPI"` for multi-stack, `"Next.js, FastAPI, Swift"` for three stacks). Preserve the full stack list (not just the primary) so `CLAUDE.md` gives Claude complete project context. Skip `null` entries in the array.
 - `{{LANGUAGE}}` — render from the full `LANGUAGES` array captured in Q3, joined with `, ` (e.g., `"TypeScript"` for single-stack, `"TypeScript, Python"` for multi-stack).
 - `{{BUILD_TOOL}}` — render from `BUILD_TOOLS` array (see per-stack rendering rule below). Single-stack: `BUILD_TOOLS[0]`. Multi-stack: paired rendering inline.
 - `{{BUILD_COMMAND}}` — render from `BUILD_COMMANDS` array (see per-stack rendering rule below). Single-stack: `BUILD_COMMANDS[0]`. Multi-stack: paired rendering inline.
@@ -57,7 +53,7 @@ Read `CLAUDE.md` and `AGENTS.md` at project root — **whichever exist**. Each c
 
 **Runner prefix source for all command emissions** (applies to the 4 placeholders above + per-package commands in `{{PACKAGE_STACKS_SECTION}}` + `{{DEV_COMMANDS}}` + any other command composed during populate):
 
-When composing any command string, the runner prefix (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / etc.) comes from `detection_report.package_manager.tool` in `.devforge/detection_report.yaml` (the Phase 1 Detection Report file, written by `scripts/lib/detect_report compose`). Phase 1 already selected the runner from observable lockfile signals at SOURCE_ROOT (see `detect.md` → "Command-runner selection") and encoded it in the Report. Re-deriving the runner here — from defaults, heuristics, or re-inspecting lockfiles — opens a runtime-to-runtime drift surface and is the root cause of past inconsistencies where one runtime emitted `yarn build` and another emitted `npm run build` on the same project.
+When composing any command string, the runner prefix (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / etc.) comes from `detection_report.package_manager.tool` in `.devforge/detection_report.yaml` (the Phase 1 Detection Report file, written by `scripts/lib/detect_report compose`). Phase 1 already selected the runner from observable lockfile signals at SOURCE_ROOT (see `detect.md` → "Command-runner selection") and encoded it in the Report. Re-deriving the runner here — from defaults, heuristics, or re-inspecting lockfiles — opens a drift surface against the Report's authoritative value.
 
 - Multi-command ecosystems (`npm` / `yarn` / `pnpm` / `bun` / `poetry` / `hatch` / `pdm` / `uv` / `bundle exec` for Ruby): render as `<runner> run <script>` or `<runner> <script>` per the ecosystem convention (e.g., `yarn build:raw`, `poetry run build`, `bundle exec rake test`).
 - Single-command ecosystems (`cargo`, `go`, `swift`): bare command, no runner prefix (e.g., `cargo build`, `go build ./...`, `swift build`).
@@ -78,7 +74,7 @@ Each element pairs with its language identifier so readers can tell which comman
 
 `null` at some index `i` in a per-stack array means "unresolved for this stack" — most commonly `FRAMEWORKS[i] == null` for a language with no framework (e.g., a plain Python CLI), or `BUILD_TOOLS[i] == null` / `BUILD_COMMANDS[i] == null` etc. when detection couldn't resolve a tool/command for that language. The handling pattern:
 
-- **Joined-comma placeholders** (`{{FRAMEWORK}}`, `{{LANGUAGE}}` in CLAUDE.md / AGENTS.md Project Overview): skip `null` entries entirely.
+- **Joined-comma placeholders** (`{{FRAMEWORK}}`, `{{LANGUAGE}}` in CLAUDE.md Project Overview): skip `null` entries entirely.
 - **Paired-rendering placeholders** (the 4 command/tool placeholders here in 5.1; 8 stack-aware placeholders for architect in agents.md 6.4): skip `null` entries entirely.
 - **`{{PACKAGE_STACKS_SECTION}}` aggregation**: `null` in a per-stack array at the matching index → fall back to `"—"` in the per-package record (see 5.1 `{{PACKAGE_STACKS_SECTION}}` aggregation rules).
 - **Architect paired rendering with `FRAMEWORKS[i] == null`** (agents.md 6.4): show language only, e.g., `` "hexagonal (Python)" `` — this is the documented behavior when framework is missing but language is present.
@@ -442,49 +438,27 @@ Include AI attribution in every commit by appending this trailer:
 
 ## 5.2: Populate Runtime Config Files
 
-Two runtime-native config files may be in place. For each, check presence first — if missing (single-runtime install), skip that sub-section silently.
-
 ### `.claude/settings.json` (if present)
 
-**No placeholder substitution needed.** The template emits a complete static `.claude/settings.json` with no `{{PLACEHOLDER}}` markers — the PostToolUse type-check hook was removed in favor of scope-aware end-of-task verification (see the Verification section rendered in CLAUDE.md / AGENTS.md, populated in 5.1 via the unified `{{ARCHITECTURE_DETAILS}}` + `{{PACKAGE_STACKS_SECTION}}` prose; the behavior itself is implemented in `/execute-task`'s verification phase).
+**No placeholder substitution needed.** The template emits a complete static `.claude/settings.json` with no `{{PLACEHOLDER}}` markers — the PostToolUse type-check hook was removed in favor of scope-aware end-of-task verification (see the Verification section rendered in CLAUDE.md, populated in 5.1 via the unified `{{ARCHITECTURE_DETAILS}}` + `{{PACKAGE_STACKS_SECTION}}` prose; the behavior itself is implemented in `/execute-task`'s verification phase).
 
 Skip this sub-section for placeholder substitution. Note that 5.4 (conditional MCP servers + permissions) may still append entries to this file when Q11 runtime-assisted AC verification is selected for a web frontend — that's the only modification populate.md makes to `.claude/settings.json`.
 
-### `.codex/config.toml` (if present)
-
-This file ships with **boot-safe defaults** at install time (source of truth: `scripts/lib/install_defaults.py`), not `{{PLACEHOLDERS}}`. Codex parses this file at launch — any unsubstituted placeholder in a structural field (`model`, `model_reasoning_effort`, `approval_policy`) would crash Codex's config loader before the wizard could run. Default values break that chicken-and-egg: install-time defaults make Codex bootable; wizard OVERWRITES them here via **key-based regex replacement** using user answers.
-
-**Replacement rules (use surgical regex on each target line — NOT placeholder substitution):**
-
-- `^model = "..."` → replace value with:
-  - Q10b's `CODEX_TIER_DO_MODEL` if set, OR
-  - `CODEX_DEFAULT_MODEL` from the "Drift-risk literals" section at the top of this file if the override is null.
-- `^model_reasoning_effort = "..."` → replace value with Q10b's `CODEX_TIER_DO` (reasoning-effort enum; e.g., `"medium"`).
-- `^approval_policy = "..."` → replace value mapped from Q8 `WORKFLOW_ENFORCEMENT`:
-  - `strict` → `"untrusted"`
-  - `moderate` → `"on-request"`
-  - `light` → `"never"`
-
-Anchor each regex at the **start of line** (`^`) to avoid matching `model` strings that appear in comments or MCP config blocks. Do not touch the sandbox, MCP server sections, or any other lines.
-
-**Why not placeholder substitution here:** see `agents.md` §6.4 for the chicken-and-egg explanation — identical rationale applies to this file.
-
 ## 5.3: Save Baselines
 
-For each of `CLAUDE.md`, `AGENTS.md`, `constitution.md`, `docs/overview.md`, and `docs/architecture.md` that exists, save a baseline copy to `.devforge/baseline/`:
+For each of `CLAUDE.md`, `constitution.md`, `docs/overview.md`, and `docs/architecture.md` that exists, save a baseline copy to `.devforge/baseline/`:
 1. If `CLAUDE.md` exists → copy to `.devforge/baseline/CLAUDE.md`
-2. If `AGENTS.md` exists → copy to `.devforge/baseline/AGENTS.md`
-3. If `constitution.md` exists → copy to `.devforge/baseline/constitution.md`
-4. If `docs/overview.md` exists → copy to `.devforge/baseline/docs/overview.md` (create `.devforge/baseline/docs/` first)
-5. If `docs/architecture.md` exists → copy to `.devforge/baseline/docs/architecture.md`
+2. If `constitution.md` exists → copy to `.devforge/baseline/constitution.md`
+3. If `docs/overview.md` exists → copy to `.devforge/baseline/docs/overview.md` (create `.devforge/baseline/docs/` first)
+4. If `docs/architecture.md` exists → copy to `.devforge/baseline/docs/architecture.md`
 
-Create `.devforge/baseline/` (and `.devforge/baseline/docs/` for step 4–5) if they don't exist. These baselines are the wizard output before any manual user edits (and before `/constitute`, `/onboard`, or tech-writer fills body sections). `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
+Create `.devforge/baseline/` (and `.devforge/baseline/docs/` for step 3–4) if they don't exist. These baselines are the wizard output before any manual user edits (and before `/constitute`, `/onboard`, or tech-writer fills body sections). `update.sh` uses them for three-way merge: old baseline vs new template → diff → apply to user's customized file without losing their edits.
 
-**Note:** `.claude/settings.json` and `.codex/config.toml` are **projectOwned** — update.sh never overwrites them — so they don't need baselines. The three template-driven-header / body-filled-later files (`constitution.md`, `docs/overview.md`, `docs/architecture.md`) get baselines because the header/stub section is template-owned even though the body is user/command/agent-owned; the baseline captures just-after-wizard state so future template updates to the stub can three-way merge cleanly.
+**Note:** `.claude/settings.json` is **projectOwned** — update.sh never overwrites it — so it doesn't need a baseline. The three template-driven-header / body-filled-later files (`constitution.md`, `docs/overview.md`, `docs/architecture.md`) get baselines because the header/stub section is template-owned even though the body is user/command/agent-owned; the baseline captures just-after-wizard state so future template updates to the stub can three-way merge cleanly.
 
 ## 5.4: Add MCP Servers + Permissions (conditional)
 
-If `AC_RUNTIME_URL` is set (Q11's `AC_VERIFICATION_MODE` array included `"runtime-assisted"` AND the project's Q2 type routed through the **web frontend** or **full-stack web application** Runtime-assisted branch, which captures a frontend URL), add the chrome-devtools server and its permissions to each runtime config file **that exists** (single-runtime installs skip the missing one):
+If `AC_RUNTIME_URL` is set (Q11's `AC_VERIFICATION_MODE` array included `"runtime-assisted"` AND the project's Q2 type routed through the **web frontend** or **full-stack web application** Runtime-assisted branch, which captures a frontend URL), add the chrome-devtools server and its permissions to the Claude config files **that exist**:
 
 The package name used below is `CHROME_DEVTOOLS_MCP_PACKAGE` from the "Drift-risk literals" section at the top of this file. If Anthropic renames the package, update the literal there — both entries below read from the same source.
 
@@ -496,14 +470,7 @@ The package name used below is `CHROME_DEVTOOLS_MCP_PACKAGE` from the "Drift-ris
 }
 ```
 
-**2. Add to `.codex/config.toml` (Codex MCP servers):**
-```toml
-[mcp_servers.chrome-devtools]
-command = "npx"
-args = ["-y", "chrome-devtools-mcp"]
-```
-
-**3. Append to `.claude/settings.json` under `permissions.allow[]`** (Claude needs explicit tool-name allowlist entries for each chrome-devtools MCP tool to auto-approve them):
+**2. Append to `.claude/settings.json` under `permissions.allow[]`** (Claude needs explicit tool-name allowlist entries for each chrome-devtools MCP tool to auto-approve them):
 ```
 "mcp__chrome-devtools__take_screenshot",
 "mcp__chrome-devtools__take_snapshot",
@@ -522,8 +489,6 @@ args = ["-y", "chrome-devtools-mcp"]
 "mcp__chrome-devtools__get_network_request"
 ```
 
-Codex does not use an allowlist — its `approval_policy` governs behavior — so step 3 is Claude-only.
-
 If `AC_RUNTIME_URL` is not set (Q11's `AC_VERIFICATION_MODE` array didn't include `"runtime-assisted"`, or the project's Q2 type routed to a Runtime-assisted branch with no frontend URL — backend-only / CLI / mobile-desktop / no-automatable-runtime), skip this entire step.
 
 ## 5.5: Populate Project Config
@@ -532,26 +497,12 @@ Read `.devforge/project-config.json`. Replace every `null` value with the corres
 
 **Source of Phase 1 values.** Read structured detection values from `.devforge/detection_report.yaml` (the file written by `scripts/lib/detect_report compose` at the end of Phase 1) — not from your conversation memory of the detection. The file is the canonical source for fields like `package_manager.tool`, `architecture_shape`, `languages[]`, `frameworks[]`, `packages[]`, `runtime_url.value`, etc. Phase 2 question answers are stored in your working tracking of user responses; they're not in the YAML file.
 
-New keys this file includes for runtime configs: `CODEX_MODEL_DEFAULT`, `CODEX_REASONING_DEFAULT`, `CODEX_APPROVAL_POLICY`. Use the same computed values the wizard applies to `.codex/config.toml` in §5.2 (model from Q10b override or `CODEX_DEFAULT_MODEL`; reasoning from Q10b `CODEX_TIER_DO`; approval from Q8 mapping). These `project-config.json` fields are authoritative for downstream commands — they're the resolved wizard answers, independent of the regex-replacement values that land in `.codex/config.toml`.
-
 **Per-stack and per-package keys** (new with the package-detection work):
 - `LANGUAGES`, `FRAMEWORKS` — arrays from Q3
 - `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS` — per-stack arrays from Q4/Q5/Q6/Q7
 - `BUILD_TOOLS`, `BUILD_COMMANDS`, `TYPE_CHECK_COMMANDS`, `LINT_COMMANDS` — per-stack arrays. Source depends on `PROJECT_STATE`: for non-empty projects (greenfield / brownfield) the values come from **Phase 1 detection** (detect.md STEP 3 "Per-stack tool detection"); for empty projects Phase 1 leaves these unset and **Phase 2 Q3 re-sync** (questions.md Q3 "Array re-sync on Q3 override", add-a-language path) populates them using language defaults. Each parallel to `LANGUAGES`; sentinel `"N/A"` where a language has no such tool, `null` where unresolved.
 - `PACKAGES_DETECTED` — array of per-package records from Phase 1 (path, manifest, language_hint, framework_hint)
 - `PACKAGE_STACKS` — aggregated per-package structured records computed in 5.1 (same shape used to render the `{{PACKAGE_STACKS_SECTION}}` table). Storing this avoids re-derivation by downstream commands.
-
-**Q10b tier / reasoning key derivation** (Codex only — required for Phase 4 agent-file substitution):
-
-After writing Q10b's `CODEX_TIER_THINK` / `CODEX_TIER_DO` / `CODEX_TIER_VERIFY` (reasoning enums) and `CODEX_TIER_*_MODEL` (optional model overrides), also write the duplicate reasoning keys that `scripts/generate-agents.py` emits into Codex agent TOML as `model_reasoning_effort = "{{CODEX_REASONING_<TIER>}}"`:
-
-- `CODEX_REASONING_THINK` = `CODEX_TIER_THINK`
-- `CODEX_REASONING_DO` = `CODEX_TIER_DO`
-- `CODEX_REASONING_VERIFY` = `CODEX_TIER_VERIFY`
-
-These duplicates exist because the emitter-placeholder name (`CODEX_REASONING_<TIER>`) differs from the question-storage key (`CODEX_TIER_<TIER>`) — the wizard's Phase 4 substitution reads the config by the emitter name. Without them, Phase 4 can't resolve the placeholder and Codex agent TOML files ship with literal `{{CODEX_REASONING_THINK}}` markers (broken agents).
-
-The `CODEX_TIER_*_MODEL` keys stay as captured (null if user didn't override). Phase 4 (`agents.md` §6.4) handles the null-fallback at substitution time — it emits `CODEX_DEFAULT_MODEL` (from this file's "Drift-risk literals" section) when the override is null, so the final Codex TOML always carries a real model name.
 
 Write all arrays as native JSON arrays (not stringified). Write per-package records as objects.
 
@@ -561,9 +512,9 @@ For values that don't apply to this project, use `"N/A"`. For multi-line values 
 
 ## 5.6: Pre-populate Memory
 
-Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting their first task have project context immediately (instead of re-deriving from CLAUDE.md / AGENTS.md / `PACKAGE_STACKS` every session).
+Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting their first task have project context immediately (instead of re-deriving from CLAUDE.md / `PACKAGE_STACKS` every session).
 
-`.devforge/memory.md` is **cross-runtime shared** — both Claude and Codex read this single file. No runtime branching in this step; seeded content is project-factual and runtime-neutral.
+`.devforge/memory.md` is the project's shared learnings file — Claude reads it across sessions. Seeded content here is project-factual.
 
 **Procedure**:
 
@@ -575,11 +526,11 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
 
 - `**Languages**`: comma-joined `LANGUAGES` (primary first)
 - `**Frameworks**`: comma-joined `FRAMEWORKS` (parallel to languages; skip `null` entries)
-- `**Architecture pattern**`: primary `ARCHITECTURES[0]` (skip line if `"TBD"`). For multi-stack, add parenthetical: `(primary; per-stack details in CLAUDE.md / AGENTS.md ## Packages)`
+- `**Architecture pattern**`: primary `ARCHITECTURES[0]` (skip line if `"TBD"`). For multi-stack, add parenthetical: `(primary; per-stack details in CLAUDE.md ## Packages)`
 - `**Error handling**`: primary `ERROR_HANDLINGS[0]` (skip line if `"TBD"`). Same parenthetical for multi-stack.
 - `**API layer**`: primary `API_LAYERS[0]` (skip if `"N/A"` or `"TBD"`). Same parenthetical for multi-stack.
 - `**Testing**`: primary `TESTINGS[0]` (skip if `"N/A"` or `"TBD"`).
-- `**Packages detected**`: `N packages` (where `N = len(PACKAGES_DETECTED)`). For `N >= 2`, append: `(see CLAUDE.md / AGENTS.md ## Packages for the full table)`. Omit this line entirely when `N == 0`.
+- `**Packages detected**`: `N packages` (where `N = len(PACKAGES_DETECTED)`). For `N >= 2`, append: `(see CLAUDE.md ## Packages for the full table)`. Omit this line entirely when `N == 0`.
 - `**Key source paths**`: one bullet per package from `PACKAGES_DETECTED`: `` `<path>/` — <language> / <framework-or-library> ``. For `N == 0` (empty project), render a single line: `none yet — greenfield project, populated via /specify`.
 
 **Example result for a TS + Python monorepo** (multi-stack, 3 packages):
@@ -592,11 +543,11 @@ Seed `.devforge/memory.md` with Phase 1 detection findings so agents starting th
 ### Initial detection (from setup-wizard)
 - **Languages**: TypeScript, Python
 - **Frameworks**: Next.js, FastAPI
-- **Architecture pattern**: feature-sliced (primary; per-stack details in CLAUDE.md / AGENTS.md `## Packages`)
+- **Architecture pattern**: feature-sliced (primary; per-stack details in CLAUDE.md `## Packages`)
 - **Error handling**: Result<T,E> via neverthrow (primary; per-stack details in `## Packages`)
 - **API layer**: tRPC client (primary; per-stack details in `## Packages`)
 - **Testing**: vitest (primary)
-- **Packages detected**: 3 packages (see CLAUDE.md / AGENTS.md `## Packages` for the full table)
+- **Packages detected**: 3 packages (see CLAUDE.md `## Packages` for the full table)
 - **Key source paths**:
   - `apps/web/` — TypeScript / Next.js
   - `services/api/` — Python / FastAPI
@@ -650,7 +601,7 @@ If `constitution.md` does not exist at the project root (presence check failed a
 
 - `{{PROJECT_NAME}}` — Q0 answer. Appears twice (title + Section 1).
 - `{{DATE}}` — current date, ISO-8601 (`YYYY-MM-DD`). Appears twice (Generated + Last updated); use the same value for both — they diverge later only when `/constitute` or the user manually edits the document.
-- `{{PROJECT_TYPE}}` — Q2 answer (same value substituted into CLAUDE.md / AGENTS.md in §5.1).
+- `{{PROJECT_TYPE}}` — Q2 answer (same value substituted into CLAUDE.md in §5.1).
 - `{{FRAMEWORK}}` — render from `FRAMEWORKS` array using the **same rule as CLAUDE.md §5.1**: single value for single-stack, comma-joined for multi-stack (skip `null` entries). The section-1 label reads "Framework(s)" so the joined rendering fits naturally.
 - `{{LANGUAGE}}` — same rule: scalar for single-stack, comma-joined for multi-stack.
 - `{{WORKSPACE_MODE}}` — Phase 1 detection (`"standalone"` or `"wrapper"`).
@@ -692,7 +643,7 @@ If either file does not exist at `docs/<name>.md` (presence check failed at inst
 
 - `{{PROJECT_NAME}}` — Q0 answer. Appears twice (title heading + orientation blockquote); use the same value in both.
 
-The stub deliberately does NOT carry stack facts (`LANGUAGE`, `FRAMEWORK`, `WORKSPACE_MODE`, `SOURCE_ROOT`, `PROJECT_TYPE`) — those live in `CLAUDE.md` / `AGENTS.md` which the agent has in its session primer. architecture.md is the decisions / rules / flow document, not a duplicate of runtime stack context. If you find yourself needing a stack-fact placeholder here, add it to CLAUDE.md instead and cross-link.
+The stub deliberately does NOT carry stack facts (`LANGUAGE`, `FRAMEWORK`, `WORKSPACE_MODE`, `SOURCE_ROOT`, `PROJECT_TYPE`) — those live in `CLAUDE.md` which the agent has in its session primer. architecture.md is the decisions / rules / flow document, not a duplicate of runtime stack context. If you find yourself needing a stack-fact placeholder here, add it to CLAUDE.md instead and cross-link.
 
 **What NOT to do in this step:**
 

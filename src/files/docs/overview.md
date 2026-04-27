@@ -4,11 +4,11 @@
 
 ---
 
-> Commands named in backticks (e.g. `constitute`, `onboard`) are invoked per your runtime — `/` prefix under Claude Code, natural-language skill invocation under Codex CLI. The same behavior applies either way.
+> Commands named in backticks (e.g. `constitute`, `onboard`) are invoked with the `/` prefix in Claude Code (e.g. `/constitute`).
 >
 > This file is the project overview. The setup wizard fills in the name and description from Phase 2 answers; `constitute` and `onboard` may append deeper context; the tech-writer agent updates this file as features ship.
 >
-> For technical stack details (framework, language, build commands, per-package breakdown for monorepos), see the project primer — `CLAUDE.md` under Claude Code or `AGENTS.md` under Codex CLI. That file is the runtime-facing source of truth for stack facts.
+> For technical stack details (framework, language, build commands, per-package breakdown for monorepos), see the project primer (`CLAUDE.md`). That file is the runtime-facing source of truth for stack facts.
 >
 > For architecture decisions and per-layer rules, see `docs/architecture.md`.
 >

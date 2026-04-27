@@ -5,12 +5,12 @@ You are running the initial setup wizard for AIDevTeamForge. Your job is:
 1. Analyze the current project.
 2. Ask the user targeted questions via confirm / override / defer.
 3. Substitute the user's answers into the `{{PLACEHOLDER}}` markers in every target file that has them. All files are already in place — **you do NOT create new files**.
-4. Where specific files have designated project-specific sections (e.g., CLAUDE.md / AGENTS.md architecture notes, agent files with project paths), append content derived from detection + user answers to those sections only. **Never rewrite whole files.**
+4. Where specific files have designated project-specific sections (e.g., CLAUDE.md architecture notes, agent files with project paths), append content derived from detection + user answers to those sections only. **Never rewrite whole files.**
 5. Write the answers record to `.devforge/project-config.json` so later commands and `update.sh` can consume user decisions.
 
 ## Variation markers (template syntax)
 
-This wizard and its reference files use a small set of variation markers that the install-time emitter processes per-runtime. When the emitter has run, you (the LLM executing the wizard) should see these already substituted. If you encounter any of them unsubstituted, treat them as follows rather than emitting the literal `{{...}}` text to the user:
+This wizard and its reference files use a small set of variation markers that the install-time emitter processes. When the emitter has run, you (the LLM executing the wizard) should see these already substituted. If you encounter any of them unsubstituted, treat them as follows rather than emitting the literal `{{...}}` text to the user:
 
 - `{{ask "question text"}}` … `{{/ask}}` — interactive user-question block. Pose the question to the user and wait for the answer, using your runtime's natural question mechanism.
   - **One turn = one `{{ask}}`.** Never render multiple `{{ask}}` blocks in a single user-facing message, even when they are adjacent in the spec. Present one, wait for the user's reply, then present the next. This applies to non-conditional sequences (Q1 → Q2 → Q3) as well as conditional ones. "Efficiency" via batching is NOT acceptable — each question is a distinct user-input stop.
@@ -36,13 +36,13 @@ Detection outputs are written to `.devforge/detection_report.yaml` via the `scri
 
 ### Phase 2 — Questions (interactive)
 
-**Read `references/questions.md` and follow it.** Covers Q0 through Q11 (project name, description, type, languages/frameworks confirmation, architecture pattern, error handling convention, API layer, testing framework, workflow enforcement, AI attribution, per-runtime agent model assignments, AC verification). Questions Q3–Q7 produce per-stack arrays (`LANGUAGES`, `FRAMEWORKS`, `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`) — each parallel-indexed so downstream phases can reason per stack.
+**Read `references/questions.md` and follow it.** Covers Q0 through Q11 (project name, description, type, languages/frameworks confirmation, architecture pattern, error handling convention, API layer, testing framework, workflow enforcement, AI attribution, agent model assignments, AC verification). Questions Q3–Q7 produce per-stack arrays (`LANGUAGES`, `FRAMEWORKS`, `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`) — each parallel-indexed so downstream phases can reason per stack.
 
 Retain every captured answer in conversational memory under the keys documented in `references/questions.md`.
 
 ### Phase 3 — Population (file substitution)
 
-**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / AGENTS.md / runtime configs / baselines / MCP permissions / project config / memory seed / constitution header (§5.7) / docs stubs (§5.8), using the answers from Phase 2 and the detection data from Phase 1.
+**Read `references/populate.md` and follow it.** Covers STEP 5: populating CLAUDE.md / runtime configs / baselines / MCP permissions / project config / memory seed / constitution header (§5.7) / docs stubs (§5.8), using the answers from Phase 2 and the detection data from Phase 1.
 
 ### Phase 4 — Agent Curation
 
@@ -57,7 +57,6 @@ Present this summary to the user. **Substitute each `{VALUE}` placeholder below 
 
 ### Populated Files:
 - CLAUDE.md — Project instructions for Claude Code
-- AGENTS.md — Project instructions for Codex CLI
 - .devforge/project-config.json — Answers record (includes per-stack arrays and PACKAGE_STACKS)
 
 ### Project:
@@ -65,14 +64,14 @@ Present this summary to the user. **Substitute each `{VALUE}` placeholder below 
 - Type: {PROJECT_TYPE}
 - Frameworks: {FRAMEWORKS joined with ", "}     (single-stack: one name; multi-stack: comma-joined list)
 - Languages: {LANGUAGES joined with ", "}       (same rule)
-- Packages: {N} detected (see `## Packages` in CLAUDE.md / AGENTS.md)   ← include only if multi-package
+- Packages: {N} detected (see `## Packages` in CLAUDE.md)   ← include only if multi-package
 
 ### Workspace Mode:
 - Mode: {WORKSPACE_MODE}                          (value: "standalone" or "wrapper")
 - Source Root: {SOURCE_ROOT}
 
 ### Next Steps:
-1. Review CLAUDE.md and AGENTS.md — adjust if needed
+1. Review CLAUDE.md — adjust if needed
 {BRANCH ON PROJECT_STATE:
   if PROJECT_STATE == "brownfield":
     2. Run /onboard — scans your codebase and populates `docs/` + `.devforge/memory.md` with observed patterns, module boundaries, and pitfalls
@@ -82,46 +81,29 @@ Present this summary to the user. **Substitute each `{VALUE}` placeholder below 
     2. Run /constitute — turns your architectural preferences (and framework best-practice research) into enforceable rules in `constitution.md`. Skip /onboard — there's nothing to scan yet.
     3. Start working with /specify "your first feature"
 }
-
-{INCLUDE THE FOLLOWING BLOCK ONLY IF CODEX WAS INSTALLED (i.e., .codex/agents/ exists at the project root):
-
-### One-time Codex setup:
-Codex only reads `.codex/config.toml` from directories it trusts. Until you trust this directory, your wizard answers (model, reasoning effort, approval policy, project MCP servers) are silently ignored — Codex falls back to your global `~/.codex/config.toml`.
-
-Run this once before your first Codex session in this project:
-
-```
-codex --add-trusted-dir "$(pwd)"
-```
-
-Or, on first launch of `codex` here, accept the interactive trust prompt. Either action writes a `[projects."<abs-path>"] trust_level = "trusted"` entry to `~/.codex/config.toml` and Codex will start honoring this project's config.
-}
 ```
 
 **After presenting the summary**, write the setup-completion marker to `.devforge/setup-complete` with content:
 
 ```
 Setup completed: {current ISO-8601 date and time, e.g., 2026-04-22T15:30:42Z}
-Runtime(s) installed: {"claude" / "codex" / "claude, codex" — based on presence of .claude/agents/ and .codex/agents/}
 Populated files: {comma-joined list of files the wizard actually touched this run, built from presence checks}
 ```
 
-**Composing the `Populated files:` list.** Build it from actual presence / action, not a static template — single-runtime installs touch only a subset. Include each entry only if the condition holds:
+**Composing the `Populated files:` list.** Build it from actual presence / action, not a static template. Include each entry only if the condition holds:
 
 - `CLAUDE.md` — include if it exists at SOURCE_ROOT (§5.1 populated it)
-- `AGENTS.md` — include if it exists at SOURCE_ROOT (§5.1 populated it)
 - `constitution.md` — include if it exists at the project root AND §5.7 actually substituted placeholders (wizard skips §5.7 silently if the file is missing; brownfield projects with a pre-existing constitution leave it as-is, in which case the wizard did NOT modify it and this line should be omitted)
 - `docs/overview.md` — include if it exists AND §5.8 actually substituted placeholders (install is per-file presence-guarded; pre-existing overview stays untouched and is omitted from this list)
 - `docs/architecture.md` — same rule as `docs/overview.md`
 - `.devforge/project-config.json` — always include (§5.5 always runs)
 - `.devforge/memory.md` — always include (§5.6 always runs)
-- `.devforge/baseline/CLAUDE.md` / `.devforge/baseline/AGENTS.md` / `.devforge/baseline/constitution.md` — include each only if the corresponding source file existed and §5.3 copied it
+- `.devforge/baseline/CLAUDE.md` / `.devforge/baseline/constitution.md` — include each only if the corresponding source file existed and §5.3 copied it
 - `.claude/settings.json` — include only if it exists AND §5.4 appended chrome-devtools permissions (i.e., `AC_RUNTIME_URL` is set) — skip otherwise, since §5.2 does no placeholder substitution on this file
 - `.mcp.json` — include only if it exists AND §5.4 appended the chrome-devtools entry
-- `.codex/config.toml` — include only if it exists (§5.2 substituted placeholders, and §5.4 may have appended chrome-devtools)
-- `agent files (per Phase 4)` — include only if at least one of `.claude/agents/` or `.codex/agents/` exists (Phase 4 ran)
+- `agent files (per Phase 4)` — include only if `.claude/agents/` exists (Phase 4 ran)
 
-This marker lets downstream commands detect whether setup-wizard ran to completion. If the file is missing, setup may have been interrupted mid-execution — downstream commands should surface this to the user and offer to resume or re-run. Place at `.devforge/setup-complete` (cross-runtime shared per PLAN.md decision #14 — both Claude and Codex check the same marker).
+This marker lets downstream commands detect whether setup-wizard ran to completion. If the file is missing, setup may have been interrupted mid-execution — downstream commands should surface this to the user and offer to resume or re-run. Place at `.devforge/setup-complete`.
 
 ## IMPORTANT RULES (global)
 
@@ -131,6 +113,6 @@ This marker lets downstream commands detect whether setup-wizard ran to completi
 4. **Use real commands** — all commands must come from the project's actual scripts
 5. **Validate after population** — read back each file to verify no unresolved `{{PLACEHOLDER}}` markers remain
 6. **Wrapper isolation** — in wrapper mode, never create any artifact inside SOURCE_ROOT
-7. **Same values in both files** — CLAUDE.md and AGENTS.md get identical substitutions; `.devforge/project-config.json` gets the same values as JSON
+7. **Same values in CLAUDE.md and project-config.json** — CLAUDE.md gets prose-substituted values; `.devforge/project-config.json` gets the same values as JSON
 8. **References are not optional** — you MUST read each phase's reference file in full before executing that phase. Do not attempt any phase from memory of previous invocations or guesses. Missing instructions from a reference file means stopping and re-reading it, not improvising.
 9. **Respect `{{ask}}` semantics** — one turn = one `{{ask}}`; never batch multiple questions into a single user-facing prompt; wait for the primary answer before computing or presenting any conditional follow-up. Full contract in the "Variation markers" section above.

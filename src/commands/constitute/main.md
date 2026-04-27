@@ -190,19 +190,15 @@ This protects against the "header from declared stack contradicts body from obse
 
 The output is proposed rules; surface them in the Phase 6 review summary under "Proposed pitfall-derived rules" so the user can accept, reject, or edit each individually before Phase 5 writes.
 
-### Citation neutrality across runtimes
+### Citation discipline
 
-Constitution is read by both Claude and Codex agents. Rules and citations must use sigil-neutral and primer-neutral references:
+Rules and citations should reference real files at concrete paths:
 
-- ✅ RIGHT: `(\`docs/architecture.md\`, \`.devforge/memory.md\`)` — files exist in both runtimes
+- ✅ RIGHT: `(\`docs/architecture.md\`, \`.devforge/memory.md\`)`
+- ✅ RIGHT: `(\`CLAUDE.md\` Development Commands)`
 - ✅ RIGHT: `(the runtime primer's "Wrapper Rules" section)` — semantic reference
-- ✅ RIGHT: `(\`CLAUDE.md\` / \`AGENTS.md\` Development Commands)` — both names listed
-- ❌ WRONG: `(\`AGENTS.md\` Wrapper Rules)` — Codex-only; misleads under Claude
-- ❌ WRONG: `(\`CLAUDE.md\` Development Commands)` — Claude-only; misleads under Codex
-- ❌ WRONG: `(\`/onboard\` discovered ...)` — Claude sigil
-- ❌ WRONG: `(\`$constitute\` next pass...)` — Codex sigil; use bare command name
 
-When a rule cites the runtime primer (which has identical content under both names via the dual-emit), use the dual form `CLAUDE.md / AGENTS.md` or the semantic phrase `the runtime primer`. Never cite a single runtime's primer file as if it were the only one.
+Use bare command names in prose (e.g., `onboard`, `constitute`) when describing workflow; reserve the `/` sigil for actual command invocations the user types.
 
 **§5 Domain Rules** — brownfield with onboard: extract from `docs/features/*.md` Key Types and Invariants. Greenfield / no-onboard-brownfield: use `DOMAIN_ENTITIES` from Q-domain if provided. If `DOMAIN_ENTITIES` is empty (user skipped), use the canonical empty-section marker with reason `user deferred` (see Zero-rules-per-section handling above).
 

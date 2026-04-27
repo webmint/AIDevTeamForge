@@ -187,7 +187,7 @@ Read dependency manifests, lockfiles, config files, and top-level directory layo
 
 ### Package-root detection
 
-Enumerate every directory under SOURCE_ROOT that contains a recognized manifest file. This gives the per-package structure used later by Phase 3 to build a `PACKAGE_STACKS` table in CLAUDE.md / AGENTS.md.
+Enumerate every directory under SOURCE_ROOT that contains a recognized manifest file. This gives the per-package structure used later by Phase 3 to build a `PACKAGE_STACKS` table in CLAUDE.md.
 
 **Recognized manifests:** `package.json`, `pyproject.toml`, `requirements.txt`, `Pipfile`, `go.mod`, `Cargo.toml`, `pubspec.yaml`, `Gemfile`, `composer.json`, `*.csproj`, `mix.exs`, `deno.json` (extend if the ecosystem uses a manifest not listed — same recognition logic as the general manifest scan above).
 
@@ -275,7 +275,7 @@ Based on what you find, identify each of the following. Mark any category that g
 
 - **Languages and runtimes** — detect all present by aggregating file counts **across `PACKAGES_DETECTED`** (not flat-tree scanning of SOURCE_ROOT). For each package, enumerate source files under its `path` directory by extension, classify by language (`.ts`/`.tsx` → TypeScript, `.py` → Python, `.go` → Go, `.rs` → Rust, `.kt` → Kotlin, `.swift` → Swift, etc.), then sum per language across all packages. Order the resulting `LANGUAGES` array by total file count descending (most files first). This avoids dependency-like packages (e.g., a large generated-SDK package in TS) drowning out the smaller-but-more-critical primary package (e.g., a Python API service).
 
-  **Canonical `runtime` value per language** (use the value below verbatim when calling `add-language --runtime <value>` — both runtimes must produce identical values for the same language):
+  **Canonical `runtime` value per language** (use the value below verbatim when calling `add-language --runtime <value>` — the canonical short form keeps detection output stable across runs):
 
   | Language | Canonical `runtime` |
   |---|---|
@@ -314,7 +314,7 @@ Based on what you find, identify each of the following. Mark any category that g
 - **Error handling pattern** (for existing projects, from representative source)
 - **CI/CD presence** and tooling (GitHub Actions, GitLab CI, etc.)
 - **Containerization** (Dockerfile, docker-compose, buildpacks, etc.)
-- **Enforcement tooling** — populated via `add-enforcement-tool --value <s>` (one call per tool present). **Scan exhaustively**: list every tool from the canonical signal set below that has a presence signal in the project. Do NOT stop at the most obvious one (e.g., Husky alone). Both runtimes must produce the same list; missing a tool on one side and not the other is a parity bug.
+- **Enforcement tooling** — populated via `add-enforcement-tool --value <s>` (one call per tool present). **Scan exhaustively**: list every tool from the canonical signal set below that has a presence signal in the project. Do NOT stop at the most obvious one (e.g., Husky alone) — missing tools cause downstream commands to skip enforcement.
 
   **Canonical enforcement-tooling signals** (add each present one):
   - `Husky (pre-commit)` — `.husky/` directory OR `husky` in devDependencies + a `prepare` script
@@ -331,7 +331,7 @@ Based on what you find, identify each of the following. Mark any category that g
   - `clippy` (Rust) — `cargo clippy` invoked in CI OR root `clippy.toml`
   - `rustfmt` (Rust) — `rustfmt.toml` OR `cargo fmt` in CI
 
-  If you find an enforcement tool not on this list, still add it (canonical signal set is non-exclusive — but treat the items above as a required minimum-scan checklist, not a sample). For each tool, the value passed to `add-enforcement-tool` should be the canonical name from the bullets above (e.g., `Husky (pre-commit)`, not just `Husky`) so cross-runtime parity is byte-comparable.
+  If you find an enforcement tool not on this list, still add it (canonical signal set is non-exclusive — but treat the items above as a required minimum-scan checklist, not a sample). For each tool, the value passed to `add-enforcement-tool` should be the canonical name from the bullets above (e.g., `Husky (pre-commit)`, not just `Husky`) so re-runs produce byte-identical output.
 
 Do not invent details or fill categories with plausible-sounding defaults. An honest "uncertain — will ask the user" beats a confident wrong guess. Do not limit yourself to the indicators mentioned above — examine whatever is actually present, in whatever ecosystem the project uses.
 
@@ -357,7 +357,7 @@ File-extension counts alone mislead when certain extensions are framework-owned 
 
 ### Detection Report — Phase 1 output
 
-Phase 1 ends by composing a structured Detection Report into `.devforge/detection_report.yaml` via the `scripts/lib/detect_report` CLI helper. This is the handoff from detection to Phase 2 (questions) and Phase 3 (population): both phases read fields from this file to avoid re-asking the user about things already detected, and Phase 3 reads Report fields when populating `.devforge/project-config.json`. Runtime-to-runtime parity of downstream artifacts depends on both runtimes producing the same Report.
+Phase 1 ends by composing a structured Detection Report into `.devforge/detection_report.yaml` via the `scripts/lib/detect_report` CLI helper. This is the handoff from detection to Phase 2 (questions) and Phase 3 (population): both phases read fields from this file to avoid re-asking the user about things already detected, and Phase 3 reads Report fields when populating `.devforge/project-config.json`. The Report is the single source of truth for downstream phases — composing it explicitly via the helper enforces a deterministic, validated handoff.
 
 The Report is **composed via field-by-field CLI calls**, not emitted as a YAML block in the conversation. The helper validates each field at call-time (enums, required fields, evidence, file existence) and writes the final YAML deterministically when `compose` is called.
 
@@ -367,7 +367,7 @@ The Report is **composed via field-by-field CLI calls**, not emitted as a YAML b
 
 2. **Dep+usage double-check for library-category fields.** For `auth_layer`, `api_client`, `state_management`, `styling`, `routing`, `error_handling`, `validation_library`: run BOTH a dependency-manifest scan AND a source-code usage-pattern grep. Set the field to `null` only when both return empty. If either returns a hit, name the library and pass `--evidence "<dep + usage signal>"`. The helper rejects non-null library-category sets without `--evidence`.
 
-   **Multi-layer rule for `styling`** (and any other field where multiple layers commonly coexist): if 2+ styling technologies are detected together — e.g., a utility framework + a CSS preprocessor (Tailwind + Sass), or a CSS-in-JS library + a global stylesheet system, or a UI component library + custom CSS — list ALL of them in the field value, joined by ` + ` in detection order (most prominent first). Examples: `Tailwind CSS + Sass`, `styled-components + global CSS`, `Tailwind CSS + PostCSS + CSS Modules`. Do NOT pick only the most prominent and drop the rest — both runtimes (Claude and Codex) must surface the same complete layer list, otherwise downstream `CLAUDE.md` / `AGENTS.md` substitutions diverge.
+   **Multi-layer rule for `styling`** (and any other field where multiple layers commonly coexist): if 2+ styling technologies are detected together — e.g., a utility framework + a CSS preprocessor (Tailwind + Sass), or a CSS-in-JS library + a global stylesheet system, or a UI component library + custom CSS — list ALL of them in the field value, joined by ` + ` in detection order (most prominent first). Examples: `Tailwind CSS + Sass`, `styled-components + global CSS`, `Tailwind CSS + PostCSS + CSS Modules`. Do NOT pick only the most prominent and drop the rest — downstream `CLAUDE.md` substitutions need the complete layer list to give Claude accurate styling context.
 
    Canonical usage patterns to grep for the harder-to-detect categories:
    - error_handling: `Either<`, `Result<`, `Maybe<`, `Task<`, `Try<`, `neverthrow`, `purify-ts`, `fp-ts`, `oxide.ts`, `ts-results`, `monet`

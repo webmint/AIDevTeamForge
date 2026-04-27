@@ -217,7 +217,7 @@ You are executing Task [N] from an approved task breakdown.
 1. Make ONLY the changes described above — nothing more
 2. Follow the project's constitution (key rules: [relevant rules])
 3. Known pitfalls for this area: [from MEMORY.md]
-4. Every file you change must pass its package's type checker. The package for a file is determined by longest-path-prefix match against `PACKAGE_STACKS` (stored in `.devforge/project-config.json`; rendered as `## Packages` in CLAUDE.md / AGENTS.md). Use the matching package's `type_check_command`; for files that don't match any package, use the primary-stack fallback `TYPE_CHECK_COMMANDS[0]`. Skip `"N/A"` silently (not a failure).
+4. Every file you change must pass its package's type checker. The package for a file is determined by longest-path-prefix match against `PACKAGE_STACKS` (stored in `.devforge/project-config.json`; rendered as `## Packages` in CLAUDE.md). Use the matching package's `type_check_command`; for files that don't match any package, use the primary-stack fallback `TYPE_CHECK_COMMANDS[0]`. Skip `"N/A"` silently (not a failure).
 5. Every file you change must pass its package's linter (same lookup rule as rule 4, using `lint_command` / `LINT_COMMANDS[0]`). Skip `"N/A"` silently.
 6. Add inline documentation (JSDoc/docstrings) to every new public function, class, type, or interface you create. This is part of writing the code, not a separate step
 
@@ -251,7 +251,7 @@ After the agent completes, run verification. Verification is **scope-aware**: ch
 
 **Scope mapping (preamble, used by bullets 2–4 below):**
 
-1. Read `PACKAGE_STACKS` from `.devforge/project-config.json` (populated by the wizard; see `## Packages` in CLAUDE.md / AGENTS.md for the rendered view).
+1. Read `PACKAGE_STACKS` from `.devforge/project-config.json` (populated by the wizard; see `## Packages` in CLAUDE.md for the rendered view).
 2. Collect the task's touched files from `git diff --name-only` (plus `git status` for new files).
 3. For each touched file, find its **package** via longest-path-prefix match against `PACKAGE_STACKS[i].path` (e.g., `services/api/internal/users.py` matches the `services/api` package; `apps/web/src/App.tsx` matches `apps/web`).
 4. Group touched files by package. Build a list of **touched packages** = unique packages across all touched files.

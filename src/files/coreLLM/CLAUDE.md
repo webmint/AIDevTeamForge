@@ -147,7 +147,7 @@ Agent selection is automatic in `/execute-task` based on the task's assigned age
 
 ### Verification (explicit, scope-aware — no runtime hooks)
 
-Verification runs at task boundaries (end of `/execute-task`, `/fix`, `/refactor`, etc.), not after every file edit. Both Claude and Codex behave identically — no runtime hooks, no auto-execution after Edit/Write. Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build commands apply to each file touched during the task.
+Verification runs at task boundaries (end of `/execute-task`, `/fix`, `/refactor`, etc.), not after every file edit. No runtime hooks, no auto-execution after Edit/Write. Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build commands apply to each file touched during the task.
 
 **Scope-aware verification flow**:
 
@@ -158,7 +158,7 @@ Verification runs at task boundaries (end of `/execute-task`, `/fix`, `/refactor
 5. For files not inside any detected package (top-level scripts, misc files): fall back to the primary-stack commands (`TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` / `BUILD_COMMANDS[0]`).
 6. **Self-repair loop**: if type check or lint fails, attempt up to 3 auto-repair iterations before stopping and reporting. Code-review findings are reported to the user, not auto-repaired.
 
-**Pre-flight check** (before each task): read `constitution.md` and `.devforge/memory.md` so the task starts with the right context. Applies to both runtimes equally.
+**Pre-flight check** (before each task): read `constitution.md` and `.devforge/memory.md` so the task starts with the right context.
 
 Full specification in `/execute-task`.
 

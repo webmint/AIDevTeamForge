@@ -16,8 +16,7 @@ Each question stores its answer under a specific key (detailed in the question b
 - `TESTINGS` (Q7 — array parallel to `LANGUAGES` / `FRAMEWORKS`; each element is the testing framework for that stack, `"N/A"` if no testing, or `"TBD"` if deferred)
 - `WORKFLOW_ENFORCEMENT` (Q8)
 - `AI_ATTRIBUTION` (Q9)
-- `CLAUDE_TIER_THINK`, `CLAUDE_TIER_DO`, `CLAUDE_TIER_VERIFY` (Q10a)
-- `CODEX_TIER_THINK`, `CODEX_TIER_DO`, `CODEX_TIER_VERIFY`, optional `CODEX_TIER_*_MODEL` overrides (Q10b)
+- `CLAUDE_TIER_THINK`, `CLAUDE_TIER_DO`, `CLAUDE_TIER_VERIFY` (Q10)
 - `AC_VERIFICATION_MODE` (Q11)
 - `AC_RUNTIME_URL` / `AC_RUNTIME_API_BASE` / `AC_RUNTIME_CLI_COMMAND` (Q11 conditional, depending on mode + project type)
 
@@ -33,11 +32,11 @@ Present what you detected in Phase 1 in a clear summary (or, if `PROJECT_STATE` 
 - **OPTIONAL** — user may answer or explicitly defer. Offer **confirm / override / defer**. "Defer" marks the field as `TBD` and downstream commands will ask when the field becomes relevant (e.g., when `/specify` needs an architecture decision for a specific feature). A small number of OPTIONAL questions are free-text only (e.g. "anything else I should know?") — those are noted explicitly and allow an empty response.
 - **CONDITIONAL** — may not apply to this project. If it doesn't apply, skip it and record the natural default (this is the one case where a silent default is permitted; the marker acknowledges it). If it does apply, treat as REQUIRED (confirm / override — no silent guess).
 
-For every question that applies, do NOT silently default. Do NOT infer answers. The user's confirmed answers are the canonical input across all runtimes — that's what keeps outputs consistent between Claude, Codex, and any future runtime.
+For every question that applies, do NOT silently default. Do NOT infer answers. The user's confirmed answers are the canonical input — that's what keeps Claude's downstream outputs consistent.
 
 **Anti-hallucination rule for findings.** When presenting findings to the user (anywhere you'd fill `[findings]`, `[observed indicators]`, `[pattern indicators]`, `[detected framework]`, etc.), quote ONLY concrete observed facts: exact file paths, exact package names, exact config keys, exact imports or symbols you actually read. Do NOT invent indicators to make the prose flow. If detection surfaced nothing for a category, say so plainly (e.g. "I found no framework dependencies, so I can't infer the stack — could you tell me what you're using?") instead of fabricating plausibles.
 
-**Where answers are stored.** As you walk through the questions below, track the user's answers in your working context. At the end of the wizard, every collected answer is written to `.devforge/project-config.json`. That file is the canonical record — every command under every CLI (Claude, Codex, and later runtimes), plus `update.sh`, reads from it. Use the variable names noted in each question (e.g. `SOURCE_ROOT`, `PROJECT_NAME`, `CLAUDE_TIER_THINK`) as the keys.
+**Where answers are stored.** As you walk through the questions below, track the user's answers in your working context. At the end of the wizard, every collected answer is written to `.devforge/project-config.json`. That file is the canonical record — every Claude command, plus `update.sh`, reads from it. Use the variable names noted in each question (e.g. `SOURCE_ROOT`, `PROJECT_NAME`, `CLAUDE_TIER_THINK`) as the keys.
 
 ## Phase 2 preflight
 
@@ -55,7 +54,7 @@ Q0 through Q11 read Report fields directly from the YAML file for their defaults
 
 Without the Report file, these reference-based defaults fall back to re-asking or guessing, which pollutes `project-config.json` with values the user didn't actually consent to.
 
-**General rule for Report-referenced questions.** For every question listed above with a Report counterpart, the flow is: read the Report field from `.devforge/detection_report.yaml` → present its value as the default → ask the user to confirm or override. This applies even when the question's own prose describes a fallback detection path — the Report field is the primary source; the fallback runs only when the Report field is `null` or explicitly flagged as a low-confidence default (e.g., `source: framework-default` on `runtime_url`). Never skip the Report and jump straight to fallback detection — that re-opens the runtime-to-runtime drift surface the Report was designed to close.
+**General rule for Report-referenced questions.** For every question listed above with a Report counterpart, the flow is: read the Report field from `.devforge/detection_report.yaml` → present its value as the default → ask the user to confirm or override. This applies even when the question's own prose describes a fallback detection path — the Report field is the primary source; the fallback runs only when the Report field is `null` or explicitly flagged as a low-confidence default (e.g., `source: framework-default` on `runtime_url`). Never skip the Report and jump straight to fallback detection — that defeats the determinism the Report was designed to provide.
 
 ## Question 0: Project Name (REQUIRED)
 
@@ -83,7 +82,7 @@ Store as `PROJECT_NAME`.
 
 > Describe this project in 1-3 sentences — what does it do, who is it for?
 
-Store as `PROJECT_DESCRIPTION`. This is placed in the Project Overview section of CLAUDE.md / AGENTS.md and gives every downstream command and agent domain context for design decisions, naming, error messages, and UX choices.
+Store as `PROJECT_DESCRIPTION`. This is placed in the Project Overview section of CLAUDE.md and gives every downstream command and agent domain context for design decisions, naming, error messages, and UX choices.
 
 ## Question 2: Project Type (REQUIRED)
 
@@ -447,20 +446,11 @@ Store as `WORKFLOW_ENFORCEMENT`. This value is consumed by every command that ha
 
 Store as `AI_ATTRIBUTION` — lowercase string `"no"` (default) or `"yes"` (matching populate.md's branch condition for `{{COMMIT_ATTRIBUTION}}` substitution). Case-sensitive — do NOT store as boolean, capitalized string, or other format. Both the question's producer (here) and the consumer (populate.md Phase 3) must agree on this format.
 
-## Question 10: Agent Model Assignments (per-runtime)
+## Question 10: Agent Model Assignments
 
-Specialized agents are grouped into three tiers based on the reasoning they require. Ask the sub-question for each runtime actually present in this install (see presence guards below). Use **confirm / override / defer** semantics from the preamble above — don't silently default.
+Specialized agents are grouped into three tiers based on the reasoning they require. Use **confirm / override / defer** semantics from the preamble above — don't silently default.
 
-**Presence guards:** check runtime-specific directories before asking each sub-question:
-
-- Ask **Q10a (Claude model tiers)** only if `.claude/agents/` exists (Claude was included in this install)
-- Ask **Q10b (Codex model tiers)** only if `.codex/agents/` exists (Codex was included in this install)
-- Both dirs exist (default install, no `--runtime` flag): ask both sub-questions sequentially
-- Only one dir exists (single-runtime install via `--runtime claude` or `--runtime codex`): ask only that sub-question; leave the absent runtime's `*_TIER_*` keys as `null` in `.devforge/project-config.json`
-
-This mirrors Phase 3's presence-guard discipline for runtime config files — don't ask users to configure runtimes they didn't install.
-
-**Tiers (shared across runtimes):**
+**Tiers:**
 
 | Tier | Agents | Purpose |
 |------|--------|---------|
@@ -468,14 +458,9 @@ This mirrors Phase 3's presence-guard discipline for runtime config files — do
 | **Do** | `backend-engineer`, `frontend-engineer`, `mobile-engineer`, `db-engineer`, `devops-engineer`, `migration-engineer`, `runtime-debugger`, `performance-analyst`, `design-auditor` | Implementation following established patterns — benefits from speed |
 | **Verify** | `code-reviewer`, `ac-verifier`, `qa-engineer` | Code review, AC verification, test generation — understands intent, doesn't design from scratch |
 
-The `tech-writer` agent is hardcoded to a lightweight default regardless of tier choices — documentation generation doesn't benefit from heavier reasoning.
+The `tech-writer` agent is hardcoded to `sonnet` regardless of tier choices — documentation generation doesn't benefit from heavier reasoning.
 
-- Under Claude: tech-writer uses `sonnet`.
-- Under Codex: tech-writer uses `medium` reasoning effort.
-
-**Key naming convention (uniform across runtimes):** tier values are stored under `{{RUNTIME}}_TIER_{{ROLE}}` (e.g. `CLAUDE_TIER_THINK`, `CODEX_TIER_DO`). The VALUE under each key is runtime-specific — a model name for Claude, a reasoning-effort enum for Codex — but the KEY SHAPE is symmetric so consumers (update.sh, agent materializer, future runtimes) can iterate uniformly. Model-override secondary keys use a `_MODEL` suffix: `CODEX_TIER_THINK_MODEL`.
-
-### 10a: Claude model tiers
+**Key naming convention:** tier values are stored under `CLAUDE_TIER_<ROLE>` (e.g. `CLAUDE_TIER_THINK`, `CLAUDE_TIER_DO`, `CLAUDE_TIER_VERIFY`). Value is the model name.
 
 Claude exposes three named models: `opus` (heaviest reasoning), `sonnet` (balanced), `haiku` (fastest).
 
@@ -487,24 +472,6 @@ Recommended defaults: opus / sonnet / sonnet. Store in config as:
 - `CLAUDE_TIER_THINK` = model name (e.g. `"opus"`)
 - `CLAUDE_TIER_DO` = model name
 - `CLAUDE_TIER_VERIFY` = model name
-
-### 10b: Codex model tiers
-
-Codex tunes agent behavior via `model_reasoning_effort` rather than named model tiers. Valid values: `minimal | low | medium | high | xhigh` (with `xhigh` requiring a Responses-API-capable model). Model selection is separate and defaults to the Codex CLI's current default (e.g. `gpt-5.4` or the latest coding-optimized model available at install time).
-
-> **Think tier reasoning effort:** high (default) / xhigh / medium
-> **Do tier reasoning effort:** medium (default) / low / high
-> **Verify tier reasoning effort:** medium (default) / low / high
-
-Recommended defaults: high / medium / medium. Store in config as:
-- `CODEX_TIER_THINK` = reasoning-effort enum (e.g. `"high"`)
-- `CODEX_TIER_DO` = reasoning-effort enum
-- `CODEX_TIER_VERIFY` = reasoning-effort enum
-
-Override the underlying model per tier only if the user explicitly asks — otherwise leave the Codex default. Store optional overrides as:
-- `CODEX_TIER_THINK_MODEL` = model name or `null`
-- `CODEX_TIER_DO_MODEL` = model name or `null`
-- `CODEX_TIER_VERIFY_MODEL` = model name or `null`
 
 ## Question 11: Acceptance Criteria Verification (REQUIRED)
 
@@ -634,7 +601,7 @@ Present the detected URL with its signal source, and ask to confirm:
 > - Confirm
 > - Override — enter a different URL (e.g., `http://localhost:8080`)
 
-Store the confirmed URL as `AC_RUNTIME_URL`. Flag for Phase 3 (`references/populate.md`): the wizard needs to add the chrome-devtools MCP server to `.mcp.json` and `.codex/config.toml`.
+Store the confirmed URL as `AC_RUNTIME_URL`. Flag for Phase 3 (`references/populate.md`): the wizard needs to add the chrome-devtools MCP server to `.mcp.json`.
 
 **Backend with HTTP API:**
 

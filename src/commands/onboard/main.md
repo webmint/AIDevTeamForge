@@ -120,7 +120,7 @@ Read the following and extract what the tech-writer needs:
 1. **Runtime primer** (`CLAUDE.md`) — project name, type, framework, language, project structure, dev commands.
 2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules. The `[project-specific]` sections are sentinel-marked at this stage; `/constitute` populates them later from onboard's findings + user preferences.
 3. **`.devforge/project-config.json`** — wizard-detected facts: `LANGUAGES[]`, `FRAMEWORKS[]`, `WORKSPACE_MODE` (`standalone`/`wrapper`), `SOURCE_ROOT`, `manifest_count`, `packages[]`, etc.
-4. **`.devforge/memory.md`** — pre-seeded knowledge from setup wizard (cross-runtime shared file).
+4. **`.devforge/memory.md`** — pre-seeded knowledge from setup wizard.
 
 Compile a **project brief** — concise summary (~30 lines max) of what's already known: project name, type, stack, architecture pattern (if wizard captured), error handling pattern, API layer, testing framework, pre-seeded findings.
 
@@ -277,7 +277,7 @@ The visibility model is the language's, not ours. The LLM knows each language's 
 - Tech-stack / dev-command duplication from the runtime primer — primer is the source of truth.
 - Anything the scan is uncertain about — better silent than wrong.
 
-[Insert full Section A instructions below — A.1 Smart Extraction, A.2 Per-Doc Templates, A.3 Sigil Neutrality, A.4 Quality Checks.]
+[Insert full Section A instructions below — A.1 Smart Extraction, A.2 Per-Doc Templates, A.3 Bare Command Names, A.4 Quality Checks.]
 
 After your registrations complete, return a brief summary noting how many add-package-doc + add-concern-doc calls you made.
 ```
@@ -320,7 +320,7 @@ DO NOT include a "Main Exports" section here. Architecture is workspace-level, n
 
 Same code-block self-validation rule applies: count fenced blocks, count refs, pass --block-count and --ref-count.
 
-[Insert full Section A instructions below — A.1 Smart Extraction, A.2.2 architecture template, A.3 Sigil Neutrality, A.4 Quality Checks.]
+[Insert full Section A instructions below — A.1 Smart Extraction, A.2.2 architecture template, A.3 Bare Command Names, A.4 Quality Checks.]
 ```
 
 ### Pass 2C — Memory archaeology subagent prompt
@@ -457,7 +457,7 @@ Context is finite. Extract the high-information content from each file type; ski
 | Generated/vendored code (protobuf outputs, GraphQL codegen, SwiftGen, vendored deps) | Skip entirely | Everything |
 | Assets (images, fonts, static) | Skip entirely | Everything |
 
-**Ignore set** (never scan, never count): `node_modules/`, `target/`, `build/`, `dist/`, `.next/`, `.nuxt/`, `vendor/`, `.gradle/`, `.cargo/`, `__pycache__/`, `.venv/`, `venv/`, `.tox/`, `.mypy_cache/`, `.ruff_cache/`, `coverage/`, `.coverage`, `.cache/`, `tmp/`, `.tmp/`, `bin/`, `obj/`, `Pods/`, `.bundle/`, `.dart_tool/`, plus the cross-runtime artifacts (`.claude/`, `.codex/`, `.devforge/`, `specs/`, `docs/`), lock files, and binary/asset files.
+**Ignore set** (never scan, never count): `node_modules/`, `target/`, `build/`, `dist/`, `.next/`, `.nuxt/`, `vendor/`, `.gradle/`, `.cargo/`, `__pycache__/`, `.venv/`, `venv/`, `.tox/`, `.mypy_cache/`, `.ruff_cache/`, `coverage/`, `.coverage`, `.cache/`, `tmp/`, `.tmp/`, `bin/`, `obj/`, `Pods/`, `.bundle/`, `.dart_tool/`, plus forge-managed artifacts (`.claude/`, `.devforge/`, `specs/`, `docs/`), lock files, and binary/asset files.
 
 ### A.2: Per-Doc Templates
 
@@ -501,14 +501,14 @@ Required sections:
 
 Only when the LLM observes a pattern that genuinely spans multiple units without a folder home (e.g., authentication flow that touches an auth package, a router config in an app, and middleware in another service). Each cross-cutting topic explicitly hyperlinks into every unit it touches.
 
-### A.3: Cross-Runtime Sigil Neutrality (MANDATORY)
+### A.3: Bare Command Names in Documentation (MANDATORY)
 
-`docs/` is read by both Claude and Codex runtimes. Any prose in any `docs/*.md` that names a command — `onboard`, `constitute`, `specify`, `plan`, `breakdown`, `execute-task`, `verify`, or any other workflow command — must use the **bare command name**. Never prefix with `/` (Claude's sigil) or `$` (Codex's sigil). The runtime-specific sigil belongs in user-facing command output (wizard summaries, command headers), not in project documentation.
+In any `docs/*.md` prose that names a workflow command — `onboard`, `constitute`, `specify`, `plan`, `breakdown`, `execute-task`, `verify`, etc. — use the **bare command name**. The `/` sigil belongs in user-facing command output (wizard summaries, command headers) where the user would actually type it; documentation prose reads better without it.
 
 - ✅ RIGHT: "Run onboard again after significant changes."
-- ❌ WRONG: "Run `/onboard` again..." or "Run `$onboard`..."
+- ❌ WRONG: "Run `/onboard` again..."
 
-If you need to show a literal command invocation, phrase it sigil-neutrally: "invoke the `onboard` command in your runtime."
+If you need to show a literal command invocation in docs, phrase it as: "invoke the `onboard` command."
 
 ### A.4: Quality Checks (your self-check before returning)
 
@@ -521,9 +521,8 @@ Before returning, verify:
 5. **Cross-references resolve**: workspace-internal `Dependencies` entries link to their package docs; broken links not allowed.
 6. **No constitution duplication**: docs describe HOW the code is organized; constitution describes the RULES.
 7. **No primer duplication**: tech-stack and dev-command tables live in `CLAUDE.md`; do not repeat them in `docs/`.
-8. **Sigil neutrality**: no `/<cmd>` or `$<cmd>` strings anywhere in `docs/`.
-9. **Inline annotations**: subdirs that exist in source but are NOT exported are explicitly annotated in directory trees.
-10. **No source modifications**: onboarding mode does NOT modify source files. Only `docs/` and (via the orchestrator) `.devforge/memory.md`.
+8. **Inline annotations**: subdirs that exist in source but are NOT exported are explicitly annotated in directory trees.
+9. **No source modifications**: onboarding mode does NOT modify source files. Only `docs/` and (via the orchestrator) `.devforge/memory.md`.
 
 ### A.5: Memory Enrichment
 
@@ -585,6 +584,6 @@ These terms have precise meanings in onboard's output and downstream consumers:
 9. **Mirror folder structure** — `docs/<unit-path>/...` mirrors the source layout. Path-from-source = path-to-docs.
 10. **No bundled pattern assumptions** — `architecture.md` observes the project's actual patterns; spec mandates structure not content. Document multi-pattern projects honestly.
 11. **Preserve user-edited docs** — §1.0 detects user edits via baseline diff. Re-runs ask Overwrite/Merge/Abort, never silently overwrite.
-12. **Sigil-neutral prose in `docs/`** — `docs/` is cross-runtime; use bare command names.
+12. **Bare command names in `docs/`** — use bare command names (no `/` sigil) in documentation prose.
 13. **No constitution / primer duplication** — docs describe what EXISTS; constitution + primer carry their own concerns.
 14. **This is for agents** — primary audience is the agents running subsequent commands. Be explicit, structured, precise. Documents must be a substitute for first-pass code reading.

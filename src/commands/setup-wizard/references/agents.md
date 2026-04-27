@@ -1,17 +1,12 @@
 # Phase 4 — Agent Curation
 
-This reference covers the agent curation phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 4 executes. Install has placed all 16 agent templates for both runtimes (`.claude/agents/` and `.codex/agents/`). Your job: decide which agents this project needs, remove the rest, populate the kept ones, and update the agent list in the core-LLM files.
+This reference covers the agent curation phase of the setup-wizard flow, loaded by the wizard orchestrator when Phase 4 executes. Install has placed all 16 agent templates under `.claude/agents/`. Your job: decide which agents this project needs, remove the rest, populate the kept ones, and update the agent list in `CLAUDE.md`.
 
 ## Files affected by this phase
 
 - `.claude/agents/[name].md` — rejected agents deleted, kept agents populated (if present)
-- `.codex/agents/[name].toml` — rejected agents deleted, kept agents populated (if present)
-- `.devforge/baseline/agents/[name].md` — new baseline copies (Claude)
-- `.devforge/baseline/agents/[name].toml` — new baseline copies (Codex)
+- `.devforge/baseline/agents/[name].md` — new baseline copies
 - `CLAUDE.md` — `{{AGENT_LIST}}` placeholder replaced with kept-agents list (if present)
-- `AGENTS.md` — `{{AGENT_LIST}}` placeholder replaced with kept-agents list (if present)
-
-Single-runtime installs skip the missing runtime's files silently.
 
 ---
 
@@ -86,18 +81,17 @@ The user may:
 
 ## 6.3: Remove Rejected Agents
 
-Delete the rejected agent files from both runtime directories:
+Delete the rejected agent files:
 - `.claude/agents/[name].md`
-- `.codex/agents/[name].toml`
 
 ## 6.4: Populate Kept Agents
 
 For each kept agent, read the file and:
 
 1. **Substitute all `{{PLACEHOLDER}}` markers** in prose (inside YAML `description:` field and body content) per the rules below. These are text-level placeholders — `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{TYPE_SAFETY_RULES}}`, etc.
-2. **Replace the structural model / reasoning fields via key-based regex replacement** (separate from placeholder substitution — see "Agent-frontmatter model / reasoning fields" subsection later in this doc). These fields carry boot-safe defaults at install time; wizard overwrites with Q10 answers.
+2. **Replace the structural `model:` field via key-based regex replacement** (separate from placeholder substitution — see "Agent-frontmatter model field" subsection later in this doc). The field carries a boot-safe default at install time; wizard overwrites with Q10 answers.
 
-The two mechanisms exist because text-level placeholders (prose) are parser-safe under both runtimes; structural fields (`model:`, `model = "..."`, `model_reasoning_effort = "..."`) must be boot-valid from install time onward.
+The two mechanisms exist because text-level placeholders (prose) are parser-safe; the structural `model:` field must be boot-valid from install time onward — Claude parses `.claude/agents/*.md` at launch, so an unsubstituted `{{PLACEHOLDER}}` there would break agent loading before the wizard could run.
 
 **Placement contract (for agent-template authors).** The 10 stack-aware placeholders — `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{{ARCHITECTURE}}`, `{{ERROR_HANDLING}}`, `{{API_LAYER}}`, `{{TESTING}}`, `{{BUILD_TOOL}}`, `{{BUILD_COMMAND}}`, `{{TYPE_CHECK_COMMAND}}`, `{{LINT_COMMAND}}` — and `{{TYPE_SAFETY_RULES}}` may expand into multi-line content (paired bullets per stack, language-grouped sub-headers). They MUST appear in each agent template as **stand-alone block-level elements** — their own paragraph, list item, or section — not inline within a running sentence. Inline placement silently breaks Markdown rendering for multi-stack projects (sub-headers and bullets collapse into a sentence). If an agent template needs a short inline mention of, e.g., the primary language, author a separate single-value placeholder for that purpose rather than reusing these.
 
@@ -160,31 +154,22 @@ Ten placeholders read from per-stack arrays: `{{FRAMEWORK}}`, `{{LANGUAGE}}`, `{
     ```
 
     For unfamiliar languages in the list, generate generic rules under that language's sub-header (do not omit it).
-**Agent-frontmatter model / reasoning fields** (emitted by `scripts/generate-agents.py` at install time with **boot-safe defaults**, one per agent based on its `model_tier: think | do | verify`). These are NOT placeholders — the runtime must parse the agent file at launch, so install-time files carry real values. The wizard REPLACES the values at Phase 4 using **key-based regex replacement** (not placeholder substitution) driven by Q10 answers.
+**Agent-frontmatter model field** (emitted by `scripts/generate-agents.py` at install time with a **boot-safe default**, one per agent based on its `model_tier: think | do | verify`). This is NOT a placeholder — Claude must parse the agent file at launch, so install-time files carry real values. The wizard REPLACES the value at Phase 4 using **key-based regex replacement** (not placeholder substitution) driven by Q10 answers.
 
-**Why this is key-replacement, not placeholder substitution**: Codex parses `.codex/agents/*.toml` at launch (before the wizard can run). Shipping those files with `{{PLACEHOLDER}}` tokens would cause the TOML deserializer to fail — Codex prints "malformed agent role definition" and silently disables every agent. The wizard that would fix it can't execute because the runtime it depends on doesn't have working agents. Defaults break the chicken-and-egg loop. The trade-off: wizard must use regex replacement instead of simple `{{X}}→Y` text substitution.
+**Why this is key-replacement, not placeholder substitution**: Claude parses `.claude/agents/*.md` at launch (before the wizard can run). Shipping those files with `{{PLACEHOLDER}}` tokens in the YAML frontmatter would cause Claude to fail to load the agent — the wizard that would fix it can't execute because Claude doesn't have working agents. Defaults break the chicken-and-egg loop. The trade-off: wizard must use regex replacement instead of simple `{{X}}→Y` text substitution.
 
 **Install-time defaults** (source of truth: `scripts/lib/install_defaults.py`):
 
-- Claude agents `.claude/agents/*.md` frontmatter:
+- `.claude/agents/*.md` frontmatter:
   - `model: opus` (think tier), `model: sonnet` (do tier), `model: sonnet` (verify tier)
-- Codex agents `.codex/agents/*.toml`:
-  - `model = "gpt-5.4"` (same across all tiers by default)
-  - `model_reasoning_effort = "high"` (think), `"medium"` (do), `"medium"` (verify)
 
-**Wizard replacement rules (Phase 4)**: for each kept agent file, determine the agent's tier (look at its source meta or map by name), then apply regex replacement per runtime:
+**Wizard replacement rules (Phase 4)**: for each kept agent file, determine the agent's tier (look at its source meta or map by name), then apply regex replacement:
 
-Claude file (`.claude/agents/<name>.md`):
+`.claude/agents/<name>.md`:
 - Locate the line `model: <value>` in the YAML frontmatter (anchored between the two `---` delimiters).
-- Replace `<value>` with Q10a's `CLAUDE_TIER_<TIER>` answer (`opus` / `sonnet` / `haiku`).
+- Replace `<value>` with Q10's `CLAUDE_TIER_<TIER>` answer (`opus` / `sonnet` / `haiku`).
 
-Codex file (`.codex/agents/<name>.toml`):
-- Locate `model = "<value>"` (top-level key, not inside a nested table or string literal). Replace `<value>` with Q10b's `CODEX_TIER_<TIER>_MODEL` override if set; else `CODEX_DEFAULT_MODEL` (see populate.md "Drift-risk literals").
-- Locate `model_reasoning_effort = "<value>"` (top-level key). Replace `<value>` with Q10b's `CODEX_TIER_<TIER>` (reasoning-effort enum: `minimal` / `low` / `medium` / `high` / `xhigh`).
-
-The replacement must be surgical — do NOT do broad `s/gpt-5.4/<new>/g` sweeps, because the model name literal may appear in agent prose too. Target only the `^model = "..."` and `^model_reasoning_effort = "..."` lines at the TOML root.
-
-**Must also add to `.devforge/project-config.json`:** the Codex reasoning keys — `CODEX_REASONING_THINK`, `CODEX_REASONING_DO`, `CODEX_REASONING_VERIFY` — populated from Q10b's `CODEX_TIER_THINK` / `CODEX_TIER_DO` / `CODEX_TIER_VERIFY`. This lets downstream commands (and `update.sh`) read the resolved reasoning enum by the same key name. Add matching entries to `src/devforge/project-config.json`.
+The replacement must be surgical — do NOT do broad `s/<old>/<new>/g` sweeps, because the model name literal may appear in agent prose too. Target only the `model:` line at the YAML frontmatter root.
 
 **Preserve ALL template content.** The templates contain carefully designed workflows, steps, and rules. Substitution replaces placeholders — it never removes or condenses sections.
 
@@ -195,14 +180,13 @@ For placeholders that don't apply to a specific agent (e.g., `{{STYLING}}` in a 
 ## 6.5: Save Agent Baselines
 
 For each kept agent, save a baseline copy:
-- `.devforge/baseline/agents/[name].md` (Claude version)
-- `.devforge/baseline/agents/[name].toml` (Codex version)
+- `.devforge/baseline/agents/[name].md`
 
 Create `.devforge/baseline/agents/` if it doesn't exist. These are the wizard output before manual user edits — `update.sh` uses them for three-way merge.
 
 ## 6.6: Update AGENT_LIST
 
-Now that agents are finalized, go back to CLAUDE.md and AGENTS.md and replace the `{{AGENT_LIST}}` placeholder (set to `"(pending Phase 4 curation)"` in Phase 3, section 5.1) with the actual list of kept agents. Format:
+Now that agents are finalized, go back to CLAUDE.md and replace the `{{AGENT_LIST}}` placeholder (set to `"(pending Phase 4 curation)"` in Phase 3, section 5.1) with the actual list of kept agents. Format:
 
 ```markdown
 - `architect` — Design decisions, architecture planning (Think tier)

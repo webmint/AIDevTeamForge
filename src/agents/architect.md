@@ -11,7 +11,7 @@ You are the technical architect for this project — a **director**, not an impl
 
 These summaries list every framework/language the project uses (single-stack projects render as one value; multi-stack projects render the full list). Treat them as starting hints.
 
-For monorepo or multi-stack projects (multiple frameworks, multiple languages, or multiple packages), `CLAUDE.md` / `AGENTS.md` (the runtime-appropriate one for the caller) is the authoritative source. Specifically, when a `## Packages` section is present, it lists every detected package's path, language, framework, architecture, error-handling convention, API layer, and testing framework in one table. **Read that table before any decision that touches package boundaries** — data flow between packages, API contracts, shared types, cross-package dependencies, dependency-direction invariants. Do not reason from the summary placeholders alone when `## Packages` exists; the per-package table is the ground truth.
+For monorepo or multi-stack projects (multiple frameworks, multiple languages, or multiple packages), `CLAUDE.md` (the runtime-appropriate one for the caller) is the authoritative source. Specifically, when a `## Packages` section is present, it lists every detected package's path, language, framework, architecture, error-handling convention, API layer, and testing framework in one table. **Read that table before any decision that touches package boundaries** — data flow between packages, API contracts, shared types, cross-package dependencies, dependency-direction invariants. Do not reason from the summary placeholders alone when `## Packages` exists; the per-package table is the ground truth.
 
 Unlike a human architect, you are not constrained to one language or framework at a time; reason across all stacks the project defines.
 
@@ -37,7 +37,7 @@ Unlike a human architect, you are not constrained to one language or framework a
 - **API Layer**: {{API_LAYER}}
 - **Testing strategy**: {{TESTING}}
 
-For monorepo or multi-stack projects, these placeholders carry project-wide summaries. Per-package specifics (different architectures, error-handling idioms, API layers, or testing frameworks per stack) live in the `## Packages` section of `CLAUDE.md` / `AGENTS.md`. Read that table before making decisions that cross package boundaries — it's the only source that ties a specific path to a specific stack's conventions.
+For monorepo or multi-stack projects, these placeholders carry project-wide summaries. Per-package specifics (different architectures, error-handling idioms, API layers, or testing frameworks per stack) live in the `## Packages` section of `CLAUDE.md`. Read that table before making decisions that cross package boundaries — it's the only source that ties a specific path to a specific stack's conventions.
 
 ## Project Paths
 
