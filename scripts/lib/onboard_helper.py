@@ -556,7 +556,7 @@ _EXPORT_TYPE_PATTERNS = [
 def _gate_type_dedup(state: OnboardState) -> list[str]:
     """Step 2.6: each exported type name should appear at most once per doc.
 
-    Codex R5 emitted FooterChargeLine twice (line ranges 20-28 and 24-28)
+    an LLM emitted FooterChargeLine twice (line ranges 20-28 and 24-28)
     and CalcOptions three times (3-11, 4-11, 5-11) because its parser
     walked overlapping line ranges and didn't dedup at emit time. The
     structural defect: same name declared multiple times in the same doc.
@@ -623,7 +623,7 @@ def _gate_principal_type_presence(state: OnboardState) -> list[str]:
     factory). For each owned BLoC, expect the matching `XState` type name
     somewhere in the same doc. If missing, error.
 
-    Catches Codex R5's QuoteOwnersState miss: the parser surfaced helper
+    Catches the QuoteOwnersState miss pattern: the parser surfaced helper
     types instead of the principal state type. Forcing State-presence per
     BLoC is the structural fix.
     """
@@ -651,7 +651,7 @@ def _gate_principal_type_presence(state: OnboardState) -> list[str]:
     return errors
 
 
-# Boilerplate overview phrases observed in Codex R5/R6 output. Adding to
+# Boilerplate overview phrases observed in LLM output. Adding to
 # this list closes more template-shape failure modes. Phrases are matched
 # case-insensitively against the Overview section text.
 _BOILERPLATE_PHRASES = [
@@ -687,7 +687,7 @@ def _extract_overview_section(content: str) -> str:
 def _gate_boilerplate_overview(state: OnboardState) -> list[str]:
     """Step 2.4: reject docs whose Overview contains template-shape phrases.
 
-    Catches Codex's R5/R6 "X is a documentation unit inside CSE UI" pattern
+    Catches the "X is a documentation unit inside CSE UI" pattern
     where the generator emits a template-shaped overview that describes how
     the doc is organized rather than what the package does.
     """
@@ -908,7 +908,7 @@ def _gate_per_concern_decomposition(state: OnboardState) -> list[str]:
     require a matching add-concern-doc registration (unit + concern name).
     Missing concern docs = error, with explicit miss list.
 
-    Closes Codex R6's "concern mentioned inside index.md" monolith collapse:
+    Closes the "concern mentioned inside index.md" monolith collapse:
     the LLM cannot satisfy this gate by adding more text to index.md; it
     must call add-concern-doc for each substantive subfolder.
     """

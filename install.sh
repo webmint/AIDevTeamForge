@@ -171,23 +171,14 @@ done
 # with project-specific answers (PROJECT_NAME, FRAMEWORK, etc.).
 cp "$TEMPLATE_DIR/src/files/coreLLM/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
 
-# ── Build runtime-specific files via the generator ─────────────────────────
+# ── Build Claude files via the generator ──────────────────────────────────
 # install.sh is intentionally dumb: it scaffolds shared dirs and delegates
-# all runtime-specific work (Claude, Codex, later Cursor/Gemini) to the
-# generator. Each runtime has its own emitter in scripts/emitters/.
-# Adding a new runtime = adding one emitter file + registering it in
-# scripts/generate.sh. install.sh never needs to change.
+# Claude file generation (commands, agents) to scripts/generate.sh.
 "$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
 
-# ── Copy runtime config files (per-runtime, not shared) ─────────────────
-# Each runtime gets whatever config files it natively uses — no forced
-# symmetry.
-#
-# Claude:
+# ── Copy Claude config files ──────────────────────────────────────────────
 #   .mcp.json             — MCP servers (project-scope)
 #   .claude/settings.json — hooks, permissions, plugins
-# Codex:
-#   .codex/config.toml    — model, sandbox, approval_policy, MCP servers
 cp "$TEMPLATE_DIR/src/files/mcp.json" "$TARGET_DIR/.mcp.json"
 mkdir -p "$TARGET_DIR/.claude"
 cp "$TEMPLATE_DIR/src/files/settings.template.json" "$TARGET_DIR/.claude/settings.json"

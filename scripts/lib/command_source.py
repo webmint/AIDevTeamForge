@@ -19,23 +19,13 @@ Path rewriting (runtime-parametric)
 -----------------------------------
 In source, reference files cite each other by RELATIVE path (`references/X.md`)
 so the physical source layout is self-consistent. At emit time, paths are
-rewritten to the runtime-native target location. Each emitter specifies its
-own target prefix so references live alongside the main command in each
-runtime's native layout:
+rewritten to the Claude target location:
 
-    Claude: references/detect.md → .claude/commands/<cmd>/references/detect.md
-    Codex:  references/detect.md → .agents/skills/<cmd>/references/detect.md
+    references/detect.md → .claude/commands/<cmd>/references/detect.md
 
-Emitters then:
-
-  * Claude: write main body → .claude/commands/<cmd>.md
-            write refs     → .claude/commands/<cmd>/references/*.md
-  * Codex:  write main body → .agents/skills/<cmd>/SKILL.md (YAML-wrapped)
-            write refs     → .agents/skills/<cmd>/references/*.md
-
-Each runtime gets its own copy of references (same text, different internal
-paths) so cross-references between helpers stay consistent within the runtime.
-Duplication is intentional; cost is negligible (~KB scale).
+The Claude emitter writes:
+  * main body → .claude/commands/<cmd>.md
+  * refs     → .claude/commands/<cmd>/references/*.md
 """
 
 from __future__ import annotations

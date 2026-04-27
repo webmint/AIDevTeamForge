@@ -12,8 +12,7 @@ src/agents/*.md:
 
 Stdlib only — no PyYAML dependency. We never interpret escape sequences in
 values; quoted strings are returned with outer quotes stripped but internal
-content preserved verbatim. That's sufficient for our use cases: pass-through
-to Claude outputs, and re-serialization into TOML/YAML for Codex outputs.
+content preserved verbatim. That's sufficient: pass-through to Claude outputs.
 """
 
 from __future__ import annotations
