@@ -20,6 +20,8 @@ This phase produces the following structured values. They are written to `.devfo
 - `LINT_COMMANDS` — array parallel to `LANGUAGES`; shell command to lint each stack (e.g., `"eslint ."`, `"ruff check ."`, `"golangci-lint run"`, `"cargo clippy"`). `"N/A"` if no linter is configured or available for that language.
 - Detection outputs from STEP 3 (package manager, monorepo tool, styling, state management, API layer, architecture pattern, error handling pattern, CI/CD tooling, containerization) — each captured as a best-effort value or `uncertain — ask user`.
 
+**Storage note for the 4 command/tool arrays.** `BUILD_TOOLS` / `BUILD_COMMANDS` / `TYPE_CHECK_COMMANDS` / `LINT_COMMANDS` are NOT written to `.devforge/detection_report.yaml` — the Report schema carries only top-level scalar fallbacks (`build_command`, `type_check_command`, `lint_command`) plus per-package commands inside `packages[]`. These per-stack arrays live in LLM working memory between Phase 1 and Phase 3, where Phase 3's `wizard_render add-build-tool` / `add-build-command` / `add-type-check-command` / `add-lint-command` setters land them in `wizard_render` state for compose-time use. If the wizard session is interrupted between phases, re-derive these arrays from `detection_report.packages[].*_command` (per-package fields, which ARE persisted) before resuming Phase 3.
+
 Where uncertainty exists, carry the uncertainty forward rather than guessing; Phase 2 is where the user resolves ambiguities.
 
 ---

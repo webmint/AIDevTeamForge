@@ -35,13 +35,12 @@ These values depend on upstream defaults or package names that change without no
 
 ## How to run this phase
 
-Execute in three stages:
+Execute in two stages here in Phase 3, then defer the compose call to Phase 4:
 
 1. **Compose values** — work through §5.1–§5.8 below. For each placeholder or per-stack array, compose the value following the rules in that section, then call `wizard_render set <field> --value <v>`, `wizard_render set-render <field> --stdin` (preferred for multi-line), or the appropriate `add-*` call. Order doesn't matter; the helper accumulates state across calls.
-2. **Status check** — run `scripts/lib/wizard_render status`. Confirm everything required is set (✓) and `Validation (compose readiness): ✓ ready to compose` is shown.
-3. **Compose** — run `scripts/lib/wizard_render compose`. The helper validates, substitutes every `{{PLACEHOLDER}}`, copies baselines, conditionally injects MCP entries, writes the memory seed, writes `project-config.json`, and emits the completion marker — atomically. On error it reports the field that failed validation and exits non-zero; fix and re-run.
+2. **Status check (no compose yet)** — run `scripts/lib/wizard_render status`. Confirm Phase 3 fields are set (✓). Status will report `agents_kept` as unset at this point — that's correct, because Phase 4 hasn't run yet. **Do NOT run `wizard_render compose` here** — see "End of Phase 3" at the bottom of this file for why; the canonical compose call is in `references/agents.md` §6.7.
 
-**Phase 4 (agents) layers on top.** Phase 4's `references/agents.md` describes how to build the agent-substitutions JSON; you call `wizard_render apply-agents --substitutions-file <path>` once after Phase 4 selection. `compose` then applies all agent substitutions, deletes rejected agents, saves agent baselines, and swaps `{{AGENT_LIST}}` in CLAUDE.md.
+**Phase 4 (agents) builds on Phase 3's state.** Phase 4's `references/agents.md` describes how to build the agent-substitutions JSON at the canonical path `.devforge/.agents-apply.json` and call `wizard_render apply-agents --substitutions-file .devforge/.agents-apply.json`. After that single `apply-agents` call, Phase 4 §6.7 runs `compose`, which atomically writes everything Phase 3 + Phase 4 set up.
 
 ---
 
@@ -308,7 +307,34 @@ If `ac_runtime_url` is not set, `compose` skips this step.
 
 Helper-owned. `compose` assembles the canonical answers record from your `set` / `add-*` calls + Phase 1's `detection_report.yaml`. No LLM rendering needed — every field has a setter.
 
-**Per-stack arrays** (Q3–Q7 answers — call once per stack in declaration order; for the build/check/lint command arrays see §5.1 above which lists the same 4 setters used to feed CLAUDE.md derivation):
+### Setter coverage from Phase 2 answers
+
+This table is the canonical Phase 3 setter inventory. Every Phase 2 answer needs to land via the matching `wizard_render` call here — `compose` will refuse if any required field is unset, with a clear error naming the missing field. Run through the table top-to-bottom; skip rows that don't apply to this project (e.g., the conditional Q11 follow-ups).
+
+| Source | Setter | Required? |
+|---|---|---|
+| Q0 PROJECT_NAME | `wizard_render set project_name --value <s>` | yes |
+| Q1 PROJECT_DESCRIPTION | `wizard_render set project_description --value <s>` | yes |
+| Q2 PROJECT_TYPE | `wizard_render set project_type --value <s>` | yes |
+| Q3 LANGUAGES + FRAMEWORKS | `wizard_render add-language --name <s> --framework <s\|null>` per stack | yes (≥1) |
+| Q4 ARCHITECTURES | `wizard_render add-architecture --value <s>` per stack | per Q4 answer |
+| Q5 ERROR_HANDLINGS | `wizard_render add-error-handling --value <s>` per stack | per Q5 answer |
+| Q6 API_LAYERS | `wizard_render add-api-layer --value <s>` per stack | per Q6 answer |
+| Q7 TESTINGS | `wizard_render add-testing --value <s>` per stack | per Q7 answer |
+| Q8 WORKFLOW_ENFORCEMENT | `wizard_render set workflow_enforcement --value <strict\|moderate\|light>` | **yes** |
+| Q9 AI_ATTRIBUTION | `wizard_render set ai_attribution --value <yes\|no>` | **yes** |
+| Q10 CLAUDE_TIER_THINK / DO / VERIFY | `wizard_render set-tier think\|do\|verify --value <opus\|sonnet\|haiku>` (one call per tier) | **yes** (all three) |
+| Q11 AC_VERIFICATION_MODE | `wizard_render add-ac-mode --value <code-only\|tests\|runtime-assisted\|off>` per selected mode | yes (≥1) |
+| Q11 AC_RUNTIME_URL (web frontend / full-stack only) | `wizard_render set ac_runtime_url --value <url>` | conditional (triggers chrome-devtools MCP injection) |
+| Q11 AC_RUNTIME_API_BASE (backend / full-stack only) | `wizard_render set ac_runtime_api_base --value <url>` | conditional |
+| Q11 AC_RUNTIME_CLI_COMMAND (CLI only) | `wizard_render set ac_runtime_cli_command --value <s>` | conditional |
+| Phase 1 BUILD_TOOLS / BUILD_COMMANDS / TYPE_CHECK_COMMANDS / LINT_COMMANDS (per-stack arrays) | `wizard_render add-build-tool` / `add-build-command` / `add-type-check-command` / `add-lint-command` per stack (also covered in §5.1) | yes |
+
+The 4 multi-line renders (`project_structure`, `dev_commands`, `architecture_details`, `package_stacks_section`) are LLM-composed via `wizard_render set-render <field> --stdin` per §5.1. The `memory_seed` render is composed per §5.6.
+
+### Concrete example calls
+
+For a multi-stack TS+Python project answering Q4–Q7 with concrete values:
 
 ```
 wizard_render add-language --name "TypeScript" --framework "Next.js"
@@ -323,18 +349,14 @@ wizard_render add-testing --value "vitest"
 wizard_render add-testing --value "pytest"
 ```
 
-The 4 build/check/lint setters from §5.1 (`add-build-tool` / `add-build-command` / `add-type-check-command` / `add-lint-command`) populate the same `project-config.json` automatically — no separate calls needed here. All per-stack arrays land in the JSON output via `compose`.
-
-**AC verification** (call once per selected mode):
+AC verification (call once per selected mode; `"off"`-exclusivity is enforced at compose time):
 
 ```
 wizard_render add-ac-mode --value "code-only"
 wizard_render add-ac-mode --value "tests"
 ```
 
-The helper enforces `"off"`-exclusivity at compose time (`["off"]` + others → validation error).
-
-**Tier model assignments** (Q10):
+Tier model assignments:
 
 ```
 wizard_render set-tier think --value opus
@@ -365,7 +387,7 @@ Insert under `## Architecture Decisions`, header `### Initial detection (from se
 
 ### Other observations (spillover bullet — capped at 5)
 
-If during Phase 1 detection you discovered project facts that don't fit the structured fields above (an unusual build pattern, a notable directory convention, a project-shape signal worth surfacing), append an **Other observations** sub-bullet at the end of the seed:
+If your detection work surfaced project facts that don't fit the structured fields above (an unusual build pattern, a notable directory convention, a project-shape signal worth surfacing), append an **Other observations** sub-bullet at the end of the seed before passing it to `set-render memory_seed`:
 
 ```markdown
 - **Other observations**:
@@ -441,28 +463,15 @@ The stub deliberately does NOT carry stack facts (`LANGUAGE`, `FRAMEWORK`, `WORK
 
 ---
 
-## Compose protocol
+## End of Phase 3 — defer compose to Phase 4
 
-After you've made all the `set` / `set-render` / `set-tier` / `add-*` calls for §5.1–§5.6, run:
+After all `set` / `set-render` / `set-tier` / `add-*` calls for §5.1–§5.6 are made, run **`status` only** to verify Phase 3 fields are set:
 
 ```
-scripts/lib/wizard_render status      # verify ✓ ready to compose
-scripts/lib/wizard_render compose     # write all files atomically
+scripts/lib/wizard_render status      # confirm Phase 3 fields show ✓
 ```
 
-`compose` refuses if:
-- Any required scalar (`project_name`, `project_description`, `project_type`, `workflow_enforcement`, `ai_attribution`) is unset
-- Any required render (FRAMEWORK rendered, LANGUAGE rendered, BUILD_*, TYPE_CHECK_*, LINT_*, project_structure, dev_commands, architecture_details, memory_seed) is unset
-- Any tier (`think` / `do` / `verify`) is unset
-- `languages` is empty
-- `len(languages) != len(frameworks)` (parallel-array invariant)
-- `ac_modes` is empty
-- `ac_modes` contains `"off"` alongside other modes
-- `agents_kept` is empty (Phase 4 must have at least the always-keep set)
-
-On success, `compose` writes every populated file, deletes the intermediate state file, and emits `.devforge/setup-complete`. The wizard then proceeds to Phase 4 (`references/agents.md`).
-
-For Phase 4's `apply-agents` call (which writes per-agent substitutions to state for `compose` to apply), see `references/agents.md` §6.4.
+Expect status to report unset `agents_kept` at this point — that's correct, because Phase 4 hasn't run yet. **Do NOT call `wizard_render compose` here.** Compose validates `agents_kept` is non-empty (Phase 4 is required to populate it via `apply-agents`), AND it deletes the state file on success — calling it now would either fail validation or wipe the Phase 3 state Phase 4 needs to extend. The single canonical compose invocation lives in `references/agents.md` §6.7, after Phase 4's `apply-agents` call.
 
 ---
 

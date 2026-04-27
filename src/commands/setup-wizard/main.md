@@ -95,35 +95,15 @@ Present this summary to the user. **Substitute each `{VALUE}` placeholder below 
 }
 ```
 
-**After presenting the summary**, write the setup-completion marker to `.devforge/setup-complete` with content:
-
-```
-Setup completed: {current ISO-8601 date and time, e.g., 2026-04-22T15:30:42Z}
-Populated files: {comma-joined list of files the wizard actually touched this run, built from presence checks}
-```
-
-**Composing the `Populated files:` list.** Build it from actual presence / action, not a static template. Include each entry only if the condition holds:
-
-- `CLAUDE.md` — include if it exists at SOURCE_ROOT (§5.1 populated it)
-- `constitution.md` — include if it exists at the project root AND §5.7 actually substituted placeholders (wizard skips §5.7 silently if the file is missing; brownfield projects with a pre-existing constitution leave it as-is, in which case the wizard did NOT modify it and this line should be omitted)
-- `docs/overview.md` — include if it exists AND §5.8 actually substituted placeholders (install is per-file presence-guarded; pre-existing overview stays untouched and is omitted from this list)
-- `docs/architecture.md` — same rule as `docs/overview.md`
-- `.devforge/project-config.json` — always include (§5.5 always runs)
-- `.devforge/memory.md` — always include (§5.6 always runs)
-- `.devforge/baseline/CLAUDE.md` / `.devforge/baseline/constitution.md` — include each only if the corresponding source file existed and §5.3 copied it
-- `.claude/settings.json` — include only if it exists AND §5.4 appended chrome-devtools permissions (i.e., `AC_RUNTIME_URL` is set) — skip otherwise, since §5.2 does no placeholder substitution on this file
-- `.mcp.json` — include only if it exists AND §5.4 appended the chrome-devtools entry
-- `agent files (per Phase 4)` — include only if `.claude/agents/` exists (Phase 4 ran)
-
-This marker lets downstream commands detect whether setup-wizard ran to completion. If the file is missing, setup may have been interrupted mid-execution — downstream commands should surface this to the user and offer to resume or re-run. Place at `.devforge/setup-complete`.
+`.devforge/setup-complete` is written by `wizard_render compose` at the end of Phase 4 (see `references/agents.md` §6.7). The marker carries the timestamp + the authoritative list of files compose actually touched (presence-checked + conditional MCP/baseline writes included). Downstream commands check for the marker's presence — if missing, setup may have been interrupted mid-execution; surface this to the user and offer to resume or re-run.
 
 ## IMPORTANT RULES (global)
 
 1. **Never guess** — if you can't detect something, ask
-2. **Phase 3 never creates files** — all files are already placed; Phase 3 only populates. Phase 4 creates files explicitly when generation is added.
+2. **File placement vs. population** — `install.sh` places all template files (`CLAUDE.md`, `constitution.md`, `docs/*`, `.claude/agents/*`, `.devforge/memory.md`, etc.) at install time. Phases 3 and 4 do NOT create new files; they compose values that the helper (`wizard_render compose`) substitutes into the placed templates. Phase 4 may delete rejected agent files (helper does the deletion); no Phase creates new files at runtime.
 3. **Use real paths** — all paths must point to actual directories in the project
 4. **Use real commands** — all commands must come from the project's actual scripts
-5. **Validate after population** — read back each file to verify no unresolved `{{PLACEHOLDER}}` markers remain
+5. **Validation is helper-owned** — `wizard_render compose` validates that no `{{PLACEHOLDER}}` markers remain unresolved and refuses to write if any do; on success the populated files are guaranteed clean. Do NOT read populated files back to re-verify.
 6. **Wrapper isolation** — in wrapper mode, never create any artifact inside SOURCE_ROOT
 7. **Same values in CLAUDE.md and project-config.json** — CLAUDE.md gets prose-substituted values; `.devforge/project-config.json` gets the same values as JSON
 8. **References are not optional** — you MUST read each phase's reference file in full before executing that phase. Do not attempt any phase from memory of previous invocations or guesses. Missing instructions from a reference file means stopping and re-reading it, not improvising.

@@ -79,10 +79,9 @@ The user may:
 - Move agents from remove → keep ("actually, keep `api-designer`, we're adding a REST API soon")
 - Move agents from keep → remove ("don't need `performance-analyst` for this project")
 
-## 6.3: Remove Rejected Agents
+## 6.3: Mark Rejected Agents for Removal
 
-Delete the rejected agent files:
-- `.claude/agents/[name].md`
+Helper-owned. Don't delete agent files manually. Add each rejected agent's name to the `"removed"` list in the apply-agents JSON (see §6.4 below). `compose` deletes the files atomically as part of its Phase 4 work — see §6.7 for the full compose responsibilities.
 
 ## 6.4: Populate Kept Agents
 
@@ -90,7 +89,24 @@ Agent population is helper-driven. After §6.1 selection and §6.2 user confirma
 
 ### apply-agents JSON shape
 
-Write this JSON file (e.g., `.devforge/.agents-apply.json`) and call `wizard_render apply-agents --substitutions-file <path>`:
+**Canonical path:** `.devforge/.agents-apply.json` (leading dot — matches the ephemeral-file convention used by `.detection-report-state.json` and `.wizard-render-state.json`). Write your JSON to this exact path:
+
+```
+wizard_render apply-agents --substitutions-file .devforge/.agents-apply.json
+```
+
+The helper deletes this file after successfully consuming it during `compose` (mirroring how `compose` deletes its own state file on success). This keeps `.devforge/` clean across re-runs.
+
+**Tier assignment per agent.** The agent → tier mapping lives in `references/questions.md` Q10's table:
+- **Think tier:** `architect`, `api-designer`, `security-reviewer`
+- **Do tier:** `backend-engineer`, `frontend-engineer`, `mobile-engineer`, `db-engineer`, `devops-engineer`, `migration-engineer`, `runtime-debugger`, `performance-analyst`, `design-auditor`
+- **Verify tier:** `code-reviewer`, `ac-verifier`, `qa-engineer`
+
+The `tech-writer` agent is hardcoded to `sonnet` per Q10's preamble, regardless of Q10 tier choices — when included in apply-agents JSON, the tier value passed has no effect on its model. Q10's table in questions.md remains the canonical source of truth; replicated here only because §6.4's apply-agents JSON construction needs the mapping inline. If you add or rename an agent, update Q10's table first, then this list.
+
+When you write the JSON below, look up each kept agent's tier from this list (or Q10's source-of-truth table) and use that as the `"tier"` value.
+
+JSON shape:
 
 ```json
 {
@@ -185,16 +201,13 @@ The replacement must be surgical — do NOT do broad `s/<old>/<new>/g` sweeps, b
 
 For placeholders that don't apply to a specific agent (e.g., `{{STYLING}}` in a backend-only project that kept `frontend-engineer` by user override), use `"N/A"`.
 
-## 6.5: Save Agent Baselines
+## 6.5: Save Agent Baselines (helper-owned)
 
-For each kept agent, save a baseline copy:
-- `.devforge/baseline/agents/[name].md`
+Helper handles via compose. For each kept agent, `compose` copies the populated agent file to `.devforge/baseline/agents/<name>.md` automatically (creates the directory if missing). These are the wizard output before manual user edits — `update.sh` uses them for three-way merge. No LLM action needed.
 
-Create `.devforge/baseline/agents/` if it doesn't exist. These are the wizard output before manual user edits — `update.sh` uses them for three-way merge.
+## 6.6: Update AGENT_LIST (helper-owned)
 
-## 6.6: Update AGENT_LIST
-
-Now that agents are finalized, go back to CLAUDE.md and replace the `{{AGENT_LIST}}` placeholder (set to `"(pending Phase 4 curation)"` in Phase 3, section 5.1) with the actual list of kept agents. Format:
+Helper handles via compose. After per-agent substitution, `compose` reads each kept agent's populated `description:` from its YAML frontmatter, formats one bullet per kept agent, and replaces the `(pending Phase 4 curation)` staging string in CLAUDE.md with the rendered list:
 
 ```markdown
 - `architect` — Design decisions, architecture planning (Think tier)
@@ -202,6 +215,45 @@ Now that agents are finalized, go back to CLAUDE.md and replace the `{{AGENT_LIS
 - `code-reviewer` — Code review (Verify tier)
 - ...
 ```
+
+No LLM action needed.
+
+## 6.7: Compose protocol (canonical compose call site)
+
+This is where `wizard_render compose` runs — once per wizard run, after Phase 3 setters AND Phase 4's `apply-agents` are both complete:
+
+```
+scripts/lib/wizard_render status      # verify ✓ ready to compose
+scripts/lib/wizard_render compose     # write all files atomically
+```
+
+`compose` refuses if:
+- Any required scalar (`project_name`, `project_description`, `project_type`, `workflow_enforcement`, `ai_attribution`) is unset
+- Any required render (`project_structure`, `dev_commands`, `architecture_details`, `memory_seed`) is unset
+- Any tier (`think` / `do` / `verify`) is unset
+- `languages` is empty
+- `len(languages) != len(frameworks)` (parallel-array invariant)
+- `ac_modes` is empty
+- `ac_modes` contains `"off"` alongside other modes
+- `agents_kept` is empty (this section's `apply-agents` populates it)
+- Any kept agent's template has a `{{KEY}}` the helper can't derive AND `apply-agents` didn't supply (clear error names the agent + key)
+
+On success, `compose` does all of the following atomically:
+- §5.1 — substitutes CLAUDE.md placeholders (helper derives the 6 stack-aware ones; uses LLM-composed multi-line renders for the rest)
+- §5.3 — copies CLAUDE.md / constitution.md / docs/* to `.devforge/baseline/`
+- §5.4 — conditionally injects chrome-devtools entry into `.mcp.json` and chrome-devtools permissions into `.claude/settings.json` (only if `ac_runtime_url` set)
+- §5.5 — assembles `.devforge/project-config.json` from state + detection report
+- §5.6 — inserts memory seed above the constitute sentinel in `.devforge/memory.md`
+- §5.7 — strips authoring blockquotes + substitutes header placeholders in `constitution.md`
+- §5.8 — substitutes placeholders in `docs/overview.md` and `docs/architecture.md`
+- §6.3 — deletes rejected agent files from `.claude/agents/`
+- §6.4 — substitutes placeholders + regex-replaces `model:` line for each kept agent
+- §6.5 — saves agent baselines to `.devforge/baseline/agents/`
+- §6.6 — replaces `{{AGENT_LIST}}` in CLAUDE.md with the kept-agents bullet list
+- Writes `.devforge/setup-complete` marker
+- Deletes the intermediate state file (`.devforge/.wizard-render-state.json`)
+
+After compose succeeds, proceed to Phase 5 (summary in `main.md`).
 
 ---
 

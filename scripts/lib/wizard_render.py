@@ -111,6 +111,9 @@ class WizardRenderState:
     agents_kept: dict[str, dict[str, Any]] = field(default_factory=dict)
     # shape: { agent_name: { "tier": "think|do|verify", "substitutions": {KEY: VALUE, ...} } }
     agents_removed: list[str] = field(default_factory=list)
+    # Path the LLM passed to apply-agents — compose deletes this on success
+    # so .devforge/ stays clean across re-runs.
+    agents_apply_file: str | None = None
 
 
 # ─── Validation tables ───────────────────────────────────────────────────────
@@ -508,6 +511,7 @@ def cmd_apply_agents(args: argparse.Namespace) -> int:
     state = load_state()
     state["agents_kept"] = kept
     state["agents_removed"] = removed
+    state["agents_apply_file"] = str(path)
     save_state(state)
     return 0
 
@@ -770,6 +774,13 @@ def cmd_compose(args: argparse.Namespace) -> int:
         info(f"  files skipped (not present): {len(skipped)}")
         for s in skipped:
             info(f"    · {s}")
+
+    # Delete the apply-agents file the LLM wrote (cleanup convention)
+    apply_file = state.get("agents_apply_file")
+    if apply_file:
+        ap = Path(apply_file)
+        if ap.exists():
+            ap.unlink()
 
     clear_state()
     return 0
