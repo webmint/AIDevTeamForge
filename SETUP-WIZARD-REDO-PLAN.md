@@ -8,11 +8,22 @@ Three audit cycles over multiple sessions surfaced 17+ findings — half cross-r
 
 ## When resuming work
 
-Open this file first. The state of the redo is tracked in two places:
+A fresh session opening this PLAN should do these reads in order before touching any chapter work:
+
+1. **Read this PLAN top to bottom.** The PLAN is the contract; every architectural decision and workflow rule lives here.
+2. **Read `CLAUDE.md`** (especially "Meta-discipline" + "Code & spec discipline" sections — these rules apply throughout execution).
+3. **Read the memory index `MEMORY.md`** and at minimum the rule-related entries (the `feedback_*` memories — they encode discipline rules that survive across sessions).
+4. **Read the 4 project agent files** (`.claude/agents/python-engineer.md`, `python-reviewer.md`, `instruction-author.md`, `instruction-reviewer.md`) to know what each agent expects in a brief.
+5. **Check the Execution log** at the bottom of this PLAN — most-recent committed chapter + which chapter is in progress (if any).
+6. **Run `git log --oneline | grep setup-wizard-redo`** for the chronological commit trail. Every redo commit uses prefix `setup-wizard-redo: <chapter-id>: <action>` so the trail is greppable.
+7. **For the in-progress chapter** (if any): read its draft state from git diff (uncommitted changes) AND the chapter description in Section 3 of this PLAN AND any helper context from prior chapters that the in-progress chapter depends on.
+8. **Verify the discipline frame is still in force** — quick grep for the meta-rules in CLAUDE.md (zero-escape-hatch, no-underspecification, default-argue) to confirm nothing was tampered with.
+
+Only after these 8 reads does the resuming session start writing or dispatching agents. Skipping any read risks acting on a stale mental model.
+
+State of the redo is tracked in two places:
 - **`## Execution log`** at the bottom of this file — most recent commit per chapter, current chapter in progress
 - **`git log --oneline | grep 'setup-wizard-redo'`** — chronological commit trail
-
-Every commit message during the redo prefixes with `setup-wizard-redo: <chapter>: <action>` so the trail is greppable.
 
 ---
 
@@ -149,10 +160,25 @@ The redo proceeds chapter by chapter. Each chapter writes one cohesive section o
 - Helpers needed: none (LLM runs git commands directly)
 - Verify: 3-signal priority documented; wrapper-mode `-C` rule applies to all phases
 
-**B5. STEP 3: Auto-Detect Project Structure (brownfield only)**
-- Items: package-root detection (manifest scan); per-stack tool detection; aggregated categories; SFC-container collapsing; threshold rule for new language stacks
-- Helpers needed: none for detection (LLM-driven); existing `detect_report add-package`, `add-language`, `add-framework`, `add-enforcement-tool` setters used
-- Verify: every aggregated category mapped to a detect_report field or storage note
+**B5a. STEP 3 — Package-root detection**
+- Items: manifest scan rules; recognized manifests list; scan rules (4 directory levels deep, exclude dirs); per-manifest record fields (path, manifest, language_hint, framework_hint); dep-block scope rules; edge cases (no manifests, single root, monorepo workspace+member, duplicate manifests)
+- Helpers needed: none for detection; existing `detect_report add-package` setter
+- Verify: every detection signal in spec maps to a recorded field; edge cases all have documented behavior
+
+**B5b. STEP 3 — Per-stack tool detection (build/check/lint per language)**
+- Items: priority order (manifest-declared script → language standard ecosystem tool → null); command-runner selection rules per ecosystem (JS/TS lockfile, Python manifest content, Ruby Gemfile.lock, Rust/Go/Swift/Cargo single-runner, JVM wrapper presence); guiding examples per language; wrapper-mode prefix; anti-hallucination; per-package overrides
+- Helpers needed: none for detection (LLM-driven); arrays land in working memory until Phase 3 setters
+- Verify: every priority step has a tie-breaker; runner-selection rules cover all common ecosystems
+
+**B5c. STEP 3 — Aggregated categories**
+- Items: languages and runtimes (canonical runtime values per language table); primary frameworks; package manager; testing frameworks; linting/formatting tools; build tool/bundler; monorepo tool; styling; state management; API layer; architecture pattern; error handling pattern; CI/CD; containerization; enforcement tooling (canonical signals list)
+- Helpers needed: none for detection; existing `detect_report set <field>` and `add-language` / `add-framework` / `add-enforcement-tool` setters
+- Verify: every category maps to a detect_report field or to the working-memory storage note from B1
+
+**B5d. STEP 3 — SFC-container collapsing + threshold rule**
+- Items: SFC-container collapse (Vue/Svelte/Astro embedded script lang detection); React-family extension collapse (.tsx/.jsx); tooling-script exclusion (root + scripts/ JS in TS-primary projects); monorepo coordinator exclusion; threshold rule for new language stacks
+- Helpers needed: none for detection
+- Verify: every collapsing rule has an example outcome; threshold criterion explicit
 
 **B6. Detection Report — Phase 1 output (rules + compose protocol)**
 - Items: 9 rules for the report (every required field set explicitly, dep+usage double-check, architecture bucket enumerated, per-package commands per-package-specific, workspace members vs utility manifests, wrapper-mode prefix, evidence required, runtime_url dev-server config, README scope); compose protocol (`status` then `compose`)
@@ -196,25 +222,35 @@ The redo proceeds chapter by chapter. Each chapter writes one cohesive section o
 - Helpers needed: none for the question itself; existing `wizard_render add-language` used in Phase 3
 - Verify: array re-sync rules cover all 4 per-stack arrays (FRAMEWORKS, ARCHITECTURES, ERROR_HANDLINGS, API_LAYERS, TESTINGS) plus the 4 command/tool arrays
 
-**C7. Q4 — Architecture Pattern (OPTIONAL, per-stack)**
-- Items: single-stack vs multi-stack branching; cross-stack shortcut; Clean-Architecture vs hexagonal disambiguation; defer semantics (TBD)
-- Helpers needed: none
-- Verify: TBD handling consistent with Phase 3 rendering rules
+**C7-C10. Q4-Q7 — OPTIONAL per-stack questions (grouped chapter — shared structure)**
 
-**C8. Q5 — Error Handling Convention (OPTIONAL, per-stack)**
-- Items: Phase 1 findings as primary source; per-stack iteration rules; cross-cutting convention shortcut
-- Helpers needed: none
-- Verify: lightweight supplemental scan rule preserves Phase 1 8-10 file cap
+These four questions share the same shape: OPTIONAL marker, per-stack rendering, single-stack vs multi-stack branching, cross-stack shortcut, defer-as-TBD. Written as one chapter with a shared-structure preamble + 4 question-specific sub-items.
 
-**C9. Q6 — API Layer (OPTIONAL, per-stack)**
-- Items: detection-driven defaults; N/A for non-API projects; per-stack iteration
-- Helpers needed: none
-- Verify: N/A semantics distinguish "no API for this stack" from "user deferred"
+**Shared structure preamble (once):**
+- OPTIONAL marker semantics (confirm / override / defer; TBD storage)
+- Single-stack flow (one ask, one answer)
+- Multi-stack flow (cross-stack shortcut "same for all" vs per-stack iteration; defer-all option)
+- Phase 1 findings as primary source for the "detected" path; lightweight supplemental scan rule (preserve Phase 1 8-10 file cap)
+- Storage as parallel-indexed array (`ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`)
 
-**C10. Q7 — Testing Framework (OPTIONAL, per-stack)**
-- Items: Phase 1 test-runner findings as primary; per-stack iteration; N/A for no-test-yet
-- Helpers needed: none
-- Verify: per-stack arrays land via `wizard_render add-testing`
+**C7a. Q4 — Architecture Pattern**
+- Question-specific items: Clean-Architecture vs hexagonal disambiguation; defer semantics; existing-project / empty-greenfield variants
+- Setter (Phase 3): `wizard_render add-architecture --value <s>`
+
+**C7b. Q5 — Error Handling Convention**
+- Question-specific items: language-conventional defaults (Go (value, error), Python exceptions, Rust Result); library-level conventions on top (pkg/errors, returns, anyhow, neverthrow)
+- Setter (Phase 3): `wizard_render add-error-handling --value <s>`
+
+**C7c. Q6 — API Layer**
+- Question-specific items: API style options (REST/GraphQL/tRPC/gRPC/WebSocket); N/A for non-API projects; per-stack `"N/A"` valid (e.g., shared-lib has no API)
+- Setter (Phase 3): `wizard_render add-api-layer --value <s>`
+
+**C7d. Q7 — Testing Framework**
+- Question-specific items: language-bound nature (pytest = Python; vitest = JS/TS; etc.); N/A for no-tests-yet
+- Setter (Phase 3): `wizard_render add-testing --value <s>`
+
+- Helpers needed: none for questions; per-stack adders for Phase 3 (existing setters)
+- Verify: shared-structure preamble actually applies to all 4 (no question-specific exception that would break the pattern); each per-stack array sentinel rule (`"N/A"`, `"TBD"`) consistent
 
 **C11. Q8 — Workflow Enforcement (REQUIRED)**
 - Items: 3 options (Strict / Moderate / Light); recommendation; downstream consumers list
@@ -357,6 +393,14 @@ The redo proceeds chapter by chapter. Each chapter writes one cohesive section o
 - Helpers needed: `detect_report reset`, `wizard_render reset` (existing)
 - Verify: rationale explicit (silent duplication risk on re-run)
 
+### Chapter group G — end-to-end integration test (after all other chapters)
+
+**G1. Full-wizard end-to-end test harness**
+- Items: test script (likely shell + python) that runs Phase 0 → Phase 4 against a synthetic project (e.g., temporary directory with hand-crafted manifests + source files); asserts populated CLAUDE.md substitutes correctly, baselines exist with final content, agent files have correct model/substitutions, setup-complete marker written; covers 3-4 representative shapes (standalone single-stack TS+Next, standalone Python CLI, wrapper TS+Python monorepo, empty project)
+- Helpers needed: test harness itself (new file, e.g., `scripts/tests/test_wizard_end_to_end.sh` or `scripts/tests/test_wizard_end_to_end.py`)
+- Verify: harness runs successfully against all 3-4 shapes; asserts pass; serves as the "fully aligned end-to-end" proof
+- **Note:** chapter G1 runs LAST, after all of A-F land. It's the integration verification, not a development chapter.
+
 ---
 
 ## Section 4 — Helper interface anticipation
@@ -454,6 +498,25 @@ When spec writing pauses for helper work and resumes:
 - **Helper commits:** function tests pass; python-reviewer approved; cross-reference grep clean
 - **Spec commits:** instruction-reviewer approved (no high/medium findings unfixed); cross-reference grep clean; sentence-level hallucination check applied
 
+### PLAN amendment protocol
+
+Discoveries during execution may invalidate parts of this PLAN — a chapter scope was wrong, a helper need was unanticipated, a constraint emerged that changes architecture. Don't silently deviate. The protocol:
+
+1. **Pause the in-progress chapter work** (don't commit a chapter that contradicts the PLAN).
+2. **Identify the affected PLAN section** (Section 1 frame? Section 2 inventory? Section 3 chapter outline? Section 4 helper anticipation? Section 5 workflow?).
+3. **Update the PLAN file** with the discovery — document what changed and WHY (so future readers / sessions understand the reasoning).
+4. **Commit the PLAN amendment** with prefix `setup-wizard-redo: plan-amend: <reason>` (e.g., `setup-wizard-redo: plan-amend: split chapter D5 — composition rules per placeholder needed separate sections`).
+5. **Add an entry to the Execution log** describing the amendment.
+6. **Resume the chapter work** against the amended PLAN.
+
+Triggers for amendment (non-exhaustive):
+- A chapter is too big to write coherently → split into sub-chapters
+- A helper needed for chapter X turns out to depend on chapter Y (later than X) → reorder chapters or hoist the helper
+- An architectural decision in Section 1 is contradicted by what we discover during a chapter → re-examine the decision (rare; the frame is supposed to be settled)
+- A new placeholder / setter / agent need surfaces that wasn't anticipated → add to Section 4 anticipation + add the chapter that introduces it
+
+Anti-pattern: silently writing code or spec that contradicts the PLAN. If you catch yourself thinking "this isn't quite what the PLAN said but I'll just do it" — pause, amend the PLAN explicitly, then act.
+
 ### Use of Claude Code primitives
 
 - **AskUserQuestion** — used in wizard runtime per the contract; documented in main.md
@@ -473,7 +536,26 @@ Updated as chapters complete. Most recent at top.
 
 ---
 
-## Open questions / decisions deferred
+## Resolved decisions
 
-- **Existing helper functions in detect_report.py — test backfill scope.** The redo focuses on wizard_render.py rewrite; detect_report.py already works (audited end-to-end). The test-first rule says every function gets a test. Do we backfill detect_report.py tests as part of this redo, or as a separate cleanup? Defer decision until after wizard_render redo lands; assess scope then.
-- **Is there a value in a top-level integration test that runs the full wizard end-to-end** (Phase 1 → Phase 5 with synthetic detection inputs)? Could replace many smaller tests + serve as the "fully aligned" verification. Defer until redo is far enough along to know what to assert.
+### detect_report.py test backfill scope
+
+**Decision: incremental — test-when-touched, accept untouched-as-is.**
+
+Rationale: detect_report.py is mostly correct (audited end-to-end with empty + brownfield + wrapper smoke tests across multiple commits). Backfilling tests for every existing function is a lot of work for code that's already proven by integration. Two alternatives rejected:
+- **Backfill everything** (option a) — wasteful; already-working code doesn't gain meaningfully from added tests.
+- **Defer all backfill to a separate cleanup** (option b) — leaves a known gap forever; "separate cleanup" tasks tend not to happen.
+
+Incremental (test-when-touched) means: every chapter that touches a detect_report function adds a test for that function as part of the chapter's work. Functions never touched during the redo stay as-is, accepting the test-coverage gap. The gap is bounded (existing functions, no new ones) and surface-known (we know which functions lack tests).
+
+### Integration test for full wizard end-to-end
+
+**Decision: add as a chapter at the end (Chapter G1) — runs after all helper + spec chapters land.**
+
+Rationale: by the time we reach end-of-redo, every helper has its own test (test-first rule) and every spec chapter has been reviewed (instruction-reviewer). An end-to-end integration test then becomes a thin "wire all phases together, assert files exist + match expected shape" check rather than a deep assertion suite. It serves as the "fully aligned end-to-end" proof — the verification surface the audit cycles tried (and failed) to provide via spec-reading alone.
+
+Chapter G1 added to the outline (next edit). Scope: a test harness that runs Phase 0 reset → Phase 1 detect_report compose with synthetic input → Phase 2 mock-question-answer flow → Phase 3 wizard_render setters → Phase 4 apply-agents + compose → asserts on populated files (CLAUDE.md substituted, baselines copied, agent files populated, setup-complete marker present).
+
+## Open questions
+
+(none currently — both deferred decisions resolved above)
