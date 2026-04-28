@@ -34,7 +34,7 @@ Load inputs from existing artifacts. Do NOT walk the codebase.
    - `TESTINGS[]` (per-stack; may be `"N/A"`)
    - `WORKFLOW_ENFORCEMENT` (strict / moderate / light)
    - `PROJECT_STATE` — `brownfield` / `greenfield` / `empty`
-   - `WORKSPACE_MODE`, `SOURCE_ROOT`
+   - `WORKSPACE_MODE`, `PROJECT_ROOT`
    - `PACKAGES_DETECTED` / `PACKAGE_STACKS` for multi-package projects
 
    **Schema-compatibility check**: constitute expects `SCHEMA_VERSION = "1.0"` (major.minor). Handling:
@@ -285,14 +285,14 @@ Every `[enforced]` rule must name the specific tooling source (config file + rul
 
 Before writing anything (Phase 5), verify citations on tagged rules. This is NOT a codebase walk — you only read the SPECIFIC files cited by rules you generated, to confirm the claims are real.
 
-**Path resolution**: cited paths are relative to `SOURCE_ROOT` (from Phase 1). For standalone projects that's the workspace root; for wrapper-mode it's the inner folder.
+**Path resolution**: cited paths are relative to `PROJECT_ROOT` (from Phase 1). For standalone projects that's the workspace root; for wrapper-mode it's the inner folder.
 
 ### 4.5.1: Validate `[extracted]` rules
 
 For each rule tagged `[extracted]`:
 
 1. Extract the cited file path(s) from the rule text.
-2. Verify the file exists at `<SOURCE_ROOT>/<path>`. If multiple files are cited, verify each.
+2. Verify the file exists at `<PROJECT_ROOT>/<path>`. If multiple files are cited, verify each.
 3. If ANY cited file is missing, **downgrade the rule's tag to `[convention]`**. Keep the rule content — the rule itself may still be reasonable; just its claim to being evidence-based is unverified.
 4. Record the downgrade in your `TAG_ADJUSTMENTS` count (for Phase 6 summary).
 
@@ -303,7 +303,7 @@ Scope limit: you check file EXISTENCE, not deep content verification. If a rule 
 For each rule tagged `[enforced]`:
 
 1. Extract the cited config file + rule/option name (e.g., `tsconfig.json strict: true`; `.eslintrc.js no-explicit-any`; `Cargo.toml [lints.clippy] unwrap_used = "deny"`).
-2. Verify the config file exists at `<SOURCE_ROOT>/<path>` AND contains the named rule / setting / option.
+2. Verify the config file exists at `<PROJECT_ROOT>/<path>` AND contains the named rule / setting / option.
 3. If the config file is missing OR the named setting isn't present, **downgrade the rule's tag to `[recommended]`**. Record the downgrade.
 
 ### 4.5.3: Record adjustments

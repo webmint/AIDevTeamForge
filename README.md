@@ -13,11 +13,7 @@ Every phase transition requires explicit user approval. Optional steps (research
 ## Installation
 
 ```bash
-# Standard installation
 /path/to/AIDevTeamForge/install.sh /path/to/your-project
-
-# Wrapper mode (for client-invisible AI usage)
-/path/to/AIDevTeamForge/install.sh --wrapper /path/to/workspace inner-project-folder
 ```
 
 This copies `.claude/`, `specs/`, `bugs/`, `research/`, `scripts/`, and `.mcp.json` into your project (excluding `settings.local.json`, which is project-owned). It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
@@ -211,7 +207,7 @@ Use wrapper mode when the Claude orchestration layer must wrap around an existin
 ```
 my-workspace/                    # Wrapper (your git repo)
 ├── .claude/                     # Commands, agents, memory
-├── CLAUDE.md                    # Project config (Source Root = client-project)
+├── CLAUDE.md                    # Project config (Project Root = client-project)
 ├── constitution.md              # Project constitution
 ├── specs/                       # Feature specifications
 ├── docs/                        # Documentation
@@ -228,9 +224,8 @@ my-workspace/                    # Wrapper (your git repo)
 - Git auto-commits apply to both repos — wrapper gets workflow commits, source repo gets per-task WIP commits that are squashed into one clean commit (`[TICKET-ID] - Description`, extracted from source branch name) when `/verify` approves the feature (or at `/fix`/`/refactor` final commit)
 - `/execute-task` verifies no Claude artifacts were created inside the inner project
 
-### Setup options
-1. **Auto-detect**: Run `install.sh` normally, then `/setup-wizard` — it detects nested git repos and asks
-2. **Pre-configure**: `install.sh --wrapper /path/to/workspace inner-folder` — sets up `.gitignore` entry upfront
+### Setup
+Run `install.sh`, then `/setup-wizard`. The wizard auto-detects nested git repos, confirms wrapper mode with you, and asks about adding the inner folder to `.gitignore`.
 
 ## Greenfield Support
 

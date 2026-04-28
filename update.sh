@@ -172,7 +172,7 @@ migrate_project_config() {
   info "Migrating: extracting project config from existing CLAUDE.md..."
 
   # Extract simple key-value pairs from the known **Key**: value format
-  local proj_name proj_type framework language build_tool build_cmd source_root
+  local proj_name proj_type framework language build_tool build_cmd project_root
   local architecture error_handling api_layer state_mgmt styling monorepo
   local type_check_cmd lint_cmd project_mode
 
@@ -184,7 +184,7 @@ migrate_project_config() {
   build_cmd="$(grep '^\*\*Build Command\*\*:' "$claude_md" | sed 's/\*\*Build Command\*\*: *//' | head -1)"
   type_check_cmd="$(grep '^\*\*Type Check Command\*\*:' "$claude_md" | sed 's/\*\*Type Check Command\*\*: *//' | head -1)"
   lint_cmd="$(grep '^\*\*Lint Command\*\*:' "$claude_md" | sed 's/\*\*Lint Command\*\*: *//' | head -1)"
-  source_root="$(grep '^\*\*Source Root\*\*:' "$claude_md" | sed 's/\*\*Source Root\*\*: *//' | head -1)"
+  project_root="$(grep '^\*\*Project Root\*\*:' "$claude_md" | sed 's/\*\*Project Root\*\*: *//' | head -1)"
   architecture="$(grep '^\*\*Pattern\*\*:' "$claude_md" | sed 's/\*\*Pattern\*\*: *//' | head -1)"
   error_handling="$(grep '^\*\*Error Handling\*\*:' "$claude_md" | sed 's/\*\*Error Handling\*\*: *//' | head -1)"
   api_layer="$(grep '^\*\*API Layer\*\*:' "$claude_md" | sed 's/\*\*API Layer\*\*: *//' | head -1)"
@@ -194,7 +194,7 @@ migrate_project_config() {
 
   # Detect project mode: check if project-config.json hint exists, else infer from source file count
   project_mode="existing"
-  local src_root="${source_root:-.}"
+  local src_root="${project_root:-.}"
   if [ "$src_root" != "." ]; then
     src_root="$TARGET_DIR/$src_root"
   else
@@ -292,7 +292,7 @@ migrate_project_config() {
     --arg BUILD_COMMAND "${build_cmd:-N/A}" \
     --arg TYPE_CHECK_COMMAND "${type_check_cmd:-N/A}" \
     --arg LINT_COMMAND "${lint_cmd:-N/A}" \
-    --arg SOURCE_ROOT "${source_root:-\.}" \
+    --arg PROJECT_ROOT "${project_root:-\.}" \
     --arg PROJECT_MODE "$project_mode" \
     --arg ARCHITECTURE "${architecture:-N/A}" \
     --arg ERROR_HANDLING "${error_handling:-N/A}" \
@@ -319,7 +319,7 @@ migrate_project_config() {
       BUILD_COMMAND: $BUILD_COMMAND,
       TYPE_CHECK_COMMAND: $TYPE_CHECK_COMMAND,
       LINT_COMMAND: $LINT_COMMAND,
-      SOURCE_ROOT: $SOURCE_ROOT,
+      PROJECT_ROOT: $PROJECT_ROOT,
       PROJECT_MODE: $PROJECT_MODE,
       ARCHITECTURE: $ARCHITECTURE,
       ERROR_HANDLING: $ERROR_HANDLING,

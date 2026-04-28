@@ -14,7 +14,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 - **Build Command**: `{{BUILD_COMMAND}}`
 - **Type Check Command**: `{{TYPE_CHECK_COMMAND}}`
 - **Lint Command**: `{{LINT_COMMAND}}`
-- **Source Root**: {{SOURCE_ROOT}}
+- **Project Root**: {{PROJECT_ROOT}}
 
 {{WRAPPER_MODE_SECTION}}
 
@@ -162,6 +162,12 @@ Verification runs at task boundaries (end of `/execute-task`, `/fix`, `/refactor
 
 Full specification in `/execute-task`.
 
+## Placeholder Convention
+
+Any `{{UPPERCASE}}` marker (e.g., `{{PROJECT_NAME}}`, `{{LANGUAGE}}`) in a template file is a substitution placeholder. Each marker is replaced with the user's answer or a detected value before the file is presented to the user.
+
+Authors of template files — constitution, agent files, docs, this CLAUDE.md — may use these placeholders freely. Readers must never see literal `{{...}}` text in substituted output; if a placeholder reaches the user verbatim, the substitution step is broken or the marker name is wrong.
+
 ## Key Rules
 
 ### Always
@@ -240,7 +246,7 @@ docs/
 - Everything for a feature lives in one directory
 - Docs are organized by topic (not by task/date) in `docs/`
 - See `.devforge/storage-rules.md` for full conventions
-- **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{SOURCE_ROOT}}`
+- **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{PROJECT_ROOT}}`
 
 ## Session Continuity
 

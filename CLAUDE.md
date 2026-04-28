@@ -33,7 +33,8 @@ Currently active:
 | Forge architecture decisions | `DEVELOPMENT-STATUS.md`, `CHANGELOG.md` |
 | Spec sources | `src/commands/`, `src/agents/`, `src/files/` |
 | Generators / emitters | `scripts/emitters/`, `scripts/generate*.py`, `scripts/generate.sh` |
-| Helper for `/onboard` | `scripts/lib/onboard_helper.py` |
+| Runtime helpers (wizard + onboard) | `src/devforge/lib/{detect_report,wizard_render,onboard_helper}.py` |
+| Helper review-and-fix pipeline | `/review-helper <path>` — see `.claude/commands/review-helper.md` |
 | Install / update logic | `install.sh`, `update.sh` |
 | Investigation rationale | Obsidian: `20 Projects/AIDevTeamForge/` |
 

@@ -29,7 +29,7 @@
       { "source": "src/commands/_multi-task-continuation.md", "target": ".claude/commands/_multi-task-continuation.md" },
       { "source": "src/commands/_tech-writer-onboarding.md", "target": ".claude/commands/_tech-writer-onboarding.md" },
       { "source": "src/manifest.json",                      "target": ".claude/template-manifest.json" },
-      { "source": "scripts/**",                             "target": "scripts/**" }
+      { "source": "src/devforge/lib/**",                    "target": ".devforge/lib/**" }
     ]
   },
 

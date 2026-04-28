@@ -2,3 +2,6 @@
 .npm-cache/
 .claude/session-state.md
 .claude/wip.md
+
+# Local vault for in-flight redo work (not for commit)
+.vault/

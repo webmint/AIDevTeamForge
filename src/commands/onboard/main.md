@@ -21,7 +21,7 @@ The docs are a **substitute for first-pass code reading**. An agent should be ab
 
 ## HELPER INVOCATION CONTRACT (load-bearing)
 
-**You MUST register every doc through `scripts/lib/onboard_helper`. Direct file writes to `docs/` are not part of this command's contract.**
+**You MUST register every doc through `.devforge/lib/onboard_helper`. Direct file writes to `docs/` are not part of this command's contract.**
 
 The helper exposes 7 verbs. These are the only sanctioned doc-write paths:
 
@@ -50,7 +50,7 @@ The helper exposes 7 verbs. These are the only sanctioned doc-write paths:
 **Invocation example** (run from project root):
 
 ```bash
-scripts/lib/onboard_helper add-package-doc \
+.devforge/lib/onboard_helper add-package-doc \
   --unit pkg-foo \
   --path packages/pkg-foo \
   --content "$(cat <<'EOF'
@@ -75,7 +75,7 @@ EOF
 After all per-package, per-concern, and per-architecture invocations + all `add-memory-finding` calls, finalize with:
 
 ```bash
-scripts/lib/onboard_helper compose-onboard
+.devforge/lib/onboard_helper compose-onboard
 ```
 
 If validation fails, the helper prints the error list and exits 2 with state preserved. Read the errors, fix the affected registration(s) by re-invoking `add-*-doc` for the relevant unit/concern (re-registration overwrites), and re-run `compose-onboard`.
@@ -85,7 +85,7 @@ If validation fails, the helper prints the error list and exits 2 with state pre
 1. `/setup-wizard` must have been run — runtime primer (`CLAUDE.md`), agents directory, runtime config, and `.devforge/` scaffold must exist.
 2. `docs/` folder must exist (placed by install, populated by setup wizard).
 3. Project is **brownfield** — `.devforge/project-config.json` has `"PROJECT_STATE": "brownfield"`. Greenfield/empty projects skip onboard; the wizard's Phase 5 summary routes those to `/constitute` + `/specify`.
-4. `scripts/lib/onboard_helper` must be present and executable. install.sh copies it; verify with `ls scripts/lib/onboard_helper`. If missing, the install is incomplete.
+4. `.devforge/lib/onboard_helper` must be present and executable. install.sh copies it; verify with `ls .devforge/lib/onboard_helper`. If missing, the install is incomplete.
 
 If any prerequisite is missing, inform the user and suggest running the missing command first.
 
@@ -119,7 +119,7 @@ Read the following and extract what the tech-writer needs:
 
 1. **Runtime primer** (`CLAUDE.md`) — project name, type, framework, language, project structure, dev commands.
 2. **`constitution.md`** — project identity (Section 1, populated by setup-wizard) and universal coding rules. The `[project-specific]` sections are sentinel-marked at this stage; `/constitute` populates them later from onboard's findings + user preferences.
-3. **`.devforge/project-config.json`** — wizard-detected facts: `LANGUAGES[]`, `FRAMEWORKS[]`, `WORKSPACE_MODE` (`standalone`/`wrapper`), `SOURCE_ROOT`, `manifest_count`, `packages[]`, etc.
+3. **`.devforge/project-config.json`** — wizard-detected facts: `LANGUAGES[]`, `FRAMEWORKS[]`, `WORKSPACE_MODE` (`standalone`/`wrapper`), `PROJECT_ROOT`, `manifest_count`, `packages[]`, etc.
 4. **`.devforge/memory.md`** — pre-seeded knowledge from setup wizard.
 
 Compile a **project brief** — concise summary (~30 lines max) of what's already known: project name, type, stack, architecture pattern (if wizard captured), error handling pattern, API layer, testing framework, pre-seeded findings.
@@ -160,7 +160,7 @@ Read `.devforge/detection_report.yaml` (or `project-config.json` if the wizard e
 
 ## PHASE 2: Execute Onboarding Scan
 
-Phase 2 runs as **four distinct passes**, each with its own prompt template. **The orchestrator never writes to `docs/` directly** — every doc registration goes through `scripts/lib/onboard_helper`. This separation is load-bearing: each pass has its own focus and its own per-doc template.
+Phase 2 runs as **four distinct passes**, each with its own prompt template. **The orchestrator never writes to `docs/` directly** — every doc registration goes through `.devforge/lib/onboard_helper`. This separation is load-bearing: each pass has its own focus and its own per-doc template.
 
 | Pass | Dispatch shape | Helper verb |
 |---|---|---|
@@ -185,7 +185,7 @@ You are operating in ONBOARDING MODE — pass 2A (per-package). Generate complet
 ## Documentation Unit Assigned
 
 Unit name: [unit identifier]
-Unit path: [path relative to SOURCE_ROOT, e.g. packages/pkg-foo]
+Unit path: [path relative to PROJECT_ROOT, e.g. packages/pkg-foo]
 
 ## Pre-seeded findings (from prior memory.md)
 
@@ -193,7 +193,7 @@ Unit path: [path relative to SOURCE_ROOT, e.g. packages/pkg-foo]
 
 ## Your Mission
 
-Register one package doc + concern docs for this unit's substantive subfolders by calling `scripts/lib/onboard_helper`. You MUST NOT write directly to docs/. The helper enforces 7 validation gates; non-compliant registrations are rejected at compose time with explicit guidance.
+Register one package doc + concern docs for this unit's substantive subfolders by calling `.devforge/lib/onboard_helper`. You MUST NOT write directly to docs/. The helper enforces 7 validation gates; non-compliant registrations are rejected at compose time with explicit guidance.
 
 ## CORE MANDATE — COVER ALL CODE
 
@@ -208,7 +208,7 @@ If you are tempted to merge two distinct concerns into one doc with a compound n
 [Insert mode from §1.0: overwrite | merge | fresh]
 
 You can persist the mode at the start of the unit's pass:
-`scripts/lib/onboard_helper set mode --value [overwrite|merge|fresh]`
+`.devforge/lib/onboard_helper set mode --value [overwrite|merge|fresh]`
 
 ## Documentation Shape
 
@@ -287,7 +287,7 @@ After your registrations complete, return a brief summary noting how many add-pa
 Single dispatch (orchestrator runs direct, or one subagent). Prompt:
 
 ```
-You are operating in ONBOARDING MODE — pass 2B (architecture). Your job is to register the workspace-level architecture.md by calling `scripts/lib/onboard_helper add-architecture-doc`.
+You are operating in ONBOARDING MODE — pass 2B (architecture). Your job is to register the workspace-level architecture.md by calling `.devforge/lib/onboard_helper add-architecture-doc`.
 
 This is a DIFFERENT prompt from pass 2A. Do NOT use the per-package per-doc template. The architecture template observes patterns that exist across the whole workspace, not within one package.
 
@@ -297,12 +297,12 @@ This is a DIFFERENT prompt from pass 2A. Do NOT use the per-package per-doc temp
 
 ## What was registered in pass 2A
 
-[Insert: list of unit names + their paths from state. The orchestrator can get this via `scripts/lib/onboard_helper status`.]
+[Insert: list of unit names + their paths from state. The orchestrator can get this via `.devforge/lib/onboard_helper status`.]
 
 ## Your Mission
 
 Register `docs/architecture.md` once via:
-`scripts/lib/onboard_helper add-architecture-doc --content "$(cat ...)" --block-count N --ref-count N`
+`.devforge/lib/onboard_helper add-architecture-doc --content "$(cat ...)" --block-count N --ref-count N`
 
 The architecture doc carries the project's actual architectural patterns, dependency directions, naming conventions, decision rules — observed from the codebase, not prescribed by this spec.
 
@@ -355,7 +355,7 @@ Walk source files (with the standard ignore set) looking for:
 7. **Inconsistencies** — Either bifurcation (purify-ts vs local Either), conflicting error-handling styles within the same unit, divergent naming patterns.
 
 For each finding, call:
-`scripts/lib/onboard_helper add-memory-finding --category <module-boundaries|dependency-warnings|complexity|inconsistencies> --unit <unit-name-or-workspace> --observation "<one-line finding>"`
+`.devforge/lib/onboard_helper add-memory-finding --category <module-boundaries|dependency-warnings|complexity|inconsistencies> --unit <unit-name-or-workspace> --observation "<one-line finding>"`
 
 Cover EVERY unit, not a curated subset. Even thin packages get at least one boundary observation.
 
@@ -366,7 +366,7 @@ Cover EVERY unit, not a curated subset. Even thin packages get at least one boun
 
 After 2A, 2B, 2C all complete, the orchestrator invokes:
 
-`scripts/lib/onboard_helper compose-onboard`
+`.devforge/lib/onboard_helper compose-onboard`
 
 This runs all 7 validation gates and atomically writes registered content to `docs/` if validation passes. State is preserved on failure for retry. Errors are LLM-readable with specific guidance per failure.
 
@@ -438,7 +438,7 @@ Present to the user:
 
 These instructions are inlined into the tech-writer agent prompt at the placeholder above (Phase 2).
 
-**Source Root**: All source code scanning targets the Source Root specified in the runtime primer (`CLAUDE.md`), or canonically in `.devforge/project-config.json` `SOURCE_ROOT` field. For wrapper-mode projects, this is a subfolder.
+**Project Root**: All source code scanning targets the Project Root specified in the runtime primer (`CLAUDE.md`), or canonically in `.devforge/project-config.json` `PROJECT_ROOT` field. For wrapper-mode projects, this is a subfolder.
 
 ### A.1: Smart Extraction — What to Read from Each File Type
 
@@ -573,7 +573,7 @@ These terms have precise meanings in onboard's output and downstream consumers:
 
 ## IMPORTANT RULES
 
-1. **All doc writes go through `scripts/lib/onboard_helper`** — this is the only sanctioned write path. Direct `Write` tool calls to `docs/` are not part of this command's contract. The helper enforces 7 validation gates at compose time; bulk-script writes cannot satisfy them.
+1. **All doc writes go through `.devforge/lib/onboard_helper`** — this is the only sanctioned write path. Direct `Write` tool calls to `docs/` are not part of this command's contract. The helper enforces 7 validation gates at compose time; bulk-script writes cannot satisfy them.
 2. **Self-validate code-block counts before every registration** — count fenced blocks, count `<!-- path:line -->` reference comments, pass `--block-count N --ref-count N`. The helper rejects mismatches at registration AND at compose (content recount).
 3. **Cover all code** — every package or meaningful source folder gets a helper invocation. Coverage failure is a compose-time gate failure.
 4. **Architecture and memory are SEPARATE passes** — different prompts, different per-doc templates. Don't reuse the per-package template for architecture.md (forces wrong section shape). Memory is source-archaeology, not summarization-of-generated-docs.

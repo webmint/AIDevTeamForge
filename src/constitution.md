@@ -16,7 +16,7 @@ Last updated: {{DATE}}
 **Framework(s)**: {{FRAMEWORK}}
 **Language(s)**: {{LANGUAGE}}
 **Workspace Mode**: {{WORKSPACE_MODE}}
-**Source Root**: {{SOURCE_ROOT}}
+**Project Root**: {{PROJECT_ROOT}}
 
 > For multi-package projects, per-package stack details (one row per package with language / framework / architecture / error-handling / API layer / testing) live in the `## Packages` section of `CLAUDE.md`, not duplicated here.
 
