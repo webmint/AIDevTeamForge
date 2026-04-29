@@ -1,7 +1,8 @@
 """Tests for src/devforge/lib/wizard_render.py.
 
-Covers the `reset`, `set-project-name`, `set-project-description`, and
-`set-project-type` subcommands plus `_state_file_path` resolution.
+Covers the `reset`, `set-project-name`, `set-project-description`,
+`set-project-type`, `set-architecture`, `set-error-handling`, and
+`set-runtime-url` subcommands plus `_state_file_path` resolution.
 
 Each test runs in its own `tempfile.TemporaryDirectory` and points the
 helper at it via the `DEVFORGE_DIR` environment variable, so the repo's
@@ -524,6 +525,373 @@ class SetProjectTypeSubcommandTests(_StringSetterTestBase):
         self.assertEqual(leftovers, [])
 
 
+class SetArchitectureSubcommandTests(_StringSetterTestBase):
+    """End-to-end behavior of `wizard_render set-architecture`.
+
+    ARCHITECTURE is a single-line architectural-pattern label — a detected
+    value confirmed by the user or a free-text override. Same validation
+    policy as PROJECT_NAME (no LF/CR, no other control chars). The helper
+    enforces shape, not an enum (Q4 permits free-text).
+    """
+
+    HAPPY_VALUE = "Clean Architecture"
+
+    def test_writes_key_to_new_state_file(self):
+        self.assertFalse(self.state_file.exists())
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file.exists())
+        self.assertEqual(
+            self._read_state(), {"ARCHITECTURE": self.HAPPY_VALUE}
+        )
+
+    def test_merges_into_existing_state(self):
+        self._write_state({"PROJECT_NAME": "foo"})
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {"ARCHITECTURE": self.HAPPY_VALUE, "PROJECT_NAME": "foo"},
+        )
+
+    def test_overwrites_prior_value(self):
+        self._write_state({"ARCHITECTURE": "Old Pattern"})
+        proc = _run_helper(self.devforge_dir, "set-architecture", "Hexagonal")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self._read_state(), {"ARCHITECTURE": "Hexagonal"})
+
+    def test_empty_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-architecture", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ARCHITECTURE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_whitespace_only_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-architecture", "   ")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ARCHITECTURE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_control_char_value_rejected(self):
+        # 0x01 — see SetProjectNameSubcommandTests.test_control_char_value_rejected
+        # for why this isn't NUL.
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", "bad\x01arch"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ARCHITECTURE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_del_control_char_rejected(self):
+        # 0x7F (DEL) — verifies the high-end control char branch.
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", "bad\x7farch"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ARCHITECTURE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_newline_in_value_rejected(self):
+        # ARCHITECTURE is a single-line pattern label; embedded LF would
+        # silently corrupt template substitution.
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", "Clean\nArchitecture"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ARCHITECTURE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_pretty_printed_with_sorted_keys(self):
+        # Insert keys in non-sorted order; verify file has sorted output.
+        self._write_state({"ZZZ_LAST": "z", "AAA_FIRST": "a"})
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.state_file.read_text(encoding="utf-8")
+        self.assertIn('  "AAA_FIRST": "a"', content)
+        self.assertIn('  "ARCHITECTURE": "Clean Architecture"', content)
+        self.assertIn('  "ZZZ_LAST": "z"', content)
+        # Sorted: AAA appears before ARCHITECTURE, which appears before ZZZ.
+        self.assertLess(
+            content.index("AAA_FIRST"), content.index("ARCHITECTURE")
+        )
+        self.assertLess(
+            content.index("ARCHITECTURE"), content.index("ZZZ_LAST")
+        )
+
+    def test_no_temp_files_leaked_after_success(self):
+        # mkstemp leaves no leftover files on the happy path.
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        leftovers = [
+            p.name
+            for p in self.devforge_dir.iterdir()
+            if p.name.startswith("wizard-render-state-")
+        ]
+        self.assertEqual(leftovers, [])
+
+
+class SetErrorHandlingSubcommandTests(_StringSetterTestBase):
+    """End-to-end behavior of `wizard_render set-error-handling`.
+
+    ERROR_HANDLING is a single-line description combining library +
+    pattern (e.g. "purify-ts Either", "neverthrow with Result type",
+    "try/catch"). Same validation policy as PROJECT_NAME (no LF/CR, no
+    other control chars).
+    """
+
+    HAPPY_VALUE = "purify-ts Either"
+
+    def test_writes_key_to_new_state_file(self):
+        self.assertFalse(self.state_file.exists())
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file.exists())
+        self.assertEqual(
+            self._read_state(), {"ERROR_HANDLING": self.HAPPY_VALUE}
+        )
+
+    def test_merges_into_existing_state(self):
+        self._write_state({"PROJECT_NAME": "foo"})
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {"ERROR_HANDLING": self.HAPPY_VALUE, "PROJECT_NAME": "foo"},
+        )
+
+    def test_overwrites_prior_value(self):
+        self._write_state({"ERROR_HANDLING": "old pattern"})
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", "try/catch"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(), {"ERROR_HANDLING": "try/catch"}
+        )
+
+    def test_empty_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-error-handling", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ERROR_HANDLING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_whitespace_only_value_rejected(self):
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", "   \t  "
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ERROR_HANDLING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_control_char_value_rejected(self):
+        # 0x01 — see SetProjectNameSubcommandTests.test_control_char_value_rejected
+        # for why this isn't NUL.
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", "bad\x01eh"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ERROR_HANDLING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_del_control_char_rejected(self):
+        # 0x7F (DEL) — verifies the high-end control char branch.
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", "bad\x7feh"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ERROR_HANDLING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_newline_in_value_rejected(self):
+        # ERROR_HANDLING is a single-line description; embedded LF would
+        # silently corrupt template substitution.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-error-handling",
+            "purify-ts\nEither",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ERROR_HANDLING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_pretty_printed_with_sorted_keys(self):
+        # Insert keys in non-sorted order; verify file has sorted output.
+        self._write_state({"ZZZ_LAST": "z", "AAA_FIRST": "a"})
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.state_file.read_text(encoding="utf-8")
+        self.assertIn('  "AAA_FIRST": "a"', content)
+        self.assertIn('  "ERROR_HANDLING": "purify-ts Either"', content)
+        self.assertIn('  "ZZZ_LAST": "z"', content)
+        # Sorted: AAA appears before ERROR_HANDLING, which appears before ZZZ.
+        self.assertLess(
+            content.index("AAA_FIRST"), content.index("ERROR_HANDLING")
+        )
+        self.assertLess(
+            content.index("ERROR_HANDLING"), content.index("ZZZ_LAST")
+        )
+
+    def test_no_temp_files_leaked_after_success(self):
+        # mkstemp leaves no leftover files on the happy path.
+        proc = _run_helper(
+            self.devforge_dir, "set-error-handling", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        leftovers = [
+            p.name
+            for p in self.devforge_dir.iterdir()
+            if p.name.startswith("wizard-render-state-")
+        ]
+        self.assertEqual(leftovers, [])
+
+
+class SetRuntimeUrlSubcommandTests(_StringSetterTestBase):
+    """End-to-end behavior of `wizard_render set-runtime-url`.
+
+    RUNTIME_URL is a single-line URL OR the literal sentinel "N/A" when
+    the project has no runtime URL. The sentinel passes the strict
+    string validator naturally — no special-case branch is needed. Same
+    validation policy as PROJECT_NAME (no LF/CR, no other control chars).
+    """
+
+    HAPPY_VALUE = "http://localhost:3000"
+
+    def test_writes_key_to_new_state_file(self):
+        self.assertFalse(self.state_file.exists())
+        proc = _run_helper(
+            self.devforge_dir, "set-runtime-url", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file.exists())
+        self.assertEqual(
+            self._read_state(), {"RUNTIME_URL": self.HAPPY_VALUE}
+        )
+
+    def test_merges_into_existing_state(self):
+        self._write_state({"PROJECT_NAME": "foo"})
+        proc = _run_helper(
+            self.devforge_dir, "set-runtime-url", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {"PROJECT_NAME": "foo", "RUNTIME_URL": self.HAPPY_VALUE},
+        )
+
+    def test_overwrites_prior_value(self):
+        self._write_state({"RUNTIME_URL": "http://old.example.com"})
+        proc = _run_helper(
+            self.devforge_dir, "set-runtime-url", "http://new.example.com"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {"RUNTIME_URL": "http://new.example.com"},
+        )
+
+    def test_empty_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-runtime-url", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"RUNTIME_URL", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_whitespace_only_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-runtime-url", "   ")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"RUNTIME_URL", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_control_char_value_rejected(self):
+        # 0x01 — see SetProjectNameSubcommandTests.test_control_char_value_rejected
+        # for why this isn't NUL.
+        proc = _run_helper(
+            self.devforge_dir, "set-runtime-url", "http://bad\x01url"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"RUNTIME_URL", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_del_control_char_rejected(self):
+        # 0x7F (DEL) — verifies the high-end control char branch.
+        proc = _run_helper(
+            self.devforge_dir, "set-runtime-url", "http://bad\x7furl"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"RUNTIME_URL", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_newline_in_value_rejected(self):
+        # RUNTIME_URL is a single-line URL; embedded LF would silently
+        # corrupt template substitution.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-runtime-url",
+            "http://localhost:3000\nextra",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"RUNTIME_URL", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_pretty_printed_with_sorted_keys(self):
+        # Insert keys in non-sorted order; verify file has sorted output.
+        self._write_state({"ZZZ_LAST": "z", "AAA_FIRST": "a"})
+        proc = _run_helper(
+            self.devforge_dir, "set-runtime-url", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.state_file.read_text(encoding="utf-8")
+        self.assertIn('  "AAA_FIRST": "a"', content)
+        self.assertIn(
+            '  "RUNTIME_URL": "http://localhost:3000"', content
+        )
+        self.assertIn('  "ZZZ_LAST": "z"', content)
+        # Sorted: AAA appears before RUNTIME_URL, which appears before ZZZ.
+        self.assertLess(
+            content.index("AAA_FIRST"), content.index("RUNTIME_URL")
+        )
+        self.assertLess(
+            content.index("RUNTIME_URL"), content.index("ZZZ_LAST")
+        )
+
+    def test_no_temp_files_leaked_after_success(self):
+        # mkstemp leaves no leftover files on the happy path.
+        proc = _run_helper(
+            self.devforge_dir, "set-runtime-url", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        leftovers = [
+            p.name
+            for p in self.devforge_dir.iterdir()
+            if p.name.startswith("wizard-render-state-")
+        ]
+        self.assertEqual(leftovers, [])
+
+    def test_na_sentinel_accepted(self):
+        # Q6 spec (line 107): when the project has no runtime URL, the
+        # user replies 'N/A' and the helper saves it verbatim. The
+        # strict string validator already accepts non-empty
+        # non-control-char strings, so the sentinel passes naturally —
+        # this test pins that contract so future tightening of
+        # _validate_string can't silently reject the documented value.
+        proc = _run_helper(self.devforge_dir, "set-runtime-url", "N/A")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self._read_state(), {"RUNTIME_URL": "N/A"})
+
+
 class SetterCompositionTests(_StringSetterTestBase):
     """Verify the setters compose correctly into a shared state file."""
 
@@ -548,6 +916,10 @@ class SetterCompositionTests(_StringSetterTestBase):
 
     def test_all_three_setters_coexist_in_state(self):
         # Sequential setter calls accumulate into a single state dict.
+        # Narrower test kept intentionally alongside the all-six version
+        # below: it pins the original three-setter contract from the prior
+        # round so any regression on those specific keys surfaces with a
+        # focused failure rather than buried in the all-six assertion diff.
         proc = _run_helper(
             self.devforge_dir, "set-project-name", "my-project"
         )
@@ -570,6 +942,54 @@ class SetterCompositionTests(_StringSetterTestBase):
                 "PROJECT_NAME": "my-project",
                 "PROJECT_DESCRIPTION": "My project description.",
                 "PROJECT_TYPE": "Frontend / web application",
+            },
+        )
+
+    def test_all_six_setters_coexist_in_state(self):
+        # Sequential setter calls across all six Phase 2 fields accumulate
+        # into a single state dict — verifies no key collision and that
+        # each setter merges (rather than overwrites) the dict.
+        proc = _run_helper(
+            self.devforge_dir, "set-project-name", "my-project"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-project-description",
+            "My project description.",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-project-type",
+            "Frontend / web application",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir, "set-architecture", "Clean Architecture"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-error-handling",
+            "purify-ts Either",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-runtime-url",
+            "http://localhost:3000",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {
+                "PROJECT_NAME": "my-project",
+                "PROJECT_DESCRIPTION": "My project description.",
+                "PROJECT_TYPE": "Frontend / web application",
+                "ARCHITECTURE": "Clean Architecture",
+                "ERROR_HANDLING": "purify-ts Either",
+                "RUNTIME_URL": "http://localhost:3000",
             },
         )
 

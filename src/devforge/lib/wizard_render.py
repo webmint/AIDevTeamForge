@@ -21,9 +21,15 @@ State model:
 
 Stdlib only. No third-party dependencies. Targets Python 3.8+.
 
-REBUILD IN PROGRESS: subcommands are added incrementally during the spec
-migration in .vault/setup-wizard/. The reference implementation (with known
-issues) is preserved at .vault/devforge/lib/wizard_render.py.
+Subcommands:
+
+- `reset` — delete the helper's state file (idempotent)
+- `set-project-name <value>` — store PROJECT_NAME
+- `set-project-description <value>` — store PROJECT_DESCRIPTION
+- `set-project-type <value>` — store PROJECT_TYPE
+- `set-architecture <value>` — store ARCHITECTURE
+- `set-error-handling <value>` — store ERROR_HANDLING
+- `set-runtime-url <value>` — store RUNTIME_URL
 """
 
 import argparse
@@ -266,6 +272,46 @@ def cmd_set_project_type(args):
     return _set_string_field("PROJECT_TYPE", args.value, "set-project-type")
 
 
+def cmd_set_architecture(args):
+    """Persist Phase 2 Q4 answer (ARCHITECTURE) to the state file.
+
+    ARCHITECTURE is a single-line architectural-pattern label — either a
+    detected value confirmed by the user (mirroring detect.md's singular
+    `architecture_shape`) or a free-text override (e.g. "Clean
+    Architecture", "Hexagonal", "feature-modular-monorepo"). Newlines are
+    rejected (not in `_ALLOW_NEWLINES_FIELDS`); the helper does not
+    validate against an enum because Q4 permits free-text overrides.
+    """
+    return _set_string_field("ARCHITECTURE", args.value, "set-architecture")
+
+
+def cmd_set_error_handling(args):
+    """Persist Phase 2 Q5 answer (ERROR_HANDLING) to the state file.
+
+    ERROR_HANDLING is a single-line description that combines library +
+    pattern into one human-readable string (e.g. "neverthrow with Result
+    type", "purify-ts Either", "try/catch"). Q5 stores the combined form
+    so downstream substitution gets a single ready-to-render value.
+    Newlines are rejected (not in `_ALLOW_NEWLINES_FIELDS`).
+    """
+    return _set_string_field(
+        "ERROR_HANDLING", args.value, "set-error-handling"
+    )
+
+
+def cmd_set_runtime_url(args):
+    """Persist Phase 2 Q6 answer (RUNTIME_URL) to the state file.
+
+    RUNTIME_URL is a single-line URL (e.g. "http://localhost:3000") OR
+    the literal sentinel string "N/A" when the project has no runtime
+    URL (backend service, library, CLI). The sentinel passes the strict
+    string validator naturally — it's a non-empty, control-char-free
+    string — so no special-case branch is needed here. Newlines are
+    rejected (not in `_ALLOW_NEWLINES_FIELDS`).
+    """
+    return _set_string_field("RUNTIME_URL", args.value, "set-runtime-url")
+
+
 # ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
@@ -304,6 +350,27 @@ def build_parser():
     )
     set_project_type_parser.add_argument("value")
     set_project_type_parser.set_defaults(func=cmd_set_project_type)
+
+    set_architecture_parser = subparsers.add_parser(
+        "set-architecture",
+        help="Save Phase 2 Q4 answer (ARCHITECTURE) into the state file.",
+    )
+    set_architecture_parser.add_argument("value")
+    set_architecture_parser.set_defaults(func=cmd_set_architecture)
+
+    set_error_handling_parser = subparsers.add_parser(
+        "set-error-handling",
+        help="Save Phase 2 Q5 answer (ERROR_HANDLING) into the state file.",
+    )
+    set_error_handling_parser.add_argument("value")
+    set_error_handling_parser.set_defaults(func=cmd_set_error_handling)
+
+    set_runtime_url_parser = subparsers.add_parser(
+        "set-runtime-url",
+        help="Save Phase 2 Q6 answer (RUNTIME_URL) into the state file.",
+    )
+    set_runtime_url_parser.add_argument("value")
+    set_runtime_url_parser.set_defaults(func=cmd_set_runtime_url)
 
     return parser
 
