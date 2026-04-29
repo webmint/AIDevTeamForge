@@ -31,6 +31,7 @@ Subcommands:
 - `set-error-handling <value>` — store ERROR_HANDLING
 - `set-runtime-url <value>` — store RUNTIME_URL
 - `set-api-layer <value>` — store API_LAYER
+- `set-testing <value>` — store TESTING
 """
 
 import argparse
@@ -333,6 +334,28 @@ def cmd_set_api_layer(args):
     return _set_string_field("API_LAYER", args.value, "set-api-layer")
 
 
+def cmd_set_testing(args):
+    """Persist Phase 2 Q8 answer (TESTING) to the state file.
+
+    TESTING is a single-line label naming the project's testing framework
+    — one of the four Q8 options ("pytest", "vitest", "jest", "N/A") or a
+    free-text custom value entered via the AskUserQuestion Other
+    affordance (e.g. "go test", "cargo test", "JUnit", "RSpec"). Values
+    legitimately contain spaces ("go test") so no whitespace-collapse
+    transform is applied. The literal sentinel "N/A" passes the strict
+    string validator naturally — it's a non-empty, control-char-free
+    string — so no special-case branch is needed. Newlines are rejected
+    (not in `_ALLOW_NEWLINES_FIELDS`); the helper does not validate
+    against an enum because Q8 permits free-text overrides.
+
+    The state key is TESTING (singular) per the Q4-Q7 single-value
+    convention; the project-config.json template still has TESTINGS
+    plural and that alignment is intentionally deferred to Phase 3
+    buildout.
+    """
+    return _set_string_field("TESTING", args.value, "set-testing")
+
+
 # ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
@@ -399,6 +422,13 @@ def build_parser():
     )
     set_api_layer_parser.add_argument("value")
     set_api_layer_parser.set_defaults(func=cmd_set_api_layer)
+
+    set_testing_parser = subparsers.add_parser(
+        "set-testing",
+        help="Save Phase 2 Q8 answer (TESTING) into the state file.",
+    )
+    set_testing_parser.add_argument("value")
+    set_testing_parser.set_defaults(func=cmd_set_testing)
 
     return parser
 

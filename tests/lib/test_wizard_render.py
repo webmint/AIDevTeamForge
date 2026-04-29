@@ -2,7 +2,7 @@
 
 Covers the `reset`, `set-project-name`, `set-project-description`,
 `set-project-type`, `set-architecture`, `set-error-handling`,
-`set-runtime-url`, and `set-api-layer` subcommands plus
+`set-runtime-url`, `set-api-layer`, and `set-testing` subcommands plus
 `_state_file_path` resolution.
 
 Each test runs in its own `tempfile.TemporaryDirectory` and points the
@@ -1019,6 +1019,144 @@ class SetApiLayerSubcommandTests(_StringSetterTestBase):
         self.assertEqual(self._read_state(), {"API_LAYER": "N/A"})
 
 
+class SetTestingSubcommandTests(_StringSetterTestBase):
+    """End-to-end behavior of `wizard_render set-testing`.
+
+    TESTING is a single-line label naming the project's testing framework
+    — one of the four Q8 options ("pytest", "vitest", "jest", "N/A") or a
+    free-text custom value (e.g. "go test", "cargo test"). Same validation
+    policy as PROJECT_NAME (no LF/CR, no other control chars). The "N/A"
+    sentinel passes the strict string validator naturally; no special-case
+    branch is needed. Spaces are valid (e.g. "go test", "cargo test")
+    because no whitespace-collapse transform is applied.
+    """
+
+    HAPPY_VALUE = "pytest"
+
+    def test_writes_key_to_new_state_file(self):
+        self.assertFalse(self.state_file.exists())
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file.exists())
+        self.assertEqual(
+            self._read_state(), {"TESTING": self.HAPPY_VALUE}
+        )
+
+    def test_merges_into_existing_state(self):
+        self._write_state({"PROJECT_NAME": "foo"})
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {"PROJECT_NAME": "foo", "TESTING": self.HAPPY_VALUE},
+        )
+
+    def test_overwrites_prior_value(self):
+        self._write_state({"TESTING": "pytest"})
+        proc = _run_helper(self.devforge_dir, "set-testing", "vitest")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self._read_state(), {"TESTING": "vitest"})
+
+    def test_empty_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-testing", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"TESTING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_whitespace_only_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-testing", "   ")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"TESTING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_control_char_value_rejected(self):
+        # 0x01 — see SetProjectNameSubcommandTests.test_control_char_value_rejected
+        # for why this isn't NUL.
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", "bad\x01test"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"TESTING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_del_control_char_rejected(self):
+        # 0x7F (DEL) — verifies the high-end control char branch.
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", "bad\x7ftest"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"TESTING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_newline_in_value_rejected(self):
+        # TESTING is a single-line framework label; embedded LF would
+        # silently corrupt template substitution.
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", "pytest\nvitest"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"TESTING", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_pretty_printed_with_sorted_keys(self):
+        # Insert keys in non-sorted order; verify file has sorted output.
+        self._write_state({"ZZZ_LAST": "z", "AAA_FIRST": "a"})
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.state_file.read_text(encoding="utf-8")
+        self.assertIn('  "AAA_FIRST": "a"', content)
+        self.assertIn('  "TESTING": "pytest"', content)
+        self.assertIn('  "ZZZ_LAST": "z"', content)
+        # Sorted: AAA appears before TESTING, which appears before ZZZ.
+        self.assertLess(
+            content.index("AAA_FIRST"), content.index("TESTING")
+        )
+        self.assertLess(
+            content.index("TESTING"), content.index("ZZZ_LAST")
+        )
+
+    def test_no_temp_files_leaked_after_success(self):
+        # mkstemp leaves no leftover files on the happy path.
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        leftovers = [
+            p.name
+            for p in self.devforge_dir.iterdir()
+            if p.name.startswith("wizard-render-state-")
+        ]
+        self.assertEqual(leftovers, [])
+
+    def test_na_sentinel_accepted(self):
+        # Q8 spec (line 137): when the project has no testing framework,
+        # the user picks the "N/A" option and the helper saves it
+        # verbatim. The strict string validator already accepts non-empty
+        # non-control-char strings, so the sentinel passes naturally —
+        # this test pins that contract so future tightening of
+        # _validate_string can't silently reject the documented value.
+        proc = _run_helper(self.devforge_dir, "set-testing", "N/A")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self._read_state(), {"TESTING": "N/A"})
+
+    def test_spaced_value_accepted(self):
+        # Q8 auto-Other captures free-text custom values that legitimately
+        # contain spaces ("go test", "cargo test", "JUnit 5"). The helper
+        # preserves the value verbatim — no whitespace-collapse, no
+        # tokenization. This test pins that contract so a future
+        # well-meaning "normalize whitespace" change can't silently mangle
+        # the value passed in by the agent.
+        proc = _run_helper(self.devforge_dir, "set-testing", "go test")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self._read_state(), {"TESTING": "go test"})
+
+
 class SetterCompositionTests(_StringSetterTestBase):
     """Verify the setters compose correctly into a shared state file."""
 
@@ -1072,8 +1210,8 @@ class SetterCompositionTests(_StringSetterTestBase):
             },
         )
 
-    def test_all_seven_setters_coexist_in_state(self):
-        # Sequential setter calls across all seven Phase 2 fields
+    def test_all_eight_setters_coexist_in_state(self):
+        # Sequential setter calls across all eight Phase 2 fields
         # accumulate into a single state dict — verifies no key collision
         # and that each setter merges (rather than overwrites) the dict.
         proc = _run_helper(
@@ -1112,6 +1250,10 @@ class SetterCompositionTests(_StringSetterTestBase):
             self.devforge_dir, "set-api-layer", "REST"
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir, "set-testing", "pytest"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(
             self._read_state(),
             {
@@ -1122,6 +1264,7 @@ class SetterCompositionTests(_StringSetterTestBase):
                 "ERROR_HANDLING": "purify-ts Either",
                 "RUNTIME_URL": "http://localhost:3000",
                 "API_LAYER": "REST",
+                "TESTING": "pytest",
             },
         )
 

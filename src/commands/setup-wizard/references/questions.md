@@ -121,3 +121,17 @@ Apply ecosystem knowledge to the `frameworks[]` recorded under each entry of `pa
 The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-api-layer <answer>`.
+
+## Q8: Testing Framework (OPTIONAL)
+
+The project's testing framework.
+
+Apply ecosystem knowledge to `primary_language` and the `packages_detected` manifests in `.devforge/detection_report.yaml` (specifically the manifest files at `packages_detected[N].manifest` paths, checking their dev-dependency sections) to pick the most likely option (e.g., Python with `pytest` in dev-deps → `pytest`; Python with no test runner detectable in dev-deps → `N/A`; TypeScript/JavaScript with `vitest` in dev-dependencies → `vitest`; TypeScript/JavaScript with `jest` in dev-dependencies → `jest`; project with no test setup detectable → `N/A`; no clear signal → leave none Recommended). Then use AskUserQuestion: "What's the project's testing framework?"
+- `pytest` (mark `(Recommended)` if it's the most likely option)
+- `vitest` (mark `(Recommended)` if it's the most likely option)
+- `jest` (mark `(Recommended)` if it's the most likely option)
+- `N/A` — no test framework (no test runner in dev-deps) (mark `(Recommended)` if it's the most likely option)
+
+The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
+
+Once the answer is determined, save it: `.devforge/lib/wizard_render set-testing <answer>`.
