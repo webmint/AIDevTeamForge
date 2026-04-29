@@ -139,7 +139,7 @@ Synthesizes constitution.md from populated config + docs. No changes from curren
 
 Each step listed with verify criteria.
 
-### Step 1: Schema-anchor `/generate-docs` outputs
+### Step 2: Schema-anchor `/generate-docs` outputs
 
 Approved 2026-04-30: `/generate-docs` becomes schema-anchored. `onboard_helper.py` owns markdown structure; LLM provides values via setters (extends the helper-owns-shape pattern from `detect_report` + `wizard_render` to the doc-generation tier). Closes the previously-scoped "Scripts subsection" gap as a side-effect.
 
@@ -166,7 +166,7 @@ Full schema details + helper API sketch live in memory `project_schema_anchored_
 
 **Integration with downstream steps**: `/configure` (Step 4) reads docs that are now structurally parseable — it can extract per-package scripts directly from the `Scripts:` section without ecosystem-default fallbacks. Closes the experiment's biggest gap (per-package script commands not in onboard's free-form docs).
 
-### Step 2: Decide and implement config-file capture for `runtime_url_value`
+### Step 3: Decide and implement config-file capture for `runtime_url_value`
 
 Two options:
 - (A) `/generate-docs` captures key config files (`vite.config.ts`, `next.config.js`, `webpack.config.js`, etc.) into per-app docs as quoted blocks
@@ -176,9 +176,9 @@ Pick one. (B) is simpler (no template change to onboard); (A) is more uniform (s
 
 **Verify**: for testForge20, `/configure` produces `runtime_url_value: https://okta.local.dev.dice-tools.com:8080` (matching the actual `vite.config.ts` `server.host` + `server.port` combination), not the framework-default `http://localhost:5173`.
 
-### Step 3: Write `/init` spec
+### Step 1: Write `/init` spec
 
-Create `src/commands/init/main.md` + references. Carries over from current `detect.md` Steps 1–3 + the manifest-discovery part of Step 4.1 (just paths + filenames, no content). Adds framework-file installation logic (formerly install.sh territory).
+Create `src/commands/init/main.md` + references. Carries over from current `detect.md` Steps 1–3 + the manifest-discovery part of Step 4.1 (just paths + filenames, no content). Wraps `install.sh` invocation for framework-file installation.
 
 **Verify**: running `/init` on a fresh project produces the 5 structural fields in detection_report.yaml + installs `.devforge/`, `.claude/`, CLAUDE.md template, agent templates. No yaml fields beyond the 5 are populated. No questions beyond workspace_mode + project_root.
 
@@ -246,7 +246,7 @@ Schema details + helper API in memory `project_schema_anchored_constitute.md`.
 2. Read the experiment evidence at the experiment commit (TBD — this plan being saved is the marker)
 3. Read `project_4command_architecture_pivot.md` from `~/.claude/projects/.../memory/`
 4. Confirm test data still available: `ls /Users/mykolakudlyk/Projects/testForge20/.devforge/` and `ls /Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/docs/`
-5. Pick step 1 (extend `/generate-docs` template with Scripts subsection) or step 3 (write `/init` spec) — both are valid entry points; step 1 unblocks step 2's option A; step 3 unblocks step 4
+5. Execute steps in order: Step 1 (write `/init` spec) → Step 2 (schema-anchor `/generate-docs`) → Step 3 (config-file capture decision) → Step 4 (write `/configure` spec) → Step 5 (migrate Q1–Q12) → Step 6 (install.sh chain) → Step 7 (decommission old setup-wizard) → Step 8 (schema-anchor /constitute). Each step independently testable; no need to bundle.
 6. Use the iterative apply-verify loop established this session: instruction-author writes, instruction-reviewer + claude-code-guide verify in parallel, loop until clean
 7. Commit each step independently; don't bundle
 
