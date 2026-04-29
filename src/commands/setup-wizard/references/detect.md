@@ -205,9 +205,9 @@ The remaining branches apply when `packages_detected` is non-empty:
 
 This step renders Phase 1's persisted state to the user and asks for approval before handoff.
 
-Invoke `.devforge/lib/detect_report summary` to render the summary. The helper reads `.devforge/detection_report.yaml` and prints a fixed format to stdout. Relay the helper's output to the user without modification.
+Invoke `.devforge/lib/detect_report summary` to render the summary. The helper reads `.devforge/detection_report.yaml` and prints a fixed format to stdout. After the helper runs, copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Then issue the AskUserQuestion approval gate below.
 
-**If `project_state` is `empty`:** the helper renders the per-package and project-level classification fields as `[]` / `null` by design — no manifests to detect. After relaying the helper output, append the note: "Project is empty — `workspace_mode`, `project_root`, `default_branch`, and `project_state` are set; per-package and project-level classification fields are intentionally empty for an empty project."
+**If `project_state` is `empty`:** the helper renders the per-package and project-level classification fields as `[]` / `null` by design — no manifests to detect. After copying the helper's stdout into the fenced code block, append the note: "Project is empty — `workspace_mode`, `project_root`, `default_branch`, and `project_state` are set; per-package and project-level classification fields are intentionally empty for an empty project."
 
 After the summary is rendered, use AskUserQuestion: "Detection complete — does this look right?"
 - `Looks right — proceed to Phase 2` (Recommended)
