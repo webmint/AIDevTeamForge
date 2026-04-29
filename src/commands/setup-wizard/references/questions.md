@@ -20,15 +20,11 @@ Once the answer is determined, save it: `.devforge/lib/wizard_render set-project
 
 A 1-3 sentence description of what the project does and who it's for.
 
-**If a README file exists at the `project_root` recorded in `.devforge/detection_report.yaml` and contains a meaningful description (not just a placeholder heading or scaffolded boilerplate from `npm init`-style defaults):** read the README and extract the first paragraph or summary section, capped at roughly three sentences. Then issue a plain prose prompt that includes the extracted text:
+**If a README file exists at the `project_root` recorded in `.devforge/detection_report.yaml` and contains a meaningful description (not just a placeholder heading or scaffolded boilerplate from `npm init`-style defaults):** read the README and extract the first paragraph or summary section, capped at roughly three sentences. Copy the extracted text VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), prefixed with `Found in <readme-path>:`. Then use AskUserQuestion: "Use the README description shown above as the project description?"
+- `Confirm` (Recommended)
+- `Override` — let me write a different description
 
-"I found this in `<readme-path>`:
-
-> <extracted-text>
-
-Reply 'yes' to use this as the project description, or write a 1-3 sentence replacement."
-
-If the user's reply is exactly 'yes' (case-insensitive), the extracted README text is the answer. Otherwise, the user's reply is the answer.
+On `Confirm`, the extracted README text is the answer. On `Override`, follow up with a plain free-text prompt: "Describe this project in 1-3 sentences — what does it do, who is it for?". The user's reply is the answer.
 
 **Otherwise** (no README at `project_root`, or the README is empty or boilerplate-only): use a plain free-text prompt: "Describe this project in 1-3 sentences — what does it do, who is it for?". The user's reply is the answer.
 
