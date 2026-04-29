@@ -148,3 +148,15 @@ Use AskUserQuestion: "How strict should workflow enforcement be?"
 The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-workflow-enforcement <answer>`.
+
+## Q10: AI Attribution (REQUIRED)
+
+Whether commits include AI co-author attribution.
+
+Use AskUserQuestion: "Should commits include AI co-author attribution?"
+- `No` (Recommended) — commits have no AI attribution
+- `Yes` — commits include a `Co-Authored-By:` trailer attributing the AI assistant
+
+The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
+
+Once the answer is determined, save it: `.devforge/lib/wizard_render set-ai-attribution <answer>`.

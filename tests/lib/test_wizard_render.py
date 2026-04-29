@@ -2,8 +2,9 @@
 
 Covers the `reset`, `set-project-name`, `set-project-description`,
 `set-project-type`, `set-architecture`, `set-error-handling`,
-`set-runtime-url`, `set-api-layer`, `set-testing`, and
-`set-workflow-enforcement` subcommands plus `_state_file_path` resolution.
+`set-runtime-url`, `set-api-layer`, `set-testing`,
+`set-workflow-enforcement`, and `set-ai-attribution` subcommands plus
+`_state_file_path` resolution.
 
 Each test runs in its own `tempfile.TemporaryDirectory` and points the
 helper at it via the `DEVFORGE_DIR` environment variable, so the repo's
@@ -1293,6 +1294,142 @@ class SetWorkflowEnforcementSubcommandTests(_StringSetterTestBase):
         self.assertEqual(leftovers, [])
 
 
+class SetAiAttributionSubcommandTests(_StringSetterTestBase):
+    """End-to-end behavior of `wizard_render set-ai-attribution`.
+
+    AI_ATTRIBUTION is a single-line label naming whether commits include
+    AI co-author attribution — one of the two Q10 options ("Yes", "No")
+    or a free-text custom value. Same validation policy as PROJECT_NAME
+    (no LF/CR, no other control chars). The helper enforces shape, not
+    the enum (Q10 permits free-text via the auto-Other affordance);
+    downstream owns enum-validation.
+    """
+
+    HAPPY_VALUE = "No"
+
+    def test_writes_key_to_new_state_file(self):
+        self.assertFalse(self.state_file.exists())
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file.exists())
+        self.assertEqual(
+            self._read_state(),
+            {"AI_ATTRIBUTION": self.HAPPY_VALUE},
+        )
+
+    def test_merges_into_existing_state(self):
+        self._write_state({"PROJECT_NAME": "foo"})
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {
+                "AI_ATTRIBUTION": self.HAPPY_VALUE,
+                "PROJECT_NAME": "foo",
+            },
+        )
+
+    def test_overwrites_prior_value(self):
+        self._write_state({"AI_ATTRIBUTION": "Yes"})
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", "No"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(), {"AI_ATTRIBUTION": "No"}
+        )
+
+    def test_empty_value_rejected(self):
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", ""
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"AI_ATTRIBUTION", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_whitespace_only_value_rejected(self):
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", "   "
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"AI_ATTRIBUTION", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_control_char_value_rejected(self):
+        # 0x01 — see SetProjectNameSubcommandTests.test_control_char_value_rejected
+        # for why this isn't NUL.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-ai-attribution",
+            "bad\x01value",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"AI_ATTRIBUTION", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_del_control_char_rejected(self):
+        # 0x7F (DEL) — verifies the high-end control char branch.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-ai-attribution",
+            "bad\x7fvalue",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"AI_ATTRIBUTION", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_newline_in_value_rejected(self):
+        # AI_ATTRIBUTION is a single-line label; embedded LF would
+        # silently corrupt template substitution.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-ai-attribution",
+            "Yes\nNo",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"AI_ATTRIBUTION", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_pretty_printed_with_sorted_keys(self):
+        # Insert keys in non-sorted order; verify file has sorted output.
+        self._write_state({"ZZZ_LAST": "z", "AAA_FIRST": "a"})
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.state_file.read_text(encoding="utf-8")
+        self.assertIn('  "AAA_FIRST": "a"', content)
+        self.assertIn('  "AI_ATTRIBUTION": "No"', content)
+        self.assertIn('  "ZZZ_LAST": "z"', content)
+        # Sorted: AAA_FIRST appears before AI_ATTRIBUTION, which appears
+        # before ZZZ_LAST.
+        self.assertLess(
+            content.index("AAA_FIRST"),
+            content.index("AI_ATTRIBUTION"),
+        )
+        self.assertLess(
+            content.index("AI_ATTRIBUTION"),
+            content.index("ZZZ_LAST"),
+        )
+
+    def test_no_temp_files_leaked_after_success(self):
+        # mkstemp leaves no leftover files on the happy path.
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        leftovers = [
+            p.name
+            for p in self.devforge_dir.iterdir()
+            if p.name.startswith("wizard-render-state-")
+        ]
+        self.assertEqual(leftovers, [])
+
+
 class SetterCompositionTests(_StringSetterTestBase):
     """Verify the setters compose correctly into a shared state file."""
 
@@ -1346,8 +1483,8 @@ class SetterCompositionTests(_StringSetterTestBase):
             },
         )
 
-    def test_all_nine_setters_coexist_in_state(self):
-        # Sequential setter calls across all nine Phase 2 fields
+    def test_all_ten_setters_coexist_in_state(self):
+        # Sequential setter calls across all ten Phase 2 fields
         # accumulate into a single state dict — verifies no key collision
         # and that each setter merges (rather than overwrites) the dict.
         proc = _run_helper(
@@ -1394,6 +1531,10 @@ class SetterCompositionTests(_StringSetterTestBase):
             self.devforge_dir, "set-workflow-enforcement", "Strict"
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir, "set-ai-attribution", "No"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(
             self._read_state(),
             {
@@ -1406,6 +1547,7 @@ class SetterCompositionTests(_StringSetterTestBase):
                 "API_LAYER": "REST",
                 "TESTING": "pytest",
                 "WORKFLOW_ENFORCEMENT": "Strict",
+                "AI_ATTRIBUTION": "No",
             },
         )
 

@@ -33,6 +33,7 @@ Subcommands:
 - `set-api-layer <value>` — store API_LAYER
 - `set-testing <value>` — store TESTING
 - `set-workflow-enforcement <value>` — store WORKFLOW_ENFORCEMENT
+- `set-ai-attribution <value>` — store AI_ATTRIBUTION
 """
 
 import argparse
@@ -376,6 +377,24 @@ def cmd_set_workflow_enforcement(args):
     )
 
 
+def cmd_set_ai_attribution(args):
+    """Persist Phase 2 Q10 answer (AI_ATTRIBUTION) to the state file.
+
+    AI_ATTRIBUTION is a single-line label naming whether commits include
+    AI co-author attribution — one of the two Q10 options ("Yes", "No")
+    or a free-text custom value entered via the AskUserQuestion Other
+    affordance. Newlines are rejected (not in `_ALLOW_NEWLINES_FIELDS`);
+    the helper does not validate against an enum because Q10 permits
+    free-text overrides — downstream owns enum-validation.
+
+    The state key is AI_ATTRIBUTION (matches project-config.json line 35,
+    already singular — no deferred-template-alignment concern).
+    """
+    return _set_string_field(
+        "AI_ATTRIBUTION", args.value, "set-ai-attribution"
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
@@ -458,6 +477,13 @@ def build_parser():
     set_workflow_enforcement_parser.set_defaults(
         func=cmd_set_workflow_enforcement
     )
+
+    set_ai_attribution_parser = subparsers.add_parser(
+        "set-ai-attribution",
+        help="Save Phase 2 Q10 answer (AI_ATTRIBUTION) into the state file.",
+    )
+    set_ai_attribution_parser.add_argument("value")
+    set_ai_attribution_parser.set_defaults(func=cmd_set_ai_attribution)
 
     return parser
 
