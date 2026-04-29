@@ -32,6 +32,7 @@ Subcommands:
 - `set-runtime-url <value>` — store RUNTIME_URL
 - `set-api-layer <value>` — store API_LAYER
 - `set-testing <value>` — store TESTING
+- `set-workflow-enforcement <value>` — store WORKFLOW_ENFORCEMENT
 """
 
 import argparse
@@ -356,6 +357,25 @@ def cmd_set_testing(args):
     return _set_string_field("TESTING", args.value, "set-testing")
 
 
+def cmd_set_workflow_enforcement(args):
+    """Persist Phase 2 Q9 answer (WORKFLOW_ENFORCEMENT) to the state file.
+
+    WORKFLOW_ENFORCEMENT is a single-line label naming the strictness of
+    approval gates and verification — one of the three Q9 options
+    ("Strict", "Moderate", "Light") or a free-text custom value entered
+    via the AskUserQuestion Other affordance. Newlines are rejected (not
+    in `_ALLOW_NEWLINES_FIELDS`); the helper does not validate against an
+    enum because Q9 permits free-text overrides — downstream owns
+    enum-validation.
+
+    The state key is WORKFLOW_ENFORCEMENT (matches project-config.json
+    line 34, already singular — no deferred-template-alignment concern).
+    """
+    return _set_string_field(
+        "WORKFLOW_ENFORCEMENT", args.value, "set-workflow-enforcement"
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
@@ -429,6 +449,15 @@ def build_parser():
     )
     set_testing_parser.add_argument("value")
     set_testing_parser.set_defaults(func=cmd_set_testing)
+
+    set_workflow_enforcement_parser = subparsers.add_parser(
+        "set-workflow-enforcement",
+        help="Save Phase 2 Q9 answer (WORKFLOW_ENFORCEMENT) into the state file.",
+    )
+    set_workflow_enforcement_parser.add_argument("value")
+    set_workflow_enforcement_parser.set_defaults(
+        func=cmd_set_workflow_enforcement
+    )
 
     return parser
 

@@ -135,3 +135,16 @@ Apply ecosystem knowledge to `primary_language` and the `packages_detected` mani
 The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-testing <answer>`.
+
+## Q9: Workflow Enforcement (REQUIRED)
+
+The strictness of approval gates and verification across the project's workflow.
+
+Use AskUserQuestion: "How strict should workflow enforcement be?"
+- `Strict` (Recommended) — approval required at every phase gate; verification runs after every code-writing step
+- `Moderate` — approval at spec and task-breakdown gates; verification runs automatically after code-writing steps
+- `Light` — approval only at the initial spec; verification runs after code-writing steps, no other interactive gates
+
+The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
+
+Once the answer is determined, save it: `.devforge/lib/wizard_render set-workflow-enforcement <answer>`.

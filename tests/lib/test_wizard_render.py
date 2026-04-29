@@ -2,8 +2,8 @@
 
 Covers the `reset`, `set-project-name`, `set-project-description`,
 `set-project-type`, `set-architecture`, `set-error-handling`,
-`set-runtime-url`, `set-api-layer`, and `set-testing` subcommands plus
-`_state_file_path` resolution.
+`set-runtime-url`, `set-api-layer`, `set-testing`, and
+`set-workflow-enforcement` subcommands plus `_state_file_path` resolution.
 
 Each test runs in its own `tempfile.TemporaryDirectory` and points the
 helper at it via the `DEVFORGE_DIR` environment variable, so the repo's
@@ -1157,6 +1157,142 @@ class SetTestingSubcommandTests(_StringSetterTestBase):
         self.assertEqual(self._read_state(), {"TESTING": "go test"})
 
 
+class SetWorkflowEnforcementSubcommandTests(_StringSetterTestBase):
+    """End-to-end behavior of `wizard_render set-workflow-enforcement`.
+
+    WORKFLOW_ENFORCEMENT is a single-line label naming the strictness of
+    approval gates and verification — one of the three Q9 options
+    ("Strict", "Moderate", "Light") or a free-text custom value. Same
+    validation policy as PROJECT_NAME (no LF/CR, no other control chars).
+    The helper enforces shape, not the enum (Q9 permits free-text via the
+    auto-Other affordance); downstream owns enum-validation.
+    """
+
+    HAPPY_VALUE = "Strict"
+
+    def test_writes_key_to_new_state_file(self):
+        self.assertFalse(self.state_file.exists())
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file.exists())
+        self.assertEqual(
+            self._read_state(),
+            {"WORKFLOW_ENFORCEMENT": self.HAPPY_VALUE},
+        )
+
+    def test_merges_into_existing_state(self):
+        self._write_state({"PROJECT_NAME": "foo"})
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {
+                "PROJECT_NAME": "foo",
+                "WORKFLOW_ENFORCEMENT": self.HAPPY_VALUE,
+            },
+        )
+
+    def test_overwrites_prior_value(self):
+        self._write_state({"WORKFLOW_ENFORCEMENT": "Light"})
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", "Moderate"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(), {"WORKFLOW_ENFORCEMENT": "Moderate"}
+        )
+
+    def test_empty_value_rejected(self):
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", ""
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"WORKFLOW_ENFORCEMENT", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_whitespace_only_value_rejected(self):
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", "   "
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"WORKFLOW_ENFORCEMENT", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_control_char_value_rejected(self):
+        # 0x01 — see SetProjectNameSubcommandTests.test_control_char_value_rejected
+        # for why this isn't NUL.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-workflow-enforcement",
+            "bad\x01value",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"WORKFLOW_ENFORCEMENT", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_del_control_char_rejected(self):
+        # 0x7F (DEL) — verifies the high-end control char branch.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-workflow-enforcement",
+            "bad\x7fvalue",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"WORKFLOW_ENFORCEMENT", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_newline_in_value_rejected(self):
+        # WORKFLOW_ENFORCEMENT is a single-line label; embedded LF would
+        # silently corrupt template substitution.
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-workflow-enforcement",
+            "Strict\nModerate",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"WORKFLOW_ENFORCEMENT", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_pretty_printed_with_sorted_keys(self):
+        # Insert keys in non-sorted order; verify file has sorted output.
+        self._write_state({"ZZZ_LAST": "z", "AAA_FIRST": "a"})
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.state_file.read_text(encoding="utf-8")
+        self.assertIn('  "AAA_FIRST": "a"', content)
+        self.assertIn('  "WORKFLOW_ENFORCEMENT": "Strict"', content)
+        self.assertIn('  "ZZZ_LAST": "z"', content)
+        # Sorted: AAA appears before WORKFLOW_ENFORCEMENT, which appears
+        # before ZZZ.
+        self.assertLess(
+            content.index("AAA_FIRST"),
+            content.index("WORKFLOW_ENFORCEMENT"),
+        )
+        self.assertLess(
+            content.index("WORKFLOW_ENFORCEMENT"),
+            content.index("ZZZ_LAST"),
+        )
+
+    def test_no_temp_files_leaked_after_success(self):
+        # mkstemp leaves no leftover files on the happy path.
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        leftovers = [
+            p.name
+            for p in self.devforge_dir.iterdir()
+            if p.name.startswith("wizard-render-state-")
+        ]
+        self.assertEqual(leftovers, [])
+
+
 class SetterCompositionTests(_StringSetterTestBase):
     """Verify the setters compose correctly into a shared state file."""
 
@@ -1210,8 +1346,8 @@ class SetterCompositionTests(_StringSetterTestBase):
             },
         )
 
-    def test_all_eight_setters_coexist_in_state(self):
-        # Sequential setter calls across all eight Phase 2 fields
+    def test_all_nine_setters_coexist_in_state(self):
+        # Sequential setter calls across all nine Phase 2 fields
         # accumulate into a single state dict — verifies no key collision
         # and that each setter merges (rather than overwrites) the dict.
         proc = _run_helper(
@@ -1254,6 +1390,10 @@ class SetterCompositionTests(_StringSetterTestBase):
             self.devforge_dir, "set-testing", "pytest"
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir, "set-workflow-enforcement", "Strict"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(
             self._read_state(),
             {
@@ -1265,6 +1405,7 @@ class SetterCompositionTests(_StringSetterTestBase):
                 "RUNTIME_URL": "http://localhost:3000",
                 "API_LAYER": "REST",
                 "TESTING": "pytest",
+                "WORKFLOW_ENFORCEMENT": "Strict",
             },
         )
 
