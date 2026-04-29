@@ -60,13 +60,59 @@ FIELD_SCHEMA = [
     ("build_commands", "value_path_array"),
     ("type_check_commands", "value_path_array"),
     ("lint_commands", "value_path_array"),
+    # Library categories — value field + evidence sibling pairs.
+    ("auth_layer", "scalar"),
+    ("auth_layer_evidence", "scalar"),
+    ("state_management", "scalar"),
+    ("state_management_evidence", "scalar"),
+    ("styling", "scalar"),
+    ("styling_evidence", "scalar"),
+    ("routing", "scalar"),
+    ("routing_evidence", "scalar"),
+    ("validation_library", "scalar"),
+    ("validation_library_evidence", "scalar"),
+    ("error_handling_library", "scalar"),
+    ("error_handling_library_evidence", "scalar"),
+    ("error_handling_pattern", "scalar"),
+    ("error_handling_pattern_evidence", "scalar"),
+    # Architecture shape (closed enum) + evidence sibling.
+    ("architecture_shape", "scalar"),
+    ("architecture_evidence", "scalar"),
+    # Runtime URL value + paired source (provenance).
+    ("runtime_url_value", "scalar"),
+    ("runtime_url_source", "scalar"),
 ]
 
 # Enum-restricted scalars; key = field name, value = allowed set.
 ENUM_FIELDS = {
     "workspace_mode": {"standalone", "wrapper"},
     "project_state": {"empty", "brownfield"},
+    "architecture_shape": {
+        "layered",
+        "feature-modular",
+        "monorepo",
+        "feature-modular-monorepo",
+        "clean",
+        "clean-feature-modular-monorepo",
+        "hexagonal",
+        "mvc",
+        "bloc",
+        "flat",
+        "other",
+    },
 }
+
+# Library-category fields where the helper writes both the value field and a
+# matching `<name>_evidence` sibling. Used by `set-<library-category>` setters.
+LIBRARY_CATEGORY_FIELDS = (
+    "auth_layer",
+    "state_management",
+    "styling",
+    "routing",
+    "validation_library",
+    "error_handling_library",
+    "error_handling_pattern",
+)
 
 # Built-in skip list for find-nested-git.
 NESTED_GIT_SKIP = {
@@ -675,6 +721,272 @@ def cmd_add_lint_command(args):
     return _add_value_path("lint_commands", args, allow_null=True)
 
 
+def _set_library_category(field_name, args):
+    """Common path for the seven library-category setters.
+
+    Each setter writes BOTH `<field_name>` and `<field_name>_evidence` in a
+    single load-mutate-write pass. The CLI surface is:
+
+      --null                          → value=None, evidence=None
+      --value "N/A"                   → value="N/A", evidence=None
+      --value <other> --evidence <t>  → value=<other>, evidence=<t>
+
+    `--null` with `--evidence` is rejected (carve-out for clarity).
+    `--value "N/A"` with `--evidence` is rejected (spec: no evidence when the
+    concern doesn't apply).
+    `--value <other>` without `--evidence` is rejected (spec: confirmed library
+    detections require an evidence citation).
+    """
+    evidence_field = "{0}_evidence".format(field_name)
+    null_flag = getattr(args, "null", False)
+    value = getattr(args, "value", None)
+    evidence = getattr(args, "evidence", None)
+
+    if null_flag:
+        if evidence is not None:
+            return _die(
+                "{0}: --evidence is not permitted with --null".format(field_name),
+                code=2,
+            )
+        target_value = None
+        target_evidence = None
+    else:
+        # --value branch. argparse mutex guarantees value is not None here.
+        try:
+            _validate_string(value, field_name)
+        except ValueError as err:
+            return _die(str(err), code=2)
+        if value == "N/A":
+            if evidence is not None:
+                return _die(
+                    "{0}: --evidence is not permitted with --value \"N/A\"".format(
+                        field_name
+                    ),
+                    code=2,
+                )
+            target_value = "N/A"
+            target_evidence = None
+        else:
+            if evidence is None:
+                return _die(
+                    "{0}: --evidence is required for confirmed library detections".format(
+                        field_name
+                    ),
+                    code=2,
+                )
+            try:
+                _validate_string(evidence, evidence_field)
+            except ValueError as err:
+                return _die(str(err), code=2)
+            target_value = value
+            target_evidence = evidence
+
+    try:
+        state = _load_state()
+    except (OSError, YamlParseError) as err:
+        return _die("cannot load state: {0}".format(err))
+    state[field_name] = target_value
+    state[evidence_field] = target_evidence
+    try:
+        _write_state(state)
+    except OSError as err:
+        return _die("cannot write state: {0}".format(err))
+    return 0
+
+
+def cmd_set_auth_layer(args):
+    return _set_library_category("auth_layer", args)
+
+
+def cmd_set_state_management(args):
+    return _set_library_category("state_management", args)
+
+
+def cmd_set_styling(args):
+    return _set_library_category("styling", args)
+
+
+def cmd_set_routing(args):
+    return _set_library_category("routing", args)
+
+
+def cmd_set_validation_library(args):
+    return _set_library_category("validation_library", args)
+
+
+def cmd_set_error_handling_library(args):
+    return _set_library_category("error_handling_library", args)
+
+
+def cmd_set_error_handling_pattern(args):
+    return _set_library_category("error_handling_pattern", args)
+
+
+def cmd_set_architecture_shape(args):
+    """Set the project-wide architectural shape (closed enum) + evidence.
+
+    `--value other` accepts an optional `--evidence`.
+    Every other enum value REQUIRES `--evidence`.
+    """
+    value = args.value
+    evidence = getattr(args, "evidence", None)
+    try:
+        _validate_string(value, "architecture_shape")
+        _validate_enum(value, "architecture_shape")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    if value == "other":
+        if evidence is not None:
+            try:
+                _validate_string(evidence, "architecture_evidence")
+            except ValueError as err:
+                return _die(str(err), code=2)
+        target_evidence = evidence  # may be None
+    else:
+        if evidence is None:
+            return _die(
+                "architecture_shape: --evidence is required for {0!r}".format(value),
+                code=2,
+            )
+        try:
+            _validate_string(evidence, "architecture_evidence")
+        except ValueError as err:
+            return _die(str(err), code=2)
+        target_evidence = evidence
+    try:
+        state = _load_state()
+    except (OSError, YamlParseError) as err:
+        return _die("cannot load state: {0}".format(err))
+    state["architecture_shape"] = value
+    state["architecture_evidence"] = target_evidence
+    try:
+        _write_state(state)
+    except OSError as err:
+        return _die("cannot write state: {0}".format(err))
+    return 0
+
+
+def _install_root():
+    """Resolve the install root (parent of `.devforge/`).
+
+    Used by `set-runtime-url` for relative-path validation. Mirrors the
+    `find-nested-git` resolution: `_output_file_path().parent` is the
+    `.devforge/` directory; its parent is the install root.
+    """
+    return _output_file_path().parent.parent
+
+
+def cmd_set_runtime_url(args):
+    """Set the local-development runtime URL with provenance.
+
+    Two distinct call shapes (mutually exclusive):
+
+    Shape A (set):
+        --value <url> --source <config-path | "framework-default">
+    Shape B (clear):
+        --null --reason <text>
+
+    Shape A path validation: when `--source` is anything other than the
+    literal `framework-default`, the value is treated as a filesystem path
+    that must exist. Relative paths are resolved against the install root +
+    `project_root` (read from current state). Absolute paths must already
+    exist on disk verbatim.
+    """
+    null_flag = getattr(args, "null", False)
+    value = getattr(args, "value", None)
+    source = getattr(args, "source", None)
+    reason = getattr(args, "reason", None)
+
+    if null_flag:
+        # Shape B: --null --reason <text>
+        if value is not None or source is not None:
+            return _die(
+                "set-runtime-url: --value/--source are not permitted with --null",
+                code=2,
+            )
+        if reason is None:
+            return _die(
+                "set-runtime-url: --reason is required with --null", code=2
+            )
+        try:
+            _validate_string(reason, "runtime_url_source")
+        except ValueError as err:
+            return _die(str(err), code=2)
+        target_value = None
+        target_source = reason
+    else:
+        # Shape A: --value <url> --source <path|framework-default>
+        if reason is not None:
+            return _die(
+                "set-runtime-url: --reason is only valid with --null", code=2
+            )
+        if value is None:
+            return _die("set-runtime-url: --value is required", code=2)
+        if source is None:
+            return _die("set-runtime-url: --source is required", code=2)
+        try:
+            _validate_string(value, "runtime_url_value")
+        except ValueError as err:
+            return _die(str(err), code=2)
+        try:
+            _validate_string(source, "runtime_url_source")
+        except ValueError as err:
+            return _die(str(err), code=2)
+        if source != "framework-default":
+            # Treat as filesystem path; validate existence.
+            if os.path.isabs(source):
+                resolved = Path(source)
+            else:
+                # Relative path: validate shape (no `..` segments, no
+                # backslash-prefix, no Windows drive prefix) BEFORE resolving.
+                # `_validate_path` rejects these, blocking traversal attempts
+                # like `--source ../etc/config.ts` even when a file exists at
+                # that location. The absolute branch above runs its own
+                # existence check and is intentionally not routed through
+                # `_validate_path` (which would reject any absolute path).
+                try:
+                    _validate_path(source, "runtime_url_source")
+                except ValueError as err:
+                    return _die(str(err), code=2)
+                # Resolve relative to install_root + project_root.
+                try:
+                    state_for_pr = _load_state()
+                except (OSError, YamlParseError) as err:
+                    return _die("cannot load state: {0}".format(err))
+                project_root = state_for_pr.get("project_root")
+                if project_root is None:
+                    return _die(
+                        "set-runtime-url: project_root is unset; cannot resolve "
+                        "relative --source path {0!r}".format(source),
+                        code=2,
+                    )
+                base = _install_root()
+                if project_root != ".":
+                    base = base / project_root
+                resolved = base / source
+            if not resolved.exists():
+                return _die(
+                    "set-runtime-url: --source path does not exist: {0}".format(
+                        resolved
+                    ),
+                    code=2,
+                )
+        target_value = value
+        target_source = source
+
+    try:
+        state = _load_state()
+    except (OSError, YamlParseError) as err:
+        return _die("cannot load state: {0}".format(err))
+    state["runtime_url_value"] = target_value
+    state["runtime_url_source"] = target_source
+    try:
+        _write_state(state)
+    except OSError as err:
+        return _die("cannot write state: {0}".format(err))
+    return 0
+
+
 def cmd_find_nested_git(args):
     """List depth-1 directories under the install root that contain `.git/`.
 
@@ -776,6 +1088,39 @@ def build_parser():
 
     sp = subparsers.add_parser("find-nested-git")
     sp.set_defaults(func=cmd_find_nested_git)
+
+    # Library-category setters (7) — value/null mutex + optional --evidence.
+    _library_setter_funcs = {
+        "set-auth-layer": cmd_set_auth_layer,
+        "set-state-management": cmd_set_state_management,
+        "set-styling": cmd_set_styling,
+        "set-routing": cmd_set_routing,
+        "set-validation-library": cmd_set_validation_library,
+        "set-error-handling-library": cmd_set_error_handling_library,
+        "set-error-handling-pattern": cmd_set_error_handling_pattern,
+    }
+    for sub_name, func in _library_setter_funcs.items():
+        sp = subparsers.add_parser(sub_name)
+        group = sp.add_mutually_exclusive_group(required=True)
+        group.add_argument("--value")
+        group.add_argument("--null", action="store_true")
+        sp.add_argument("--evidence")
+        sp.set_defaults(func=func)
+
+    # Architecture shape: --value <enum> [--evidence <text>]; no --null.
+    sp = subparsers.add_parser("set-architecture-shape")
+    sp.add_argument("--value", required=True)
+    sp.add_argument("--evidence")
+    sp.set_defaults(func=cmd_set_architecture_shape)
+
+    # Runtime URL: two shapes (set vs clear) governed by --null mutex.
+    sp = subparsers.add_parser("set-runtime-url")
+    group = sp.add_mutually_exclusive_group(required=True)
+    group.add_argument("--value")
+    group.add_argument("--null", action="store_true")
+    sp.add_argument("--source")
+    sp.add_argument("--reason")
+    sp.set_defaults(func=cmd_set_runtime_url)
 
     return parser
 

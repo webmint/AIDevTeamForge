@@ -4,10 +4,15 @@ This reference defines the detection phase of `/setup-wizard`. Detection inspect
 
 ## Outputs of this phase
 
+### Workspace
+
 - `project_root` — directory the framework operates on, relative to the install root. `.` for standalone (project and install share the root); inner folder name for wrapper mode (e.g., `client-project`)
 - `workspace_mode` — install layout: `standalone` or `wrapper`
 - `project_state` — codebase maturity: `empty` or `brownfield`
 - `default_branch` — git default branch name (e.g., `main`)
+
+### Per-package classification
+
 - `packages_detected` — array of per-package records: `{ path, manifest }`; defines the canonical package index (record position = package identifier); `path` is the package folder relative to project root (or `.` for projects without distinct packages); empty `[]` for projects without manifests
 - `languages` — array of `{ value, path }` per package (`value` = language; ordered to match `packages_detected`)
 - `frameworks` — array of `{ value, path }` per package (`value` = framework; `"N/A"` if no framework, `null` if unresolvable; ordered to match `packages_detected`)
@@ -15,8 +20,24 @@ This reference defines the detection phase of `/setup-wizard`. Detection inspect
 - `build_commands` — array of `{ value, path }` per package (`value` = build command, e.g. `"npm run build"`, `"cargo build"`; `"N/A"` if no build step, `null` if unresolvable; ordered to match `packages_detected`)
 - `type_check_commands` — array of `{ value, path }` per package (`value` = type-check command, e.g. `"tsc --noEmit"`, `"mypy ."`, `"cargo check"`; `"N/A"` if no type checker, `null` if unresolvable; ordered to match `packages_detected`)
 - `lint_commands` — array of `{ value, path }` per package (`value` = lint command, e.g. `"eslint ."`, `"ruff check ."`, `"cargo clippy"`; `"N/A"` if no linter, `null` if unresolvable; ordered to match `packages_detected`)
+
+### Project-level classification
+
 - `primary_language` — the project's main language (string; equals the most-common value in `languages`, ties broken by `packages_detected` order; user-overridable)
-- Field types, value spaces, and case conventions are owned by the `.devforge/lib/detect_report` helper; its subcommand specs define them when added. Inline examples above illustrate expected shape, not an exhaustive enum.
+- `auth_layer` — dominant authentication library (string, e.g. `"NextAuth"`, `"Devise"`, `"Passport"`; `"N/A"` if the project doesn't authenticate users, `null` if unresolvable)
+- `state_management` — dominant client-state-management library (string, e.g. `"Redux Toolkit"`, `"Zustand"`, `"Riverpod"`; `"N/A"` if the project has no UI state to manage, `null` if unresolvable)
+- `styling` — dominant styling layer (string, e.g. `"Tailwind"`, `"CSS Modules"`, `"styled-components"`; multi-layer values join with ` + ` in detection order — unique to this field; e.g. `"Tailwind + CSS Modules"`; `"N/A"` if the project has no UI, `null` if unresolvable)
+- `routing` — dominant routing library (string, e.g. `"React Router"`, `"Next.js App Router"`, `"go_router"`; `"N/A"` if the project has no routed surface, `null` if unresolvable)
+- `validation_library` — dominant input/data validation library (string, e.g. `"Zod"`, `"Pydantic"`, `"Joi"`; `"N/A"` if no validation library is in use, `null` if unresolvable)
+- `error_handling_library` — dominant error-handling library (string, e.g. `"Sentry"`, `"Bugsnag"`, `"neverthrow"`; `"N/A"` for projects relying on plain language constructs, `null` if unresolvable)
+- `error_handling_pattern` — dominant error-handling pattern (string, e.g. `"try/catch"`, `"Result type"`, `"error boundaries"`; `"N/A"` if no consistent pattern is observable, `null` if unresolvable)
+- `architecture_shape` — project-wide architectural shape (closed enum: `layered`, `feature-modular`, `monorepo`, `feature-modular-monorepo`, `clean`, `clean-feature-modular-monorepo`, `hexagonal`, `mvc`, `bloc`, `flat`, `other`; `null` if unresolvable)
+- `runtime_url_value` — local-development runtime URL (string, e.g. `"http://localhost:3000"`; `null` for backend, library, or CLI projects with no web runtime)
+- `runtime_url_source` — provenance of `runtime_url_value` (string: a config-file path on disk when the URL is read from config, the literal `framework-default` when the URL is the documented default for the detected framework, or a free-form reason when `runtime_url_value` is `null`)
+
+**Two-tier evidence model.** The seven library-category fields and `architecture_shape` are inferred from indirect signals (a dependency in the manifest plus source-code usage, or directory layout plus filename hints). Each carries a sibling `<name>_evidence` string that is required for confirmed library detections (i.e., neither `null` nor `"N/A"` — there is no signal to cite when the field is unresolvable or the concern doesn't apply); for `architecture_shape`, `--evidence` is required for all enum values except `other` (which signals that no canonical architectural signal was found — there is no signal to cite). Evidence siblings are stored in `detection_report.yaml` alongside their parent field but are not counted in the 22-field total, and they record the specific signals that justified the call. The per-package fields in §4.2 (language, framework, build tool, build/type-check/lint commands) carry no evidence sibling — the manifest those fields read from already lives at the persisted `path`, so the manifest itself IS the evidence. `runtime_url_source` and `runtime_url_value` are paired structural fields rather than value-plus-evidence: `runtime_url_source` records where the URL came from regardless of whether the value is set or `null`.
+
+Field types, value spaces, and case conventions are owned by the `.devforge/lib/detect_report` helper; its subcommand specs define them when added. Inline examples above illustrate expected shape, not an exhaustive enum.
 
 ## Step 1: Workspace Mode Detection
 
@@ -90,9 +111,9 @@ For all three probes, treat any non-zero exit (missing directory, non-git worksp
 
 If the user picks `main` or `master`, invoke `.devforge/lib/detect_report set-default-branch <choice>`. If the user picks `None of these`, follow up with a plain free-text prompt: "What's the default branch name?", then invoke `.devforge/lib/detect_report set-default-branch <answer>`.
 
-## Step 4: Per-Package Stack Detection
+## Step 4: Stack Detection
 
-For each manifest found inside `project_root`, classify its package's language, framework, build tool, and the three lifecycle commands (build, type-check, lint). Use ecosystem knowledge — don't invent values you can't ground in the package's manifest, dev-deps, or language convention.
+Discover packages, classify each one (language, framework, build tool, the three lifecycle commands), then pull project-level signals (primary language, library categories, architectural shape, dev-runtime URL) from the assembled package set. Use ecosystem knowledge — don't invent values you can't ground in a manifest, dev-deps, source-code usage, directory layout, or language convention.
 
 ### 4.1: Discover packages
 
@@ -119,13 +140,74 @@ After all packages are classified, determine `primary_language`:
 - If `packages_detected` is empty: skip — leave `primary_language` as its default (`null`).
 - Otherwise: the most-common value across `languages[].value` wins. Ties broken by `packages_detected` order (first package wins). Persist via `set-primary-language <value>`.
 
+### 4.4: Library Categories
+
+If `packages_detected` is empty, skip — leave each library-category field at its default (`null`).
+
+For each of the six library-detection fields below (`auth_layer`, `state_management`, `styling`, `routing`, `validation_library`, `error_handling_library`), set the field only when both signals confirm the same library: (1) a matching dependency appears in some package's manifest or dev-deps, and (2) source-code usage is observed in a quick grep across the project (cap the grep at 5 source files per category — the goal is corroboration, not exhaustive proof). When only one signal fires, persist `--null` rather than guess.
+
+`error_handling_pattern` is the exception: it describes a coding pattern, not a library, so it has no manifest dependency to corroborate. Set it from a single source-scan signal — grep for characteristic idioms (`try {`, `Result<`, `Either<`, `.catch(`, `recover()`, `<ErrorBoundary`) across at most 5 source files; pick the dominant pattern; persist with `--evidence` citing the matching files and idioms.
+
+For `styling`, multi-layer values join with ` + ` in detection order (e.g. `"Tailwind + CSS Modules"`). For the other five library-detection categories, pick the dominant library — the one with the broader source-code footprint among the sampled files — and note any co-existing libraries inside `--evidence`.
+
+The seven fields and example libraries:
+
+- `auth_layer` — e.g. `NextAuth`, `Auth.js`, `Devise`, `Passport`, `Clerk`, `Supabase Auth`
+- `state_management` — e.g. `Redux Toolkit`, `Zustand`, `MobX`, `Pinia`, `Riverpod`, `Bloc`
+- `styling` — e.g. `Tailwind`, `CSS Modules`, `styled-components`, `Emotion`, `SCSS`, `Bootstrap`
+- `routing` — e.g. `React Router`, `Next.js App Router`, `Vue Router`, `go_router`, `Rails routes`
+- `validation_library` — e.g. `Zod`, `Yup`, `Joi`, `Pydantic`, `class-validator`, `ActiveModel::Validations`
+- `error_handling_library` — e.g. `Sentry`, `Bugsnag`, `Rollbar`, `neverthrow`, `fp-ts/Either`
+- `error_handling_pattern` — e.g. `try/catch`, `Result type`, `error boundaries`, `Either monad`, `panic/recover`
+
+Persist via `.devforge/lib/detect_report set-<field-name> --value <v> --evidence "<signals — see per-field rule above>"` for non-null, non-`"N/A"` values; `set-<field-name> --null` (no `--evidence`) for the unresolvable case; `set-<field-name> --value "N/A"` (no `--evidence`) when the concern doesn't apply to this project. One subcommand per field, with the subcommand name being the kebab-case form of the field name: `set-auth-layer`, `set-state-management`, `set-styling`, `set-routing`, `set-validation-library`, `set-error-handling-library`, `set-error-handling-pattern`. Use `--value "N/A"` when the concern doesn't apply to this project (an unauthenticated CLI tool gets `auth_layer="N/A"`; a backend service with no UI state gets `state_management="N/A"`; a project relying on plain try/catch with no library gets `error_handling_library="N/A"`). Use `--null` when the agent can't confidently determine a value despite the project plausibly having one.
+
+### 4.5: Architecture
+
+If `packages_detected` is empty, skip — leave `architecture_shape` at its default (`null`). This correlates with the empty-project case from Step 2 (no manifests found); manifest-free brownfield projects are out of scope for Phase 1 architecture detection.
+
+Read the directory layout under `project_root` and sample at most ten source files to corroborate filename and folder-naming hints. Pick the single best fit from the closed enum: `layered`, `feature-modular`, `monorepo`, `feature-modular-monorepo`, `clean`, `clean-feature-modular-monorepo`, `hexagonal`, `mvc`, `bloc`, `flat`, `other`.
+
+Canonical signals:
+
+- `domain/` + `data/` + `presentation/` (or equivalent triad) → `clean`
+- `cases/` or `use-cases/` folders inside per-feature modules across multiple workspace packages → `clean-feature-modular-monorepo`
+- `controllers/` + `models/` + `views/` (Rails / classical MVC layout) → `mvc`
+- `src/bloc/` directory or `BLoC` / `Cubit` in filenames (Flutter) → `bloc`
+- Per-feature folders that each contain their own layered subfolders → `feature-modular`
+- Multiple workspace packages, each with its own internal structure → `monorepo` (or `feature-modular-monorepo` if the per-feature pattern also holds inside packages)
+- Ports-and-adapters or `adapters/` + `ports/` directories → `hexagonal`
+- Layered top-level folders (`controllers/`, `services/`, `repositories/`) without per-feature grouping → `layered`
+- Flat `src/` with no meaningful subdivision → `flat`
+- No canonical signal fits → `other`
+
+Persist via `.devforge/lib/detect_report set-architecture-shape <enum-value> --evidence "<file paths + indicators>"`. `--evidence` is required for every value except `other` (since `other` means no canonical signal was found — there is no signal to cite).
+
+### 4.6: Runtime URL
+
+Look for a local-development runtime URL by inspecting common dev-server config locations: `vite.config.ts` (`server.host` / `server.port`), `webpack.config.js` (`devServer`), `next.config.js`, `angular.json` (`serve` target), Django `settings.py` (`ALLOWED_HOSTS`, runserver default), Rails `config/puma.rb`. Extend the search to other ecosystem-standard config files when the detected framework suggests one.
+
+Five branches:
+
+**If `packages_detected` is empty:** invoke `.devforge/lib/detect_report set-runtime-url --null --reason "no packages detected — empty project"`. This keeps `runtime_url_source` set so downstream consumers always see a non-null provenance string.
+
+The remaining branches apply when `packages_detected` is non-empty:
+
+**If a dev-server config explicitly defines the runtime URL:** invoke `.devforge/lib/detect_report set-runtime-url --value <url> --source <config-file-path>`. The path passed via `--source` must exist on disk (relative to `project_root` or absolute) — the helper validates it.
+
+**Otherwise, if no explicit runtime URL was found in any dev-server config but the detected framework has a documented default** (Vite → `http://localhost:5173`, Next.js → `http://localhost:3000`, Create React App → `http://localhost:3000`, Django → `http://localhost:8000`, Rails → `http://localhost:3000`): invoke `.devforge/lib/detect_report set-runtime-url --value <framework-default-url> --source framework-default`.
+
+**Otherwise, if the project is a backend, library, or CLI with no web runtime:** invoke `.devforge/lib/detect_report set-runtime-url --null --reason "<why>"` (e.g., `"CLI tool — no HTTP runtime"`, `"library package — no dev server"`, `"backend service consumed via gRPC, no HTTP surface"`).
+
+**Otherwise** (frontend or app project where no URL can be determined — no explicit URL in any dev-server config AND the framework isn't in the documented-default list AND the project isn't clearly a backend, library, or CLI; e.g., a frontend app on Parcel, Snowpack, Astro, SvelteKit, Deno Fresh, or any emerging/uncommon framework): invoke `.devforge/lib/detect_report set-runtime-url --null --reason "<why>"` (e.g., `"frontend app using <framework-name> — default URL not documented"`).
+
 ## Step 5: Detection Summary & Approval Gate
 
 This step renders Phase 1's persisted state to the user and asks for approval before handoff.
 
-Render the summary by reading `.devforge/detection_report.yaml` (the file the prior steps have been writing to). Print a `key: value` summary, one line per field, in the order listed under "Outputs of this phase" above (12 fields total).
+Render the summary by reading `.devforge/detection_report.yaml` (the file the prior steps have been writing to). Print a `key: value` summary, one line per field, in the order listed under "Outputs of this phase" above (22 fields total; evidence siblings render under their parent and are not counted as separate fields).
 
-**If `project_state` is `empty`:** the per-package fields (`packages_detected`, `languages`, `frameworks`, `build_tools`, `build_commands`, `type_check_commands`, `lint_commands`, `primary_language`) are `[]` / `null` by design — no manifests to detect. Frame the summary as success and note: "Project is empty — `workspace_mode`, `project_root`, `default_branch`, and `project_state` are set; per-package fields are intentionally empty and will be filled in Phase 2 when you specify the intended stack."
+**If `project_state` is `empty`:** the per-package fields (`packages_detected`, `languages`, `frameworks`, `build_tools`, `build_commands`, `type_check_commands`, `lint_commands`) and the project-level classification fields (`primary_language`, `auth_layer`, `state_management`, `styling`, `routing`, `validation_library`, `error_handling_library`, `error_handling_pattern`, `architecture_shape`, `runtime_url_value`) are `[]` / `null` by design — no manifests to detect. `runtime_url_source` carries the empty-project reason string set by §4.6's first branch. Frame the summary as success and note: "Project is empty — `workspace_mode`, `project_root`, `default_branch`, and `project_state` are set; per-package and project-level classification fields are intentionally empty and will be filled in during subsequent phases when the project's intended stack is specified."
 
 After the summary is rendered, use AskUserQuestion: "Detection complete — does this look right?"
 - `Looks right — proceed to Phase 2` (Recommended)

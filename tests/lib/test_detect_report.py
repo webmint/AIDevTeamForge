@@ -952,5 +952,704 @@ class PureValidatePathTests(unittest.TestCase):
             detect_report._validate_path("foo\\..\\bar", "f")
 
 
+# ---------------------------------------------------------------------------
+# LibraryCategorySetterTests
+# ---------------------------------------------------------------------------
+
+
+# Derive (subcommand-name, field-name) pairs from the helper's source-of-truth
+# constant so the test file can't drift from the schema. Adding a new
+# library-category field to `LIBRARY_CATEGORY_FIELDS` automatically extends the
+# parity sweep below; removing one shrinks it. The CLI flag name follows the
+# convention `set-<field-with-underscores-to-dashes>`.
+_LIBRARY_SUBCOMMANDS = tuple(
+    ("set-" + name.replace("_", "-"), name)
+    for name in detect_report.LIBRARY_CATEGORY_FIELDS
+)
+
+
+class LibraryCategorySetterTests(_EnvIsolationMixin, unittest.TestCase):
+    """The 7 library-category setters share one shared implementation
+    (`_set_library_category`); we exercise the full path on `set-auth-layer`
+    and spot-check parity on two more setters.
+    """
+
+    def _read_state(self):
+        return detect_report.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+
+    # -- Full sweep on set-auth-layer --------------------------------------
+
+    def test_value_with_evidence_writes_both(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--value", "NextAuth",
+            "--evidence", "package.json: next-auth dep + src/auth/[...nextauth]/route.ts",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["auth_layer"], "NextAuth")
+        self.assertEqual(
+            state["auth_layer_evidence"],
+            "package.json: next-auth dep + src/auth/[...nextauth]/route.ts",
+        )
+
+    def test_value_na_alone_writes_na_and_null_evidence(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--value", "N/A",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["auth_layer"], "N/A")
+        self.assertIsNone(state["auth_layer_evidence"])
+
+    def test_null_alone_writes_both_none(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--null",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertIsNone(state["auth_layer"])
+        self.assertIsNone(state["auth_layer_evidence"])
+
+    def test_value_without_evidence_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--value", "NextAuth",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"auth_layer", proc.stderr)
+        self.assertIn(b"--evidence", proc.stderr)
+        # State unchanged.
+        state = self._read_state()
+        self.assertIsNone(state["auth_layer"])
+        self.assertIsNone(state["auth_layer_evidence"])
+
+    def test_null_with_evidence_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--null",
+            "--evidence", "should not be here",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"auth_layer", proc.stderr)
+        self.assertIn(b"--evidence", proc.stderr)
+        state = self._read_state()
+        self.assertIsNone(state["auth_layer"])
+        self.assertIsNone(state["auth_layer_evidence"])
+
+    def test_value_na_with_evidence_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--value", "N/A",
+            "--evidence", "should not be here",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"auth_layer", proc.stderr)
+        self.assertIn(b"--evidence", proc.stderr)
+        state = self._read_state()
+        self.assertIsNone(state["auth_layer"])
+
+    def test_value_and_null_mutually_exclusive(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--value", "NextAuth",
+            "--null",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        # argparse mutex error.
+        self.assertTrue(
+            b"--null" in proc.stderr or b"--value" in proc.stderr,
+            proc.stderr,
+        )
+
+    def test_evidence_whitespace_only_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--value", "NextAuth",
+            "--evidence", "   ",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"non-empty", proc.stderr)
+
+    def test_evidence_control_char_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-auth-layer",
+            "--value", "NextAuth",
+            "--evidence", "line1\nline2",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"control characters", proc.stderr)
+
+    # -- Parity spot-check: set-styling (multi-layer value with " + ") -----
+
+    def test_styling_multi_layer_value(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-styling",
+            "--value", "Tailwind + CSS Modules",
+            "--evidence", "tailwind.config.js + *.module.css under src/",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["styling"], "Tailwind + CSS Modules")
+        self.assertEqual(
+            state["styling_evidence"], "tailwind.config.js + *.module.css under src/"
+        )
+
+    # -- Parity spot-check: set-error-handling-pattern (no manifest dep) ----
+
+    def test_error_handling_pattern_value_with_evidence(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-error-handling-pattern",
+            "--value", "try/catch",
+            "--evidence", "src/api/*.ts: try { ... } catch (err) { ... }",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["error_handling_pattern"], "try/catch")
+        self.assertEqual(
+            state["error_handling_pattern_evidence"],
+            "src/api/*.ts: try { ... } catch (err) { ... }",
+        )
+
+    def test_error_handling_pattern_null(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-error-handling-pattern",
+            "--null",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertIsNone(state["error_handling_pattern"])
+        self.assertIsNone(state["error_handling_pattern_evidence"])
+
+    # -- All 7 setter subcommands are dispatchable -------------------------
+
+    def test_all_seven_setters_accept_null(self):
+        # Loop-driven sanity: each library-category setter responds to --null
+        # with rc=0 and writes both fields as None. Catches missing dispatch
+        # wiring or schema field misnames in one shot.
+        for sub_name, field_name in _LIBRARY_SUBCOMMANDS:
+            _run_cli(self.devforge_dir, "reset")
+            proc = _run_cli(self.devforge_dir, sub_name, "--null")
+            self.assertEqual(
+                proc.returncode, 0, "{0} failed: {1!r}".format(sub_name, proc.stderr)
+            )
+            state = self._read_state()
+            self.assertIsNone(
+                state[field_name], "{0}: value field not None".format(sub_name)
+            )
+            self.assertIsNone(
+                state[field_name + "_evidence"],
+                "{0}: evidence field not None".format(sub_name),
+            )
+
+
+# ---------------------------------------------------------------------------
+# ArchitectureShapeSetterTests
+# ---------------------------------------------------------------------------
+
+
+class ArchitectureShapeSetterTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def _read_state(self):
+        return detect_report.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+
+    def test_other_without_evidence_succeeds(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-architecture-shape",
+            "--value", "other",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["architecture_shape"], "other")
+        self.assertIsNone(state["architecture_evidence"])
+
+    def test_other_with_evidence_succeeds(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-architecture-shape",
+            "--value", "other",
+            "--evidence", "no canonical signal — bespoke layout",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["architecture_shape"], "other")
+        self.assertEqual(
+            state["architecture_evidence"], "no canonical signal — bespoke layout"
+        )
+
+    def test_clean_with_evidence_succeeds(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-architecture-shape",
+            "--value", "clean",
+            "--evidence", "src/{domain,data,presentation}/ triad observed",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["architecture_shape"], "clean")
+        self.assertEqual(
+            state["architecture_evidence"],
+            "src/{domain,data,presentation}/ triad observed",
+        )
+
+    def test_clean_without_evidence_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-architecture-shape",
+            "--value", "clean",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"architecture_shape", proc.stderr)
+        self.assertIn(b"--evidence", proc.stderr)
+        # State unchanged.
+        state = self._read_state()
+        self.assertIsNone(state["architecture_shape"])
+        self.assertIsNone(state["architecture_evidence"])
+
+    def test_invalid_enum_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-architecture-shape",
+            "--value", "spaghetti",
+            "--evidence", "noodly",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"architecture_shape", proc.stderr)
+        # State unchanged.
+        state = self._read_state()
+        self.assertIsNone(state["architecture_shape"])
+
+    def test_all_eleven_enum_values_accepted(self):
+        # Loop-driven enum coverage. `other` is the only value where
+        # --evidence is optional; all others require it.
+        all_values = sorted(detect_report.ENUM_FIELDS["architecture_shape"])
+        self.assertEqual(len(all_values), 11)
+        for v in all_values:
+            _run_cli(self.devforge_dir, "reset")
+            if v == "other":
+                proc = _run_cli(
+                    self.devforge_dir,
+                    "set-architecture-shape",
+                    "--value", v,
+                )
+            else:
+                proc = _run_cli(
+                    self.devforge_dir,
+                    "set-architecture-shape",
+                    "--value", v,
+                    "--evidence", "evidence for {0}".format(v),
+                )
+            self.assertEqual(
+                proc.returncode, 0, "{0} failed: {1!r}".format(v, proc.stderr)
+            )
+            state = self._read_state()
+            self.assertEqual(state["architecture_shape"], v)
+
+
+# ---------------------------------------------------------------------------
+# RuntimeUrlSetterTests
+# ---------------------------------------------------------------------------
+
+
+class RuntimeUrlSetterTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def setUp(self):
+        super().setUp()
+        # find-nested-git's install root resolution = parent of devforge_dir.
+        # We use the same convention here: install_root is `devforge_dir.parent`.
+        # Replace the tmp setup so install_root is the tmp dir AND
+        # devforge_dir is `<tmp>/.devforge`.
+        self._install_root_tmp = tempfile.TemporaryDirectory()
+        self.install_root = Path(self._install_root_tmp.name)
+        self.devforge_dir = self.install_root / ".devforge"
+        self.devforge_dir.mkdir()
+        self.output_file = self.devforge_dir / detect_report.OUTPUT_FILE_NAME
+
+    def tearDown(self):
+        self._install_root_tmp.cleanup()
+        super().tearDown()
+
+    def _read_state(self):
+        return detect_report.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+
+    # -- Shape A: --value + --source -------------------------------------
+
+    def test_set_with_existing_relative_path_standalone(self):
+        # project_root = "." ; resolve <install_root>/<source>.
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        # Plant a real file at install_root.
+        config_path = self.install_root / "vite.config.ts"
+        config_path.write_text("// vite config")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", "vite.config.ts",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["runtime_url_value"], "http://localhost:5173")
+        self.assertEqual(state["runtime_url_source"], "vite.config.ts")
+
+    def test_set_with_nonexistent_relative_path_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", "nope/vite.config.ts",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"does not exist", proc.stderr)
+        # State unchanged.
+        state = self._read_state()
+        self.assertIsNone(state["runtime_url_value"])
+
+    def test_set_with_framework_default_no_path_check(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        # Note: NO file is planted; framework-default literal must NOT trigger
+        # path validation.
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:3000",
+            "--source", "framework-default",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["runtime_url_value"], "http://localhost:3000")
+        self.assertEqual(state["runtime_url_source"], "framework-default")
+
+    def test_set_with_absolute_existing_path(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        # Plant a real file using an absolute path inside the install_root.
+        config_path = self.install_root / "vite.config.ts"
+        config_path.write_text("// vite config")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", str(config_path),  # absolute
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["runtime_url_value"], "http://localhost:5173")
+        self.assertEqual(state["runtime_url_source"], str(config_path))
+
+    def test_set_with_absolute_nonexistent_path_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        bogus = self.install_root / "no-such-file.ts"
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", str(bogus),
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"does not exist", proc.stderr)
+
+    def test_set_with_wrapper_relative_path(self):
+        # project_root = "client-app" ; resolve <install_root>/client-app/<source>.
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", "client-app")
+        client_dir = self.install_root / "client-app"
+        client_dir.mkdir()
+        (client_dir / "vite.config.ts").write_text("// vite")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", "vite.config.ts",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(state["runtime_url_value"], "http://localhost:5173")
+        self.assertEqual(state["runtime_url_source"], "vite.config.ts")
+
+    def test_set_with_wrapper_relative_path_missing_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", "client-app")
+        # Don't plant the file — must reject.
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", "vite.config.ts",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"does not exist", proc.stderr)
+
+    def test_set_relative_without_project_root_rejected(self):
+        # No project_root set yet; relative-path resolution can't proceed.
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", "vite.config.ts",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"project_root", proc.stderr)
+
+    def test_set_relative_parent_traversal_rejected_even_if_exists(self):
+        # Audit-found gap: relative paths with `..` segments would bypass shape
+        # validation if the resolved file existed. Plant a real file one level
+        # above install_root and confirm the helper still rejects the source.
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        # install_root.parent is the OS-tempdir parent. Plant `sneaky.ts` there.
+        sneaky = self.install_root.parent / "sneaky.ts"
+        sneaky.write_text("// planted")
+        try:
+            proc = _run_cli(
+                self.devforge_dir,
+                "set-runtime-url",
+                "--value", "http://localhost:5173",
+                "--source", "../sneaky.ts",
+            )
+        finally:
+            try:
+                sneaky.unlink()
+            except OSError:
+                pass
+        self.assertNotEqual(proc.returncode, 0)
+        # `_validate_path` raises with `parent-directory traversal '..'`.
+        self.assertIn(b"..", proc.stderr)
+        # State unchanged.
+        state = self._read_state()
+        self.assertIsNone(state["runtime_url_value"])
+        self.assertIsNone(state["runtime_url_source"])
+
+    def test_set_relative_embedded_parent_segment_rejected(self):
+        # `foo/../bar` has an interior `..` segment — also rejected even though
+        # it doesn't escape the project root in practice. `_validate_path` is
+        # purely shape-based.
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", "foo/../bar",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"..", proc.stderr)
+        state = self._read_state()
+        self.assertIsNone(state["runtime_url_value"])
+
+    # -- Shape B: --null + --reason --------------------------------------
+
+    def test_null_with_reason_succeeds(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--null",
+            "--reason", "CLI tool — no HTTP runtime",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertIsNone(state["runtime_url_value"])
+        self.assertEqual(
+            state["runtime_url_source"], "CLI tool — no HTTP runtime"
+        )
+
+    def test_null_without_reason_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--null",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"--reason", proc.stderr)
+
+    def test_null_reason_whitespace_only_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--null",
+            "--reason", "   ",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"non-empty", proc.stderr)
+
+    # -- Cross-shape mutex --------------------------------------------------
+
+    def test_value_and_null_mutually_exclusive(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--null",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        # argparse mutex.
+        self.assertTrue(
+            b"--null" in proc.stderr or b"--value" in proc.stderr,
+            proc.stderr,
+        )
+
+    def test_value_with_reason_rejected(self):
+        # --reason is only valid with --null. Combining --value with --reason
+        # is an explicit rejection in our handler (not argparse).
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+            "--source", "framework-default",
+            "--reason", "should-not-be-here",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"--reason", proc.stderr)
+
+    def test_value_without_source_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--value", "http://localhost:5173",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"--source", proc.stderr)
+
+    def test_null_with_source_rejected(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-runtime-url",
+            "--null",
+            "--reason", "CLI tool",
+            "--source", "vite.config.ts",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(b"--source", proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Extended round-trip tests for the new schema fields.
+# ---------------------------------------------------------------------------
+
+
+class ExtendedYamlRoundTripTests(unittest.TestCase):
+    """Cover the 18 new fields added for §4.4–§4.6."""
+
+    def test_all_new_fields_default_emit(self):
+        # Defaults: every new scalar emits as `name: null`.
+        state = detect_report.default_state()
+        text = detect_report.emit_yaml(state)
+        for name in (
+            "auth_layer", "auth_layer_evidence",
+            "state_management", "state_management_evidence",
+            "styling", "styling_evidence",
+            "routing", "routing_evidence",
+            "validation_library", "validation_library_evidence",
+            "error_handling_library", "error_handling_library_evidence",
+            "error_handling_pattern", "error_handling_pattern_evidence",
+            "architecture_shape", "architecture_evidence",
+            "runtime_url_value", "runtime_url_source",
+        ):
+            self.assertIn("{0}: null".format(name), text, name)
+
+    def test_populated_library_categories_round_trip(self):
+        state = detect_report.default_state()
+        state["auth_layer"] = "NextAuth"
+        state["auth_layer_evidence"] = "package.json: next-auth"
+        state["state_management"] = "Redux Toolkit"
+        state["state_management_evidence"] = "src/store.ts uses configureStore"
+        state["styling"] = "Tailwind + CSS Modules"
+        state["styling_evidence"] = "tailwind.config.js + *.module.css"
+        state["routing"] = "Next.js App Router"
+        state["routing_evidence"] = "app/ directory with route.ts files"
+        state["validation_library"] = "Zod"
+        state["validation_library_evidence"] = "src/schemas/*.ts uses z.object"
+        state["error_handling_library"] = "Sentry"
+        state["error_handling_library_evidence"] = "package.json: @sentry/nextjs"
+        state["error_handling_pattern"] = "try/catch"
+        state["error_handling_pattern_evidence"] = "src/api/*.ts: try { ... }"
+        text = detect_report.emit_yaml(state)
+        parsed = detect_report.parse_yaml(text)
+        self.assertEqual(parsed, state)
+
+    def test_architecture_other_with_null_evidence_round_trip(self):
+        state = detect_report.default_state()
+        state["architecture_shape"] = "other"
+        state["architecture_evidence"] = None
+        text = detect_report.emit_yaml(state)
+        parsed = detect_report.parse_yaml(text)
+        self.assertEqual(parsed["architecture_shape"], "other")
+        self.assertIsNone(parsed["architecture_evidence"])
+
+    def test_runtime_url_null_with_non_null_source_round_trips(self):
+        # The "CLI tool with no runtime" case: value=null, source=<reason>.
+        state = detect_report.default_state()
+        state["runtime_url_value"] = None
+        state["runtime_url_source"] = "CLI tool — no HTTP runtime"
+        text = detect_report.emit_yaml(state)
+        parsed = detect_report.parse_yaml(text)
+        self.assertIsNone(parsed["runtime_url_value"])
+        self.assertEqual(
+            parsed["runtime_url_source"], "CLI tool — no HTTP runtime"
+        )
+
+    def test_runtime_url_set_round_trips(self):
+        state = detect_report.default_state()
+        state["runtime_url_value"] = "http://localhost:3000"
+        state["runtime_url_source"] = "next.config.js"
+        text = detect_report.emit_yaml(state)
+        parsed = detect_report.parse_yaml(text)
+        self.assertEqual(parsed["runtime_url_value"], "http://localhost:3000")
+        self.assertEqual(parsed["runtime_url_source"], "next.config.js")
+
+    def test_url_value_with_special_chars_quoted(self):
+        # URLs contain `:` which is in YAML_SPECIAL_CHARS, so they must be
+        # double-quoted on the wire.
+        state = detect_report.default_state()
+        state["runtime_url_value"] = "http://localhost:5173"
+        text = detect_report.emit_yaml(state)
+        self.assertIn('runtime_url_value: "http://localhost:5173"', text)
+
+
 if __name__ == "__main__":
     unittest.main()
