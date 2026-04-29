@@ -8,6 +8,7 @@ When picking up work mid-stream, check the repo root for active plan files. **Re
 
 Currently active:
 
+- **`ARCHITECTURE-PIVOT-PLAN.md`** — approved 2026-04-30 pivot from current `/setup-wizard` + `/onboard` + `/constitute` to a 4-command sequence (`/init` → `/generate-docs` → `/configure` → `/constitute`). Detection moves from Phase 1 light-scan to onboard's deep scan. Read it first if working on `develop-2.0-setup-wizard` or any successor branch; if the user mentions setup-wizard, onboard, configure, init, or pivot; or if you encounter Phase 1 detection logic that seems redundant with /onboard's depth.
 - **`CODEX-REMOVAL-PLAN.md`** — iterative removal of Codex runtime support (in progress on `feature/codex-remove`). Read it first if working on that branch, if the user mentions codex-removal / Codex drop / Claude-native cleanup, or if `git tag -l 'codex-remove/*'` shows in-progress checkpoints.
 
 ## Conventions for ongoing work
