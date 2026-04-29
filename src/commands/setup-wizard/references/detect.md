@@ -144,9 +144,9 @@ After all packages are classified, determine `primary_language`:
 
 If `packages_detected` is empty, skip — leave each library-category field at its default (`null`).
 
-For each of the six library-detection fields below (`auth_layer`, `state_management`, `styling`, `routing`, `validation_library`, `error_handling_library`), set the field only when both signals confirm the same library: (1) a matching dependency appears in some package's manifest or dev-deps, and (2) source-code usage is observed in a quick grep across the project (cap the grep at 5 source files per category — the goal is corroboration, not exhaustive proof). When only one signal fires, persist `--null` rather than guess.
+For each of the six library-detection fields below (`auth_layer`, `state_management`, `styling`, `routing`, `validation_library`, `error_handling_library`), set the field when a matching dependency appears in some package's manifest or dev-deps. Source-code usage (a quick grep across the project, capped at 5 source files per category) is supplementary evidence captured in `--evidence` but does not gate detection. When no manifest signal exists, persist `--null` rather than guess.
 
-`error_handling_pattern` is the exception: it describes a coding pattern, not a library, so it has no manifest dependency to corroborate. Set it from a single source-scan signal — grep for characteristic idioms (`try {`, `Result<`, `Either<`, `.catch(`, `recover()`, `<ErrorBoundary`) across at most 5 source files; pick the dominant pattern; persist with `--evidence` citing the matching files and idioms.
+`error_handling_pattern` is the exception: it describes a coding pattern, not a library, so no manifest dependency exists to anchor detection. Set it from a single source-scan signal — grep for characteristic idioms (`try {`, `Result<`, `Either<`, `.catch(`, `recover()`, `<ErrorBoundary`) across at most 5 source files; pick the dominant pattern; persist with `--evidence` citing the matching files and idioms.
 
 For `styling`, multi-layer values join with ` + ` in detection order (e.g. `"Tailwind + CSS Modules"`). For the other five library-detection categories, pick the dominant library — the one with the broader source-code footprint among the sampled files — and note any co-existing libraries inside `--evidence`.
 
