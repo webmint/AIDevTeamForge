@@ -139,11 +139,31 @@ Synthesizes constitution.md from populated config + docs. No changes from curren
 
 Each step listed with verify criteria.
 
-### Step 1: Extend `/generate-docs` doc template with "Scripts" subsection
+### Step 1: Schema-anchor `/generate-docs` outputs
 
-Update `src/commands/onboard/main.md` (or rename to `/generate-docs` first if doing rename concurrently) to instruct the per-package doc generator to include a Scripts subsection capturing every entry in the package's `package.json` scripts block (or equivalent for Cargo.toml `[bin]`, etc.) verbatim.
+Approved 2026-04-30: `/generate-docs` becomes schema-anchored. `onboard_helper.py` owns markdown structure; LLM provides values via setters (extends the helper-owns-shape pattern from `detect_report` + `wizard_render` to the doc-generation tier). Closes the previously-scoped "Scripts subsection" gap as a side-effect.
 
-**Verify**: re-run /onboard against testForge20 (or any monorepo). Each per-package `index.md` has a "Scripts" section with `build`, `lint`, `type-check`, `test` entries (or whichever exist). The Scripts section is the source of truth for `build_commands` / `lint_commands` / `type_check_commands` per-package fields.
+**Three schemas to implement:**
+
+- `ProjectIndexDoc` (Tier 1, `docs/<project>/index.md`) — name + workspace_mode + path + overview + directory_tree + main_exports + cross_package_deps_summary
+- `ArchitectureDoc` (Tier 1, `docs/<project>/architecture.md`) — architecture_shape + patterns + layers + cross_package_dep_graph + key_decisions
+- `PackageDoc` (Tier 2/3, per-package + feature docs) — name + path + overview + primary_language + framework + build_tool + **scripts dict (closes pivot's Scripts gap)** + dependencies + public_api + internal_structure + consumer_pattern + cross_refs
+
+Full schema details + helper API sketch live in memory `project_schema_anchored_generate_docs.md`.
+
+**Sub-steps:**
+
+- 1a. Validate schemas against more sample docs from `cse-strata-ws-forge/docs/db-cse-ui-strata/` (read 5–10 representative per-package + feature docs; confirm schema fields cover actual onboard output shape; refine if gaps surface)
+- 1b. Implement `onboard_helper.py` setters (one per field, mirror `detect_report.py` patterns: argparse, validation, atomic JSON state writes, idempotent reset)
+- 1c. Implement markdown render templates (one per doc type — `_render_project_index`, `_render_architecture`, `_render_package_doc`); add `render-all` subcommand that reads state and writes all `.md` files
+- 1d. Update `/generate-docs` spec (formerly `onboard/main.md`) to instruct LLM via the new helper API instead of free-form markdown writes; existing main.md becomes ~60% smaller (LLM provides values, doesn't compose markdown)
+- 1e. Tests covering each setter + each render template + the `render-all` end-to-end pipeline (target ~80-120 tests, parallel to `detect_report`'s 126)
+
+**Verify**: re-run `/generate-docs` against testForge20. The 97 generated docs are structurally consistent (every package doc has Overview / Public API / Internal Structure / Dependencies / Scripts sections in same order); citation format conforms to `<file>:<line-range>` regex; required fields present everywhere; helper rejects malformed inputs (test by passing bad citation, bad enum value).
+
+**Cost estimate**: 2-3 sessions for the helper buildout + tests + spec refactor. Largest single step in the pivot.
+
+**Integration with downstream steps**: `/configure` (Step 4) reads docs that are now structurally parseable — it can extract per-package scripts directly from the `Scripts:` section without ecosystem-default fallbacks. Closes the experiment's biggest gap (per-package script commands not in onboard's free-form docs).
 
 ### Step 2: Decide and implement config-file capture for `runtime_url_value`
 
