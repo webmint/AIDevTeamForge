@@ -216,6 +216,23 @@ Once `/init` + `/configure` cover the same ground:
 
 **Verify**: no references to `/setup-wizard` remain in active code paths. Existing test data (testForge20, cse-strata-ws-forge) still produces correct outputs through the new sequence.
 
+### Step 8: Schema-anchor /constitute
+
+Apply the same helper-owns-shape pattern to `/constitute`'s `constitution.md` output. Schema validated against cse-strata-ws-forge constitution.md (451 lines). 7 top-level sections, closed rule-tag enum (`extracted`/`enforced`/`universal`/`project-specific`), structured tables + code examples.
+
+Sub-steps:
+- 8a. Implement `constitute_helper.py` setters (parallels `onboard_helper.py` pattern from Step 1)
+- 8b. Implement render function (manual concatenation per the same approach as generate-docs)
+- 8c. Implement `validate` subcommand (same 4-dimension quality framework: slot-fill, citation validity, code-example syntax check, rule-tag validity)
+- 8d. Update `/constitute` spec to instruct LLM via the helper API instead of free-form markdown
+- 8e. Tests parallel `constitute_helper`'s shape (target ~50-80 tests)
+
+**Verify**: re-running `/constitute` against testForge20 produces a constitution.md structurally identical to current cse-strata-ws-forge/constitution.md (or improved); `constitute_helper validate` reports composite quality ≥0.95; rule tags all from the closed enum; tables and code examples correctly rendered.
+
+**Cost estimate**: 1-2 sessions on top of the rest of the pivot. The helper is smaller than `onboard_helper` but the schema includes patterns/anti-patterns (6 buckets) and tables, so render logic is non-trivial.
+
+Schema details + helper API in memory `project_schema_anchored_constitute.md`.
+
 ## Open decisions
 
 - **Config-file capture**: in `/generate-docs` template (uniform) or `/configure` direct read (simpler)? Decide at step 2.
