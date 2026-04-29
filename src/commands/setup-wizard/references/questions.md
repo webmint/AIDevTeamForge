@@ -112,13 +112,13 @@ Once the answer is determined, save it: `.devforge/lib/wizard_render set-runtime
 
 The project's API style.
 
-Apply ecosystem knowledge to the `frameworks[]` recorded under each entry of `packages_detected` in `.devforge/detection_report.yaml` to pick the most likely option (e.g., `FastAPI` / `Express` / `Rails` / `Django` / `Flask` → `REST`; `apollo-server` / `@apollo/client` / `urql` / `relay` → `GraphQL`; `@trpc/server` / `@trpc/client` → `tRPC`; library or CLI with no API frameworks → `N/A`; no clear signal → `REST`). Then use AskUserQuestion: "What's the project's API layer?"
-- `REST` (mark `(Recommended)` if it's the most likely option)
-- `GraphQL` (mark `(Recommended)` if it's the most likely option)
-- `tRPC` (mark `(Recommended)` if it's the most likely option)
-- `N/A` — no API layer (library, CLI tool, static site) (mark `(Recommended)` if it's the most likely option)
+**If `frameworks[]` or `packages_detected[].manifest` dev/prod dependencies in `.devforge/detection_report.yaml` contain signals that map to a clear API style (apply ecosystem knowledge: FastAPI/Express/Rails/Django/Flask → REST; apollo-server/@apollo/client/urql/relay → GraphQL; @trpc/server/@trpc/client → tRPC; @grpc/grpc-js/grpcio → gRPC; socket.io/ws → WebSocket; etc.):** use AskUserQuestion: "Detected API layer: `<detected-api>`. Confirm or override?"
+- `Confirm` (Recommended)
+- `Override` — let me name a different style
 
-The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
+On `Confirm`, the detected API style is the answer. On `Override`, follow up with a plain free-text prompt: "What's the project's API layer? (e.g., 'REST', 'GraphQL', 'tRPC', 'gRPC', 'WebSocket', 'SOAP', 'N/A'):". The user's reply is the answer.
+
+**Otherwise** (no API framework signals in `frameworks[]` or `packages_detected[].manifest`): use a plain free-text prompt: "What's the project's API layer? (e.g., 'REST', 'GraphQL', 'tRPC', 'gRPC', 'WebSocket', 'SOAP', or 'N/A' if no API layer):". The user's reply is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-api-layer <answer>`.
 
@@ -126,13 +126,13 @@ Once the answer is determined, save it: `.devforge/lib/wizard_render set-api-lay
 
 The project's testing framework.
 
-Apply ecosystem knowledge to `primary_language` and the `packages_detected` manifests in `.devforge/detection_report.yaml` (specifically the manifest files at `packages_detected[N].manifest` paths, checking their dev-dependency sections) to pick the most likely option (e.g., Python with `pytest` in dev-deps → `pytest`; Python with no test runner detectable in dev-deps → `N/A`; TypeScript/JavaScript with `vitest` in dev-dependencies → `vitest`; TypeScript/JavaScript with `jest` in dev-dependencies → `jest`; project with no test setup detectable → `N/A`; no clear signal → leave none Recommended). Then use AskUserQuestion: "What's the project's testing framework?"
-- `pytest` (mark `(Recommended)` if it's the most likely option)
-- `vitest` (mark `(Recommended)` if it's the most likely option)
-- `jest` (mark `(Recommended)` if it's the most likely option)
-- `N/A` — no test framework (no test runner in dev-deps) (mark `(Recommended)` if it's the most likely option)
+**If `primary_language` alone determines the test runner (Go → `go test`; Rust → `cargo test`) OR `packages_detected[].manifest` dev-dependencies in `.devforge/detection_report.yaml` contain a recognized test framework (apply ecosystem knowledge: pytest in pyproject.toml [tool.pytest] or dev-deps → pytest; vitest/jest in dev-dependencies → that framework; JUnit in Maven/Gradle → JUnit; RSpec in Gemfile → RSpec; etc.):** use AskUserQuestion: "Detected testing framework: `<detected-framework>`. Confirm or override?"
+- `Confirm` (Recommended)
+- `Override` — let me name a different framework
 
-The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
+On `Confirm`, the detected framework is the answer. On `Override`, follow up with a plain free-text prompt: "What's the project's testing framework? (e.g., 'pytest', 'vitest', 'jest', 'go test', 'cargo test', 'JUnit', 'RSpec'):". The user's reply is the answer.
+
+**Otherwise** (no test framework detectable — no test deps in dev-dependencies, project has no test setup): use a plain free-text prompt: "What's the project's testing framework? (e.g., 'pytest', 'vitest', 'jest', 'go test', 'cargo test', 'JUnit', 'RSpec', or 'N/A' if no tests):". The user's reply is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-testing <answer>`.
 
