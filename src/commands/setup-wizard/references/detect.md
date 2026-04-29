@@ -61,8 +61,8 @@ Invoke `.devforge/lib/detect_report find-nested-git` to enumerate directories at
 
 **If exactly one nested `.git` directory is found:**
 Use AskUserQuestion (replace `<folder-name>` with the path from the scan above): "I found a nested git repository at `<folder-name>/`. Is this the wrapper's source root?"
-- `Yes, wrapper around <folder-name>` (Recommended)
-- `No, the source root is a different folder`
+- `Yes` — wrapper around `<folder-name>` (Recommended)
+- `No` — the source root is a different folder
 
 If `Yes`, invoke `.devforge/lib/detect_report set-workspace-mode wrapper` then `.devforge/lib/detect_report set-project-root <folder-name>`. If `No`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/detect_report set-workspace-mode wrapper` then `.devforge/lib/detect_report set-project-root <answer>`.
 
@@ -71,12 +71,12 @@ Use a plain free-text prompt: "Which folder contains the client's source code?",
 
 **If two or more nested `.git` directories are found:**
 Use AskUserQuestion (replace each `<folder-N>` with the corresponding path from the scan above; omit option lines that have no corresponding candidate): "I found multiple nested git repositories. Which folder is the wrapper's primary source root?"
-- `Wrapper around <folder-1>` (Recommended)
-- `Wrapper around <folder-2>`
-- `Wrapper around <folder-3>`
+- `<folder-1>` (Recommended)
+- `<folder-2>`
+- `<folder-3>`
 - `None of these — let me type the path`
 
-If the user picks `Wrapper around <folder-N>`, invoke `.devforge/lib/detect_report set-workspace-mode wrapper` then `.devforge/lib/detect_report set-project-root <folder-N>`. If the user picks `None of these`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/detect_report set-workspace-mode wrapper` then `.devforge/lib/detect_report set-project-root <answer>`.
+If the user picks `<folder-N>`, invoke `.devforge/lib/detect_report set-workspace-mode wrapper` then `.devforge/lib/detect_report set-project-root <folder-N>`. If the user picks `None of these`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/detect_report set-workspace-mode wrapper` then `.devforge/lib/detect_report set-project-root <answer>`.
 
 **Multi-root rejection:** If a free-text answer in this substep names more than one folder (e.g., separated by `and`, `&`, or a comma between path-like tokens — illustrative, not exhaustive; lean toward triggering when ambiguous, since a false-positive costs one re-prompt while a false-negative corrupts `project_root`), reply in first person: "I noticed your answer names more than one folder. Multi-root coordination across nested repos isn't supported — please name a single primary source root." Then re-issue the same free-text prompt: "Which folder contains the client's source code?". Allow up to 2 retries (3 total attempts). After the third invalid answer, extract the first folder from the most recent answer by splitting on the same multi-root separators (`and`, `&`, comma, whitespace between path-like tokens) and taking the leading non-empty token (strip a trailing slash if present). Warn the user ("I'll proceed with `<first-folder>`; re-run `/setup-wizard` if that's wrong"), then invoke `.devforge/lib/detect_report set-workspace-mode wrapper` then `.devforge/lib/detect_report set-project-root <first-folder>`.
 
