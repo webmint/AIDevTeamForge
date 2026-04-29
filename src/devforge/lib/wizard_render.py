@@ -30,6 +30,7 @@ Subcommands:
 - `set-architecture <value>` — store ARCHITECTURE
 - `set-error-handling <value>` — store ERROR_HANDLING
 - `set-runtime-url <value>` — store RUNTIME_URL
+- `set-api-layer <value>` — store API_LAYER
 """
 
 import argparse
@@ -312,6 +313,26 @@ def cmd_set_runtime_url(args):
     return _set_string_field("RUNTIME_URL", args.value, "set-runtime-url")
 
 
+def cmd_set_api_layer(args):
+    """Persist Phase 2 Q7 answer (API_LAYER) to the state file.
+
+    API_LAYER is a single-line label naming the project's API style —
+    one of the four Q7 options ("REST", "GraphQL", "tRPC", "N/A") or a
+    free-text custom value entered via the AskUserQuestion Other
+    affordance. The literal sentinel "N/A" passes the strict string
+    validator naturally — it's a non-empty, control-char-free string —
+    so no special-case branch is needed. Newlines are rejected (not in
+    `_ALLOW_NEWLINES_FIELDS`); the helper does not validate against an
+    enum because Q7 permits free-text overrides.
+
+    The state key is API_LAYER (singular) per the Q4-Q6 single-value
+    convention; the project-config.json template still has API_LAYERS
+    plural and that alignment is intentionally deferred to Phase 3
+    buildout.
+    """
+    return _set_string_field("API_LAYER", args.value, "set-api-layer")
+
+
 # ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
@@ -371,6 +392,13 @@ def build_parser():
     )
     set_runtime_url_parser.add_argument("value")
     set_runtime_url_parser.set_defaults(func=cmd_set_runtime_url)
+
+    set_api_layer_parser = subparsers.add_parser(
+        "set-api-layer",
+        help="Save Phase 2 Q7 answer (API_LAYER) into the state file.",
+    )
+    set_api_layer_parser.add_argument("value")
+    set_api_layer_parser.set_defaults(func=cmd_set_api_layer)
 
     return parser
 

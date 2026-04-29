@@ -107,3 +107,17 @@ On `Confirm`, the detected `runtime_url_value` is the answer. On `Override`, fol
 **Otherwise** (`runtime_url_value` is null in `.devforge/detection_report.yaml` — backend service, library, CLI, etc.): use a plain free-text prompt: "What's the project's runtime URL? Or 'N/A' if this project has no runtime URL (backend service, library, CLI).". The user's reply is the answer. If the user replies `'N/A'`, save it verbatim — the setter accepts the sentinel string.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-runtime-url <answer>`.
+
+## Q7: API Layer (OPTIONAL)
+
+The project's API style.
+
+Apply ecosystem knowledge to the `frameworks[]` recorded under each entry of `packages_detected` in `.devforge/detection_report.yaml` to pick the most likely option (e.g., `FastAPI` / `Express` / `Rails` / `Django` / `Flask` → `REST`; `apollo-server` / `@apollo/client` / `urql` / `relay` → `GraphQL`; `@trpc/server` / `@trpc/client` → `tRPC`; library or CLI with no API frameworks → `N/A`; no clear signal → `REST`). Then use AskUserQuestion: "What's the project's API layer?"
+- `REST` (mark `(Recommended)` if it's the most likely option)
+- `GraphQL` (mark `(Recommended)` if it's the most likely option)
+- `tRPC` (mark `(Recommended)` if it's the most likely option)
+- `N/A` — no API layer (library, CLI tool, static site) (mark `(Recommended)` if it's the most likely option)
+
+The selected option's label is the answer (verbatim). On the auto-injected Other affordance, the user's typed text is the answer.
+
+Once the answer is determined, save it: `.devforge/lib/wizard_render set-api-layer <answer>`.
