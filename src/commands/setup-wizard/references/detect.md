@@ -205,9 +205,9 @@ The remaining branches apply when `packages_detected` is non-empty:
 
 This step renders Phase 1's persisted state to the user and asks for approval before handoff.
 
-Render the summary by reading `.devforge/detection_report.yaml` (the file the prior steps have been writing to). Print a `key: value` summary, one line per field, in the order listed under "Outputs of this phase" above (22 fields total; evidence siblings render under their parent and are not counted as separate fields).
+Invoke `.devforge/lib/detect_report summary` to render the summary. The helper reads `.devforge/detection_report.yaml` and prints a fixed format to stdout. Relay the helper's output to the user without modification.
 
-**If `project_state` is `empty`:** the per-package fields (`packages_detected`, `languages`, `frameworks`, `build_tools`, `build_commands`, `type_check_commands`, `lint_commands`) and the project-level classification fields (`primary_language`, `auth_layer`, `state_management`, `styling`, `routing`, `validation_library`, `error_handling_library`, `error_handling_pattern`, `architecture_shape`, `runtime_url_value`) are `[]` / `null` by design — no manifests to detect. `runtime_url_source` carries the empty-project reason string set by §4.6's first branch. Frame the summary as success and note: "Project is empty — `workspace_mode`, `project_root`, `default_branch`, and `project_state` are set; per-package and project-level classification fields are intentionally empty and will be filled in during subsequent phases when the project's intended stack is specified."
+**If `project_state` is `empty`:** the helper renders the per-package and project-level classification fields as `[]` / `null` by design — no manifests to detect. After relaying the helper output, append the note: "Project is empty — `workspace_mode`, `project_root`, `default_branch`, and `project_state` are set; per-package and project-level classification fields are intentionally empty for an empty project."
 
 After the summary is rendered, use AskUserQuestion: "Detection complete — does this look right?"
 - `Looks right — proceed to Phase 2` (Recommended)

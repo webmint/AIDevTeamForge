@@ -987,6 +987,172 @@ def cmd_set_runtime_url(args):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Summary rendering.
+# ---------------------------------------------------------------------------
+
+
+# Per-package fields rendered in the "Per-package classification" section.
+# Order is locked — matches the documented summary format.
+SUMMARY_PER_PACKAGE_FIELDS = (
+    "languages",
+    "frameworks",
+    "build_tools",
+    "build_commands",
+    "type_check_commands",
+    "lint_commands",
+)
+
+# Project-level fields rendered in the "Project-level classification" section.
+# Order is locked — matches the documented summary format. Evidence siblings
+# are intentionally absent: the summary surfaces values, not provenance.
+SUMMARY_PROJECT_FIELDS = (
+    "primary_language",
+    "auth_layer",
+    "state_management",
+    "styling",
+    "routing",
+    "validation_library",
+    "error_handling_library",
+    "error_handling_pattern",
+    "architecture_shape",
+    "runtime_url_value",
+    "runtime_url_source",
+)
+
+# Workspace fields (the four lines of the "Workspace" section).
+SUMMARY_WORKSPACE_FIELDS = (
+    "workspace_mode",
+    "project_root",
+    "project_state",
+    "default_branch",
+)
+
+
+def _render_scalar_for_summary(value):
+    """Render a project-level / workspace scalar for the summary text.
+
+    `None` becomes the literal string `null` (unquoted) so the reader can
+    distinguish it from a string value of `"null"`. Empty strings render
+    quoted (`""`) for the same disambiguation reason — empty string is a
+    permitted scalar shape on the wire (set-time validation rejects it for
+    user-supplied inputs, but a hand-edited yaml could plant one and the
+    summary should not silently swallow it).
+    """
+    if value is None:
+        return "null"
+    if value == "":
+        return "\"\""
+    return value
+
+
+def _format_value_path_array(records):
+    """Group `records` by `value`, return `<v> (<n>), ...` count-desc string.
+
+    Each record is `{"path": ..., "value": ...}`. `value` may be `None` —
+    rendered as the literal string `null` (unquoted, matching scalar
+    rendering) so all values participate in the grouping. Empty strings
+    render quoted (`""`) for the same disambiguation reason — bare colon
+    output (`- field:  (1)`) is visually indistinguishable from a
+    truncated field label. Sort: count descending, ties broken by
+    ascending alphabetical (case-sensitive Python default string
+    compare). `null` and `""` participate in the same sort as any other
+    value.
+    """
+    counts = {}
+    for record in records:
+        raw = record.get("value")
+        key = "null" if raw is None else ("\"\"" if raw == "" else raw)
+        counts[key] = counts.get(key, 0) + 1
+    # Stable sort: primary by count desc, secondary by value asc.
+    sorted_items = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join("{0} ({1})".format(value, count) for value, count in sorted_items)
+
+
+def _render_summary(state):
+    """Build the deterministic summary string from `state`.
+
+    Output ends with one trailing newline. Field order is locked by the
+    SUMMARY_* tuples above.
+    """
+    lines = []
+    lines.append("## Detection Report Summary")
+    lines.append("")
+    lines.append("### Workspace")
+    for field in SUMMARY_WORKSPACE_FIELDS:
+        lines.append(
+            "- {0}: {1}".format(field, _render_scalar_for_summary(state.get(field)))
+        )
+    lines.append("")
+
+    packages = state.get("packages_detected") or []
+    pkg_count = len(packages)
+    lines.append(
+        "### Per-package classification ({0} packages)".format(pkg_count)
+    )
+    if pkg_count == 0:
+        lines.append("- no packages detected")
+    else:
+        for field in SUMMARY_PER_PACKAGE_FIELDS:
+            records = state.get(field) or []
+            formatted = _format_value_path_array(records)
+            if formatted == "":
+                # Field has no records but packages exist — defensive shape
+                # the wizard's normal flow doesn't produce, but a partially
+                # populated yaml could. Render the bare label so the reader
+                # can see the field is present-but-empty.
+                lines.append("- {0}:".format(field))
+            else:
+                lines.append("- {0}: {1}".format(field, formatted))
+    lines.append("")
+
+    lines.append("### Project-level classification")
+    for field in SUMMARY_PROJECT_FIELDS:
+        lines.append(
+            "- {0}: {1}".format(field, _render_scalar_for_summary(state.get(field)))
+        )
+
+    return "\n".join(lines) + "\n"
+
+
+def cmd_summary(args):
+    """Render the deterministic detection-report summary to stdout.
+
+    Reads `.devforge/detection_report.yaml`. If the file is missing, fails
+    with a clear stderr message naming the absent path. If the yaml is
+    malformed (cannot be parsed by the closed-shape parser), fails with a
+    parse-error message on stderr.
+    """
+    path = _output_file_path()
+    if not path.exists():
+        sys.stderr.write(
+            "detect_report summary: detection_report.yaml not found at {0}\n".format(
+                path
+            )
+        )
+        return 1
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as err:
+        sys.stderr.write(
+            "detect_report summary: cannot read {0}: {1}\n".format(path, err)
+        )
+        return 1
+    try:
+        state = parse_yaml(text)
+    except YamlParseError as err:
+        sys.stderr.write(
+            "detect_report summary: parse error in {0}: {1}\n".format(path, err)
+        )
+        return 1
+    # Backfill any missing fields (forward-compat with FIELD_SCHEMA growth).
+    for name, kind in FIELD_SCHEMA:
+        if name not in state:
+            state[name] = None if kind == "scalar" else []
+    sys.stdout.write(_render_summary(state))
+    return 0
+
+
 def cmd_find_nested_git(args):
     """List depth-1 directories under the install root that contain `.git/`.
 
@@ -1088,6 +1254,12 @@ def build_parser():
 
     sp = subparsers.add_parser("find-nested-git")
     sp.set_defaults(func=cmd_find_nested_git)
+
+    sp = subparsers.add_parser(
+        "summary",
+        help="Render a deterministic plain-text summary of the detection report.",
+    )
+    sp.set_defaults(func=cmd_summary)
 
     # Library-category setters (7) — value/null mutex + optional --evidence.
     _library_setter_funcs = {

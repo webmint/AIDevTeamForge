@@ -1651,5 +1651,440 @@ class ExtendedYamlRoundTripTests(unittest.TestCase):
         self.assertIn('runtime_url_value: "http://localhost:5173"', text)
 
 
+# ---------------------------------------------------------------------------
+# SummarySubcommandTests
+# ---------------------------------------------------------------------------
+
+
+class SummarySubcommandTests(_EnvIsolationMixin, unittest.TestCase):
+    """`summary` reads detection_report.yaml and prints a deterministic dump.
+
+    Tests preseed the yaml using the real producer (`emit_yaml` via
+    `_write_state`) so the summary parser sees on-the-wire state, never a
+    hand-authored fixture. Stdout is byte-compared against the locked format.
+    """
+
+    def _write_yaml(self, state):
+        """Persist `state` via the helper's atomic-write path."""
+        target = self.devforge_dir / detect_report.OUTPUT_FILE_NAME
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Use the real emitter so byte-shape matches what setters would produce.
+        target.write_text(detect_report.emit_yaml(state), encoding="utf-8")
+
+    def test_full_brownfield_summary(self):
+        """Realistic single-package brownfield project → byte-exact summary."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["primary_language"] = "TypeScript"
+        state["packages_detected"] = [
+            {"path": ".", "manifest": "package.json"},
+        ]
+        state["languages"] = [{"path": ".", "value": "TypeScript"}]
+        state["frameworks"] = [{"path": ".", "value": "React"}]
+        state["build_tools"] = [{"path": ".", "value": "Vite"}]
+        state["build_commands"] = [{"path": ".", "value": "npm run build"}]
+        state["type_check_commands"] = [{"path": ".", "value": "tsc --noEmit"}]
+        state["lint_commands"] = [{"path": ".", "value": "eslint ."}]
+        state["auth_layer"] = "Auth0"
+        state["auth_layer_evidence"] = "package.json: @auth0/auth0-react"
+        state["state_management"] = "Zustand"
+        state["state_management_evidence"] = "package.json: zustand"
+        state["styling"] = "Tailwind"
+        state["styling_evidence"] = "package.json: tailwindcss"
+        state["routing"] = "React-Router"
+        state["routing_evidence"] = "package.json: react-router-dom"
+        state["validation_library"] = "Zod"
+        state["validation_library_evidence"] = "package.json: zod"
+        state["error_handling_library"] = "Sentry"
+        state["error_handling_library_evidence"] = "package.json: @sentry/react"
+        state["error_handling_pattern"] = "Error boundaries"
+        state["error_handling_pattern_evidence"] = "src/ErrorBoundary.tsx"
+        state["architecture_shape"] = "layered"
+        state["architecture_evidence"] = "src/ has presentation/domain/data dirs"
+        state["runtime_url_value"] = "http://localhost:5173"
+        state["runtime_url_source"] = "vite.config.ts"
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        expected = (
+            "## Detection Report Summary\n"
+            "\n"
+            "### Workspace\n"
+            "- workspace_mode: standalone\n"
+            "- project_root: .\n"
+            "- project_state: brownfield\n"
+            "- default_branch: main\n"
+            "\n"
+            "### Per-package classification (1 packages)\n"
+            "- languages: TypeScript (1)\n"
+            "- frameworks: React (1)\n"
+            "- build_tools: Vite (1)\n"
+            "- build_commands: npm run build (1)\n"
+            "- type_check_commands: tsc --noEmit (1)\n"
+            "- lint_commands: eslint . (1)\n"
+            "\n"
+            "### Project-level classification\n"
+            "- primary_language: TypeScript\n"
+            "- auth_layer: Auth0\n"
+            "- state_management: Zustand\n"
+            "- styling: Tailwind\n"
+            "- routing: React-Router\n"
+            "- validation_library: Zod\n"
+            "- error_handling_library: Sentry\n"
+            "- error_handling_pattern: Error boundaries\n"
+            "- architecture_shape: layered\n"
+            "- runtime_url_value: http://localhost:5173\n"
+            "- runtime_url_source: vite.config.ts\n"
+        )
+        self.assertEqual(proc.stdout.decode("utf-8"), expected)
+
+    def test_empty_project_summary(self):
+        """Empty project: no packages, all per-package + project-level null."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "empty"
+        state["default_branch"] = "main"
+        # primary_language and all classification fields stay None.
+        # packages_detected stays [].
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        expected = (
+            "## Detection Report Summary\n"
+            "\n"
+            "### Workspace\n"
+            "- workspace_mode: standalone\n"
+            "- project_root: .\n"
+            "- project_state: empty\n"
+            "- default_branch: main\n"
+            "\n"
+            "### Per-package classification (0 packages)\n"
+            "- no packages detected\n"
+            "\n"
+            "### Project-level classification\n"
+            "- primary_language: null\n"
+            "- auth_layer: null\n"
+            "- state_management: null\n"
+            "- styling: null\n"
+            "- routing: null\n"
+            "- validation_library: null\n"
+            "- error_handling_library: null\n"
+            "- error_handling_pattern: null\n"
+            "- architecture_shape: null\n"
+            "- runtime_url_value: null\n"
+            "- runtime_url_source: null\n"
+        )
+        self.assertEqual(proc.stdout.decode("utf-8"), expected)
+
+    def test_monorepo_27_packages_summary(self):
+        """27 packages, 26 with frameworks=N/A and 1 with frameworks=Vue.
+
+        Mimics the testForge20 monorepo shape. Per-package fields collapse:
+        `frameworks: N/A (26), Vue (1)` ordered by count desc.
+        """
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["primary_language"] = "TypeScript"
+
+        packages = []
+        languages = []
+        frameworks = []
+        build_tools = []
+        build_commands = []
+        type_check_commands = []
+        lint_commands = []
+        # 26 library/util packages.
+        for i in range(26):
+            path = "packages/lib-{0:02d}".format(i)
+            packages.append({"path": path, "manifest": "package.json"})
+            languages.append({"path": path, "value": "TypeScript"})
+            frameworks.append({"path": path, "value": "N/A"})
+            build_tools.append({"path": path, "value": "tsup"})
+            build_commands.append({"path": path, "value": "tsup"})
+            type_check_commands.append({"path": path, "value": "tsc --noEmit"})
+            lint_commands.append({"path": path, "value": "eslint ."})
+        # 1 web app with Vue.
+        path = "apps/app-web"
+        packages.append({"path": path, "manifest": "package.json"})
+        languages.append({"path": path, "value": "TypeScript"})
+        frameworks.append({"path": path, "value": "Vue"})
+        build_tools.append({"path": path, "value": "Vite"})
+        build_commands.append({"path": path, "value": "vite build"})
+        type_check_commands.append({"path": path, "value": "vue-tsc --noEmit"})
+        lint_commands.append({"path": path, "value": "eslint ."})
+
+        state["packages_detected"] = packages
+        state["languages"] = languages
+        state["frameworks"] = frameworks
+        state["build_tools"] = build_tools
+        state["build_commands"] = build_commands
+        state["type_check_commands"] = type_check_commands
+        state["lint_commands"] = lint_commands
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn(
+            "### Per-package classification (27 packages)\n", out
+        )
+        # All-TypeScript: collapses to a single bucket.
+        self.assertIn("- languages: TypeScript (27)\n", out)
+        # Frameworks: 26 N/A vs 1 Vue → count desc.
+        self.assertIn("- frameworks: N/A (26), Vue (1)\n", out)
+        # build_tools: 26 tsup, 1 Vite.
+        self.assertIn("- build_tools: tsup (26), Vite (1)\n", out)
+        # build_commands: 26 tsup, 1 vite build.
+        self.assertIn("- build_commands: tsup (26), vite build (1)\n", out)
+        # type_check_commands: 26 tsc, 1 vue-tsc.
+        self.assertIn(
+            "- type_check_commands: tsc --noEmit (26), vue-tsc --noEmit (1)\n",
+            out,
+        )
+        # lint_commands: all 27 same.
+        self.assertIn("- lint_commands: eslint . (27)\n", out)
+
+    def test_count_desc_alphabetical_tiebreak(self):
+        """Tied counts → alphabetical ascending tiebreak (case-sensitive)."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["packages_detected"] = [
+            {"path": "p{0}".format(i), "manifest": "package.json"} for i in range(6)
+        ]
+        # Three "cmd-b" then three "cmd-a" — alphabetical sort must reverse
+        # the input order so cmd-a (lex < cmd-b) appears first under the
+        # equal-count tiebreak.
+        state["build_commands"] = [
+            {"path": "p0", "value": "cmd-b"},
+            {"path": "p1", "value": "cmd-b"},
+            {"path": "p2", "value": "cmd-b"},
+            {"path": "p3", "value": "cmd-a"},
+            {"path": "p4", "value": "cmd-a"},
+            {"path": "p5", "value": "cmd-a"},
+        ]
+        # Other per-package fields populated to satisfy "non-empty packages
+        # show all six fields"; values irrelevant to the assertion.
+        for fld in (
+            "languages", "frameworks", "build_tools",
+            "type_check_commands", "lint_commands",
+        ):
+            state[fld] = [
+                {"path": "p{0}".format(i), "value": "x"} for i in range(6)
+            ]
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("- build_commands: cmd-a (3), cmd-b (3)\n", out)
+
+    def test_null_field_renders_null(self):
+        """A project-level field set to None prints as `<name>: null`."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["primary_language"] = "TypeScript"
+        state["packages_detected"] = [
+            {"path": ".", "manifest": "package.json"}
+        ]
+        for fld in (
+            "languages", "frameworks", "build_tools", "build_commands",
+            "type_check_commands", "lint_commands",
+        ):
+            state[fld] = [{"path": ".", "value": "x"}]
+        # auth_layer left as None (default).
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("- auth_layer: null\n", out)
+
+    def test_empty_string_in_value_path_array_renders_quoted(self):
+        """Empty-string `value` in a value_path_array renders as `""` (quoted).
+
+        Bare-colon output (`- languages:  (1)`) is visually
+        indistinguishable from a truncated field label; quoting
+        disambiguates. Set-time validation rejects empty strings on
+        normal setter paths, but a hand-edited yaml could plant one and
+        the summary must not silently swallow it.
+        """
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["packages_detected"] = [{"path": ".", "manifest": "package.json"}]
+        # Empty-string value in the per-package languages array.
+        state["languages"] = [{"path": ".", "value": ""}]
+        # Other per-package fields populated so the section renders fully.
+        for fld in (
+            "frameworks", "build_tools", "build_commands",
+            "type_check_commands", "lint_commands",
+        ):
+            state[fld] = [{"path": ".", "value": "x"}]
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("- languages: \"\" (1)\n", out)
+
+    def test_evidence_siblings_hidden(self):
+        """`<field>_evidence` keys are NOT emitted in summary output."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["packages_detected"] = []
+        state["auth_layer"] = "Okta"
+        state["auth_layer_evidence"] = "package.json: @okta/okta-auth-js"
+        state["architecture_shape"] = "layered"
+        state["architecture_evidence"] = "evident from src/ layout"
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("- auth_layer: Okta\n", out)
+        self.assertNotIn("auth_layer_evidence", out)
+        self.assertNotIn("architecture_evidence", out)
+        self.assertNotIn("@okta/okta-auth-js", out)
+
+    def test_missing_yaml_file_exits_nonzero(self):
+        """When yaml is absent, exits with code 1 and stderr names the file."""
+        # _EnvIsolationMixin gives us an empty devforge_dir — no yaml present.
+        self.assertFalse(self.output_file.exists())
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(b"detection_report.yaml not found", proc.stderr)
+        # Path is named in the error so the operator can find what's missing.
+        self.assertIn(str(self.output_file).encode("utf-8"), proc.stderr)
+
+    def test_malformed_yaml_exits_nonzero(self):
+        """Garbage in yaml file → exit 1 + stderr indicates parse error."""
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        self.output_file.write_text(
+            "this is: not valid {{ yaml [\n  ?? broken\n", encoding="utf-8"
+        )
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(b"parse error", proc.stderr)
+
+    def test_n_a_sentinel_renders_verbatim(self):
+        """N/A is just a string value — rendered as `N/A (count)`, no special-case."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["packages_detected"] = [
+            {"path": "a", "manifest": "package.json"},
+            {"path": "b", "manifest": "package.json"},
+            {"path": "c", "manifest": "package.json"},
+        ]
+        state["languages"] = [
+            {"path": "a", "value": "TypeScript"},
+            {"path": "b", "value": "TypeScript"},
+            {"path": "c", "value": "TypeScript"},
+        ]
+        state["frameworks"] = [
+            {"path": "a", "value": "N/A"},
+            {"path": "b", "value": "N/A"},
+            {"path": "c", "value": "Vue"},
+        ]
+        for fld in (
+            "build_tools", "build_commands", "type_check_commands",
+            "lint_commands",
+        ):
+            state[fld] = [
+                {"path": "a", "value": "x"},
+                {"path": "b", "value": "x"},
+                {"path": "c", "value": "x"},
+            ]
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("- frameworks: N/A (2), Vue (1)\n", out)
+
+    def test_runtime_url_value_with_url_renders_correctly(self):
+        """A real URL with `://`, host:port → exact line in summary."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["packages_detected"] = []
+        state["runtime_url_value"] = "https://okta.example.com:8080"
+        state["runtime_url_source"] = "config/auth.ts"
+        self._write_yaml(state)
+
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn(
+            "- runtime_url_value: https://okta.example.com:8080\n", out
+        )
+        self.assertIn("- runtime_url_source: config/auth.ts\n", out)
+
+    def test_deterministic_output_byte_identical(self):
+        """Running summary twice on the same yaml → byte-identical stdout."""
+        state = detect_report.default_state()
+        state["project_root"] = "."
+        state["workspace_mode"] = "standalone"
+        state["project_state"] = "brownfield"
+        state["default_branch"] = "main"
+        state["primary_language"] = "Python"
+        # Multi-package + ties to ensure the sort path is exercised.
+        state["packages_detected"] = [
+            {"path": "svc-a", "manifest": "pyproject.toml"},
+            {"path": "svc-b", "manifest": "pyproject.toml"},
+            {"path": "svc-c", "manifest": "pyproject.toml"},
+        ]
+        state["languages"] = [
+            {"path": "svc-a", "value": "Python"},
+            {"path": "svc-b", "value": "Python"},
+            {"path": "svc-c", "value": "Python"},
+        ]
+        state["frameworks"] = [
+            {"path": "svc-a", "value": "FastAPI"},
+            {"path": "svc-b", "value": "Django"},
+            {"path": "svc-c", "value": "Flask"},
+        ]
+        for fld in (
+            "build_tools", "build_commands", "type_check_commands",
+            "lint_commands",
+        ):
+            state[fld] = [
+                {"path": "svc-a", "value": "v1"},
+                {"path": "svc-b", "value": "v1"},
+                {"path": "svc-c", "value": "v2"},
+            ]
+        self._write_yaml(state)
+
+        proc1 = _run_cli(self.devforge_dir, "summary")
+        proc2 = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc1.returncode, 0, proc1.stderr)
+        self.assertEqual(proc2.returncode, 0, proc2.stderr)
+        self.assertEqual(proc1.stdout, proc2.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
