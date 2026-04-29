@@ -70,13 +70,13 @@ Once the answer is determined, save it: `.devforge/lib/wizard_render set-project
 
 The project's overall architectural pattern.
 
-**If `architecture_shape` is set in `.devforge/detection_report.yaml`:** use AskUserQuestion: "Detected architecture: `<architecture_shape>`. Confirm or override?"
+**If `architecture_shape` is set to a non-null, non-`"N/A"` value in `.devforge/detection_report.yaml`:** use AskUserQuestion: "Detected architecture: `<architecture_shape>`. Confirm or override?"
 - `Confirm` (Recommended)
 - `Override` — let me describe differently
 
 On `Confirm`, the detected `architecture_shape` is the answer. On `Override`, follow up with a plain free-text prompt: "Describe your project's architecture (e.g., 'Clean Architecture', 'Hexagonal', 'feature-modular-monorepo'):". The user's reply is the answer.
 
-**Otherwise** (`architecture_shape` is null in `.devforge/detection_report.yaml`): use a plain free-text prompt: "What architecture pattern does this project follow? (e.g., 'Clean Architecture', 'Hexagonal', 'MVC')". The user's reply is the answer.
+**Otherwise** (`architecture_shape` is null or `"N/A"` in `.devforge/detection_report.yaml`): use a plain free-text prompt: "What architecture pattern does this project follow? (e.g., 'Clean Architecture', 'Hexagonal', 'MVC')". The user's reply is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-architecture <answer>`.
 
@@ -84,13 +84,13 @@ Once the answer is determined, save it: `.devforge/lib/wizard_render set-archite
 
 The project's error handling library and pattern.
 
-**If both `error_handling_library` and `error_handling_pattern` are populated in `.devforge/detection_report.yaml` (neither null nor `"N/A"`):** use AskUserQuestion: "Detected error handling: `<error_handling_library>` with `<error_handling_pattern>`. Confirm or override?"
+**If `error_handling_library` is set to a non-null, non-`"N/A"` value in `.devforge/detection_report.yaml`:** use AskUserQuestion: "Detected error handling library: `<error_handling_library>`. Confirm or describe differently?"
 - `Confirm` (Recommended)
 - `Override` — let me describe differently
 
-On `Confirm`, combine the two fields into the single descriptive string `<error_handling_library> with <error_handling_pattern>` and that combined string is the answer. The separator is always the literal string " with " (space-w-i-t-h-space), producing e.g. `"neverthrow with Result type"` or `"purify-ts with try/catch"`. On `Override`, follow up with a plain free-text prompt: "Describe your project's error handling (e.g., 'purify-ts Either', 'try/catch', 'neverthrow Result'):". The user's reply is the answer.
+On `Confirm`, the detected `error_handling_library` is the answer. On `Override`, follow up with a plain free-text prompt: "Describe your project's error handling (e.g., 'purify-ts Either', 'try/catch', 'neverthrow Result'):". The user's reply is the answer.
 
-**Otherwise** (either `error_handling_library` or `error_handling_pattern` is null or `"N/A"` in `.devforge/detection_report.yaml`): use a plain free-text prompt: "How does this project handle errors? (e.g., 'try/catch', 'Result type', 'language default')". The user's reply is the answer.
+**Otherwise** (`error_handling_library` is null or `"N/A"` in `.devforge/detection_report.yaml`): use a plain free-text prompt: "How does this project handle errors? (e.g., 'try/catch', 'Result type', 'language default')". The user's reply is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-error-handling <answer>`.
 
@@ -98,13 +98,13 @@ Once the answer is determined, save it: `.devforge/lib/wizard_render set-error-h
 
 The URL where the project runs (dev server, staging, etc.).
 
-**If `runtime_url_value` is set (non-null) in `.devforge/detection_report.yaml`:** use AskUserQuestion: "Detected runtime URL: `<runtime_url_value>`. Confirm or override?"
+**If `runtime_url_value` is set to a non-null, non-`"N/A"` value in `.devforge/detection_report.yaml`:** use AskUserQuestion: "Detected runtime URL: `<runtime_url_value>`. Confirm or override?"
 - `Confirm` (Recommended)
 - `Override` — let me enter a different URL
 
 On `Confirm`, the detected `runtime_url_value` is the answer. On `Override`, follow up with a plain free-text prompt: "What's the project's runtime URL? (e.g., 'http://localhost:3000', 'https://staging.example.com'):". The user's reply is the answer.
 
-**Otherwise** (`runtime_url_value` is null in `.devforge/detection_report.yaml` — backend service, library, CLI, etc.): use a plain free-text prompt: "What's the project's runtime URL? Or 'N/A' if this project has no runtime URL (backend service, library, CLI).". The user's reply is the answer. If the user replies `'N/A'`, save it verbatim — the setter accepts the sentinel string.
+**Otherwise** (`runtime_url_value` is null or `"N/A"` in `.devforge/detection_report.yaml` — backend service, library, CLI, etc.): use a plain free-text prompt: "What's the project's runtime URL? Or 'N/A' if this project has no runtime URL (backend service, library, CLI).". The user's reply is the answer. If the user replies `'N/A'`, save it verbatim — the setter accepts the sentinel string.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-runtime-url <answer>`.
 
