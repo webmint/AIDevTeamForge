@@ -254,6 +254,18 @@ def cmd_set_project_description(args):
     )
 
 
+def cmd_set_project_type(args):
+    """Persist Phase 2 Q3 answer (PROJECT_TYPE) to the state file.
+
+    PROJECT_TYPE is a single-line category label — either one of the
+    fixed taxonomy values (e.g. "Frontend / web application") or a
+    free-text custom category. Newlines are rejected (not in
+    `_ALLOW_NEWLINES_FIELDS`); the helper does not validate against an
+    enum because Q3 permits free-text custom values.
+    """
+    return _set_string_field("PROJECT_TYPE", args.value, "set-project-type")
+
+
 # ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
@@ -285,6 +297,13 @@ def build_parser():
     )
     set_project_description_parser.add_argument("value")
     set_project_description_parser.set_defaults(func=cmd_set_project_description)
+
+    set_project_type_parser = subparsers.add_parser(
+        "set-project-type",
+        help="Save Phase 2 Q3 answer (PROJECT_TYPE) into the state file.",
+    )
+    set_project_type_parser.add_argument("value")
+    set_project_type_parser.set_defaults(func=cmd_set_project_type)
 
     return parser
 

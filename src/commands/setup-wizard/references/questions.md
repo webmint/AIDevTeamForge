@@ -33,3 +33,35 @@ If the user's reply is exactly 'yes' (case-insensitive), the extracted README te
 **Otherwise** (no README at `project_root`, or the README is empty or boilerplate-only): use a plain free-text prompt: "Describe this project in 1-3 sentences — what does it do, who is it for?". The user's reply is the answer.
 
 Once the answer is determined, save it: `.devforge/lib/wizard_render set-project-description <answer>`.
+
+## Q3: Project Type (REQUIRED)
+
+The project's primary category from a closed 13-item taxonomy.
+
+**If `.devforge/detection_report.yaml` fields support a confident mapping to one of the 13 categories in the taxonomy:** apply ecosystem knowledge to pick the best-fit category and identify the 1-3 most representative signals that justified the call. Then use AskUserQuestion: "Based on detected `<key-signals>`, this looks like a `<proposed-type>`. Confirm, or browse the full list?"
+- `Confirm` (Recommended)
+- `Browse the full list` — see all categories or describe your own
+
+On `Confirm`, the proposed type is the answer. On `Browse the full list`, follow up with this prose prompt:
+
+**Otherwise** (no clear signal in `detection_report.yaml` — empty project, no matching framework patterns): skip the AskUserQuestion and issue this prose prompt directly:
+
+"Which category fits this project? Pick a name from the list, or describe your own (e.g., 'firmware', 'browser extension', 'Slack bot'):
+
+- Frontend / web application
+- Backend API / service
+- Full-stack web application
+- Mobile application (native or cross-platform)
+- Desktop application (Electron, Tauri, native)
+- CLI tool / script
+- Library / package / SDK
+- Plugin / extension / add-on
+- Data pipeline / ETL / batch job
+- ML / data science / AI model
+- Game
+- Infrastructure-as-code / config management
+- Documentation / static site"
+
+The user's reply is the answer (verbatim — whether they typed a canonical category name or a custom description).
+
+Once the answer is determined, save it: `.devforge/lib/wizard_render set-project-type <answer>`.

@@ -1,7 +1,7 @@
 """Tests for src/devforge/lib/wizard_render.py.
 
-Covers the `reset`, `set-project-name`, and `set-project-description`
-subcommands plus `_state_file_path` resolution.
+Covers the `reset`, `set-project-name`, `set-project-description`, and
+`set-project-type` subcommands plus `_state_file_path` resolution.
 
 Each test runs in its own `tempfile.TemporaryDirectory` and points the
 helper at it via the `DEVFORGE_DIR` environment variable, so the repo's
@@ -408,8 +408,124 @@ class SetProjectDescriptionSubcommandTests(_StringSetterTestBase):
         self.assertTrue(content.endswith("\n"))
 
 
+class SetProjectTypeSubcommandTests(_StringSetterTestBase):
+    """End-to-end behavior of `wizard_render set-project-type`.
+
+    PROJECT_TYPE is a single-line category label — same validation policy
+    as PROJECT_NAME (no LF/CR, no other control chars). The happy-path
+    value is one of the 13 Q3 taxonomy categories; free-text custom
+    values are also valid (the helper enforces shape, not the enum).
+    """
+
+    HAPPY_VALUE = "Frontend / web application"
+
+    def test_writes_key_to_new_state_file(self):
+        self.assertFalse(self.state_file.exists())
+        proc = _run_helper(
+            self.devforge_dir, "set-project-type", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file.exists())
+        self.assertEqual(
+            self._read_state(), {"PROJECT_TYPE": self.HAPPY_VALUE}
+        )
+
+    def test_merges_into_existing_state(self):
+        self._write_state({"PROJECT_NAME": "foo"})
+        proc = _run_helper(
+            self.devforge_dir, "set-project-type", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {"PROJECT_NAME": "foo", "PROJECT_TYPE": self.HAPPY_VALUE},
+        )
+
+    def test_overwrites_prior_value(self):
+        self._write_state({"PROJECT_TYPE": "old"})
+        proc = _run_helper(self.devforge_dir, "set-project-type", "new")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self._read_state(), {"PROJECT_TYPE": "new"})
+
+    def test_empty_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-project-type", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"PROJECT_TYPE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_whitespace_only_value_rejected(self):
+        proc = _run_helper(self.devforge_dir, "set-project-type", "   ")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"PROJECT_TYPE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_control_char_value_rejected(self):
+        # 0x01 — see SetProjectNameSubcommandTests.test_control_char_value_rejected
+        # for why this isn't NUL.
+        proc = _run_helper(
+            self.devforge_dir, "set-project-type", "bad\x01type"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"PROJECT_TYPE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_del_control_char_rejected(self):
+        # 0x7F (DEL) — verifies the high-end control char branch.
+        proc = _run_helper(
+            self.devforge_dir, "set-project-type", "bad\x7ftype"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"PROJECT_TYPE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_newline_in_value_rejected(self):
+        # PROJECT_TYPE is a single-line category label; embedded LF would
+        # silently corrupt template substitution (e.g. `{{PROJECT_TYPE}}`
+        # in a single-line list-item context).
+        proc = _run_helper(
+            self.devforge_dir, "set-project-type", "Frontend\nweb"
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"PROJECT_TYPE", proc.stderr)
+        self.assertFalse(self.state_file.exists())
+
+    def test_pretty_printed_with_sorted_keys(self):
+        # Insert keys in non-sorted order; verify file has sorted output.
+        self._write_state({"ZZZ_LAST": "z", "AAA_FIRST": "a"})
+        proc = _run_helper(
+            self.devforge_dir, "set-project-type", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        content = self.state_file.read_text(encoding="utf-8")
+        self.assertIn('  "AAA_FIRST": "a"', content)
+        self.assertIn(
+            '  "PROJECT_TYPE": "Frontend / web application"', content
+        )
+        self.assertIn('  "ZZZ_LAST": "z"', content)
+        # Sorted: AAA appears before PROJECT_TYPE, which appears before ZZZ.
+        self.assertLess(
+            content.index("AAA_FIRST"), content.index("PROJECT_TYPE")
+        )
+        self.assertLess(
+            content.index("PROJECT_TYPE"), content.index("ZZZ_LAST")
+        )
+
+    def test_no_temp_files_leaked_after_success(self):
+        # mkstemp leaves no leftover files on the happy path.
+        proc = _run_helper(
+            self.devforge_dir, "set-project-type", self.HAPPY_VALUE
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        leftovers = [
+            p.name
+            for p in self.devforge_dir.iterdir()
+            if p.name.startswith("wizard-render-state-")
+        ]
+        self.assertEqual(leftovers, [])
+
+
 class SetterCompositionTests(_StringSetterTestBase):
-    """Verify the two setters compose correctly into a shared state file."""
+    """Verify the setters compose correctly into a shared state file."""
 
     def test_both_setters_coexist_in_state(self):
         proc = _run_helper(
@@ -427,6 +543,33 @@ class SetterCompositionTests(_StringSetterTestBase):
             {
                 "PROJECT_NAME": "my-project",
                 "PROJECT_DESCRIPTION": "My project description.",
+            },
+        )
+
+    def test_all_three_setters_coexist_in_state(self):
+        # Sequential setter calls accumulate into a single state dict.
+        proc = _run_helper(
+            self.devforge_dir, "set-project-name", "my-project"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-project-description",
+            "My project description.",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_helper(
+            self.devforge_dir,
+            "set-project-type",
+            "Frontend / web application",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self._read_state(),
+            {
+                "PROJECT_NAME": "my-project",
+                "PROJECT_DESCRIPTION": "My project description.",
+                "PROJECT_TYPE": "Frontend / web application",
             },
         )
 
