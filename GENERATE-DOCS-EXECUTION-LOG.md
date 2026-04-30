@@ -64,3 +64,110 @@ N/A (foundation step; no doc-output comparison until Phase 2.2 produces first pe
 ### Next step
 
 Phase 1.2 — Implement `generate_docs_helper.py` skeleton + fill + validate (PackageDoc tier only). See `GENERATE-DOCS-PLAN.md` Step 1.2 for the brief.
+
+---
+
+## Phase 1.2a — Helper PackageDoc tier setters + refactor + 6 review findings
+
+**Status**: ✅ DONE
+**Commit**: see `git log` for SHA — atomic commit covering helper + refactor + fixes
+**Scope expansion vs plan**: plan said Step 1.2 = single helper file; user intervention during the work requested a structural refactor (SOLID/KISS/DRY/GRASP via `python-engineer.md` Design discipline section) before further code lands on top. This step now delivers the helper AS a refactored package + the design-discipline doc update + the 6 reviewer findings.
+
+### Files written
+
+- `.claude/agents/python-engineer.md` — added `## Design discipline` section (lines 42-99); SOLID/KISS/DRY/GRASP + module-split thresholds + grandfathered helper list. Committed separately at `6b21e06` so the refactor runs under the new discipline.
+- `src/devforge/lib/generate_docs_helper.py` — 52-line shim (re-exports for test compat + `main` forwarding). Down from initial 1144-line monolith.
+- `src/devforge/lib/generate_docs` — POSIX launcher (unchanged behavior; invokes the shim).
+- `src/devforge/lib/_generate_docs/` — NEW internal package, 6 submodules:
+  - `__init__.py` — 11 lines, re-exports `main`
+  - `_state.py` — 172 lines (atomic JSON read-modify-write; `StateLoadError`; `_die`/`_info`)
+  - `_validation.py` — 109 lines (string + line-range + enum membership; control-char rejection at set-time per anti-pattern #1)
+  - `_setters.py` — 520 lines (all 12 PackageDoc-tier setter handlers; in plan-a-split zone but cohesion accepted; size note in module docstring)
+  - `_status.py` — 102 lines (`cmd_status` + render helpers)
+  - `_manifest.py` — 220 lines (`extract-package-scripts`; per-ecosystem dispatch; pyproject.toml + Rakefile static-parse; no subprocess)
+  - `_cli.py` — 195 lines (argparse plumbing; OCP subcommand registry as list-of-tuples; `_add_cite_args` factory used 3× per Rule of Three)
+- `tests/lib/test_generate_docs_helper.py` — 117 tests (was 111 in initial 1.2a; +6 for findings 1+2)
+
+### Subcommands implemented (1.2a scope only)
+
+`reset`, `add-package`, `set-package-overview`, `set-package-tree`, `set-package-language`, `set-package-framework`, `set-package-build-tool`, `add-package-script`, `add-package-export`, `add-package-dep`, `add-package-hazard`, `set-package-usage-example`, `status`, `extract-package-scripts`. Total: 14 subcommands.
+
+Sub-step 1.2b adds: `set-package-consumer-pattern`, `render-package-skeleton`, `validate-package`, `render-package-doc`. Concern/architecture/memory tiers come in Phases 3-5.
+
+### Agents invoked + loops
+
+1. **python-engineer** — initial implementation as 1144-line monolith (1 invocation, ~28 min)
+2. **python-reviewer** — close-out audit on monolith, surfaced 4 findings (1 high, 1 medium, 1 low, 1 nit)
+3. **User intervention** — flagged monolith as unsupportable; requested refactor + agent-definition update with SOLID/KISS/DRY/GRASP discipline
+4. **instruction-author** — added `## Design discipline` section to `python-engineer.md`
+5. **instruction-reviewer + claude-code-guide** (parallel) — 1 medium finding (DIP→SRP misclassification)
+6. **instruction-author** — fix 1 (sentence relocated DIP bullet → SRP bullet, principle relabeled)
+7. **python-engineer** — first refactor pass timed out after extracting `_state.py` + `_validation.py`
+8. **python-engineer (continuation)** — completed extraction (`_setters.py`, `_status.py`, `_manifest.py`, `_cli.py`); converted helper to shim; ~30 min
+9. **python-reviewer** — refactor audit, 0 high/med, 1 low + 1 nit on docstrings
+10. **python-engineer** — applied 6 findings (4 deferred from monolith review + 2 new docstring findings) in one pass
+11. **python-reviewer** — final close-out, 0 findings
+
+Total: 7 effective loops across 11 agent invocations.
+
+### Verify outcomes
+
+- `python3 -m unittest discover tests/lib -q` → 550/550 passing (was 433 baseline; +117 helper tests)
+- Idempotency: 2 successive runs produce identical results
+- No regressions in pre-existing 433 schema-tier tests
+- Acyclic dependency graph confirmed: `_state.py` + `_validation.py` are leaves; `_setters` depends on both + schema; `_status` on `_state`; `_manifest` on `_state`+`_validation` (`_die`/`_info`/`_validate_string` only); `_cli` on `_setters`+`_status`+`_manifest`; shim depends on `_generate_docs` package
+- POSIX launcher untouched; CLI surface byte-identical to monolith pre-refactor
+
+### 6 reviewer findings applied
+
+| # | Severity | Location | Fix |
+|---|---|---|---|
+| 1 | HIGH | `_state.py` `_load_state` + new test | Wrong-type `packages` field raises `StateLoadError` (was silent reset). Test `test_packages_wrong_type_raises_state_load_error` regression-guards |
+| 2 | MEDIUM | `_manifest.py` | pyproject.toml `[project.scripts]`/`[tool.poetry.scripts]` regex parser; Rakefile static-parse for `task :name`/`task "name"`/`task 'name'`; +5 tests |
+| 3 | LOW | `_validation.py` | Removed dead `_MULTILINE_FIELDS` constant |
+| 4 | NIT | `_status.py` | Corrected `_render_optional_field_status` docstring: whitespace-only does NOT clear field, only exact `""` does |
+| 5 | LOW | `_setters.py` | Added size-acknowledgment paragraph to module docstring (plan-a-split zone, cohesion accepted, split at 600) |
+| 6 | NIT | `_setters.py` | Reworded first sentence to remove "and" (SRP discipline) |
+
+### Decisions
+
+1. **Refactor structure**: sibling internal package `src/devforge/lib/_generate_docs/` with underscore-prefixed submodules; thin shim at `src/devforge/lib/generate_docs_helper.py` for launcher path stability + test re-exports. Schema stays at top-level (not moved into the package).
+2. **`_setters.py` size (520 lines, > 400 plan-a-split target)**: cohesion case (all 12 setters share read-validate-mutate-write idiom) outweighs splitting case at this scale; split deferred until file approaches the hard 600-line threshold. Documented in module docstring per Finding 5.
+3. **Shim size (52 lines, > 25 target)**: 27 extra lines are forced re-exports for test compatibility (tests reference `gdh.STATE_FILE_NAME`, `gdh._validate_string`, etc.). The "no test changes" constraint locks this. Could be reduced to ~10 lines if a future change updates tests to import from package internals directly.
+4. **`__init__.py` minimal re-export**: only `main` exposed; submodules are internal-only.
+5. **OCP subcommand registry**: list-of-tuples `_SUBCOMMANDS = [(name, parser_factory, handler), ...]` in `_cli.py`. New subcommands = one-line append + a parser-factory.
+6. **DRY `_add_cite_args` factory**: extracted in `_cli.py` because the `--cite-file/--cite-start/--cite-end` triplet appears in 3 places (export, hazard, usage-example) — meets Rule of Three.
+
+### Anti-patterns avoided
+
+- #1 (control-char escaping at set-time): single-line fields reject `\n\r\t` and `<0x20`; multi-line fields permit `\n\r\t` only
+- #2 (type validation deferred): all enum membership at set-time, not at status/render
+- #4 (fixed-name temp files): `tempfile.mkstemp` + `os.replace` + try/except unlinking temp
+- #6 (compose without idempotency): duplicate `add-package` rejected; field overwrites allowed by design
+- #7 (unanchored separator splits): argparse parses; no manual string splits on user input
+- #8 (file-path+line-range docstring citations): no `path/file.md:NN-MM` style citations; section/symbol references only
+- #10 (modern type-hint syntax): `Optional`/`List`/`Dict` from typing; no `X | None` or bare `list[X]` in runtime types
+
+### Future-session-falsely-believes check
+
+- `info()` exists as `init_helper.py` pattern? NO (no info() anywhere in repo)
+- Wrong-type `packages` silently accepted? NO (raises StateLoadError + test)
+- pyproject `[project.scripts]` ignored? NO (regex-parsed)
+- `_MULTILINE_FIELDS` is live code? NO (removed)
+- Whitespace-only `--value` clears optional fields? NO (docstring corrected)
+- `_setters.py` size accidental? NO (size note in docstring)
+- Shim contains business logic? NO (no `def`/`class`; pure re-exports)
+- Schema is inside `_generate_docs/`? NO (stays at top level)
+
+### Scope expansion notes
+
+This step exceeded the original Step 1.2 plan in two ways, both user-requested:
+
+1. **Refactor**: plan said one file; user requested package split. Aligned with Design discipline thresholds.
+2. **Agent definition update**: plan didn't include this; user requested SOLID/KISS/DRY/GRASP discipline before further code lands. Committed separately at `6b21e06`.
+
+GENERATE-DOCS-PLAN.md not yet updated to reflect this scope expansion. Plan annotation deferred — not blocking subsequent steps.
+
+### Next step
+
+Phase 1.2b — `set-package-consumer-pattern` setter + `render-package-skeleton` + `validate-package` + `render-package-doc`. The validate-package subcommand does the heavy lifting: filesystem checks (cite.file existence, line range bounds), snippet verbatim match against source, internal-Dependency target resolution. See `GENERATE-DOCS-PLAN.md` Step 1.2 brief for full spec.
