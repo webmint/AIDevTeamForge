@@ -8,12 +8,13 @@ The state I/O details and `_die` / `_info` printers come from
 writes and error formatting stay centralized (Information Expert per
 GRASP, anti-pattern #4 stays closed).
 
-Size note: at 513 lines this module sits in the "plan-a-split" zone
-(> 400) per the Design discipline table in `python-engineer.md`. The
-cohesion case (all 12 setters share the read-validate-mutate-write
-idiom) was evaluated and accepted. Split into per-arity submodules
-(e.g., `_setters_scalar.py` / `_setters_records.py`) only when
-extending the file approaches the hard 600-line threshold.
+Size note: at ~580 lines this module sits in the "plan-a-split" zone
+(> 400) per the Design discipline table in `python-engineer.md` and
+is approaching the hard 600-line threshold. The cohesion case (all
+13 setters share the read-validate-mutate-write idiom) was evaluated
+and accepted. Adding the 14th setter is the trigger to split into
+per-arity submodules (`_setters_scalar.py` / `_setters_records.py`)
+before this file crosses 600.
 
 Inputs are validated AT SET-TIME, not deferred to compose-time
 (anti-pattern #2): single-line strings reject every control byte;
@@ -514,6 +515,68 @@ def cmd_set_package_usage_example(args: argparse.Namespace) -> int:
         return _die("cannot write state: {0}".format(err), code=1)
     _info(
         "set-package-usage-example at {0} (cite={1}:{2}-{3})".format(
+            args.path, args.cite_file, args.cite_start, args.cite_end
+        )
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: set-package-consumer-pattern.
+#
+# Mirrors `set-package-usage-example` exactly — same CodeBlock shape,
+# same validation, same overwrite policy. The two subcommands target
+# different fields of the same package record (`usage_example` vs
+# `consumer_pattern`); the registered code is otherwise indistinguishable.
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_package_consumer_pattern(args: argparse.Namespace) -> int:
+    try:
+        _validate_string(args.path, "set-package-consumer-pattern --path")
+        _validate_string(
+            args.language, "set-package-consumer-pattern --language"
+        )
+        _validate_string(
+            args.code_snippet,
+            "set-package-consumer-pattern --code-snippet",
+            multiline=True,
+        )
+        _validate_string(
+            args.cite_file, "set-package-consumer-pattern --cite-file"
+        )
+        _validate_line_range(
+            args.cite_start, args.cite_end,
+            "set-package-consumer-pattern cite",
+        )
+    except ValueError as err:
+        return _die(str(err))
+    try:
+        state = _load_state()
+    except StateLoadError as err:
+        return _die(str(err), code=1)
+    pkg = _require_package(state, args.path)
+    if pkg is None:
+        return _die(
+            "package not registered at {0!r}; run add-package first".format(
+                args.path
+            )
+        )
+    pkg["consumer_pattern"] = {
+        "language": args.language,
+        "snippet": args.code_snippet,
+        "cite": {
+            "file": args.cite_file,
+            "start": args.cite_start,
+            "end": args.cite_end,
+        },
+    }
+    try:
+        _write_state(state)
+    except OSError as err:
+        return _die("cannot write state: {0}".format(err), code=1)
+    _info(
+        "set-package-consumer-pattern at {0} (cite={1}:{2}-{3})".format(
             args.path, args.cite_file, args.cite_start, args.cite_end
         )
     )

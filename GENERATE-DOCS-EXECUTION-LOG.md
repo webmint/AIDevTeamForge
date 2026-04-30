@@ -171,3 +171,118 @@ GENERATE-DOCS-PLAN.md not yet updated to reflect this scope expansion. Plan anno
 ### Next step
 
 Phase 1.2b — `set-package-consumer-pattern` setter + `render-package-skeleton` + `validate-package` + `render-package-doc`. The validate-package subcommand does the heavy lifting: filesystem checks (cite.file existence, line range bounds), snippet verbatim match against source, internal-Dependency target resolution. See `GENERATE-DOCS-PLAN.md` Step 1.2 brief for full spec.
+
+---
+
+## Phase 1.2b — render-package-skeleton + validate-package + render-package-doc + set-package-consumer-pattern
+
+**Status**: ✅ DONE
+**Commit**: see `git log` for SHA — atomic commit (4 subcommands + 5 follow-up fixes)
+**Plan annotation**: tech-writer subagent decision committed separately at `54ad158` before Phase 1.2b dispatch.
+
+### Files written / modified
+
+- **NEW** `src/devforge/lib/_generate_docs/_render.py` — 370 lines (markdown render: `render_package_skeleton(state, path) -> str` + `cmd_render_package_skeleton`; atomic write via `tempfile.mkstemp` + `os.replace`)
+- **NEW** `src/devforge/lib/_generate_docs/_validators.py` — 426 lines (cross-record + filesystem validation: `validate_package(state, path, project_root) -> List[error]` + `cmd_validate_package` + `cmd_render_package_doc` (gated by validate); 8 validation rules)
+- **MODIFIED** `src/devforge/lib/_generate_docs/_setters.py` — 520 → 582 lines (+62 for `cmd_set_package_consumer_pattern`)
+- **MODIFIED** `src/devforge/lib/_generate_docs/_cli.py` — 195 → 221 lines (+26 for 4 new subcommand registrations; updated `_add_cite_args` docstring count)
+- **MODIFIED** `tests/lib/test_generate_docs_helper.py` — 1377 → 2188 lines (+672 for 34 new tests across 4 new TestCase classes)
+
+### Subcommands added (4)
+
+1. `set-package-consumer-pattern` — mirrors `set-package-usage-example`; sets `consumer_pattern` CodeBlock
+2. `render-package-skeleton` — renders markdown skeleton with `[TODO]` slots to `docs/<path>/index.md.skeleton`
+3. `validate-package` — runs 8 validation rules, collects all errors, exits 0 if clean / 2 if any error
+4. `render-package-doc` — gated by validate; on pass renders to `docs/<path>/index.md` and removes `.skeleton`
+
+### Validation rules (validate-package)
+
+1. Required fields populated (overview, directory_tree, primary_language)
+2. At least one export
+3. At least one dependency
+4. Per-CodeBlock filesystem checks (cite.file exists, readable, line range within bounds)
+5. Per-CodeBlock snippet verbatim match (whitespace-normalized: strip trailing per line; CRLF→LF; strip leading/trailing fully-blank lines)
+6. Internal Dependency target resolution (matches another registered package OR resolves to directory under project root)
+7. Enum membership re-check (paranoia layer over set-time validation; catches state-file corruption)
+8. No required-field [TODO] markers in rendered skeleton
+
+Errors collected and reported all at once (no short-circuit per rule, no short-circuit within rules after Fix 2).
+
+### Agents invoked + loops
+
+1. **python-engineer** — initial Step 1.2b implementation (4 subcommands; ~18 min wall-clock)
+2. **python-reviewer** — close-out audit, surfaced 5 findings (2 medium, 2 low, 1 nit)
+3. **python-engineer** — applied 5 fixes in one pass
+4. **python-reviewer** — final close-out, 0 findings
+
+Total: 2 effective loops across 4 agent invocations. Significantly faster than Phase 1.2a (which had a refactor mid-stream); the Design discipline section guided the engineer to clean module placement from the start.
+
+### Verify outcomes
+
+- `python3 -m unittest discover tests/lib -q` → 584/584 passing (was 550 baseline; +34 new = 33 initial + 1 Fix-4 enum re-check test)
+- Idempotency: 2 successive runs produce identical results
+- `_render.py` 370 lines (under 400 plan-a-split target — clean)
+- `_validators.py` 426 lines (in plan-a-split zone; size note added in module docstring per `_setters.py` precedent — Fix 5)
+- `_setters.py` 582 lines (deeper into plan-a-split zone, near 600 hard threshold; flagged for split when next setter is added)
+- Acyclic dependency graph: `_render.py` → `_state.py` only; `_validators.py` → `_render.py` + `_state.py`; `_setters.py` → `_state.py` + `_validation.py`; `_cli.py` → all sibling modules
+
+### 5 reviewer findings applied (after initial implementation)
+
+| # | Severity | Location | Fix |
+|---|---|---|---|
+| 1 | MEDIUM | `_render.py:63` `_TODO_USAGE_EXAMPLE` constant + test assertion | Text was "lift a real consumer pattern" inside Usage Example section — semantic mismatch. Changed to "lift a real usage example" |
+| 2 | MEDIUM | `_validators.py` `_check_no_todos` | Was short-circuiting after first matching marker; now collects all matching markers (consistent with `validate_package` docstring's "all errors collected" claim) |
+| 3 | LOW | `_cli.py:11-13` module docstring | Said `_add_cite_args` shared by 3 subcommands; with consumer-pattern added, now 4. Updated; dropped historical "Rule of Three threshold" sentence |
+| 4 | LOW | `tests/lib/test_generate_docs_helper.py` | Added `test_enum_recheck_rejects_corrupted_state` for Rule 7 (enum re-check); previous tests only covered set-time validation |
+| 5 | NIT | `_validators.py:1` module docstring | Added size acknowledgment note (mirroring `_setters.py` precedent): plan-a-split zone, cohesion accepted, future split direction named, 600-line trigger |
+
+### Decisions during implementation
+
+1. **`[TODO]` rule scope** — only flags UNSET REQUIRED fields, not optional ones. Optional sections (scripts/hazards/usage_example/consumer_pattern) legitimately render `[TODO]` when LLM elects not to fill. Implemented via `REQUIRED_FIELD_TODO_MARKERS` constant in `_render.py`.
+2. **`DEVFORGE_PROJECT_ROOT` env override** — added so tests can use tmpdir as project root with `.devforge/` as a child.
+3. **`render-package-doc` CLI placement** — lives in `_validators.py` (not `_render.py`) because it calls `validate_package` first; placing the CLI handler with its primary dependency avoids a `_render` → `_validators` import that would close a cycle. Pure render function `render_package_skeleton` stays in `_render.py` and is called by both `cmd_render_package_skeleton` AND `cmd_render_package_doc` (DRY).
+4. **Cite-range bounds edge case** — file ending with `\n` produces N+1 items via `.split('\n')` (last is `''`); validator subtracts 1 to compute true line count. Without this, a 3-line file ending with newline would falsely accept `cite_end=4`.
+5. **Whitespace normalization symmetric** — applied to BOTH source slice AND registered snippet so comparison is order-independent (LLM that lifts CRLF source as LF still validates, and vice versa).
+6. **Internal dep resolution** — checks BOTH (a) match against another registered package's name, AND (b) resolve to a directory under project root. Either passes.
+
+### Future-session-falsely-believes check
+
+- Could a session believe `_validation.py` and `_validators.py` are the same? NO — `_validators.py` docstring opens with explicit distinction
+- Could a session believe `render-package-doc` is in `_render.py`? NO — `_render.py` docstring lines 3-12 document the cycle-avoidance placement
+- Could a session believe snippet validation is loose? NO — `_validators.py` docstring documents the normalization rules
+- Could a session believe `[TODO]` check rejects optional `[TODO]`? NO — `REQUIRED_FIELD_TODO_MARKERS` is discoverable + commented
+- Could a session believe Rule 7's enum re-check is untested? NO — `test_enum_recheck_rejects_corrupted_state` covers it
+
+### Anti-patterns avoided
+
+- #1 (control-char escaping at set-time): preserved in `_validation.py`; render module doesn't introduce new validators
+- #2 (type validation deferred): enum re-check at validate-time IS NOT deferred validation — it's a paranoia layer over set-time validation, catching state-file corruption
+- #4 (atomic writes via mkstemp + os.replace): preserved in `_render._atomic_write_text` for both `.skeleton` and `.md` outputs
+- #6 (compose without idempotency): validate-package run twice produces the same error list
+- #7 (unanchored separator splits): no manual string parsing of user input
+- #8 (file-path+line-range docstring citations): module docstrings reference `python-engineer.md` Design discipline by symbol, not line range
+- #9 (defensive dead branches): no unreachable guards
+- #10 (modern type-hint syntax): `Optional`/`List`/`Dict` from typing throughout
+
+### Open follow-ups (not blocking next phase)
+
+1. **`_setters.py` near 600 hard threshold** (582 lines): when next setter is added (Phase 3 concern-tier setters or Phase 5 memory-finding setter), trigger the split into `_setters_scalar.py` + `_setters_records.py` per Design discipline.
+2. **`_validators.py` future split direction** documented: `_validators_codeblock.py` (filesystem + snippet) vs `_validators_semantic.py` (required fields, deps, enums, todo-check). Trigger at 600 hard threshold.
+3. **`--skip-hazards` referenced in TODO string but doesn't exist** — preserved as descriptive guidance per spec; if a future revision adds the flag, single edit point in `_render.py`.
+4. **MemoryFinding schema defined but not yet exposed** — deferred to Phase 5 per plan.
+
+### Step 1.2 complete
+
+Step 1.2 (Phase 1.2a + Phase 1.2b) of `GENERATE-DOCS-PLAN.md` is now COMPLETE. The PackageDoc-tier helper supports the full skeleton-fill loop:
+
+- Register: `add-package`
+- Fill: 12 `set-package-*` and `add-package-*` setters
+- Render skeleton: `render-package-skeleton`
+- Validate: `validate-package` (8 rules, all errors collected)
+- Render final: `render-package-doc` (validate-gated; replaces .skeleton with .md)
+- Status: `status` (machine-readable progress)
+- Manifest helper: `extract-package-scripts` (per-ecosystem dispatch, no subprocess)
+
+### Next step
+
+**Phase 2.1** — Author `/generate-docs` spec + emitter wiring + tech-writer agent. Per the plan annotation at `54ad158`, this dispatches `instruction-author` to draft BOTH `src/commands/generate-docs/main.md` AND `.claude/agents/tech-writer.md` in the same pass; reviewers (`instruction-reviewer` + `claude-code-guide`) audit both files in parallel. Plus `python-engineer` updates `scripts/emitters/claude.py` `_PROMOTED` tuple.

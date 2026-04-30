@@ -33,9 +33,11 @@ if str(_LIB_DIR) not in sys.path:
 import generate_docs_helper as gdh  # noqa: E402
 
 
-def _run_cli(devforge_dir, *args):
+def _run_cli(devforge_dir, *args, project_root=None):
     env = os.environ.copy()
     env["DEVFORGE_DIR"] = str(devforge_dir)
+    if project_root is not None:
+        env["DEVFORGE_PROJECT_ROOT"] = str(project_root)
     return subprocess.run(
         [sys.executable, str(_HELPER_PY)] + list(args),
         env=env,
@@ -1509,6 +1511,718 @@ class LauncherTests(_EnvIsolationMixin, unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertTrue(self.state_file.exists())
+
+
+# ---------------------------------------------------------------------------
+# SetPackageConsumerPatternTests (sub-step 1.2b)
+# ---------------------------------------------------------------------------
+
+
+class SetPackageConsumerPatternTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def _add_pkg(self):
+        _run_cli(self.devforge_dir, "add-package",
+                 "--path", "apps/web", "--name", "web")
+
+    def test_happy_path(self):
+        self._add_pkg()
+        proc = _run_cli(
+            self.devforge_dir, "set-package-consumer-pattern",
+            "--path", "apps/web",
+            "--language", "typescript",
+            "--code-snippet", "import { Web } from './web';\n<Web />",
+            "--cite-file", "examples/consumer.tsx",
+            "--cite-start", "3",
+            "--cite-end", "5",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        cp = self._read_state()["packages"]["apps/web"]["consumer_pattern"]
+        self.assertEqual(cp["language"], "typescript")
+        self.assertEqual(cp["cite"]["file"], "examples/consumer.tsx")
+        self.assertEqual(cp["cite"]["start"], 3)
+        self.assertEqual(cp["cite"]["end"], 5)
+
+    def test_overwrite_allowed(self):
+        self._add_pkg()
+        _run_cli(self.devforge_dir, "set-package-consumer-pattern",
+                 "--path", "apps/web", "--language", "ts",
+                 "--code-snippet", "v1",
+                 "--cite-file", "a.ts", "--cite-start", "1", "--cite-end", "1")
+        _run_cli(self.devforge_dir, "set-package-consumer-pattern",
+                 "--path", "apps/web", "--language", "ts",
+                 "--code-snippet", "v2",
+                 "--cite-file", "b.ts", "--cite-start", "2", "--cite-end", "2")
+        cp = self._read_state()["packages"]["apps/web"]["consumer_pattern"]
+        self.assertEqual(cp["snippet"], "v2")
+        self.assertEqual(cp["cite"]["file"], "b.ts")
+
+    def test_zero_start_rejected(self):
+        self._add_pkg()
+        proc = _run_cli(
+            self.devforge_dir, "set-package-consumer-pattern",
+            "--path", "apps/web", "--language", "ts",
+            "--code-snippet", "x",
+            "--cite-file", "a.ts", "--cite-start", "0", "--cite-end", "1",
+        )
+        self.assertEqual(proc.returncode, 2)
+
+    def test_unregistered_package_rejected(self):
+        proc = _run_cli(
+            self.devforge_dir, "set-package-consumer-pattern",
+            "--path", "apps/web", "--language", "ts",
+            "--code-snippet", "x",
+            "--cite-file", "a.ts", "--cite-start", "1", "--cite-end", "1",
+        )
+        self.assertEqual(proc.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# RenderPackageSkeletonTests (sub-step 1.2b)
+# ---------------------------------------------------------------------------
+
+
+class _RenderTestBase(_EnvIsolationMixin, unittest.TestCase):
+    """Shared setUp: separate project_root + devforge_dir.
+
+    Render/validate need a project root (where cite files live). To
+    keep the on-disk state next to a fixed-content source tree, we
+    create a project_root tmpdir with a `.devforge/` subdir; the
+    helper reads state from `.devforge/` and resolves cite-file paths
+    relative to the project_root.
+    """
+
+    def setUp(self):
+        self._saved_devforge = os.environ.pop("DEVFORGE_DIR", None)
+        self._saved_root = os.environ.pop("DEVFORGE_PROJECT_ROOT", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.project_root = Path(self._tmp.name)
+        self.devforge_dir = self.project_root / ".devforge"
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        self.state_file = self.devforge_dir / gdh.STATE_FILE_NAME
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        if self._saved_devforge is None:
+            os.environ.pop("DEVFORGE_DIR", None)
+        else:
+            os.environ["DEVFORGE_DIR"] = self._saved_devforge
+        if self._saved_root is None:
+            os.environ.pop("DEVFORGE_PROJECT_ROOT", None)
+        else:
+            os.environ["DEVFORGE_PROJECT_ROOT"] = self._saved_root
+
+    def _run(self, *args):
+        return _run_cli(self.devforge_dir, *args, project_root=self.project_root)
+
+    def _add_pkg(self, path="apps/web", name="web"):
+        self._run("add-package", "--path", path, "--name", name)
+
+    def _write_source(self, rel_path, lines):
+        """Write a source file under project_root and return its Path."""
+        full = self.project_root / rel_path
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return full
+
+
+class RenderPackageSkeletonTests(_RenderTestBase):
+
+    def test_empty_package_has_all_todos(self):
+        self._add_pkg()
+        proc = self._run("render-package-skeleton", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out_path = self.project_root / "docs" / "apps/web" / "index.md.skeleton"
+        self.assertTrue(out_path.exists(), "skeleton not written")
+        text = out_path.read_text(encoding="utf-8")
+        self.assertIn("# web", text)
+        self.assertIn("## Overview", text)
+        self.assertIn("[TODO: 1-2 paragraphs", text)
+        self.assertIn("## Directory Structure", text)
+        self.assertIn("[TODO: ascii tree", text)
+        self.assertIn("## Tech Stack", text)
+        self.assertIn("[TODO]", text)
+        self.assertIn("## Scripts", text)
+        self.assertIn("[TODO: enumerate via add-package-script", text)
+        self.assertIn("## Main Exports", text)
+        self.assertIn("[TODO: enumerate package exports", text)
+        # Types section omitted entirely when empty.
+        self.assertNotIn("## Types", text)
+        self.assertIn("## Dependencies", text)
+        self.assertIn("[TODO: enumerate via add-package-dep", text)
+        self.assertIn("## Hazards", text)
+        self.assertIn("## Usage Example", text)
+        self.assertIn("[TODO: lift a real usage example", text)
+        self.assertIn("## Consumer Pattern", text)
+        self.assertIn("[TODO: lift a representative consumer call", text)
+
+    def test_partial_state_mixes_values_and_todos(self):
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "An app.")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "TypeScript")
+        proc = self._run("render-package-skeleton", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        text = (self.project_root / "docs" / "apps/web" / "index.md.skeleton").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("An app.", text)
+        self.assertIn("TypeScript", text)
+        # Unset fields still surface as [TODO].
+        self.assertIn("[TODO: ascii tree", text)
+        self.assertIn("[TODO: enumerate via add-package-script", text)
+
+    def test_full_state_no_todos(self):
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "Web app.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/\n  index.ts")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "TypeScript")
+        self._run("set-package-framework",
+                  "--path", "apps/web", "--value", "React")
+        self._run("set-package-build-tool",
+                  "--path", "apps/web", "--value", "vite")
+        self._run("add-package-script",
+                  "--path", "apps/web", "--script-name", "build",
+                  "--command", "vite build")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "App",
+                  "--kind", "component",
+                  "--signature", "App(): JSX.Element",
+                  "--description", "Root component.",
+                  "--language", "tsx",
+                  "--code-snippet", "export function App() {}",
+                  "--cite-file", "src/App.tsx",
+                  "--cite-start", "1", "--cite-end", "1")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "18",
+                  "--purpose", "UI lib.")
+        self._run("add-package-hazard",
+                  "--path", "apps/web", "--category", "naming",
+                  "--description", "Mixed casing.")
+        self._run("set-package-usage-example",
+                  "--path", "apps/web", "--language", "tsx",
+                  "--code-snippet", "<App />",
+                  "--cite-file", "examples/usage.tsx",
+                  "--cite-start", "1", "--cite-end", "1")
+        self._run("set-package-consumer-pattern",
+                  "--path", "apps/web", "--language", "tsx",
+                  "--code-snippet", "<App />",
+                  "--cite-file", "examples/cp.tsx",
+                  "--cite-start", "1", "--cite-end", "1")
+        proc = self._run("render-package-skeleton", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        text = (self.project_root / "docs" / "apps/web" / "index.md.skeleton").read_text(
+            encoding="utf-8"
+        )
+        # No [TODO markers should remain.
+        self.assertNotIn("[TODO", text)
+        # Tech-stack values populated.
+        self.assertIn("TypeScript", text)
+        self.assertIn("React", text)
+        self.assertIn("vite", text)
+        # Export rendered with cite comment.
+        self.assertIn("### `App` — component", text)
+        self.assertIn("<!-- src/App.tsx:1-1 -->", text)
+
+    def test_idempotent(self):
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("render-package-skeleton", "--path", "apps/web")
+        out = (self.project_root / "docs" / "apps/web" / "index.md.skeleton").read_bytes()
+        self._run("render-package-skeleton", "--path", "apps/web")
+        out2 = (self.project_root / "docs" / "apps/web" / "index.md.skeleton").read_bytes()
+        self.assertEqual(out, out2)
+
+    def test_missing_package_errors(self):
+        proc = self._run("render-package-skeleton", "--path", "apps/missing")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"not registered", proc.stderr)
+
+    def test_types_section_appears_when_type_export_present(self):
+        self._add_pkg()
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "User",
+                  "--kind", "type",
+                  "--signature", "type User = { id: string }",
+                  "--description", "User row.",
+                  "--language", "ts",
+                  "--code-snippet", "type User = { id: string }",
+                  "--cite-file", "src/types.ts",
+                  "--cite-start", "1", "--cite-end", "1")
+        self._run("render-package-skeleton", "--path", "apps/web")
+        text = (self.project_root / "docs" / "apps/web" / "index.md.skeleton").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("## Types", text)
+        self.assertIn("### `User` — type", text)
+
+    def test_dependencies_split_into_internal_and_external(self):
+        self._add_pkg()
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "18",
+                  "--purpose", "UI lib.")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "@workspace/shared",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Shared utilities.")
+        self._run("render-package-skeleton", "--path", "apps/web")
+        text = (self.project_root / "docs" / "apps/web" / "index.md.skeleton").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("### Workspace-internal", text)
+        self.assertIn("### External", text)
+        self.assertIn("@workspace/shared", text)
+        self.assertIn("react", text)
+
+    def test_skeleton_atomic_no_temp_leftovers(self):
+        self._add_pkg()
+        self._run("render-package-skeleton", "--path", "apps/web")
+        out_dir = self.project_root / "docs" / "apps/web"
+        leftovers = [p for p in out_dir.iterdir() if p.name.startswith(".")]
+        self.assertEqual(leftovers, [])
+
+
+# ---------------------------------------------------------------------------
+# ValidatePackageTests (sub-step 1.2b)
+# ---------------------------------------------------------------------------
+
+
+class ValidatePackageTests(_RenderTestBase):
+
+    def _fill_minimum_valid(self, src_lines=None):
+        """Register a package with required fields filled + a real source
+        file at src/api.ts:1-3, ready to be cited by exports/usage_example
+        /consumer_pattern."""
+        if src_lines is None:
+            src_lines = [
+                "export function fetchUser(id) {",
+                "  return db.users.get(id);",
+                "}",
+            ]
+        self._write_source("src/api.ts", src_lines)
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "Web.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/\n  api.ts")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "TypeScript")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "fetchUser",
+                  "--kind", "function",
+                  "--signature", "",
+                  "--description", "Fetches a user.",
+                  "--language", "ts",
+                  "--code-snippet", "\n".join(src_lines),
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "18",
+                  "--purpose", "UI lib.")
+
+    def test_valid_package_passes(self):
+        self._fill_minimum_valid()
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_missing_required_fields_reported(self):
+        self._add_pkg()
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        # All three required fields should be flagged.
+        self.assertIn(b"PackageDoc.overview", proc.stderr)
+        self.assertIn(b"PackageDoc.directory_tree", proc.stderr)
+        self.assertIn(b"PackageDoc.primary_language", proc.stderr)
+
+    def test_no_exports_reported(self):
+        self._write_source("src/x.ts", ["a"])
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "ts")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "1",
+                  "--purpose", "UI.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"no registered exports", proc.stderr)
+
+    def test_no_dependencies_reported(self):
+        self._write_source("src/api.ts", ["a", "b", "c"])
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "ts")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "f", "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts", "--code-snippet", "a\nb\nc",
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"no registered dependencies", proc.stderr)
+
+    def test_cite_file_does_not_exist_reported(self):
+        # Ref file is registered but not written to disk.
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "ts")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "f",
+                  "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts", "--code-snippet", "x",
+                  "--cite-file", "src/missing.ts",
+                  "--cite-start", "1", "--cite-end", "1")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "1",
+                  "--purpose", "UI.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"does not exist", proc.stderr)
+
+    def test_cite_range_out_of_bounds_reported(self):
+        self._write_source("src/api.ts", ["only one line"])
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "ts")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "f", "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts", "--code-snippet", "x",
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "99")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "1",
+                  "--purpose", "UI.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"exceeds file line count", proc.stderr)
+
+    def test_snippet_mismatch_reported_with_diff(self):
+        self._write_source("src/api.ts", [
+            "export function fetchUser(id) {",
+            "  return db.users.get(id);",
+            "}",
+        ])
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "ts")
+        # Register a snippet that DOES NOT match the source.
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "f", "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts",
+                  "--code-snippet", "different content entirely",
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "1",
+                  "--purpose", "UI.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"does not match", proc.stderr)
+        # Diff fragment should be present.
+        self.assertIn(b"expected (from source)", proc.stderr)
+
+    def test_snippet_whitespace_normalized_passes(self):
+        # Source has CRLF + trailing spaces; registered snippet uses LF
+        # without trailing spaces. Verbatim-match should still pass.
+        crlf_source = "line one  \r\nline two\r\nline three   \r\n"
+        (self.project_root / "src").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "src" / "api.ts").write_bytes(
+            crlf_source.encode("utf-8")
+        )
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "ts")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "f", "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts",
+                  "--code-snippet", "line one\nline two\nline three",
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "1",
+                  "--purpose", "UI.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_internal_dep_unresolved_reported(self):
+        self._fill_minimum_valid()
+        # Add an internal dep that targets neither a registered package
+        # nor an existing directory.
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "@workspace/missing",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Should fail.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"internal dependency", proc.stderr)
+        self.assertIn(b"@workspace/missing", proc.stderr)
+
+    def test_internal_dep_as_registered_package_passes(self):
+        self._fill_minimum_valid()
+        # Register a second package; first package's internal dep
+        # should resolve to it by name.
+        self._run("add-package",
+                  "--path", "packages/shared", "--name", "@workspace/shared")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "@workspace/shared",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Shared utils.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_internal_dep_as_directory_passes(self):
+        self._fill_minimum_valid()
+        # Create a directory at packages/shared (under project root)
+        # but DO NOT register it as a package.
+        (self.project_root / "packages" / "shared").mkdir(parents=True)
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "packages/shared",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Shared utils.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_todo_marker_detected_when_required_field_missing(self):
+        # Skip the language setter — the rendered skeleton will still
+        # have [TODO] in the Tech Stack table.
+        self._write_source("src/api.ts", ["a", "b", "c"])
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        # primary_language NOT set, so render-skeleton emits [TODO].
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "f", "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts", "--code-snippet", "a\nb\nc",
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "1",
+                  "--purpose", "UI.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        # required-fields rule fires AND todo-marker rule fires.
+        self.assertIn(b"primary_language", proc.stderr)
+
+    def test_multiple_errors_collected_not_short_circuited(self):
+        # Empty package: required fields missing + no exports + no deps.
+        # All three rules should fire in a single invocation.
+        self._add_pkg()
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        stderr = proc.stderr.decode("utf-8")
+        # required-fields (3 fields) + exports-nonempty + deps-nonempty
+        # -> rule labels visible.
+        self.assertIn("required-fields", stderr)
+        self.assertIn("exports-nonempty", stderr)
+        self.assertIn("dependencies-nonempty", stderr)
+
+    def test_missing_package_returns_2(self):
+        proc = self._run("validate-package", "--path", "apps/missing")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"not registered", proc.stderr)
+
+    def test_validate_idempotent(self):
+        self._fill_minimum_valid()
+        proc1 = self._run("validate-package", "--path", "apps/web")
+        proc2 = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc1.returncode, proc2.returncode)
+        self.assertEqual(proc1.stderr, proc2.stderr)
+
+    def test_enum_recheck_rejects_corrupted_state(self):
+        """Rule 7: a corrupted state record with an invalid enum is
+        rejected at validate-time."""
+        from _generate_docs._validators import validate_package
+        from _generate_docs._state import (
+            default_state,
+            default_package_record,
+        )
+
+        state = default_state()
+        pkg = default_package_record("web", "apps/web")
+        pkg["overview"] = "X"
+        pkg["directory_tree"] = "src/"
+        pkg["primary_language"] = "ts"
+        # Inject an invalid kind directly (bypasses set-time validation).
+        pkg["exports"] = [{
+            "kind": "INVALID_KIND",
+            "name": "f",
+            "signature": None,
+            "description": "test",
+            "code": {
+                "language": "ts",
+                "snippet": "x",
+                "cite": {"file": "src/f.ts", "start": 1, "end": 1},
+            },
+        }]
+        pkg["dependencies"] = [{
+            "kind": "external",
+            "name": "react",
+            "version": "1.0.0",
+            "purpose": "ui framework",
+            "consumer_locations": [],
+        }]
+        state["packages"]["apps/web"] = pkg
+
+        errors = validate_package(state, "apps/web", self.project_root)
+        rule_names = {e["rule"] for e in errors}
+        self.assertIn("export-kind-invalid", rule_names)
+
+
+# ---------------------------------------------------------------------------
+# RenderPackageDocTests (sub-step 1.2b)
+# ---------------------------------------------------------------------------
+
+
+class RenderPackageDocTests(_RenderTestBase):
+
+    def _fill_minimum_valid(self):
+        src_lines = [
+            "export function fetchUser(id) {",
+            "  return db.users.get(id);",
+            "}",
+        ]
+        self._write_source("src/api.ts", src_lines)
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "Web.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/\n  api.ts")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "TypeScript")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "fetchUser",
+                  "--kind", "function",
+                  "--signature", "",
+                  "--description", "Fetches a user.",
+                  "--language", "ts",
+                  "--code-snippet", "\n".join(src_lines),
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "18",
+                  "--purpose", "UI lib.")
+
+    def test_valid_package_writes_md_and_removes_skeleton(self):
+        self._fill_minimum_valid()
+        # Pre-create a skeleton so the cleanup path is exercised.
+        self._run("render-package-skeleton", "--path", "apps/web")
+        skeleton = self.project_root / "docs" / "apps/web" / "index.md.skeleton"
+        self.assertTrue(skeleton.exists())
+        proc = self._run("render-package-doc", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        md_path = self.project_root / "docs" / "apps/web" / "index.md"
+        self.assertTrue(md_path.exists())
+        self.assertFalse(skeleton.exists(), "skeleton should be removed")
+        text = md_path.read_text(encoding="utf-8")
+        # Required-field TODOs must NOT appear; optional-section TODOs
+        # (scripts / hazards / usage_example / consumer_pattern) are
+        # acceptable in the .md when the LLM elected not to fill them.
+        self.assertNotIn("[TODO: 1-2 paragraphs", text)
+        self.assertNotIn("[TODO: ascii tree", text)
+        self.assertNotIn("[TODO: enumerate package exports", text)
+        self.assertNotIn("[TODO: enumerate via add-package-dep", text)
+        # Required Tech Stack [TODO] (primary_language) must not appear.
+        self.assertIn("TypeScript", text)
+
+    def test_validation_failure_blocks_md_write(self):
+        # Empty package: validation fails, .md must NOT be written.
+        self._add_pkg()
+        # Create a stale skeleton that should be retained on failure.
+        self._run("render-package-skeleton", "--path", "apps/web")
+        skeleton = self.project_root / "docs" / "apps/web" / "index.md.skeleton"
+        self.assertTrue(skeleton.exists())
+        proc = self._run("render-package-doc", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        md_path = self.project_root / "docs" / "apps/web" / "index.md"
+        self.assertFalse(md_path.exists(), ".md should NOT be written")
+        self.assertTrue(skeleton.exists(), "skeleton should be retained")
+        self.assertIn(b"validation failed", proc.stderr)
+
+    def test_missing_package_errors(self):
+        proc = self._run("render-package-doc", "--path", "apps/missing")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"not registered", proc.stderr)
+
+    def test_doc_render_idempotent(self):
+        self._fill_minimum_valid()
+        self._run("render-package-doc", "--path", "apps/web")
+        md_path = self.project_root / "docs" / "apps/web" / "index.md"
+        first = md_path.read_bytes()
+        self._run("render-package-doc", "--path", "apps/web")
+        second = md_path.read_bytes()
+        self.assertEqual(first, second)
+
+    def test_doc_no_skeleton_present_still_succeeds(self):
+        # Run render-package-doc without a pre-existing skeleton.
+        self._fill_minimum_valid()
+        proc = self._run("render-package-doc", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        md_path = self.project_root / "docs" / "apps/web" / "index.md"
+        self.assertTrue(md_path.exists())
+
+
+# ---------------------------------------------------------------------------
+# RenderHelpAndCLISurfaceTests — verify the new subcommands appear in --help.
+# ---------------------------------------------------------------------------
+
+
+class NewSubcommandsInHelpTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_help_lists_new_subcommands(self):
+        proc = _run_cli(self.devforge_dir, "--help")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        for sub in (
+            b"set-package-consumer-pattern",
+            b"render-package-skeleton",
+            b"validate-package",
+            b"render-package-doc",
+        ):
+            self.assertIn(sub, proc.stdout)
 
 
 if __name__ == "__main__":

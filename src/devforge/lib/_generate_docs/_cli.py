@@ -8,11 +8,10 @@ sibling module (`_setters`, `_status`, `_manifest`) and adding one
 tuple here. The dispatch path stays closed against modification
 (OCP).
 
-The `_add_cite_args` factory is shared by three subcommands
-(`add-package-export`, `add-package-hazard`, `set-package-usage-example`)
-that all accept the `--cite-file / --cite-start / --cite-end` triple.
-That's the Rule of Three threshold for DRY — three concrete sites of
-the same shape — so the factory is justified rather than premature.
+The `_add_cite_args` factory is shared by four subcommands
+(`add-package-export`, `add-package-hazard`, `set-package-usage-example`,
+`set-package-consumer-pattern`) that all accept the
+`--cite-file / --cite-start / --cite-end` triple.
 
 Stdlib only. Targets Python 3.8+.
 """
@@ -22,6 +21,7 @@ import sys
 from typing import Callable, List, Optional, Tuple
 
 from ._manifest import cmd_extract_package_scripts
+from ._render import cmd_render_package_skeleton
 from ._setters import (
     cmd_add_package,
     cmd_add_package_dep,
@@ -30,6 +30,7 @@ from ._setters import (
     cmd_add_package_script,
     cmd_reset,
     cmd_set_package_build_tool,
+    cmd_set_package_consumer_pattern,
     cmd_set_package_framework,
     cmd_set_package_language,
     cmd_set_package_overview,
@@ -37,6 +38,7 @@ from ._setters import (
     cmd_set_package_usage_example,
 )
 from ._status import cmd_status
+from ._validators import cmd_render_package_doc, cmd_validate_package
 
 
 # Each parser-factory takes the subparsers' `add_parser`-returned
@@ -142,11 +144,30 @@ def _build_set_package_usage_example(p: argparse.ArgumentParser) -> None:
     _add_cite_args(p, optional=False)
 
 
+def _build_set_package_consumer_pattern(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--path", required=True)
+    p.add_argument("--language", required=True)
+    p.add_argument("--code-snippet", required=True)
+    _add_cite_args(p, optional=False)
+
+
 def _build_status(p: argparse.ArgumentParser) -> None:
     pass
 
 
 def _build_extract_package_scripts(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--path", required=True)
+
+
+def _build_render_package_skeleton(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--path", required=True)
+
+
+def _build_validate_package(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--path", required=True)
+
+
+def _build_render_package_doc(p: argparse.ArgumentParser) -> None:
     p.add_argument("--path", required=True)
 
 
@@ -168,8 +189,12 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("add-package-dep", _build_add_package_dep, cmd_add_package_dep),
     ("add-package-hazard", _build_add_package_hazard, cmd_add_package_hazard),
     ("set-package-usage-example", _build_set_package_usage_example, cmd_set_package_usage_example),
+    ("set-package-consumer-pattern", _build_set_package_consumer_pattern, cmd_set_package_consumer_pattern),
     ("status", _build_status, cmd_status),
     ("extract-package-scripts", _build_extract_package_scripts, cmd_extract_package_scripts),
+    ("render-package-skeleton", _build_render_package_skeleton, cmd_render_package_skeleton),
+    ("validate-package", _build_validate_package, cmd_validate_package),
+    ("render-package-doc", _build_render_package_doc, cmd_render_package_doc),
 )
 
 
