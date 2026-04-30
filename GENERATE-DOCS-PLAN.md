@@ -547,6 +547,18 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
      - Citation discipline mandatory — every `--code-snippet` setter requires `--cite-file` + `--cite-start` + `--cite-end`
   5. **Phase 4**: validate — invoke `validate-package`. On pass: invoke `render-package-doc` (renames `.skeleton` → `.md`). On fail: read errors, fix offending registrations, re-validate.
   6. **Phase 5**: report — print summary (package name, exports count, hazards count, citations count + verified count). Print full content of generated doc verbatim for user review (per `feedback_verbatim_echo_directive.md`).
+- **Paired agent file**: in the SAME dispatch, also draft `.claude/agents/tech-writer.md` (~30 lines + frontmatter). The tech-writer is a dedicated subagent for the per-package skeleton-fill loop, dispatched by the `/generate-docs` orchestrator (this spec) once per package. Tight contract:
+  - Receives one package assignment from the orchestrator (path + name + iteration mode flag)
+  - Reads the package's source files
+  - Invokes `generate_docs_helper` setters with values lifted from real source (citation discipline mandatory: every code-snippet setter requires `--cite-file` + `--cite-start` + `--cite-end`)
+  - Runs `validate-package`
+  - On validate failure: reads errors, fixes offending registrations, re-validates (cap retries at 3; surface to user above)
+  - On success: runs `render-package-doc` (renames `.skeleton` → `.md`)
+  - Returns: package name, exports count, hazards count, citations count + verified count
+
+  Frontmatter: `name: tech-writer`, `description: Per-package skeleton-fill subagent for /generate-docs`, `tools: Read, Bash, Grep, Glob`, no `model:` override (per `feedback_avoid_command_model_override.md`).
+
+  The skeleton-fill primitive carries the structural load — the tech-writer doesn't need to know markdown templates, citation format, or section ordering. Helper enforces all of that. Tech-writer only knows: read source, fill slots, run validate.
 - **Integration**: the spec is consumed by the LLM in Claude Code at testForge20. Emitter (`scripts/emitters/claude.py`) ships it to `<target>/.claude/commands/generate-docs.md`. `_PROMOTED` tuple gets `"generate-docs"` added (alongside `"onboard"` which stays this iteration).
 - **Constraints**:
   - Single-package iteration scope (mark as TEMPORARY; Phase 7.1 lifts to multi-package)
@@ -562,8 +574,10 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
   - Grep for `/onboard` references in CLAUDE.md / install.sh / other specs → confirm none accidentally cite `/generate-docs` instead
   - Grep for `setup-wizard` / `init-forge` / `onboard` / `constitute` to confirm `/generate-docs` slots in cleanly without duplicating any existing command's role
   - Confirm `scripts/emitters/claude.py` _PROMOTED change is staged in this step (not deferred)
+  - Confirm tech-writer agent file frontmatter matches Claude Code subagent spec (per `claude-code-guide` verification of `.claude/agents/python-engineer.md` patterns)
+  - Confirm tech-writer's tool allowlist (`Read, Bash, Grep, Glob`) is sufficient for the contract — agent must NOT need `Write` (helper writes for it via setters) or `Edit` (no file modifications outside helper)
   - If any cross-reference surfaces conflict, halt and report
-- **Loop**: `instruction-reviewer` + `claude-code-guide` audit IN PARALLEL. instruction-reviewer for intra-file logical flow + sentence-level hallucination check. claude-code-guide for slash command authoring conventions, frontmatter, references/ folder structure. Both reviewers must report clean before integration.
+- **Loop**: `instruction-reviewer` + `claude-code-guide` audit BOTH files IN PARALLEL. instruction-reviewer for intra-file logical flow + sentence-level hallucination check (covers both `main.md` AND `tech-writer.md`). claude-code-guide for slash command authoring conventions (`main.md`) AND subagent definition conventions (`tech-writer.md` frontmatter, tools list, body structure). Both reviewers must report clean before integration.
 
 **Brief to `python-engineer`** (small parallel task — emitter update):
 - **Goal**: update `scripts/emitters/claude.py` `_PROMOTED` tuple to include `"generate-docs"`. Add the helper to `src/devforge/lib/` shipping list comments if relevant.
@@ -589,6 +603,7 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
 - Every code block has `<!-- path:line-range -->` reference
 - Validator confirms 0 stale citations, 0 snippet mismatches
 - Re-run produces byte-identical output (idempotency)
+- Tech-writer agent dispatch executes successfully — orchestrator launches one tech-writer subagent for `apps/app-web/`, the subagent fills slots + validates + reports clean
 
 **Verify**:
 1. File exists at expected path
@@ -598,6 +613,7 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
    - **vs heavy-spec /onboard monolith** (50 KB, 1 file): shape is decomposed at the package level (this is one package doc; concerns come in Phase 3)
    - **vs reference-spec /onboard 10-doc run** (1174 lines, 60.8 KB): index.md alone won't equal the full 10-doc tree — that's Phase 3's work. But this index.md should match the reference's `index.md` shape (113 lines, A.2.1 template) plus citation discipline (which reference lacked).
    - **vs cse-strata-ws-forge actual reference index.md** (113 lines, no citations): same A.2.1 template, plus citations.
+5. Tech-writer agent dispatch worked: log shows the subagent invocation completed without orchestrator intervention beyond the initial brief; the subagent's report matches the actual state file content.
 
 **Compare protocol**: capture a snapshot of the produced doc + the state file. Diff against next-run + against cse-strata-ws-forge reference. Document outcomes in `GENERATE-DOCS-EXECUTION-LOG.md`.
 
@@ -815,6 +831,8 @@ Output table: `Pattern | Reference implementation path | Used when (one-line des
 
 **Brief to `instruction-author` + reviewers**:
 - **Goal**: remove the single-package iteration banner from `src/commands/generate-docs/main.md`. Spec now drives full multi-package + architecture + memory archaeology workflow.
+
+  The multi-package flow is structurally identical to Phase 2.2's single-package flow — orchestrator dispatches one tech-writer subagent per package in `packages_detected[]`. For workspaces above the parallelism threshold (per `/onboard`'s §1.3 thresholds: <50 source files = direct, 50–500 = sequential or small parallel batches per-package, 500+ = parallel batches), parallelize via simultaneous Agent tool dispatches. The tech-writer's contract does NOT change between single-package and multi-package — only the loop count and the parallelism strategy.
 - **Cross-check / impact analysis**: every helper subcommand named in spec must exist; testForge20 deployment of the updated spec doesn't break the previously-iterated `apps/app-web/` doc; `/onboard`'s iteration banner is NOT touched (this plan does not modify `/onboard` per user directive).
 - **Loop**: reviewers audit.
 
@@ -945,6 +963,7 @@ These need user input before or during execution:
 5. **Single-package iteration scope for Phase 2** — testForge20 `apps/app-web/` (current iteration target) or smaller package? **Default: `apps/app-web/`** — already wired, comparison baselines exist.
 6. **Tests directory for scripts** — `tests/scripts/` vs `tests/lib/`? **Default: `tests/scripts/`** for parallel structure with `scripts/`.
 7. **`.vault/` retention in Phase 8.2** — keep `.vault/devforge/lib/onboard_helper.py` as historical artifact (referenced by `python-engineer.md` for anti-pattern lessons) or remove? **Default: keep `.vault/`** until a follow-on plan decides; `python-engineer.md` explicitly cites it as reference.
+8. **Tech-writer subagent — agreed scope (RESOLVED)**: reintroduce `tech-writer` as a dedicated agent file at `.claude/agents/tech-writer.md` (~30 lines + frontmatter). Drafted paired with Phase 2.1's `/generate-docs` spec in the same `instruction-author` dispatch. Used from Step 2.2's single-package iteration onward (Phase 7.1's multi-package is the same dispatch repeated). Skeleton-fill primitive shrinks the agent contract from ~100–150 lines (if the agent owned templates) to ~30 lines (helper owns templates; agent fills slots + runs validate). User-agreed during Step 1.2a session.
 
 ---
 
