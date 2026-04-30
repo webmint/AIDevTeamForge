@@ -631,9 +631,19 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
 
 **Orchestrator action**: once Step 2.2 produces a doc the user approves, record the approved shape as the new baseline for Phase 3+ (concern docs must be visually + structurally consistent with this approved package doc).
 
-**Verify**: user explicitly approves. Record commit SHA + approved doc copy in `GENERATE-DOCS-EXECUTION-LOG.md`.
+**Tech-writer prompt tightening pass (RECOMMENDED for lock-in)**: before declaring shape locked, `instruction-author` + `instruction-reviewer` pass on `src/agents/tech-writer.md` SKELETON-FILL MODE section to refine the agent contract. The motivation is **agent clarity** (cleaner separation of concerns within the agent) and **per-subagent context efficiency** when Phase 3 dispatches per concern, NOT a wall-clock target. Specific tightening levers (apply if they improve clarity, skip if they don't):
 
-**Compare:** N/A (lock-in step).
+- **Reduce setter-step enumeration verbosity**: consolidate the existing 6-step "You do" list (currently lines ~292–314 of `tech-writer.md`) where consolidation does not lose precision. The setter list (step 3) carries the load — surrounding steps may compress.
+- **Defer hazard-finding to a separate dedicated pass within the agent**: avoid blending hazard-search with export-extraction in one read pass. First pass extracts public surface (exports, deps, usage example) from manifest + boundary files; second pass scans for hazards across the same source. Two narrower passes have better per-pass cohesion than one wide pass.
+- **Cap source-reading depth**: instruct the agent to read public-API-relevant files first (manifest, index/entry-point, files containing exported symbols); only descend into implementation if a public symbol's signature or description cannot be filled from the boundary surface alone.
+
+Tightening must NOT relax: citation discipline (every snippet setter still requires verbatim source + cite triple), abbreviation-verification rule, hazard-category enum, retry cap on `validate-package` failure.
+
+Lock-in commit captures wall-clock timings (pre + post) for record-keeping in `GENERATE-DOCS-EXECUTION-LOG.md` but does NOT gate lock-in on a speed delta. The /generate-docs command is ideally a one-time action per project; wall-clock cost is amortized over the project lifetime.
+
+**Verify**: user explicitly approves. Record commit SHA + approved doc copy + pre/post wall-clock timings (observation only, no target) + tightening levers applied (or skipped with reasoning) in `GENERATE-DOCS-EXECUTION-LOG.md`.
+
+**Compare:** N/A for shape (lock-in step). Wall-clock timings recorded for both runs (no target — empirical observation only).
 
 ---
 
@@ -674,7 +684,9 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
 
 **Brief to `instruction-author` + `claude-code-guide` + `instruction-reviewer`**:
 - **Goal**: extend `src/commands/generate-docs/main.md` so Phase 3 of the spec instructs the LLM to detect substantive subfolders and dispatch one `add-concern` + slot-fill cycle per concern. After all concerns registered, `validate-package` (which now includes the decomposition gate) catches missed concerns.
-- **Cross-check / impact analysis**: every concern subcommand named in spec must exist in Step 3.1's helper; iteration banner stays single-package.
+- **Resume-mode slot-skip behavior (mandatory)**: when `/generate-docs` is invoked with state pre-existing — Phase 0's Resume branch (added at commit `ebd3f21`) keeps state instead of resetting — the tech-writer subagent dispatch for each concern must include explicit "skip slots already populated; fill only `[TODO]` slots" instruction. The motivation is **correctness + UX** (Resume should resume, not redo): a package whose only un-filled slot is a single export must not trigger a full re-read of the package's source — the agent reads only what's needed to fill the remaining `[TODO]`s. This is consistent with SKELETON-FILL MODE's existing slot-fill discipline (the agent inspects the rendered skeleton and acts only on `[TODO]` markers — `tech-writer.md` step 3.2: "For each `[TODO]` slot in the skeleton") but must be made explicit in the dispatch brief shape. Speed benefit is a side effect, not the driver.
+- **Per-concern dispatch parallelism (mandatory)**: tech-writer subagent dispatch for the concerns of a single package MUST run in parallel — single orchestrator message containing multiple `Agent` tool blocks, one per concern, dispatched simultaneously per Claude Code's parallel-tool-call mechanism. Sequential dispatch is forbidden at this step. The motivation is **architectural** — concerns within a single package are independent (each fills its own slots from a disjoint source-tree subset; no cross-concern data dependency); sequential dispatch would impose an artificial ordering. Verify by inspecting the orchestrator's invocation log: the N concern subagents launched within the same dispatch turn. This is orthogonal to per-package parallelism (Phase 7.1's `/onboard` §1.3 thresholds): per-concern parallelism is INSIDE a single package, per-package parallelism is ACROSS packages. A workspace with N packages × M concerns per package benefits from both axes. Wall-clock observation: per-concern parallelism naturally drops total fill time to (longest concern's fill time + dispatch overhead) vs (sum of all concerns' fill times) — record this as side-effect data, not as the success criterion.
+- **Cross-check / impact analysis**: every concern subcommand named in spec must exist in Step 3.1's helper; iteration banner stays single-package; the dispatch-brief shape makes Resume-mode slot-skip explicit (verify by reading the brief's text, not just behavior); the spec's concern-dispatch section explicitly instructs parallel `Agent` tool dispatch (verify by spec text).
 - **Loop**: instruction-reviewer + claude-code-guide audit. Iterate.
 
 **Verify**: user runs `/generate-docs apps/app-web` again. Expected: 1 package doc + ~9 concern docs (matching cse-strata-ws-forge's 12-doc shape minus 2 that don't apply to testForge20).
@@ -684,6 +696,8 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
 - Decomposition: per-concern split (not monolith)
 - Citation discipline: every code block validated
 - Re-run idempotency: zero diff between runs
+- **Per-concern parallelism (success criterion)**: inspect orchestrator's invocation log for the run — N concern subagents must launch within the same dispatch turn (single message, multiple `Agent` tool blocks). If the log shows sequential dispatch, the spec's Phase 3 instructions are buggy → loop back to author. Wall-clock data recorded as observation only: (longest concern's fill time + dispatch overhead) vs (sum of all concerns' fill times) — captured in `GENERATE-DOCS-EXECUTION-LOG.md` as side-effect data, not as a gate.
+- **Resume-mode slot-skip behavior (success criterion)**: a Resume run whose state already has most slots populated must NOT trigger a full source re-read for those packages — verify by reading the dispatch brief text (it says "fill only `[TODO]` slots") and by inspecting the subagent's reported reads (only files needed for remaining `[TODO]`s). Wall-clock for Resume vs fresh run captured in `GENERATE-DOCS-EXECUTION-LOG.md` as observation only.
 
 If file count short of target, the decomposition gate should have caught missing concerns. If gate didn't catch, gate is buggy → loop back to Step 3.1.
 
