@@ -1,5 +1,12 @@
 """detect_report — composes the Phase 1 Detection Report for /setup-wizard.
 
+DEPRECATED — candidate for removal. This helper served the legacy
+`/setup-wizard` flow. The architecture pivot replaces it with per-command
+helpers (`init_helper` for `/init`, future helpers for `/configure`,
+`/generate-docs`, `/constitute`). Do not extend this file; new work goes to
+the per-command helpers. Removal happens when `/setup-wizard` is decommissioned
+(see `ARCHITECTURE-PIVOT-PLAN.md` Step 7).
+
 This helper writes `.devforge/detection_report.yaml` containing project facts
 discovered by the wizard's detection phase (workspace mode, languages,
 frameworks, packages, etc.).
