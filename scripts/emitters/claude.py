@@ -5,14 +5,17 @@ Reads from src/ (template authoring source) and writes the Claude-native
 runtime files into the target project.
 
 Responsibilities:
-  - src/commands/setup-wizard/main.md  → target/.claude/commands/setup-wizard.md
-  - src/commands/setup-wizard/references/*.md
-                                       → target/.claude/commands/setup-wizard/references/*.md
+  - src/commands/init-forge/main.md    → target/.claude/commands/init-forge.md
   - src/commands/onboard/main.md       → target/.claude/commands/onboard.md
   - src/commands/onboard/references/*.md
                                        → target/.claude/commands/onboard/references/*.md
   - src/commands/constitute/main.md    → target/.claude/commands/constitute.md
   (both flat and folder-based sources supported during migration)
+
+  NOTE: /setup-wizard is no longer emitted. The architecture pivot replaces
+  it with /init-forge (Phase 1 detection) and the upcoming /configure
+  (Phase 2-4 work). The src/commands/setup-wizard/ source tree is kept
+  for reference + migration but does not ship into target projects.
 
 Handled by other generators, not this emitter:
   - CoreLLM files (CLAUDE.md)      → scripts/generate-corellm.py
@@ -48,7 +51,7 @@ def emit(src: Path, target: Path) -> None:
     # add it here. Full generalized iteration (loop all src/commands/ entries)
     # stays commented below until every command has passed its CLI-agnostic +
     # audit passes — premature promotion would ship broken skills.
-    _PROMOTED = ("setup-wizard", "onboard", "constitute")
+    _PROMOTED = ("init-forge", "onboard", "constitute")
 
     for cmd_name in _PROMOTED:
         source = load_command(src / "commands", cmd_name)

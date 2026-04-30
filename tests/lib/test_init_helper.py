@@ -1,6 +1,6 @@
 """Tests for src/devforge/lib/init_helper.py.
 
-Covers the closed-shape yaml emitter+parser, all 7 subcommands, set-time
+Covers the closed-shape yaml emitter+parser, all 8 subcommands, set-time
 validation, atomic writes, the find-nested-git read-only scan, the
 launcher script, and DEVFORGE_DIR env override.
 
@@ -837,7 +837,7 @@ class FindNestedGitTests(unittest.TestCase):
 
 class CLISurfaceTests(_EnvIsolationMixin, unittest.TestCase):
 
-    def test_help_lists_seven_subcommands(self):
+    def test_help_lists_eight_subcommands(self):
         proc = _run_cli(self.devforge_dir, "--help")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         out = proc.stdout
@@ -849,6 +849,7 @@ class CLISurfaceTests(_EnvIsolationMixin, unittest.TestCase):
             b"set-default-branch",
             b"add-package",
             b"find-nested-git",
+            b"summary",
         ):
             self.assertIn(sub, out)
 
@@ -902,6 +903,242 @@ class DevforgeDirEnvTests(_EnvIsolationMixin, unittest.TestCase):
         path = init_helper._output_file_path()
         expected_dir = Path(init_helper.__file__).resolve().parent.parent
         self.assertEqual(path, expected_dir / "init.yaml")
+
+
+# ---------------------------------------------------------------------------
+# SummaryTests
+# ---------------------------------------------------------------------------
+
+
+class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
+    """`summary` subcommand: render init.yaml to deterministic stdout.
+
+    Round-trip tests build state via the real CLI (reset + setters +
+    add-package) before invoking `summary`, so the parser sees only what
+    the emitter emits.
+    """
+
+    def _populate_three_packages(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "wrapper")
+        _run_cli(self.devforge_dir, "set-project-root", "client-app")
+        _run_cli(self.devforge_dir, "set-project-state", "brownfield")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+        _run_cli(
+            self.devforge_dir,
+            "add-package",
+            "--path", ".",
+            "--manifest", "package.json",
+        )
+        _run_cli(
+            self.devforge_dir,
+            "add-package",
+            "--path", "scripts",
+            "--manifest", "package.json",
+        )
+        _run_cli(
+            self.devforge_dir,
+            "add-package",
+            "--path", "apps/web",
+            "--manifest", "package.json",
+        )
+
+    def test_happy_path_three_packages(self):
+        self._populate_three_packages()
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        # Header + workspace block.
+        self.assertIn("## Init Report", out)
+        self.assertIn("### Workspace", out)
+        self.assertIn("- workspace_mode: wrapper", out)
+        self.assertIn("- project_root: client-app", out)
+        self.assertIn("- project_state: brownfield", out)
+        self.assertIn("- default_branch: main", out)
+        # Packages block.
+        self.assertIn("### Packages (3 detected)", out)
+        # Manifest column aligned: max path is "apps/web" (8 chars),
+        # so col_width = 10. Each line: "- " + path + padding + manifest.
+        self.assertIn("- .         package.json", out)
+        self.assertIn("- scripts   package.json", out)
+        self.assertIn("- apps/web  package.json", out)
+
+    def test_empty_packages(self):
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_cli(self.devforge_dir, "set-project-root", ".")
+        _run_cli(self.devforge_dir, "set-project-state", "empty")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("### Packages (0 detected)", out)
+        self.assertIn("- no packages detected", out)
+
+    def test_default_state_renders_null_scalars(self):
+        # After reset only — all 4 scalars are None, 0 packages.
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("- workspace_mode: null", out)
+        self.assertIn("- project_root: null", out)
+        self.assertIn("- project_state: null", out)
+        self.assertIn("- default_branch: null", out)
+        self.assertIn("### Packages (0 detected)", out)
+        self.assertIn("- no packages detected", out)
+
+    def test_26_packages_all_present(self):
+        # Mirrors the testForge20 monorepo scenario. All paths must
+        # appear in output and the count line must be correct.
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "wrapper")
+        _run_cli(self.devforge_dir, "set-project-root", "db-cse-ui-strata")
+        _run_cli(self.devforge_dir, "set-project-state", "brownfield")
+        _run_cli(self.devforge_dir, "set-default-branch", "dev")
+        paths = [".", "scripts"] + [
+            "packages/pkg-{0:02d}".format(i) for i in range(23)
+        ] + ["apps/app-web"]
+        self.assertEqual(len(paths), 26)
+        for p in paths:
+            _run_cli(
+                self.devforge_dir,
+                "add-package",
+                "--path", p,
+                "--manifest", "package.json",
+            )
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertIn("### Packages (26 detected)", out)
+        for p in paths:
+            self.assertIn(p, out)
+
+    def test_long_path_column_alignment(self):
+        # Paths of varying lengths should align manifests in one column.
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "wrapper")
+        _run_cli(self.devforge_dir, "set-project-root", "root")
+        _run_cli(self.devforge_dir, "set-project-state", "brownfield")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+        _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", ".",
+            "--manifest", "package.json",
+        )
+        _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "packages/very-long-package-name",
+            "--manifest", "package.json",
+        )
+        _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/web",
+            "--manifest", "package.json",
+        )
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        # Find each package line and confirm "package.json" starts at
+        # the same column index across all 3.
+        pkg_lines = [
+            line for line in out.splitlines()
+            if line.startswith("- ") and line.endswith("package.json")
+            and "Packages" not in line
+        ]
+        self.assertEqual(len(pkg_lines), 3)
+        manifest_columns = [line.index("package.json") for line in pkg_lines]
+        self.assertEqual(len(set(manifest_columns)), 1,
+                         "manifest column not aligned: {0}".format(manifest_columns))
+
+    def test_missing_file_errors_with_helpful_stderr(self):
+        # No reset — init.yaml absent.
+        self.assertFalse(self.output_file.exists())
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(b"init.yaml not found", proc.stderr)
+        self.assertIn(str(self.output_file).encode("utf-8"), proc.stderr)
+
+    def test_summary_malformed_yaml_returns_error_with_helpful_stderr(self):
+        # Hand-write a malformed init.yaml (bypasses the emitter on
+        # purpose) and confirm cmd_summary surfaces a parse error
+        # rather than crashing or producing partial output.
+        self.output_file.write_text("bogus: [unclosed\n", encoding="utf-8")
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(b"cannot parse", proc.stderr)
+        self.assertIn(str(self.output_file).encode("utf-8"), proc.stderr)
+
+    def test_output_ends_with_single_newline(self):
+        self._populate_three_packages()
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertTrue(out.endswith("\n"))
+        self.assertFalse(out.endswith("\n\n"),
+                         "output ends with multiple trailing newlines")
+
+    def test_field_order_locked_against_dict_shuffle(self):
+        # Build a state dict in a deliberately shuffled order; the
+        # renderer must still emit fields in SUMMARY_WORKSPACE_FIELDS
+        # order (not insertion order).
+        shuffled = {}
+        shuffled["packages_detected"] = []
+        shuffled["default_branch"] = "main"
+        shuffled["project_state"] = "brownfield"
+        shuffled["workspace_mode"] = "wrapper"
+        shuffled["project_root"] = "client-app"
+        out = init_helper._render_summary(shuffled)
+        # Find the index of each field's row in the rendered output.
+        lines = out.splitlines()
+        idx = {field: None for field in init_helper.SUMMARY_WORKSPACE_FIELDS}
+        for i, line in enumerate(lines):
+            for field in idx:
+                if line.startswith("- {0}:".format(field)):
+                    idx[field] = i
+        # All fields must appear, and in locked order.
+        order = [idx[f] for f in init_helper.SUMMARY_WORKSPACE_FIELDS]
+        self.assertEqual(order, sorted(order),
+                         "fields not in locked order: {0}".format(idx))
+        self.assertEqual(
+            order,
+            [order[0] + i for i in range(len(order))],
+            "fields not contiguous in render: {0}".format(idx),
+        )
+
+    def test_render_summary_pure_function(self):
+        # Direct unit test on the pure renderer (no subprocess, no file I/O).
+        state = {
+            "workspace_mode": "standalone",
+            "project_root": ".",
+            "project_state": "empty",
+            "default_branch": "main",
+            "packages_detected": [
+                {"path": ".", "manifest": "package.json"},
+            ],
+        }
+        out = init_helper._render_summary(state)
+        expected = (
+            "## Init Report\n"
+            "\n"
+            "### Workspace\n"
+            "- workspace_mode: standalone\n"
+            "- project_root: .\n"
+            "- project_state: empty\n"
+            "- default_branch: main\n"
+            "\n"
+            "### Packages (1 detected)\n"
+            "- .  package.json\n"
+        )
+        self.assertEqual(out, expected)
+
+    def test_no_leading_blank_line(self):
+        self._populate_three_packages()
+        proc = _run_cli(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = proc.stdout.decode("utf-8")
+        self.assertTrue(out.startswith("## Init Report"),
+                        "output should start with header, no leading blank line")
 
 
 if __name__ == "__main__":

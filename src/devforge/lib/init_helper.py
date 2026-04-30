@@ -64,6 +64,17 @@ ENUM_FIELDS = {
     "project_state": {"empty", "brownfield"},
 }
 
+# Locked field order for the `summary` subcommand. Mirrors the scalar
+# fields in FIELD_SCHEMA but lives as a separate tuple so the summary
+# never silently picks up a new scalar without an explicit edit here
+# (and so the renderer doesn't depend on dict iteration order).
+SUMMARY_WORKSPACE_FIELDS = (
+    "workspace_mode",
+    "project_root",
+    "project_state",
+    "default_branch",
+)
+
 # Built-in skip list for find-nested-git. Mirrors detect_report's set
 # verbatim so /init-forge and the legacy wizard agree on which dirs to ignore.
 NESTED_GIT_SKIP = {
@@ -582,6 +593,87 @@ def cmd_add_package(args):
     return 0
 
 
+def _render_scalar_for_summary(value):
+    """Render a scalar (str or None) as a human-readable summary token.
+
+    `None` becomes the literal lowercase string `null` (matching the
+    on-disk yaml form so the summary mirrors the file). Strings render
+    verbatim — no quoting, escaping, or transformation.
+    """
+    if value is None:
+        return "null"
+    return value
+
+
+def _render_summary(state):
+    """Build the deterministic init-report summary string from `state`.
+
+    Output ends with exactly one trailing newline. Field order is locked
+    by SUMMARY_WORKSPACE_FIELDS — never re-derived from yaml dict order.
+    Package list is rendered with a fixed-width path column (max-path
+    + 2 spaces of padding) so manifests line up vertically.
+    """
+    lines = []
+    lines.append("## Init Report")
+    lines.append("")
+    lines.append("### Workspace")
+    for field in SUMMARY_WORKSPACE_FIELDS:
+        lines.append(
+            "- {0}: {1}".format(field, _render_scalar_for_summary(state.get(field)))
+        )
+    lines.append("")
+
+    packages = state.get("packages_detected") or []
+    pkg_count = len(packages)
+    lines.append("### Packages ({0} detected)".format(pkg_count))
+    if pkg_count == 0:
+        lines.append("- no packages detected")
+    else:
+        # Column-align manifest column to (max path width + 2). Padding
+        # is computed from the longest path so all manifests start at
+        # the same column regardless of path length.
+        max_path = max(len(record.get("path", "")) for record in packages)
+        col_width = max_path + 2
+        for record in packages:
+            path = record.get("path", "")
+            manifest = record.get("manifest", "")
+            padding = " " * (col_width - len(path))
+            lines.append("- {0}{1}{2}".format(path, padding, manifest))
+
+    return "\n".join(lines) + "\n"
+
+
+def cmd_summary(args):
+    """Render the deterministic init-report summary to stdout.
+
+    Reads `.devforge/init.yaml`. If the file is missing, fails with a
+    clear stderr message naming the absent path. If the yaml is
+    unreadable or malformed, fails with the underlying error on stderr.
+    """
+    path = _output_file_path()
+    if not path.exists():
+        sys.stderr.write(
+            "init_helper summary: init.yaml not found at {0}\n".format(path)
+        )
+        return 1
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as err:
+        sys.stderr.write(
+            "init_helper summary: cannot read {0}: {1}\n".format(path, err)
+        )
+        return 1
+    try:
+        state = parse_yaml(text)
+    except YamlParseError as err:
+        sys.stderr.write(
+            "init_helper summary: cannot parse {0}: {1}\n".format(path, err)
+        )
+        return 1
+    sys.stdout.write(_render_summary(state))
+    return 0
+
+
 def cmd_find_nested_git(args):
     """List depth-1 directories under the install root that contain `.git/`.
 
@@ -648,6 +740,9 @@ def build_parser():
 
     sp = subparsers.add_parser("find-nested-git")
     sp.set_defaults(func=cmd_find_nested_git)
+
+    sp = subparsers.add_parser("summary", help="Render the init report to stdout.")
+    sp.set_defaults(func=cmd_summary)
 
     return parser
 

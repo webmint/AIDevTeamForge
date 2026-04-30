@@ -2,7 +2,6 @@
 name: init-forge
 description: Bootstrap project — captures structural fields, hands off to /generate-docs
 disable-model-invocation: true
-model: sonnet
 ---
 
 # /init-forge — Project Bootstrap
@@ -104,6 +103,12 @@ Walk the directory tree under `project_root` (depth limit 4 — covers typical m
 If you encounter a file whose ecosystem you cannot confidently identify as a recognized package manifest, skip it rather than calling `add-package` — a missing entry is recoverable by a re-run, but a misclassified entry corrupts the canonical package index that downstream commands consume.
 
 For each manifest, invoke `.devforge/lib/init_helper add-package --path <package-dir-relative-to-project-root> --manifest <filename>`. If no manifests are found (which includes the empty-project case per Step 2), `packages_detected` stays `[]`.
+
+## Step 5: Render Summary
+
+Renders the persisted state from `.devforge/init.yaml` so the user can verify the captured fields before handoff to `/generate-docs`.
+
+Invoke `.devforge/lib/init_helper summary`. The helper reads `.devforge/init.yaml` and prints a deterministic, human-readable report to stdout. After the helper runs, copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
 
 ## Closing
 
