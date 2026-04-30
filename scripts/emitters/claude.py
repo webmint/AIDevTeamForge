@@ -9,6 +9,7 @@ Responsibilities:
   - src/commands/onboard/main.md       → target/.claude/commands/onboard.md
   - src/commands/onboard/references/*.md
                                        → target/.claude/commands/onboard/references/*.md
+  - src/commands/generate-docs/main.md → target/.claude/commands/generate-docs.md
   - src/commands/constitute/main.md    → target/.claude/commands/constitute.md
   (both flat and folder-based sources supported during migration)
 
@@ -51,7 +52,7 @@ def emit(src: Path, target: Path) -> None:
     # add it here. Full generalized iteration (loop all src/commands/ entries)
     # stays commented below until every command has passed its CLI-agnostic +
     # audit passes — premature promotion would ship broken skills.
-    _PROMOTED = ("init-forge", "onboard", "constitute")
+    _PROMOTED = ("init-forge", "onboard", "generate-docs", "constitute")
 
     for cmd_name in _PROMOTED:
         source = load_command(src / "commands", cmd_name)

@@ -286,3 +286,112 @@ Step 1.2 (Phase 1.2a + Phase 1.2b) of `GENERATE-DOCS-PLAN.md` is now COMPLETE. T
 ### Next step
 
 **Phase 2.1** — Author `/generate-docs` spec + emitter wiring + tech-writer agent. Per the plan annotation at `54ad158`, this dispatches `instruction-author` to draft BOTH `src/commands/generate-docs/main.md` AND `.claude/agents/tech-writer.md` in the same pass; reviewers (`instruction-reviewer` + `claude-code-guide`) audit both files in parallel. Plus `python-engineer` updates `scripts/emitters/claude.py` `_PROMOTED` tuple.
+
+---
+
+## Phase 2.1 — `/generate-docs` spec + tech-writer SKELETON-FILL MODE + emitter promotion
+
+**Status**: ✅ DONE
+**Commit**: see `git log` for SHA — atomic commit covering spec + agent mode + emitter
+
+### Files written / modified
+
+- **NEW** `src/commands/generate-docs/main.md` — 102 lines (slash-command spec; ~150 was the target — landed lighter because helper carries structural load + agent-file owns dispatch contract; basic-path discipline kept Phase 0–5 tight)
+- **MODIFIED** `src/agents/tech-writer.md` — 261 → 326 lines (+65)
+  - Frontmatter description updated to mention SKELETON-FILL MODE
+  - Operating Modes summary list: "three modes" → "four modes"
+  - New `### Skeleton-Fill Mode (invoked by /generate-docs)` subsection under Operating Modes
+  - Mode-routing prose updated to branch on SKELETON-FILL first
+  - New top-level `## SKELETON-FILL MODE (used by /generate-docs)` section appended after `### Rules` (~54 lines: mode preamble + Mode contract + retry budget + structured report + Mode constraints + "What NOT to do")
+- **MODIFIED** `scripts/emitters/claude.py` — +2 lines (`_PROMOTED` tuple now `("init-forge", "onboard", "generate-docs", "constitute")`; docstring "Responsibilities" list updated)
+
+### Subcommand dispatch flow (the new `/generate-docs` -> tech-writer cycle)
+
+```
+User invokes: /generate-docs
+  ↓
+Phase 0: pre-flight (verify .devforge/init.yaml, helper executable, target path)
+  ↓
+Phase 1: discover package via manifest at db-cse-ui-strata/apps/app-web/package.json
+  ↓
+Phase 2: register package + extract scripts via helper
+  - add-package + set-package-{language,framework,build-tool}
+  - extract-package-scripts → loop add-package-script per entry
+  ↓
+Phase 3: render-package-skeleton, then dispatch tech-writer (SKELETON-FILL MODE)
+  - Orchestrator brief: mode + path + name + skeleton-path + helper-path + source-root
+  - Tech-writer reads source, invokes setters, validates, renders final doc
+  - Tech-writer returns structured report
+  ↓
+Phase 4: verify produced doc (read final .md, run status, print VERBATIM to user)
+  ↓
+Phase 5: report (counts + path + iteration scope reminder)
+```
+
+### Tech-writer SKELETON-FILL MODE contract (the ~30-line target — actual ~54 lines)
+
+The mode section instructs the agent on:
+- 6 orchestrator-provided parameters (mode, package path, package name, skeleton path, helper path, source root)
+- 6 numbered actions: read source → invoke setters → run validate → handle errors → render final doc → return report
+- Tools allowed: Read, Bash, Grep, Glob (NOT Write, Edit — helper writes for it)
+- Validate retry cap: 3 attempts before surfacing to user
+- Out-of-scope list: Concern docs (Phase 3), Architecture docs (Phase 4), Memory archaeology (Phase 5), cross-package decisions, modifying source files
+
+Skeleton-fill primitive insight: the helper carries the structural load (markdown templates, citation format, section ordering, [TODO] marker convention). The agent only knows: read source, invoke setters, run validate, render doc, report.
+
+### Agents invoked + loops
+
+1. **instruction-author** — drafted spec + tech-writer mode section in one dispatch
+2. **python-engineer** (parallel) — emitter `_PROMOTED` update
+3. **instruction-reviewer** (parallel close-out) — surfaced 1 MEDIUM (`add-package-hazard` exception to the "all add-* reject duplicates" claim — hazards are permissive by design)
+4. **claude-code-guide** (parallel close-out) — spec-compliant, 0 concerns
+5. **python-reviewer** (parallel close-out) — emitter clean, 0 concerns; ran end-to-end install smoke against /tmp tmpdir, confirmed `generate-docs.md` ships
+6. **instruction-author** — fix applied: differentiated `add-package-{script,export,dep}` (duplicate-rejecting) from `add-package-hazard` (permissive); workaround for hazard mis-registration named (reset + re-fill OR accept duplicate)
+
+Total: 2 effective loops across 6 agent invocations. Faster than Phase 1.2 (the heavier Python work).
+
+### Verify outcomes
+
+- `python3 -m unittest discover tests/lib -q` → 584/584 passing (unchanged — no Python code modified beyond emitter docstring + tuple)
+- End-to-end install smoke test (python-reviewer): `/tmp/emitter-smoke` build confirms `generate-docs.md` ships into `<target>/.claude/commands/`
+- All 18 helper subcommands referenced in spec + agent mode-section exist in `_cli.py` `_SUBCOMMANDS` registry
+- Hazard categories list in tech-writer.md exactly matches `generate_docs_schema.HAZARD_CATEGORIES`
+- Iteration banner pattern matches `/onboard`'s pattern (commit `f6c2557`)
+
+### Decisions
+
+1. **Add SKELETON-FILL MODE to existing tech-writer.md** rather than rewrite or create new agent file. Tech-writer already serves multiple modes (ONBOARDING, REFRESH, default task-doc); adding a 4th mode is the cleanest pattern. /onboard's iteration banner depends on the existing ONBOARDING MODE contract; rewriting would break /onboard before Phase 8.2 retirement.
+2. **`scripts/generate-agents.py` propagates** `tech-writer.md` to target's `.claude/agents/tech-writer.md`. No changes needed to that emitter — the source format is unchanged structurally; only content was added.
+3. **Iteration banner pattern reused** from `/onboard`'s commit `f6c2557` (bold "This override is in effect until removed", phase-behavior table, "Removing this override" sentence with reference to Phase 7.1 spec edit).
+4. **Forward refs to helper internals** verified at audit time (whitespace normalization, validate-package error contract, extract-package-scripts stdout shape, add-* duplicate behavior — only the last needed correction).
+5. **`_PROMOTED` order** chose execution flow (init-forge → onboard → generate-docs → constitute) rather than alphabetical. Matches the pre-existing pattern.
+6. **No `references/` subdirectory** for `/generate-docs` — spec is short enough to be self-contained per basic-path discipline.
+
+### Future-session-falsely-believes check
+
+- Could a session believe SKELETON-FILL MODE is for multi-package? NO — explicit "ONE package per dispatch"
+- Could a session believe the helper is optional? NO — explicit "all writes happen via the helper"
+- Could a session believe tech-writer designs markdown templates? NO — explicit "helper carries the structural load"
+- Could a session believe Concern/Architecture/Memory tiers are in scope? NO — explicit "out of scope" list
+- Could a session believe the iteration banner can be removed unilaterally? NO — explicit "removing this section: ... full multi-package flow resumes via the Phase 7.1 spec edit"
+- Could a session believe `add-package-hazard` rejects duplicates? NO — fix applied: explicitly distinguishes hazard (permissive) from script/export/dep (duplicate-rejecting)
+
+### Open follow-ups (not blocking next phase)
+
+1. **`src/CLAUDE.md` workflow chain** still lists `/setup-wizard → /constitute → /onboard → /research → /specify` — does NOT yet mention `/generate-docs`. Out of this dispatch's scope (broader 4-command pivot rollout per `ARCHITECTURE-PIVOT-PLAN.md` Steps 2-8). Update during the broader pivot work.
+2. **`tech-writer.md` source format inconsistencies** with Claude Code subagent runtime spec (`model_tier: do` field, ```yaml fenced block instead of `---` markers) — pre-existing convention normalized by `scripts/generate-agents.py`. Out of scope here; flag for future agent-emitter review.
+
+### Next step
+
+**Phase 2.2** — User runs `/generate-docs` on testForge20 against `apps/app-web/`. This is the FIRST EMPIRICAL COMPARISON vs the `/onboard` baselines:
+- Heavy spec /onboard: 1 monolith, ~50 KB, 33 citations
+- Reference spec /onboard: 10 docs, 60.8 KB, 0 citations
+- cse-strata-ws-forge actual reference: 12 docs, 44.5 KB, 0 citations
+
+Targets per `GENERATE-DOCS-PLAN.md`:
+1. Coverage ≥ 10 concern docs ... wait, this is single-package iteration so just the `index.md` for app-web (concern docs are Phase 3)
+2. Citation discipline = every code block has `<!-- path:line-range -->` ref, validated by validate-package
+3. Structural consistency = re-runs produce byte-identical output (idempotent)
+4. A.2.1 template uniformity (Overview / Directory Structure / Tech Stack / Scripts / Main Exports / Types / Dependencies / Hazards / Usage Example / Consumer Pattern)
+
+Phase 2.2 needs the user to install testForge20 with the latest framework state (committed to develop-2.0-init) and run `/generate-docs` interactively. The result is then evaluated against the empirical baseline targets. If shape is approved → Phase 2.3 (lock baseline). If not approved → iterate spec/render template/agent contract until it is.
