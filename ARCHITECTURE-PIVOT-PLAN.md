@@ -1,8 +1,38 @@
 # Architecture Pivot — 4-command sequence
 
-**Status**: approved 2026-04-30. Not yet started. Empirical validation complete.
+**Status**: Step 1 complete. Step 2 next. Branch `develop-2.0-init` at commit `bd544ff`.
 
 User-approved pivot from current `/setup-wizard` + `/onboard` + `/constitute` trio to a four-command sequence: `/init-forge` → `/generate-docs` → `/configure` → `/constitute`. Detection moves from Phase 1 light-scan (in current setup-wizard) to onboard's deep scan (renamed `/generate-docs`).
+
+## Step 1 outcomes (2026-04-30 session)
+
+**Three commits on `develop-2.0-init`:**
+
+- `a55d923` — Original `/init` spec + purpose-built `init_helper.py` (5-field scoped helper, NOT a reuse of `detect_report`) + 81 tests
+- `052cf2a` — Renamed `/init` → `/init-forge` to avoid collision with Claude Code's built-in `/init` skill (which generates CLAUDE.md). Project-level command would shadow built-in but creates UX confusion
+- `bd544ff` — Added `summary` subcommand to `init_helper` + Step 5 in spec (verbatim-echo report); dropped `model: sonnet` override; removed `/setup-wizard` from emitter `_PROMOTED` (no longer ships into target projects). Tests: 336/336 passing
+
+**Departures from original Step 1 plan:**
+
+- **Single-file spec, no `references/`** — original plan said `src/commands/init-forge/main.md` + `references/*.md`; ~110 lines fits comfortably in main.md
+- **Purpose-built `init_helper`, not `detect_report` reuse** — `detect_report` has 30+ fields' worth of setters scoped to setup-wizard; `init_helper` exposes exactly the 8 subcommands `/init-forge` needs (reset, set-workspace-mode, set-project-root, set-project-state, set-default-branch, add-package, find-nested-git, summary). `detect_report.py` is now docstring-marked deprecated (see top of file) but still ships during transition
+- **Yaml file is `.devforge/init.yaml`, NOT `detection_report.yaml`** — narrower contract; 5 fields only. Co-exists with legacy `detection_report.yaml` during transition
+- **No approval gate after Step 4** — 5 deterministic fields don't warrant friction; user verifies via Step 5's verbatim summary instead
+- **install.sh chain NOT extended** — only the final-message string updated (`Next — run /init-forge`). Full chain rewrite stays in Step 6
+- **`/setup-wizard` partially decommissioned** — emitter no longer ships `setup-wizard.md` into target projects (Step 7 partial); source `src/commands/setup-wizard/` + helpers `wizard_render.py`, `detect_report.py` retained for reference
+
+**Verified end-to-end against testForge20:**
+
+- `/init-forge` populates `.devforge/init.yaml` with all 5 fields:
+  - `workspace_mode: wrapper`, `project_root: db-cse-ui-strata`, `project_state: brownfield`, `default_branch: dev`
+  - `packages_detected: 26 records` — exact match to `find -name package.json` count
+- `init_helper summary` renders the report with manifest-column alignment
+
+**Open follow-ups (not blocking Step 2):**
+
+- testForge20 has stale `setup-wizard.md` from prior install (manual `rm` cleanup)
+- `update.sh` has 3 user-facing warnings referencing `/setup-wizard` (lines 168, 355, 377) — point at a command no longer shipped; cleanup belongs to Step 4 or later
+- `install.sh` line 5 header comment still references `/setup-wizard` (philosophy doc, not behavioral); cleanup with Step 6 chain rewrite
 
 ## Context for next session
 
@@ -37,29 +67,37 @@ Three caveats that need addressing:
 
 ### Current branch state
 
-- Branch: `develop-2.0-setup-wizard`
-- Q1–Q10 of questions.md written under OLD architecture (single `/setup-wizard` flow)
-- Helpers: `detect_report` (23+ setters + summary), `wizard_render` (10 setters)
-- Phase 1 detection (detect.md §4.1–§4.6) implemented and recently patched
-- Last work commit: `5e180f8` (detect: weaken §4.4 to manifest-dep-sufficient)
+- Branch: `develop-2.0-init` (renamed from `develop-2.0-setup-wizard` mid-session)
+- Q1–Q10 of questions.md written under OLD architecture (single `/setup-wizard` flow) — still in `src/commands/setup-wizard/references/questions.md`; transfers to `/configure` in Step 4
+- Helpers shipped to target:
+  - `init_helper` (8 subcommands; `/init-forge`'s persistence layer; tests in `tests/lib/test_init_helper.py`)
+  - `detect_report` (deprecated; legacy `/setup-wizard` Phase 1 helper; kept until Step 7)
+  - `wizard_render` (legacy `/setup-wizard` Phase 3 helper; kept until Step 4)
+  - `onboard_helper` (stub; gets buildout in Step 2)
+- Last work commit: `bd544ff` (Step 1 final)
+- Test count: 336 passing
 
-The Q1–Q10 question logic transfers to `/configure` mostly unchanged. Phase 1's structural steps (workspace_mode, project_root, default_branch, project_state, packages_detected) transfer to `/init-forge`. Phase 1's library/architecture/error-handling/runtime-url detection (§4.4–§4.6) is replaced by onboard-driven detection in `/configure`.
+The Q1–Q10 question logic transfers to `/configure` mostly unchanged. Phase 1's structural steps (workspace_mode, project_root, default_branch, project_state, packages_detected) now live in `/init-forge` (Step 1 done). Phase 1's library/architecture/error-handling/runtime-url detection (§4.4–§4.6 of legacy detect.md) is replaced by docs-driven detection in `/configure`.
 
 ## The 4-command sequence
 
-### `/init-forge` — minimal structural bootstrap
+### `/init-forge` — minimal structural bootstrap ✓ DONE (Step 1)
 
 Captures 5 fields. Bash-style fast. LLM only orchestrates.
 
 - `workspace_mode` (user choice via AskUserQuestion: standalone vs wrapper)
 - `project_root` (user choice in wrapper mode; `.` in standalone)
 - `default_branch` (git query)
-- `project_state` (filesystem check: empty vs brownfield, per current detect.md Step 2)
+- `project_state` (filesystem check: empty vs brownfield)
 - `packages_detected` (manifest path + filename walk; no content reads)
 
-Side effect: installs framework files (`.devforge/`, `.claude/`, CLAUDE.md template, agent templates with `{{...}}` placeholders intact).
+Side effect: install.sh copies framework files (`.devforge/`, `.claude/`, CLAUDE.md template, agent templates with `{{...}}` placeholders intact). `/init-forge` itself does NOT install — install.sh runs first, then user invokes `/init-forge` in Claude Code.
 
-Implemented as: `src/commands/init-forge/main.md` + `src/commands/init-forge/references/*.md` + extends `install.sh`.
+**Implemented as** (Step 1 ship state):
+- `src/commands/init-forge/main.md` — single-file spec (no references/), 5 numbered steps + Preflight + Render Summary
+- `src/devforge/lib/init_helper.py` + launcher + 92 tests in `tests/lib/test_init_helper.py`
+- Yaml output: `.devforge/init.yaml`
+- Emitter (`scripts/emitters/claude.py`) ships `init-forge.md` into `<target>/.claude/commands/`
 
 ### `/generate-docs` — deep codebase scan
 
@@ -176,11 +214,11 @@ Pick one. (B) is simpler (no template change to onboard); (A) is more uniform (s
 
 **Verify**: for testForge20, `/configure` produces `runtime_url_value: https://okta.local.dev.dice-tools.com:8080` (matching the actual `vite.config.ts` `server.host` + `server.port` combination), not the framework-default `http://localhost:5173`.
 
-### Step 1: Write `/init-forge` spec
+### Step 1: Write `/init-forge` spec ✓ DONE
 
-Create `src/commands/init-forge/main.md` + references. Carries over from current `detect.md` Steps 1–3 + the manifest-discovery part of Step 4.1 (just paths + filenames, no content). Wraps `install.sh` invocation for framework-file installation.
+Commits: `a55d923`, `052cf2a`, `bd544ff` on `develop-2.0-init`. See "Step 1 outcomes" section near top of this plan for details.
 
-**Verify**: running `/init-forge` on a fresh project produces the 5 structural fields in `.devforge/init.yaml` + installs `.devforge/`, `.claude/`, CLAUDE.md template, agent templates. No yaml fields beyond the 5 are populated. No questions beyond workspace_mode + project_root.
+**Verify** (passed): running `/init-forge` on testForge20 produces all 5 fields in `.devforge/init.yaml` (workspace_mode=wrapper, project_root=db-cse-ui-strata, project_state=brownfield, default_branch=dev, packages_detected=26 records). Render Summary step displays the values verbatim before `/generate-docs` handoff.
 
 ### Step 4: Write `/configure` spec
 
@@ -205,14 +243,21 @@ The Q1-Q12 work on `develop-2.0-setup-wizard` branch transfers in INTENT (which 
 
 `install.sh` chains `/init-forge` → `/generate-docs` → `/configure` → `/constitute` for first-time installs. Each step can be re-run independently.
 
+**Step-1 partial progress** (already shipped): install.sh's final-message string was updated from `Next — run /setup-wizard` to `Next — open the project and run /init-forge in Claude Code`. The actual chain auto-execution is still pending. install.sh's header comment block (lines 1-9) still references `/setup-wizard` philosophy — clean up here.
+
 **Verify**: fresh-project install runs through all four commands cleanly, producing a fully-configured project. Re-running individual commands (e.g., `/generate-docs` after a code refactor) updates only their outputs.
 
 ### Step 7: Decommission old detect.md / setup-wizard
 
 Once `/init-forge` + `/configure` cover the same ground:
 - Delete `src/commands/setup-wizard/` (or rename to `setup-wizard-OLD` until migration is complete)
-- detect.md content disperses: structural parts (Steps 1–3) → /init-forge's references; library/architecture/error-handling/runtime-url detection (§4.4–§4.6) → /configure's references (with docs-source instead of grep-source)
-- questions.md fully migrates to /configure's references
+- Delete `src/devforge/lib/wizard_render.py` + launcher
+- Delete `src/devforge/lib/detect_report.py` + launcher (currently docstring-marked deprecated; full delete here)
+- Update 3 user-facing warnings in `update.sh` (lines 168, 355, 377) currently pointing at `/setup-wizard` — likely redirect to `/configure`
+- Update `install.sh` header comment block (lines 1-9) currently describing `/setup-wizard` philosophy
+- detect.md is no longer load-bearing once Step 1 (done) + Step 4 ship — its content has dispersed
+
+**Step-1 partial progress** (already shipped): emitter `scripts/emitters/claude.py` removed `setup-wizard` from `_PROMOTED`, so new installs no longer ship `setup-wizard.md` into `<target>/.claude/commands/`. Source files + helpers retained here; full delete waits for `/configure` to land.
 
 **Verify**: no references to `/setup-wizard` remain in active code paths. Existing test data (testForge20, cse-strata-ws-forge) still produces correct outputs through the new sequence.
 
@@ -242,12 +287,18 @@ Schema details + helper API in memory `project_schema_anchored_constitute.md`.
 
 ## When resuming work
 
-1. Read this plan in full
-2. Read the experiment evidence at the experiment commit (TBD — this plan being saved is the marker)
-3. Read `project_4command_architecture_pivot.md` from `~/.claude/projects/.../memory/`
-4. Confirm test data still available: `ls /Users/mykolakudlyk/Projects/testForge20/.devforge/` and `ls /Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/docs/`
-5. Execute steps in order: Step 1 (write `/init-forge` spec) → Step 2 (schema-anchor `/generate-docs`) → Step 3 (config-file capture decision) → Step 4 (write `/configure` spec) → Step 5 (migrate Q1–Q12) → Step 6 (install.sh chain) → Step 7 (decommission old setup-wizard) → Step 8 (schema-anchor /constitute). Each step independently testable; no need to bundle.
-6. Use the iterative apply-verify loop established this session: instruction-author writes, instruction-reviewer + claude-code-guide verify in parallel, loop until clean
-7. Commit each step independently; don't bundle
+**Status as of last save**: Step 1 done (commits `a55d923`, `052cf2a`, `bd544ff` on `develop-2.0-init`). Tests 336/336 passing. Working tree clean. Step 2 next.
+
+1. Read this plan in full — pay attention to the "Step 1 outcomes" section near the top for what's already shipped + how it differs from the original plan
+2. Read `project_schema_anchored_generate_docs.md` from `~/.claude/projects/.../memory/` for Step 2's schema details
+3. Confirm test data still available: `ls /Users/mykolakudlyk/Projects/testForge20/.devforge/` (should contain `init.yaml` + legacy `detection_report.yaml`) and `ls /Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/docs/`
+4. Confirm helper baseline: `python3 -m unittest discover tests/lib -q` should report 336/336 OK
+5. Execute remaining steps in order: **Step 2 (schema-anchor `/generate-docs`)** → Step 3 (config-file capture decision) → Step 4 (write `/configure` spec) → Step 5 (migrate Q1–Q12) → Step 6 (install.sh chain) → Step 7 (decommission old setup-wizard) → Step 8 (schema-anchor /constitute). Each step independently testable; no need to bundle.
+6. Use the iterative apply-verify loop established this session:
+   - For Python: `python-engineer` writes function + tests in same turn → `python-reviewer` audits → loop until clean
+   - For specs: `instruction-author` writes → `instruction-reviewer` + `claude-code-guide` audit in parallel → loop until clean
+7. **When adding a new command**: ALSO add to `scripts/emitters/claude.py` `_PROMOTED` tuple AND verify end-to-end install (run `install.sh` against tmpdir, check `<target>/.claude/commands/` has the new file). Step-1 lesson: missed this initially.
+8. Commit each step independently; don't bundle
+9. Step-2 parallel concern: `onboard_helper.py` is currently a stub (~50 lines). Step 2 buildout target is ~80-120 tests parallel to `init_helper`'s 92.
 
 Test data validation: every step should be verifiable against testForge20 (the wrapper + monorepo edge case). If a step works for testForge20, it works for the easy single-package case by construction.
