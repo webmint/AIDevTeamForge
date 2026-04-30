@@ -198,7 +198,14 @@ def _check_all_codeblocks(
     project_root: Path,
 ) -> List[Dict[str, Any]]:
     """Run filesystem + verbatim-match checks across every CodeBlock in
-    the record (exports, usage_example, consumer_pattern)."""
+    the record (exports, usage_example, consumer_pattern).
+
+    Optional CodeBlock fields (`usage_example`, `consumer_pattern`) are
+    treated as "absent" only when the stored value is `None` (the schema
+    default). A non-None value of any other shape is a corrupted record
+    and surfaces an explicit `*-malformed` error instead of being
+    silently skipped (anti-pattern #2: validation must NOT defer).
+    """
     errors: List[Dict[str, Any]] = []
     for idx, export in enumerate(pkg.get("exports") or []):
         code = export.get("code")
@@ -211,14 +218,20 @@ def _check_all_codeblocks(
         errors.extend(_check_codeblock(
             code, "exports[{0}].code".format(idx), project_root,
         ))
-    if pkg.get("usage_example"):
-        errors.extend(_check_codeblock(
-            pkg["usage_example"], "usage_example", project_root,
-        ))
-    if pkg.get("consumer_pattern"):
-        errors.extend(_check_codeblock(
-            pkg["consumer_pattern"], "consumer_pattern", project_root,
-        ))
+    for field_name in ("usage_example", "consumer_pattern"):
+        value = pkg.get(field_name)
+        if value is None:
+            continue
+        if not isinstance(value, dict) or not value:
+            errors.append(_err(
+                "{0}-malformed".format(field_name.replace("_", "-")),
+                field_name,
+                "{0} is set but is not a non-empty dict (got {1!r})".format(
+                    field_name, value,
+                ),
+            ))
+            continue
+        errors.extend(_check_codeblock(value, field_name, project_root))
     return errors
 
 

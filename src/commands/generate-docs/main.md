@@ -38,7 +38,11 @@ Verify, in order:
 1. `.devforge/init.yaml` exists. If absent, tell the user to run `/init-forge` first and stop.
 2. `.devforge/lib/generate_docs_helper` exists and is executable. If missing, the install is incomplete — tell the user to re-run `install.sh` and stop.
 3. The target package path `db-cse-ui-strata/apps/app-web/` exists relative to the install root. If absent, tell the user the path is missing and ask whether they want to abort or supply a different path; do not proceed silently.
-4. Inspect `.devforge/.generate-docs-state.json`. If absent, proceed. If present and the registered package matches `db-cse-ui-strata/apps/app-web`, proceed (re-registration overwrites set-* fields). If present and registered for a different package, ask the user: "State file is registered for a different package. Run `.devforge/lib/generate_docs_helper reset` and start fresh?" and wait for confirmation before invoking `reset`.
+4. Inspect `.devforge/.generate-docs-state.json`. If absent, proceed (clean run). If present, run `.devforge/lib/generate_docs_helper status` to see which packages are registered, then branch:
+   - **Target package already registered** (`db-cse-ui-strata/apps/app-web` appears in status output): the prior run's state will block `add-package` re-registration in Phase 2 (the helper rejects duplicate `add-package` by design — see `_setters.py` `cmd_add_package`). Ask the user via AskUserQuestion (single-line prompt: `Prior run state for app-web exists. Reset and start fresh, resume by filling missing slots only, or abort?`) with options **Reset** (default — invoke `.devforge/lib/generate_docs_helper reset`, then proceed to Phase 1 normally), **Resume** (skip Phase 2's `add-package` and any scalar `set-*` already populated; dispatch tech-writer in Phase 3 with a brief noting the package is registered and only `[TODO]` slots remain), **Abort** (stop and let the user reconcile manually). Default to **Reset** because iteration mode treats each run as a fresh attempt unless the user opts to resume.
+   - **Only a different package registered** (target not in status output): no action needed — `add-package` for `db-cse-ui-strata/apps/app-web` will succeed; existing legacy package state remains untouched.
+
+   Note: this reset-first prompt is specific to iteration mode (single-package, repeated runs on the same package are expected). When the `## ⚠️ ITERATION MODE` section is removed, the multi-package flow handles per-package state differently and this check will be revisited.
 
 ## Phase 1 — Discover the assigned package
 

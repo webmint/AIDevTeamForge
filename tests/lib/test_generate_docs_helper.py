@@ -25,7 +25,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 _HELPER_PY = _LIB_DIR / "generate_docs_helper.py"
-_LAUNCHER = _LIB_DIR / "generate_docs"
+_LAUNCHER = _LIB_DIR / "generate_docs_helper"
 
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
@@ -2204,6 +2204,229 @@ class RenderPackageDocTests(_RenderTestBase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         md_path = self.project_root / "docs" / "apps/web" / "index.md"
         self.assertTrue(md_path.exists())
+
+
+# ---------------------------------------------------------------------------
+# CitationDisciplineRegressionTests
+#
+# Regression coverage for a HIGH-severity bug report: a real run produced
+# a doc whose `consumer_pattern.code.snippet` differed from the cited
+# source slice on a single inner line (`either` vs `import`), but
+# `validate-package` exited 0. The mechanical citation-discipline rule is
+# explicitly designed to make exactly this impossible.
+#
+# Investigation found the validate logic itself was sound for the basic
+# path; these tests pin down the scenarios so future edits cannot
+# regress the guarantee. Specifically they cover:
+#
+#   - The exact reproducer (single-word swap on an inner line of a
+#     multi-line consumer_pattern snippet).
+#   - The same kind of swap, but for `usage_example` (parallel field,
+#     same code path, different setter).
+#   - A "soft truthiness" hardening: a corrupted state record where
+#     `consumer_pattern` / `usage_example` are present but malformed
+#     (empty dict, non-dict scalar) used to slip past the falsy-skip
+#     gate; validate now reports `*-malformed` explicitly.
+#   - Multi-package isolation: validate-package on package A must
+#     verify A's snippets even when a sibling package B has bad data.
+# ---------------------------------------------------------------------------
+
+
+class CitationDisciplineRegressionTests(_RenderTestBase):
+
+    def _fill_minimum_for_consumer_pattern(self):
+        """Set up a package with all required fields + a real source
+        file at src/foo.ts:1-4 ready to host a consumer_pattern."""
+        self._write_source("src/foo.ts", [
+            "line1",
+            "line2",
+            "import real",
+            "line4",
+        ])
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "X.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "ts")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "f", "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts",
+                  "--code-snippet", "line1\nline2\nimport real\nline4",
+                  "--cite-file", "src/foo.ts",
+                  "--cite-start", "1", "--cite-end", "4")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "1",
+                  "--purpose", "UI.")
+
+    def test_consumer_pattern_inner_line_swap_rejected(self):
+        """Exact reproducer from the user's report: registered snippet
+        differs from source by one word on an inner line."""
+        self._fill_minimum_for_consumer_pattern()
+        # Register consumer_pattern with WRONG line 3 ('either' instead
+        # of 'import' — verbatim shape of the user's reported bug).
+        proc = self._run("set-package-consumer-pattern",
+                         "--path", "apps/web", "--language", "ts",
+                         "--code-snippet",
+                         "line1\nline2\neither real\nline4",
+                         "--cite-file", "src/foo.ts",
+                         "--cite-start", "1", "--cite-end", "4")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(
+            proc.returncode, 2,
+            "validate-package PASSED a consumer_pattern snippet/source "
+            "mismatch (citation discipline must reject this)",
+        )
+        self.assertIn(b"snippet-verbatim", proc.stderr)
+        self.assertIn(b"consumer_pattern", proc.stderr)
+        # Diff fragment must surface both expected and actual lines so
+        # the LLM can see where the drift is.
+        self.assertIn(b"expected (from source)", proc.stderr)
+        self.assertIn(b"import real", proc.stderr)
+        self.assertIn(b"either real", proc.stderr)
+
+    def test_usage_example_inner_line_swap_rejected(self):
+        """Same shape of bug, parallel field. Iterates the second
+        optional CodeBlock through the same code path as
+        consumer_pattern."""
+        self._fill_minimum_for_consumer_pattern()
+        proc = self._run("set-package-usage-example",
+                         "--path", "apps/web", "--language", "ts",
+                         "--code-snippet",
+                         "line1\nline2\neither real\nline4",
+                         "--cite-file", "src/foo.ts",
+                         "--cite-start", "1", "--cite-end", "4")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"snippet-verbatim", proc.stderr)
+        self.assertIn(b"usage_example", proc.stderr)
+
+    def test_consumer_pattern_one_char_swap_rejected(self):
+        """Tightest possible mismatch: a single-character change inside
+        the cited slice. Confirms the comparator is byte-exact (modulo
+        the documented whitespace normalization rules) — no fuzzy
+        match, no diff threshold."""
+        self._fill_minimum_for_consumer_pattern()
+        proc = self._run("set-package-consumer-pattern",
+                         "--path", "apps/web", "--language", "ts",
+                         "--code-snippet",
+                         # Source is 'import real'; we register 'import realX'.
+                         "line1\nline2\nimport realX\nline4",
+                         "--cite-file", "src/foo.ts",
+                         "--cite-start", "1", "--cite-end", "4")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"snippet-verbatim", proc.stderr)
+
+    def test_consumer_pattern_corrupted_state_empty_dict_rejected(self):
+        """Anti-pattern #2 hardening: a falsy-non-None consumer_pattern
+        (empty dict) used to slip past the truthiness gate in
+        `_check_all_codeblocks` and thus skip the snippet check
+        silently. After the fix, the helper surfaces an explicit
+        `consumer-pattern-malformed` error.
+
+        Tested at the `_check_all_codeblocks` boundary because a
+        malformed optional CodeBlock also breaks the downstream
+        `render_package_skeleton` call inside `_check_no_todos` —
+        rendering a non-dict CodeBlock is a separate hardening
+        concern outside this fix's scope."""
+        from _generate_docs._validators import _check_all_codeblocks
+
+        self._fill_minimum_for_consumer_pattern()
+        state = json.loads(self.state_file.read_text(encoding="utf-8"))
+        pkg = state["packages"]["apps/web"]
+        pkg["consumer_pattern"] = {}
+        errors = _check_all_codeblocks(pkg, self.project_root)
+        rules = {e["rule"] for e in errors}
+        self.assertIn("consumer-pattern-malformed", rules)
+
+    def test_usage_example_corrupted_state_non_dict_rejected(self):
+        """Parallel hardening for usage_example."""
+        from _generate_docs._validators import _check_all_codeblocks
+
+        self._fill_minimum_for_consumer_pattern()
+        state = json.loads(self.state_file.read_text(encoding="utf-8"))
+        pkg = state["packages"]["apps/web"]
+        pkg["usage_example"] = "not a dict"
+        errors = _check_all_codeblocks(pkg, self.project_root)
+        rules = {e["rule"] for e in errors}
+        self.assertIn("usage-example-malformed", rules)
+
+    def test_none_consumer_pattern_does_not_emit_error(self):
+        """Counterpart sanity: None (the schema default) is the legitimate
+        "absent" signal and must NOT trigger the malformed-error path."""
+        from _generate_docs._validators import _check_all_codeblocks
+
+        self._fill_minimum_for_consumer_pattern()
+        state = json.loads(self.state_file.read_text(encoding="utf-8"))
+        pkg = state["packages"]["apps/web"]
+        self.assertIsNone(pkg["consumer_pattern"])
+        errors = _check_all_codeblocks(pkg, self.project_root)
+        rules = {e["rule"] for e in errors}
+        self.assertNotIn("consumer-pattern-malformed", rules)
+        self.assertNotIn("snippet-verbatim", rules)
+
+    def test_multi_package_isolation_does_not_mask_mismatch(self):
+        """Validate-package scopes to the named package: a sibling
+        package's clean state must not let the named package's
+        mismatch slip through."""
+        self._fill_minimum_for_consumer_pattern()
+        # Register a second, fully-valid package.
+        self._write_source("packages/shared/src/util.ts", ["x", "y", "z"])
+        self._run("add-package", "--path", "packages/shared", "--name", "shared")
+        self._run("set-package-overview",
+                  "--path", "packages/shared", "--text", "S.")
+        self._run("set-package-tree",
+                  "--path", "packages/shared", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "packages/shared", "--value", "ts")
+        self._run("add-package-export",
+                  "--path", "packages/shared", "--name", "g",
+                  "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts", "--code-snippet", "x\ny\nz",
+                  "--cite-file", "packages/shared/src/util.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-package-dep",
+                  "--path", "packages/shared", "--name", "lodash",
+                  "--kind", "external", "--version", "4",
+                  "--purpose", "Utils.")
+        # Now corrupt apps/web's consumer_pattern.
+        self._run("set-package-consumer-pattern",
+                  "--path", "apps/web", "--language", "ts",
+                  "--code-snippet",
+                  "line1\nline2\neither real\nline4",
+                  "--cite-file", "src/foo.ts",
+                  "--cite-start", "1", "--cite-end", "4")
+        # Validate apps/web — must FAIL.
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"snippet-verbatim", proc.stderr)
+        # Validate packages/shared — must PASS (sibling unaffected).
+        proc = self._run("validate-package", "--path", "packages/shared")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_validate_idempotent_on_mismatch(self):
+        """Repeated validate-package invocations on the same mismatched
+        state must produce the same error list. Anti-pattern #6 sanity."""
+        self._fill_minimum_for_consumer_pattern()
+        self._run("set-package-consumer-pattern",
+                  "--path", "apps/web", "--language", "ts",
+                  "--code-snippet",
+                  "line1\nline2\neither real\nline4",
+                  "--cite-file", "src/foo.ts",
+                  "--cite-start", "1", "--cite-end", "4")
+        proc1 = self._run("validate-package", "--path", "apps/web")
+        proc2 = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc1.returncode, 2)
+        self.assertEqual(proc1.returncode, proc2.returncode)
+        self.assertEqual(proc1.stderr, proc2.stderr)
 
 
 # ---------------------------------------------------------------------------

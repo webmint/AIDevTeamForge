@@ -1,6 +1,6 @@
 """Thin entry-point shim — see src/devforge/lib/_generate_docs/ for implementation.
 
-This file exists so the POSIX launcher (`src/devforge/lib/generate_docs`)
+This file exists so the POSIX launcher (`src/devforge/lib/generate_docs_helper`)
 continues to invoke a single Python file at a stable path, and so test
 code that does `import generate_docs_helper` continues to find the
 public API. All logic lives in the `_generate_docs` package alongside;
