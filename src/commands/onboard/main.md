@@ -4,6 +4,37 @@ You are running the onboarding process for an existing codebase. This command pr
 
 This command runs once after `/setup-wizard` for brownfield projects. Re-run when the codebase changes substantially; the pre-scan check (§1.0) protects user-edited docs across re-runs.
 
+---
+
+## ⚠️ ITERATION MODE — APP-WEB ONLY (TEMPORARY)
+
+**This override is in effect until removed.** The full multi-unit flow below is paused; this iteration validates output shape on a single unit before broader rollout.
+
+For this run, `/onboard` operates in single-unit verification mode:
+
+| Phase | Behavior |
+|---|---|
+| §1.0 Pre-scan baseline check | Run normally |
+| §1.1 Gather project knowledge | Run normally |
+| §1.2 Discover documentation units | **Override** — skip `packages[]` iteration. Hardcode unit = `apps/app-web` (path: `apps/app-web`, doc target: `docs/apps/app-web/index.md`). |
+| §1.3 Subagent strategy | **Override** — direct mode. No subagents. Orchestrator runs Pass 2A inline. |
+| Pass 2A (per-package) | Run **once** for `apps/app-web` only. Use the per-package subagent prompt as your own instruction set. |
+| Pass 2B (architecture) | **SKIPPED** — architecture observations need cross-package signal we won't have. |
+| Pass 2C (memory archaeology) | **SKIPPED** — cross-codebase pass; out of scope for single-unit verification. |
+| Pass 2D (compose-onboard) | **SKIPPED** — compose's per-package-coverage gate (gate 2.1) requires every detected package to have a registration. With 25+ unregistered packages, compose would reject. Instead: after Pass 2A registers content via `add-package-doc`, run `onboard_helper status` and report the registered content verbatim to the user for shape evaluation. |
+
+**Helper invocation in this mode:**
+
+1. `.devforge/lib/onboard_helper add-package-doc --unit app-web --path apps/app-web --content "..." --block-count N --ref-count N`
+2. `.devforge/lib/onboard_helper status`
+3. Read `.devforge/.onboard-state.json` and display the registered content to the user as a fenced markdown block. Do NOT invoke `compose-onboard`. Do NOT write to `docs/`.
+
+The user evaluates the registered content against their target shape and gives feedback. Iterate by re-invoking `add-package-doc` (re-registration overwrites) until shape is locked.
+
+**Removing this override:** when output shape is confirmed, delete this entire `## ⚠️ ITERATION MODE` section. The full Phase 1/Phase 2 flow below resumes unchanged.
+
+---
+
 ## CORE PRINCIPLE — COVER ALL CODE
 
 **Every package, every meaningful source folder, every external interface gets a documentation home.** No sample-based silence. No skipping at scale. No "we'll cluster these into one file" merges that drop substance.
