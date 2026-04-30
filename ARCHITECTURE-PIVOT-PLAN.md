@@ -2,7 +2,7 @@
 
 **Status**: approved 2026-04-30. Not yet started. Empirical validation complete.
 
-User-approved pivot from current `/setup-wizard` + `/onboard` + `/constitute` trio to a four-command sequence: `/init` → `/generate-docs` → `/configure` → `/constitute`. Detection moves from Phase 1 light-scan (in current setup-wizard) to onboard's deep scan (renamed `/generate-docs`).
+User-approved pivot from current `/setup-wizard` + `/onboard` + `/constitute` trio to a four-command sequence: `/init-forge` → `/generate-docs` → `/configure` → `/constitute`. Detection moves from Phase 1 light-scan (in current setup-wizard) to onboard's deep scan (renamed `/generate-docs`).
 
 ## Context for next session
 
@@ -43,11 +43,11 @@ Three caveats that need addressing:
 - Phase 1 detection (detect.md §4.1–§4.6) implemented and recently patched
 - Last work commit: `5e180f8` (detect: weaken §4.4 to manifest-dep-sufficient)
 
-The Q1–Q10 question logic transfers to `/configure` mostly unchanged. Phase 1's structural steps (workspace_mode, project_root, default_branch, project_state, packages_detected) transfer to `/init`. Phase 1's library/architecture/error-handling/runtime-url detection (§4.4–§4.6) is replaced by onboard-driven detection in `/configure`.
+The Q1–Q10 question logic transfers to `/configure` mostly unchanged. Phase 1's structural steps (workspace_mode, project_root, default_branch, project_state, packages_detected) transfer to `/init-forge`. Phase 1's library/architecture/error-handling/runtime-url detection (§4.4–§4.6) is replaced by onboard-driven detection in `/configure`.
 
 ## The 4-command sequence
 
-### `/init` — minimal structural bootstrap
+### `/init-forge` — minimal structural bootstrap
 
 Captures 5 fields. Bash-style fast. LLM only orchestrates.
 
@@ -59,7 +59,7 @@ Captures 5 fields. Bash-style fast. LLM only orchestrates.
 
 Side effect: installs framework files (`.devforge/`, `.claude/`, CLAUDE.md template, agent templates with `{{...}}` placeholders intact).
 
-Implemented as: `src/commands/init/main.md` + `src/commands/init/references/*.md` + extends `install.sh`.
+Implemented as: `src/commands/init-forge/main.md` + `src/commands/init-forge/references/*.md` + extends `install.sh`.
 
 ### `/generate-docs` — deep codebase scan
 
@@ -176,11 +176,11 @@ Pick one. (B) is simpler (no template change to onboard); (A) is more uniform (s
 
 **Verify**: for testForge20, `/configure` produces `runtime_url_value: https://okta.local.dev.dice-tools.com:8080` (matching the actual `vite.config.ts` `server.host` + `server.port` combination), not the framework-default `http://localhost:5173`.
 
-### Step 1: Write `/init` spec
+### Step 1: Write `/init-forge` spec
 
-Create `src/commands/init/main.md` + references. Carries over from current `detect.md` Steps 1–3 + the manifest-discovery part of Step 4.1 (just paths + filenames, no content). Wraps `install.sh` invocation for framework-file installation.
+Create `src/commands/init-forge/main.md` + references. Carries over from current `detect.md` Steps 1–3 + the manifest-discovery part of Step 4.1 (just paths + filenames, no content). Wraps `install.sh` invocation for framework-file installation.
 
-**Verify**: running `/init` on a fresh project produces the 5 structural fields in detection_report.yaml + installs `.devforge/`, `.claude/`, CLAUDE.md template, agent templates. No yaml fields beyond the 5 are populated. No questions beyond workspace_mode + project_root.
+**Verify**: running `/init-forge` on a fresh project produces the 5 structural fields in `.devforge/init.yaml` + installs `.devforge/`, `.claude/`, CLAUDE.md template, agent templates. No yaml fields beyond the 5 are populated. No questions beyond workspace_mode + project_root.
 
 ### Step 4: Write `/configure` spec
 
@@ -190,7 +190,7 @@ Create `src/commands/configure/main.md` + references. Combines:
 - Q1–Q12 transferred from current `src/commands/setup-wizard/references/questions.md`
 - Template substitution (replaces `{{...}}` placeholders with final values)
 
-**Verify**: running `/configure` on a project where `/init` + `/generate-docs` have completed produces a fully-populated detection_report.yaml + project-config.json + substituted CLAUDE.md and agent files. All Q1–Q12 user choices are captured. Templates have no remaining `{{...}}` markers.
+**Verify**: running `/configure` on a project where `/init-forge` + `/generate-docs` have completed produces a fully-populated detection_report.yaml + project-config.json + substituted CLAUDE.md and agent files. All Q1–Q12 user choices are captured. Templates have no remaining `{{...}}` markers.
 
 ### Step 5: Migrate Q1–Q12 INTENT (not implementation) from current questions.md to /configure
 
@@ -203,15 +203,15 @@ The Q1-Q12 work on `develop-2.0-setup-wizard` branch transfers in INTENT (which 
 
 ### Step 6: Update install.sh to orchestrate the chain
 
-`install.sh` chains `/init` → `/generate-docs` → `/configure` → `/constitute` for first-time installs. Each step can be re-run independently.
+`install.sh` chains `/init-forge` → `/generate-docs` → `/configure` → `/constitute` for first-time installs. Each step can be re-run independently.
 
 **Verify**: fresh-project install runs through all four commands cleanly, producing a fully-configured project. Re-running individual commands (e.g., `/generate-docs` after a code refactor) updates only their outputs.
 
 ### Step 7: Decommission old detect.md / setup-wizard
 
-Once `/init` + `/configure` cover the same ground:
+Once `/init-forge` + `/configure` cover the same ground:
 - Delete `src/commands/setup-wizard/` (or rename to `setup-wizard-OLD` until migration is complete)
-- detect.md content disperses: structural parts (Steps 1–3) → /init's references; library/architecture/error-handling/runtime-url detection (§4.4–§4.6) → /configure's references (with docs-source instead of grep-source)
+- detect.md content disperses: structural parts (Steps 1–3) → /init-forge's references; library/architecture/error-handling/runtime-url detection (§4.4–§4.6) → /configure's references (with docs-source instead of grep-source)
 - questions.md fully migrates to /configure's references
 
 **Verify**: no references to `/setup-wizard` remain in active code paths. Existing test data (testForge20, cse-strata-ws-forge) still produces correct outputs through the new sequence.
@@ -246,7 +246,7 @@ Schema details + helper API in memory `project_schema_anchored_constitute.md`.
 2. Read the experiment evidence at the experiment commit (TBD — this plan being saved is the marker)
 3. Read `project_4command_architecture_pivot.md` from `~/.claude/projects/.../memory/`
 4. Confirm test data still available: `ls /Users/mykolakudlyk/Projects/testForge20/.devforge/` and `ls /Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/docs/`
-5. Execute steps in order: Step 1 (write `/init` spec) → Step 2 (schema-anchor `/generate-docs`) → Step 3 (config-file capture decision) → Step 4 (write `/configure` spec) → Step 5 (migrate Q1–Q12) → Step 6 (install.sh chain) → Step 7 (decommission old setup-wizard) → Step 8 (schema-anchor /constitute). Each step independently testable; no need to bundle.
+5. Execute steps in order: Step 1 (write `/init-forge` spec) → Step 2 (schema-anchor `/generate-docs`) → Step 3 (config-file capture decision) → Step 4 (write `/configure` spec) → Step 5 (migrate Q1–Q12) → Step 6 (install.sh chain) → Step 7 (decommission old setup-wizard) → Step 8 (schema-anchor /constitute). Each step independently testable; no need to bundle.
 6. Use the iterative apply-verify loop established this session: instruction-author writes, instruction-reviewer + claude-code-guide verify in parallel, loop until clean
 7. Commit each step independently; don't bundle
 

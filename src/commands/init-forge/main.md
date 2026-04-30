@@ -1,13 +1,13 @@
 ---
-name: init
+name: init-forge
 description: Bootstrap project — captures structural fields, hands off to /generate-docs
 disable-model-invocation: true
 model: sonnet
 ---
 
-# /init — Project Bootstrap
+# /init-forge — Project Bootstrap
 
-`/init` captures five structural fields about the target project and persists them to `.devforge/init.yaml` via the `.devforge/lib/init_helper` setter helpers. It performs no classification — no language inference, no framework detection, no library categorization, no architectural shape inference. Those fields stay at their helper-default empty values; later commands populate them.
+`/init-forge` captures five structural fields about the target project and persists them to `.devforge/init.yaml` via the `.devforge/lib/init_helper` setter helpers. It performs no classification — no language inference, no framework detection, no library categorization, no architectural shape inference. Those fields stay at their helper-default empty values; later commands populate them.
 
 ## Outputs of this phase
 
@@ -64,7 +64,7 @@ Use AskUserQuestion (replace each `<folder-N>` with the corresponding path from 
 
 If the user picks `<folder-N>`, invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <folder-N>`. If the user picks `None of these`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <answer>`.
 
-**Multi-root rejection:** If a free-text answer in this substep names more than one folder (e.g., separated by `and`, `&`, or a comma between path-like tokens — illustrative, not exhaustive; lean toward triggering when ambiguous, since a false-positive costs one re-prompt while a false-negative corrupts `project_root`), reply in first person: "I noticed your answer names more than one folder. Multi-root coordination across nested repos isn't supported — please name a single primary source root." Then re-issue the same free-text prompt: "Which folder contains the client's source code?". Allow up to 2 retries (3 total attempts). After the third invalid answer, extract the first folder from the most recent answer by splitting on the same multi-root separators (`and`, `&`, comma, whitespace between path-like tokens) and taking the leading non-empty token (strip a trailing slash if present). Warn the user ("I'll proceed with `<first-folder>`; re-run `/init` if that's wrong"), then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <first-folder>`.
+**Multi-root rejection:** If a free-text answer in this substep names more than one folder (e.g., separated by `and`, `&`, or a comma between path-like tokens — illustrative, not exhaustive; lean toward triggering when ambiguous, since a false-positive costs one re-prompt while a false-negative corrupts `project_root`), reply in first person: "I noticed your answer names more than one folder. Multi-root coordination across nested repos isn't supported — please name a single primary source root." Then re-issue the same free-text prompt: "Which folder contains the client's source code?". Allow up to 2 retries (3 total attempts). After the third invalid answer, extract the first folder from the most recent answer by splitting on the same multi-root separators (`and`, `&`, comma, whitespace between path-like tokens) and taking the leading non-empty token (strip a trailing slash if present). Warn the user ("I'll proceed with `<first-folder>`; re-run `/init-forge` if that's wrong"), then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <first-folder>`.
 
 ## Step 2: Project State Classification
 
@@ -107,4 +107,4 @@ For each manifest, invoke `.devforge/lib/init_helper add-package --path <package
 
 ## Closing
 
-`/init` is complete; the five fields are persisted in `.devforge/init.yaml`. Tell the user: "Run `/generate-docs` next."
+`/init-forge` is complete; the five fields are persisted in `.devforge/init.yaml`. Tell the user: "Run `/generate-docs` next."

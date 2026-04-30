@@ -141,4 +141,4 @@ cp "$TEMPLATE_DIR/src/settings.template.json" "$TARGET_DIR/.claude/settings.json
 
 echo ""
 echo "Done. AIDevTeamForge installed."
-echo "Next — open the project and run /setup-wizard in Claude Code."
+echo "Next — open the project and run /init-forge in Claude Code."

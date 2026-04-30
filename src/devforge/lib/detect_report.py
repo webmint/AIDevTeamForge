@@ -2,7 +2,7 @@
 
 DEPRECATED — candidate for removal. This helper served the legacy
 `/setup-wizard` flow. The architecture pivot replaces it with per-command
-helpers (`init_helper` for `/init`, future helpers for `/configure`,
+helpers (`init_helper` for `/init-forge`, future helpers for `/configure`,
 `/generate-docs`, `/constitute`). Do not extend this file; new work goes to
 the per-command helpers. Removal happens when `/setup-wizard` is decommissioned
 (see `ARCHITECTURE-PIVOT-PLAN.md` Step 7).

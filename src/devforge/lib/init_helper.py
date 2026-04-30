@@ -1,9 +1,9 @@
-"""init_helper — composes the bootstrap state file for /init.
+"""init_helper — composes the bootstrap state file for /init-forge.
 
 Owns the shape of `.devforge/init.yaml`: 5 fields, no classification, no
-inference. `/init` is the first command in the 4-command pivot (init →
-generate-docs → configure → constitute); later commands persist their
-output to their own helpers' state files.
+inference. `/init-forge` is the first command in the 4-command pivot
+(init-forge → generate-docs → configure → constitute); later commands
+persist their output to their own helpers' state files.
 
 Architecture notes:
 
@@ -65,7 +65,7 @@ ENUM_FIELDS = {
 }
 
 # Built-in skip list for find-nested-git. Mirrors detect_report's set
-# verbatim so /init and the legacy wizard agree on which dirs to ignore.
+# verbatim so /init-forge and the legacy wizard agree on which dirs to ignore.
 NESTED_GIT_SKIP = {
     "node_modules",
     "target",
@@ -618,7 +618,7 @@ def cmd_find_nested_git(args):
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="init_helper",
-        description="Compose the bootstrap state file for /init.",
+        description="Compose the bootstrap state file for /init-forge.",
     )
     subparsers = parser.add_subparsers(dest="subcommand")
 
