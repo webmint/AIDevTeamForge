@@ -23,7 +23,7 @@ For this run, `/generate-docs` operates in single-package verification mode:
 | Phase 0 — Pre-flight | Run normally |
 | Phase 1 — Discover the assigned package | **Override** — package is hardcoded to `db-cse-ui-strata/apps/app-web`. Skip the multi-package iteration loop that the full flow would run. |
 | Phase 2 — Register package + extract scripts | Run normally for the single package |
-| Phase 3 — Render skeleton, fill slots inline (orchestrator-direct) | Run **once** for `db-cse-ui-strata/apps/app-web` only; no tech-writer subagent dispatch (A/B option B) |
+| Phase 3 — Render skeleton, fill slots inline (orchestrator-direct), then fan out concern-tier subagents | Run **once** for `db-cse-ui-strata/apps/app-web` only; orchestrator fills the package doc inline (A/B option B), then dispatches one `concern-slot-filler` subagent per substantive subfolder under `src/`. The run produces 1 package doc plus N concern docs (not a single-doc output). |
 | Phase 4 — Verify the produced doc | Run normally |
 | Phase 5 — Report | Run normally; explicitly note iteration scope |
 
@@ -121,15 +121,37 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
 
 6. **Source-reading discipline**: read public-API-relevant files first (`src/composables/`, `src/helpers/`, `src/router/index.ts`, `src/main.ts`, `src/App.vue`, `src/types/`); only descend into implementation if a public symbol's signature is unclear. The package has ~900 source files; a thorough reading is impractical and unnecessary. Focus on boundary surface.
 
-7. **Run `validate-package`**: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. On failure, read the structured error list (each error has `rule` / `field` / `message` / optional `diff`); fix the offending registration(s) by re-invoking the corresponding setter (re-registration overwrites for `set-*` setters; for `add-*` setters that reject duplicates, you must `reset` and re-fill OR surface the issue to the user). Cap retries at 3.
+7. **Run `validate-package`**: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. On failure, read the structured error list (each error has `rule` / `field` / `message` / optional `diff`). Fix package-tier registration errors by re-invoking the corresponding setter (re-registration overwrites for `set-*` setters; for `add-*` setters that reject duplicates, you must `reset` and re-fill OR surface the issue to the user). **Decomposition errors (`rule: decomposition`) are NOT setter-fixable at this step** — they identify substantive subfolders that need their own concern registration, and the concern fan-out in steps 9–13 below is the only sanctioned fix. Treat decomposition errors as expected at this step: if the only outstanding errors carry `rule: decomposition`, proceed to step 8 anyway (the package-tier registration is complete; the gate finalizes after concerns register). Cap retries on non-decomposition errors at 3.
 
-8. **On `validate-package` pass**: invoke `render-package-doc` (renames `.skeleton` → `.md`).
+8. **Invoke `render-package-doc`**: `.devforge/lib/generate_docs_helper render-package-doc --path db-cse-ui-strata/apps/app-web` (renames `.skeleton` → `.md`). Both arrival paths into this step are valid: (a) step 7's retry loop produced a clean exit-0 `validate-package`, OR (b) step 7 routed here via the decomposition-error special case (only `rule: decomposition` errors outstanding — package-tier registration is complete and `render-package-doc` is correct to invoke without a clean validate exit). Do NOT re-run `validate-package` here; step 9 below is the next validate invocation, and it serves a different purpose (harvesting the decomposition error list).
 
-9. **Out of scope** (do NOT invoke):
-   - Concern-tier subcommands (Phase 3 of `GENERATE-DOCS-PLAN.md`, not yet implemented)
-   - Architecture-tier subcommands (Phase 4 of plan, not yet implemented)
-   - Memory archaeology subcommands (Phase 5 of plan, not yet implemented)
+9. **Re-run `validate-package` to surface the decomposition gate's findings**: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. After step 8, `validate-package` runs `_check_decomposition` and reports each substantive subfolder under `db-cse-ui-strata/apps/app-web/src/` that has no registered concern. Each `decomposition` error in the structured error list names ONE missing concern (subfolder basename = concern name; relative path under `src/` = the concern's source root). Capture stdout/stderr; the structured error list drives the next step.
+
+10. **Build the concern worklist** from the decomposition errors. Each entry is the triple `(package_path, concern_name, subfolder)`:
+    - `package_path` is `db-cse-ui-strata/apps/app-web` (iteration-mode hardcoded)
+    - `concern_name` is the substantive subfolder's basename (e.g., `components`, `composables`, `helpers`)
+    - `subfolder` is the relative path under `<package_path>/` reported in the decomposition error (e.g., `src/components`)
+
+    If the decomposition gate reports zero `decomposition` errors after step 8, skip steps 11–12 and proceed to step 13. (Zero substantive subfolders means there are no concerns to fan out.)
+
+11. **Dispatch one `concern-slot-filler` subagent per worklist entry, IN A SINGLE ASSISTANT MESSAGE**. Use Claude Code's parallel-tool-call mechanism: emit N `Agent` tool calls in the same message so they run concurrently. Each call uses `subagent_type: concern-slot-filler` with an inline prompt that supplies the four required inputs the agent expects (see `.claude/agents/concern-slot-filler.md`):
+    - `package_path: db-cse-ui-strata/apps/app-web`
+    - `concern_name: <basename>`
+    - `subfolder: <relative path under package_path>`
+    - `mode: fresh` if Phase 0 routed via Reset (or no prior state existed), `mode: resume` if Phase 0 routed via Resume
+
+    **Resume-mode propagation is mandatory, not a hint.** If Phase 0 routed via Resume, every dispatched `concern-slot-filler` call MUST receive `mode: resume` so the subagent honors the slot-skip contract for any concern state already persisted. Mixing modes across concerns in one fan-out is forbidden — all-fresh or all-resume per run.
+
+12. **Collect the per-concern reports.** Each subagent returns a single JSON line `{"concern": "<name>", "status": "ok|failed", "exports": <n>, "deps": <n>, "hazards": <n>, "errors": [...]}` plus a 2-3 sentence prose summary. Aggregate the JSON lines into a per-concern table for the Phase 5 report. If any concern reports `status: failed`, surface the error list to the user before proceeding to step 13 — do NOT silently ignore concern failures.
+
+13. **Re-run `validate-package` once more** to confirm the decomposition gate now passes: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. Every substantive subfolder identified in step 9 should now have a registered concern; the gate should emit zero `decomposition` errors. If decomposition errors remain, the fan-out missed entries (subagents failed and produced no concern state, or the worklist was incomplete) — surface to the user and ABORT before Phase 4.
+
+14. **Out of scope** (do NOT invoke):
+   - Architecture-tier subcommands (not part of Phase 3.2)
+   - Memory archaeology subcommands (not part of Phase 3.2)
+   - Multi-package iteration (the package loop is paused under the `## ⚠️ ITERATION MODE` section)
    - Modifying source files (read-only access to source)
+   - Modifying the package-tier doc produced in step 8 (it stays as Phase 3.1 left it)
 
 ## Phase 4 — Verify the produced doc
 
@@ -150,5 +172,14 @@ After the user has the doc in front of them, print a summary:
 - **Hazards**: <count>
 - **Citations**: <count> (verified against source: <verified-count>, from `validate-package`'s structured output)
 - **Final doc**: `docs/db-cse-ui-strata/apps/app-web/index.md`
+- **Concerns processed**: <count> (from step 12's per-concern aggregation)
+- **Per-concern summary** (from step 12's collected JSON lines):
+
+  | Concern | Status | Exports | Deps | Hazards |
+  |---------|--------|---------|------|---------|
+  | <name>  | ok / failed | <n> | <n> | <n> |
+  | …       | …      | …       | …    | …       |
+
+  Concern docs are at `docs/db-cse-ui-strata/apps/app-web/<concern_name>/index.md`. If any row is `failed`, the corresponding concern doc is missing — surface those rows distinctly so the user can decide whether to retry the failed concerns.
 
 Tell the user: "This is single-package iteration; multi-package flow is paused under the `## ⚠️ ITERATION MODE` section of `/generate-docs`. Re-run after the iteration plan unlocks multi-package scope."
