@@ -4,8 +4,7 @@ Reads `.devforge/init.yaml` (the bootstrap state file produced by
 /init-forge) and builds two artifacts:
 
 - `<DEVFORGE_DIR>/index.json` — machine-readable, per-package structural
-  data: file listings (capped at 500), manifest scripts + dependencies,
-  language tag.
+  data: file listings (capped at 500), manifest scripts + dependencies.
 - `<install_root>/docs/structure.md` — human-readable workspace map.
   In wrapper mode, install_root != project_root; structure.md lives at
   install_root (alongside .devforge/) per the wrapper-mode artifact
@@ -680,17 +679,20 @@ def _utc_iso_now():
     return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _build_package_record(pkg_path, pkg_dir, language):
+def _build_package_record(pkg_path, pkg_dir):
     """Compose the per-package index record.
 
     `pkg_path` is the relative path from the project root (matches the
     `init.yaml` `packages_detected[].path` value). `pkg_dir` is the
-    absolute filesystem path. `language` is the per-package language tag
-    from init.yaml (we don't redo detection here — init-forge already did).
+    absolute filesystem path.
+
+    No `language` field: init-forge today doesn't capture per-package
+    language, and /generate-docs's Phase 1 does its own per-package
+    language detection from manifest + tsconfig signals. Adding a
+    placeholder field here was YAGNI — removed.
     """
     record = {
         "name": Path(pkg_path).name or pkg_path,
-        "language": language,
         "manifest_file": None,
         "manifest_parse_skipped": False,
         "scripts": {},
@@ -727,21 +729,6 @@ def _build_package_record(pkg_path, pkg_dir, language):
     return record
 
 
-def _resolve_package_language(init_state, pkg_path):
-    """Return the per-package language tag from init.yaml.
-
-    `init.yaml`'s `packages_detected[]` schema today has only `path`
-    and `manifest`. The package-level `language` field is a planned
-    addition during the broader pivot. Until it lands, we return
-    `"unknown"` — the field exists on the index record so downstream
-    consumers don't have to handle two shapes.
-    """
-    for record in init_state.get("packages_detected", []) or []:
-        if record.get("path") == pkg_path:
-            return record.get("language", "unknown")
-    return "unknown"
-
-
 def _render_structure_md(index, generated_at):
     """Render the human-readable workspace map as Markdown.
 
@@ -754,9 +741,9 @@ def _render_structure_md(index, generated_at):
 
         ## Packages
 
-        | Package | Language | Manifest | Files | Scripts | Manifest deps |
-        |---|---|---|---|---|---|
-        | <path> | <lang> | <manifest|none> | <count> | <count> | <count> |
+        | Package | Manifest | Files | Scripts | Manifest deps |
+        |---|---|---|---|---|
+        | <path> | <manifest|none> | <count> | <count> | <count> |
     """
     lines = []
     lines.append("# Workspace Structure")
@@ -768,9 +755,9 @@ def _render_structure_md(index, generated_at):
     lines.append("## Packages")
     lines.append("")
     lines.append(
-        "| Package | Language | Manifest | Files | Scripts | Manifest deps |"
+        "| Package | Manifest | Files | Scripts | Manifest deps |"
     )
-    lines.append("|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|")
     packages = index.get("packages", {})
     for pkg_path in sorted(packages.keys()):
         rec = packages[pkg_path]
@@ -781,9 +768,8 @@ def _render_structure_md(index, generated_at):
         else:
             file_count_cell = str(file_count)
         lines.append(
-            "| {0} | {1} | {2} | {3} | {4} | {5} |".format(
+            "| {0} | {1} | {2} | {3} | {4} |".format(
                 pkg_path,
-                rec.get("language", "unknown"),
                 manifest_cell,
                 file_count_cell,
                 len(rec.get("scripts", {})),
@@ -872,10 +858,7 @@ def cmd_build_index(args):
             )
             continue
         pkg_dir = (project_root / pkg_path).resolve() if pkg_path != "." else project_root.resolve()
-        language = _resolve_package_language(init_state, pkg_path)
-        index["packages"][pkg_path] = _build_package_record(
-            pkg_path, pkg_dir, language,
-        )
+        index["packages"][pkg_path] = _build_package_record(pkg_path, pkg_dir)
 
     # Write index.json.
     index_path = devforge_dir / INDEX_FILE_NAME
