@@ -15,6 +15,8 @@ disable-model-invocation: true
 - `project_state` — codebase maturity: `empty` or `brownfield`
 - `default_branch` — git default branch name (e.g., `main`)
 - `packages_detected` — array of per-package records: `{ path, manifest }`; `path` is the package folder relative to project root (or `.` for projects without distinct packages); empty `[]` for projects without manifests
+- `.devforge/index.json` — machine-readable per-package structural index (file listings, manifest scripts, manifest deps); produced by Step 6's `build-index`
+- `docs/structure.md` — human-readable workspace map; produced by Step 6's `build-index`
 
 ## Preflight — Reset helper state
 
@@ -110,6 +112,35 @@ Renders the persisted state from `.devforge/init.yaml` so the user can verify th
 
 Invoke `.devforge/lib/init_helper summary`. The helper reads `.devforge/init.yaml` and prints a deterministic, human-readable report to stdout. After the helper runs, copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
 
+## Step 6: Build the structural index
+
+After `init.yaml` is fully populated (all five fields set + `packages_detected[]` populated), invoke `index_helper build-index` to produce two artifacts the downstream commands rely on:
+
+```bash
+.devforge/lib/index_helper build-index
+```
+
+Exit code 0 is required. The helper:
+
+- Reads `.devforge/init.yaml` to get the workspace package list
+- For each package, walks the source tree (capped at 500 files), reads the package manifest (`package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod` / `pom.xml` / `build.gradle` / `*.csproj` / `composer.json` / `Gemfile` / `requirements.txt`), extracts manifest scripts + manifest dependencies
+- Writes `.devforge/index.json` (machine-readable per-package structural data) and `docs/structure.md` (human-readable workspace map)
+
+Both writes are atomic. Re-running `build-index` is idempotent: byte-identical output across re-runs on stable input (modulo the `generated_at` timestamp).
+
+If the helper exits non-zero, surface the stderr to the user and stop — `/init-forge` is incomplete without the index. The error is most likely one of:
+
+- `.devforge/init.yaml` is missing or malformed → re-run `/init-forge` from the start
+- A `packages_detected[]` entry points at a path that no longer exists → user reconciles, then retries
+- A package's manifest file is malformed (e.g., invalid JSON in `package.json`) → the helper emits `"manifest_parse_skipped": true` for that package and continues; not a hard failure
+
+Verify both artifacts landed:
+
+```bash
+test -f .devforge/index.json && echo "index.json exists" || echo "MISSING"
+test -f docs/structure.md && echo "structure.md exists" || echo "MISSING"
+```
+
 ## Closing
 
-`/init-forge` is complete; the five fields are persisted in `.devforge/init.yaml`. Tell the user: "Run `/generate-docs` next."
+`/init-forge` is complete. The five structural fields are persisted in `.devforge/init.yaml`, and the structural index is materialized at `.devforge/index.json` + `docs/structure.md`. Tell the user: "Run `/generate-docs` next."
