@@ -730,5 +730,85 @@ class PerformanceTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertLess(elapsed, 5.0, "build-index took {0:.2f}s".format(elapsed))
 
 
+# ---------------------------------------------------------------------------
+# Wrapper-mode artifact-path regression test.
+#
+# In wrapper mode, project_root from init.yaml points at an inner workspace
+# directory. Per CLAUDE.md's wrapper-mode convention, all artifacts (specs/,
+# docs/, constitution.md) live at the install root (alongside .devforge/),
+# NOT inside project_root. This test pins that behavior for structure.md.
+# Regression for a 2026-05-01 bug where structure.md was written under
+# project_root instead of install_root.
+# ---------------------------------------------------------------------------
+
+
+class WrapperModeArtifactPathTests(_EnvIsolationMixin, unittest.TestCase):
+    def test_structure_md_lands_at_install_root_not_project_root(self):
+        # Layout simulating wrapper mode:
+        #   <install_root>/.devforge/                  <- DEVFORGE_DIR
+        #   <install_root>/inner-workspace/            <- project_root
+        #   <install_root>/inner-workspace/apps/web/   <- a package
+        #   <install_root>/docs/structure.md           <- where it MUST land
+        #   <install_root>/inner-workspace/docs/...    <- where it MUST NOT land
+        inner = self.project_root / "inner-workspace"
+        inner.mkdir()
+        pkg = inner / "apps" / "web"
+        pkg.mkdir(parents=True)
+        (pkg / "package.json").write_text(
+            '{"name": "web", "scripts": {"dev": "vite"}}',
+            encoding="utf-8",
+        )
+
+        # Seed init.yaml in wrapper mode with project_root pointing at inner.
+        proc = _run_init(self.devforge_dir, "reset")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_init(
+            self.devforge_dir, "set-workspace-mode", "wrapper",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_init(
+            self.devforge_dir, "set-project-root", "inner-workspace",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_init(
+            self.devforge_dir, "set-project-state", "brownfield",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_init(
+            self.devforge_dir, "set-default-branch", "main",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_init(
+            self.devforge_dir, "add-package",
+            "--path", "apps/web",
+            "--manifest", "package.json",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        proc = _run_index(self.devforge_dir, "build-index")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # structure.md MUST land at <install_root>/docs/structure.md.
+        install_root_structure = (
+            self.project_root / index_helper.STRUCTURE_DOC_REL
+        )
+        self.assertTrue(
+            install_root_structure.exists(),
+            "structure.md missing at install_root: {0}".format(
+                install_root_structure
+            ),
+        )
+        # And MUST NOT land under project_root (the inner workspace).
+        project_root_structure = inner / index_helper.STRUCTURE_DOC_REL
+        self.assertFalse(
+            project_root_structure.exists(),
+            "structure.md leaked into project_root: {0}".format(
+                project_root_structure
+            ),
+        )
+        # index.json always at <install_root>/.devforge/ (sanity).
+        self.assertTrue(self.index_path.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

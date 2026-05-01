@@ -6,7 +6,10 @@ Reads `.devforge/init.yaml` (the bootstrap state file produced by
 - `<DEVFORGE_DIR>/index.json` — machine-readable, per-package structural
   data: file listings (capped at 500), manifest scripts + dependencies,
   language tag.
-- `<project_root>/docs/structure.md` — human-readable workspace map
+- `<install_root>/docs/structure.md` — human-readable workspace map.
+  In wrapper mode, install_root != project_root; structure.md lives at
+  install_root (alongside .devforge/) per the wrapper-mode artifact
+  convention from CLAUDE.md.
   rendered from the same data.
 
 NO source-derived data (NO exports, NO type extraction, NO import
@@ -887,8 +890,14 @@ def cmd_build_index(args):
             code=1,
         )
 
-    # Write docs/structure.md.
-    structure_path = project_root / STRUCTURE_DOC_REL
+    # Write docs/structure.md at the INSTALL root (the wrapper root), NOT
+    # inside project_root. In wrapper mode, project_root points at the inner
+    # workspace, but per CLAUDE.md's wrapper-mode convention all artifacts
+    # (specs/, docs/, constitution.md) live at the install root alongside
+    # .devforge/. Using install_root here keeps the location consistent
+    # across standalone and wrapper modes.
+    install_root = _devforge_dir().parent
+    structure_path = install_root / STRUCTURE_DOC_REL
     try:
         _atomic_write(structure_path, _render_structure_md(index, generated_at))
     except OSError as err:
