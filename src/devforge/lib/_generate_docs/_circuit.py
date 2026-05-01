@@ -1,0 +1,380 @@
+"""Helper-side circuit breaker for the generate_docs helper.
+
+Reads the per-invocation trace log (`<DEVFORGE_DIR>/.generate-docs-trace.log`,
+written by `_trace.py`) as its signal source and refuses to proceed when
+one of three failure modes trips. Hook point: `_cli.main()`, AFTER
+argparse and BEFORE handler dispatch. A tripped breaker aborts the
+invocation entirely with exit code 3 and a clear stderr message.
+
+The three breakers
+==================
+
+1. **Doom loop**: same subcommand returning exit 2 for N consecutive
+   trace entries with no successful invocation in between. Default
+   N=3. Catches LLMs retrying the same broken command identically.
+2. **Invocation budget**: total trace lines in the current run exceeds
+   N. Default N=500. Catches runaway loops; a typical /generate-docs
+   produces 100-200 helper calls, so 500 is a permissive ceiling.
+3. **Wall-clock budget**: time delta from the run-start trace line to
+   "now" exceeds N seconds. Default N=3600 (60 min). Catches
+   truly-stuck runs.
+
+"Current run" window
+====================
+
+The current run is the trailing portion of the trace file starting at
+(inclusive) the most-recent `subcommand=reset` entry, OR the entire
+trace file if no reset entry is present. `reset` clears state for a
+fresh /generate-docs attempt; the breaker honors that boundary so a
+failed prior run doesn't prevent a clean retry.
+
+Configuration
+=============
+
+Defaults are module-level constants. Each can be overridden via
+environment variable (parsed lazily at check time, so per-test env
+isolation works):
+
+- `DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD`        (default 3)
+- `DEVFORGE_CIRCUIT_INVOCATION_BUDGET`          (default 500)
+- `DEVFORGE_CIRCUIT_WALL_CLOCK_BUDGET_SECONDS`  (default 3600)
+
+Master kill-switch:
+
+- `DEVFORGE_DISABLE_CIRCUIT_BREAKER=1`  → all breakers skipped.
+
+Fail-open policy
+================
+
+Every breaker is wrapped in try/except so one breaker's failure cannot
+disable the others. Top-level `check_circuit_breakers` is wrapped too:
+on ANY internal error (OSError reading trace, malformed JSON in trace
+lines, unexpected exception in breaker logic), the function logs a
+warning to stderr and returns None — the helper invocation proceeds.
+Breakers are best-effort safety, not core function; they MUST NOT
+block legitimate work due to their own bugs.
+
+Performance
+===========
+
+The check reads only the last `TRACE_TAIL_READ_LINES` lines (default
+100) of the trace file. For wall-clock evaluation, when no `reset` is
+found in the tail, the breaker reads from the start of the file (we
+need the run-start `ts`); files larger than the tail-read window are
+the only case where the full file is scanned. In practice trace files
+are <500 lines per run, so the tail-read covers the whole file.
+
+Stdlib only. Targets Python 3.8+.
+"""
+
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from typing import List, Optional, Tuple
+
+from ._trace import _trace_file_path
+
+# ---------------------------------------------------------------------------
+# Defaults — overridable via env var per-call (read at check time, not
+# import time, so per-test isolation works).
+# ---------------------------------------------------------------------------
+
+DOOM_LOOP_THRESHOLD = 3
+INVOCATION_BUDGET = 500
+WALL_CLOCK_BUDGET_SECONDS = 3600
+TRACE_TAIL_READ_LINES = 100
+
+_ENV_DOOM = "DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD"
+_ENV_INVOCATION = "DEVFORGE_CIRCUIT_INVOCATION_BUDGET"
+_ENV_WALL_CLOCK = "DEVFORGE_CIRCUIT_WALL_CLOCK_BUDGET_SECONDS"
+_ENV_DISABLE = "DEVFORGE_DISABLE_CIRCUIT_BREAKER"
+
+
+def _env_int(key: str, default: int) -> int:
+    """Read an int env override; fall back to default on missing/malformed.
+
+    Defensive: a malformed env value (non-int) silently falls back to
+    the default rather than crashing. The breaker is best-effort; an
+    operator who set the env var wrong should not break the helper.
+    """
+    raw = os.environ.get(key)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _is_disabled() -> bool:
+    """Master bypass: any non-empty, non-"0", non-"false" value disables."""
+    raw = os.environ.get(_ENV_DISABLE, "")
+    if not raw:
+        return False
+    return raw.lower() not in ("0", "false", "no", "off")
+
+
+# ---------------------------------------------------------------------------
+# Trace reading utilities.
+# ---------------------------------------------------------------------------
+
+
+def _read_trace_tail(n: int) -> List[str]:
+    """Return the last `n` non-empty lines of the trace file, in order.
+
+    Returns [] if the file does not exist or is empty. Reads the whole
+    file when it has <= n lines; otherwise reads from the end. We use
+    a simple read-and-tail-slice approach because trace files are
+    small (KBs to low MBs) and the simplicity beats a true seek-based
+    tail-read for this size class.
+
+    OSError propagates — the caller wraps it in fail-open handling.
+    """
+    path = _trace_file_path()
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    if not text:
+        return []
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    if len(lines) <= n:
+        return lines
+    return lines[-n:]
+
+
+def _read_full_trace() -> List[str]:
+    """Return ALL non-empty lines of the trace file, in order.
+
+    Used when we need the run-start anchor and it's not in the tail.
+    OSError propagates — caller's fail-open wrapper catches it.
+    """
+    path = _trace_file_path()
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8")
+    if not text:
+        return []
+    return [ln for ln in text.split("\n") if ln.strip()]
+
+
+def _parse_trace_line(line: str) -> Optional[dict]:
+    """Parse one trace line; return None on malformed JSON.
+
+    The trace file is append-only across processes and a partial-write
+    crash could in principle leave a corrupt tail. We treat any
+    malformed line as "absent" rather than crashing the breaker.
+    """
+    try:
+        rec = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(rec, dict):
+        return None
+    return rec
+
+
+def _scope_to_current_run(records: List[dict]) -> List[dict]:
+    """Trim `records` to the current run (most-recent reset onward).
+
+    Scans backwards. The reset entry itself is included as the first
+    record of the run (it's the run-start anchor). If no reset is
+    found, returns the input unchanged.
+    """
+    for i in range(len(records) - 1, -1, -1):
+        if records[i].get("subcommand") == "reset":
+            return records[i:]
+    return records
+
+
+# ---------------------------------------------------------------------------
+# Individual breakers. Each takes the current-run records list and the
+# current subcommand; returns Optional[str] (None = clean, str = trip
+# message). Each is wrapped in its own try/except by the top-level
+# orchestrator so one breaker's bug cannot disable the others.
+# ---------------------------------------------------------------------------
+
+
+def _check_doom_loop(records: List[dict], current_subcommand: str) -> Optional[str]:
+    """Trip if the last N records are all (same subcommand, exit 2).
+
+    "Same subcommand" matches across all N records (not "matches the
+    current invocation's subcommand") — what we're detecting is a
+    same-call-repeating-itself pattern in history. The current
+    invocation hasn't traced yet, so it's not part of the count.
+    """
+    threshold = _env_int(_ENV_DOOM, DOOM_LOOP_THRESHOLD)
+    if threshold <= 0 or len(records) < threshold:
+        return None
+    tail = records[-threshold:]
+    first_sub = tail[0].get("subcommand")
+    if not first_sub:
+        return None
+    for rec in tail:
+        if rec.get("subcommand") != first_sub:
+            return None
+        if rec.get("exit_code") != 2:
+            return None
+    return (
+        "circuit-breaker: doom loop detected — '{0}' has returned exit 2 "
+        "{1} times consecutively. Aborting before retry. Inspect trace "
+        "log at {2} and resolve the underlying error."
+    ).format(first_sub, threshold, _trace_file_path())
+
+
+def _check_invocation_budget(records: List[dict], current_subcommand: str) -> Optional[str]:
+    """Trip if the current run has more than INVOCATION_BUDGET records."""
+    budget = _env_int(_ENV_INVOCATION, INVOCATION_BUDGET)
+    if budget <= 0:
+        return None
+    count = len(records)
+    if count <= budget:
+        return None
+    return (
+        "circuit-breaker: invocation budget exceeded — current run has "
+        "reached {0} helper invocations (limit: {1}). Aborting. Run "
+        "/generate-docs again with reset if you want a fresh attempt, "
+        "or investigate why so many calls were needed."
+    ).format(count, budget)
+
+
+def _check_wall_clock(records: List[dict], current_subcommand: str) -> Optional[str]:
+    """Trip if the run-start ts is more than the budget seconds in the past.
+
+    The run-start `ts` is the FIRST record's timestamp (which is either
+    the most-recent reset entry, or the first trace line if no reset
+    is present). Both cases are handled by `_scope_to_current_run`
+    upstream.
+    """
+    budget = _env_int(_ENV_WALL_CLOCK, WALL_CLOCK_BUDGET_SECONDS)
+    if budget <= 0 or not records:
+        return None
+    first_ts = records[0].get("ts")
+    if not isinstance(first_ts, str) or not first_ts:
+        return None
+    start = _parse_trace_ts(first_ts)
+    if start is None:
+        return None
+    now = datetime.now(timezone.utc)
+    delta_seconds = (now - start).total_seconds()
+    if delta_seconds <= budget:
+        return None
+    minutes = int(delta_seconds // 60)
+    return (
+        "circuit-breaker: wall-clock budget exceeded — current run "
+        "started {0} minutes ago (limit: {1}). Aborting."
+    ).format(minutes, budget // 60)
+
+
+def _parse_trace_ts(ts: str) -> Optional[datetime]:
+    """Parse the trace `ts` field (ISO 8601 with `Z`) → tz-aware datetime.
+
+    Trace timestamps end with `Z` per `_trace._utc_iso_ms`. Python 3.8's
+    `datetime.fromisoformat` does NOT accept `Z`, so we rewrite to the
+    `+00:00` form before parsing. Returns None on any parse failure
+    (caller treats as "no usable anchor → no trip").
+    """
+    try:
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
+        return datetime.fromisoformat(ts)
+    except (ValueError, TypeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Public entry point.
+# ---------------------------------------------------------------------------
+
+
+_BREAKERS = (
+    ("doom_loop", _check_doom_loop),
+    ("invocation_budget", _check_invocation_budget),
+    ("wall_clock", _check_wall_clock),
+)
+
+
+def _emit_warning(message: str) -> None:
+    """Best-effort stderr warning; swallows any further failure."""
+    try:
+        sys.stderr.write("circuit-breaker: skipped due to internal error: " + message + "\n")
+    except Exception:
+        pass
+
+
+def check_circuit_breakers(current_subcommand: str) -> Optional[str]:
+    """Evaluate all breakers against the trace log scoped to current run.
+
+    Returns None if no breaker tripped. Returns a stderr-ready string
+    describing the trip if one tripped.
+
+    Defensive: any internal error logs a warning and returns None
+    (fail-open). Honors `DEVFORGE_DISABLE_CIRCUIT_BREAKER` env var as
+    master kill-switch.
+
+    A tripped breaker does NOT itself produce a trace line — the
+    invocation is aborted before the trace-write step runs. This is
+    intentional: the trip message on stderr is the audit trail, and
+    re-running the helper to re-evaluate would either trip again
+    (still in doom-loop / over budget) or have been bypassed.
+    """
+    if _is_disabled():
+        return None
+    try:
+        # Read tail; scope to current run; if scoped run hits the very
+        # start of the tail (no reset found in tail), fall back to a
+        # full-file read for wall-clock anchor accuracy on long files.
+        # Performance: full-file read only kicks in once trace exceeds
+        # TRACE_TAIL_READ_LINES — at which point invocation_budget is
+        # already screaming, so the cost is bounded.
+        tail_lines = _read_trace_tail(TRACE_TAIL_READ_LINES)
+        if not tail_lines:
+            return None
+        records = []  # type: List[dict]
+        for ln in tail_lines:
+            rec = _parse_trace_line(ln)
+            if rec is not None:
+                records.append(rec)
+        if not records:
+            return None
+        scoped = _scope_to_current_run(records)
+        # If scoped run starts at the head of our tail-read AND tail is
+        # full (we may have truncated history before the run-start),
+        # fall back to the full file to find the true run-start. This
+        # only matters for the wall-clock breaker (which reads the
+        # FIRST record's ts) — doom-loop and budget look at counts/tail.
+        if (
+            scoped is records  # no reset found in tail
+            and len(tail_lines) >= TRACE_TAIL_READ_LINES
+        ):
+            try:
+                all_lines = _read_full_trace()
+                all_records = []  # type: List[dict]
+                for ln in all_lines:
+                    rec = _parse_trace_line(ln)
+                    if rec is not None:
+                        all_records.append(rec)
+                if all_records:
+                    scoped = _scope_to_current_run(all_records)
+            except OSError as err:
+                # Stick with tail-only scoped records; emit warning but
+                # continue (other breakers can still evaluate).
+                _emit_warning("full-trace read failed: {0}".format(err))
+    except OSError as err:
+        _emit_warning("trace read failed: {0}".format(err))
+        return None
+    except Exception as err:  # pragma: no cover - defensive fail-open
+        _emit_warning("scope-to-run failed: {0}".format(err))
+        return None
+
+    # Evaluate each breaker independently. A bug in one MUST NOT
+    # disable the others.
+    for name, fn in _BREAKERS:
+        try:
+            trip = fn(scoped, current_subcommand)
+        except Exception as err:  # pragma: no cover - defensive fail-open
+            _emit_warning("breaker '{0}' raised: {1}".format(name, err))
+            continue
+        if trip is not None:
+            return trip
+    return None

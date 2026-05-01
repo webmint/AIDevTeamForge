@@ -4918,5 +4918,347 @@ class TraceLoggingTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(records[2]["args_summary"], "")
 
 
+# ---------------------------------------------------------------------------
+# CircuitBreakerTests — `_circuit.check_circuit_breakers` against trace log.
+#
+# Breakers are evaluated BEFORE handler dispatch in `_cli.main`. Tests
+# call the public entry point directly (no subprocess) for fast feedback
+# on the breaker logic itself; one integration test exercises the
+# end-to-end CLI exit-3 path. Tests synthesize trace files manually
+# (rather than via the real CLI) because we need precise control over
+# scenarios like "501 invocations" or "first ts 65 minutes ago" which
+# would be slow / impossible via the real producer.
+# ---------------------------------------------------------------------------
+
+
+class CircuitBreakerTests(_EnvIsolationMixin, unittest.TestCase):
+
+    TRACE_FILE_NAME = ".generate-docs-trace.log"
+
+    def setUp(self):
+        super().setUp()
+        # Snapshot circuit env vars; restore in tearDown so per-test
+        # overrides don't leak into other tests.
+        self._saved_circuit_env = {
+            k: os.environ.pop(k, None)
+            for k in (
+                "DEVFORGE_DISABLE_CIRCUIT_BREAKER",
+                "DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD",
+                "DEVFORGE_CIRCUIT_INVOCATION_BUDGET",
+                "DEVFORGE_CIRCUIT_WALL_CLOCK_BUDGET_SECONDS",
+            )
+        }
+        # Tests need DEVFORGE_DIR set in this process so the imported
+        # _circuit module's _trace_file_path() resolves to the per-test
+        # tmpdir. _EnvIsolationMixin.setUp pops DEVFORGE_DIR, so put it
+        # back for the in-process check (tests that subprocess the CLI
+        # set it via env= already).
+        os.environ["DEVFORGE_DIR"] = str(self.devforge_dir)
+
+    def tearDown(self):
+        for k, v in self._saved_circuit_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        os.environ.pop("DEVFORGE_DIR", None)
+        super().tearDown()
+
+    @property
+    def trace_file(self):
+        return self.devforge_dir / self.TRACE_FILE_NAME
+
+    def _import_circuit(self):
+        # _circuit lives inside the _generate_docs internal package.
+        # Importing via the helper's `_LIB_DIR` path is already on
+        # sys.path (set at module top). Defer the import so the
+        # module-level trace path resolves under the per-test
+        # DEVFORGE_DIR (set in setUp).
+        from _generate_docs import _circuit as circuit
+        return circuit
+
+    def _write_trace_lines(self, records):
+        """Append a list of dict records as JSONL to the trace file."""
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        with open(str(self.trace_file), "a", encoding="utf-8") as f:
+            for rec in records:
+                f.write(json.dumps(rec, sort_keys=True) + "\n")
+
+    def _ts_now(self):
+        from datetime import datetime, timezone
+        raw = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        if raw.endswith("+00:00"):
+            return raw[:-len("+00:00")] + "Z"
+        return raw
+
+    def _ts_minutes_ago(self, minutes):
+        from datetime import datetime, timedelta, timezone
+        dt = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        raw = dt.isoformat(timespec="milliseconds")
+        if raw.endswith("+00:00"):
+            return raw[:-len("+00:00")] + "Z"
+        return raw
+
+    def _make_record(self, subcommand, exit_code=0, ts=None, args_summary=""):
+        return {
+            "ts": ts if ts is not None else self._ts_now(),
+            "subcommand": subcommand,
+            "duration_ms": 1,
+            "exit_code": exit_code,
+            "args_summary": args_summary,
+        }
+
+    # ---- Breaker logic tests ------------------------------------------------
+
+    def test_no_trace_file_means_clean_proceed(self):
+        circuit = self._import_circuit()
+        self.assertFalse(self.trace_file.exists())
+        self.assertIsNone(circuit.check_circuit_breakers("status"))
+
+    def test_empty_trace_file_clean_proceed(self):
+        circuit = self._import_circuit()
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        self.trace_file.write_text("", encoding="utf-8")
+        self.assertIsNone(circuit.check_circuit_breakers("status"))
+
+    def test_doom_loop_trips_on_three_consecutive_same_subcommand_exit_2(self):
+        circuit = self._import_circuit()
+        self._write_trace_lines([
+            self._make_record("add-package", exit_code=2),
+            self._make_record("add-package", exit_code=2),
+            self._make_record("add-package", exit_code=2),
+        ])
+        msg = circuit.check_circuit_breakers("add-package")
+        self.assertIsNotNone(msg)
+        self.assertTrue(
+            msg.startswith("circuit-breaker: doom loop detected"),
+            "unexpected trip message: %r" % msg,
+        )
+        self.assertIn("'add-package'", msg)
+        self.assertIn("exit 2", msg)
+
+    def test_doom_loop_does_not_trip_when_break_in_sequence(self):
+        circuit = self._import_circuit()
+        # 4 records: fail, fail, SUCCESS, fail. The success at position
+        # -2 breaks the streak (the trailing 3 are not all-same-failure).
+        self._write_trace_lines([
+            self._make_record("add-package", exit_code=2),
+            self._make_record("add-package", exit_code=2),
+            self._make_record("add-package", exit_code=0),  # success!
+            self._make_record("add-package", exit_code=2),
+        ])
+        msg = circuit.check_circuit_breakers("add-package")
+        self.assertIsNone(
+            msg, "doom loop falsely tripped despite intervening success: %r" % msg,
+        )
+
+    def test_doom_loop_does_not_trip_when_different_subcommand_in_sequence(self):
+        # Defensive: doom-loop requires the trailing N to all share the
+        # SAME subcommand. Different subcommands (e.g., add-package then
+        # status then add-package) is normal interleaved failure, not a
+        # doom loop.
+        circuit = self._import_circuit()
+        self._write_trace_lines([
+            self._make_record("add-package", exit_code=2),
+            self._make_record("status", exit_code=2),
+            self._make_record("add-package", exit_code=2),
+        ])
+        self.assertIsNone(circuit.check_circuit_breakers("add-package"))
+
+    def test_invocation_budget_trips_at_threshold(self):
+        circuit = self._import_circuit()
+        # Write 501 lines — one over the default 500 budget.
+        records = [self._make_record("status", exit_code=0) for _ in range(501)]
+        self._write_trace_lines(records)
+        msg = circuit.check_circuit_breakers("status")
+        self.assertIsNotNone(msg)
+        self.assertTrue(
+            msg.startswith("circuit-breaker: invocation budget exceeded"),
+            "unexpected trip message: %r" % msg,
+        )
+        self.assertIn("501", msg)
+        self.assertIn("500", msg)
+
+    def test_invocation_budget_resets_on_reset_marker(self):
+        circuit = self._import_circuit()
+        # 400 lines → reset → 50 lines. Current run = 51 invocations
+        # (the reset itself is included in the run).
+        before_reset = [self._make_record("status") for _ in range(400)]
+        reset = [self._make_record("reset")]
+        after_reset = [self._make_record("status") for _ in range(50)]
+        self._write_trace_lines(before_reset + reset + after_reset)
+        msg = circuit.check_circuit_breakers("status")
+        self.assertIsNone(
+            msg,
+            "invocation budget falsely tripped after reset (current run "
+            "should be 51 invocations, well under 500): %r" % msg,
+        )
+
+    def test_wall_clock_budget_trips_when_first_line_too_old(self):
+        circuit = self._import_circuit()
+        # First line synthesized 65 minutes ago, second line "now".
+        self._write_trace_lines([
+            self._make_record("add-package", ts=self._ts_minutes_ago(65)),
+            self._make_record("add-package", ts=self._ts_now()),
+        ])
+        msg = circuit.check_circuit_breakers("add-package")
+        self.assertIsNotNone(msg)
+        self.assertTrue(
+            msg.startswith("circuit-breaker: wall-clock budget exceeded"),
+            "unexpected trip message: %r" % msg,
+        )
+        # The minutes value should be approximately 65; allow 60-66 to
+        # account for clock skew between line write and trip evaluation.
+        self.assertRegex(msg, r"6[0-6] minutes ago")
+
+    def test_wall_clock_budget_does_not_trip_within_budget(self):
+        circuit = self._import_circuit()
+        self._write_trace_lines([
+            self._make_record("add-package", ts=self._ts_minutes_ago(30)),
+            self._make_record("add-package", ts=self._ts_now()),
+        ])
+        self.assertIsNone(circuit.check_circuit_breakers("add-package"))
+
+    def test_wall_clock_anchored_to_most_recent_reset(self):
+        # Reset boundary is the run-start anchor. A 2-hour-old first line
+        # before a recent reset must NOT trigger wall-clock; the run
+        # actually started at the reset, well within budget.
+        circuit = self._import_circuit()
+        self._write_trace_lines([
+            self._make_record("status", ts=self._ts_minutes_ago(120)),
+            self._make_record("status", ts=self._ts_minutes_ago(118)),
+            self._make_record("reset", ts=self._ts_minutes_ago(5)),
+            self._make_record("status", ts=self._ts_now()),
+        ])
+        self.assertIsNone(circuit.check_circuit_breakers("status"))
+
+    # ---- Bypass + fail-open tests -------------------------------------------
+
+    def test_bypass_env_var_disables_all_breakers(self):
+        circuit = self._import_circuit()
+        os.environ["DEVFORGE_DISABLE_CIRCUIT_BREAKER"] = "1"
+        # 501 invocations: would otherwise trip the budget breaker.
+        records = [self._make_record("status") for _ in range(501)]
+        self._write_trace_lines(records)
+        self.assertIsNone(circuit.check_circuit_breakers("status"))
+
+    def test_bypass_zero_value_does_NOT_disable(self):
+        # "0" is the explicit "off" form per `_is_disabled()`. Without
+        # this guard, a user who set the env to "0" (intending false)
+        # would accidentally enable the bypass.
+        circuit = self._import_circuit()
+        os.environ["DEVFORGE_DISABLE_CIRCUIT_BREAKER"] = "0"
+        records = [self._make_record("status") for _ in range(501)]
+        self._write_trace_lines(records)
+        msg = circuit.check_circuit_breakers("status")
+        self.assertIsNotNone(msg, "bypass should not honor '0' as truthy")
+
+    def test_corrupt_trace_line_fails_open(self):
+        circuit = self._import_circuit()
+        # 2 valid lines, 1 garbage, 1 valid. The corrupt line is
+        # silently dropped; remaining 3 lines do not trip any breaker.
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        with open(str(self.trace_file), "a", encoding="utf-8") as f:
+            f.write(json.dumps(self._make_record("status")) + "\n")
+            f.write(json.dumps(self._make_record("status")) + "\n")
+            f.write("{this is not valid json\n")
+            f.write(json.dumps(self._make_record("status")) + "\n")
+        # Should not raise.
+        msg = circuit.check_circuit_breakers("status")
+        # Three valid records, all status with exit 0 — no trip.
+        self.assertIsNone(msg)
+
+    def test_threshold_overrides_via_env_var(self):
+        circuit = self._import_circuit()
+        os.environ["DEVFORGE_CIRCUIT_INVOCATION_BUDGET"] = "10"
+        records = [self._make_record("status") for _ in range(11)]
+        self._write_trace_lines(records)
+        msg = circuit.check_circuit_breakers("status")
+        self.assertIsNotNone(msg)
+        self.assertIn("invocation budget exceeded", msg)
+        self.assertIn("11", msg)
+        self.assertIn("10", msg)
+
+    def test_doom_threshold_override_via_env_var(self):
+        # Drop the doom threshold to 2 so 2 consecutive failures trip.
+        circuit = self._import_circuit()
+        os.environ["DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD"] = "2"
+        self._write_trace_lines([
+            self._make_record("add-package", exit_code=2),
+            self._make_record("add-package", exit_code=2),
+        ])
+        msg = circuit.check_circuit_breakers("add-package")
+        self.assertIsNotNone(msg)
+        self.assertTrue(msg.startswith("circuit-breaker: doom loop detected"))
+
+    def test_malformed_threshold_env_falls_back_to_default(self):
+        # Malformed env value (non-int) silently falls back to default.
+        # Set INVOCATION_BUDGET to garbage; with default 500 and 11
+        # records, no trip should occur.
+        circuit = self._import_circuit()
+        os.environ["DEVFORGE_CIRCUIT_INVOCATION_BUDGET"] = "not-a-number"
+        records = [self._make_record("status") for _ in range(11)]
+        self._write_trace_lines(records)
+        self.assertIsNone(circuit.check_circuit_breakers("status"))
+
+    # ---- End-to-end CLI integration ----------------------------------------
+
+    def test_cli_returns_exit_3_on_breaker_trip(self):
+        # Subprocess the helper with a pre-seeded trace that trips the
+        # invocation budget. Helper must exit 3 with the trip message
+        # on stderr.
+        records = [self._make_record("status") for _ in range(501)]
+        self._write_trace_lines(records)
+        proc = _run_cli(self.devforge_dir, "status")
+        self.assertEqual(
+            proc.returncode, 3,
+            "expected exit 3 on breaker trip, got %d (stderr: %s)" % (
+                proc.returncode, proc.stderr.decode("utf-8", "replace"),
+            ),
+        )
+        stderr = proc.stderr.decode("utf-8")
+        self.assertIn("circuit-breaker: invocation budget exceeded", stderr)
+
+    def test_cli_breaker_trip_does_not_emit_trace_line(self):
+        # Documented design call: a trip aborts the invocation entirely;
+        # no trace line is emitted for the trip itself. Verify the trace
+        # file is unchanged (still 501 lines, not 502) after a tripped
+        # invocation.
+        records = [self._make_record("status") for _ in range(501)]
+        self._write_trace_lines(records)
+        before = self.trace_file.read_text(encoding="utf-8").count("\n")
+        proc = _run_cli(self.devforge_dir, "status")
+        self.assertEqual(proc.returncode, 3)
+        after = self.trace_file.read_text(encoding="utf-8").count("\n")
+        self.assertEqual(
+            after, before,
+            "tripped invocation produced a trace line (before=%d, after=%d)" % (
+                before, after,
+            ),
+        )
+
+    def test_cli_bypass_env_proceeds_normally(self):
+        # With the bypass set, even a trace that would trip the budget
+        # produces a clean exit 0 invocation (and the trace gets a new
+        # line per normal trace-write logic).
+        records = [self._make_record("status") for _ in range(501)]
+        self._write_trace_lines(records)
+        env = os.environ.copy()
+        env["DEVFORGE_DIR"] = str(self.devforge_dir)
+        env["DEVFORGE_DISABLE_CIRCUIT_BREAKER"] = "1"
+        proc = subprocess.run(
+            [sys.executable, str(_HELPER_PY), "status"],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(
+            proc.returncode, 0,
+            "bypass should proceed cleanly; got %d, stderr: %s" % (
+                proc.returncode, proc.stderr.decode("utf-8", "replace"),
+            ),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

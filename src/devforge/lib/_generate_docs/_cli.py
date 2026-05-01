@@ -25,7 +25,7 @@ import sys
 import time
 from typing import Callable, List, Optional, Tuple
 
-from . import _trace
+from . import _circuit, _trace
 from ._manifest import cmd_extract_package_scripts
 from ._render import (
     cmd_render_concern_skeleton,
@@ -352,6 +352,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     subcommand_name = getattr(args, "subcommand", None) or "<unknown>"
+    # Circuit breaker: precondition check BEFORE handler dispatch and
+    # BEFORE the trace-write timing wrapper. A tripped breaker aborts
+    # the invocation entirely with exit code 3. We do NOT emit a trace
+    # line for the trip itself — the stderr message is the audit
+    # trail, and re-running to re-evaluate would either trip again or
+    # have been bypassed via DEVFORGE_DISABLE_CIRCUIT_BREAKER.
+    trip = _circuit.check_circuit_breakers(subcommand_name)
+    if trip is not None:
+        sys.stderr.write(trip + "\n")
+        return 3
     if getattr(args, "func", None) is None:
         parser.print_help(sys.stderr)
         exit_code = 2

@@ -55,9 +55,19 @@ _LOOP_ITERATIONS = 5
 
 
 def _run_cli(devforge_dir, *args):
-    """One-shot helper invocation; mirrors test_generate_docs_helper."""
+    """One-shot helper invocation; mirrors test_generate_docs_helper.
+
+    Concurrency stress tests intentionally hammer the helper with N
+    rapid duplicate-failure invocations (e.g., 8 concurrent
+    `add-concern` with the same name to verify lock serialization).
+    That pattern is exactly what the doom-loop circuit breaker
+    detects. The breaker is correct to fire there in production —
+    but in this test suite we are testing the LOCK, not the breaker.
+    Disable the breaker for all stress-test subprocess invocations.
+    """
     env = os.environ.copy()
     env["DEVFORGE_DIR"] = str(devforge_dir)
+    env["DEVFORGE_DISABLE_CIRCUIT_BREAKER"] = "1"
     return subprocess.run(
         [sys.executable, str(_HELPER_PY)] + list(args),
         env=env,
@@ -77,6 +87,9 @@ def _spawn_parallel(devforge_dir, command_lists):
     """
     env = os.environ.copy()
     env["DEVFORGE_DIR"] = str(devforge_dir)
+    # See `_run_cli` for rationale — stress tests are about lock
+    # serialization, not breaker behavior. Bypass.
+    env["DEVFORGE_DISABLE_CIRCUIT_BREAKER"] = "1"
     procs = []
     for args in command_lists:
         procs.append(subprocess.Popen(
@@ -108,6 +121,8 @@ def _spawn_parallel_chains(devforge_dir, chains):
     """
     env = os.environ.copy()
     env["DEVFORGE_DIR"] = str(devforge_dir)
+    # See `_run_cli` for rationale — stress tests bypass the breaker.
+    env["DEVFORGE_DISABLE_CIRCUIT_BREAKER"] = "1"
 
     driver = (
         "import subprocess, sys, json\n"
@@ -177,6 +192,13 @@ class _SubprocessIsolationMixin:
         lock = self.state_file.with_suffix(".json.lock")
         if lock.exists():
             lock.unlink()
+        # Drop the trace too — accumulated trace lines across loop
+        # iterations could push the in-test invocation count over
+        # the budget breaker even with the bypass set, and a clean
+        # slate per iteration matches the tests' intent.
+        trace = self.devforge_dir / ".generate-docs-trace.log"
+        if trace.exists():
+            trace.unlink()
 
 
 class LockSerializationStressTests(
