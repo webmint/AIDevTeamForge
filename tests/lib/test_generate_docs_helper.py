@@ -136,6 +136,7 @@ class DefaultStateTests(unittest.TestCase):
         self.assertEqual(rec["hazards"], [])
         self.assertIsNone(rec["usage_example"])
         self.assertIsNone(rec["consumer_pattern"])
+        self.assertEqual(rec["concerns"], {})
 
 
 # ---------------------------------------------------------------------------
@@ -3456,6 +3457,1212 @@ class RenderHtmlEscapeTests(_RenderTestBase):
         # Literal angle brackets preserved inside the fence.
         self.assertIn("<generated>/", text)
         self.assertNotIn("&lt;generated&gt;/", text)
+
+
+# ===========================================================================
+# Phase 3.1 — Concern-tier subcommands.
+#
+# 11 new CLI subcommands extending the package-tier surface to register and
+# render concern-level docs nested under packages. Tests cover:
+#
+# - add-concern + concern scalar/append setters (idempotency, validation,
+#   isolation across packages and concerns)
+# - render-concern-skeleton (path shape, [TODO] slots, `## Public Surface`)
+# - validate-concern (required fields, structured errors, snippet check)
+# - render-concern-doc (validation gate, idempotency)
+# - validate-package decomposition gate (substantive subfolders coverage,
+#   architectural-role allowlist, trivial-leaf skip-list, ecosystem-agnostic
+#   matching, no-`src/` no-op)
+# - state migration (load pre-3.1 state without `concerns` key)
+# ===========================================================================
+
+
+class _ConcernTestBase(_RenderTestBase):
+    """Shared helpers for concern-tier tests.
+
+    Every test runs in an isolated tmp project root with `.devforge/`
+    underneath. Most tests register a single package + a single concern
+    via `_init_pkg_concern` to avoid ceremony in every test method.
+    """
+
+    def _init_pkg_concern(self, package="apps/web", concern="auth", name="web"):
+        self._run("add-package", "--path", package, "--name", name)
+        self._run("add-concern", "--package", package, "--concern", concern)
+
+    def _read_state(self):
+        return json.loads(self.state_file.read_text(encoding="utf-8"))
+
+
+class AddConcernTests(_ConcernTestBase):
+
+    def test_happy_path(self):
+        self._add_pkg()
+        proc = self._run("add-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertIn("auth", state["packages"]["apps/web"]["concerns"])
+        concern = state["packages"]["apps/web"]["concerns"]["auth"]
+        # Default-record shape — every field initialized.
+        self.assertEqual(concern["concern_name"], "auth")
+        self.assertIsNone(concern["overview"])
+        self.assertIsNone(concern["directory_tree"])
+        self.assertEqual(concern["public_surface"], [])
+        self.assertEqual(concern["types"], [])
+        self.assertEqual(concern["dependencies"], [])
+        self.assertEqual(concern["hazards"], [])
+        self.assertIsNone(concern["usage_example"])
+        # No `consumer_pattern` field at concern level.
+        self.assertNotIn("consumer_pattern", concern)
+
+    def test_package_not_registered_rejected(self):
+        proc = self._run("add-concern",
+                         "--package", "apps/missing", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"package not registered", proc.stderr)
+
+    def test_duplicate_concern_rejected(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"already registered", proc.stderr)
+
+    def test_control_char_rejected(self):
+        # Use \x01 (any control char other than \n/\r/\t/null is rejected
+        # for single-line fields). Null bytes (\x00) cannot be passed via
+        # subprocess argv on POSIX, so we use a different control byte.
+        self._add_pkg()
+        proc = self._run("add-concern",
+                         "--package", "apps/web", "--concern", "bad\x01name")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"control character", proc.stderr)
+
+    def test_retry_after_error_creates_record(self):
+        # Reject a bad-name attempt, then a clean one should succeed.
+        self._add_pkg()
+        bad = self._run("add-concern",
+                        "--package", "apps/web", "--concern", "bad\nname")
+        self.assertEqual(bad.returncode, 2)
+        good = self._run("add-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(good.returncode, 0, good.stderr)
+        state = self._read_state()
+        self.assertEqual(
+            list(state["packages"]["apps/web"]["concerns"].keys()),
+            ["auth"],
+        )
+
+    def test_two_concerns_under_same_package(self):
+        self._add_pkg()
+        self._run("add-concern",
+                  "--package", "apps/web", "--concern", "auth")
+        self._run("add-concern",
+                  "--package", "apps/web", "--concern", "components")
+        state = self._read_state()
+        self.assertEqual(
+            sorted(state["packages"]["apps/web"]["concerns"].keys()),
+            ["auth", "components"],
+        )
+
+
+class ConcernScalarSetterTests(_ConcernTestBase):
+
+    def test_set_overview_happy(self):
+        self._init_pkg_concern()
+        proc = self._run("set-concern-overview",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--text", "Auth concern.\n\nHandles login.")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(
+            state["packages"]["apps/web"]["concerns"]["auth"]["overview"],
+            "Auth concern.\n\nHandles login.",
+        )
+
+    def test_set_tree_happy(self):
+        self._init_pkg_concern()
+        proc = self._run("set-concern-tree",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--text", "auth/\n  login.ts\n  session.ts")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        self.assertEqual(
+            state["packages"]["apps/web"]["concerns"]["auth"][
+                "directory_tree"
+            ],
+            "auth/\n  login.ts\n  session.ts",
+        )
+
+    def test_set_overview_idempotent_latest_wins(self):
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "First.")
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Second.")
+        state = self._read_state()
+        self.assertEqual(
+            state["packages"]["apps/web"]["concerns"]["auth"]["overview"],
+            "Second.",
+        )
+
+    def test_set_overview_package_not_registered(self):
+        proc = self._run("set-concern-overview",
+                         "--package", "apps/missing", "--concern", "auth",
+                         "--text", "X.")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"package not registered", proc.stderr)
+
+    def test_set_overview_concern_not_registered(self):
+        self._add_pkg()
+        proc = self._run("set-concern-overview",
+                         "--package", "apps/web", "--concern", "missing",
+                         "--text", "X.")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"concern", proc.stderr)
+        self.assertIn(b"not registered", proc.stderr)
+
+    def test_set_tree_control_char_rejected(self):
+        # \x00 cannot pass through subprocess argv on POSIX; use \x01
+        # (a generic non-newline control byte that the multiline
+        # validator must still reject).
+        self._init_pkg_concern()
+        proc = self._run("set-concern-tree",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--text", "auth/\x01bad")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"control character", proc.stderr)
+
+    def test_set_usage_example_happy(self):
+        self._init_pkg_concern()
+        proc = self._run("set-concern-usage-example",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--language", "ts",
+                         "--code-snippet", "login()",
+                         "--cite-file", "src/auth/login.ts",
+                         "--cite-start", "1", "--cite-end", "1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        ue = state["packages"]["apps/web"]["concerns"]["auth"][
+            "usage_example"
+        ]
+        self.assertEqual(ue["language"], "ts")
+        self.assertEqual(ue["snippet"], "login()")
+        self.assertEqual(ue["cite"]["file"], "src/auth/login.ts")
+        self.assertEqual(ue["cite"]["start"], 1)
+        self.assertEqual(ue["cite"]["end"], 1)
+
+    def test_set_usage_example_idempotent(self):
+        self._init_pkg_concern()
+        self._run("set-concern-usage-example",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--language", "ts", "--code-snippet", "first()",
+                  "--cite-file", "f.ts", "--cite-start", "1",
+                  "--cite-end", "1")
+        self._run("set-concern-usage-example",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--language", "ts", "--code-snippet", "second()",
+                  "--cite-file", "g.ts", "--cite-start", "2",
+                  "--cite-end", "2")
+        state = self._read_state()
+        ue = state["packages"]["apps/web"]["concerns"]["auth"][
+            "usage_example"
+        ]
+        self.assertEqual(ue["snippet"], "second()")
+
+    def test_set_usage_example_concern_not_registered(self):
+        self._add_pkg()
+        proc = self._run("set-concern-usage-example",
+                         "--package", "apps/web", "--concern", "missing",
+                         "--language", "ts",
+                         "--code-snippet", "x", "--cite-file", "f.ts",
+                         "--cite-start", "1", "--cite-end", "1")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"concern", proc.stderr)
+
+
+class ConcernAppendSetterTests(_ConcernTestBase):
+
+    def test_add_export_happy(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-export",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--name", "login", "--kind", "function",
+                         "--signature", "login(): void",
+                         "--description", "Logs the user in.",
+                         "--language", "ts", "--code-snippet", "function login() {}",
+                         "--cite-file", "src/auth/login.ts",
+                         "--cite-start", "1", "--cite-end", "1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        surface = state["packages"]["apps/web"]["concerns"]["auth"][
+            "public_surface"
+        ]
+        self.assertEqual(len(surface), 1)
+        self.assertEqual(surface[0]["name"], "login")
+        self.assertEqual(surface[0]["kind"], "function")
+
+    def test_add_export_duplicate_rejected(self):
+        self._init_pkg_concern()
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "x.",
+                  "--language", "ts", "--code-snippet", "x",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1")
+        proc = self._run("add-concern-export",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--name", "login", "--kind", "function",
+                         "--signature", "", "--description", "x.",
+                         "--language", "ts", "--code-snippet", "x",
+                         "--cite-file", "src/auth/login.ts",
+                         "--cite-start", "1", "--cite-end", "1")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"already registered", proc.stderr)
+
+    def test_add_export_same_name_different_cite_allowed(self):
+        # Same name, different cite-start (overload across files).
+        self._init_pkg_concern()
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "x.",
+                  "--language", "ts", "--code-snippet", "x",
+                  "--cite-file", "a.ts", "--cite-start", "1", "--cite-end", "1")
+        proc = self._run("add-concern-export",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--name", "login", "--kind", "function",
+                         "--signature", "", "--description", "y.",
+                         "--language", "ts", "--code-snippet", "y",
+                         "--cite-file", "b.ts", "--cite-start", "1", "--cite-end", "1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_add_export_invalid_kind(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-export",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--name", "login", "--kind", "not-a-kind",
+                         "--signature", "", "--description", "x.",
+                         "--language", "ts", "--code-snippet", "x",
+                         "--cite-file", "f.ts", "--cite-start", "1",
+                         "--cite-end", "1")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"--kind", proc.stderr)
+
+    def test_add_export_bad_cite_range(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-export",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--name", "login", "--kind", "function",
+                         "--signature", "", "--description", "x.",
+                         "--language", "ts", "--code-snippet", "x",
+                         "--cite-file", "f.ts", "--cite-start", "5",
+                         "--cite-end", "1")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"end", proc.stderr)
+
+    def test_add_type_happy(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-type",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--language", "ts",
+                         "--code-snippet", "type Token = { value: string }",
+                         "--cite-file", "src/auth/types.ts",
+                         "--cite-start", "1", "--cite-end", "1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        types = state["packages"]["apps/web"]["concerns"]["auth"]["types"]
+        self.assertEqual(len(types), 1)
+        self.assertEqual(types[0]["language"], "ts")
+        self.assertEqual(types[0]["cite"]["file"], "src/auth/types.ts")
+
+    def test_add_type_duplicate_rejected(self):
+        self._init_pkg_concern()
+        self._run("add-concern-type",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--language", "ts", "--code-snippet", "type X = string",
+                  "--cite-file", "f.ts", "--cite-start", "1",
+                  "--cite-end", "1")
+        proc = self._run("add-concern-type",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--language", "ts",
+                         "--code-snippet", "type X = string",
+                         "--cite-file", "f.ts", "--cite-start", "1",
+                         "--cite-end", "1")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"already registered", proc.stderr)
+
+    def test_add_dep_happy(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-dep",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--name", "jose", "--kind", "external",
+                         "--version", "5.0.0",
+                         "--purpose", "JWT signing.")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        deps = state["packages"]["apps/web"]["concerns"]["auth"]["dependencies"]
+        self.assertEqual(len(deps), 1)
+        self.assertEqual(deps[0]["name"], "jose")
+        self.assertEqual(deps[0]["kind"], "external")
+
+    def test_add_dep_duplicate_rejected(self):
+        self._init_pkg_concern()
+        self._run("add-concern-dep",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "jose", "--kind", "external", "--version", "5",
+                  "--purpose", "X.")
+        proc = self._run("add-concern-dep",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--name", "jose", "--kind", "external",
+                         "--version", "5", "--purpose", "Y.")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"already registered", proc.stderr)
+
+    def test_add_hazard_happy_no_cite(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-hazard",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--category", "naming",
+                         "--description", "Inconsistent.")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        hazards = state["packages"]["apps/web"]["concerns"]["auth"]["hazards"]
+        self.assertEqual(len(hazards), 1)
+        self.assertIsNone(hazards[0]["cite"])
+
+    def test_add_hazard_with_cite(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-hazard",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--category", "performance",
+                         "--description", "Slow path.",
+                         "--cite-file", "src/auth/login.ts",
+                         "--cite-start", "10", "--cite-end", "20")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        cite = state["packages"]["apps/web"]["concerns"]["auth"][
+            "hazards"
+        ][0]["cite"]
+        self.assertEqual(cite["start"], 10)
+        self.assertEqual(cite["end"], 20)
+
+    def test_add_hazard_partial_cite_rejected(self):
+        self._init_pkg_concern()
+        proc = self._run("add-concern-hazard",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--category", "naming",
+                         "--description", "X.",
+                         "--cite-file", "f.ts", "--cite-start", "1")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"cite", proc.stderr)
+
+    def test_add_hazard_duplicate_rejected(self):
+        self._init_pkg_concern()
+        self._run("add-concern-hazard",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--category", "naming", "--description", "Bad.")
+        proc = self._run("add-concern-hazard",
+                         "--package", "apps/web", "--concern", "auth",
+                         "--category", "naming", "--description", "Bad.")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"already registered", proc.stderr)
+
+    def test_isolation_across_concerns_same_package(self):
+        # Two concerns under the same package; an export added to one
+        # must NOT appear in the other.
+        self._add_pkg()
+        self._run("add-concern",
+                  "--package", "apps/web", "--concern", "auth")
+        self._run("add-concern",
+                  "--package", "apps/web", "--concern", "billing")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "x.",
+                  "--language", "ts", "--code-snippet", "x",
+                  "--cite-file", "f.ts", "--cite-start", "1",
+                  "--cite-end", "1")
+        state = self._read_state()
+        concerns = state["packages"]["apps/web"]["concerns"]
+        self.assertEqual(len(concerns["auth"]["public_surface"]), 1)
+        self.assertEqual(len(concerns["billing"]["public_surface"]), 0)
+
+    def test_isolation_across_packages(self):
+        # Two packages each with a concern of the same name; export
+        # added to one must NOT bleed into the other.
+        self._run("add-package",
+                  "--path", "apps/web", "--name", "web")
+        self._run("add-package",
+                  "--path", "apps/api", "--name", "api")
+        self._run("add-concern",
+                  "--package", "apps/web", "--concern", "auth")
+        self._run("add-concern",
+                  "--package", "apps/api", "--concern", "auth")
+        self._run("add-concern-dep",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "jose", "--kind", "external", "--version", "5",
+                  "--purpose", "X.")
+        state = self._read_state()
+        web_deps = state["packages"]["apps/web"]["concerns"]["auth"][
+            "dependencies"
+        ]
+        api_deps = state["packages"]["apps/api"]["concerns"]["auth"][
+            "dependencies"
+        ]
+        self.assertEqual(len(web_deps), 1)
+        self.assertEqual(len(api_deps), 0)
+
+
+class RenderConcernSkeletonTests(_ConcernTestBase):
+
+    def _render(self, package="apps/web", concern="auth"):
+        return self._run("render-concern-skeleton",
+                         "--package", package, "--concern", concern)
+
+    def test_empty_concern_has_todo_slots(self):
+        self._init_pkg_concern()
+        proc = self._render()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out_path = (
+            self.project_root / "docs" / "apps/web" / "auth"
+            / "index.md.skeleton"
+        )
+        self.assertTrue(out_path.exists())
+        text = out_path.read_text(encoding="utf-8")
+        self.assertIn("# auth", text)
+        self.assertIn("## Overview", text)
+        self.assertIn("[TODO: 1-2 paragraphs", text)
+        self.assertIn("## Directory Structure", text)
+        self.assertIn("## Public Surface", text)
+        # Concern uses Public Surface, NOT Main Exports.
+        self.assertNotIn("## Main Exports", text)
+        self.assertIn("[TODO: enumerate concern's public surface", text)
+        self.assertIn("## Types", text)
+        self.assertIn("## Dependencies", text)
+        self.assertIn("## Hazards", text)
+        self.assertIn("## Usage Example", text)
+
+    def test_path_shape_under_package_subdir(self):
+        self._init_pkg_concern()
+        self._render()
+        # Concern doc lives at docs/<package>/<concern>/index.md.skeleton
+        out_path = (
+            self.project_root / "docs" / "apps/web" / "auth"
+            / "index.md.skeleton"
+        )
+        self.assertTrue(out_path.exists())
+
+    def test_missing_package_errors(self):
+        proc = self._render(package="apps/missing", concern="auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"package not registered", proc.stderr)
+
+    def test_missing_concern_errors(self):
+        self._add_pkg()
+        proc = self._render(concern="ghost")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"concern", proc.stderr)
+
+    def test_idempotent_byte_identical(self):
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "X.")
+        self._render()
+        out_path = (
+            self.project_root / "docs" / "apps/web" / "auth"
+            / "index.md.skeleton"
+        )
+        a = out_path.read_bytes()
+        self._render()
+        b = out_path.read_bytes()
+        self.assertEqual(a, b)
+
+    def test_optional_section_todos_cite_concern_setters(self):
+        # Optional Dependencies/Hazards/Usage TODOs in a concern doc
+        # must cite the concern-tier setter names (add-concern-dep etc),
+        # NOT the package-tier names — otherwise an LLM following the
+        # TODO call-site will run the wrong helper command.
+        self._init_pkg_concern()
+        self._render()
+        text = (
+            self.project_root / "docs" / "apps/web" / "auth"
+            / "index.md.skeleton"
+        ).read_text(encoding="utf-8")
+        # Dependencies section TODO mentions add-concern-dep.
+        deps_idx = text.index("## Dependencies")
+        # Slice the next two paragraphs (everything until the next H2).
+        deps_chunk = text[deps_idx:text.index("##", deps_idx + 1)]
+        self.assertIn("add-concern-dep", deps_chunk)
+        self.assertNotIn("add-package-dep", deps_chunk)
+        haz_idx = text.index("## Hazards")
+        haz_chunk = text[haz_idx:text.index("##", haz_idx + 1)]
+        self.assertIn("add-concern-hazard", haz_chunk)
+        self.assertNotIn("add-package-hazard", haz_chunk)
+        usage_idx = text.index("## Usage Example")
+        # Last section — slice to end.
+        usage_chunk = text[usage_idx:]
+        self.assertIn("set-concern-usage-example", usage_chunk)
+        self.assertNotIn("set-package-usage-example", usage_chunk)
+
+    def test_full_state_no_required_todos(self):
+        # After populating all required-field setters, the skeleton must
+        # not contain any required-field [TODO]. Optional Types/Hazards/
+        # Usage may still show optional [TODO] markers — that's fine.
+        self._init_pkg_concern()
+        self._write_source("src/auth/login.ts", ["export function login() {}"])
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Auth.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "Logs in.",
+                  "--language", "ts",
+                  "--code-snippet", "export function login() {}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1")
+        self._render()
+        text = (
+            self.project_root / "docs" / "apps/web" / "auth"
+            / "index.md.skeleton"
+        ).read_text(encoding="utf-8")
+        # No required-field markers should remain.
+        self.assertNotIn("[TODO: 1-2 paragraphs", text)
+        self.assertNotIn("[TODO: ascii tree", text)
+        self.assertNotIn("[TODO: enumerate concern's public surface", text)
+
+
+class ValidateConcernTests(_ConcernTestBase):
+
+    def _fill_minimum_valid_concern(self):
+        """Register a fully-valid concern with one matching source file."""
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Auth.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "Logs in.",
+                  "--language", "ts",
+                  "--code-snippet",
+                  "export function login(id) {\n  return id;\n}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+
+    def test_full_concern_passes(self):
+        self._fill_minimum_valid_concern()
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_missing_required_fields_reported(self):
+        self._init_pkg_concern()
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ConcernDoc.overview", proc.stderr)
+        self.assertIn(b"ConcernDoc.directory_tree", proc.stderr)
+        # Empty public_surface flagged too.
+        self.assertIn(b"public surface", proc.stderr)
+
+    def test_concern_not_registered(self):
+        self._add_pkg()
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "ghost")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"not registered", proc.stderr)
+
+    def test_package_not_registered(self):
+        proc = self._run("validate-concern",
+                         "--package", "apps/missing", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"package not registered", proc.stderr)
+
+    def test_snippet_mismatch_reported(self):
+        # Fill a concern but the registered snippet doesn't match the
+        # source file.
+        self._write_source("src/auth/login.ts", [
+            "export function login() {}",
+            "export function logout() {}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "X.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "X.")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "X.",
+                  "--language", "ts",
+                  "--code-snippet", "wrong content",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "2")
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"does not match", proc.stderr)
+
+    def test_concern_type_codeblock_validated(self):
+        # Type codeblock cite must be checked too.
+        self._write_source("src/auth/types.ts", [
+            "export type Token = string",
+            "export type Session = { user: string }",
+        ])
+        self._fill_minimum_valid_concern()
+        self._run("add-concern-type",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--language", "ts",
+                  "--code-snippet", "wrong content",  # mismatched
+                  "--cite-file", "src/auth/types.ts",
+                  "--cite-start", "1", "--cite-end", "1")
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"types[0]", proc.stderr)
+
+
+class ValidateConcernOptionalRenderTests(_ConcernTestBase):
+    """Tests for the concern-tier `_check_concern_optional_render` rule.
+
+    Mirrors the package-tier `_check_optional_render` defense-in-depth
+    check: state populated for a concern's optional field but render
+    emits the optional [TODO] -> render bug.
+
+    Synthetic mismatch tests patch `_validators.render_concern_skeleton`
+    in-process to simulate the render regression. The empty-state and
+    happy-path tests run the CLI end-to-end.
+    """
+
+    def _fill_minimum_valid_concern(self):
+        """Register a fully-valid concern with one matching source file."""
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Auth.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "Logs in.",
+                  "--language", "ts",
+                  "--code-snippet",
+                  "export function login(id) {\n  return id;\n}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+
+    def _build_state_with_optional_fields(self):
+        """Construct an in-memory state dict where every optional
+        concern field is populated (types / dependencies / hazards /
+        usage_example).
+
+        Used by the patch-render mismatch tests: validate_concern is
+        called directly, so we don't need on-disk source files matching
+        the citations — `_check_concern_codeblocks` errors are
+        ignored; we only care that the optional-render-mismatch rule
+        fires for the field under test.
+        """
+        from _generate_docs._state import (
+            default_state,
+            default_package_record,
+            default_concern_record,
+        )
+        state = default_state()
+        pkg = default_package_record("web", "apps/web")
+        pkg["overview"] = "X"
+        pkg["directory_tree"] = "src/"
+        pkg["primary_language"] = "ts"
+        pkg["exports"] = [{
+            "kind": "function", "name": "f", "signature": None,
+            "description": "x",
+            "code": {
+                "language": "ts", "snippet": "x",
+                "cite": {"file": "src/f.ts", "start": 1, "end": 1},
+            },
+        }]
+        pkg["dependencies"] = [{
+            "kind": "external", "name": "react", "version": "1",
+            "purpose": "ui", "consumer_locations": [],
+        }]
+        concern = default_concern_record("auth")
+        concern["overview"] = "Auth concern."
+        concern["directory_tree"] = "auth/"
+        concern["public_surface"] = [{
+            "kind": "function", "name": "login", "signature": None,
+            "description": "Logs in.",
+            "code": {
+                "language": "ts", "snippet": "x",
+                "cite": {"file": "src/auth/login.ts", "start": 1, "end": 1},
+            },
+        }]
+        concern["types"] = [{
+            "language": "ts", "snippet": "type Token = string",
+            "cite": {"file": "src/auth/types.ts", "start": 1, "end": 1},
+        }]
+        concern["dependencies"] = [{
+            "kind": "external", "name": "jose", "version": "5",
+            "purpose": "JWT.", "consumer_locations": [],
+        }]
+        concern["hazards"] = [{
+            "category": "naming", "description": "Inconsistent.",
+            "cite": None,
+        }]
+        concern["usage_example"] = {
+            "language": "ts", "snippet": "login()",
+            "cite": {"file": "src/auth/login.ts", "start": 1, "end": 1},
+        }
+        pkg["concerns"]["auth"] = concern
+        state["packages"]["apps/web"] = pkg
+        return state
+
+    def test_happy_path_all_optional_populated_passes(self):
+        """State has all 4 optional concern fields populated, source
+        files match — validate-concern returns 0 with no
+        concern-optional-render-mismatch error."""
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._write_source("src/auth/types.ts", [
+            "export type Token = string",
+        ])
+        self._fill_minimum_valid_concern()
+        # Add types, deps, hazards, usage_example.
+        self._run("add-concern-type",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--language", "ts",
+                  "--code-snippet", "export type Token = string",
+                  "--cite-file", "src/auth/types.ts",
+                  "--cite-start", "1", "--cite-end", "1")
+        self._run("add-concern-dep",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "jose", "--kind", "external",
+                  "--version", "5.0.0",
+                  "--purpose", "JWT signing.")
+        self._run("add-concern-hazard",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--category", "naming",
+                  "--description", "Inconsistent.")
+        self._run("set-concern-usage-example",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--language", "ts",
+                  "--code-snippet",
+                  "export function login(id) {\n  return id;\n}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn(b"concern-optional-render-mismatch", proc.stderr)
+
+    def test_empty_state_optional_todos_silent(self):
+        """State has all 4 optional concern fields empty; render
+        naturally emits the optional [TODO]s — this is a LEGITIMATE
+        skip and the rule must NOT fire."""
+        self._fill_minimum_valid_concern()
+        # All four optional concern fields stay empty (default record).
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn(b"concern-optional-render-mismatch", proc.stderr)
+
+    def _run_concern_with_buggy_render(self, state, marker_to_inject):
+        """Patch render_concern_skeleton to return a string containing
+        `marker_to_inject` (a `_TODO_CONCERN_*` sentinel), then call
+        validate_concern directly. Returns the error list."""
+        from _generate_docs import _validators as v
+        original = v.render_concern_skeleton
+
+        def buggy_render(s, p, c):
+            # Append the marker so the optional-render check sees it.
+            # `_check_concern_no_todos` only checks REQUIRED-field TODO
+            # markers, so injecting an OPTIONAL one doesn't trigger
+            # noise from that rule.
+            return original(s, p, c) + "\n" + marker_to_inject + "\n"
+
+        v.render_concern_skeleton = buggy_render
+        try:
+            errors = v.validate_concern(
+                state, "apps/web", "auth", self.project_root,
+            )
+        finally:
+            v.render_concern_skeleton = original
+        return errors
+
+    def test_mismatch_types_caught(self):
+        """State populates `types`, render emits the optional
+        types-[TODO] -> rule fires for `types`."""
+        from _generate_docs._render import _TODO_CONCERN_TYPES
+        state = self._build_state_with_optional_fields()
+        errors = self._run_concern_with_buggy_render(
+            state, _TODO_CONCERN_TYPES,
+        )
+        rule_errors = [
+            e for e in errors
+            if e["rule"] == "concern-optional-render-mismatch"
+        ]
+        self.assertEqual(len(rule_errors), 1)
+        self.assertEqual(rule_errors[0]["field"], "types")
+
+    def test_mismatch_dependencies_caught(self):
+        from _generate_docs._render import _TODO_CONCERN_DEPENDENCIES
+        state = self._build_state_with_optional_fields()
+        errors = self._run_concern_with_buggy_render(
+            state, _TODO_CONCERN_DEPENDENCIES,
+        )
+        rule_errors = [
+            e for e in errors
+            if e["rule"] == "concern-optional-render-mismatch"
+        ]
+        self.assertEqual(len(rule_errors), 1)
+        self.assertEqual(rule_errors[0]["field"], "dependencies")
+
+    def test_mismatch_hazards_caught(self):
+        from _generate_docs._render import _TODO_CONCERN_HAZARDS
+        state = self._build_state_with_optional_fields()
+        errors = self._run_concern_with_buggy_render(
+            state, _TODO_CONCERN_HAZARDS,
+        )
+        rule_errors = [
+            e for e in errors
+            if e["rule"] == "concern-optional-render-mismatch"
+        ]
+        self.assertEqual(len(rule_errors), 1)
+        self.assertEqual(rule_errors[0]["field"], "hazards")
+
+    def test_mismatch_usage_example_caught(self):
+        from _generate_docs._render import _TODO_CONCERN_USAGE_EXAMPLE
+        state = self._build_state_with_optional_fields()
+        errors = self._run_concern_with_buggy_render(
+            state, _TODO_CONCERN_USAGE_EXAMPLE,
+        )
+        rule_errors = [
+            e for e in errors
+            if e["rule"] == "concern-optional-render-mismatch"
+        ]
+        self.assertEqual(len(rule_errors), 1)
+        self.assertEqual(rule_errors[0]["field"], "usage_example")
+
+
+class RenderConcernDocTests(_ConcernTestBase):
+
+    def _fill_minimum_valid_concern(self):
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Auth.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "Logs in.",
+                  "--language", "ts",
+                  "--code-snippet",
+                  "export function login(id) {\n  return id;\n}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+
+    def test_render_doc_happy(self):
+        self._fill_minimum_valid_concern()
+        # Skeleton first, then doc.
+        self._run("render-concern-skeleton",
+                  "--package", "apps/web", "--concern", "auth")
+        skel_path = (
+            self.project_root / "docs" / "apps/web" / "auth"
+            / "index.md.skeleton"
+        )
+        self.assertTrue(skel_path.exists())
+        proc = self._run("render-concern-doc",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        doc_path = (
+            self.project_root / "docs" / "apps/web" / "auth" / "index.md"
+        )
+        self.assertTrue(doc_path.exists())
+        # Skeleton sibling removed on success.
+        self.assertFalse(skel_path.exists())
+
+    def test_render_doc_validation_blocks(self):
+        # Concern has no required fields populated.
+        self._init_pkg_concern()
+        proc = self._run("render-concern-doc",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"validation failed", proc.stderr)
+        doc_path = (
+            self.project_root / "docs" / "apps/web" / "auth" / "index.md"
+        )
+        self.assertFalse(doc_path.exists())
+
+    def test_render_doc_idempotent_byte_identical(self):
+        self._fill_minimum_valid_concern()
+        self._run("render-concern-doc",
+                  "--package", "apps/web", "--concern", "auth")
+        doc_path = (
+            self.project_root / "docs" / "apps/web" / "auth" / "index.md"
+        )
+        a = doc_path.read_bytes()
+        # Re-render against the same state; result must match byte-for-byte.
+        self._run("render-concern-doc",
+                  "--package", "apps/web", "--concern", "auth")
+        b = doc_path.read_bytes()
+        self.assertEqual(a, b)
+
+
+class DecompositionGateTests(_RenderTestBase):
+    """Filesystem-walk tests for `validate-package`'s decomposition gate.
+
+    Build real subfolder structures under `<project_root>/<package>/src/`
+    and check whether validate-package flags substantive subfolders that
+    aren't registered as concerns.
+
+    The package-tier baseline (overview/tree/lang/export/dep) is filled
+    via `_fill_min` so the only thing being tested is the decomposition
+    gate's behavior — every test passes the existing per-package gates
+    by construction.
+    """
+
+    def _fill_min(self):
+        # Create source file at a path that's NOT inside src/ so the
+        # cite resolves but doesn't accidentally count toward
+        # decomposition.
+        self._write_source(
+            "apps/web/manifest.ts", ["export const foo = 1"]
+        )
+        self._add_pkg(path="apps/web")
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "Web.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "TypeScript")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "foo",
+                  "--kind", "constant",
+                  "--signature", "",
+                  "--description", "X.",
+                  "--language", "ts",
+                  "--code-snippet", "export const foo = 1",
+                  "--cite-file", "apps/web/manifest.ts",
+                  "--cite-start", "1", "--cite-end", "1")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "18",
+                  "--purpose", "UI.")
+
+    def _make_subdir(self, rel, files):
+        """Create a subdir at `<project_root>/<rel>` with the given files."""
+        full = self.project_root / rel
+        full.mkdir(parents=True, exist_ok=True)
+        for fname in files:
+            (full / fname).write_text("x", encoding="utf-8")
+
+    def test_no_src_dir_is_noop(self):
+        # No `src/` directory under apps/web at all -> gate is a no-op.
+        self._fill_min()
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_empty_src_dir_is_noop(self):
+        self._fill_min()
+        (self.project_root / "apps" / "web" / "src").mkdir(parents=True)
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_multifile_subfolder_flags_missing_concern(self):
+        self._fill_min()
+        self._make_subdir("apps/web/src/components", ["a.tsx", "b.tsx"])
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"decomposition", proc.stderr)
+        self.assertIn(b"components", proc.stderr)
+
+    def test_registered_concern_satisfies_gate(self):
+        self._fill_min()
+        self._make_subdir("apps/web/src/components", ["a.tsx", "b.tsx"])
+        self._run("add-concern",
+                  "--package", "apps/web", "--concern", "components")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_single_file_non_role_folder_is_NOT_substantive(self):
+        # Single file in a non-architectural-role folder -> not flagged.
+        self._fill_min()
+        self._make_subdir("apps/web/src/utils", ["lone.ts"])
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_single_file_architectural_role_folder_IS_substantive(self):
+        # `services/` is in the role allowlist; even a single file
+        # counts as substantive.
+        self._fill_min()
+        self._make_subdir("apps/web/src/services", ["api.ts"])
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"services", proc.stderr)
+
+    def test_trivial_leaf_assets_skipped(self):
+        # Multi-file `assets/` is in the trivial-leaf list -> NOT flagged.
+        self._fill_min()
+        self._make_subdir("apps/web/src/assets", ["logo.png", "style.css"])
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_ecosystem_agnostic_match_python_services(self):
+        # `services/` in a python project hits the same allowlist —
+        # ecosystem-agnostic basename match.
+        self._fill_min()
+        self._make_subdir("apps/web/src/services", ["billing.py"])
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"services", proc.stderr)
+
+    def test_multiple_missing_concerns_all_reported(self):
+        # No truncation — every missing concern surfaces.
+        self._fill_min()
+        self._make_subdir("apps/web/src/components", ["a.tsx", "b.tsx"])
+        self._make_subdir("apps/web/src/handlers", ["h.ts"])
+        self._make_subdir("apps/web/src/stores", ["s.ts"])
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"components", proc.stderr)
+        self.assertIn(b"handlers", proc.stderr)
+        self.assertIn(b"stores", proc.stderr)
+
+
+class StateMigrationTests(_EnvIsolationMixin, unittest.TestCase):
+    """Pre-3.1 state files lack the `concerns` per-package key. The
+    helper must load such state without modification, treat missing
+    `concerns` as `{}`, and let subsequent setters populate it cleanly.
+    """
+
+    def _write_legacy_state(self):
+        # Hand-author a state file that mimics what a pre-Phase-3.1
+        # writer would have produced. Note the absence of the
+        # `concerns` field on each package record.
+        legacy = {
+            "version": 1,
+            "packages": {
+                "apps/web": {
+                    "name": "web",
+                    "path": "apps/web",
+                    "overview": "An app.",
+                    "directory_tree": "src/",
+                    "primary_language": "ts",
+                    "framework": None,
+                    "build_tool": None,
+                    "scripts": {},
+                    "exports": [],
+                    "dependencies": [],
+                    "hazards": [],
+                    "usage_example": None,
+                    "consumer_pattern": None,
+                },
+            },
+        }
+        self.state_file.write_text(
+            json.dumps(legacy, indent=2, sort_keys=True), encoding="utf-8"
+        )
+
+    def test_legacy_state_loads(self):
+        self._write_legacy_state()
+        # Direct-import API: _load_state reads the env-var-resolved
+        # state path. The mixin pops DEVFORGE_DIR in setUp; restore it
+        # for this in-process call (the subprocess-based tests in this
+        # class already pass the env explicitly).
+        os.environ["DEVFORGE_DIR"] = str(self.devforge_dir)
+        try:
+            from _generate_docs._state import _load_state
+            state = _load_state()
+        finally:
+            os.environ.pop("DEVFORGE_DIR", None)
+        self.assertIn("apps/web", state["packages"])
+        self.assertEqual(state["packages"]["apps/web"]["concerns"], {})
+
+    def test_legacy_state_status_works(self):
+        self._write_legacy_state()
+        proc = _run_cli(self.devforge_dir, "status")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Status output now includes a concerns line per package.
+        self.assertIn(b"concerns: 0", proc.stdout)
+
+    def test_legacy_state_add_concern_works(self):
+        self._write_legacy_state()
+        proc = _run_cli(self.devforge_dir, "add-concern",
+                        "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = json.loads(self.state_file.read_text(encoding="utf-8"))
+        self.assertIn("auth", state["packages"]["apps/web"]["concerns"])
+
+    def test_default_concern_record_shape(self):
+        # The factory exists and produces a fully-initialized dict.
+        rec = gdh.default_concern_record("auth")
+        self.assertEqual(rec["concern_name"], "auth")
+        self.assertIsNone(rec["overview"])
+        self.assertIsNone(rec["directory_tree"])
+        self.assertEqual(rec["public_surface"], [])
+        self.assertEqual(rec["types"], [])
+        self.assertEqual(rec["dependencies"], [])
+        self.assertEqual(rec["hazards"], [])
+        self.assertIsNone(rec["usage_example"])
+        # No `consumer_pattern` at concern tier.
+        self.assertNotIn("consumer_pattern", rec)
+
+
+class ConcernHelpTests(_EnvIsolationMixin, unittest.TestCase):
+    """All 11 concern subcommands must appear in the helper's help output."""
+
+    def test_help_lists_concern_subcommands(self):
+        proc = _run_cli(self.devforge_dir, "--help")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        for sub in (
+            b"add-concern",
+            b"set-concern-overview",
+            b"set-concern-tree",
+            b"add-concern-export",
+            b"add-concern-type",
+            b"add-concern-dep",
+            b"add-concern-hazard",
+            b"set-concern-usage-example",
+            b"render-concern-skeleton",
+            b"validate-concern",
+            b"render-concern-doc",
+        ):
+            self.assertIn(sub, proc.stdout, "missing %r" % sub)
 
 
 if __name__ == "__main__":

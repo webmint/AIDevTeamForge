@@ -29,10 +29,17 @@ Idempotency policy:
   mistakes immediately.
 - Single-field setters (`set-package-overview`, etc.) ARE idempotent
   on purpose so the LLM can revise during a fill loop.
-- Append-shaped subcommands (`add-package-script`, `-export`, `-dep`,
-  `-hazard`) reject duplicate entries by their natural key (script
-  name, export `(name, file, start)` tuple, dep name) — same data
-  goes through the call once, not twice.
+- Append-shaped subcommands `add-package-script`, `-export`, and
+  `-dep` reject duplicate entries by their natural key (script name,
+  export `(name, file, start)` tuple, dep name) — same data goes
+  through the call once, not twice.
+- `add-package-hazard` ALWAYS appends — no dedup. The same hazard
+  observed at two cite locations (or two LLM passes finding the same
+  issue worded slightly differently) is legitimately two entries; the
+  user reviews and prunes during /generate-docs Phase 4. Verified by
+  `AddPackageHazardTests.test_two_hazards_appended`. Concern-tier
+  `add-concern-hazard` differs intentionally (see `_setters_concern.py`
+  docstring); the asymmetry is documented, not a bug.
 
 Stdlib only. Targets Python 3.8+.
 """

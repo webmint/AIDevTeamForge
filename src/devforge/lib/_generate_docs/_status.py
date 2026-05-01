@@ -100,4 +100,7 @@ def cmd_status(args: argparse.Namespace) -> int:
                 _render_field_status(pkg.get("usage_example"))
             )
         )
+        sys.stdout.write(
+            "    concerns: {0}\n".format(len(pkg.get("concerns") or {}))
+        )
     return 0

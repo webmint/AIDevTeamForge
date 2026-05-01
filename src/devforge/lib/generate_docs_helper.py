@@ -36,6 +36,7 @@ from _generate_docs import main  # noqa: E402
 from _generate_docs._state import (  # noqa: E402,F401
     STATE_FILE_NAME,
     _state_file_path,
+    default_concern_record,
     default_package_record,
     default_state,
 )

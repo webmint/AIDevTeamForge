@@ -138,6 +138,10 @@ OPTIONAL_SECTION_MARKERS = (
     ("consumer_pattern", _TODO_CONSUMER_PATTERN, _opt_codeblock_empty),
 )
 
+# `CONCERN_OPTIONAL_SECTION_MARKERS` is the concern-tier counterpart;
+# it lives further down (line ~445) where the `_TODO_CONCERN_*`
+# constants are defined.
+
 
 def _render_overview(pkg: Dict[str, Any]) -> str:
     overview = pkg.get("overview")
@@ -387,6 +391,221 @@ def _atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
+# ---------------------------------------------------------------------------
+# Concern-tier render (Phase 3.1).
+#
+# Concern docs use the heading `## Public Surface` instead of
+# `## Main Exports` (per ConcernDoc schema rename); fewer sections than
+# package-tier (no Tech Stack, no Scripts, no Consumer Pattern). The
+# Types section is always rendered (with `[TODO]` when empty) — concerns
+# explicitly carry a `types: List[CodeBlock]` field whose intent is to
+# surface type-shape contracts, so an unset slot needs a visible
+# placeholder rather than silent omission. Required-field markers
+# overlap with the package-tier list (REQUIRED_FIELD_TODO_MARKERS) and
+# are reused; the Public Surface and Types sections share the
+# `[TODO: ...]` shape with their package-tier counterparts where the
+# wording makes sense, and use distinct concern-specific markers
+# otherwise so validate-concern can distinguish them.
+# ---------------------------------------------------------------------------
+
+
+_TODO_PUBLIC_SURFACE = (
+    "[TODO: enumerate concern's public surface via add-concern-export]"
+)
+_TODO_CONCERN_TYPES = (
+    "[TODO: register concern types via add-concern-type, or leave empty "
+    "if the concern surfaces no types]"
+)
+# Concern-tier shared-section TODOs reuse the package-tier prose where the
+# guidance applies verbatim (e.g., dependency-internal-vs-external split is
+# the same across tiers); only the CLI command name differs. The shared
+# package-tier `_TODO_DEPENDENCIES` etc. cite package-tier setters which
+# would mislead an LLM in concern context. Concern-specific copies below
+# point at the right commands.
+_TODO_CONCERN_DEPENDENCIES = (
+    "[TODO: enumerate via add-concern-dep, or leave empty if the concern "
+    "imports nothing]"
+)
+_TODO_CONCERN_HAZARDS = (
+    "[TODO: list inline observations via add-concern-hazard, or leave "
+    "empty if the concern has no observable mislogic]"
+)
+_TODO_CONCERN_USAGE_EXAMPLE = (
+    "[TODO: lift a real usage example via set-concern-usage-example]"
+)
+
+
+# Required-field TODO markers for concerns. `_TODO_OVERVIEW` and
+# `_TODO_TREE` are reused verbatim from the package tier (same shape,
+# same prose); `_TODO_PUBLIC_SURFACE` is concern-specific. Public
+# surface is a required field in `validate-concern`; types are
+# explicitly optional.
+CONCERN_REQUIRED_FIELD_TODO_MARKERS = (
+    _TODO_OVERVIEW,
+    _TODO_TREE,
+    _TODO_PUBLIC_SURFACE,
+)
+
+
+# Concern-tier counterpart to OPTIONAL_SECTION_MARKERS (Phase 3.1
+# defense-in-depth). The concern record has four optional sections —
+# `types`, `dependencies`, `hazards`, `usage_example` — that exhibit
+# the same render-bug failure mode the package-tier check guards
+# against: state populated -> rendered `[TODO]` is a render bug, not
+# a legitimate skip. Each tuple is (field, marker, is-empty-fn);
+# `is_empty_fn` returns True when the state field is missing/empty
+# (i.e., the [TODO] is a legitimate optional skip, not a render bug).
+CONCERN_OPTIONAL_SECTION_MARKERS = (
+    ("types", _TODO_CONCERN_TYPES, lambda v: not v),
+    ("dependencies", _TODO_CONCERN_DEPENDENCIES, lambda v: not v),
+    ("hazards", _TODO_CONCERN_HAZARDS, lambda v: not v),
+    ("usage_example", _TODO_CONCERN_USAGE_EXAMPLE, lambda v: v is None),
+)
+
+
+def _render_concern_overview(concern: Dict[str, Any]) -> str:
+    overview = concern.get("overview")
+    body = _esc(overview) if overview else _TODO_OVERVIEW
+    return "## Overview\n\n{0}\n".format(body)
+
+
+def _render_concern_directory_tree(concern: Dict[str, Any]) -> str:
+    tree = concern.get("directory_tree")
+    body = tree if tree else _TODO_TREE
+    return "## Directory Structure\n\n```\n{0}\n```\n".format(body)
+
+
+def _render_concern_public_surface(concern: Dict[str, Any]) -> str:
+    """Render `## Public Surface` (concern-tier counterpart of `## Main
+    Exports`).
+
+    Same Export-entry rendering as the package tier — a concern's
+    `public_surface` field stores the same Export shape.
+    """
+    exports = concern.get("public_surface") or []
+    if not exports:
+        return "## Public Surface\n\n{0}\n".format(_TODO_PUBLIC_SURFACE)
+    body_parts = ["## Public Surface", ""]
+    for ex in exports:
+        body_parts.append(_render_export_entry(ex))
+    return "\n".join(body_parts).rstrip() + "\n"
+
+
+def _render_concern_types(concern: Dict[str, Any]) -> str:
+    """Render `## Types` for a concern.
+
+    Unlike the package-tier Types section (which is omitted when empty
+    because type-kind exports are normally absent), the concern-tier
+    Types is a first-class field — render an explicit `[TODO]` slot
+    when empty so the LLM sees the field exists. Validate-concern does
+    NOT block on missing types (the [TODO] is in the optional list).
+    """
+    types = concern.get("types") or []
+    if not types:
+        return "## Types\n\n{0}\n".format(_TODO_CONCERN_TYPES)
+    body_parts = ["## Types", ""]
+    for tb in types:
+        body_parts.append(_render_code_block(tb))
+    return "\n".join(body_parts).rstrip() + "\n"
+
+
+def _render_concern_dependencies(concern: Dict[str, Any]) -> str:
+    """Render `## Dependencies` — same internal/external split as
+    package tier."""
+    deps = concern.get("dependencies") or []
+    internal = [d for d in deps if d.get("kind") == "internal"]
+    external = [d for d in deps if d.get("kind") == "external"]
+    if not internal and not external:
+        return "## Dependencies\n\n{0}\n".format(
+            _TODO_CONCERN_DEPENDENCIES
+        )
+    parts = ["## Dependencies", ""]
+    parts.append("### Workspace-internal")
+    parts.append("")
+    if internal:
+        for dep in internal:
+            parts.append(_render_dependency_entry(dep))
+    else:
+        parts.append("_None._")
+    parts.append("")
+    parts.append("### External")
+    parts.append("")
+    if external:
+        for dep in external:
+            parts.append(_render_dependency_entry(dep))
+    else:
+        parts.append("_None._")
+    parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _render_concern_hazards(concern: Dict[str, Any]) -> str:
+    hazards = concern.get("hazards") or []
+    if not hazards:
+        return "## Hazards\n\n{0}\n".format(_TODO_CONCERN_HAZARDS)
+    parts = ["## Hazards", ""]
+    for hazard in hazards:
+        line = "- **{0}**: {1}".format(
+            _esc(hazard["category"]), _esc(hazard["description"])
+        )
+        cite = hazard.get("cite")
+        if cite:
+            line = line + "  \n  cite: `{0}:{1}-{2}`".format(
+                cite["file"], cite["start"], cite["end"]
+            )
+        parts.append(line)
+    return "\n".join(parts) + "\n"
+
+
+def _render_concern_usage_example(concern: Dict[str, Any]) -> str:
+    ue = concern.get("usage_example")
+    if not ue:
+        return "## Usage Example\n\n{0}\n".format(
+            _TODO_CONCERN_USAGE_EXAMPLE
+        )
+    return "## Usage Example\n\n" + _render_code_block(ue)
+
+
+def render_concern_skeleton(
+    state: Dict[str, Any], package_path: str, concern_name: str,
+) -> str:
+    """Pure render function for ConcernDoc — returns a markdown string.
+
+    Both `cmd_render_concern_skeleton` and `cmd_render_concern_doc` call
+    this; the difference between the two is only the output path and
+    whether validation gates the write.
+
+    Output sections: H1 (concern name) -> Overview -> Directory ->
+    Public Surface -> Types -> Dependencies -> Hazards -> Usage
+    Example. No Tech Stack / Scripts / Consumer Pattern (those are
+    package-tier only).
+    """
+    pkg = state["packages"].get(package_path)
+    if pkg is None:
+        raise KeyError(
+            "package not registered at {0!r}".format(package_path)
+        )
+    concerns = pkg.get("concerns") or {}
+    concern = concerns.get(concern_name)
+    if concern is None:
+        raise KeyError(
+            "concern {0!r} not registered under {1!r}".format(
+                concern_name, package_path,
+            )
+        )
+    sections: List[str] = []
+    sections.append("# {0}".format(concern_name))
+    sections.append("")
+    sections.append(_render_concern_overview(concern))
+    sections.append(_render_concern_directory_tree(concern))
+    sections.append(_render_concern_public_surface(concern))
+    sections.append(_render_concern_types(concern))
+    sections.append(_render_concern_dependencies(concern))
+    sections.append(_render_concern_hazards(concern))
+    sections.append(_render_concern_usage_example(concern))
+    return "\n".join(sections).rstrip() + "\n"
+
+
 def _project_root() -> Path:
     """Return the project root (parent of `.devforge`).
 
@@ -428,6 +647,55 @@ def cmd_render_package_skeleton(args: argparse.Namespace) -> int:
         return _die("cannot write {0}: {1}".format(out_path, err), code=1)
     _info(
         "render-package-skeleton at {0} -> {1}".format(args.path, out_path)
+    )
+    sys.stdout.write(str(out_path) + "\n")
+    return 0
+
+
+def cmd_render_concern_skeleton(args: argparse.Namespace) -> int:
+    """Render the concern skeleton to
+    `docs/<package_path>/<concern_name>/index.md.skeleton`.
+
+    Output path choice: nest concern docs one directory level under the
+    package so a single workspace can ship per-concern files alongside
+    a package's `index.md`. The trailing component is always
+    `index.md.skeleton` (vs. `<concern>.md.skeleton`) so the path-shape
+    is a generalization of the package-tier convention rather than a
+    cousin shape — file shape stays consistent across tiers.
+    """
+    try:
+        state = _load_state()
+    except StateLoadError as err:
+        return _die(str(err), code=1)
+    pkg = _require_package(state, args.package)
+    if pkg is None:
+        return _die(
+            "package not registered at {0!r}; run add-package first".format(
+                args.package
+            )
+        )
+    concerns = pkg.get("concerns") or {}
+    if args.concern not in concerns:
+        return _die(
+            "concern {0!r} not registered under {1}; run add-concern "
+            "first".format(args.concern, args.package)
+        )
+    try:
+        markdown = render_concern_skeleton(state, args.package, args.concern)
+    except KeyError as err:
+        return _die(str(err))
+    out_path = (
+        _project_root() / "docs" / args.package / args.concern
+        / "index.md.skeleton"
+    )
+    try:
+        _atomic_write_text(out_path, markdown)
+    except OSError as err:
+        return _die("cannot write {0}: {1}".format(out_path, err), code=1)
+    _info(
+        "render-concern-skeleton at {0}/{1} -> {2}".format(
+            args.package, args.concern, out_path,
+        )
     )
     sys.stdout.write(str(out_path) + "\n")
     return 0

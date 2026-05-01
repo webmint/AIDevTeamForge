@@ -72,7 +72,12 @@ def default_state() -> Dict[str, Any]:
 
 
 def default_package_record(name: str, path: str) -> Dict[str, Any]:
-    """Return the per-package skeleton dict — every field initialized."""
+    """Return the per-package skeleton dict — every field initialized.
+
+    The `concerns` dict (Phase 3.1+) is keyed by `concern_name` for O(1)
+    lookup. Existing pre-3.1 state files lack the key — `_load_state`
+    backfills it on read so older state files load without modification.
+    """
     return {
         "name": name,
         "path": path,
@@ -87,6 +92,27 @@ def default_package_record(name: str, path: str) -> Dict[str, Any]:
         "hazards": [],
         "usage_example": None,
         "consumer_pattern": None,
+        "concerns": {},
+    }
+
+
+def default_concern_record(concern_name: str) -> Dict[str, Any]:
+    """Return the per-concern skeleton dict — every field initialized.
+
+    Mirrors `default_package_record` for the ConcernDoc tier (schema:
+    `generate_docs_schema.ConcernDoc`). NOTE: there is no
+    `consumer_pattern` field at the concern level (that's package-tier
+    only); keep the two factories distinct rather than parameterizing.
+    """
+    return {
+        "concern_name": concern_name,
+        "overview": None,
+        "directory_tree": None,
+        "public_surface": [],
+        "types": [],
+        "dependencies": [],
+        "hazards": [],
+        "usage_example": None,
     }
 
 
@@ -140,6 +166,25 @@ def _load_state() -> Dict[str, Any]:
                 path, type(data["packages"]).__name__
             )
         )
+    # Phase 3.1 migration: backfill the `concerns` dict on any package
+    # record that predates the concern-tier addition. Pre-3.1 state
+    # files lack the key entirely; we treat missing-or-None as `{}` so
+    # status / validate-package keep working on legacy state. Wrong-type
+    # values (`concerns` present but not a dict) are raised as a load
+    # error — same policy as `packages` itself, so corrupt fields don't
+    # cause silent data loss.
+    for pkg_path, pkg_record in data["packages"].items():
+        if not isinstance(pkg_record, dict):
+            continue
+        if "concerns" not in pkg_record or pkg_record["concerns"] is None:
+            pkg_record["concerns"] = {}
+        elif not isinstance(pkg_record["concerns"], dict):
+            raise StateLoadError(
+                "state file {0}: packages[{1!r}].concerns must be an "
+                "object, got {2}".format(
+                    path, pkg_path, type(pkg_record["concerns"]).__name__
+                )
+            )
     return data
 
 
@@ -260,3 +305,20 @@ def _require_package(state: Dict[str, Any], path: str) -> Optional[Dict[str, Any
     error — this helper just looks it up so the call site stays linear.
     """
     return state["packages"].get(path)
+
+
+def _require_concern(
+    state: Dict[str, Any], path: str, concern_name: str,
+) -> Optional[Dict[str, Any]]:
+    """Return the concern record under `path`/`concern_name` or None.
+
+    Two-step lookup: the package must exist AND have a registered
+    concern by that name. Returning a single Optional keeps callers
+    flat — the caller surfaces the appropriate "package not registered"
+    vs "concern not registered" error after a None check.
+    """
+    pkg = state["packages"].get(path)
+    if pkg is None:
+        return None
+    concerns = pkg.get("concerns") or {}
+    return concerns.get(concern_name)
