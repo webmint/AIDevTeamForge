@@ -391,7 +391,7 @@ Total: 2 effective loops across 6 agent invocations. Faster than Phase 1.2 (the 
 Targets per `GENERATE-DOCS-PLAN.md`:
 1. Coverage ≥ 10 concern docs ... wait, this is single-package iteration so just the `index.md` for app-web (concern docs are Phase 3)
 2. Citation discipline = every code block has `<!-- path:line-range -->` ref, validated by validate-package
-3. Structural consistency = re-runs produce byte-identical output (idempotent)
+3. Structural consistency = schema / A.2.1 template / citation format are deterministic across runs; LLM-selected content (export set, hazard set, prose) varies per run by design. Helper-level render (`render-package-doc` invoked twice on the same stable state) is byte-identical.
 4. A.2.1 template uniformity (Overview / Directory Structure / Tech Stack / Scripts / Main Exports / Types / Dependencies / Hazards / Usage Example / Consumer Pattern)
 
 Phase 2.2 needs the user to install testForge20 with the latest framework state (committed to develop-2.0-init) and run `/generate-docs` interactively. The result is then evaluated against the empirical baseline targets. If shape is approved → Phase 2.3 (lock baseline). If not approved → iterate spec/render template/agent contract until it is.
@@ -434,6 +434,7 @@ Phase 2.2 needs the user to install testForge20 with the latest framework state 
 - Tech Stack table populated: typescript / Vue 3 / vite (Phase 2 step 7 gate enforced)
 - Scripts table populated: 11 entries from `package.json scripts`
 - Idempotency verified: back-to-back `render-package-doc` produces byte-identical output (md5 confirmed: `25db847e5c016bf7bc88c70feb9cf807`)
+- Full `/generate-docs` run-to-run is NOT byte-identical across runs (LLM judgment varies — empirically: ~7 of ~16 exports overlap, ~2 of ~5 hazards overlap, prose differs). This is by-design variance: schema, A.2.1 template, and citation format remain stable across runs. The python-skeleton primitive locks structure + factual format; content reflects current LLM judgment per run
 
 ### Vs prior baselines (the empirical comparison in the plan)
 
@@ -462,7 +463,7 @@ This phase had MANY iteration rounds (probably the most of any phase). Per-round
 
 - #2 (validation deferred) — `_check_optional_render` defense-in-depth + Phase 2 step 7 gate
 - #4 (atomic writes) — preserved via `_state_transaction`'s mkstemp + os.replace
-- #6 (compose without idempotency) — back-to-back render byte-identical
+- #6 (compose without idempotency) — `render-package-doc` re-invocation on already-rendered, stable state does not delete prior state or produce "missing required" errors; `add-package` re-registration is rejected with exit 2 (not silent data loss). Helper-level render output (same state → same markdown bytes) is by-design mechanical determinism; full `/generate-docs` LLM-in-loop variance is outside #6's scope
 - #7 (unanchored separator splits) — anchored regex in init.yaml parser
 
 ### Future-session-falsely-believes check
@@ -472,6 +473,9 @@ This phase had MANY iteration rounds (probably the most of any phase). Per-round
 - Could a session believe TypeScript generics in prose render verbatim? NO — HTML-escape applied; tests cover edge cases
 - Could a session believe Phase 2 succeeds without populating optional fields? NO — step 7 gate is HARD
 - Could a session believe internal-dep validator only checks state + filesystem? NO — third check via init.yaml documented
+- Could a session believe full `/generate-docs` runs are byte-idempotent across runs? NO — Step 2.3 Lock-in record + Phase 2.2 Final-approved-baseline note explicitly scope idempotency to helper level; full LLM-in-loop runs are non-idempotent by design
+- Could a session believe the locked Phase 2.3 baseline (474-line index.md) is the canonical `/generate-docs` index shape? NO — it's the iteration-mode shape (single-package, no concern docs yet). The LLM rationally packs everything important into the only doc available; once Phase 3 concern docs land, exports / hazards / details relocate per-concern and index.md slims toward the cse-strata-ws-forge reference (~113 lines). Expected, not a bug. Verify when Phase 3 lands.
+- Could a session believe partial folder descriptions in iteration-mode tree output are a spec defect? NO — the LLM applies redundancy judgment: when the parent folder's description carries the load (e.g., `components/ # Vue SFCs grouped by feature area`), nested children with self-documenting names get no description. In Phase 3 each substantive nested folder becomes its own concern doc with full description, so the gap resolves naturally. Don't tighten the spec to force tautological descriptions in iteration mode.
 
 ---
 

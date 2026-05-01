@@ -102,7 +102,15 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
 
 4. **Fill the slots via setter invocations**. Citation discipline is mandatory — every code-snippet setter requires `--cite-file` + `--cite-start` + `--cite-end` and the snippet MUST be lifted VERBATIM from the cited source line range (whitespace-normalized comparison runs at validate-time):
    - `set-package-overview` — 1-2 paragraph package overview (NEVER guess abbreviations; consult `README.md` at project root + at the package path for any acronym/initialism encountered before expanding it; if no authoritative definition found, use the abbreviation verbatim or mark with `[TODO: <abbreviation> — definition not found]`)
-   - `set-package-tree` — ascii directory tree of `src/` (no other directories)
+   - `set-package-tree` — ascii directory tree of `src/` (no other directories). The tree MUST include an inline `# <description>` comment after each substantive folder (folders, not files); the description is 3–7 words capturing what the folder contains and/or its architectural role. Trivial leaf folders (assets, generated output, fixtures) stay uncommented. Right-align the `#` column for readability — pad with spaces between the longest tree-glyph + folder name and the `#` marker so descriptions line up visually. Example format:
+
+     ```
+     src/
+     ├── foo/          # domain entry points and routing
+     ├── bar/          # shared composables and helpers
+     │   └── assets/
+     └── baz/          # cross-cutting type definitions
+     ```
    - For each export: `add-package-export --name <n> --kind <k> --signature "..." --description "..." --language <l> --code-snippet "..." --cite-file <f> --cite-start <s> --cite-end <e>`
    - For each dependency: `add-package-dep --name <n> --kind internal|external --version <v> --purpose "..." [--consumer-location <loc>...]`
    - For each hazard: `add-package-hazard --category <c> --description "..." [--cite-file <f> --cite-start <s> --cite-end <e>]`

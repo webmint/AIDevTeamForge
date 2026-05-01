@@ -170,7 +170,7 @@ Two reference outputs exist for `apps/app-web/` of testForge20:
 1. **Coverage ≥** reference (10–12 concern docs covering all substantive subfolders)
 2. **Decomposition** = per-concern split (not monolith)
 3. **Citation discipline** = every code block paired with `<!-- path:line-range -->` reference, validated mechanically against source
-4. **Structural consistency** = re-runs produce structurally identical output (re-running on the same source code should produce diff-free output for unchanged inputs)
+4. **Structural consistency** = re-runs produce structurally identical output (schema, A.2.1 template, citation format are deterministic across runs; LLM-selected content — export set, hazard set, prose — varies per run by design). Helper-level render (`render-package-doc` invoked twice on the same stable state) is byte-identical.
 5. **Section template uniformity** — choose one template (strict A.2.1 or content-driven) and enforce across all package docs
 6. **Higher quality than today's `/onboard`** — measured by Phase 8's empirical gate (retrieval recall for `/research`, citation validity, intent-analysis quality)
 
@@ -604,20 +604,21 @@ Schema accommodates both A.2.1 strict template (via `Export` + `CodeBlock` lists
 - `docs/db-cse-ui-strata/apps/app-web/index.md` populated
 - Every code block has `<!-- path:line-range -->` reference
 - Validator confirms 0 stale citations, 0 snippet mismatches
-- Re-run produces byte-identical output (idempotency)
+- Helper-level idempotency (mandatory, mechanical): `render-package-doc` invoked twice on the same stable state produces byte-identical output
+- LLM-level non-idempotency (by design): full `/generate-docs` runs with the LLM in the loop produce different content per run — different exports chosen from the same source surface, different hazards identified, different prose phrasing. The schema, A.2.1 template, and citation format are deterministic; LLM selection and prose are variable. This reflects the python-skeleton primitive's design intent: structure locked, content reflects current LLM judgment
 - Tech-writer agent dispatch executes successfully — orchestrator launches one tech-writer subagent for `apps/app-web/`, the subagent fills slots + validates + reports clean
 
 **Verify**:
 1. File exists at expected path
 2. `generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web` exits 0
-3. Diff between back-to-back runs: zero changes
+3. Diff between back-to-back `render-package-doc` invocations on stable state: zero changes (helper-level idempotency check). Note: full `/generate-docs` re-runs with the LLM in the loop are NOT byte-idempotent across runs by design — see Step 2.3 Lock-in record.
 4. Compare to baseline:
    - **vs heavy-spec /onboard monolith** (50 KB, 1 file): shape is decomposed at the package level (this is one package doc; concerns come in Phase 3)
    - **vs reference-spec /onboard 10-doc run** (1174 lines, 60.8 KB): index.md alone won't equal the full 10-doc tree — that's Phase 3's work. But this index.md should match the reference's `index.md` shape (113 lines, A.2.1 template) plus citation discipline (which reference lacked).
    - **vs cse-strata-ws-forge actual reference index.md** (113 lines, no citations): same A.2.1 template, plus citations.
 5. Tech-writer agent dispatch worked: log shows the subagent invocation completed without orchestrator intervention beyond the initial brief; the subagent's report matches the actual state file content.
 
-**Compare protocol**: capture a snapshot of the produced doc + the state file. Diff against next-run + against cse-strata-ws-forge reference. Document outcomes in `GENERATE-DOCS-EXECUTION-LOG.md`.
+**Compare protocol**: capture a snapshot of the produced doc + the state file. For helper-level idempotency, diff a second `render-package-doc` invocation against the first on the same stable state (expect zero changes). For shape comparison, diff against cse-strata-ws-forge reference. Note: a fresh full `/generate-docs` re-run is NOT expected to byte-match the prior run (LLM judgment varies — see Step 2.3 Lock-in record); shape consistency is the comparison criterion, not byte equality. Document outcomes in `GENERATE-DOCS-EXECUTION-LOG.md`.
 
 **If structurally far from cse-strata-ws-forge reference**:
 - Re-brief `python-engineer` + `instruction-author` with the deviation
@@ -655,6 +656,7 @@ Tightening (when re-activated) must NOT relax: citation discipline (every snippe
 - 36 dependencies (workspace-internal vs external split; 19 internal correctly classified + 17 external)
 - HTML-escaped narrative fields (TypeScript generics like `DeepReadonly<Ref<S>>` rendered safely)
 - Idempotency verified: back-to-back `render-package-doc` produces byte-identical output (md5 match)
+- Empirical run-to-run variance (full `/generate-docs` with LLM in loop): between two consecutive fresh runs only ~7 of ~16 exports overlap and only ~2 of ~5 hazards overlap; prose differs. Schema, A.2.1 template, and citation format remain identical across runs. This is by-design variance, not a bug — the locked layer is structure + factual format; content reflects current LLM judgment
 - `validate-package` exits 0 against approved state
 
 **Architecture decision (Phase 3 dispatch model)**: orchestrator-direct slot-fill is the canonical Phase 3 architecture for `/generate-docs`. Empirical A/B comparison on testForge20 between option A (tech-writer subagent dispatch) and option B (orchestrator-direct fill) showed option B with 2–4× coverage (16 vs 7 exports, 9 vs 2 hazards, 18 vs 9 citations), zero helper-API contract breaks (option A made 2 direct JSON edits to the state file), and correct workspace-internal classification (option A misclassified all 19 as external). The full RESOLVED entry is open decision item #9 below; that entry is the canonical record. Tightening of `src/agents/tech-writer.md` SKELETON-FILL MODE is deferred (see "SUPERSEDED" note above); the agent file itself remains valid for non-`/generate-docs` uses (ONBOARDING mode for legacy `/onboard`, default Normal Mode for `/finalize` / fix / refactor doc updates).
@@ -715,7 +717,7 @@ Lock-in commit captures wall-clock timings (pre + post) for record-keeping in `G
 - File count: target 10–12 docs
 - Decomposition: per-concern split (not monolith)
 - Citation discipline: every code block validated
-- Re-run idempotency: zero diff between runs
+- Re-run idempotency at helper level: back-to-back `render-concern-doc` invoked on the same stable state produces zero diff. Note: full `/generate-docs` concern dispatch is NOT byte-idempotent across runs (LLM judgment varies — different exports / hazards / prose per run). This verify bullet checks render mechanics only; LLM-in-loop variance is by design and outside this success criterion
 - **Per-concern parallelism (success criterion)**: inspect orchestrator's invocation log for the run — N concern subagents must launch within the same dispatch turn (single message, multiple `Agent` tool blocks). If the log shows sequential dispatch, the spec's Phase 3 instructions are buggy → loop back to author. Wall-clock data recorded as observation only: (longest concern's fill time + dispatch overhead) vs (sum of all concerns' fill times) — captured in `GENERATE-DOCS-EXECUTION-LOG.md` as side-effect data, not as a gate.
 - **Resume-mode slot-skip behavior (success criterion)**: a Resume run whose state already has most slots populated must NOT trigger a full source re-read for those packages — verify by reading the dispatch brief text (it says "fill only `[TODO]` slots") and by inspecting the subagent's reported reads (only files needed for remaining `[TODO]`s). Wall-clock for Resume vs fresh run captured in `GENERATE-DOCS-EXECUTION-LOG.md` as observation only.
 
@@ -875,7 +877,7 @@ Output table: `Pattern | Reference implementation path | Used when (one-line des
 - Every package + concern doc present
 - `docs/architecture.md` produced
 - `.devforge/memory.md` populated
-- Idempotency: full re-run produces zero diff
+- Idempotency at helper level: back-to-back `render-package-doc` / `render-concern-doc` invocations on stable state produce zero diff. Full `/generate-docs` re-run is NOT byte-idempotent across runs (LLM judgment varies — different exports / hazards / prose per run); shape and citation discipline remain stable.
 
 ### Step 7.2: Repo-wide cross-reference cleanup (still pre-Phase-8.2 retirement)
 
