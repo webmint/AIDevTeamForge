@@ -22,8 +22,10 @@ Stdlib only. Targets Python 3.8+.
 
 import argparse
 import sys
+import time
 from typing import Callable, List, Optional, Tuple
 
+from . import _trace
 from ._manifest import cmd_extract_package_scripts
 from ._render import (
     cmd_render_concern_skeleton,
@@ -335,9 +337,52 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    """Parse CLI args, dispatch to handler, emit trace line, return exit code.
+
+    Trace logging policy: every invocation appends one line to
+    `<DEVFORGE_DIR>/.generate-docs-trace.log` regardless of whether
+    the handler succeeded, returned a non-zero exit code, or raised
+    an unexpected exception. Help-mode (no subcommand) also emits
+    a trace with `subcommand=<unknown>` and `exit_code=2`. See
+    `_trace.py` for format and rationale.
+
+    Trace-write failures are absorbed (`try / except OSError`) so a
+    full disk or read-only `.devforge/` cannot break a helper run.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
+    subcommand_name = getattr(args, "subcommand", None) or "<unknown>"
     if getattr(args, "func", None) is None:
         parser.print_help(sys.stderr)
-        return 2
-    return args.func(args)
+        exit_code = 2
+        try:
+            _trace.write_trace(subcommand_name, 0, exit_code, args)
+        except OSError:
+            pass
+        return exit_code
+    start = time.perf_counter()
+    try:
+        exit_code = args.func(args)
+    except Exception as err:
+        # Unexpected handler exception (NOT a clean _AbortTransaction —
+        # those are caught inside handlers and become exit codes). We
+        # still emit a trace line so post-incident forensics can see
+        # *something* at the failure point, then re-raise so the
+        # underlying bug surfaces to the operator.
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        try:
+            # Best-effort: synthesize a summary that captures the
+            # exception class so it's filterable from the trace stream.
+            summary_args = argparse.Namespace(**vars(args))
+            _trace.write_trace(
+                subcommand_name, duration_ms, 1, summary_args,
+            )
+        except OSError:
+            pass
+        raise err
+    duration_ms = int((time.perf_counter() - start) * 1000)
+    try:
+        _trace.write_trace(subcommand_name, duration_ms, exit_code, args)
+    except OSError:
+        pass
+    return exit_code

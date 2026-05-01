@@ -4665,5 +4665,258 @@ class ConcernHelpTests(_EnvIsolationMixin, unittest.TestCase):
             self.assertIn(sub, proc.stdout, "missing %r" % sub)
 
 
+# ---------------------------------------------------------------------------
+# TraceLoggingTests — `<DEVFORGE_DIR>/.generate-docs-trace.log` JSONL audit.
+#
+# Trace is hooked into _cli.main(); every helper invocation appends one
+# line. Tests cover happy path, failure path, append-only semantics,
+# parallel-write atomicity, and best-effort failure absorption (an
+# unwritable trace path must not break the helper run). Round-trip via
+# the real CLI subprocess so the production dispatch path is exercised
+# (no in-process shortcuts that could hide the cli wiring).
+# ---------------------------------------------------------------------------
+
+
+class TraceLoggingTests(_EnvIsolationMixin, unittest.TestCase):
+
+    TRACE_FILE_NAME = ".generate-docs-trace.log"
+
+    @property
+    def trace_file(self):
+        return self.devforge_dir / self.TRACE_FILE_NAME
+
+    def _read_trace_lines(self):
+        """Return parsed JSON objects from each line, raising on malformed."""
+        text = self.trace_file.read_text(encoding="utf-8")
+        lines = [ln for ln in text.split("\n") if ln.strip()]
+        return [json.loads(ln) for ln in lines]
+
+    def test_successful_invocation_produces_trace_line(self):
+        proc = _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/web", "--name", "web",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.trace_file.exists(), "trace file not created")
+        records = self._read_trace_lines()
+        self.assertEqual(len(records), 1)
+        rec = records[0]
+        self.assertEqual(rec["subcommand"], "add-package")
+        self.assertEqual(rec["exit_code"], 0)
+        self.assertGreaterEqual(rec["duration_ms"], 0)
+        self.assertIn("package=apps/web", rec["args_summary"])
+        # `--name` for add-package is the display name and is intentionally
+        # NOT surfaced to the trace summary (would be redundant with
+        # package= and add log noise on every package registration).
+        self.assertNotIn("name=", rec["args_summary"])
+        # ISO 8601 with `Z` suffix.
+        self.assertTrue(
+            rec["ts"].endswith("Z"),
+            "ts not ISO-Z: %r" % rec["ts"],
+        )
+        # Format roughly: 2026-05-01T18:30:42.123Z
+        self.assertRegex(
+            rec["ts"],
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$",
+        )
+
+    def test_failed_invocation_produces_trace_line_with_correct_exit_code(self):
+        # First add-package succeeds.
+        proc1 = _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/web", "--name", "web",
+        )
+        self.assertEqual(proc1.returncode, 0)
+        # Second add-package with the same path is rejected (duplicate).
+        proc2 = _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/web", "--name", "web2",
+        )
+        self.assertEqual(proc2.returncode, 2)
+
+        records = self._read_trace_lines()
+        self.assertEqual(len(records), 2)
+        # First trace = success, second = failure.
+        self.assertEqual(records[0]["exit_code"], 0)
+        self.assertEqual(records[0]["subcommand"], "add-package")
+        self.assertEqual(records[1]["exit_code"], 2)
+        self.assertEqual(records[1]["subcommand"], "add-package")
+        # Both should have `package=apps/web` in summary regardless of
+        # success / failure (summary is built from argparse args, which
+        # are populated before the handler runs).
+        self.assertIn("package=apps/web", records[0]["args_summary"])
+        self.assertIn("package=apps/web", records[1]["args_summary"])
+
+    def test_concurrent_invocations_produce_atomic_trace_lines(self):
+        # Stress test: 8 parallel `add-concern` invocations (different
+        # concern names) against the same pre-registered package. Each
+        # spawns its own helper process so each holds its own fd on the
+        # trace file. After all complete, the trace file MUST contain
+        # exactly 8 valid JSON lines — none corrupted by interleaving.
+        # Loops 5 iterations to catch atomic-write regressions.
+        for iteration in range(5):
+            with self.subTest(iteration=iteration):
+                # Reset between iterations: drop trace file and state.
+                if self.trace_file.exists():
+                    self.trace_file.unlink()
+                state_path = self.devforge_dir / gdh.STATE_FILE_NAME
+                if state_path.exists():
+                    state_path.unlink()
+
+                # Pre-register the package.
+                proc = _run_cli(
+                    self.devforge_dir,
+                    "add-package", "--path", "apps/web", "--name", "web",
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                # Drop the pre-registration trace so we start fresh for
+                # the parallel batch count.
+                self.trace_file.unlink()
+
+                env = os.environ.copy()
+                env["DEVFORGE_DIR"] = str(self.devforge_dir)
+                procs = []
+                for i in range(8):
+                    procs.append(subprocess.Popen(
+                        [
+                            sys.executable, str(_HELPER_PY),
+                            "add-concern",
+                            "--package", "apps/web",
+                            "--concern", "concern-{0}".format(i),
+                        ],
+                        env=env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    ))
+                for p in procs:
+                    p.communicate()
+
+                # Read raw text; assert each line parses as JSON.
+                text = self.trace_file.read_text(encoding="utf-8")
+                lines = [ln for ln in text.split("\n") if ln.strip()]
+                self.assertEqual(
+                    len(lines), 8,
+                    "expected 8 trace lines, got %d:\n%s" % (
+                        len(lines), text,
+                    ),
+                )
+                for ln in lines:
+                    try:
+                        rec = json.loads(ln)
+                    except json.JSONDecodeError as e:
+                        self.fail(
+                            "corrupted trace line (concurrent write "
+                            "interleaved): %r — %s" % (ln, e)
+                        )
+                    self.assertEqual(rec["subcommand"], "add-concern")
+                    self.assertIn(
+                        "package=apps/web", rec["args_summary"],
+                    )
+                    self.assertIn("concern=", rec["args_summary"])
+
+    def test_trace_write_failure_does_not_break_invocation(self):
+        # Point DEVFORGE_DIR at a writable directory so state can be
+        # persisted, but pre-create `.generate-docs-trace.log` AS A
+        # DIRECTORY so the trace writer's `open(..., "a")` raises
+        # IsADirectoryError (an OSError subclass). The helper invocation
+        # should STILL succeed and the state file should still be
+        # written.
+        trace_path_as_dir = self.devforge_dir / self.TRACE_FILE_NAME
+        trace_path_as_dir.mkdir(parents=True, exist_ok=True)
+
+        proc = _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/web", "--name", "web",
+        )
+        # Helper must still succeed despite the trace write failing.
+        self.assertEqual(
+            proc.returncode, 0,
+            "helper failed when trace was unwritable: %s" % proc.stderr,
+        )
+        # State was still written.
+        self.assertTrue(self.state_file.exists())
+        state = self._read_state()
+        self.assertIn("apps/web", state["packages"])
+        # Trace path is still a directory (no rogue file write).
+        self.assertTrue(trace_path_as_dir.is_dir())
+
+    def test_args_summary_redacts_verbose_text_fields(self):
+        # First register the package.
+        proc1 = _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/web", "--name", "web",
+        )
+        self.assertEqual(proc1.returncode, 0)
+        # Reset trace so we look at just the next call.
+        self.trace_file.unlink()
+
+        long_text = "x" * 5000  # 5KB of prose
+        proc2 = _run_cli(
+            self.devforge_dir,
+            "set-package-overview",
+            "--path", "apps/web",
+            "--text", long_text,
+        )
+        self.assertEqual(proc2.returncode, 0, proc2.stderr)
+
+        records = self._read_trace_lines()
+        self.assertEqual(len(records), 1)
+        rec = records[0]
+        self.assertEqual(rec["subcommand"], "set-package-overview")
+        self.assertIn("package=apps/web", rec["args_summary"])
+        # The `--text` value MUST NOT appear in the summary.
+        self.assertNotIn("xxxx", rec["args_summary"])
+        self.assertLess(
+            len(rec["args_summary"]), 200,
+            "args_summary too long — verbose field leaked: %r" % (
+                rec["args_summary"],
+            ),
+        )
+
+    def test_trace_file_append_only(self):
+        # Three sequential invocations; verify each adds exactly one
+        # line and earlier lines remain unchanged after later writes.
+        proc = _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/web", "--name", "web",
+        )
+        self.assertEqual(proc.returncode, 0)
+        snapshot1 = self.trace_file.read_text(encoding="utf-8")
+        self.assertEqual(snapshot1.count("\n"), 1)
+
+        proc = _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", "apps/api", "--name", "api",
+        )
+        self.assertEqual(proc.returncode, 0)
+        snapshot2 = self.trace_file.read_text(encoding="utf-8")
+        self.assertEqual(snapshot2.count("\n"), 2)
+        # Earlier line bytes preserved verbatim.
+        self.assertTrue(
+            snapshot2.startswith(snapshot1),
+            "second write rewrote earlier content:\n  s1=%r\n  s2=%r" % (
+                snapshot1, snapshot2,
+            ),
+        )
+
+        proc = _run_cli(
+            self.devforge_dir,
+            "status",
+        )
+        self.assertEqual(proc.returncode, 0)
+        snapshot3 = self.trace_file.read_text(encoding="utf-8")
+        self.assertEqual(snapshot3.count("\n"), 3)
+        self.assertTrue(snapshot3.startswith(snapshot2))
+
+        # Validate every line is JSON; first two are add-package, third
+        # is status (no traceworthy args).
+        records = self._read_trace_lines()
+        self.assertEqual(len(records), 3)
+        self.assertEqual(records[0]["subcommand"], "add-package")
+        self.assertEqual(records[1]["subcommand"], "add-package")
+        self.assertEqual(records[2]["subcommand"], "status")
+        self.assertEqual(records[2]["args_summary"], "")
+
+
 if __name__ == "__main__":
     unittest.main()

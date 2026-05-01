@@ -5,3 +5,9 @@
 
 # Local vault for in-flight redo work (not for commit)
 .vault/
+
+# generate_docs_helper artifacts that may stray into repo dir when
+# tests/dev runs invoke the helper without DEVFORGE_DIR set
+src/devforge/.generate-docs-state.json
+src/devforge/.generate-docs-state.json.lock
+src/devforge/.generate-docs-trace.log
