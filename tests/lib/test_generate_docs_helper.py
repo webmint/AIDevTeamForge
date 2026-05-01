@@ -33,7 +33,7 @@ if str(_LIB_DIR) not in sys.path:
 import generate_docs_helper as gdh  # noqa: E402
 
 
-def _run_cli(devforge_dir, *args, project_root=None):
+def _run_cli(devforge_dir, *args, project_root=None, cwd=None):
     env = os.environ.copy()
     env["DEVFORGE_DIR"] = str(devforge_dir)
     if project_root is not None:
@@ -41,6 +41,7 @@ def _run_cli(devforge_dir, *args, project_root=None):
     return subprocess.run(
         [sys.executable, str(_HELPER_PY)] + list(args),
         env=env,
+        cwd=str(cwd) if cwd is not None else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -2667,6 +2668,379 @@ class NewSubcommandsInHelpTests(_EnvIsolationMixin, unittest.TestCase):
             b"render-package-doc",
         ):
             self.assertIn(sub, proc.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Phase2SpecSequenceTests — regression for the testForge20 2026-05-01 bug.
+#
+# Symptom: rendered Tech Stack showed `Framework | —` and `Build Tool | —`
+# even though Phase 2 of `src/commands/generate-docs/main.md` instructs the
+# LLM to invoke `set-package-framework "Vue 3"` and `set-package-build-tool
+# vite`. State on disk had framework=None, build_tool=None, scripts={};
+# language was set, all Phase 3 setters worked.
+#
+# Diagnosis: setters work correctly in isolation (existing tests prove this).
+# The state shape "language=set, framework/build_tool/scripts=unset, deps/
+# exports/hazards=set" is reachable only when the LLM SKIPPED Phase 2 steps
+# 3-6 entirely — not a helper bug. Root cause is an upstream spec ambiguity
+# in the Phase 0 "Resume" branch: it tells the LLM to "skip Phase 2's
+# add-package and any scalar set-* already populated", which a strict reading
+# could interpret as "skip the whole Phase 2".
+#
+# This regression test enforces the post-fix invariant: when ALL Phase 2
+# steps run end-to-end as written in main.md lines 61-66, every targeted
+# field is persisted to state. If a future setter regression breaks this,
+# the test fails BEFORE it reaches the LLM in production.
+# ---------------------------------------------------------------------------
+
+
+class Phase2SpecSequenceTests(_EnvIsolationMixin, unittest.TestCase):
+    """Mirror the exact ordered subcommand sequence from
+    `src/commands/generate-docs/main.md` Phase 2, then assert every targeted
+    field of the package record is populated."""
+
+    def _project_root_with_manifest(self, scripts):
+        # Build a tempdir with a package.json so extract-package-scripts
+        # can succeed; mirrors how the helper resolves the manifest.
+        proot = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(proot, ignore_errors=True))
+        pkg_dir = proot / "db-cse-ui-strata" / "apps" / "app-web"
+        pkg_dir.mkdir(parents=True)
+        manifest = {
+            "name": "app-web",
+            "scripts": scripts,
+            "dependencies": {"vue": "^3.3.4"},
+            "devDependencies": {"vite": "^3.2.0", "typescript": "^5.0.0"},
+        }
+        (pkg_dir / "package.json").write_text(
+            json.dumps(manifest), encoding="utf-8",
+        )
+        return proot
+
+    def test_phase2_full_sequence_persists_all_fields(self):
+        """Step-by-step replay of main.md Phase 2:
+
+            1. add-package
+            2. set-package-language
+            3. set-package-framework
+            4. set-package-build-tool
+            5. extract-package-scripts (read-only; capture stdout)
+            6. add-package-script (one per script in step-5 output)
+
+        After step 6, the package record must have:
+          - primary_language, framework, build_tool all set
+          - scripts dict matching the manifest
+
+        Failure of this test means the Phase 2 invocation chain has
+        regressed in a way that produces the testForge20 2026-05-01
+        bug shape (em-dash Tech Stack, [TODO] Scripts) even though
+        each setter passes its isolated test.
+        """
+        scripts = {
+            "build": "vite build",
+            "dev": "vite",
+            "test": "vitest",
+        }
+        proot = self._project_root_with_manifest(scripts)
+        path = "db-cse-ui-strata/apps/app-web"
+
+        # Step 1: add-package.
+        proc = _run_cli(
+            self.devforge_dir, "add-package",
+            "--path", path, "--name", "app-web",
+            project_root=proot, cwd=proot,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # Step 2: set-package-language.
+        proc = _run_cli(
+            self.devforge_dir, "set-package-language",
+            "--path", path, "--value", "typescript",
+            project_root=proot, cwd=proot,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # Step 3: set-package-framework.
+        proc = _run_cli(
+            self.devforge_dir, "set-package-framework",
+            "--path", path, "--value", "Vue 3",
+            project_root=proot, cwd=proot,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # Step 4: set-package-build-tool.
+        proc = _run_cli(
+            self.devforge_dir, "set-package-build-tool",
+            "--path", path, "--value", "vite",
+            project_root=proot, cwd=proot,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # Step 5: extract-package-scripts (capture JSON stdout).
+        # The subcommand resolves --path against CWD, so invoke from
+        # project root exactly as the LLM does in the spec.
+        proc = _run_cli(
+            self.devforge_dir, "extract-package-scripts",
+            "--path", path,
+            project_root=proot, cwd=proot,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        extracted = json.loads(proc.stdout.decode("utf-8"))
+        self.assertEqual(extracted, scripts)
+
+        # Step 6: add-package-script (one call per pair).
+        for name, command in extracted.items():
+            proc = _run_cli(
+                self.devforge_dir, "add-package-script",
+                "--path", path,
+                "--script-name", name,
+                "--command", command,
+                project_root=proot, cwd=proot,
+            )
+            self.assertEqual(
+                proc.returncode, 0,
+                "add-package-script {0!r} failed: {1}".format(
+                    name, proc.stderr,
+                ),
+            )
+
+        # Assert: every targeted field of the record is populated.
+        rec = self._read_state()["packages"][path]
+        self.assertEqual(rec["primary_language"], "typescript")
+        self.assertEqual(rec["framework"], "Vue 3")
+        self.assertEqual(rec["build_tool"], "vite")
+        self.assertEqual(rec["scripts"], scripts)
+
+    def test_phase2_render_skeleton_has_no_em_dash_tech_stack(self):
+        """Cross-check the render: when Phase 2 sets framework + build_tool,
+        the rendered skeleton's Tech Stack table shows the values, not the
+        `—` em-dash placeholder. This is the user-visible symptom that
+        triggered the original investigation.
+        """
+        proot = self._project_root_with_manifest({"build": "vite build"})
+        path = "db-cse-ui-strata/apps/app-web"
+
+        for args in (
+            ("add-package", "--path", path, "--name", "app-web"),
+            ("set-package-language", "--path", path, "--value", "typescript"),
+            ("set-package-framework", "--path", path, "--value", "Vue 3"),
+            ("set-package-build-tool", "--path", path, "--value", "vite"),
+        ):
+            proc = _run_cli(
+                self.devforge_dir, *args, project_root=proot, cwd=proot,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # render-package-skeleton writes to docs/<path>/index.md.skeleton
+        # under DEVFORGE_PROJECT_ROOT.
+        proc = _run_cli(
+            self.devforge_dir, "render-package-skeleton",
+            "--path", path,
+            project_root=proot, cwd=proot,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        skel = (proot / "docs" / path / "index.md.skeleton").read_text(
+            encoding="utf-8",
+        )
+        # Tech Stack rows: Vue 3 + vite present, no em-dash on those rows.
+        self.assertIn("| Framework | Vue 3 |", skel)
+        self.assertIn("| Build Tool | vite |", skel)
+        # Sanity: the em-dash row would look like this if the setter failed.
+        self.assertNotIn("| Framework | — |", skel)
+        self.assertNotIn("| Build Tool | — |", skel)
+
+
+# ---------------------------------------------------------------------------
+# RenderHtmlEscapeTests — regression for prose fields containing HTML-looking
+# tokens (e.g. TypeScript generics ``DeepReadonly<Ref<S>>``) that markdown
+# renderers would otherwise interpret as raw HTML. ``<S>`` is the deprecated
+# HTML strikethrough tag, which struck through entire Hazards/Usage sections
+# in the rendered docs before this fix.
+# ---------------------------------------------------------------------------
+
+
+class RenderHtmlEscapeTests(_RenderTestBase):
+
+    def _render_and_read(self):
+        proc = self._run("render-package-skeleton", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return (
+            self.project_root / "docs" / "apps/web" / "index.md.skeleton"
+        ).read_text(encoding="utf-8")
+
+    def _slice_section(self, text, heading):
+        """Return the body of the top-level ``## <heading>`` section.
+
+        Splits on ``\\n## `` (with a trailing space) so subsection
+        headings (``### ...``) inside the section are not treated as
+        section terminators.
+        """
+        marker = "## " + heading
+        head = text.split(marker, 1)[1]
+        return head.split("\n## ", 1)[0]
+
+    def test_overview_with_angle_brackets_escaped(self):
+        self._add_pkg()
+        self._run(
+            "set-package-overview",
+            "--path", "apps/web",
+            "--text", "Uses DeepReadonly<Ref<S>> generics.",
+        )
+        text = self._render_and_read()
+        # Escaped form present.
+        self.assertIn("DeepReadonly&lt;Ref&lt;S&gt;&gt;", text)
+        # The literal ``<S>`` token must NOT appear in the prose body
+        # (would make markdown renderers strike-through everything).
+        # Constrain the check to the Overview block to avoid coincidental
+        # matches in unrelated sections.
+        overview_block = self._slice_section(text, "Overview")
+        self.assertNotIn("<S>", overview_block)
+        self.assertNotIn("<Ref<S>>", overview_block)
+
+    def test_hazard_description_with_generics_escaped(self):
+        self._add_pkg()
+        # Required setters so render produces a non-stub Overview, etc.,
+        # but they don't matter for the hazard assertion.
+        self._run(
+            "add-package-hazard",
+            "--path", "apps/web",
+            "--category", "naming",
+            "--description",
+            "Both DeepReadonly<Ref<S>> and Ref<S> coexist.",
+        )
+        text = self._render_and_read()
+        hazards_block = self._slice_section(text, "Hazards")
+        self.assertIn("DeepReadonly&lt;Ref&lt;S&gt;&gt;", hazards_block)
+        self.assertIn("Ref&lt;S&gt;", hazards_block)
+        self.assertNotIn("<S>", hazards_block)
+        self.assertNotIn("<Ref<S>>", hazards_block)
+
+    def test_dependency_purpose_with_html_chars_escaped(self):
+        self._add_pkg()
+        self._run(
+            "add-package-dep",
+            "--path", "apps/web",
+            "--name", "vue", "--kind", "external", "--version", "3",
+            "--purpose", "Provides Ref<S> & DeepReadonly<T> helpers.",
+        )
+        text = self._render_and_read()
+        deps_block = self._slice_section(text, "Dependencies")
+        self.assertIn("Ref&lt;S&gt;", deps_block)
+        self.assertIn("DeepReadonly&lt;T&gt;", deps_block)
+        self.assertIn("&amp;", deps_block)
+        self.assertNotIn("Ref<S>", deps_block)
+        self.assertNotIn("DeepReadonly<T>", deps_block)
+
+    def test_export_description_with_generics_escaped(self):
+        self._add_pkg()
+        self._write_source(
+            "src/foo.ts", ["export function foo() {}"]
+        )
+        self._run(
+            "add-package-export",
+            "--path", "apps/web",
+            "--name", "foo", "--kind", "function",
+            "--signature", "foo(): Ref<S>",
+            "--description", "Returns a DeepReadonly<Ref<S>> wrapper.",
+            "--language", "ts",
+            "--code-snippet", "export function foo() {}",
+            "--cite-file", "src/foo.ts",
+            "--cite-start", "1", "--cite-end", "1",
+        )
+        text = self._render_and_read()
+        exports_block = self._slice_section(text, "Main Exports")
+        # Description prose is escaped.
+        self.assertIn(
+            "Returns a DeepReadonly&lt;Ref&lt;S&gt;&gt; wrapper.",
+            exports_block,
+        )
+        # The description prose line itself does NOT contain ``<S>``.
+        # (The signature fence and code-block fence DO contain ``<S>``;
+        # those are code contexts and intentionally left unescaped.)
+        for line in exports_block.splitlines():
+            if line.startswith("Returns a DeepReadonly"):
+                self.assertNotIn("<S>", line)
+                self.assertNotIn("<Ref<S>>", line)
+
+    def test_signature_in_fenced_block_NOT_escaped(self):
+        """Signature is rendered inside a fenced code block — code
+        context, must pass through verbatim."""
+        self._add_pkg()
+        self._write_source("src/foo.ts", ["export function foo() {}"])
+        self._run(
+            "add-package-export",
+            "--path", "apps/web",
+            "--name", "foo", "--kind", "function",
+            "--signature", "foo(): Ref<S>",
+            "--description", "x",
+            "--language", "ts",
+            "--code-snippet", "export function foo() {}",
+            "--cite-file", "src/foo.ts",
+            "--cite-start", "1", "--cite-end", "1",
+        )
+        text = self._render_and_read()
+        # Literal signature appears verbatim inside the unlabeled fence
+        # that precedes the description prose.
+        self.assertIn("foo(): Ref<S>", text)
+        # And it is NOT html-escaped.
+        self.assertNotIn("foo(): Ref&lt;S&gt;", text)
+
+    def test_code_block_snippet_NOT_escaped(self):
+        """Code-block snippets render inside fenced ``` blocks. Code is
+        verbatim; escaping would corrupt it."""
+        self._add_pkg()
+        self._write_source(
+            "src/foo.ts", ["export function foo<S>() {}"]
+        )
+        self._run(
+            "add-package-export",
+            "--path", "apps/web",
+            "--name", "foo", "--kind", "function",
+            "--signature", "",
+            "--description", "x",
+            "--language", "ts",
+            "--code-snippet", "export function foo<S>() {}",
+            "--cite-file", "src/foo.ts",
+            "--cite-start", "1", "--cite-end", "1",
+        )
+        text = self._render_and_read()
+        # The fenced snippet contains literal ``<S>`` — verbatim.
+        self.assertIn("export function foo<S>() {}", text)
+        self.assertNotIn("export function foo&lt;S&gt;() {}", text)
+
+    def test_amp_in_prose_escaped(self):
+        self._add_pkg()
+        self._run(
+            "set-package-overview",
+            "--path", "apps/web",
+            "--text", "Cats & dogs.",
+        )
+        text = self._render_and_read()
+        overview_block = self._slice_section(text, "Overview")
+        self.assertIn("Cats &amp; dogs.", overview_block)
+        # Bare ``&`` (not an entity reference) must not appear in the
+        # rendered prose. Slice to the literal phrase to avoid false
+        # positives from the HTML entities themselves.
+        self.assertNotIn("Cats & dogs.", overview_block)
+
+    def test_directory_tree_in_fence_NOT_escaped(self):
+        """Directory tree renders inside a fenced ``` block — code
+        context, verbatim. Tree text is unlikely to contain ``<>`` but
+        we still confirm no escaping is applied so the contract is
+        explicit."""
+        self._add_pkg()
+        self._run(
+            "set-package-tree",
+            "--path", "apps/web",
+            # Real-world tree text rarely has angle brackets, but if
+            # one slipped in (e.g. a placeholder folder name), code
+            # context means it should pass through verbatim.
+            "--text", "src/\n  <generated>/",
+        )
+        text = self._render_and_read()
+        # Literal angle brackets preserved inside the fence.
+        self.assertIn("<generated>/", text)
+        self.assertNotIn("&lt;generated&gt;/", text)
 
 
 if __name__ == "__main__":

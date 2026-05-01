@@ -39,7 +39,7 @@ Verify, in order:
 2. `.devforge/lib/generate_docs_helper` exists and is executable. If missing, the install is incomplete — tell the user to re-run `install.sh` and stop.
 3. The target package path `db-cse-ui-strata/apps/app-web/` exists relative to the install root. If absent, tell the user the path is missing and ask whether they want to abort or supply a different path; do not proceed silently.
 4. Inspect `.devforge/.generate-docs-state.json`. If absent, proceed (clean run). If present, run `.devforge/lib/generate_docs_helper status` to see which packages are registered, then branch:
-   - **Target package already registered** (`db-cse-ui-strata/apps/app-web` appears in status output): the prior run's state will block `add-package` re-registration in Phase 2 (the helper rejects duplicate `add-package` by design — see `_setters.py` `cmd_add_package`). Ask the user via AskUserQuestion (single-line prompt: `Prior run state for app-web exists. Reset and start fresh, resume by filling missing slots only, or abort?`) with options **Reset** (default — invoke `.devforge/lib/generate_docs_helper reset`, then proceed to Phase 1 normally), **Resume** (skip Phase 2's `add-package` and any scalar `set-*` already populated; dispatch tech-writer in Phase 3 with a brief noting the package is registered and only `[TODO]` slots remain), **Abort** (stop and let the user reconcile manually). Default to **Reset** because iteration mode treats each run as a fresh attempt unless the user opts to resume.
+   - **Target package already registered** (`db-cse-ui-strata/apps/app-web` appears in status output): the prior run's state will block `add-package` re-registration in Phase 2 (the helper rejects duplicate `add-package` by design — see `_setters.py` `cmd_add_package`). Ask the user via AskUserQuestion (single-line prompt: `Prior run state for app-web exists. Reset and start fresh, resume by filling missing slots only, or abort?`) with options **Reset** (default — invoke `.devforge/lib/generate_docs_helper reset`, then proceed to Phase 1 normally), **Resume** (skip `add-package` only; for each scalar `set-package-*` setter — language / framework / build-tool — check current state via `status` first and re-run the setter ONLY if the field is currently `null`/unset; ALWAYS run `extract-package-scripts` and the `add-package-script` loop because script registration is append-only and the helper rejects duplicate `script-name` entries with exit 2, so duplicates are silently skipped while missing scripts are added; after the conditional re-run, proceed to Phase 2's verification gate at step 7 before dispatching Phase 3), **Abort** (stop and let the user reconcile manually). Default to **Reset** because iteration mode treats each run as a fresh attempt unless the user opts to resume.
    - **Only a different package registered** (target not in status output): no action needed — `add-package` for `db-cse-ui-strata/apps/app-web` will succeed; existing legacy package state remains untouched.
 
    Note: this reset-first prompt is specific to iteration mode (single-package, repeated runs on the same package are expected). When the `## ⚠️ ITERATION MODE` section is removed, the multi-package flow handles per-package state differently and this check will be revisited.
@@ -66,6 +66,22 @@ Invoke the helper in this order. Each call's exit code 0 is required before proc
 6. For each `(name, command)` pair in the JSON output of step 5: `.devforge/lib/generate_docs_helper add-package-script --path db-cse-ui-strata/apps/app-web --script-name <name> --command <command>`
 
 If `extract-package-scripts` returns an empty JSON object (no scripts in `package.json`), step 6 is a no-op.
+
+7. **Phase 2 verification gate (hard requirement; blocks Phase 3 dispatch).** This gate runs after every Phase 2 invocation regardless of whether Phase 0 routed via Reset or Resume. Invoke `.devforge/lib/generate_docs_helper status` and confirm the state for the target package shows:
+   - `language` is a non-null string
+   - `framework` is set (a non-null string for typical web/app packages; explicitly empty via `set-package-framework --value ""` only when the package legitimately has no framework — must be a deliberate choice, not a silent skip)
+   - `build_tool` is set (same rule as `framework`: deliberate empty via `--value ""` is allowed; silent `null` is not)
+   - `scripts` count is > 0 (0 is acceptable only when the manifest has no scripts block AND the ecosystem provides no defaults — `extract-package-scripts` emits ecosystem defaults for Rust / Go / Java / Maven / etc., so 0 should be rare)
+
+   If ANY required field is missing or the script count is unexpectedly 0, do NOT dispatch the tech-writer subagent in Phase 3. Re-run the corresponding setter:
+   - `language` missing → `.devforge/lib/generate_docs_helper set-package-language --path db-cse-ui-strata/apps/app-web --value <detected>`
+   - `framework` missing → `.devforge/lib/generate_docs_helper set-package-framework --path db-cse-ui-strata/apps/app-web --value <detected from manifest>` (or `--value ""` only if the package legitimately has no framework)
+   - `build_tool` missing → `.devforge/lib/generate_docs_helper set-package-build-tool --path db-cse-ui-strata/apps/app-web --value <detected from manifest>` (same rule)
+   - `scripts` empty → re-run `extract-package-scripts --path db-cse-ui-strata/apps/app-web` and loop `add-package-script` per entry
+
+   After re-running, invoke `status` again and verify all fields populated. Cap retries at 3; if the gate still fails after 3 attempts, surface the failure to the user (which field, which setter, what error) and ABORT before tech-writer dispatch.
+
+   This gate exists because LLM Phase 2 dropout (skipping setters silently) was empirically observed in a prior iteration run — `framework=null`, `build_tool=null`, `scripts={}` despite the spec instructing the setters. `validate-package` does not catch this because those fields are schema-optional. The verification gate is the explicit "did Phase 2 actually do its job" check.
 
 ## Phase 3 — Render skeleton, dispatch tech-writer to fill
 

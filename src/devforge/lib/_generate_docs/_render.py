@@ -32,8 +32,30 @@ import argparse
 import os
 import sys
 import tempfile
+from html import escape as _html_escape
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+def _esc(value: str) -> str:
+    """HTML-escape a NARRATIVE prose value before substitution.
+
+    Markdown renderers pass HTML-looking sequences through as raw HTML.
+    Inline TypeScript generic syntax like ``DeepReadonly<Ref<S>>`` in
+    a prose field embeds ``<S>`` — the deprecated HTML strikethrough
+    tag — which makes everything until a (never-emitted) ``</s>`` render
+    struck through. Escaping ``<``, ``>``, ``&`` at the substitution
+    point converts those characters to entity references so the
+    renderer treats them as literal text.
+
+    Use this ONLY at narrative-prose substitution points (overview,
+    hazard.description, dependency.purpose, export.description). Code
+    contexts — fenced blocks (``` ... ```) and inline backtick spans —
+    must pass through verbatim; escaping them would corrupt code.
+    ``quote=False`` keeps quote characters intact (they have no special
+    meaning in markdown and need not be escaped).
+    """
+    return _html_escape(value, quote=False)
 
 from ._state import (
     StateLoadError,
@@ -119,7 +141,10 @@ OPTIONAL_SECTION_MARKERS = (
 
 def _render_overview(pkg: Dict[str, Any]) -> str:
     overview = pkg.get("overview")
-    body = overview if overview else _TODO_OVERVIEW
+    # Prose substitution: HTML-escape (the [TODO] sentinel contains no
+    # angle brackets and is safe to substitute either way; escaping it
+    # is a no-op).
+    body = _esc(overview) if overview else _TODO_OVERVIEW
     return "## Overview\n\n{0}\n".format(body)
 
 
@@ -184,11 +209,16 @@ def _render_export_entry(export: Dict[str, Any]) -> str:
     )
     parts.append("")
     if export.get("signature"):
+        # Signature renders inside a fenced code block — code context,
+        # NOT escaped (escaping would corrupt the displayed signature).
         parts.append("```")
         parts.append(export["signature"])
         parts.append("```")
         parts.append("")
-    parts.append(export["description"])
+    # Description is narrative prose — HTML-escape so generic-syntax
+    # tokens like ``<S>`` do not get parsed as the HTML strikethrough
+    # tag by markdown renderers.
+    parts.append(_esc(export["description"]))
     parts.append("")
     parts.append(_render_code_block(export["code"]))
     return "\n".join(parts)
@@ -225,7 +255,9 @@ def _render_types(pkg: Dict[str, Any]) -> Optional[str]:
 def _render_dependency_entry(dep: Dict[str, Any]) -> str:
     name = dep["name"]
     version = dep.get("version") or ""
-    purpose = dep.get("purpose", "")
+    # Purpose is narrative prose — HTML-escape to keep angle-bracket
+    # tokens from being parsed as raw HTML by markdown renderers.
+    purpose = _esc(dep.get("purpose", ""))
     version_part = " ({0})".format(version) if version else ""
     locations = dep.get("consumer_locations") or []
     line = "- `{0}`{1} — {2}".format(name, version_part, purpose)
@@ -267,8 +299,12 @@ def _render_hazards(pkg: Dict[str, Any]) -> str:
         return "## Hazards\n\n{0}\n".format(_TODO_HAZARDS)
     parts = ["## Hazards", ""]
     for hazard in hazards:
+        # Both fields are narrative prose — HTML-escape so generic-syntax
+        # tokens (e.g. ``DeepReadonly<Ref<S>>``) do not turn into HTML
+        # tags. ``<S>`` is the deprecated strikethrough tag and was the
+        # original visible-symptom field for this fix.
         line = "- **{0}**: {1}".format(
-            hazard["category"], hazard["description"]
+            _esc(hazard["category"]), _esc(hazard["description"])
         )
         cite = hazard.get("cite")
         if cite:
