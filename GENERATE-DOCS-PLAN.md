@@ -732,6 +732,7 @@ If file count short of target, the decomposition gate should have caught missing
 **Brief to `python-engineer`**:
 - **Goal**: add architecture-tier subcommands per the Schema section (`add-architecture`, `add-architecture-pattern`, `add-architecture-layer`, `add-architecture-dep`, `add-architecture-decision`, `render-architecture-skeleton`, `validate-architecture`, `render-architecture-doc`). Output: `docs/architecture.md`.
 - **Cross-check / impact analysis**: cross-package deps inferred from per-package `Dependency` entries with `kind=internal` — verify state coherence; tests ~30 new.
+- **Consider on entry (graphify-derived, 2026-05-01 analysis)**: add `add-architecture-hub` (a "god node" — package with high cross-package fan-in, mechanically computable from `Dependency(kind=internal)` aggregation) + `add-architecture-anomaly` (LLM-flagged surprising edge with cite — e.g., a quote package importing auth helpers it shouldn't need). Both surface load-bearing structure that flat pattern/layer lists hide. Decision deferred to entry; record outcome in plan-update commit at Step 4.1 entry.
 - **Loop**: `python-reviewer` audits.
 
 **Verify**: ~30 new + ~510 prior ≈ ~540 OK.
@@ -834,6 +835,8 @@ Each row's columns:
 
 **Output**: write to `docs/topic-index.md` as a single markdown table sorted alphabetically by topic name (overwrite if exists; idempotent per Base acceptance criterion 1). Tests ~10, covering at minimum: a multi-package monorepo (testForge20-shaped), a single-package project, and a densely-featured package that triggers sub-topic iteration.
 
+**Consider on entry (graphify-derived, 2026-05-01 analysis)**: append a `## Suggested research starting points` block after the topic table — 4-5 questions hand-picked by the LLM during topic-index synthesis, scoped to what the index can uniquely answer. Seeds `/research`'s session start when the user lacks a sharp query. Decision deferred to entry; record outcome in plan-update commit at Step 6.4 entry.
+
 **Note**: this is the highest-priority Track B script per the consumer protocol — it is `/research`'s entry point.
 
 ### Step 6.5: Script A — Accuracy validation (`scripts/validate_doc_claims.py`)
@@ -878,6 +881,8 @@ Output table: `Pattern | Reference implementation path | Used when (one-line des
 - `docs/architecture.md` produced
 - `.devforge/memory.md` populated
 - Idempotency at helper level: back-to-back `render-package-doc` / `render-concern-doc` invocations on stable state produce zero diff. Full `/generate-docs` re-run is NOT byte-idempotent across runs (LLM judgment varies — different exports / hazards / prose per run); shape and citation discipline remain stable.
+
+**Consider on entry (graphify-derived, 2026-05-01 analysis)**: emit `docs/README.md` as a workspace-level entry-point — auto-generated from the completed topic-index + architecture summary + counts (packages / concerns / citations) + last-rebuild timestamp. With 97+ docs in `docs/`, a one-screen human-facing map is mechanically cheap and high-value for first-landing navigation. Decision deferred to Step 7.1 or 7.3 entry; record outcome in plan-update commit at entry.
 
 ### Step 7.2: Repo-wide cross-reference cleanup (still pre-Phase-8.2 retirement)
 
