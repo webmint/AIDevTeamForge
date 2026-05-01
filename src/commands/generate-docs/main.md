@@ -134,11 +134,13 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
 
    If step 7 reported zero decomposition errors, skip steps 9–10 (no concerns to fan out) and proceed to step 11.
 
-9. **Dispatch one `concern-slot-filler` subagent per worklist entry, IN A SINGLE ASSISTANT MESSAGE**. Use Claude Code's parallel-tool-call mechanism: emit N `Agent` tool calls in the same message so they run concurrently. Each call uses `subagent_type: concern-slot-filler` with an inline prompt that supplies the four required inputs the agent expects (see `.claude/agents/concern-slot-filler.md`):
+9. **Dispatch `concern-slot-filler` subagents SEQUENTIALLY — one Agent call per assistant message, wait for the subagent's return, then dispatch the next.** Do NOT use Claude Code's parallel-tool-call mechanism for concern dispatch. Each call uses `subagent_type: concern-slot-filler` with an inline prompt that supplies the four required inputs the agent expects (see `.claude/agents/concern-slot-filler.md`):
    - `package_path: db-cse-ui-strata/apps/app-web`
    - `concern_name: <basename>`
    - `subfolder: <relative path under package_path>`
    - `mode: fresh` if Phase 0 routed via Reset (or no prior state existed), `mode: resume` if Phase 0 routed via Resume
+
+   **Why sequential, not parallel:** empirical evidence from a `/generate-docs` run on testForge20 (2026-05-01) showed parallel concern dispatch produced state-loss — the Phase 5 report documented 3 of 7 concerns reduced to empty shells in state despite their docs being rendered to disk earlier in the run (when slot data WAS populated). Either the helper's `_state_transaction()` lock failed under high concurrency or a subagent wrote empty values via setters. Until `tests/lib/test_state_concurrency_stress.py` empirically verifies parallel safety, sequential is mandatory. Trade-off: sequential dispatch costs more wall-clock for the iteration-mode single-package run; this is acceptable given the iteration's scope (1 package × ~7 concerns).
 
    **Resume-mode propagation is mandatory, not a hint.** If Phase 0 routed via Resume, every dispatched `concern-slot-filler` call MUST receive `mode: resume` so the subagent honors the slot-skip contract for any concern state already persisted. Mixing modes across concerns in one fan-out is forbidden — all-fresh or all-resume per run.
 
