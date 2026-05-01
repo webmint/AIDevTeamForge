@@ -90,6 +90,33 @@ REQUIRED_FIELD_TODO_MARKERS = (
 )
 
 
+# Optional-section markers — consumed by `_validators._check_optional_render`
+# as a defense-in-depth check: if any of these markers appear in the
+# rendered output AND the corresponding state field is populated, that's
+# a render bug (state has the data but the rendering produced [TODO]).
+# The 4-tuple shape is (state-field, marker, "is-empty" predicate).
+# `is-empty` returns True when the state field is missing/empty (i.e.,
+# the [TODO] is a legitimate optional skip, not a render bug).
+def _scripts_empty(value: Any) -> bool:
+    return not value
+
+
+def _hazards_empty(value: Any) -> bool:
+    return not value
+
+
+def _opt_codeblock_empty(value: Any) -> bool:
+    return value is None
+
+
+OPTIONAL_SECTION_MARKERS = (
+    ("scripts", _TODO_SCRIPTS, _scripts_empty),
+    ("hazards", _TODO_HAZARDS, _hazards_empty),
+    ("usage_example", _TODO_USAGE_EXAMPLE, _opt_codeblock_empty),
+    ("consumer_pattern", _TODO_CONSUMER_PATTERN, _opt_codeblock_empty),
+)
+
+
 def _render_overview(pkg: Dict[str, Any]) -> str:
     overview = pkg.get("overview")
     body = overview if overview else _TODO_OVERVIEW

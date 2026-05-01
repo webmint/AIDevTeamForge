@@ -48,12 +48,12 @@ from generate_docs_schema import (
 
 from ._state import (
     StateLoadError,
+    _AbortTransaction,
     _die,
     _info,
-    _load_state,
     _require_package,
     _state_file_path,
-    _write_state,
+    _state_transaction,
     default_package_record,
 )
 from ._validation import (
@@ -98,17 +98,19 @@ def cmd_add_package(args: argparse.Namespace) -> int:
     except ValueError as err:
         return _die(str(err))
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            if args.path in state["packages"]:
+                raise _AbortTransaction(_die(
+                    "package already registered at {0!r}; reset state or "
+                    "use a different path".format(args.path)
+                ))
+            state["packages"][args.path] = default_package_record(
+                args.name, args.path,
+            )
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    if args.path in state["packages"]:
-        return _die(
-            "package already registered at {0!r}; reset state or use a "
-            "different path".format(args.path)
-        )
-    state["packages"][args.path] = default_package_record(args.name, args.path)
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     _info("add-package {0} at {1}".format(args.name, args.path))
@@ -142,19 +144,18 @@ def _set_package_scalar(
             return _die(str(err))
         value = raw
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            pkg = _require_package(state, args.path)
+            if pkg is None:
+                raise _AbortTransaction(_die(
+                    "package not registered at {0!r}; run add-package "
+                    "first".format(args.path)
+                ))
+            pkg[field_name] = value
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    pkg = _require_package(state, args.path)
-    if pkg is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.path
-            )
-        )
-    pkg[field_name] = value
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     summary = "null" if value is None else "{0} chars".format(len(value))
@@ -214,24 +215,25 @@ def cmd_add_package_script(args: argparse.Namespace) -> int:
     except ValueError as err:
         return _die(str(err))
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            pkg = _require_package(state, args.path)
+            if pkg is None:
+                raise _AbortTransaction(_die(
+                    "package not registered at {0!r}; run add-package "
+                    "first".format(args.path)
+                ))
+            if args.script_name in pkg["scripts"]:
+                raise _AbortTransaction(_die(
+                    "script {0!r} already registered at {1}; use a "
+                    "different name or reset".format(
+                        args.script_name, args.path,
+                    )
+                ))
+            pkg["scripts"][args.script_name] = args.command
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    pkg = _require_package(state, args.path)
-    if pkg is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.path
-            )
-        )
-    if args.script_name in pkg["scripts"]:
-        return _die(
-            "script {0!r} already registered at {1}; use a different name "
-            "or reset".format(args.script_name, args.path)
-        )
-    pkg["scripts"][args.script_name] = args.command
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     _info("add-package-script {0} at {1}".format(args.script_name, args.path))
@@ -269,50 +271,50 @@ def cmd_add_package_export(args: argparse.Namespace) -> int:
     except ValueError as err:
         return _die(str(err))
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            pkg = _require_package(state, args.path)
+            if pkg is None:
+                raise _AbortTransaction(_die(
+                    "package not registered at {0!r}; run add-package "
+                    "first".format(args.path)
+                ))
+            # Idempotency: reject a re-registration with the SAME
+            # (name, file, start) tuple. Same name with a different cite
+            # is allowed (overloads / multiple definitions in different
+            # files).
+            for existing in pkg["exports"]:
+                if (
+                    existing["name"] == args.name
+                    and existing["code"]["cite"]["file"] == args.cite_file
+                    and existing["code"]["cite"]["start"] == args.cite_start
+                ):
+                    raise _AbortTransaction(_die(
+                        "export {0!r} at {1}:{2} already registered; use "
+                        "a different name or different cite".format(
+                            args.name, args.cite_file, args.cite_start,
+                        )
+                    ))
+            pkg["exports"].append(
+                {
+                    "name": args.name,
+                    "kind": args.kind,
+                    "signature": signature,
+                    "description": args.description,
+                    "code": {
+                        "language": args.language,
+                        "snippet": args.code_snippet,
+                        "cite": {
+                            "file": args.cite_file,
+                            "start": args.cite_start,
+                            "end": args.cite_end,
+                        },
+                    },
+                }
+            )
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    pkg = _require_package(state, args.path)
-    if pkg is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.path
-            )
-        )
-    # Idempotency: reject a re-registration with the SAME (name, file, start)
-    # tuple. Same name with a different cite is allowed (overloads / multiple
-    # definitions in different files).
-    for existing in pkg["exports"]:
-        if (
-            existing["name"] == args.name
-            and existing["code"]["cite"]["file"] == args.cite_file
-            and existing["code"]["cite"]["start"] == args.cite_start
-        ):
-            return _die(
-                "export {0!r} at {1}:{2} already registered; use a "
-                "different name or different cite".format(
-                    args.name, args.cite_file, args.cite_start
-                )
-            )
-    pkg["exports"].append(
-        {
-            "name": args.name,
-            "kind": args.kind,
-            "signature": signature,
-            "description": args.description,
-            "code": {
-                "language": args.language,
-                "snippet": args.code_snippet,
-                "cite": {
-                    "file": args.cite_file,
-                    "start": args.cite_start,
-                    "end": args.cite_end,
-                },
-            },
-        }
-    )
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     _info(
@@ -350,33 +352,34 @@ def cmd_add_package_dep(args: argparse.Namespace) -> int:
     except ValueError as err:
         return _die(str(err))
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            pkg = _require_package(state, args.path)
+            if pkg is None:
+                raise _AbortTransaction(_die(
+                    "package not registered at {0!r}; run add-package "
+                    "first".format(args.path)
+                ))
+            for existing in pkg["dependencies"]:
+                if existing["name"] == args.name:
+                    raise _AbortTransaction(_die(
+                        "dependency {0!r} already registered at {1}; use "
+                        "a different name or reset".format(
+                            args.name, args.path,
+                        )
+                    ))
+            pkg["dependencies"].append(
+                {
+                    "name": args.name,
+                    "kind": args.kind,
+                    "version": version,
+                    "purpose": args.purpose,
+                    "consumer_locations": consumer_locations,
+                }
+            )
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    pkg = _require_package(state, args.path)
-    if pkg is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.path
-            )
-        )
-    for existing in pkg["dependencies"]:
-        if existing["name"] == args.name:
-            return _die(
-                "dependency {0!r} already registered at {1}; use a "
-                "different name or reset".format(args.name, args.path)
-            )
-    pkg["dependencies"].append(
-        {
-            "name": args.name,
-            "kind": args.kind,
-            "version": version,
-            "purpose": args.purpose,
-            "consumer_locations": consumer_locations,
-        }
-    )
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     _info(
@@ -437,25 +440,24 @@ def cmd_add_package_hazard(args: argparse.Namespace) -> int:
             "end": args.cite_end,
         }
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            pkg = _require_package(state, args.path)
+            if pkg is None:
+                raise _AbortTransaction(_die(
+                    "package not registered at {0!r}; run add-package "
+                    "first".format(args.path)
+                ))
+            pkg["hazards"].append(
+                {
+                    "category": args.category,
+                    "description": args.description,
+                    "cite": cite,
+                }
+            )
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    pkg = _require_package(state, args.path)
-    if pkg is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.path
-            )
-        )
-    pkg["hazards"].append(
-        {
-            "category": args.category,
-            "description": args.description,
-            "cite": cite,
-        }
-    )
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     _info(
@@ -490,27 +492,26 @@ def cmd_set_package_usage_example(args: argparse.Namespace) -> int:
     except ValueError as err:
         return _die(str(err))
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            pkg = _require_package(state, args.path)
+            if pkg is None:
+                raise _AbortTransaction(_die(
+                    "package not registered at {0!r}; run add-package "
+                    "first".format(args.path)
+                ))
+            pkg["usage_example"] = {
+                "language": args.language,
+                "snippet": args.code_snippet,
+                "cite": {
+                    "file": args.cite_file,
+                    "start": args.cite_start,
+                    "end": args.cite_end,
+                },
+            }
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    pkg = _require_package(state, args.path)
-    if pkg is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.path
-            )
-        )
-    pkg["usage_example"] = {
-        "language": args.language,
-        "snippet": args.code_snippet,
-        "cite": {
-            "file": args.cite_file,
-            "start": args.cite_start,
-            "end": args.cite_end,
-        },
-    }
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     _info(
@@ -552,27 +553,26 @@ def cmd_set_package_consumer_pattern(args: argparse.Namespace) -> int:
     except ValueError as err:
         return _die(str(err))
     try:
-        state = _load_state()
+        with _state_transaction() as state:
+            pkg = _require_package(state, args.path)
+            if pkg is None:
+                raise _AbortTransaction(_die(
+                    "package not registered at {0!r}; run add-package "
+                    "first".format(args.path)
+                ))
+            pkg["consumer_pattern"] = {
+                "language": args.language,
+                "snippet": args.code_snippet,
+                "cite": {
+                    "file": args.cite_file,
+                    "start": args.cite_start,
+                    "end": args.cite_end,
+                },
+            }
+    except _AbortTransaction as ab:
+        return ab.code
     except StateLoadError as err:
         return _die(str(err), code=1)
-    pkg = _require_package(state, args.path)
-    if pkg is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.path
-            )
-        )
-    pkg["consumer_pattern"] = {
-        "language": args.language,
-        "snippet": args.code_snippet,
-        "cite": {
-            "file": args.cite_file,
-            "start": args.cite_start,
-            "end": args.cite_end,
-        },
-    }
-    try:
-        _write_state(state)
     except OSError as err:
         return _die("cannot write state: {0}".format(err), code=1)
     _info(

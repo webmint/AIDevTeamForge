@@ -3,10 +3,20 @@
 State path is `<DEVFORGE_DIR>/.generate-docs-state.json`, resolved at
 call time so tests can override via `DEVFORGE_DIR`. The file IS the
 source of truth: each setter does a read-modify-write cycle. Atomicity
-is guaranteed via `tempfile.mkstemp` + `os.replace` in the target
-directory; on any write failure the temp file is unlinked and the
-exception re-raised (anti-pattern #4 — fixed-name temp files are NOT
-used).
+of the write step is guaranteed via `tempfile.mkstemp` + `os.replace`
+in the target directory; on any write failure the temp file is unlinked
+and the exception re-raised (anti-pattern #4 — fixed-name temp files
+are NOT used).
+
+Concurrency: the read-modify-write cycle as a whole is serialized
+across processes via `_state_transaction()`, an exclusive POSIX file
+lock on a sidecar `<state>.lock` file. Without this, two concurrent
+setters can both load state BEFORE either writes; the second writer
+silently overwrites the first one's mutation. This was observed in
+practice: an LLM-driven `add-package-script` loop lost ~20% of
+script entries when multiple invocations ran in parallel. Setters MUST
+go through `_state_transaction()` rather than calling `_load_state()`
++ `_write_state()` directly.
 
 This module also exposes the small `_die` / `_info` stderr printers
 used by every other submodule to report state-related success and
@@ -19,12 +29,19 @@ field validation, manifest detection, and rendering all live elsewhere.
 Stdlib only. Targets Python 3.8+.
 """
 
+import contextlib
 import json
 import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterator, Optional
+
+try:
+    import fcntl  # POSIX-only; Windows builds fall through to no-op locking.
+    _HAVE_FCNTL = True
+except ImportError:  # pragma: no cover - Windows fallback
+    _HAVE_FCNTL = False
 
 
 STATE_FILE_NAME = ".generate-docs-state.json"
@@ -150,6 +167,79 @@ def _write_state(state: Dict[str, Any]) -> None:
         except OSError:
             pass
         raise
+
+
+def _lock_file_path() -> Path:
+    """Sidecar lock path next to the state file.
+
+    Kept distinct from the state file itself so the state JSON is
+    never opened in r+ / w+ mode — the lock is purely metadata. The
+    file is created on first use and intentionally never deleted; an
+    empty .lock file alongside the state file is the steady state.
+    """
+    return _state_file_path().with_suffix(".json.lock")
+
+
+class _AbortTransaction(Exception):
+    """Sentinel raised inside `_state_transaction()` to skip the write step.
+
+    Setters use this to bail out of the transaction WITHOUT persisting
+    their (unchanged) in-memory state — e.g., a "package not registered"
+    or "duplicate entry" check that fails after the lock is acquired
+    but before any mutation. The exception itself carries the int return
+    code the caller should propagate to the CLI dispatcher.
+    """
+
+    def __init__(self, code: int) -> None:
+        super().__init__("aborted")
+        self.code = code
+
+
+@contextlib.contextmanager
+def _state_transaction() -> Iterator[Dict[str, Any]]:
+    """Read-modify-write the state under an exclusive process lock.
+
+    Setters call this in place of separate `_load_state()` / `_write_state()`
+    invocations:
+
+        with _state_transaction() as state:
+            pkg = state["packages"][path]
+            pkg["scripts"][name] = command
+
+    The lock is held from BEFORE the read until AFTER the write so two
+    concurrent setters cannot both load stale state and clobber each
+    other's mutation. Lock implementation is `fcntl.flock(LOCK_EX)` on
+    POSIX. On Windows (no fcntl) the context manager degrades to a
+    no-op — that platform is out of scope for the helper today, but
+    the degradation is silent rather than a hard import error.
+
+    Mid-transaction abort: if the body raises `_AbortTransaction`, the
+    write is SKIPPED and the lock released cleanly. Other exceptions
+    propagate (also without writing) — the state writer sits at the
+    end of the body, after both the user mutation and any abort check.
+    """
+    state_path = _state_file_path()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = _lock_file_path()
+    # `os.open` with O_CREAT keeps the lock-file presence sticky across
+    # invocations. The fd itself is what fcntl locks against.
+    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        if _HAVE_FCNTL:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            state = _load_state()
+            # Write only on clean body exit. _AbortTransaction (and any
+            # other exception) skips the write, propagates out of the
+            # context manager, and is caught by the setter's outer
+            # try/except.
+            yield state
+            _write_state(state)
+        finally:
+            if _HAVE_FCNTL:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def _die(message: str, code: int = 2) -> int:

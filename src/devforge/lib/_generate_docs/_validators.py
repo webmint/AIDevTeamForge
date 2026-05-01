@@ -62,6 +62,7 @@ from generate_docs_schema import (
 )
 
 from ._render import (
+    OPTIONAL_SECTION_MARKERS,
     REQUIRED_FIELD_TODO_MARKERS,
     _atomic_write_text,
     _project_root,
@@ -338,6 +339,45 @@ def _check_no_todos(
     return errors
 
 
+def _check_optional_render(
+    state: Dict[str, Any],
+    pkg: Dict[str, Any],
+    package_path: str,
+) -> List[Dict[str, Any]]:
+    """Catch render bugs in OPTIONAL sections (scripts / hazards /
+    usage_example / consumer_pattern).
+
+    A legitimate empty state -> rendered `[TODO]` is fine (the schema
+    declares those fields optional). But state populated -> rendered
+    `[TODO]` is a render bug: the data is there, the rendering is
+    eating it. Without this check, the bug surfaces as a final doc
+    that silently shows `[TODO]` placeholders next to populated state.
+
+    Encountered concretely on testForge20 2026-04-30: 11 add-package-script
+    invocations were lost to a state-write race; the rendered doc showed
+    the optional Scripts [TODO] instead of the populated table. The
+    state-write race is fixed in `_state._state_transaction()`; this
+    check catches future regressions in the same family.
+    """
+    try:
+        markdown = render_package_skeleton(state, package_path)
+    except KeyError:
+        return []
+    errors: List[Dict[str, Any]] = []
+    for field, marker, is_empty_fn in OPTIONAL_SECTION_MARKERS:
+        if marker not in markdown:
+            continue
+        if is_empty_fn(pkg.get(field)):
+            continue
+        errors.append(_err(
+            "optional-section-render-bug", field,
+            "rendered output shows the optional [{0}] placeholder but "
+            "state has populated data — render is eating registered "
+            "values".format(field),
+        ))
+    return errors
+
+
 def validate_package(
     state: Dict[str, Any],
     package_path: str,
@@ -365,6 +405,7 @@ def validate_package(
     errors.extend(_check_internal_deps(state, pkg, project_root))
     errors.extend(_check_enums(pkg))
     errors.extend(_check_no_todos(state, package_path))
+    errors.extend(_check_optional_render(state, pkg, package_path))
     return errors
 
 

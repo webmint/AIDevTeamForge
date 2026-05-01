@@ -1098,6 +1098,156 @@ class StateAtomicityTests(_EnvIsolationMixin, unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# StateConcurrencyTests
+#
+# Regression guard for the testForge20 2026-04-30 incident: 11 sequential
+# (per LLM intent) `add-package-script` invocations registered cleanly to
+# stderr but the on-disk state file showed `scripts: {}`. Root cause was
+# an unsynchronized read-modify-write cycle that lost data when multiple
+# helper processes overlapped. Fixed by `_state._state_transaction()` —
+# an exclusive POSIX file lock around the whole RMW. These tests pin the
+# fix with concurrent invocations + the abort-skips-write contract.
+# ---------------------------------------------------------------------------
+
+
+class StateConcurrencyTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def _spawn_concurrent(self, args_list):
+        """Launch each command in `args_list` as a thread + wait for all.
+
+        Each entry is a tuple of CLI args (without devforge_dir wiring).
+        Returns the list of (returncode, stderr) per command.
+        """
+        import threading
+        results = [None] * len(args_list)
+
+        def runner(idx, args):
+            proc = _run_cli(self.devforge_dir, *args)
+            results[idx] = (proc.returncode, proc.stderr)
+
+        threads = [
+            threading.Thread(target=runner, args=(i, a))
+            for i, a in enumerate(args_list)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        return results
+
+    def test_concurrent_add_package_script_preserves_all(self):
+        _run_cli(self.devforge_dir, "add-package",
+                 "--path", "pkg/foo", "--name", "foo")
+        commands = [
+            ("add-package-script", "--path", "pkg/foo",
+             "--script-name", "s{0}".format(i),
+             "--command", "echo {0}".format(i))
+            for i in range(20)
+        ]
+        results = self._spawn_concurrent(commands)
+        for rc, stderr in results:
+            self.assertEqual(
+                rc, 0,
+                "add-package-script returned {0}; stderr={1!r}".format(
+                    rc, stderr,
+                ),
+            )
+        state = self._read_state()
+        self.assertEqual(len(state["packages"]["pkg/foo"]["scripts"]), 20)
+
+    def test_concurrent_mixed_setters_preserves_all_fields(self):
+        """Even mixed-setter concurrency cannot clobber unrelated fields.
+
+        This is the exact bug shape observed in testForge20: scripts
+        registered by one process disappeared after a different setter
+        (export / dep) wrote-back stale state from before the scripts
+        landed.
+        """
+        _run_cli(self.devforge_dir, "add-package",
+                 "--path", "pkg/foo", "--name", "foo")
+        # Stage a real source file so add-package-export's cite is
+        # well-formed enough for set-time validation. Validate-time
+        # filesystem checks are NOT exercised here; we're only pinning
+        # the persistence contract.
+        src_dir = self.devforge_dir.parent / "pkg" / "foo"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (src_dir / "src.ts").write_text(
+            "line1\nline2\nline3\nline4\n", encoding="utf-8",
+        )
+        commands = []
+        for i in range(5):
+            commands.append((
+                "add-package-script", "--path", "pkg/foo",
+                "--script-name", "s{0}".format(i),
+                "--command", "echo {0}".format(i),
+            ))
+        for i in range(5):
+            commands.append((
+                "add-package-dep", "--path", "pkg/foo",
+                "--name", "dep{0}".format(i),
+                "--kind", "external",
+                "--purpose", "purpose {0}".format(i),
+            ))
+        results = self._spawn_concurrent(commands)
+        for rc, stderr in results:
+            self.assertEqual(rc, 0, "rc={0} stderr={1!r}".format(rc, stderr))
+        state = self._read_state()
+        pkg = state["packages"]["pkg/foo"]
+        self.assertEqual(len(pkg["scripts"]), 5)
+        self.assertEqual(len(pkg["dependencies"]), 5)
+
+    def test_lock_file_created_alongside_state(self):
+        _run_cli(self.devforge_dir, "add-package",
+                 "--path", "pkg/foo", "--name", "foo")
+        lock = self.devforge_dir / (gdh.STATE_FILE_NAME + ".lock")
+        self.assertTrue(
+            lock.exists(),
+            "lock sidecar {0} should exist after a setter".format(lock),
+        )
+
+    def test_abort_transaction_does_not_write_state(self):
+        """Add-package on an already-registered path must not rewrite state.
+
+        Confirms `_AbortTransaction` propagates out of `_state_transaction()`
+        cleanly without triggering `_write_state`. (mtime-stable check.)
+        """
+        _run_cli(self.devforge_dir, "add-package",
+                 "--path", "pkg/foo", "--name", "foo")
+        first_mtime = self.state_file.stat().st_mtime_ns
+        # On HFS+/APFS macOS mtime can have second-level resolution; pad
+        # by sleeping briefly so a second write would be detectable.
+        import time
+        time.sleep(0.05)
+        proc = _run_cli(self.devforge_dir, "add-package",
+                        "--path", "pkg/foo", "--name", "foo")
+        self.assertEqual(proc.returncode, 2)
+        second_mtime = self.state_file.stat().st_mtime_ns
+        self.assertEqual(
+            first_mtime, second_mtime,
+            "abort path should NOT touch state file mtime",
+        )
+
+    def test_duplicate_script_abort_does_not_clobber(self):
+        """Add a script, attempt re-add, ensure original entry survives."""
+        _run_cli(self.devforge_dir, "add-package",
+                 "--path", "pkg/foo", "--name", "foo")
+        _run_cli(self.devforge_dir, "add-package-script",
+                 "--path", "pkg/foo",
+                 "--script-name", "build", "--command", "make build")
+        # Duplicate attempt with different command should be rejected,
+        # leaving the original `make build` intact.
+        proc = _run_cli(self.devforge_dir, "add-package-script",
+                        "--path", "pkg/foo",
+                        "--script-name", "build", "--command", "make NEW")
+        self.assertEqual(proc.returncode, 2)
+        state = self._read_state()
+        self.assertEqual(
+            state["packages"]["pkg/foo"]["scripts"]["build"],
+            "make build",
+        )
+
+
+# ---------------------------------------------------------------------------
 # ExtractPackageScriptsTests
 # ---------------------------------------------------------------------------
 
@@ -2110,6 +2260,77 @@ class ValidatePackageTests(_RenderTestBase):
         errors = validate_package(state, "apps/web", self.project_root)
         rule_names = {e["rule"] for e in errors}
         self.assertIn("export-kind-invalid", rule_names)
+
+    def test_optional_render_bug_scripts_caught(self):
+        """Rule 9 (defense-in-depth): if state has scripts populated but
+        the render emits the optional [TODO], it's a render bug.
+
+        Synthetic test — we patch the render function to simulate the
+        bug. Without this validator rule, the render bug surfaces as a
+        silently-malformed final doc with [TODO] next to populated state.
+        """
+        from _generate_docs import _validators as v
+        from _generate_docs._state import (
+            default_state,
+            default_package_record,
+        )
+        from _generate_docs._render import _TODO_SCRIPTS
+
+        state = default_state()
+        pkg = default_package_record("web", "apps/web")
+        pkg["overview"] = "X"
+        pkg["directory_tree"] = "src/"
+        pkg["primary_language"] = "ts"
+        pkg["scripts"] = {"build": "make build"}
+        pkg["exports"] = [{
+            "kind": "function", "name": "f", "signature": None,
+            "description": "x",
+            "code": {
+                "language": "ts", "snippet": "x",
+                "cite": {"file": "src/f.ts", "start": 1, "end": 1},
+            },
+        }]
+        pkg["dependencies"] = [{
+            "kind": "external", "name": "react", "version": "1",
+            "purpose": "ui", "consumer_locations": [],
+        }]
+        state["packages"]["apps/web"] = pkg
+
+        # Patch render to simulate a regression where scripts are dropped.
+        original = v.render_package_skeleton
+
+        def buggy_render(s, p):
+            text = original(s, p)
+            # Replace the scripts table with the optional-section [TODO]
+            # to mimic a render path that lost the data.
+            return text.split("## Scripts")[0] + "## Scripts\n\n" + _TODO_SCRIPTS + "\n"
+
+        v.render_package_skeleton = buggy_render
+        try:
+            errors = v.validate_package(state, "apps/web", self.project_root)
+        finally:
+            v.render_package_skeleton = original
+        rule_names = {e["rule"] for e in errors}
+        self.assertIn("optional-section-render-bug", rule_names)
+        # The error names the offending field.
+        bug_errors = [e for e in errors if e["rule"] == "optional-section-render-bug"]
+        self.assertEqual(bug_errors[0]["field"], "scripts")
+
+    def test_optional_render_bug_silent_when_state_empty(self):
+        """Empty state + [TODO] in render is a LEGITIMATE optional skip.
+
+        The defense-in-depth rule must NOT fire here — the schema
+        declares scripts/hazards/usage_example/consumer_pattern
+        optional and a doc that omits them is valid.
+        """
+        self._fill_minimum_valid()
+        # All four optional fields stay empty; render naturally emits
+        # their [TODO] markers.
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # No optional-section-render-bug surfaced even though the
+        # rendered skeleton contains the optional [TODO]s.
+        self.assertNotIn(b"optional-section-render-bug", proc.stderr)
 
 
 # ---------------------------------------------------------------------------
