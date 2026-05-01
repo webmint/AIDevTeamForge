@@ -35,6 +35,8 @@ Pre-existing `docs/` content under any path other than `docs/db-cse-ui-strata/ap
 
 ## Phase 0 — Pre-flight
 
+**Wall-clock telemetry (mandatory for cost visibility):** record the wall-clock time at the entry of each phase (Phase 0 entry, Phase 1 entry, ..., Phase 5 entry) into a session-local variable. At Phase 5's report, compute deltas and emit them as the phase-timing table (see Phase 5). The recording is in-session memory only — no persistence required, no helper invocation. The orchestrator's own clock (whatever Claude Code's environment exposes) is sufficient.
+
 Verify, in order:
 
 1. `.devforge/init.yaml` exists. If absent, tell the user to run `/init-forge` first and stop.
@@ -132,9 +134,16 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
    - `concern_name` is the substantive subfolder's basename (e.g., `components`, `composables`, `helpers`)
    - `subfolder` is the relative path under `<package_path>/` reported in the decomposition error (e.g., `src/components`)
 
-   If step 7 reported zero decomposition errors, skip steps 9–10 (no concerns to fan out) and proceed to step 11.
+   If step 7 reported zero decomposition errors, skip steps 10–11 (no concerns to fan out) and proceed to step 12.
 
-9. **Dispatch `concern-slot-filler` subagents SEQUENTIALLY — one Agent call per assistant message, wait for the subagent's return, then dispatch the next.** Do NOT use Claude Code's parallel-tool-call mechanism for concern dispatch. Each call uses `subagent_type: concern-slot-filler` with an inline prompt that supplies the four required inputs the agent expects (see `.claude/agents/concern-slot-filler.md`):
+9. **Pause for user review before concern fan-out (mandatory checkpoint).** Before dispatching any `concern-slot-filler` subagent, summarize Phase 2 + 3-so-far outcome and ask the user to confirm fan-out. Specifically:
+   - Run `.devforge/lib/generate_docs_helper status` and capture output.
+   - Print a summary block to the user: package-tier counts (exports / dependencies / hazards / citations validated / scripts), the concern worklist (the N triples from step 8 — concern names + subfolder paths), and an estimate of the work ("N concern subagents will be dispatched sequentially").
+   - Then prompt via AskUserQuestion (single-line prompt: `Phase 2 complete and N concerns ready to dispatch. Proceed?`) with options **Continue** (proceed to step 10 — sequential dispatch), **Inspect** (read `docs/db-cse-ui-strata/apps/app-web/index.md.skeleton` and copy its contents VERBATIM into the next user-facing message as a fenced code block — do not summarize or paraphrase — then re-prompt with the same Continue/Inspect/Abort options; Inspect is non-destructive and may be invoked any number of times), **Abort** (stop the command and state to the user: "Aborted before concern fan-out. State is preserved; re-run /generate-docs to resume.").
+
+   **Why this gate exists:** empirical evidence from a `/generate-docs` run on testForge20 (2026-05-01) showed Phase 3's slot-fill loop running 50+ unattended helper invocations between user touchpoints. State-loss happened during fan-out and was only discovered post-run. A checkpoint here lets the user verify package-tier looks correct before triggering N concern dispatches that operate on the same state file. Per Claude Code auto-mode discipline, destructive operation classes (operations that mutate shared state extensively) need a human gate.
+
+10. **Dispatch `concern-slot-filler` subagents SEQUENTIALLY — one Agent call per assistant message, wait for the subagent's return, then dispatch the next.** Do NOT use Claude Code's parallel-tool-call mechanism for concern dispatch. Each call uses `subagent_type: concern-slot-filler` with an inline prompt that supplies the four required inputs the agent expects (see `.claude/agents/concern-slot-filler.md`):
    - `package_path: db-cse-ui-strata/apps/app-web`
    - `concern_name: <basename>`
    - `subfolder: <relative path under package_path>`
@@ -144,18 +153,18 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
 
    **Resume-mode propagation is mandatory, not a hint.** If Phase 0 routed via Resume, every dispatched `concern-slot-filler` call MUST receive `mode: resume` so the subagent honors the slot-skip contract for any concern state already persisted. Mixing modes across concerns in one fan-out is forbidden — all-fresh or all-resume per run.
 
-10. **Collect the per-concern reports.** Each subagent returns a single JSON line `{"concern": "<name>", "status": "ok|failed", "exports": <n>, "deps": <n>, "hazards": <n>, "errors": [...]}` plus a 2-3 sentence prose summary. Aggregate the JSON lines into a per-concern table for the Phase 5 report. If any concern reports `status: failed`, surface the error list to the user before proceeding to step 11 — do NOT silently ignore concern failures.
+11. **Collect the per-concern reports.** Each subagent returns a single JSON line `{"concern": "<name>", "status": "ok|failed", "exports": <n>, "deps": <n>, "hazards": <n>, "errors": [...]}` plus a 2-3 sentence prose summary. Aggregate the JSON lines into a per-concern table for the Phase 5 report. If any concern reports `status: failed`, surface the error list to the user before proceeding to step 12 — do NOT silently ignore concern failures.
 
-11. **Re-run `validate-package`**: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. With every substantive subfolder now registered as a concern, the decomposition gate should emit zero errors and validate-package should exit 0. If decomposition errors remain, the fan-out missed entries (subagents failed and produced no concern state, or the worklist was incomplete) — surface to the user and ABORT before step 12.
+12. **Re-run `validate-package`**: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. With every substantive subfolder now registered as a concern, the decomposition gate should emit zero errors and validate-package should exit 0. If decomposition errors remain, the fan-out missed entries (subagents failed and produced no concern state, or the worklist was incomplete) — surface to the user and ABORT before step 13.
 
-12. **Invoke `render-package-doc`**: `.devforge/lib/generate_docs_helper render-package-doc --path db-cse-ui-strata/apps/app-web` (renames `.skeleton` → `.md`). The helper internally re-runs validation; with step 11's clean exit, this succeeds and writes `docs/db-cse-ui-strata/apps/app-web/index.md`. Each concern's doc was already rendered by its dispatched `concern-slot-filler` subagent (the agent's final step). The package doc is the LAST thing rendered, after all concerns are in place — this ordering is required because `render-package-doc` rejects any outstanding decomposition errors.
+13. **Invoke `render-package-doc`**: `.devforge/lib/generate_docs_helper render-package-doc --path db-cse-ui-strata/apps/app-web` (renames `.skeleton` → `.md`). The helper internally re-runs validation; with step 12's clean exit, this succeeds and writes `docs/db-cse-ui-strata/apps/app-web/index.md`. Each concern's doc was already rendered by its dispatched `concern-slot-filler` subagent (the agent's final step). The package doc is the LAST thing rendered, after all concerns are in place — this ordering is required because `render-package-doc` rejects any outstanding decomposition errors.
 
-13. **Out of scope** (do NOT invoke):
+14. **Out of scope** (do NOT invoke):
    - Architecture-tier subcommands (not part of Phase 3.2)
    - Memory archaeology subcommands (not part of Phase 3.2)
    - Multi-package iteration (the package loop is paused under the `## ⚠️ ITERATION MODE` section)
    - Modifying source files (read-only access to source)
-   - Re-running `validate-package` between steps 7 and 11 (step 7 captures the worklist; step 11 confirms decomposition is clean — intermediate validates produce noise without progressing the flow)
+   - Re-running `validate-package` between steps 7 and 12 (step 7 captures the worklist; step 12 confirms decomposition is clean — intermediate validates produce noise without progressing the flow)
 
 ## Phase 4 — Verify the produced doc
 
@@ -176,8 +185,8 @@ After the user has the doc in front of them, print a summary:
 - **Hazards**: <count>
 - **Citations**: <count> (verified against source: <verified-count>, from `validate-package`'s structured output)
 - **Final doc**: `docs/db-cse-ui-strata/apps/app-web/index.md`
-- **Concerns processed**: <count> (from step 10's per-concern aggregation)
-- **Per-concern summary** (from step 10's collected JSON lines):
+- **Concerns processed**: <count> (from step 11's per-concern aggregation)
+- **Per-concern summary** (from step 11's collected JSON lines):
 
   | Concern | Status | Exports | Deps | Hazards |
   |---------|--------|---------|------|---------|
@@ -185,5 +194,17 @@ After the user has the doc in front of them, print a summary:
   | …       | …      | …       | …    | …       |
 
   Concern docs are at `docs/db-cse-ui-strata/apps/app-web/<concern_name>/index.md`. If any row is `failed`, the corresponding concern doc is missing — surface those rows distinctly so the user can decide whether to retry the failed concerns.
+- **Phase timing** (wall-clock per phase):
+
+  | Phase | Duration |
+  |---|---|
+  | Phase 0 — Pre-flight | <Δ from phase 0 entry to phase 1 entry> |
+  | Phase 1 — Discover the assigned package | <Δ to phase 2 entry> |
+  | Phase 2 — Register package + extract scripts | <Δ to phase 3 entry> |
+  | Phase 3 — Slot-fill + concern fan-out | <Δ to phase 4 entry> |
+  | Phase 4 — Verify the produced doc | <Δ to phase 5 entry> |
+  | **Total wall-clock** | <total> |
+
+  This phase-timing table makes per-phase cost visible to the user post-run, addressing the "no per-step cost telemetry" gap surfaced by the audit. Helper-side per-invocation tracing lives separately in `.devforge/.generate-docs-trace.log` once implemented; not required for this phase-timing table — the orchestrator's wall-clock summary is sufficient on its own.
 
 Tell the user: "This is single-package iteration; multi-package flow is paused under the `## ⚠️ ITERATION MODE` section of `/generate-docs`. Re-run after the iteration plan unlocks multi-package scope."
