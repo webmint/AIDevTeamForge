@@ -31,6 +31,7 @@ from ._render import (
     cmd_render_concern_skeleton,
     cmd_render_package_skeleton,
 )
+from ._snippet import cmd_extract_snippet
 from ._setters import (
     cmd_add_package,
     cmd_add_package_dep,
@@ -183,6 +184,12 @@ def _build_extract_package_scripts(p: argparse.ArgumentParser) -> None:
     p.add_argument("--path", required=True)
 
 
+def _build_extract_snippet(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--file", required=True)
+    p.add_argument("--start", required=True, type=int)
+    p.add_argument("--end", required=True, type=int)
+
+
 def _build_render_package_skeleton(p: argparse.ArgumentParser) -> None:
     p.add_argument("--path", required=True)
 
@@ -305,6 +312,7 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("set-package-consumer-pattern", _build_set_package_consumer_pattern, cmd_set_package_consumer_pattern),
     ("status", _build_status, cmd_status),
     ("extract-package-scripts", _build_extract_package_scripts, cmd_extract_package_scripts),
+    ("extract-snippet", _build_extract_snippet, cmd_extract_snippet),
     ("render-package-skeleton", _build_render_package_skeleton, cmd_render_package_skeleton),
     ("validate-package", _build_validate_package, cmd_validate_package),
     ("render-package-doc", _build_render_package_doc, cmd_render_package_doc),

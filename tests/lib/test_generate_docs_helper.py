@@ -1542,6 +1542,319 @@ class ExtractPackageScriptsTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# ExtractSnippetTests — language-agnostic line-range byte extraction.
+#
+# Behavioral contract: piping `extract-snippet --file F --start S --end E`
+# into `add-package-export --code-snippet "$(...)"` must produce a
+# validate-clean export every time. The integration test at the end of
+# this class exercises that round-trip end-to-end.
+#
+# CRLF policy: `extract-snippet` PRESERVES line endings verbatim. The
+# downstream validator (`_validators._normalize_for_compare`) normalizes
+# CRLF -> LF before equality comparison, so either choice round-trips
+# cleanly. Preserving keeps `extract-snippet` purely mechanical.
+# ---------------------------------------------------------------------------
+
+
+class ExtractSnippetTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def _write_lines(self, name, lines, line_ending="\n"):
+        """Helper: write a fixture file with controlled line endings.
+
+        Returns the absolute path. `lines` is a list of line bodies (no
+        trailing newline). The file ends with `line_ending` after the
+        last line so line-count math matches the human view.
+        """
+        path = self.devforge_dir / name
+        path.write_text(line_ending.join(lines) + line_ending, encoding="utf-8")
+        return path
+
+    def test_extract_snippet_basic_range(self):
+        path = self._write_lines(
+            "f.txt", ["line1", "line2", "line3", "line4", "line5",
+                     "line6", "line7", "line8", "line9", "line10"],
+        )
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "3",
+            "--end", "5",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Inclusive range — lines 3, 4, 5 (each with trailing '\n').
+        self.assertEqual(
+            proc.stdout.decode("utf-8"),
+            "line3\nline4\nline5\n",
+        )
+
+    def test_extract_snippet_single_line(self):
+        path = self._write_lines(
+            "f.txt", ["a", "b", "c", "d", "e", "f", "target", "h", "i", "j"],
+        )
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "7",
+            "--end", "7",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.decode("utf-8"), "target\n")
+
+    def test_extract_snippet_indented_content_preserved(self):
+        # CRITICAL regression test — the citation-mismatch failure mode
+        # this subcommand was built to close. Source file has indented
+        # content; output must preserve every leading space verbatim.
+        path = self.devforge_dir / "f.ts"
+        body = (
+            "function outer() {\n"
+            "    const x = 1;\n"
+            "    if (x > 0) {\n"
+            "        return x;\n"
+            "    }\n"
+            "}\n"
+        )
+        path.write_text(body, encoding="utf-8")
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "2",
+            "--end", "5",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Every leading space preserved bit-for-bit.
+        expected = (
+            "    const x = 1;\n"
+            "    if (x > 0) {\n"
+            "        return x;\n"
+            "    }\n"
+        )
+        self.assertEqual(proc.stdout.decode("utf-8"), expected)
+
+    def test_extract_snippet_crlf_input_preserved(self):
+        # Behavior choice: line endings are preserved verbatim. The
+        # downstream `[snippet-verbatim]` validator normalizes CRLF -> LF
+        # before comparison, so this is round-trip safe.
+        path = self.devforge_dir / "f.txt"
+        # Write raw bytes so the OS doesn't translate line endings.
+        path.write_bytes(b"a\r\nb\r\nc\r\nd\r\n")
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "2",
+            "--end", "3",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Verbatim CRLF preservation. (We compare bytes, not str, to
+        # avoid any decoder-level normalization.)
+        self.assertEqual(proc.stdout, b"b\r\nc\r\n")
+
+    def test_extract_snippet_end_before_start_fails(self):
+        path = self._write_lines("f.txt", ["1", "2", "3", "4", "5"])
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "10",
+            "--end", "5",
+        )
+        self.assertEqual(proc.returncode, 2)
+        # Error message must clearly explain the range issue.
+        msg = proc.stderr.decode("utf-8")
+        self.assertIn("end", msg)
+        self.assertIn("start", msg)
+
+    def test_extract_snippet_line_range_out_of_bounds(self):
+        path = self._write_lines("f.txt", ["1", "2", "3", "4", "5"])
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "1",
+            "--end", "100",
+        )
+        self.assertEqual(proc.returncode, 2)
+        msg = proc.stderr.decode("utf-8")
+        # Error mentions exceeded line count and the actual count.
+        self.assertIn("exceeds", msg)
+        self.assertIn("5", msg)
+
+    def test_extract_snippet_start_out_of_bounds(self):
+        path = self._write_lines("f.txt", ["1", "2", "3"])
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "10",
+            "--end", "12",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"exceeds", proc.stderr)
+
+    def test_extract_snippet_missing_file(self):
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(self.devforge_dir / "nonexistent.txt"),
+            "--start", "1",
+            "--end", "1",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"does not exist", proc.stderr)
+
+    def test_extract_snippet_directory_path_fails(self):
+        # `--file` pointing at a directory: clear error, exit 2.
+        sub = self.devforge_dir / "subdir"
+        sub.mkdir()
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(sub),
+            "--start", "1",
+            "--end", "1",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"not a regular file", proc.stderr)
+
+    def test_extract_snippet_zero_start_rejected(self):
+        path = self._write_lines("f.txt", ["1", "2", "3"])
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(path),
+            "--start", "0",
+            "--end", "1",
+        )
+        self.assertEqual(proc.returncode, 2)
+
+    def test_extract_snippet_round_trip_validates_against_add_export(self):
+        # End-to-end integration test proving the whole point of this
+        # subcommand: extract-snippet output piped into add-package-export
+        # always produces a validate-clean export, eliminating the
+        # snippet-verbatim error class.
+        #
+        # The fixture: a TypeScript file with deeply-indented content
+        # (the exact shape that historically tripped the LLM transcription
+        # bug when copied by hand).
+        project_root = self.devforge_dir
+        src_dir = project_root / "src"
+        src_dir.mkdir()
+        src_file = src_dir / "App.tsx"
+        body = (
+            "import React from 'react';\n"
+            "\n"
+            "export function App() {\n"
+            "    return (\n"
+            "        <div>\n"
+            "            <p>Hello</p>\n"
+            "        </div>\n"
+            "    );\n"
+            "}\n"
+        )
+        src_file.write_text(body, encoding="utf-8")
+
+        # 1. Extract lines 3-9 (the function body) via the new subcommand.
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(src_file),
+            "--start", "3",
+            "--end", "9",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        snippet = proc.stdout.decode("utf-8")
+        # Sanity: leading 4-space indent preserved (the bug class).
+        self.assertIn("    return (", snippet)
+        self.assertIn("        <div>", snippet)
+
+        # 2. Register the package + use the extracted snippet for an
+        #    export. Pass the raw bytes from extract-snippet exactly as
+        #    a shell `$(...)` substitution would (no transcription).
+        proc = _run_cli(
+            self.devforge_dir, "add-package",
+            "--path", ".", "--name", "root",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_cli(
+            self.devforge_dir, "set-package-overview",
+            "--path", ".", "--text", "Root.",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_cli(
+            self.devforge_dir, "set-package-tree",
+            "--path", ".", "--text", "src/",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_cli(
+            self.devforge_dir, "set-package-language",
+            "--path", ".", "--value", "TypeScript",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_cli(
+            self.devforge_dir, "add-package-export",
+            "--path", ".",
+            "--name", "App",
+            "--kind", "component",
+            "--description", "App component.",
+            "--language", "tsx",
+            "--code-snippet", snippet,
+            "--cite-file", "src/App.tsx",
+            "--cite-start", "3",
+            "--cite-end", "9",
+            project_root=project_root,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        proc = _run_cli(
+            self.devforge_dir, "add-package-dep",
+            "--path", ".",
+            "--name", "react",
+            "--kind", "external",
+            "--version", "18",
+            "--purpose", "UI lib.",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Use extract-snippet for the usage example too so its
+        # [snippet-verbatim] rule passes (the same code path the
+        # orchestrator will use for every snippet).
+        proc = _run_cli(
+            self.devforge_dir,
+            "extract-snippet",
+            "--file", str(src_file),
+            "--start", "3",
+            "--end", "3",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        usage_snippet = proc.stdout.decode("utf-8")
+        proc = _run_cli(
+            self.devforge_dir, "set-package-usage-example",
+            "--path", ".",
+            "--language", "tsx",
+            "--code-snippet", usage_snippet,
+            "--cite-file", "src/App.tsx",
+            "--cite-start", "3",
+            "--cite-end", "3",
+            project_root=project_root,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        # 3. Validate. Crucially the [snippet-verbatim] rule must NOT
+        #    fire — that's the whole motivation for this subcommand.
+        proc = _run_cli(
+            self.devforge_dir, "validate-package",
+            "--path", ".",
+            project_root=project_root,
+        )
+        # Even if validate-package surfaces other findings (decomposition,
+        # missing concerns, etc.), [snippet-verbatim] must not be among
+        # them. The strict assertion is the absence of that rule tag.
+        out = proc.stdout.decode("utf-8") + proc.stderr.decode("utf-8")
+        self.assertNotIn("snippet-verbatim", out)
+
+
+# ---------------------------------------------------------------------------
 # RoundTripTests — register a package, run setters, run status, observe
 # expected output. Catches integration regressions where a setter writes
 # an inconsistent shape that status can't parse.
