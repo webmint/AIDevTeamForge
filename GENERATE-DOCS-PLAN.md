@@ -65,6 +65,18 @@
 4. **Fully logical, fully aligned.** End state of every step must be: zero dangling references in the repo, zero contradictions between specs, zero unreferenced schema fields, zero deferred TODOs added by this work. Future-session-falsely-believes check (per `feedback_preempt_future_hallucination.md`) runs before declaring step done.
 5. **Goal: a tool simpler and higher-quality than `/onboard` is today.** Quality measured by: structural consistency (zero structural variance across re-runs), retrieval recall for `/research` (Phase 8 empirical gate), citation validity rate (mechanical), agent friendliness (predictable doc shape).
 6. **Briefs are self-contained.** Per `feedback_no_underspecification_when_delegating.md`: every agent invocation gets goal + integration + constraints + known edge cases + success criteria + what-not-to-do. Thin briefs are the orchestrator's failure, not the agent's.
+7. **Survey prior art before inventing formats.** When a dispatch involves a new file format, schema, or storage shape, survey prior art FIRST. The chosen reference goes IN the brief (adopt wholesale / model-after-with-diff / diverge-with-reason). Per memory `feedback_survey_prior_art_before_inventing_formats.md` — Step 1 of Phase 3.3 invented `index.json` from scratch when Sphinx `objects.inv` already encodes essentially the same shape; this rule prevents a third repeat.
+
+### Prior-art survey targets per upcoming phase
+
+| Phase | What to survey before dispatching |
+|---|---|
+| 3.4 (glossary wiring) | Sphinx `objects.inv` (adopt the `name/role/dispname/uri` shape); Lunr / Algolia DocSearch (posting-list encoding); Sourcegraph SCIP if precise refs needed |
+| 4 (architecture) | graphify edge formats; SCIP / Kythe for dep graphs; LSP `workspace-symbols` for cross-package symbol refs |
+| 5 (memory archaeology) | ADR (Architecture Decision Record) templates; CHANGELOG conventions; Why Decision Record (Y-statement) format |
+| 6 (Track B scripts) | per-script: topic index → DocSearch hierarchy; reverse-index → ctags-style flat; glossary → Sphinx + posting list |
+
+For any phase not listed: ask "is there established prior art for this format?" before dispatching. If yes, survey + cite in the brief. If genuinely no prior art exists, document the gap + design from primitives.
 
 ---
 
@@ -722,6 +734,74 @@ Lock-in commit captures wall-clock timings (pre + post) for record-keeping in `G
 - **Resume-mode slot-skip behavior (success criterion)**: a Resume run whose state already has most slots populated must NOT trigger a full source re-read for those packages — verify by reading the dispatch brief text (it says "fill only `[TODO]` slots") and by inspecting the subagent's reported reads (only files needed for remaining `[TODO]`s). Wall-clock for Resume vs fresh run captured in `GENERATE-DOCS-EXECUTION-LOG.md` as observation only.
 
 If file count short of target, the decomposition gate should have caught missing concerns. If gate didn't catch, gate is buggy → loop back to Step 3.1.
+
+---
+
+### Phase 3.3 — Slot-fill optimization (mechanical extraction + drop subagent)
+
+Driven by empirical evidence from a `/generate-docs` run on testForge20 (2026-05-01): 100+ min wall-clock, ~99.99% spent in LLM compute (helper CPU was 0.6s total across 262 invocations). 2 of 7 concerns blocked at validate-concern by LLM transcription errors on indented Vue templates (LLM stripped leading whitespace when composing `--code-snippet`; helper's whitespace-normalized comparison rightfully rejected). No update-* setter API meant no recovery without `reset` (destructive). Run delivered minimal usable output despite massive token spend.
+
+Three coordinated sub-steps:
+
+#### Step 3.3.1: extract-snippet helper subcommand + thin language-agnostic index_helper (DONE 2026-05-01)
+
+**Status**: ✅ DONE.
+
+Two artifacts landed:
+
+1. `extract-snippet --file F --start S --end E` subcommand on `generate_docs_helper`. Returns verbatim bytes from line range. Eliminates the citation-mismatch error class — round-trip verified by test (extract-snippet output piped into add-package-export's `--code-snippet` arg validates clean).
+
+2. `index_helper.py` with `build-index` subcommand + POSIX launcher. Reads `.devforge/init.yaml`'s `packages_detected[]`; produces `.devforge/index.json` (machine-readable per-package structural data: file listings, manifest scripts, manifest deps) + `<install_root>/docs/structure.md` (human-readable workspace map). LANGUAGE-AGNOSTIC by design — no per-language source extraction (Principle 5).
+
+`/init-forge` Step 6 invokes `index_helper build-index` after init.yaml is fully populated. Both artifacts produced atomically.
+
+Test count: 726 → 763 (+37 across 3 commits including the wrapper-mode path-fix regression test). All passing.
+
+Known limitations documented:
+- `language` field DROPPED from index.json post-design-review (YAGNI per user critique 2026-05-01) — `/generate-docs` Phase 1 LLM detects language per-package via manifest+tsconfig signals; no need for pre-baked tag.
+- Test-isolation gap: subprocess invocations without `DEVFORGE_DIR` leak trace to repo dir (gitignored). Workaround: `rm` stray trace before re-running. Proper fix deferred.
+
+**Bicycle-inventing flag** (post-dispatch realization, captured in memory `feedback_survey_prior_art_before_inventing_formats.md`): `index.json` schema invented from scratch when Sphinx `objects.inv` already encodes the same shape. Schema is JSON-based and not encoding-locked — can evolve toward objects.inv shape if Phase 3.4 (glossary) reveals alignment value. Rule applies for all subsequent dispatches: survey prior art FIRST, cite chosen reference in brief.
+
+#### Step 3.3.2: Refactor `/generate-docs` Phase 3 to use extract-snippet + drop concern-slot-filler subagent (NEXT)
+
+**Brief** (when this step is dispatched):
+
+- **Goal**: extend `src/commands/generate-docs/main.md` Phase 3 such that:
+  1. Phase 3 step 1 reads `.devforge/index.json` once via Read tool, parses JSON, holds in memory for the run (decision 1a per 2026-05-01 design review)
+  2. Orchestrator uses index.json's file listings to know what to read instead of LLM-discovering files via grep/glob
+  3. For every code-snippet setter (`add-*-export`, `add-*-type`, `set-*-usage-example`, `set-package-consumer-pattern`), orchestrator first invokes `extract-snippet --file F --start S --end E` via Bash and pipes the output into `--code-snippet "$(extract-snippet ...)"`. Eliminates LLM transcription = eliminates citation-mismatch retry cycles.
+  4. **Drop concern-slot-filler subagent dispatch entirely.** Phase 3 step 9 changes from "dispatch concern-slot-filler subagent for each concern" to "for each concern in worklist, run inline slot-fill workflow (sequential, in same orchestrator context)". Per memory `feedback_avoid_subagents_for_sequential_identical_workflows.md`: empirical evidence from this iteration's testForge20 runs confirmed the lesson — orchestrator-direct beats dispatched subagent on transcription quality even when sequential.
+  5. **Delete `src/agents/concern-slot-filler.md`** (decision 3 per 2026-05-01 design review). Per the no-bicycle memory, dead specs rot; better to remove cleanly. The agent file's workflow content gets inlined into main.md Phase 3 (or extracted to a reference doc under `src/commands/generate-docs/references/`).
+  6. **KEEP** `scripts/generate-agents.py`'s tools-allowlist propagation feature (decision 4) — defense-in-depth for any future agent; low maintenance cost; no consumer required to justify the feature's existence.
+- **Cross-check / impact analysis**:
+  - Every `add-*-export`/`add-*-type` etc. invocation in main.md must be paired with an `extract-snippet` call
+  - Phase 2→3 mid-flight checkpoint stays as-is
+  - Phase 5 timing table stays as-is
+  - Decomposition gate stays as-is
+  - 11 concern-tier helper subcommands all still work (no helper changes in this step)
+  - `concern-slot-filler.md` deletion: cross-check that `scripts/generate-agents.py` doesn't break if no source files reference the agent (it auto-discovers — should be fine since deletion just means no emitted file)
+  - Spec text grep: any reference to "concern-slot-filler" outside `concern-slot-filler.md` becomes a dangling ref to fix
+- **Open question (deferred per decision 2)**: context-window pressure on orchestrator carrying ~7 concerns × ~5-15k tokens each ≈ 50-100k cumulative context by end of Phase 3. Acceptable on Opus 1M / Opus 200K; tight on Sonnet 200K. Defer fallback design until proven a problem on real Sonnet 200K runs.
+- **Loop**: instruction-author + instruction-reviewer + claude-code-guide audit. python-engineer NOT involved (no helper changes — pure spec edit).
+
+**Verify**: user reinstalls testForge20, runs `/generate-docs`. Expected:
+- Wall-clock: ~30-50 min (vs prior ~100min)
+- Tokens: ~70-90k (vs prior ~150k)
+- Failed concerns: 0 (citation-mismatch wall closed by extract-snippet)
+- Concerns completed: 7 of 7 with rendered .md files
+- Trace log shows extract-snippet calls preceding every `add-*-export`/`add-*-type` invocation
+- `concern-slot-filler` not invoked (confirm by absence in session JSONL)
+
+**Compare**: prior testForge20 run (2-of-7 concerns blocked, 100+min, ~150k tokens) vs post-Step-3.3.2 run.
+
+#### Step 3.3.3: Mechanical export-candidate extraction (DEFERRED)
+
+Originally proposed: `extract-package-candidates --path P` returning a JSON list of every export/type/import via regex per language. Deferred indefinitely.
+
+**Why deferred**: building per-language regex extractors is the same Principle 5 trap as per-language source extraction. Each language has different export patterns (JS `^export`, Python `^def`/`^class`, Rust `^pub`, Go `^func [A-Z]`, etc.) — never-ending tail of edge cases. The LLM does this discovery work fine when given source files; no urgent need to mechanize.
+
+**Re-evaluate when**: empirical evidence from post-Step-3.3.2 runs shows source-discovery (file reads to find exports) is still a major LLM cost. If extract-snippet eliminates the cost driver, this step never lands.
 
 ---
 
