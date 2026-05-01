@@ -395,3 +395,107 @@ Targets per `GENERATE-DOCS-PLAN.md`:
 4. A.2.1 template uniformity (Overview / Directory Structure / Tech Stack / Scripts / Main Exports / Types / Dependencies / Hazards / Usage Example / Consumer Pattern)
 
 Phase 2.2 needs the user to install testForge20 with the latest framework state (committed to develop-2.0-init) and run `/generate-docs` interactively. The result is then evaluated against the empirical baseline targets. If shape is approved → Phase 2.3 (lock baseline). If not approved → iterate spec/render template/agent contract until it is.
+
+---
+
+## Phase 2.2 — Empirical iteration on testForge20 + A/B architecture comparison
+
+**Status**: ✅ DONE
+**Outcome**: Multiple iteration rounds + empirical A/B comparison decisively resolved the Phase 3 dispatch architecture. Orchestrator-direct slot-fill replaces tech-writer subagent dispatch as canonical.
+
+### Iteration rounds (chronological)
+
+1. **Initial run** — output had: incorrect "Configure, Select, Execute" expansion of "CSE" (hallucination); prior run state preserved blocked progress
+2. **No-abbreviation-guessing rule** added to `tech-writer.md` (commit `96af2c5`); CSE expansion now resolved via README (correctly: "Connected Sales Experience")
+3. **4 post-Phase-2.2 fixes** (commit `ebd3f21`): validate-package hardening (anti-pattern #2 closed); Phase 0 reset prompt; setter signature documentation; launcher rename (`generate_docs` → `generate_docs_helper`)
+4. **State-persistence race condition** (commit `b3bba61`): concurrent setters were racing on load-modify-write; fixed via `_state_transaction()` context manager + `fcntl.flock`; defense-in-depth `_check_optional_render` validator added
+5. **Three optimization commitments captured** (commit `377edae`): tech-writer prompt tightening, Resume slot-skip, per-concern parallelism — quality-driven, NOT speed-gated
+6. **Tech-writer audit + revise** (commit `6bb69f5`): refresh mode removed (forward ref to non-existent `/refresh-docs`); onboarding mode marked deprecated; rules split universal vs Normal-only; 8 fixes total
+7. **HTML-escape + Phase 0/2 spec tightening** (commit `6853244`): prose narrative fields (overview, hazard description, dep purpose, export description) HTML-escape `<>&`; Phase 2 step 7 verification gate added (hard requirement; blocks Phase 3 entry if fields unset)
+8. **Option B architecture decision** (commit `125acc7`): A/B comparison run revealed:
+   - Option A (tech-writer subagent dispatch): 7 exports, 2 hazards, 9 citations; broke helper-API contract with 2 direct JSON state edits; misclassified 19 workspace-internal deps as external
+   - Option B (orchestrator-direct, no tech-writer dispatch): 16 exports, 9 hazards, 18 citations; respected helper-API contract; correctly classified 19 workspace-internal deps; surfaced helper-API walls cleanly rather than bypass
+   
+   Option B's wins (2-4× coverage, no contract breaks, correct classification) decisive at Phase 2's single-package scope. Tech-writer subagent's scoped context made it more likely to choose bypass over abort when hitting walls; orchestrator (Claude Code main session) had full source + spec context.
+   
+   Spec changed: Phase 3 of `/generate-docs/main.md` is now orchestrator-direct slot-fill (no `Agent` tool dispatch with `subagent_type=tech-writer`). Anachronistic tech-writer references in Phases 0/2/4 reworded. Iteration banner annotated with A/B comparison outcome.
+   
+   Helper fix (same commit): `_validators.py` gained third internal-dep resolution check via `init.yaml.packages_detected[]` basename match — closes the wall that blocked option B's first run (workspace-internal deps couldn't resolve in single-package iteration with nested workspace paths). 18 new tests added (8 CLI + 10 unit) including the exact testForge20 shape (pre-fix 19 errors → post-fix 0).
+
+### Final approved baseline (testForge20 `apps/app-web`)
+
+- 474-line single-package doc, ~30 KB
+- A.2.1 strict template (Overview / Directory / Tech Stack / Scripts / Main Exports / Dependencies [Workspace-internal + External] / Hazards / Usage Example / Consumer Pattern)
+- 18 mechanically-validated citations, all `<!-- path:line-range -->` paired
+- 16 exports with verbatim code blocks
+- 9 hazards with closed-enum categories: type-safety×3, duplication, v1-v2-coexistence, inconsistency, complexity, naming
+- 36 dependencies (19 workspace-internal correctly identified + 17 external)
+- HTML-escaped narrative fields (TypeScript generics like `DeepReadonly<Ref<S>>` rendered safely)
+- Tech Stack table populated: typescript / Vue 3 / vite (Phase 2 step 7 gate enforced)
+- Scripts table populated: 11 entries from `package.json scripts`
+- Idempotency verified: back-to-back `render-package-doc` produces byte-identical output (md5 confirmed: `25db847e5c016bf7bc88c70feb9cf807`)
+
+### Vs prior baselines (the empirical comparison in the plan)
+
+| Source | Files | Bytes | Citations | Workspace-internal | Helper contract |
+|---|---|---|---|---|---|
+| Heavy spec /onboard (initial monolith) | 1 | ~50 KB | 33 (trust-based) | informal | helper-mediated, validation gates skipped (iteration mode) |
+| Reference spec /onboard 10-doc | 10 | 60.8 KB | 0 | informal | n/a |
+| cse-strata-ws-forge actual reference | 12 | 44.5 KB | 0 | informal | n/a |
+| Option A tech-writer | 1 | ~50 KB | 9 (validated) | 0 (lied) | broken (2 JSON edits) |
+| **Option B orchestrator-direct (locked baseline)** | **1** | **~30 KB** | **18 (validated)** | **19 (correct)** | **respected** |
+
+### Agents invoked + loops
+
+This phase had MANY iteration rounds (probably the most of any phase). Per-round agent invocations summed to ~20-25 across `instruction-author`, `instruction-reviewer`, `claude-code-guide`, `python-engineer`, `python-reviewer`. Loops typically converged in 1-3 rounds per fix.
+
+### Decisions made
+
+1. **CSE = "Connected Sales Experience"** correctly resolved via README; framework remained content-blind (no hardcoded abbreviation table)
+2. **State-persistence race fix** via `fcntl.flock` + `_state_transaction()` — atomic read-modify-write for setters
+3. **HTML-escape narrative prose** — TypeScript generics `<S>` no longer trigger HTML strikethrough in rendered docs
+4. **Phase 2 step 7 verification gate** — hard requirement before Phase 3 entry; LLM dropout caught
+5. **Internal-dep auto-resolution via init.yaml.packages_detected[]** — workspace-internal deps resolve in single-package iteration
+6. **Orchestrator-direct Phase 3 architecture** — option B canonical; tech-writer subagent dispatch reserved for future Phase 7.1 only if/when wall-clock requires
+
+### Anti-patterns closed during this phase
+
+- #2 (validation deferred) — `_check_optional_render` defense-in-depth + Phase 2 step 7 gate
+- #4 (atomic writes) — preserved via `_state_transaction`'s mkstemp + os.replace
+- #6 (compose without idempotency) — back-to-back render byte-identical
+- #7 (unanchored separator splits) — anchored regex in init.yaml parser
+
+### Future-session-falsely-believes check
+
+- Could a session believe tech-writer dispatch is canonical for /generate-docs? NO — Open decisions #9 RESOLVED + Step 2.3 Lock-in record + Step 2.2 historical-context annotation
+- Could a session believe state-persistence is race-free without lock? NO — `_state.py` docstring + `_state_transaction()` enforce
+- Could a session believe TypeScript generics in prose render verbatim? NO — HTML-escape applied; tests cover edge cases
+- Could a session believe Phase 2 succeeds without populating optional fields? NO — step 7 gate is HARD
+- Could a session believe internal-dep validator only checks state + filesystem? NO — third check via init.yaml documented
+
+---
+
+## Phase 2.3 — Lock baseline + architecture decision recorded
+
+**Status**: ✅ DONE
+**Plan annotations** (commit pending): Step 2.3 Lock-in record + Open decisions #9 (RESOLVED post-A/B comparison) + Phase 3.2 / Phase 7.1 brief updates + Step 2.2 historical-context annotation. Tech-writer's prompt-tightening RECOMMENDED bullet marked SUPERSEDED.
+
+### Approved baseline shape (locked)
+
+See Phase 2.2's Final approved baseline section above. The 474-line `apps/app-web/index.md` doc is the reference shape for downstream phases. Future Phase 3 concern decomposition produces per-concern docs that EACH match this shape's structure (Overview / Directory / Public Surface / Types / Dependencies / Hazards / Usage Example), scoped per concern.
+
+### Architectural baseline (locked)
+
+- **Phase 3 dispatch**: orchestrator-direct slot-fill, NOT tech-writer subagent
+- **Phase 7.1 multi-package**: orchestrator-direct repeated per package; sequential default; per-package `Agent` tool dispatches with inline briefs only when wall-clock requires
+- **Tech-writer.md SKELETON-FILL MODE**: retained for future reference; NOT invoked by canonical /generate-docs spec
+- **Tech-writer.md other modes** (Normal, Onboarding deprecated): unchanged — still apply for /finalize/fix/refactor (Normal Mode) and legacy /onboard (Onboarding Mode pending Phase 8.2 retirement)
+
+### Next step
+
+**Phase 3** — Per-concern decomposition. The plan's Phase 3 has 2 sub-steps:
+
+- **Step 3.1**: extend `generate_docs_helper.py` with `ConcernDoc` subcommands (parallel to PackageDoc tier) — `add-concern`, `set-concern-overview`, `set-concern-tree`, `add-concern-export`, `add-concern-dep`, `add-concern-hazard`, `set-concern-usage-example`, `render-concern-skeleton`, `validate-concern`, `render-concern-doc`. Schema-anchored (`ConcernDoc` dataclass already defined in `generate_docs_schema.py` per Phase 1.1).
+- **Step 3.2**: extend `/generate-docs/main.md` Phase 3 with concern dispatch — orchestrator detects substantive subfolders, dispatches one slot-fill cycle per concern (orchestrator-direct OR per-concern `Agent` tool dispatches with inline briefs). Per-concern parallelism is mandatory architecture (Phase 3 commitment from `377edae`); Resume slot-skip behavior preserved.
+
+For testForge20 `apps/app-web`: expected to produce ~8-10 concern docs (composables, components, helpers, plugins, router, types, etc.) each at ~50-150 lines, matching cse-strata-ws-forge reference's per-concern shape.
