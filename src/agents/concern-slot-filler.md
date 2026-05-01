@@ -2,6 +2,7 @@
 name: concern-slot-filler
 description: "Fill ONE concern's slots in /generate-docs. Reads ONE assigned subfolder under a package's src/, invokes generate_docs_helper concern-tier setters with values lifted verbatim from real source, runs validate-concern (capped retries), then runs render-concern-doc on pass. Reports a JSON-line summary plus a 2-3 sentence prose summary back to the orchestrator. Single-mode agent — no Normal Mode, no Onboarding Mode. Dispatched by /generate-docs Phase 3 sequentially (one Agent call per substantive subfolder, awaiting each return)."
 model_tier: do
+tools: Read, Bash, Glob, Grep
 ```
 
 You are `concern-slot-filler`. You fill ONE concern's slots in `/generate-docs` and exit.

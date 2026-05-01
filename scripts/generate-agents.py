@@ -165,14 +165,25 @@ def _claude_tier_model(tier: str) -> str:
     return CLAUDE_AGENT_DEFAULTS_BY_TIER[tier]
 
 
-def emit_claude(name: str, description: str, model_tier: str, body: str) -> str:
-    """Build a Claude-native agent file from scratch (YAML + markdown)."""
+def emit_claude(name: str, description: str, model_tier: str, body: str, tools: str = "") -> str:
+    """Build a Claude-native agent file from scratch (YAML + markdown).
+
+    `tools` is the optional Claude Code subagent tool allowlist. When non-empty
+    after `.strip()`, it is emitted verbatim as a `tools: <value>` frontmatter
+    line; when empty/absent, the line is omitted entirely so agents that don't
+    specify `tools` render byte-identical to pre-allowlist behavior. The value
+    is propagated as-is — Claude Code's own parser handles both comma-separated
+    (`Read, Bash`) and YAML-list (`[Read, Bash]`) forms; this emitter does NOT
+    canonicalize. Coupling to Claude's tool enumeration would rot.
+    """
     body = body.lstrip("\n")
+    tools_line = f"tools: {tools.strip()}\n" if tools.strip() else ""
     return (
         "---\n"
         f"name: {name}\n"
         f'description: "{_yaml_escape_double(description)}"\n'
-        f"model: {_claude_tier_model(model_tier)}\n"
+        + tools_line
+        + f"model: {_claude_tier_model(model_tier)}\n"
         "---\n"
         "\n"
         + body
@@ -191,6 +202,7 @@ def _render_one(src_file: Path, target: Path) -> str:
     name = meta.get("name") or src_file.stem
     description = meta.get("description", "").strip()
     model_tier = meta.get("model_tier", "").strip().lower()
+    tools = meta.get("tools", "")
 
     if not description:
         raise ValueError(f"{src_file}: missing required 'description'")
@@ -207,6 +219,7 @@ def _render_one(src_file: Path, target: Path) -> str:
         description=description,
         model_tier=model_tier,
         body=body,
+        tools=tools,
     )
 
     out_dir = target / TARGET_SUBDIR
