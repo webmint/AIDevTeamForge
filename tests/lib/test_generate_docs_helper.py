@@ -2335,6 +2335,421 @@ class ValidatePackageTests(_RenderTestBase):
 
 
 # ---------------------------------------------------------------------------
+# InternalDepResolutionTests
+#
+# Third resolution path: `<devforge>/init.yaml`'s `packages_detected[]`.
+# Previous behavior relied on (1) registered packages in current state +
+# (2) on-disk dir at `<project_root>/<dep_name>`. Both fail when an LLM
+# is documenting one package at a time AND the monorepo nests packages
+# inside a workspace folder (e.g., testForge20's
+# `db-cse-ui-strata/packages/pkg-cse-core`). The new check uses the
+# init.yaml that /init-forge already writes.
+#
+# Note: the validator's regex parser is BEST EFFORT — malformed init.yaml
+# silently falls through to existing checks. Tests here cover happy-path
+# resolution + the malformed/missing fall-through.
+# ---------------------------------------------------------------------------
+
+
+class InternalDepResolutionTests(_RenderTestBase):
+
+    def _write_init_yaml(self, content):
+        """Write `.devforge/init.yaml` with `content` (bytes-or-str)."""
+        path = self.devforge_dir / "init.yaml"
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+
+    def _fill_minimum_valid(self, src_lines=None):
+        """Mirror ValidatePackageTests._fill_minimum_valid but local
+        (the base class is _RenderTestBase, which doesn't provide it).
+
+        Registers `apps/web` with the minimum required content so adding
+        a single internal dep is the only thing standing between state
+        and a passing validate-package call.
+        """
+        if src_lines is None:
+            src_lines = [
+                "export function fetchUser(id) {",
+                "  return db.users.get(id);",
+                "}",
+            ]
+        self._write_source("src/api.ts", src_lines)
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "Web.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/\n  api.ts")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "TypeScript")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "fetchUser",
+                  "--kind", "function",
+                  "--signature", "",
+                  "--description", "Fetches a user.",
+                  "--language", "ts",
+                  "--code-snippet", "\n".join(src_lines),
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+
+    # -- Happy-path resolution via init.yaml --------------------------
+
+    def test_internal_dep_resolves_against_init_yaml_packages_detected_basename(self):
+        # Init.yaml has `db-cse-ui-strata/packages/pkg-cse-core`.
+        # Internal dep is registered with bare basename `pkg-cse-core`
+        # and should resolve via init.yaml even though no directory
+        # exists at <project_root>/pkg-cse-core and no other package
+        # is registered.
+        self._fill_minimum_valid()
+        self._write_init_yaml(
+            "version: 1\n"
+            "workspace_mode: wrapper\n"
+            "project_root: db-cse-ui-strata\n"
+            "project_state: brownfield\n"
+            "default_branch: dev\n"
+            "packages_detected:\n"
+            "  - path: db-cse-ui-strata/packages/pkg-cse-core\n"
+            "    manifest: package.json\n"
+        )
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "pkg-cse-core",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Core lib.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Sanity: the internal-dep-unresolved error did NOT fire.
+        self.assertNotIn(b"internal-dep-unresolved", proc.stderr)
+
+    def test_internal_dep_resolves_against_init_yaml_packages_detected_fullpath(self):
+        # Same fixture, but the LLM registered the dep using the full
+        # workspace-relative path verbatim. Match on full path string.
+        self._fill_minimum_valid()
+        self._write_init_yaml(
+            "version: 1\n"
+            "workspace_mode: wrapper\n"
+            "project_root: db-cse-ui-strata\n"
+            "project_state: brownfield\n"
+            "default_branch: dev\n"
+            "packages_detected:\n"
+            "  - path: db-cse-ui-strata/packages/pkg-cse-core\n"
+            "    manifest: package.json\n"
+        )
+        self._run("add-package-dep",
+                  "--path", "apps/web",
+                  "--name", "db-cse-ui-strata/packages/pkg-cse-core",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Core lib.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn(b"internal-dep-unresolved", proc.stderr)
+
+    # -- Fall-through behavior ----------------------------------------
+
+    def test_internal_dep_unresolved_when_init_yaml_missing_and_no_other_match(self):
+        # No init.yaml; no registered sibling package; no on-disk dir.
+        # The error must surface (the new check is additive, not a
+        # silent skip).
+        self._fill_minimum_valid()
+        # Sanity: ensure init.yaml is genuinely absent.
+        self.assertFalse((self.devforge_dir / "init.yaml").exists())
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "pkg-no-match",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Should fail.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"internal-dep-unresolved", proc.stderr)
+        self.assertIn(b"pkg-no-match", proc.stderr)
+
+    def test_internal_dep_unresolved_when_init_yaml_missing_path_doesnt_match(self):
+        # init.yaml present but no `pkg-cse-core` entry. Existing
+        # checks also fail. The error must still surface.
+        self._fill_minimum_valid()
+        self._write_init_yaml(
+            "version: 1\n"
+            "workspace_mode: wrapper\n"
+            "project_root: db-cse-ui-strata\n"
+            "project_state: brownfield\n"
+            "default_branch: dev\n"
+            "packages_detected:\n"
+            "  - path: db-cse-ui-strata/packages/pkg-something-else\n"
+            "    manifest: package.json\n"
+        )
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "pkg-cse-core",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Should fail.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"internal-dep-unresolved", proc.stderr)
+        self.assertIn(b"pkg-cse-core", proc.stderr)
+
+    def test_init_yaml_malformed_falls_back_to_existing_checks(self):
+        # Garbage init.yaml (not even close to a yaml file). The
+        # regex extractor must NOT raise; it just returns []. The
+        # other two checks run and (since they also fail) the error
+        # surfaces normally — proves malformed input degrades
+        # gracefully without crashing the validator.
+        self._fill_minimum_valid()
+        self._write_init_yaml(
+            "<<< this is not yaml >>>\n"
+            "@@@ binary garbage @@@\n"
+            "{[(unmatched delimiters\n"
+        )
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "pkg-cse-core",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Should fail.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"internal-dep-unresolved", proc.stderr)
+
+    # -- Existing checks unaffected by the new third path ------------
+
+    def test_existing_state_match_still_works_when_init_yaml_present(self):
+        # Init.yaml exists but doesn't contain the dep. The dep is a
+        # registered package's name. Resolution must come from check
+        # #1 (registered packages) — proves the new check is additive.
+        self._fill_minimum_valid()
+        self._write_init_yaml(
+            "version: 1\n"
+            "workspace_mode: standalone\n"
+            "project_root: .\n"
+            "project_state: brownfield\n"
+            "default_branch: main\n"
+            "packages_detected:\n"
+            "  - path: some-other-pkg\n"
+            "    manifest: package.json\n"
+        )
+        self._run("add-package",
+                  "--path", "packages/shared", "--name", "@workspace/shared")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "@workspace/shared",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Shared utils.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_existing_directory_match_still_works_when_init_yaml_present(self):
+        # Init.yaml exists but doesn't contain the dep. The dep DOES
+        # match an on-disk directory under project_root. Resolution
+        # must come from check #2.
+        self._fill_minimum_valid()
+        self._write_init_yaml(
+            "version: 1\n"
+            "workspace_mode: standalone\n"
+            "project_root: .\n"
+            "project_state: brownfield\n"
+            "default_branch: main\n"
+            "packages_detected: []\n"
+        )
+        (self.project_root / "packages" / "shared").mkdir(parents=True)
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "packages/shared",
+                  "--kind", "internal", "--version", "",
+                  "--purpose", "Shared utils.")
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    # -- Synthetic testForge20 reproducer -----------------------------
+
+    def test_synthetic_testforge20_shape_resolves_all_internal_deps(self):
+        # Reproduces the exact scenario from the bug report: 19
+        # workspace-internal deps registered against `apps/app-web`,
+        # all of which live inside `db-cse-ui-strata/packages/<name>`
+        # in init.yaml, none of which are registered as packages and
+        # none of which exist as `<project_root>/<dep_name>`. Before
+        # the fix, this produced 19 errors. After the fix, 0 errors.
+        self._fill_minimum_valid()
+        nested_pkgs = [
+            "pkg-cse-core",
+            "pkg-cse-quote",
+            "pkg-cse-identity",
+            "pkg-cse-billing",
+            "pkg-cse-claims",
+            "pkg-cse-policy",
+            "pkg-cse-broker",
+            "pkg-cse-payment",
+            "pkg-cse-document",
+            "pkg-cse-notification",
+            "pkg-cse-audit",
+            "pkg-cse-config",
+            "pkg-cse-shared",
+            "pkg-cse-ui",
+            "pkg-cse-form",
+            "pkg-cse-validation",
+            "pkg-cse-data",
+            "pkg-cse-event",
+            "pkg-cse-storage",
+        ]
+        init_lines = [
+            "version: 1",
+            "workspace_mode: wrapper",
+            "project_root: db-cse-ui-strata",
+            "project_state: brownfield",
+            "default_branch: dev",
+            "packages_detected:",
+        ]
+        for name in nested_pkgs:
+            init_lines.append(
+                "  - path: db-cse-ui-strata/packages/{0}".format(name)
+            )
+            init_lines.append("    manifest: package.json")
+        # Plus app-web (the package being documented) lives under the
+        # workspace too — round out the fixture realistically.
+        init_lines.append("  - path: db-cse-ui-strata/apps/app-web")
+        init_lines.append("    manifest: package.json")
+        self._write_init_yaml("\n".join(init_lines) + "\n")
+
+        for name in nested_pkgs:
+            self._run("add-package-dep",
+                      "--path", "apps/web", "--name", name,
+                      "--kind", "internal", "--version", "",
+                      "--purpose", "Workspace lib.")
+
+        proc = self._run("validate-package", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn(b"internal-dep-unresolved", proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# InternalDepResolutionUnitTests
+#
+# Pure-function tests for `_load_packages_detected_paths` and
+# `_resolve_internal_dep`. These run without the full CLI roundtrip so
+# regressions in the helpers themselves surface fast and with precise
+# stack traces.
+# ---------------------------------------------------------------------------
+
+
+class InternalDepResolutionUnitTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.devforge_dir = Path(self._tmp.name) / ".devforge"
+        self.devforge_dir.mkdir(parents=True)
+        self.project_root = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_init_yaml(self, content):
+        (self.devforge_dir / "init.yaml").write_text(
+            content, encoding="utf-8"
+        )
+
+    def test_load_paths_returns_empty_when_init_yaml_missing(self):
+        from _generate_docs._validators import _load_packages_detected_paths
+        self.assertEqual(
+            _load_packages_detected_paths(self.devforge_dir), []
+        )
+
+    def test_load_paths_extracts_path_values(self):
+        from _generate_docs._validators import _load_packages_detected_paths
+        self._write_init_yaml(
+            "packages_detected:\n"
+            "  - path: workspace/packages/foo\n"
+            "    manifest: package.json\n"
+            "  - path: workspace/packages/bar\n"
+            "    manifest: package.json\n"
+        )
+        paths = _load_packages_detected_paths(self.devforge_dir)
+        self.assertEqual(
+            paths,
+            ["workspace/packages/foo", "workspace/packages/bar"],
+        )
+
+    def test_load_paths_handles_quoted_path(self):
+        # init_helper quotes paths that contain special chars; the
+        # validator must accept the quoted form too.
+        from _generate_docs._validators import _load_packages_detected_paths
+        self._write_init_yaml(
+            "packages_detected:\n"
+            "  - path: \"workspace/has space/foo\"\n"
+            "    manifest: package.json\n"
+        )
+        self.assertEqual(
+            _load_packages_detected_paths(self.devforge_dir),
+            ["workspace/has space/foo"],
+        )
+
+    def test_load_paths_returns_empty_for_garbage(self):
+        from _generate_docs._validators import _load_packages_detected_paths
+        self._write_init_yaml("totally not yaml at all\n")
+        self.assertEqual(
+            _load_packages_detected_paths(self.devforge_dir), []
+        )
+
+    def test_load_paths_strips_inline_comment(self):
+        # Hand-edited init.yaml with a trailing comment. init_helper
+        # never emits comments but the helper should be tolerant.
+        from _generate_docs._validators import _load_packages_detected_paths
+        self._write_init_yaml(
+            "packages_detected:\n"
+            "  - path: workspace/packages/foo # primary\n"
+            "    manifest: package.json\n"
+        )
+        self.assertEqual(
+            _load_packages_detected_paths(self.devforge_dir),
+            ["workspace/packages/foo"],
+        )
+
+    def test_resolve_against_basename_in_init_yaml(self):
+        from _generate_docs._validators import _resolve_internal_dep
+        self._write_init_yaml(
+            "packages_detected:\n"
+            "  - path: workspace/packages/foo\n"
+            "    manifest: package.json\n"
+        )
+        state = {"packages": {}}
+        self.assertTrue(_resolve_internal_dep(
+            "foo", state, self.project_root, self.devforge_dir,
+        ))
+
+    def test_resolve_against_full_path_in_init_yaml(self):
+        from _generate_docs._validators import _resolve_internal_dep
+        self._write_init_yaml(
+            "packages_detected:\n"
+            "  - path: workspace/packages/foo\n"
+            "    manifest: package.json\n"
+        )
+        state = {"packages": {}}
+        self.assertTrue(_resolve_internal_dep(
+            "workspace/packages/foo", state, self.project_root, self.devforge_dir,
+        ))
+
+    def test_resolve_returns_false_when_no_match(self):
+        from _generate_docs._validators import _resolve_internal_dep
+        self._write_init_yaml(
+            "packages_detected:\n"
+            "  - path: workspace/packages/foo\n"
+            "    manifest: package.json\n"
+        )
+        state = {"packages": {}}
+        self.assertFalse(_resolve_internal_dep(
+            "nonexistent", state, self.project_root, self.devforge_dir,
+        ))
+
+    def test_resolve_check_1_takes_precedence(self):
+        # Registered package match is the first check; init.yaml
+        # presence/absence shouldn't matter.
+        from _generate_docs._validators import _resolve_internal_dep
+        state = {"packages": {"path/x": {"name": "@workspace/x"}}}
+        self.assertTrue(_resolve_internal_dep(
+            "@workspace/x", state, self.project_root, self.devforge_dir,
+        ))
+
+    def test_resolve_check_2_directory_match(self):
+        from _generate_docs._validators import _resolve_internal_dep
+        (self.project_root / "shared").mkdir()
+        state = {"packages": {}}
+        self.assertTrue(_resolve_internal_dep(
+            "shared", state, self.project_root, self.devforge_dir,
+        ))
+
+
+# ---------------------------------------------------------------------------
 # RenderPackageDocTests (sub-step 1.2b)
 # ---------------------------------------------------------------------------
 

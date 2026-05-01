@@ -26,8 +26,9 @@ Validation rules collected in `validate_package`:
    range within file bounds.
 5. Per-CodeBlock snippet matches the cited line range verbatim modulo
    the whitespace rules above.
-6. Internal Dependency target resolution (registered package OR
-   on-disk directory).
+6. Internal Dependency target resolution (registered package, on-disk
+   directory under project_root, OR `packages_detected[].path` entry
+   in `<devforge>/init.yaml` matched by basename or full path).
 7. Enum membership re-check (paranoia layer over set-time validation
    to catch state-file corruption).
 8. No `[TODO` substring in the rendered skeleton — catches setters that
@@ -40,20 +41,25 @@ can short-circuit when validation fails.
 
 Stdlib only. Targets Python 3.8+.
 
-Size note: at ~426 lines this module sits in the "plan-a-split" zone
-(> 400) per the Design discipline threshold in `python-engineer.md`.
+Size note: at ~637 lines this module is past the 600-line hard
+threshold per the Design discipline guideline in `python-engineer.md`.
 The cohesion case (all validation rules share the collect-errors
 idiom and require filesystem + state access) was evaluated and
-accepted. A meaningful future split would be `_validators_codeblock.py`
-(filesystem + snippet checks) vs `_validators_semantic.py` (required
-fields, deps, enums, todo-check). Split when this file approaches the
-600-line hard threshold.
+accepted. The init-yaml-consuming third resolution path
+(`_load_packages_detected_paths` + `_resolve_internal_dep`) added in
+2026-04 keeps the surface in this single module rather than fanning
+out into per-rule files prematurely. A planned future split is
+`_validators_codeblock.py` (filesystem + snippet checks) vs
+`_validators_semantic.py` (required fields, deps, enums, todo-check);
+the current group of additions stays cohesive and does not motivate
+splitting on its own.
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from generate_docs_schema import (
     DEPENDENCY_KINDS,
@@ -68,7 +74,37 @@ from ._render import (
     _project_root,
     render_package_skeleton,
 )
-from ._state import StateLoadError, _die, _load_state, _require_package
+from ._state import (
+    StateLoadError,
+    _die,
+    _load_state,
+    _require_package,
+    _state_file_path,
+)
+
+
+# Name of the bootstrap artifact written by /init-forge. Living next to
+# the helper's own state file under `<devforge>/`. Read-only here — this
+# module never writes to init.yaml; init_helper owns that artifact's shape.
+INIT_YAML_FILE_NAME = "init.yaml"
+
+
+# Regex-based path extractor for init.yaml's `packages_detected[]` block.
+# Matches any line that looks like `  - path: <value>` regardless of
+# indentation depth. Closed shape produced by init_helper's emitter
+# always uses 2-space indentation, so this matches in practice; the
+# regex is intentionally permissive on indentation so a future emit-
+# style tweak (e.g., 4-space) does not silently break resolution.
+#
+# We deliberately do NOT parse the full YAML. Stdlib has no YAML
+# parser and pulling init_helper's parser in would create a circular
+# import and an unwanted coupling between the validator and a different
+# helper's full schema. Best-effort path extraction is the contract:
+# any malformed input simply yields an empty list, callers fall back
+# to the existing checks (registered packages + on-disk directory).
+_PACKAGES_DETECTED_PATH_RE = re.compile(
+    r"^\s*-\s*path:\s*(.+?)\s*$", re.MULTILINE
+)
 
 
 def _err(rule: str, field: str, message: str, **extra: Any) -> Dict[str, Any]:
@@ -236,35 +272,143 @@ def _check_all_codeblocks(
     return errors
 
 
-def _check_internal_deps(
+def _load_packages_detected_paths(devforge_dir: Path) -> List[str]:
+    """Extract `packages_detected[].path` strings from init.yaml.
+
+    Best-effort, regex-based. Returns `[]` when the file is missing,
+    unreadable, or contains no recognizable `- path: <value>` lines.
+    No exception is propagated to the caller — internal-dep resolution
+    is a fall-back chain and a missing init.yaml is a normal state for
+    standalone projects that never ran /init-forge.
+
+    Why regex (not the init_helper YAML parser): pulling init_helper's
+    parser into the validator would create a cross-helper coupling
+    that is much heavier than the single check we need. The init.yaml
+    shape is locked (init_helper owns it; emitter is deterministic),
+    so a 1-line regex is safe in practice — and any input outside the
+    closed shape simply yields `[]`, which falls through to the
+    existing resolution checks.
+    """
+    init_path = devforge_dir / INIT_YAML_FILE_NAME
+    if not init_path.exists():
+        return []
+    try:
+        text = init_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    paths: List[str] = []
+    for match in _PACKAGES_DETECTED_PATH_RE.finditer(text):
+        raw = match.group(1).strip()
+        if not raw:
+            continue
+        # Defensive: strip surrounding double-quotes if init_helper
+        # had to quote the path (e.g., a path containing a special
+        # char). The emitter only quotes when `_needs_quoting` returns
+        # True, but the validator should accept either form. When the
+        # value is double-quoted, the comment-stripping pass below is
+        # skipped — `#` inside a double-quoted YAML string is a literal
+        # character, not a comment introducer.
+        if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+            raw = raw[1:-1]
+        else:
+            # Strip an unquoted YAML inline comment: `path/x # note`
+            # -> `path/x`. The space-before-`#` rule is the YAML
+            # convention; a bare `#` immediately after content is NOT
+            # a comment in YAML. Skipping comment-strip when no leading
+            # space exists keeps legitimate paths like `foo#bar`
+            # (rare but legal) intact.
+            comment_idx = raw.find(" #")
+            if comment_idx >= 0:
+                raw = raw[:comment_idx].rstrip()
+        if not raw:
+            continue
+        paths.append(raw)
+    return paths
+
+
+def _resolve_internal_dep(
+    dep_name: str,
     state: Dict[str, Any],
-    pkg: Dict[str, Any],
     project_root: Path,
-) -> List[Dict[str, Any]]:
-    """Every internal dep must resolve to either another registered
-    package OR an on-disk directory under the project root."""
-    errors: List[Dict[str, Any]] = []
+    devforge_dir: Path,
+) -> bool:
+    """Return True if the internal dep name resolves via any of three
+    checks; False otherwise.
+
+    Resolution order (first match wins):
+
+    1. Another registered package's `name` OR `path` (current state).
+    2. A directory at `<project_root>/<dep_name>`.
+    3. A `packages_detected[].path` entry in `<devforge>/init.yaml`,
+       matched as either the full path string OR its basename.
+
+    The third check exists for monorepos where /init-forge populated
+    init.yaml with all package paths but the LLM is documenting only
+    one package at a time — sibling packages aren't yet registered in
+    current state, and the on-disk dir is nested below project_root
+    inside a workspace folder rather than directly at
+    `<project_root>/<dep_name>`. testForge20's
+    `db-cse-ui-strata/packages/pkg-cse-core` shape was the concrete
+    case that motivated this check.
+    """
+    # Check 1: registered packages in current state.
     registered_names = {
         rec.get("name") for rec in state.get("packages", {}).values()
     }
     registered_paths = set(state.get("packages", {}).keys())
+    if dep_name in registered_names or dep_name in registered_paths:
+        return True
+    # Check 2: directory at project_root/dep_name.
+    candidate = project_root / dep_name
+    if candidate.is_dir():
+        return True
+    # Check 3: init.yaml's packages_detected[].path. Match basename
+    # (covers the common case: dep is the bare package name) AND the
+    # full path string (covers the case where the dep was registered
+    # using its workspace-relative path verbatim).
+    for path in _load_packages_detected_paths(devforge_dir):
+        if path == dep_name:
+            return True
+        # Path-style basename: split on either `/` or `\` for safety.
+        # An absolute path (defensive — init_helper rejects them at
+        # set-time but parser-tolerant matching is cheap) has its
+        # leading slash stripped before basename extraction.
+        stripped = path.lstrip("/\\")
+        normalized = stripped.replace("\\", "/")
+        # Trailing-slash-tolerant: `foo/bar/` -> basename `bar`.
+        normalized = normalized.rstrip("/")
+        if not normalized:
+            continue
+        basename = normalized.rsplit("/", 1)[-1]
+        if basename == dep_name:
+            return True
+    return False
+
+
+def _check_internal_deps(
+    state: Dict[str, Any],
+    pkg: Dict[str, Any],
+    project_root: Path,
+    devforge_dir: Path,
+) -> List[Dict[str, Any]]:
+    """Every internal dep must resolve to either another registered
+    package, an on-disk directory under the project root, OR a
+    `packages_detected[]` entry in `.devforge/init.yaml`."""
+    errors: List[Dict[str, Any]] = []
     for idx, dep in enumerate(pkg.get("dependencies") or []):
         if dep.get("kind") != "internal":
             continue
         name = dep.get("name", "")
-        # Try resolution as a registered package's name OR path.
-        if name in registered_names or name in registered_paths:
+        if _resolve_internal_dep(name, state, project_root, devforge_dir):
             continue
-        # Fall back to on-disk directory check.
         candidate = project_root / name
-        if candidate.is_dir():
-            continue
         errors.append(_err(
             "internal-dep-unresolved",
             "dependencies[{0}]".format(idx),
             "internal dependency {0!r} does not match any registered "
-            "package name/path and no directory exists at {1}".format(
-                name, candidate,
+            "package name/path, no directory exists at {1}, and no "
+            "packages_detected entry in {2}/init.yaml matches".format(
+                name, candidate, devforge_dir,
             ),
         ))
     return errors
@@ -382,12 +526,18 @@ def validate_package(
     state: Dict[str, Any],
     package_path: str,
     project_root: Path,
+    devforge_dir: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """Return a list of error dicts (empty list = valid).
 
     All rules run unconditionally; errors are collected so the LLM
     sees the full picture in one pass instead of fix-one-rerun-find-
     next loops.
+
+    `devforge_dir` is optional: when omitted, derived from the live
+    state-file location (`_state_file_path().parent`). The arg is in
+    the signature so tests can pin it deterministically without
+    relying on env-var ordering.
     """
     pkg = _require_package(state, package_path)
     if pkg is None:
@@ -397,12 +547,14 @@ def validate_package(
                 package_path,
             ),
         )]
+    if devforge_dir is None:
+        devforge_dir = _state_file_path().parent
     errors: List[Dict[str, Any]] = []
     errors.extend(_check_required_fields(pkg))
     errors.extend(_check_at_least_one_export(pkg))
     errors.extend(_check_at_least_one_dependency(pkg))
     errors.extend(_check_all_codeblocks(pkg, project_root))
-    errors.extend(_check_internal_deps(state, pkg, project_root))
+    errors.extend(_check_internal_deps(state, pkg, project_root, devforge_dir))
     errors.extend(_check_enums(pkg))
     errors.extend(_check_no_todos(state, package_path))
     errors.extend(_check_optional_render(state, pkg, package_path))

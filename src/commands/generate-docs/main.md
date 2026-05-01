@@ -4,7 +4,7 @@ description: Generate per-package documentation via the python-skeleton primitiv
 
 # /generate-docs — per-package documentation via skeleton-fill
 
-`/generate-docs` produces per-package documentation under `docs/<package-path>/index.md` for the project. The mechanism is the **skeleton-fill primitive**: `.devforge/lib/generate_docs_helper render-package-skeleton` writes a markdown skeleton with `[TODO]` slots, the `tech-writer` subagent fills slots by reading source and invoking setters, `validate-package` checks structure and citation fidelity, and `render-package-doc` renames `.skeleton` → `.md` once validation passes. The helper owns markdown structure, section ordering, and citation format — the LLM contributes only values.
+`/generate-docs` produces per-package documentation under `docs/<package-path>/index.md` for the project. The mechanism is the **skeleton-fill primitive**: `.devforge/lib/generate_docs_helper render-package-skeleton` writes a markdown skeleton with `[TODO]` slots, the orchestrator (or a tech-writer subagent in canonical mode) fills slots by reading source and invoking setters, `validate-package` checks structure and citation fidelity, and `render-package-doc` renames `.skeleton` → `.md` once validation passes. The helper owns markdown structure, section ordering, and citation format — the LLM contributes only values.
 
 This command will replace `/onboard` once empirical iteration locks the output shape.
 
@@ -14,6 +14,8 @@ This command will replace `/onboard` once empirical iteration locks the output s
 
 **This override is in effect until removed.** Multi-package iteration is paused; this run validates output shape on a single unit before broader rollout.
 
+**A/B comparison run**: Phase 3 in this version is configured for orchestrator-direct slot-fill (no tech-writer subagent dispatch). Option A used a tech-writer subagent — that produced coverage degradation + contract breaks (direct JSON edits bypassing the helper API). This run tests whether orchestrator-direct produces comparable or better output without those failure modes.
+
 For this run, `/generate-docs` operates in single-package verification mode:
 
 | Phase | Behavior |
@@ -21,7 +23,7 @@ For this run, `/generate-docs` operates in single-package verification mode:
 | Phase 0 — Pre-flight | Run normally |
 | Phase 1 — Discover the assigned package | **Override** — package is hardcoded to `db-cse-ui-strata/apps/app-web`. Skip the multi-package iteration loop that the full flow would run. |
 | Phase 2 — Register package + extract scripts | Run normally for the single package |
-| Phase 3 — Render skeleton, dispatch tech-writer to fill | Run **once** for `db-cse-ui-strata/apps/app-web` only |
+| Phase 3 — Render skeleton, fill slots inline (orchestrator-direct) | Run **once** for `db-cse-ui-strata/apps/app-web` only; no tech-writer subagent dispatch (A/B option B) |
 | Phase 4 — Verify the produced doc | Run normally |
 | Phase 5 — Report | Run normally; explicitly note iteration scope |
 
@@ -39,7 +41,7 @@ Verify, in order:
 2. `.devforge/lib/generate_docs_helper` exists and is executable. If missing, the install is incomplete — tell the user to re-run `install.sh` and stop.
 3. The target package path `db-cse-ui-strata/apps/app-web/` exists relative to the install root. If absent, tell the user the path is missing and ask whether they want to abort or supply a different path; do not proceed silently.
 4. Inspect `.devforge/.generate-docs-state.json`. If absent, proceed (clean run). If present, run `.devforge/lib/generate_docs_helper status` to see which packages are registered, then branch:
-   - **Target package already registered** (`db-cse-ui-strata/apps/app-web` appears in status output): the prior run's state will block `add-package` re-registration in Phase 2 (the helper rejects duplicate `add-package` by design — see `_setters.py` `cmd_add_package`). Ask the user via AskUserQuestion (single-line prompt: `Prior run state for app-web exists. Reset and start fresh, resume by filling missing slots only, or abort?`) with options **Reset** (default — invoke `.devforge/lib/generate_docs_helper reset`, then proceed to Phase 1 normally), **Resume** (skip `add-package` only; for each scalar `set-package-*` setter — language / framework / build-tool — check current state via `status` first and re-run the setter ONLY if the field is currently `null`/unset; ALWAYS run `extract-package-scripts` and the `add-package-script` loop because script registration is append-only and the helper rejects duplicate `script-name` entries with exit 2, so duplicates are silently skipped while missing scripts are added; after the conditional re-run, proceed to Phase 2's verification gate at step 7 before dispatching Phase 3), **Abort** (stop and let the user reconcile manually). Default to **Reset** because iteration mode treats each run as a fresh attempt unless the user opts to resume.
+   - **Target package already registered** (`db-cse-ui-strata/apps/app-web` appears in status output): the prior run's state will block `add-package` re-registration in Phase 2 (the helper rejects duplicate `add-package` by design — see `_setters.py` `cmd_add_package`). Ask the user via AskUserQuestion (single-line prompt: `Prior run state for app-web exists. Reset and start fresh, resume by filling missing slots only, or abort?`) with options **Reset** (default — invoke `.devforge/lib/generate_docs_helper reset`, then proceed to Phase 1 normally), **Resume** (skip `add-package` only; for each scalar `set-package-*` setter — language / framework / build-tool — check current state via `status` first and re-run the setter ONLY if the field is currently `null`/unset; ALWAYS run `extract-package-scripts` and the `add-package-script` loop because script registration is append-only and the helper rejects duplicate `script-name` entries with exit 2, so duplicates are silently skipped while missing scripts are added; after the conditional re-run, proceed to Phase 2's verification gate at step 7 before proceeding to Phase 3), **Abort** (stop and let the user reconcile manually). Default to **Reset** because iteration mode treats each run as a fresh attempt unless the user opts to resume.
    - **Only a different package registered** (target not in status output): no action needed — `add-package` for `db-cse-ui-strata/apps/app-web` will succeed; existing legacy package state remains untouched.
 
    Note: this reset-first prompt is specific to iteration mode (single-package, repeated runs on the same package are expected). When the `## ⚠️ ITERATION MODE` section is removed, the multi-package flow handles per-package state differently and this check will be revisited.
@@ -67,43 +69,65 @@ Invoke the helper in this order. Each call's exit code 0 is required before proc
 
 If `extract-package-scripts` returns an empty JSON object (no scripts in `package.json`), step 6 is a no-op.
 
-7. **Phase 2 verification gate (hard requirement; blocks Phase 3 dispatch).** This gate runs after every Phase 2 invocation regardless of whether Phase 0 routed via Reset or Resume. Invoke `.devforge/lib/generate_docs_helper status` and confirm the state for the target package shows:
+7. **Phase 2 verification gate (hard requirement; blocks Phase 3 entry).** This gate runs after every Phase 2 invocation regardless of whether Phase 0 routed via Reset or Resume. Invoke `.devforge/lib/generate_docs_helper status` and confirm the state for the target package shows:
    - `language` is a non-null string
    - `framework` is set (a non-null string for typical web/app packages; explicitly empty via `set-package-framework --value ""` only when the package legitimately has no framework — must be a deliberate choice, not a silent skip)
    - `build_tool` is set (same rule as `framework`: deliberate empty via `--value ""` is allowed; silent `null` is not)
    - `scripts` count is > 0 (0 is acceptable only when the manifest has no scripts block AND the ecosystem provides no defaults — `extract-package-scripts` emits ecosystem defaults for Rust / Go / Java / Maven / etc., so 0 should be rare)
 
-   If ANY required field is missing or the script count is unexpectedly 0, do NOT dispatch the tech-writer subagent in Phase 3. Re-run the corresponding setter:
+   If ANY required field is missing or the script count is unexpectedly 0, do NOT proceed to Phase 3. Re-run the corresponding setter:
    - `language` missing → `.devforge/lib/generate_docs_helper set-package-language --path db-cse-ui-strata/apps/app-web --value <detected>`
    - `framework` missing → `.devforge/lib/generate_docs_helper set-package-framework --path db-cse-ui-strata/apps/app-web --value <detected from manifest>` (or `--value ""` only if the package legitimately has no framework)
    - `build_tool` missing → `.devforge/lib/generate_docs_helper set-package-build-tool --path db-cse-ui-strata/apps/app-web --value <detected from manifest>` (same rule)
    - `scripts` empty → re-run `extract-package-scripts --path db-cse-ui-strata/apps/app-web` and loop `add-package-script` per entry
 
-   After re-running, invoke `status` again and verify all fields populated. Cap retries at 3; if the gate still fails after 3 attempts, surface the failure to the user (which field, which setter, what error) and ABORT before tech-writer dispatch.
+   After re-running, invoke `status` again and verify all fields populated. Cap retries at 3; if the gate still fails after 3 attempts, surface the failure to the user (which field, which setter, what error) and ABORT before Phase 3 starts.
 
    This gate exists because LLM Phase 2 dropout (skipping setters silently) was empirically observed in a prior iteration run — `framework=null`, `build_tool=null`, `scripts={}` despite the spec instructing the setters. `validate-package` does not catch this because those fields are schema-optional. The verification gate is the explicit "did Phase 2 actually do its job" check.
 
-## Phase 3 — Render skeleton, dispatch tech-writer to fill
+## Phase 3 — Render skeleton, fill slots inline (orchestrator-direct)
 
-1. `.devforge/lib/generate_docs_helper render-package-skeleton --path db-cse-ui-strata/apps/app-web` — writes `docs/db-cse-ui-strata/apps/app-web/index.md.skeleton` with `[TODO]` slot markers.
-2. Read the resulting `docs/db-cse-ui-strata/apps/app-web/index.md.skeleton` to confirm it was written.
-3. Dispatch the `tech-writer` subagent via the Task tool with `subagent_type=tech-writer`. The brief delivers the parameters the agent needs; the SKELETON-FILL MODE contract lives in `src/agents/tech-writer.md` and is part of the agent's system prompt — do not duplicate it in the brief. The brief includes:
+**Note (option B — A/B comparison run)**: This phase is currently configured for orchestrator-direct slot-fill (no tech-writer subagent). The tech-writer SKELETON-FILL MODE contract still exists in `.claude/agents/tech-writer.md` and can be dispatched in a future run by replacing this phase with the dispatch step. For empirical comparison purposes, run this phase inline first; if quality matches/exceeds tech-writer-mediated runs, this becomes the canonical Phase 3.
 
-   - **Mode**: SKELETON-FILL
-   - **Package path**: `db-cse-ui-strata/apps/app-web`
-   - **Package name**: `app-web`
-   - **Skeleton path**: `docs/db-cse-ui-strata/apps/app-web/index.md.skeleton`
-   - **Helper path**: `.devforge/lib/generate_docs_helper`
-   - **Source root**: `db-cse-ui-strata/apps/app-web/src/` (Vue/TS convention)
-   - **Iteration scope reminder**: only this one package; do NOT touch sibling packages
+1. Invoke `.devforge/lib/generate_docs_helper render-package-skeleton --path db-cse-ui-strata/apps/app-web` — produces `docs/db-cse-ui-strata/apps/app-web/index.md.skeleton` with `[TODO]` slots for the fields not yet set.
 
-4. Wait for the `tech-writer` subagent to return. The subagent reads source, invokes setters (`set-package-overview`, `set-package-tree`, `add-package-export`, `add-package-dep`, `add-package-hazard`, `set-package-usage-example`, `set-package-consumer-pattern`), runs `validate-package`, and on validation pass runs `render-package-doc`. The agent's return value is a structured report (see Phase 5 fields below).
+2. Read the resulting skeleton to confirm it was written and to see the structure of `[TODO]` slots that need filling.
+
+3. **Read source files** under `db-cse-ui-strata/apps/app-web/src/` to identify:
+   - Public exports (functions, classes, types, constants, configs, components, plugins) that cross module boundaries — every `export` statement in `src/` is a candidate. Limit to genuine public boundary surface (not private helpers).
+   - External dependencies (npm packages from `package.json` `dependencies`) and workspace-internal dependencies (`pkg-cse-*` packages — these are workspace-internal because they live in the same monorepo).
+   - Hazards / mislogic observations: naming inconsistencies, performance pitfalls, type-safety gaps (e.g., `@ts-ignore`, `any` casts), v1/v2 coexistence patterns, internal duplication, cross-feature inconsistencies, complexity hotspots. Use the closed `HazardCategory` enum: `naming|performance|type-safety|duplication|inconsistency|v1-v2-coexistence|complexity`.
+   - Usage example: a real consumer pattern — typically the package's `main.ts` or `App.vue` showing how the package is bootstrapped/consumed.
+   - Consumer pattern: a representative downstream call site — typically a composable that uses the package's API.
+
+4. **Fill the slots via setter invocations**. Citation discipline is mandatory — every code-snippet setter requires `--cite-file` + `--cite-start` + `--cite-end` and the snippet MUST be lifted VERBATIM from the cited source line range (whitespace-normalized comparison runs at validate-time):
+   - `set-package-overview` — 1-2 paragraph package overview (NEVER guess abbreviations; consult `README.md` at project root + at the package path for any acronym/initialism encountered before expanding it; if no authoritative definition found, use the abbreviation verbatim or mark with `[TODO: <abbreviation> — definition not found]`)
+   - `set-package-tree` — ascii directory tree of `src/` (no other directories)
+   - For each export: `add-package-export --name <n> --kind <k> --signature "..." --description "..." --language <l> --code-snippet "..." --cite-file <f> --cite-start <s> --cite-end <e>`
+   - For each dependency: `add-package-dep --name <n> --kind internal|external --version <v> --purpose "..." [--consumer-location <loc>...]`
+   - For each hazard: `add-package-hazard --category <c> --description "..." [--cite-file <f> --cite-start <s> --cite-end <e>]`
+   - `set-package-usage-example --language <l> --code-snippet "..." --cite-file <f> --cite-start <s> --cite-end <e>`
+   - `set-package-consumer-pattern --language <l> --code-snippet "..." --cite-file <f> --cite-start <s> --cite-end <e>`
+
+5. **DO NOT make direct edits to `.devforge/.generate-docs-state.json`**. The helper API is the only sanctioned mutation path. If you hit a wall (e.g., `add-package-export` rejects a duplicate name when you need to update an existing entry, or the internal-dep validator rejects a workspace-internal dep that can't resolve in single-package iteration), DO NOT bypass the helper. Surface the wall to the user with a clear error message and ABORT before `validate-package` + `render-package-doc`. The walls are signals of helper-API gaps that need fixing — bypassing them produces factual errors in the doc (this empirically happened in option A's run: 19 workspace-internal deps were misclassified as external).
+
+6. **Source-reading discipline**: read public-API-relevant files first (`src/composables/`, `src/helpers/`, `src/router/index.ts`, `src/main.ts`, `src/App.vue`, `src/types/`); only descend into implementation if a public symbol's signature is unclear. The package has ~900 source files; a thorough reading is impractical and unnecessary. Focus on boundary surface.
+
+7. **Run `validate-package`**: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. On failure, read the structured error list (each error has `rule` / `field` / `message` / optional `diff`); fix the offending registration(s) by re-invoking the corresponding setter (re-registration overwrites for `set-*` setters; for `add-*` setters that reject duplicates, you must `reset` and re-fill OR surface the issue to the user). Cap retries at 3.
+
+8. **On `validate-package` pass**: invoke `render-package-doc` (renames `.skeleton` → `.md`).
+
+9. **Out of scope** (do NOT invoke):
+   - Concern-tier subcommands (Phase 3 of `GENERATE-DOCS-PLAN.md`, not yet implemented)
+   - Architecture-tier subcommands (Phase 4 of plan, not yet implemented)
+   - Memory archaeology subcommands (Phase 5 of plan, not yet implemented)
+   - Modifying source files (read-only access to source)
 
 ## Phase 4 — Verify the produced doc
 
-After `tech-writer` returns:
+After Phase 3 completes:
 
-1. Confirm `docs/db-cse-ui-strata/apps/app-web/index.md` exists (no `.skeleton` suffix). If it doesn't exist, validation must have failed inside the subagent — ask the user how to proceed (re-dispatch with stricter brief, or abort).
+1. Confirm `docs/db-cse-ui-strata/apps/app-web/index.md` exists (no `.skeleton` suffix). If it doesn't exist, validation must have failed during slot-fill — ask the user how to proceed (retry slot-fill, or abort).
 2. Run `.devforge/lib/generate_docs_helper status` — exit 0, output should show one package registered with overview / tree / exports / deps populated.
 3. Read `docs/db-cse-ui-strata/apps/app-web/index.md`. Copy its contents VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
 4. Ask the user to evaluate the produced doc against the iteration plan's empirical baseline targets.
