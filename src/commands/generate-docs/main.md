@@ -10,6 +10,18 @@ This command will replace `/onboard` once empirical iteration locks the output s
 
 ---
 
+## Phase entry contract
+
+At the start of every phase (Phase 0–5), the orchestrator MUST verify that the install root is still the current working directory. The check:
+
+- Bash: `test -x .devforge/lib/generate_docs_helper`
+- If exit 0 → cwd is the install root; proceed.
+- If non-zero → cwd has shifted from the install root mid-run. ABORT with: "cwd shifted from install root; re-run /generate-docs from the directory containing .devforge/." Do NOT attempt to recover by changing cwd or by switching to absolute paths — the orchestrator's downstream Bash invocations all use bare-relative `.devforge/...` paths and recovery is fragile. A clean re-run from the right cwd is the only sanctioned path.
+
+Why this exists: bare-relative `.devforge/...` paths assume cwd == install root. If anything between phases changes cwd (a Bash `cd` from the orchestrator, a tool that resolves paths differently, etc.), every subsequent helper call exits 127. Without this check, the failure cascades through 3-5 retries before the orchestrator diagnoses; with this check, the failure is detected within one Bash call per phase.
+
+---
+
 ## ⚠️ ITERATION MODE — APP-WEB ONLY (TEMPORARY)
 
 **This override is in effect until removed.** Multi-package iteration is paused; this run validates output shape on a single unit before broader rollout.
@@ -48,6 +60,8 @@ Verify, in order:
 
 ## Phase 1 — Discover the assigned package
 
+Run the **Phase entry contract** check (see top of spec). Abort if it fails.
+
 The hardcoded package for this iteration is `db-cse-ui-strata/apps/app-web`. Read the package manifest at `db-cse-ui-strata/apps/app-web/package.json` to confirm ecosystem signals. From the manifest, identify:
 
 - `primary_language` — TypeScript (when `package.json` lists `typescript` in `devDependencies` or the project includes a `tsconfig.json`)
@@ -57,6 +71,8 @@ The hardcoded package for this iteration is `db-cse-ui-strata/apps/app-web`. Rea
 If any of those signals is absent or ambiguous from the manifest, ask the user for the value rather than guessing.
 
 ## Phase 2 — Register package + extract scripts
+
+Run the **Phase entry contract** check (see top of spec). Abort if it fails.
 
 Invoke the helper in this order. Each call's exit code 0 is required before proceeding to the next.
 
@@ -86,6 +102,8 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
    This gate exists because LLM Phase 2 dropout (skipping setters silently) was empirically observed in a prior iteration run — `framework=null`, `build_tool=null`, `scripts={}` despite the spec instructing the setters. `validate-package` does not catch this because those fields are schema-optional. The verification gate is the explicit "did Phase 2 actually do its job" check.
 
 ## Phase 3 — Render skeleton, fill slots inline (orchestrator-direct)
+
+Run the **Phase entry contract** check (see top of spec). Abort if it fails.
 
 1. **Load the project index into working memory.** Use the Read tool to read `.devforge/index.json` once at phase start; parse the file content as JSON and hold the parsed structure in working memory for the duration of Phase 3. Subsequent steps consult this in-memory structure for per-package file listings, manifest scripts, and manifest deps instead of re-globbing the filesystem. Assumption: Phase 3 completes within a single slash-command conversation before auto-compaction triggers. If Phase 3 spans multiple turns or the session approaches context capacity, re-read `.devforge/index.json` at the start of each subsequent step.
 
@@ -214,6 +232,8 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
 
 ## Phase 4 — Verify the produced doc
 
+Run the **Phase entry contract** check (see top of spec). Abort if it fails.
+
 After Phase 3 completes:
 
 1. Confirm `docs/db-cse-ui-strata/apps/app-web/index.md` exists (no `.skeleton` suffix). If it doesn't exist, validation must have failed during slot-fill — ask the user how to proceed (retry slot-fill, or abort).
@@ -222,6 +242,8 @@ After Phase 3 completes:
 4. Ask the user to evaluate the produced doc against the iteration plan's empirical baseline targets.
 
 ## Phase 5 — Report
+
+Run the **Phase entry contract** check (see top of spec). Abort if it fails.
 
 After the user has the doc in front of them, print a summary:
 
