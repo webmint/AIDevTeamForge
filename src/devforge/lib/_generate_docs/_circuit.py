@@ -2,12 +2,12 @@
 
 Reads the per-invocation trace log (`<DEVFORGE_DIR>/.generate-docs-trace.log`,
 written by `_trace.py`) as its signal source and refuses to proceed when
-one of three failure modes trips. Hook point: `_cli.main()`, AFTER
+one of two failure modes trips. Hook point: `_cli.main()`, AFTER
 argparse and BEFORE handler dispatch. A tripped breaker aborts the
 invocation entirely with exit code 3 and a clear stderr message.
 
-The three breakers
-==================
+The two breakers
+================
 
 1. **Doom loop**: same subcommand returning exit 2 for N consecutive
    trace entries with no successful invocation in between. Default
@@ -15,9 +15,6 @@ The three breakers
 2. **Invocation budget**: total trace lines in the current run exceeds
    N. Default N=500. Catches runaway loops; a typical /generate-docs
    produces 100-200 helper calls, so 500 is a permissive ceiling.
-3. **Wall-clock budget**: time delta from the run-start trace line to
-   "now" exceeds N seconds. Default N=3600 (60 min). Catches
-   truly-stuck runs.
 
 "Current run" window
 ====================
@@ -37,7 +34,6 @@ isolation works):
 
 - `DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD`        (default 3)
 - `DEVFORGE_CIRCUIT_INVOCATION_BUDGET`          (default 500)
-- `DEVFORGE_CIRCUIT_WALL_CLOCK_BUDGET_SECONDS`  (default 3600)
 
 Master kill-switch:
 
@@ -57,12 +53,13 @@ block legitimate work due to their own bugs.
 Performance
 ===========
 
-The check reads only the last `TRACE_TAIL_READ_LINES` lines (default
-100) of the trace file. For wall-clock evaluation, when no `reset` is
-found in the tail, the breaker reads from the start of the file (we
-need the run-start `ts`); files larger than the tail-read window are
-the only case where the full file is scanned. In practice trace files
-are <500 lines per run, so the tail-read covers the whole file.
+The check reads the full trace file (split on newlines). In practice
+trace files are bounded by the invocation budget (default 500 lines
+per run); above that the budget breaker aborts the helper anyway, so
+the read cost is bounded. Reading the full file is required for
+invocation-budget to count run-scoped records accurately and for
+`_scope_to_current_run` to find the most-recent reset anchor when it
+falls outside any tail window.
 
 Stdlib only. Targets Python 3.8+.
 """
@@ -70,8 +67,7 @@ Stdlib only. Targets Python 3.8+.
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from ._trace import _trace_file_path
 
@@ -82,12 +78,9 @@ from ._trace import _trace_file_path
 
 DOOM_LOOP_THRESHOLD = 3
 INVOCATION_BUDGET = 500
-WALL_CLOCK_BUDGET_SECONDS = 3600
-TRACE_TAIL_READ_LINES = 100
 
 _ENV_DOOM = "DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD"
 _ENV_INVOCATION = "DEVFORGE_CIRCUIT_INVOCATION_BUDGET"
-_ENV_WALL_CLOCK = "DEVFORGE_CIRCUIT_WALL_CLOCK_BUDGET_SECONDS"
 _ENV_DISABLE = "DEVFORGE_DISABLE_CIRCUIT_BREAKER"
 
 
@@ -120,34 +113,20 @@ def _is_disabled() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _read_trace_tail(n: int) -> List[str]:
-    """Return the last `n` non-empty lines of the trace file, in order.
+def _read_trace_lines() -> List[str]:
+    """Return all non-empty lines of the trace file, in order.
 
-    Returns [] if the file does not exist or is empty. Reads the whole
-    file when it has <= n lines; otherwise reads from the end. We use
-    a simple read-and-tail-slice approach because trace files are
-    small (KBs to low MBs) and the simplicity beats a true seek-based
-    tail-read for this size class.
+    Returns [] if the file does not exist or is empty. Trace files
+    are bounded by the invocation budget (default 500 lines per run);
+    once the budget is exceeded the breaker trips and the helper
+    aborts, so the read size is bounded by design.
+
+    Reading the full file (vs a tail slice) is required because the
+    invocation-budget breaker counts records in the current run and
+    `_scope_to_current_run` searches for the most-recent reset anchor
+    — both can need records older than any fixed tail window.
 
     OSError propagates — the caller wraps it in fail-open handling.
-    """
-    path = _trace_file_path()
-    if not path.exists():
-        return []
-    text = path.read_text(encoding="utf-8")
-    if not text:
-        return []
-    lines = [ln for ln in text.split("\n") if ln.strip()]
-    if len(lines) <= n:
-        return lines
-    return lines[-n:]
-
-
-def _read_full_trace() -> List[str]:
-    """Return ALL non-empty lines of the trace file, in order.
-
-    Used when we need the run-start anchor and it's not in the tail.
-    OSError propagates — caller's fail-open wrapper catches it.
     """
     path = _trace_file_path()
     if not path.exists():
@@ -238,50 +217,6 @@ def _check_invocation_budget(records: List[dict], current_subcommand: str) -> Op
     ).format(count, budget)
 
 
-def _check_wall_clock(records: List[dict], current_subcommand: str) -> Optional[str]:
-    """Trip if the run-start ts is more than the budget seconds in the past.
-
-    The run-start `ts` is the FIRST record's timestamp (which is either
-    the most-recent reset entry, or the first trace line if no reset
-    is present). Both cases are handled by `_scope_to_current_run`
-    upstream.
-    """
-    budget = _env_int(_ENV_WALL_CLOCK, WALL_CLOCK_BUDGET_SECONDS)
-    if budget <= 0 or not records:
-        return None
-    first_ts = records[0].get("ts")
-    if not isinstance(first_ts, str) or not first_ts:
-        return None
-    start = _parse_trace_ts(first_ts)
-    if start is None:
-        return None
-    now = datetime.now(timezone.utc)
-    delta_seconds = (now - start).total_seconds()
-    if delta_seconds <= budget:
-        return None
-    minutes = int(delta_seconds // 60)
-    return (
-        "circuit-breaker: wall-clock budget exceeded — current run "
-        "started {0} minutes ago (limit: {1}). Aborting."
-    ).format(minutes, budget // 60)
-
-
-def _parse_trace_ts(ts: str) -> Optional[datetime]:
-    """Parse the trace `ts` field (ISO 8601 with `Z`) → tz-aware datetime.
-
-    Trace timestamps end with `Z` per `_trace._utc_iso_ms`. Python 3.8's
-    `datetime.fromisoformat` does NOT accept `Z`, so we rewrite to the
-    `+00:00` form before parsing. Returns None on any parse failure
-    (caller treats as "no usable anchor → no trip").
-    """
-    try:
-        if ts.endswith("Z"):
-            ts = ts[:-1] + "+00:00"
-        return datetime.fromisoformat(ts)
-    except (ValueError, TypeError):
-        return None
-
-
 # ---------------------------------------------------------------------------
 # Public entry point.
 # ---------------------------------------------------------------------------
@@ -290,7 +225,6 @@ def _parse_trace_ts(ts: str) -> Optional[datetime]:
 _BREAKERS = (
     ("doom_loop", _check_doom_loop),
     ("invocation_budget", _check_invocation_budget),
-    ("wall_clock", _check_wall_clock),
 )
 
 
@@ -321,45 +255,23 @@ def check_circuit_breakers(current_subcommand: str) -> Optional[str]:
     if _is_disabled():
         return None
     try:
-        # Read tail; scope to current run; if scoped run hits the very
-        # start of the tail (no reset found in tail), fall back to a
-        # full-file read for wall-clock anchor accuracy on long files.
-        # Performance: full-file read only kicks in once trace exceeds
-        # TRACE_TAIL_READ_LINES — at which point invocation_budget is
-        # already screaming, so the cost is bounded.
-        tail_lines = _read_trace_tail(TRACE_TAIL_READ_LINES)
-        if not tail_lines:
+        # Read the full trace file and scope to the current run
+        # (most-recent `reset` onward, or the whole file if no reset
+        # is present). Invocation-budget needs the run-scoped count;
+        # doom-loop reads only the last N records of `scoped` but
+        # must see them after run-scoping. Both work equally on a
+        # full-file list.
+        all_lines = _read_trace_lines()
+        if not all_lines:
             return None
         records = []  # type: List[dict]
-        for ln in tail_lines:
+        for ln in all_lines:
             rec = _parse_trace_line(ln)
             if rec is not None:
                 records.append(rec)
         if not records:
             return None
         scoped = _scope_to_current_run(records)
-        # If scoped run starts at the head of our tail-read AND tail is
-        # full (we may have truncated history before the run-start),
-        # fall back to the full file to find the true run-start. This
-        # only matters for the wall-clock breaker (which reads the
-        # FIRST record's ts) — doom-loop and budget look at counts/tail.
-        if (
-            scoped is records  # no reset found in tail
-            and len(tail_lines) >= TRACE_TAIL_READ_LINES
-        ):
-            try:
-                all_lines = _read_full_trace()
-                all_records = []  # type: List[dict]
-                for ln in all_lines:
-                    rec = _parse_trace_line(ln)
-                    if rec is not None:
-                        all_records.append(rec)
-                if all_records:
-                    scoped = _scope_to_current_run(all_records)
-            except OSError as err:
-                # Stick with tail-only scoped records; emit warning but
-                # continue (other breakers can still evaluate).
-                _emit_warning("full-trace read failed: {0}".format(err))
     except OSError as err:
         _emit_warning("trace read failed: {0}".format(err))
         return None

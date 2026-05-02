@@ -5258,7 +5258,6 @@ class CircuitBreakerTests(_EnvIsolationMixin, unittest.TestCase):
                 "DEVFORGE_DISABLE_CIRCUIT_BREAKER",
                 "DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD",
                 "DEVFORGE_CIRCUIT_INVOCATION_BUDGET",
-                "DEVFORGE_CIRCUIT_WALL_CLOCK_BUDGET_SECONDS",
             )
         }
         # Tests need DEVFORGE_DIR set in this process so the imported
@@ -5300,14 +5299,6 @@ class CircuitBreakerTests(_EnvIsolationMixin, unittest.TestCase):
     def _ts_now(self):
         from datetime import datetime, timezone
         raw = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-        if raw.endswith("+00:00"):
-            return raw[:-len("+00:00")] + "Z"
-        return raw
-
-    def _ts_minutes_ago(self, minutes):
-        from datetime import datetime, timedelta, timezone
-        dt = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-        raw = dt.isoformat(timespec="milliseconds")
         if raw.endswith("+00:00"):
             return raw[:-len("+00:00")] + "Z"
         return raw
@@ -5406,44 +5397,6 @@ class CircuitBreakerTests(_EnvIsolationMixin, unittest.TestCase):
             "invocation budget falsely tripped after reset (current run "
             "should be 51 invocations, well under 500): %r" % msg,
         )
-
-    def test_wall_clock_budget_trips_when_first_line_too_old(self):
-        circuit = self._import_circuit()
-        # First line synthesized 65 minutes ago, second line "now".
-        self._write_trace_lines([
-            self._make_record("add-package", ts=self._ts_minutes_ago(65)),
-            self._make_record("add-package", ts=self._ts_now()),
-        ])
-        msg = circuit.check_circuit_breakers("add-package")
-        self.assertIsNotNone(msg)
-        self.assertTrue(
-            msg.startswith("circuit-breaker: wall-clock budget exceeded"),
-            "unexpected trip message: %r" % msg,
-        )
-        # The minutes value should be approximately 65; allow 60-66 to
-        # account for clock skew between line write and trip evaluation.
-        self.assertRegex(msg, r"6[0-6] minutes ago")
-
-    def test_wall_clock_budget_does_not_trip_within_budget(self):
-        circuit = self._import_circuit()
-        self._write_trace_lines([
-            self._make_record("add-package", ts=self._ts_minutes_ago(30)),
-            self._make_record("add-package", ts=self._ts_now()),
-        ])
-        self.assertIsNone(circuit.check_circuit_breakers("add-package"))
-
-    def test_wall_clock_anchored_to_most_recent_reset(self):
-        # Reset boundary is the run-start anchor. A 2-hour-old first line
-        # before a recent reset must NOT trigger wall-clock; the run
-        # actually started at the reset, well within budget.
-        circuit = self._import_circuit()
-        self._write_trace_lines([
-            self._make_record("status", ts=self._ts_minutes_ago(120)),
-            self._make_record("status", ts=self._ts_minutes_ago(118)),
-            self._make_record("reset", ts=self._ts_minutes_ago(5)),
-            self._make_record("status", ts=self._ts_now()),
-        ])
-        self.assertIsNone(circuit.check_circuit_breakers("status"))
 
     # ---- Bypass + fail-open tests -------------------------------------------
 
