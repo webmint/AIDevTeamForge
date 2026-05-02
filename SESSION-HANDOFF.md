@@ -56,14 +56,16 @@ Tree per-entry descriptions are HINTS. Step 3.3.5 captures this as a spec-level 
 
 2. **Step 3.3.5** — spec-level honesty about tree descriptions as hints. One-paragraph addition to `main.md` step 10 declaring: "tree per-entry descriptions are locator hints; verified semantic content lives in concern overview + Public Surface + Phase 3.4 glossary."
 
-3. **Step 3.3.6** — BLOCKING multi-ecosystem validation gate (expanded from single-codebase scope). Test on 3-4 candidates spanning naming culture + build tool + language paradigm:
-   - **Java legacy enterprise** (mandatory) — cryptic names + Maven/Gradle. Skip modern Spring Boot.
-   - **Python scientific/numerics** (mandatory) — NumPy/SciPy submodule with mathematical-terse naming + pyproject.toml. Skip modern Django.
-   - **Rust crate** (mandatory) — bindgen/tonic-build output OR older systems crate (nom-style). Tests Cargo + `--kind trait/macro/impl` on the open enum + auto-gen filename degradation.
-   - **C/C++ terse** (optional) — redis/sqlite/lua-style. May surface helper-side scope issues (one Makefile per repo violates per-package assumption).
-   - Skip GitHub trending picks (bias toward descriptive modern projects; low validation value). Archive / legacy / scientific projects stronger signal.
-   - Pass criterion: file-location PASS on all 3 mandatory; symbol-lookup + topic-browse PASS on ≥2 of 3. Aggregate evaluation in `GENERATE-DOCS-EXECUTION-LOG.md`.
-   - PASS → unlock iteration mode + Step 3.3.4. CONDITIONAL PASS → iterate on spec. FAIL → unlock Step 3.3.7 (per-file docs).
+3. **Step 3.3.6** — BLOCKING multi-ecosystem **detection** validation gate. Scope is detection coverage (per-ecosystem manifest detection, decomposition heuristic, citation discipline), NOT scale — testForge20 already proved scale. Smaller codebases fully acceptable.
+   - **Java small project** (mandatory) — Maven/Gradle + Java-specific kinds. Primary: user's private code if available. Public fallbacks: `CommsenArchive/liferay-maven-sdk` (J2EE-era, archived, 37 stars), `skjolber/json-log-filter` (8 stars, low training).
+   - **Python small project** (mandatory) — pyproject.toml + `__init__.py` aggregators. Primary: user's private code. Public fallback: NumPy submodule (training-contaminated but mechanical-detection still useful).
+   - **Rust small project** (mandatory) — Cargo + `mod.rs`/`lib.rs` aggregators + `--kind trait/macro/impl`. Primary: user's private crate. Public fallback: `io7m-com/certusine` (1 star, niche, low training).
+   - **Optional 4th** — Go / C++ / C# / Kotlin if any feels under-tested after 1-3.
+   - **Skip**: modern Spring Boot, modern Django, modern React/Next.js (redundant), massive monorepos (Kubernetes etc), GitHub trending picks (training contamination + descriptive-naming bias), educational/tutorial repos.
+   - **Two test layers**: (a) mechanical detection checklist (objective, no codebase knowledge needed — checks helper-side detection: manifest/scripts/decomposition/extract-snippet/validate exits/citation rate/tree completeness/wall-clock); (b) newcomer subjective test (user reads ONLY docs and answers 5 questions: what / pieces / where / gotchas / deps — user's unfamiliarity with the language is the test's strength, they're the target /research user role).
+   - Aggregate: each ecosystem → PASS (mechanical PASS + content ≥PARTIAL) / PARTIAL / FAIL. All 3 mandatory PASS → architecture validated.
+   - PASS → unlock iteration mode + Step 3.3.4. CONDITIONAL PASS → iterate spec, re-test. FAIL → unlock Step 3.3.7 (per-file docs).
+   - **Training-contamination warning**: famous public repos pull from LLM training memory rather than pure inference. Prefer low-popularity / niche / post-training-cutoff (post-Jan-2026) / user's-own-private code. GitHub trending is structurally contaminated and should NOT be a primary candidate source.
 
 4. **Step 3.3.7** — per-file docs (B), DEFERRED INDEFINITELY. Conditional on Step 3.3.6 fail. If cryptic-codebase test shows architecture is insufficient, this introduces a sub-concern / section tier. Architectural sketch in plan.
 
