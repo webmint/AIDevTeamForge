@@ -1,111 +1,113 @@
-# Session handoff — 2026-05-01
+# Session handoff — 2026-05-02
 
-This file exists so a fresh Claude Code session can pick up where this session left off without losing context. Created at the user's explicit request after a long iteration on `/generate-docs` Phase 3.3 Step 1.
+This file exists so a fresh Claude Code session can pick up where this session left off without losing context. User explicitly requested handoff after committing iter 10 + wall-clock removal + plan updates.
 
 ## Current branch + state
 
 - **Branch**: `develop-2.0-init`
-- **Working tree**: clean (all work committed)
-- **Last commit**: `index_helper: drop language field — YAGNI per user critique`
-- **Test count**: 763 passing (`python3 -m unittest discover -s tests -p "test_*.py"`)
+- **Working tree**: clean (all work committed; only `__pycache__/` untracked)
+- **Test count**: 760 passing (was 763; -3 wall-clock breaker tests removed this session)
+- **Recent commits** (this session, oldest → newest):
+  - `6b0fc93` — Phase 3.3.2 refactor (extract-snippet + drop concern-slot-filler subagent + drop tech-writer + python-engineer to sonnet)
+  - `9da0050` — concern-tier tree file granularity + index-based enumeration (iter 5)
+  - `63e264a` — per-phase cwd-anchor soft fix (iter 6)
+  - `ab1f03c` — full-recursion concern tree + ecosystem-decoupled instructions (iter 7+8)
+  - `71693dc` — circuit-breaker: drop wall-clock check; fix invocation-budget
+  - `1717c52` — reverse tree skip-rule default — every entry described (iter 10)
+  - `fd754ee` — plan: Steps 3.3.4 through 3.3.7
 
-## What was done in this session
+## Empirical validation status
 
-**Phase 3.1** (committed earlier): 11 concern-tier helper subcommands + decomposition gate + 66 new tests (foundation done before this session's main work).
+`/generate-docs` ran against testForge20 (`db-cse-ui-strata/apps/app-web`) twice this session:
 
-**Phase 3.2** (committed earlier): concern-slot-filler subagent + spec dispatching it. This session removed the assumption it was a good design.
+**Run 1** (post-Phase-3.3.2 + iter 5):
+- Wall-clock: 31.8 min total (Phase 3: 29.7 min)
+- Concerns: 7/7 ok, 0 failed
+- 2 extract-snippet retries (LLM line-estimation off-by-one), auto-recovered
+- Components tree: depth-1 only — top-level subfolders + immediate cross-cutting infrastructure files; 17 feature folders (`quote/`, `catalog/`, etc.) stayed folder-level. Empirical motivation for iter 7 (full recursion).
 
-**This session's work — audit-driven harness + Step 1 of Phase 3.3**:
+**Run 2** (post-iter-7+8):
+- Wall-clock: 28.8 min total (Phase 3: 25.7 min)
+- Concerns: 7/7 ok, 0 failed
+- 0 extract-snippet retries
+- Components tree: full recursion (581 entries) BUT most leaf files had NO description. Skip-rule mass-applied. Empirical motivation for iter 10.
 
-1. **Audit-driven minimum viable harness** (3 commits):
-   - **Capability-limiting**: tools allowlist propagation in `scripts/generate-agents.py` so subagent source files can declare `tools: Read, Bash, Glob, Grep` and the runtime enforces. Concern-slot-filler updated to use it.
-   - **Approval gate**: Phase 2→3 mid-flight checkpoint added to `/generate-docs/main.md` (Continue / Inspect / Abort prompt before fan-out).
-   - **Audit trail**: `_trace.py` per-invocation JSONL log at `.devforge/.generate-docs-trace.log` (subcommand, args summary, duration, exit code). Phase 5 timing table in spec.
-   - **Circuit breaker**: `_circuit.py` 3 breakers (doom-loop / invocation budget / wall-clock) with bypass env var. Empirically validated — tripped at 60min on testForge20 run.
+**Run 4** (manual user re-render of `components/index.md` after iter 10 spec change):
+- 597 inline `#` descriptions across 582-row tree, 0 bare
+- Wall-clock circuit-breaker tripped during the re-render (iter 10 + wall-clock removal both committed AFTER this run; user bypassed via `DEVFORGE_DISABLE_CIRCUIT_BREAKER=1`)
+- LLM's honest description-quality breakdown: 5% verified (file read), 25% hand-mapped (name + folder context), 70% regex camelCase split (filename echo)
 
-2. **Phase 3.3 Step 1** (3 commits):
-   - `extract-snippet --file F --start S --end E` subcommand on `generate_docs_helper`. Returns verbatim bytes from line range. Closes citation-mismatch error class.
-   - `index_helper.py` + POSIX launcher with `build-index` subcommand. Produces `.devforge/index.json` (machine-readable) + `<install_root>/docs/structure.md` (human-readable). Language-agnostic.
-   - Wired into `/init-forge` as Step 6.
-   - Bug fix: structure.md was landing under project_root in wrapper mode (wrong); now correctly lands at install_root. Regression test pinned.
-   - YAGNI cleanup: dropped `language` field from index.json schema (was always "unknown" because init-forge doesn't capture per-package language; LLM detects it during Phase 1 anyway).
+## Critical architectural finding from Run 4
 
-3. **Lessons memorized** (2 new memory files):
-   - `feedback_avoid_subagents_for_sequential_identical_workflows.md` — subagents for sequential identical-workflow work are overhead; orchestrator-direct beats dispatched subagent on transcription quality. Empirical evidence: tech-writer A/B + concern-slot-filler iteration both hit subagent transcription degradation.
-   - `feedback_survey_prior_art_before_inventing_formats.md` — before dispatching for new file formats / schemas / storage shapes, survey prior art (Sphinx objects.inv, ctags, Lunr, SCIP, etc.) and adopt or document divergence. Triggered by `index.json` being invented from scratch when objects.inv encodes essentially the same shape.
+Tree-as-documentation is a CATEGORY ERROR. Tree's job is location + locator hints; 70% of dense-tree descriptions on a descriptively-named codebase are filename rephrasing, providing no info beyond the filename itself. /research's semantic load lives in:
 
-## What's next — Phase 3.3 Step 2
+1. Concern overview prose (LLM-generated structural summary)
+2. Public Surface section (verified per-export descriptions, helper-validated citations)
+3. Phase 3.4 glossary (Sphinx `objects.inv`-style symbol/term reverse index — pending)
+4. /research's targeted code reads on demand
 
-**The brief is in `GENERATE-DOCS-PLAN.md` under Step 3.3.2** (search for "Step 3.3.2").
+Tree per-entry descriptions are HINTS. Step 3.3.5 captures this as a spec-level contract.
 
-TL;DR: refactor `/generate-docs/main.md` Phase 3 to:
-1. Read `.devforge/index.json` once at Phase 3 start (Read tool, in memory)
-2. Use `extract-snippet` for every code-snippet arg → eliminates citation-mismatch retries
-3. **Drop concern-slot-filler subagent** — orchestrator-direct everywhere (sequential inline iteration over concerns)
-4. **Delete `src/agents/concern-slot-filler.md`**
-5. Keep `scripts/generate-agents.py`'s tools-allowlist propagation (defense-in-depth for future agents)
+## What's next
 
-Dispatch agents: `instruction-author` + `instruction-reviewer` + `claude-code-guide` (no python-engineer — pure spec edit).
+### Pending steps from the plan (in order of likely execution)
 
-Expected impact (vs latest broken testForge20 run):
-- Wall-clock: ~30-50 min (vs ~100min)
-- Tokens: ~70-90k (vs ~150k)
-- Failed concerns: 0 (citation walls closed)
+1. **Step 3.3.4** — open `--kind` enum + soft-recommended list. Empirical: testForge20 Run 3 hit `add-package-export --kind script` (rejected). Closed enum is web-coupled. Two-part change: helper drops validation + adds normalization (lowercase, hyphenate spaces); spec adds recommended-kinds list with ecosystem-rotational examples (trait, decorator, composable, hook, etc.).
+
+2. **Step 3.3.5** — spec-level honesty about tree descriptions as hints. One-paragraph addition to `main.md` step 10 declaring: "tree per-entry descriptions are locator hints; verified semantic content lives in concern overview + Public Surface + Phase 3.4 glossary."
+
+3. **Step 3.3.6** — BLOCKING validation gate. Test on a cryptic-named codebase before iteration-mode unlock. Candidates: legacy enterprise Java with abbreviated module names, generated-code-heavy Rust, single-letter modules from older C++ projects. Pass criterion: tree + concern overview + glossary cover /research's access patterns. Fail → unlock Step 3.3.7.
+
+4. **Step 3.3.7** — per-file docs (B), DEFERRED INDEFINITELY. Conditional on Step 3.3.6 fail. If cryptic-codebase test shows architecture is insufficient, this introduces a sub-concern / section tier. Architectural sketch in plan.
+
+### Live testForge20 state (user paused mid-run)
+
+- Run 3 was paused after concern 1 (components) re-render. State JSON in testForge20 has partial Run 3 data — package-tier complete, components concern complete (with 597 descriptions), other concerns in various states. User chose to halt for token budget.
+- A fresh `/generate-docs` run on testForge20 will hit Phase 0's reset/resume prompt. State is preserved.
 
 ## Critical context for fresh session
 
-### Recent testForge20 evidence (saved at testForge20/tmp/)
+### Architecture decisions locked this session
 
-- `.generate-docs-state-r1.json` — first run, parallel dispatch, state-loss incident
-- `.generate-docs-state-r2.json` — second run, sequential dispatch, citation-mismatch wall on components + composables
-- `.generate-docs-trace-r2.log` — second run trace log (262 invocations over 106 min — 99.99% LLM time, 0.6s helper time)
+1. **(A) dense-tree shape with concern-overview prose carrying semantic load** — empirically validated on testForge20 (Vue/TS, descriptive names). Step 3.3.6 will validate on a cryptic-named codebase before final lock.
 
-These are diagnostic data; don't delete.
+2. **Tree descriptions are HINTS, not docs** — captured in Step 3.3.5 brief; LLM's empirical 5%/25%/70% breakdown is the load-bearing evidence.
 
-### Open testForge20 docs state
+3. **(B) per-file docs DEFERRED INDEFINITELY** — only revisits if Step 3.3.6 fails on cryptic-named codebase.
 
-- `docs/db-cse-ui-strata/apps/app-web/index.md.skeleton` exists (1.6KB, package-tier never finalized)
-- `docs/db-cse-ui-strata/apps/app-web/components/index.md.skeleton` (688B — broken concern)
-- `docs/db-cse-ui-strata/apps/app-web/composables/index.md.skeleton` (689B — broken concern)
-- `.devforge/index.json` (240KB, fresh from this session's helper sync)
-- `docs/structure.md` (correct path post-fix)
+4. **Circuit breaker: 2 of 3 breakers** — wall-clock removed (was buggy + project-coupled); doom-loop + invocation-budget remain. `DEVFORGE_DISABLE_CIRCUIT_BREAKER=1` still bypasses everything.
 
-### Critical decisions to NOT re-derive
+### Active rules (per project CLAUDE.md + memory)
 
-1. **Drop subagents for sequential identical-workflow work** — memory rule. When the user proposes adding a subagent, ask which of three concrete benefits (parallelism / tool isolation / context-budget) it buys. Push back if none.
-
-2. **Survey prior art before inventing formats** — memory rule. For Phase 3.4+, the survey table is in the plan's "Execution discipline" section. Cite chosen reference in the brief.
-
-3. **Mechanical extraction is justified by LLM-side savings** — empirical: helper CPU was 0.6s of 100min on testForge20. Helper performance optimization has near-zero impact; LLM token reduction is everything.
-
-4. **Helper-side language detection is a Principle 5 trap** — same as per-language source extraction. Don't add it. LLM detects per-package language during Phase 1's manifest scan.
-
-5. **Wrapper-mode artifacts at install_root, not project_root** — per CLAUDE.md. structure.md path bug already fixed + regression-tested.
-
-6. **Test isolation gap** (deferred): subprocess invocations without `DEVFORGE_DIR` leak trace to repo dir. Workaround: `rm src/devforge/.generate-docs-* && python3 -m unittest ...`. Proper fix: ensure all test subprocess invocations set DEVFORGE_DIR explicitly.
-
-### Active rules (per-project CLAUDE.md + memory)
-
-- All work goes through agents (no direct orchestrator writes; per Execution discipline section of GENERATE-DOCS-PLAN.md)
+- All work goes through agents (no orchestrator-direct writes; per Execution discipline section of `GENERATE-DOCS-PLAN.md`)
 - Audit format: count first, one finding at a time, fix/defer/skip/discuss prompt
 - Iterative apply-verify loop (writer → reviewer → loop until clean)
 - Sentence-level non-hallucination check on spec docs
 - Cross-check after every change
 - Pre-empt future-session hallucination — what would a fresh session falsely believe?
+- Default-argue: engage critically with every non-trivial request
+- Zero escape hatch: no carve-outs in discipline rules
+
+### Ecosystem coupling status
+
+The iteration-mode banner (`## ⚠️ ITERATION MODE — APP-WEB ONLY (TEMPORARY)`) at lines 25-44 of `main.md` is INTENTIONALLY coupled to `db-cse-ui-strata/apps/app-web` — it's the empirical-iteration's structural override. Removing the banner unlocks multi-package mode (BLOCKED on Step 3.3.6 validation gate). Everything OUTSIDE the banner was decoupled in iter 8 (multi-ecosystem examples, generic file extensions, ecosystem-rotational lists).
+
+### Test isolation gap (deferred)
+
+Subprocess invocations without `DEVFORGE_DIR` leak trace to repo dir. Workaround: `rm -f src/devforge/.generate-docs-trace.log && python3 -m unittest ...`. Proper fix: ensure all test subprocess invocations set `DEVFORGE_DIR` explicitly. Not addressed this session.
 
 ## How to bootstrap a fresh session
 
-1. Read `CLAUDE.md` (project root) — the canonical project instructions
-2. Read `GENERATE-DOCS-PLAN.md` — the active plan; Step 3.3.2 is the next dispatch
-3. Read this file (`SESSION-HANDOFF.md`) — current-session decisions
-4. Auto-memory at `~/.claude/projects/-Users-mykolakudlyk-Projects-ai-dev-team-forge/memory/MEMORY.md` is loaded automatically — both new feedback rules referenced above are pinned there
-5. Start with: `git log --oneline -10` to see recent commits
-6. Optionally: `python3 -m unittest discover -s tests -p "test_*.py" 2>&1 | tail -5` to verify the 763-test baseline holds
+1. Read `CLAUDE.md` (project root) — canonical project instructions
+2. Read this file (`SESSION-HANDOFF.md`) — current-session decisions
+3. Read `GENERATE-DOCS-PLAN.md` Steps 3.3.4 through 3.3.7 — pending work briefs
+4. Auto-memory at `~/.claude/projects/-Users-mykolakudlyk-Projects-ai-dev-team-forge/memory/MEMORY.md` is loaded automatically
+5. `git log --oneline -10` to see recent commits
+6. Optionally: `rm -f src/devforge/.generate-docs-trace.log && python3 -m unittest discover -s tests -p "test_*.py" 2>&1 | tail -3` to verify the 760-test baseline holds
 
 ## Files NOT to delete
 
-- `SESSION-HANDOFF.md` (this file) — read by next session, then can be overwritten as new sessions accumulate
+- `SESSION-HANDOFF.md` (this file) — read by next session, then can be overwritten
 - `GENERATE-DOCS-PLAN.md` — load-bearing, plan is mid-execution
-- `GENERATE-DOCS-EXECUTION-LOG.md` — historical record of phase-by-phase outcomes
-- `testForge20/tmp/.generate-docs-*` — diagnostic evidence for Phase 3.3 design decisions
-- `src/agents/concern-slot-filler.md` — slated for deletion in Step 3.3.2 but not yet
+- `GENERATE-DOCS-EXECUTION-LOG.md` — historical record of phase outcomes
+- `testForge20/.devforge/.generate-docs-state.json` — paused-run state for testForge20
