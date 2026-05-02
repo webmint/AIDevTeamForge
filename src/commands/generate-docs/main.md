@@ -113,9 +113,9 @@ Run the **Phase entry contract** check (see top of spec). Abort if it fails.
 
 3. **Read source files** under `db-cse-ui-strata/apps/app-web/src/` to identify:
    - Public exports (functions, classes, types, constants, configs, components, plugins) that cross module boundaries — every `export` statement in `src/` is a candidate. Limit to genuine public boundary surface (not private helpers).
-   - External dependencies (npm packages from `package.json` `dependencies`) and workspace-internal dependencies (`pkg-cse-*` packages — these are workspace-internal because they live in the same monorepo).
+   - External dependencies (from the package manifest's dependency list — `dependencies` in `package.json`, `[dependencies]` in `Cargo.toml`, `dependencies` under `[project]` in `pyproject.toml` (PEP 621) or `[tool.poetry.dependencies]` (Poetry), `require` in `composer.json`, etc.) and workspace-internal dependencies (`pkg-cse-*` packages — these are workspace-internal because they live in the same monorepo).
    - Hazards / mislogic observations: naming inconsistencies, performance pitfalls, type-safety gaps (e.g., `@ts-ignore`, `any` casts), v1/v2 coexistence patterns, internal duplication, cross-feature inconsistencies, complexity hotspots. Use the closed `HazardCategory` enum: `naming|performance|type-safety|duplication|inconsistency|v1-v2-coexistence|complexity`.
-   - Usage example: a real consumer pattern — typically the package's `main.ts` or `App.vue` showing how the package is bootstrapped/consumed.
+   - Usage example: a real consumer pattern — typically the package's main entry point or root component (e.g., `main.ts`, `App.vue`, `lib.rs`, `__main__.py`, `main.go` — depending on ecosystem) showing how the package is bootstrapped/consumed.
    - Consumer pattern: a representative downstream call site — typically a composable that uses the package's API.
 
 4. **Fill the slots via setter invocations**. Citation discipline is mandatory — every code-snippet setter requires `--cite-file` + `--cite-start` + `--cite-end` and the snippet MUST be lifted VERBATIM from the cited source line range (whitespace-normalized comparison runs at validate-time).
@@ -144,7 +144,7 @@ Run the **Phase entry contract** check (see top of spec). Abort if it fails.
 
 5. **DO NOT make direct edits to `.devforge/.generate-docs-state.json`**. The helper API is the only sanctioned mutation path. If you hit a wall (e.g., `add-package-export` rejects a duplicate name when you need to update an existing entry, or the internal-dep validator rejects a workspace-internal dep that can't resolve in single-package iteration), DO NOT bypass the helper. Surface the wall to the user with a clear error message and ABORT before `validate-package` + `render-package-doc`. The walls are signals of helper-API gaps that need fixing — bypassing them produces factual errors in the doc (this empirically happened in a prior run: 19 workspace-internal deps were misclassified as external).
 
-6. **Source-reading discipline**: read public-API-relevant files first (`src/composables/`, `src/helpers/`, `src/router/index.ts`, `src/main.ts`, `src/App.vue`, `src/types/`); only descend into implementation if a public symbol's signature is unclear. The package has ~900 source files; a thorough reading is impractical and unnecessary. Focus on boundary surface.
+6. **Source-reading discipline**: read public-API-relevant files first; only descend into implementation if a public symbol's signature is unclear. The package has ~900 source files; a thorough reading is impractical and unnecessary. Focus on boundary surface.
 
 7. **Run `validate-package`**: `.devforge/lib/generate_docs_helper validate-package --path db-cse-ui-strata/apps/app-web`. On failure, read the structured error list (each error has `rule` / `field` / `message` / optional `diff`). Two error categories with different handling:
    - **Package-tier registration errors** (every `rule` value EXCEPT `decomposition`): fix by re-invoking the corresponding setter (re-registration overwrites for `set-*` setters; for `add-*` setters that reject duplicates, you must `reset` and re-fill OR surface the issue to the user). Cap retries at 3.
@@ -174,32 +174,35 @@ Run the **Phase entry contract** check (see top of spec). Abort if it fails.
 
     **Concern-tier setter-specific instructions:**
 
-    - `set-concern-tree` — ASCII tree of `<subfolder>/` rooted at the subfolder (NOT at the package's `src/`). The tree MUST include EVERY entry under the subfolder — folders AND files. Each entry gets an inline `# <description>` comment (3-7 words). Files with self-evident names (e.g., `index.*`, `data.*`, `types.*`, files whose name itself names what they contain) may skip the description; entries with non-obvious roles get one. Trivial leaf folders (assets, dist, generated output, fixtures, locales) stay uncommented. Right-align the `#` column for readability — pad with spaces between the longest tree-glyph + entry-name and the `#` marker so descriptions line up visually.
+    - `set-concern-tree` — ASCII tree of `<subfolder>/` rooted at the subfolder (NOT at the package's `src/`). The tree MUST include EVERY entry at EVERY depth under the subfolder — folders AND files, recursively to leaf files. There is NO depth limit. A folder shown without its file children is INCOMPLETE; recurse until the tree's leaves are individual files (or genuinely-trivial leaf folders per the trivial-leaves rule below). Each entry gets an inline `# <description>` comment (3-7 words). Files with self-evident names (the filename itself conveys the file's purpose — examples span ecosystems: `mod.rs`, `lib.rs`, `__init__.py`, `index.ts`, `doc.go`, `formatters.*`, `validators.*`, etc.) may skip the description; entries with non-obvious roles get one. When in doubt, skip the description. Inventing a description from a filename guess is hallucination. The skip-rule (no description for self-evident names) is preferred over a fabricated description. Trivial leaf folders (build/cache/vendor folders that mechanically contain only generated, cached, or vendored content — e.g., `assets`, `dist`, `target`, `bin`, `obj`, `node_modules`, `__pycache__`, `.venv`, `vendor`, generated output, fixtures, locales) stay uncommented **and are exempt from file-child expansion** — the full-recursion mandate does not apply to them. Right-align the `#` column for readability — pad with spaces between the longest tree-glyph + entry-name and the `#` marker so descriptions line up visually.
 
       **Source-enumeration scope.** Read the subfolder's entries from the in-memory `.devforge/index.json` loaded at Phase 3 step 1 — this is mechanical, not source-reading. Source-reading remains scoped per the "Limit source-reading to public-API-relevant files first" discipline rule below: spot-read a file only when its filename is ambiguous about what it does. The tree fills naming-inferred descriptions for the bulk; source-reading is reserved for the public-API surface (the `add-concern-export` setter), not for tree descriptions.
 
       **Why file-level.** The concern doc's tree is the file-level index for /research retrieval. A future query "where is `<filename>`?" or "what's in `<subfolder>/<file>`?" must resolve via this tree. Folder-only granularity loses that recall. Source-reading cost is bounded because the tree's per-file descriptions are filename-inferred or skipped, not source-derived.
 
-      Example format (ecosystem-agnostic — folder + file mix):
+      Example format (ecosystem-agnostic):
 
       ```
-      components/
-      ├── modals/                       # global modal system
-      │   ├── BaseModal.vue              # generic modal shell with slot wiring
-      │   ├── ModalsController.vue       # teleports active modals into body
-      │   └── SlotPropsRender.vue        # forwards reactive slots into modal
-      ├── common/                       # cross-cutting chrome
-      │   ├── AppHeader.vue              # application header, route-aware
-      │   ├── AppFooter.vue
-      │   └── LoginCallback.vue          # Okta login redirect handler
-      ├── shared/                       # cross-feature widgets
-      └── helpers/
-          ├── formatters.ts              # text formatters (currency, date)
-          ├── validators.ts              # form validators
-          └── index.ts
+      <subfolder>/
+      ├── core/                            # core domain logic
+      │   ├── mod.rs                       # module root
+      │   ├── parser.rs                    # input parsing
+      │   └── errors.rs
+      ├── feature/                         # example feature folder
+      │   ├── components/
+      │   │   ├── FeatureView.tsx          # feature root component
+      │   │   └── FeatureItem.tsx
+      │   ├── handlers/
+      │   │   └── feature_handler.py
+      │   └── helpers/
+      │       └── feature_utils.go
+      └── shared/
+          ├── BulletList.tsx
+          └── helpers/
+              └── formatters.ts            # date / currency formatters
       ```
 
-      Note in the example: `AppFooter.vue` and `index.ts` skip descriptions because the names are self-evident; named files with non-obvious roles get descriptions; folder-level `# <description>` follows the same naming-driven rule.
+      Note in the example: depth-3 recursion under `feature/` (folder → components/handlers/helpers → individual `.tsx` / `.py` / `.go` leaves) is fully expanded; `errors.rs`, `FeatureItem.tsx`, `feature_handler.py`, `feature_utils.go`, and `BulletList.tsx` skip descriptions because the names are self-evident; entries with non-obvious roles get descriptions; folder-level `# <description>` follows the same naming-driven rule. A `locales/` folder at this level would stay uncommented and unexpanded — the full-recursion mandate exempts trivial leaves. The mix of `.rs`, `.tsx`, `.py`, `.go`, and `.ts` file extensions is illustrative — the same rules apply regardless of source-language ecosystem.
 
     **Per-concern discipline (inline safeguards):**
 
@@ -273,6 +276,6 @@ After the user has the doc in front of them, print a summary:
   | Phase 4 — Verify the produced doc | <Δ to phase 5 entry> |
   | **Total wall-clock** | <total> |
 
-  This phase-timing table makes per-phase cost visible to the user post-run, addressing the "no per-step cost telemetry" gap surfaced by the audit. Helper-side per-invocation tracing lives separately in `.devforge/.generate-docs-trace.log` once implemented; not required for this phase-timing table — the orchestrator's wall-clock summary is sufficient on its own.
+  This phase-timing table makes per-phase cost visible to the user post-run, addressing the "no per-step cost telemetry" gap surfaced by the audit. Helper-side per-invocation tracing lives separately in `.devforge/.generate-docs-trace.log`; not required for this phase-timing table — the orchestrator's wall-clock summary is sufficient on its own.
 
 Tell the user: "This is single-package iteration; multi-package flow is paused under the `## ⚠️ ITERATION MODE` section of `/generate-docs`. Re-run after the iteration plan unlocks multi-package scope."
