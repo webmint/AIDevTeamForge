@@ -56,7 +56,14 @@ Tree per-entry descriptions are HINTS. Step 3.3.5 captures this as a spec-level 
 
 2. **Step 3.3.5** — spec-level honesty about tree descriptions as hints. One-paragraph addition to `main.md` step 10 declaring: "tree per-entry descriptions are locator hints; verified semantic content lives in concern overview + Public Surface + Phase 3.4 glossary."
 
-3. **Step 3.3.6** — BLOCKING validation gate. Test on a cryptic-named codebase before iteration-mode unlock. Candidates: legacy enterprise Java with abbreviated module names, generated-code-heavy Rust, single-letter modules from older C++ projects. Pass criterion: tree + concern overview + glossary cover /research's access patterns. Fail → unlock Step 3.3.7.
+3. **Step 3.3.6** — BLOCKING multi-ecosystem validation gate (expanded from single-codebase scope). Test on 3-4 candidates spanning naming culture + build tool + language paradigm:
+   - **Java legacy enterprise** (mandatory) — cryptic names + Maven/Gradle. Skip modern Spring Boot.
+   - **Python scientific/numerics** (mandatory) — NumPy/SciPy submodule with mathematical-terse naming + pyproject.toml. Skip modern Django.
+   - **Rust crate** (mandatory) — bindgen/tonic-build output OR older systems crate (nom-style). Tests Cargo + `--kind trait/macro/impl` on the open enum + auto-gen filename degradation.
+   - **C/C++ terse** (optional) — redis/sqlite/lua-style. May surface helper-side scope issues (one Makefile per repo violates per-package assumption).
+   - Skip GitHub trending picks (bias toward descriptive modern projects; low validation value). Archive / legacy / scientific projects stronger signal.
+   - Pass criterion: file-location PASS on all 3 mandatory; symbol-lookup + topic-browse PASS on ≥2 of 3. Aggregate evaluation in `GENERATE-DOCS-EXECUTION-LOG.md`.
+   - PASS → unlock iteration mode + Step 3.3.4. CONDITIONAL PASS → iterate on spec. FAIL → unlock Step 3.3.7 (per-file docs).
 
 4. **Step 3.3.7** — per-file docs (B), DEFERRED INDEFINITELY. Conditional on Step 3.3.6 fail. If cryptic-codebase test shows architecture is insufficient, this introduces a sub-concern / section tier. Architectural sketch in plan.
 
