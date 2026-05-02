@@ -503,3 +503,53 @@ See Phase 2.2's Final approved baseline section above. The 474-line `apps/app-we
 - **Step 3.2**: extend `/generate-docs/main.md` Phase 3 with concern dispatch — orchestrator detects substantive subfolders, dispatches one slot-fill cycle per concern (orchestrator-direct OR per-concern `Agent` tool dispatches with inline briefs). Per-concern parallelism is mandatory architecture (Phase 3 commitment from `377edae`); Resume slot-skip behavior preserved.
 
 For testForge20 `apps/app-web`: expected to produce ~8-10 concern docs (composables, components, helpers, plugins, router, types, etc.) each at ~50-150 lines, matching cse-strata-ws-forge reference's per-concern shape.
+
+---
+
+## Phase 3.3.2 — Refactor `/generate-docs` Phase 3: extract-snippet + drop concern-slot-filler subagent + drop tech-writer references
+
+**Status**: ✅ DONE
+**Date**: 2026-05-02
+**Files changed**: `src/commands/generate-docs/main.md` (Phase 3 rewrite + tech-writer drop), `src/commands/generate-docs/references/concern-slot-fill-workflow.md` (NEW — per-concern inline workflow), `src/agents/concern-slot-filler.md` (DELETED), `GENERATE-DOCS-EXECUTION-LOG.md` (this entry).
+
+### What was done
+
+1. **Phase 3 Step 1** now reads `.devforge/index.json` once via Read tool, holds parsed JSON in working memory across the phase. Auto-compaction caveat included.
+2. **Mechanical snippet extraction precedence** — every code-snippet-bearing setter (6 total: 3 package-tier + 3 concern-tier) MUST be preceded by `generate_docs_helper extract-snippet --file F --start S --end E`, output piped via `--code-snippet "$(...)"` (double-quoted command substitution). Closes the citation-mismatch retry class empirically.
+3. **Concern-slot-filler subagent dispatch dropped.** Phase 3 step 10 now iterates per-concern slot-fill SEQUENTIALLY in the orchestrator's own context. Workflow content moved from `src/agents/concern-slot-filler.md` to `src/commands/generate-docs/references/concern-slot-fill-workflow.md` (self-contained reference doc, cited from main.md step 10).
+4. **Tech-writer references dropped entirely** from the command spec — preamble parenthetical, ITERATION MODE banner A/B paragraph, Phase 3 opening Note, table-row parenthetical, step 5 historical reference. Option A (tech-writer-mediated) was retired; option B (orchestrator-direct) is canonical and no longer needs A/B framing. Tech-writer agent file itself is unchanged (still emits for /finalize/fix/refactor Normal Mode).
+5. **Pre-flight `claude-code-guide` verification** before writer dispatch — confirmed Claude Code authoring conventions for: references-dir placement (SKILL.md guidance), inline orchestrator iteration vs subagent dispatch, agent file deletion cleanup, Bash command substitution safety, Read-and-hold-state pattern.
+6. **Audit cycle** — 3 iterations:
+   - Iteration 1: writer halt on conflicts (setter list completeness, install_root convention, banner cleanup); orchestrator resolved A1 (cover all 6 setters), B1 (no install_root placeholder; bare `.devforge/...`), C1 (banner edit). Reviewer: 5 findings (1 high / 2 medium / 1 low / 1 nit).
+   - Iteration 2: writer applied all 5 fixes; reviewer surfaced N1 (path ambiguity in F3); orchestrator pushed back, user agreed to skip + dropped tech-writer entirely.
+   - Iteration 3: writer applied 5 tech-writer-drop edits; reviewer clean, zero findings.
+
+### Decisions made
+
+1. **Drop subagents for sequential identical-workflow work** — empirically validated in this iteration (testForge20 runs showed transcription degradation across subagent boundaries caused citation-mismatch retries). Memory rule `feedback_avoid_subagents_for_sequential_identical_workflows.md` now codifies the principle.
+2. **Survey prior art before inventing formats** — Step 1 of Phase 3.3 invented `index.json` from scratch; Sphinx `objects.inv` encodes essentially the same shape. Memory rule `feedback_survey_prior_art_before_inventing_formats.md` now codifies; survey table in plan's Execution discipline section.
+3. **References-dir placement** — `src/commands/<name>/references/<topic>.md` is documented Claude Code convention (SKILL.md: "Keep main file under 500 lines; move detailed reference material to separate files"). Adopted.
+4. **Self-contained reference doc** — Bash quoting directive + extract-snippet failure fallback duplicated by design between main.md step 4 and concern-slot-fill-workflow.md step 4 (each runtime-loaded location must be self-contained). Annotated as such in the reference doc.
+5. **Tech-writer drop is command-scoped, not agent-wide** — `src/agents/tech-writer.md` retained for /finalize/fix/refactor Normal Mode; only `/generate-docs` references removed.
+
+### Anti-patterns closed during this phase
+
+- Citation-mismatch retry wall (LLM transcription of code into `--code-snippet` arg) — closed by mechanical `extract-snippet` precedence.
+- Subagent transcription degradation on sequential identical workflows — closed by orchestrator-direct inline iteration.
+- Stale-after-edit cross-references (5 found by reviewer in iteration 1, all fixed) — closes the "spec sentence USED to be true but became false" failure mode.
+
+### Future-session-falsely-believes check
+
+- Could a session believe concern-slot-filler subagent is dispatched in Phase 3? NO — agent file deleted, all references removed, reference doc explicitly states "no subagent dispatch".
+- Could a session believe tech-writer is part of `/generate-docs`? NO — all command-side references removed; agent file's docstring scopes it to /finalize/fix/refactor.
+- Could a session believe LLM should transcribe code snippets manually? NO — Phase 3 step 4 + reference doc step 4 both mandate `extract-snippet` precedence with verbatim Bash directive.
+- Could a session believe `.devforge/index.json` is read ad-hoc per step? NO — Phase 3 step 1 explicitly directs once-at-start with Read tool; auto-compaction caveat names the exception.
+- Could a session believe `(A/B option B)` or `Phase 3.2` are live identifiers in the spec? NO — both removed; greps return zero hits.
+
+### Test baseline
+
+763/763 passing post-iteration-3 (same as pre-iteration; spec edits don't touch helper code). Trace-leak workaround (`rm src/devforge/.generate-docs-trace.log`) still required pre-test; isolation gap deferred per session-handoff.
+
+### Next step
+
+**Phase 3.3.3** (TBD per plan) or **Phase 3.4** (glossary wiring; survey Sphinx `objects.inv` + Lunr posting-list per prior-art table). Empirical re-run of `/generate-docs` on testForge20 expected to validate ~30-50min wall / ~70-90k tokens / 0 failed concerns vs prior 100min / 150k tokens / 2-of-7 failed.
