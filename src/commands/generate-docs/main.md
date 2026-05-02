@@ -154,6 +154,35 @@ If `extract-package-scripts` returns an empty JSON object (no scripts in `packag
 
     **Resume-mode propagation is mandatory, not a hint.** If Phase 0 routed via Resume, every per-concern iteration MUST honor the slot-skip contract: before each setter, check current state via `.devforge/lib/generate_docs_helper status` and skip the setter if its corresponding field is already populated. For `add-*` setters that reject duplicates, re-running in resume mode is safe but redundant. Mixing modes across concerns in one run is forbidden — all-fresh or all-resume per run.
 
+    **Concern-tier setter-specific instructions:**
+
+    - `set-concern-tree` — ASCII tree of `<subfolder>/` rooted at the subfolder (NOT at the package's `src/`). The tree MUST include EVERY entry under the subfolder — folders AND files. Each entry gets an inline `# <description>` comment (3-7 words). Files with self-evident names (e.g., `index.*`, `data.*`, `types.*`, files whose name itself names what they contain) may skip the description; entries with non-obvious roles get one. Trivial leaf folders (assets, dist, generated output, fixtures, locales) stay uncommented. Right-align the `#` column for readability — pad with spaces between the longest tree-glyph + entry-name and the `#` marker so descriptions line up visually.
+
+      **Source-enumeration scope.** Read the subfolder's entries from the in-memory `.devforge/index.json` loaded at Phase 3 step 1 — this is mechanical, not source-reading. Source-reading remains scoped per the "Limit source-reading to public-API-relevant files first" discipline rule below: spot-read a file only when its filename is ambiguous about what it does. The tree fills naming-inferred descriptions for the bulk; source-reading is reserved for the public-API surface (the `add-concern-export` setter), not for tree descriptions.
+
+      **Why file-level.** The concern doc's tree is the file-level index for /research retrieval. A future query "where is `<filename>`?" or "what's in `<subfolder>/<file>`?" must resolve via this tree. Folder-only granularity loses that recall. Source-reading cost is bounded because the tree's per-file descriptions are filename-inferred or skipped, not source-derived.
+
+      Example format (ecosystem-agnostic — folder + file mix):
+
+      ```
+      components/
+      ├── modals/                       # global modal system
+      │   ├── BaseModal.vue              # generic modal shell with slot wiring
+      │   ├── ModalsController.vue       # teleports active modals into body
+      │   └── SlotPropsRender.vue        # forwards reactive slots into modal
+      ├── common/                       # cross-cutting chrome
+      │   ├── AppHeader.vue              # application header, route-aware
+      │   ├── AppFooter.vue
+      │   └── LoginCallback.vue          # Okta login redirect handler
+      ├── shared/                       # cross-feature widgets
+      └── helpers/
+          ├── formatters.ts              # text formatters (currency, date)
+          ├── validators.ts              # form validators
+          └── index.ts
+      ```
+
+      Note in the example: `AppFooter.vue` and `index.ts` skip descriptions because the names are self-evident; named files with non-obvious roles get descriptions; folder-level `# <description>` follows the same naming-driven rule.
+
     **Per-concern discipline (inline safeguards):**
 
     - **Never guess abbreviations or acronyms.** When you encounter an abbreviation or initialism in source identifiers, file names, or existing prose, verify its expansion against authoritative project sources BEFORE using or expanding it in any setter value. Search order, stopping at the first hit: (1) `README.md` at project root and at `<package_path>`, (2) the package manifest `description` field (`package.json`, `Cargo.toml`, `pyproject.toml`, `composer.json`, `*.csproj`, etc.), (3) top-level `docs/` content, (4) `.devforge/project-config.json` `PROJECT_DESCRIPTION` field if present, (5) JSDoc / docstrings near the first definition. If no authoritative definition is found, use the abbreviation verbatim without expansion or mark with `[TODO: <abbreviation> — definition not found in README, manifest, or top-level docs; human to define]`. Inventing an expansion is hallucination — same principle as the verbatim citation rule.
