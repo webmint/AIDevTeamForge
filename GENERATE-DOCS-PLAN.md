@@ -803,6 +803,83 @@ Originally proposed: `extract-package-candidates --path P` returning a JSON list
 
 **Re-evaluate when**: empirical evidence from post-Step-3.3.2 runs shows source-discovery (file reads to find exports) is still a major LLM cost. If extract-snippet eliminates the cost driver, this step never lands.
 
+#### Step 3.3.4: Open `--kind` enum + soft-recommended list (PENDING)
+
+**Empirical motivation**: testForge20 Run 3 hit `add-package-export --kind script` (helper rejected — `script` not in closed enum). User flagged broader concern: the closed enum (`function, class, type, constant, config, schema, command, component, directive, plugin, other`) is web-coupled — `component` / `directive` / `plugin` lean Vue/React/Angular while non-web ecosystems' first-class concepts (Rust `trait` / `macro`, Python `decorator`, Go `interface`, Vue `composable`, React `hook`) have no fit and get squashed into `function` or `other`. The enum was authored against the iteration's project shape.
+
+**Why open enum + soft-recommended (not closed-expanded, not free-form)**:
+- Closed-expanded never converges — every ecosystem adds new first-class concepts; chase-the-list is a Principle-5 trap
+- Free-form risks inconsistency that breaks /research filtering (`callback` vs `handler` vs `hook` vs `fn` for the same thing)
+- Open enum + soft list: helper accepts any string with normalization (lowercase, strip, hyphenate spaces); spec recommends common kinds; LLM prefers recommended when applicable, uses ecosystem-native term when none fit. Preserves /research filtering on the common cases.
+
+**Brief to `python-engineer`** (paired with `instruction-author` for spec updates):
+
+- **Helper changes** (`src/devforge/lib/_generate_docs/_setters.py` + `_cli.py` + their tests):
+  1. Drop the closed-enum validation on `--kind` for `add-package-export` AND `add-concern-export` (same enum issue, same fix).
+  2. Add normalization: lowercase + `.strip()` + replace internal whitespace with hyphens. Empty/whitespace-only after normalization → reject (exit 2 with clear message).
+  3. Update tests in `tests/lib/test_generate_docs_helper.py`: replace closed-enum-rejection tests with normalization tests + free-form acceptance tests.
+- **Spec changes** (`src/commands/generate-docs/main.md` Phase 3 step 4 + the inlined per-concern setter rules in step 10):
+  1. Add a "Recommended kinds" sub-section listing common kinds: function, class, type, constant, config, schema, command, plus ecosystem-rotational examples (trait, macro, decorator, hook, composable, interface, directive, component, plugin) — phrase as "prefer one of these when applicable; use ecosystem-native term when none fit".
+  2. Tighten wording around `--kind` to clarify normalization (lowercase + hyphens) so the LLM doesn't think `Function` and `function` are different.
+- **Cross-check**: grep for any other place in the spec that mentions the closed-enum list (the wording may exist in helper-API documentation comments inside `_setters.py` too — clean those if found). Verify no test relies on the closed-enum behavior beyond the validation tests.
+
+**Verify**: empirical re-run on testForge20 — `add-package-export` accepts `--kind composable` for Vue composables, `add-concern-export` accepts `--kind trait` if a Rust example exists. Run still produces a valid doc; /research filtering by `--kind` still partitions exports cleanly across the recommended-list cases.
+
+#### Step 3.3.5: Spec-level honesty — tree descriptions are HINTS, not docs (PENDING)
+
+**Empirical motivation**: testForge20 Run 4 (manual re-render of `components/index.md` after iter 10 spec change) produced 597 inline `# <description>` comments across the 582-row tree. The LLM's honest self-breakdown of the description quality:
+
+| Tier | Source | % | Trust |
+|---|---|---|---|
+| 1 | File actually read | ~5% | Accurate |
+| 2 | Hand-mapped: name + folder context | ~25% | Plausible, unverified |
+| 3 | Regex camelCase split (filename echo) | ~70% | No info beyond the filename |
+
+The 70% tier-3 entries are **filename rephrasings dressed up with a `#`**. `OrderLineItemMobile.vue → "# order line item mobile"` adds nothing /research couldn't infer from the filename itself. The dense-tree shape's apparent richness is misleading: tree-section-as-documentation is a category error.
+
+The architecture is still correct (per Step 3.3.2 and iter 10): tree gives /research file LOCATIONS — that's mechanical and always works. But the implicit promise that per-entry descriptions are *documentation* is empirically false on dense codebases. Read-budget is the binding constraint; even on descriptively-named projects, 70% of entries don't get a real semantic read.
+
+**Why spec-level honesty (δ) over per-entry tier markers (γ)**: tier markers (`# verified: ...`, `# inferred: ...`, `# name-echo: ...`) add prose overhead AND require LLM judgment on which tier each entry is in — exactly the over-strict-skip-rule failure mode iter 10 just escaped. Spec-level contract is one sentence in `main.md` declaring what tree-descriptions ARE, with /research consuming that contract. No per-entry overhead.
+
+**Brief to `instruction-author`**:
+
+- Add to `src/commands/generate-docs/main.md` step 10 (the `set-concern-tree` bullet OR the "Why file-level" explanation — author decides placement) a clause stating: *"Tree per-entry descriptions are HINTS, not documentation. They derive from filename inference + folder context + (occasionally) source reads of boundary files. /research consuming this tree must treat per-entry descriptions as locator hints, not as authoritative semantic content. Verified semantic content lives in: (a) the concern overview prose, (b) the Public Surface section's verified per-export descriptions, and (c) Phase 3.4's glossary (when shipped — symbol/term reverse index with mechanically-validated mappings)."*
+- Cross-check: any other place in the spec or sibling files that implies tree descriptions are reliable documentation. Update or flag.
+
+**Verify**: re-run produces a doc that still has the dense tree (per iter 10), but no future session reads the tree's `#` comments and assumes they were generated by source-reading. The contract is explicit.
+
+#### Step 3.3.6: Validation gate — empirical test on cryptic-named codebase (BLOCKING for iteration-mode unlock)
+
+**Why this is BLOCKING**: every empirical validation of `/generate-docs` so far has been against testForge20 (Vue 3 / TypeScript / vite / `db-cse-ui-strata/apps/app-web`). That codebase has descriptive naming culture (`QuoteFooter.vue`, `useQuoteState.ts`, etc.) — filename-inferred descriptions land at ~30% useful signal. A cryptic-named codebase (legacy enterprise Java with abbreviated names, generated-code-heavy Rust, single-letter modules from older C++/numerics codebases) would degrade the tier-3 echo to near-zero useful signal.
+
+The current architectural claim — "tree + concern overview + glossary is enough for /research regardless of naming culture" — is theory, not validated. The iteration-mode banner removal (multi-package unlock) MUST NOT happen before this gate.
+
+**What to test**:
+
+1. Pick one cryptic-named codebase as the second empirical target. Candidates: a legacy Java enterprise project with abbreviated module names; a Rust workspace with auto-generated bindings; a C# project where files follow `Service*.cs` / `Manager*.cs` naming with cryptic prefixes; a generated-code-heavy project.
+2. Run `/generate-docs` against it (still in iteration mode — single-package).
+3. Manually evaluate the resulting concern docs against /research's actual access patterns: file-location, symbol-lookup, topic-browse, folder-scoped query, cross-cutting query.
+4. Compare: does the tier-3 filename-echo rate degrade? Does concern overview prose carry the semantic load (per Step 3.3.5's contract)? Are public-surface descriptions still meaningful?
+5. Decide: is the architecture sufficient? If yes — proceed to iteration-mode unlock. If no — re-evaluate Step 3.3.7 (per-file docs as fallback).
+
+**Verify**: empirical assessment writeup added to `GENERATE-DOCS-EXECUTION-LOG.md` with the cryptic-codebase data. Pass/fail decision recorded. If pass, iteration-mode banner can be removed in the same iteration. If fail, Step 3.3.7 unblocks.
+
+#### Step 3.3.7: Per-file docs (B) — DEFERRED indefinitely; conditional on Step 3.3.6 outcome
+
+**Why deferred**: per Step 3.3.6's gate, per-file docs are only justified if the cryptic-named-codebase test fails for the dense-tree-with-hints architecture. Per-file docs add a new helper tier (sub-concern or "section"), schema change, ~10× wall-clock penalty (50-200 docs per package), and significant maintenance overhead. Speculative now; concrete only if data demands.
+
+**Re-evaluate when**: Step 3.3.6's empirical assessment shows tree + concern overview + glossary cannot answer /research's queries on a cryptic-named codebase. Until then, this step never lands.
+
+**Architectural sketch (for if/when this lands)**:
+
+- New tier: `add-section --concern <c> --section <s>` for nested folder docs (or `add-subconcern` — naming TBD).
+- New schema: `SectionDoc` (or `SubConcernDoc`) parallel to `ConcernDoc` but scoped to a folder under a concern.
+- New decomposition gate at section-tier (mirror of concern-tier gate at lines under-concern).
+- New render output: `docs/<pkg>/<concern>/<section>/index.md`.
+- Spec rewrite: Phase 3 step 10's per-concern iteration becomes recursive (concern → sections → ... if needed).
+
+This sketch is intentionally rough — it only gets fleshed out if Step 3.3.6 demands it.
+
 ---
 
 ### Phase 4 — Architecture skeleton (ArchitectureDoc)
