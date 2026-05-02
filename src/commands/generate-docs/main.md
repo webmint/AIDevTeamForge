@@ -174,7 +174,13 @@ Run the **Phase entry contract** check (see top of spec). Abort if it fails.
 
     **Concern-tier setter-specific instructions:**
 
-    - `set-concern-tree` — ASCII tree of `<subfolder>/` rooted at the subfolder (NOT at the package's `src/`). The tree MUST include EVERY entry at EVERY depth under the subfolder — folders AND files, recursively to leaf files. There is NO depth limit. A folder shown without its file children is INCOMPLETE; recurse until the tree's leaves are individual files (or genuinely-trivial leaf folders per the trivial-leaves rule below). Each entry gets an inline `# <description>` comment (3-7 words). Files with self-evident names (the filename itself conveys the file's purpose — examples span ecosystems: `mod.rs`, `lib.rs`, `__init__.py`, `index.ts`, `doc.go`, `formatters.*`, `validators.*`, etc.) may skip the description; entries with non-obvious roles get one. When in doubt, skip the description. Inventing a description from a filename guess is hallucination. The skip-rule (no description for self-evident names) is preferred over a fabricated description. Trivial leaf folders (build/cache/vendor folders that mechanically contain only generated, cached, or vendored content — e.g., `assets`, `dist`, `target`, `bin`, `obj`, `node_modules`, `__pycache__`, `.venv`, `vendor`, generated output, fixtures, locales) stay uncommented **and are exempt from file-child expansion** — the full-recursion mandate does not apply to them. Right-align the `#` column for readability — pad with spaces between the longest tree-glyph + entry-name and the `#` marker so descriptions line up visually.
+    - `set-concern-tree` — ASCII tree of `<subfolder>/` rooted at the subfolder (NOT at the package's `src/`). The tree MUST include EVERY entry at EVERY depth under the subfolder — folders AND files, recursively to leaf files. There is NO depth limit. A folder shown without its file children is INCOMPLETE; recurse until the tree's leaves are individual files (or genuinely-trivial leaf folders per the trivial-leaves rule below). Trivial leaf folders (build/cache/vendor folders that mechanically contain only generated, cached, or vendored content — e.g., `assets`, `dist`, `target`, `bin`, `obj`, `node_modules`, `__pycache__`, `.venv`, `vendor`, generated output, fixtures, locales) stay uncommented **and are exempt from file-child expansion** — the full-recursion mandate does not apply to them. Right-align the `#` column for readability — pad with spaces between the longest tree-glyph + entry-name and the `#` marker so descriptions line up visually.
+
+      **Description-rule (default = describe every entry).** Every entry — folder or file — gets a 3–7 word inline `# <description>` comment by default. The description is inferred from the filename + the entry's location in the tree + surrounding naming patterns. Filename inference is the EXPECTED source of tree descriptions; reading the file's source is reserved for the public-API surface (the `add-concern-export` setter), NOT for tree descriptions. A suggestively-named file like `OrderHeader.vue`, `formatters.ts`, `parser.rs`, or `validators.go` gets a filename-inferred description (e.g., `OrderHeader.vue` → `# table header for order summary view`).
+
+      **Skip-rule (narrow — canonical aggregators only).** Skip the description ONLY for canonical aggregator files whose names are purely structural and convey nothing semantic about content: `mod.rs`, `lib.rs`, `__init__.py`, `index.ts`, `index.js`, `doc.go`, and direct ecosystem equivalents. All other entries — including loosely "self-evident" filenames — get a description.
+
+      **Tree descriptions are free-text, NOT subject to the verbatim-citation discipline.** The verbatim-citation rule governs `--code-snippet` arguments (e.g., `add-concern-export`, `add-concern-type`, `set-concern-usage-example`), where the helper mechanically validates whitespace-normalized snippet equality against the cited `--cite-file` `--cite-start` `--cite-end` range. That validator does NOT run on tree text — `set-concern-tree --text` is character-class validated only, with no citation comparison. Filename-inferred descriptions are the design intent for tree prose, not hallucination; hallucination applies to the verbatim-citation surface, where the helper catches it mechanically.
 
       **Source-enumeration scope.** Read the subfolder's entries from the in-memory `.devforge/index.json` loaded at Phase 3 step 1 — this is mechanical, not source-reading. Source-reading remains scoped per the "Limit source-reading to public-API-relevant files first" discipline rule below: spot-read a file only when its filename is ambiguous about what it does. The tree fills naming-inferred descriptions for the bulk; source-reading is reserved for the public-API surface (the `add-concern-export` setter), not for tree descriptions.
 
@@ -185,24 +191,24 @@ Run the **Phase entry contract** check (see top of spec). Abort if it fails.
       ```
       <subfolder>/
       ├── core/                            # core domain logic
-      │   ├── mod.rs                       # module root
+      │   ├── mod.rs
       │   ├── parser.rs                    # input parsing
-      │   └── errors.rs
+      │   └── errors.rs                    # domain error types
       ├── feature/                         # example feature folder
-      │   ├── components/
+      │   ├── components/                  # feature ui components
       │   │   ├── FeatureView.tsx          # feature root component
-      │   │   └── FeatureItem.tsx
-      │   ├── handlers/
-      │   │   └── feature_handler.py
-      │   └── helpers/
-      │       └── feature_utils.go
-      └── shared/
-          ├── BulletList.tsx
-          └── helpers/
+      │   │   └── FeatureItem.tsx          # single feature row
+      │   ├── handlers/                    # feature event handlers
+      │   │   └── feature_handler.py       # request handler entry
+      │   └── helpers/                     # feature-local utilities
+      │       └── feature_utils.go         # feature helper functions
+      └── shared/                          # cross-feature shared code
+          ├── BulletList.tsx               # generic bullet-list component
+          └── helpers/                     # shared utility helpers
               └── formatters.ts            # date / currency formatters
       ```
 
-      Note in the example: depth-3 recursion under `feature/` (folder → components/handlers/helpers → individual `.tsx` / `.py` / `.go` leaves) is fully expanded; `errors.rs`, `FeatureItem.tsx`, `feature_handler.py`, `feature_utils.go`, and `BulletList.tsx` skip descriptions because the names are self-evident; entries with non-obvious roles get descriptions; folder-level `# <description>` follows the same naming-driven rule. A `locales/` folder at this level would stay uncommented and unexpanded — the full-recursion mandate exempts trivial leaves. The mix of `.rs`, `.tsx`, `.py`, `.go`, and `.ts` file extensions is illustrative — the same rules apply regardless of source-language ecosystem.
+      Note in the example: depth-3 recursion under `feature/` (folder → components/handlers/helpers → individual `.tsx` / `.py` / `.go` leaves) is fully expanded; every entry has a 3–7 word filename-inferred description except `mod.rs`, which is a canonical aggregator and qualifies for the narrow skip-rule. Folder-level `# <description>` follows the same filename-inference rule. A `locales/` folder at this level would stay uncommented and unexpanded — the full-recursion mandate exempts trivial leaves. The mix of `.rs`, `.tsx`, `.py`, `.go`, and `.ts` file extensions is illustrative — the same rules apply regardless of source-language ecosystem.
 
     **Per-concern discipline (inline safeguards):**
 
