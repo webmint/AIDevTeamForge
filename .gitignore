@@ -11,3 +11,4 @@
 src/devforge/.generate-docs-state.json
 src/devforge/.generate-docs-state.json.lock
 src/devforge/.generate-docs-trace.log
+node_modules/
