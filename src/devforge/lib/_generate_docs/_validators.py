@@ -76,8 +76,10 @@ from ._validators_annotation import (  # noqa: F401
     _check_annotation_cite_resolves,
     _check_annotation_schema,
     _check_annotation_specificity,
+    _check_file_doc_specificity,
     _recompute_content_hash,
     cmd_validate_annotation,
+    cmd_validate_file_doc,
     cmd_verify_annotations,
 )
 

@@ -1,4 +1,18 @@
-"""Annotation-tier mechanical validation (Steps A.2 and A.4 of VALIDATOR-LOOP-PLAN.md).
+"""Annotation-tier mechanical validation (Steps A.2, A.4, and B.3 of the validator-loop).
+
+B.3 adds:
+  - `cmd_validate_file_doc` — reads a per-source-file .md, parses its
+    front-matter, and runs the same 6-rule check as `cmd_validate_annotation`.
+    Exit codes are identical (locked below). Specificity check uses
+    `_check_file_doc_specificity` which walks sibling .md files on disk
+    instead of reading from state.
+  - `_check_file_doc_specificity` — sibling label collision check for
+    per-md docs. Scans `md_path.parent.glob("*.md")`, parses each sibling's
+    front-matter, and returns an error message on label collision (or None).
+
+Original module docstring preserved below.
+
+Annotation-tier mechanical validation (Steps A.2 and A.4 of VALIDATOR-LOOP-PLAN.md).
 
 Owns the annotation-level checks that run BEYOND set-time:
   - Schema validation (field types, shapes, content_hash format)
@@ -49,6 +63,7 @@ from typing import Any, Dict, Optional, Tuple
 from _banned_phrases import BANNED_PHRASES
 from generate_docs_schema import ANNOTATION_CONFIDENCE_VALUES
 
+from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 from ._render import _project_root
 from ._state import (
     StateLoadError,
@@ -566,3 +581,136 @@ def cmd_verify_annotations(args: argparse.Namespace) -> int:
         )
 
     return 2 if any_fail else 0
+
+
+# ---------------------------------------------------------------------------
+# Step B.3 — Per-file-doc validation helpers and command.
+# ---------------------------------------------------------------------------
+
+
+def _check_file_doc_specificity(
+    md_path: Path, current_label: str,
+) -> Optional[str]:
+    """Return an error message if a sibling .md shares a normalized label, or None.
+
+    Walks `md_path.parent.glob("*.md")`, excluding `md_path` itself.
+    For each sibling: parses front-matter and compares normalized labels
+    (lower() + strip()). Sibling parse errors are silently skipped — the
+    sibling will be flagged when it is independently validated.
+
+    Only immediate siblings are checked (no recursive subdirectory scan)
+    because each concern subdirectory is a scope boundary — sibling
+    collisions within the same directory level are the relevant check.
+    """
+    this_label_norm = current_label.lower().strip()
+    try:
+        siblings = list(md_path.parent.glob("*.md"))
+    except OSError:
+        return None
+
+    for sibling in siblings:
+        if sibling.resolve() == md_path.resolve():
+            continue
+        try:
+            sibling_text = sibling.read_text(encoding="utf-8", errors="replace")
+            sibling_record, _ = parse_frontmatter(sibling_text)
+        except (OSError, FrontmatterParseError):
+            # Silently skip unparseable siblings per spec.
+            continue
+        sibling_label = sibling_record.get("label", "")
+        if not isinstance(sibling_label, str):
+            continue
+        if sibling_label.lower().strip() == this_label_norm:
+            return "label collides with sibling: {0!r} has same label".format(
+                sibling.name
+            )
+    return None
+
+
+def cmd_validate_file_doc(args: argparse.Namespace) -> int:
+    """Mechanical gate for a per-source-file .md document (Step B.3).
+
+    Reads the .md at `args.md_path`, parses front-matter, builds an
+    annotation-shaped dict, then runs the same 4 helper checks as
+    `cmd_validate_annotation` plus a directory-scoped specificity check.
+
+    Exit codes (same contract as cmd_validate_annotation):
+      0 — all checks pass
+      2 — banned-phrase hit in label
+      3 — cite unresolvable (missing / range out-of-bounds / hash drift)
+      4 — specificity fail (sibling label collision in same directory)
+      5 — schema invalid OR file not found OR front-matter parse error
+      6 — cite-file is binary
+    """
+    if not args.md_path or not args.md_path.strip():
+        return _die("validate-file-doc: --md-path must be non-empty", code=5)
+
+    md_path = Path(args.md_path)
+    if not md_path.is_absolute():
+        md_path = _project_root() / md_path
+
+    # --- Read the .md file ---
+    if not md_path.exists() or not md_path.is_file():
+        return _die(
+            "validate-file-doc: file not found: {0}".format(md_path), code=5,
+        )
+
+    try:
+        text = md_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as err:
+        return _die(
+            "validate-file-doc: cannot read {0}: {1}".format(md_path, err), code=5,
+        )
+
+    # --- Parse front-matter ---
+    try:
+        fm_record, _ = parse_frontmatter(text)
+    except FrontmatterParseError as err:
+        return _die(
+            "validate-file-doc: front-matter parse error: {0}".format(err), code=5,
+        )
+
+    # --- Build annotation-shaped dict for the 4 reused helpers ---
+    # The 4 helpers (_check_annotation_schema, _check_annotation_banned_phrase,
+    # _check_annotation_cite_resolves) expect the Part-A nested evidence shape.
+    annotation = {
+        "label": fm_record.get("label"),
+        "confidence": fm_record.get("confidence"),
+        "evidence": {
+            "file": fm_record.get("evidence_file"),
+            "start": fm_record.get("evidence_start"),
+            "end": fm_record.get("evidence_end"),
+        },
+        "content_hash": fm_record.get("content_hash"),
+        "model_version": fm_record.get("model_version"),
+    }
+
+    # Check 1 — Schema (exit 5).
+    schema_err = _check_annotation_schema(annotation)
+    if schema_err is not None:
+        return _die(schema_err, code=5)
+
+    # Check 2 — Banned phrase (exit 2).
+    label = annotation.get("label", "")
+    banned = _check_annotation_banned_phrase(label)
+    if banned is not None:
+        return _die(
+            "label contains banned phrase: {0!r} in {1!r}".format(banned, label),
+            code=2,
+        )
+
+    # Check 3 + 6 — Cite resolution (binary -> exit 6; all other -> exit 3).
+    project_root = _project_root()
+    cite_result = _check_annotation_cite_resolves(annotation, project_root)
+    if cite_result is not None:
+        subcase, msg = cite_result
+        exit_code = 6 if subcase == "binary" else 3
+        return _die(msg, code=exit_code)
+
+    # Check 4 — Specificity vs sibling .md files in same directory (exit 4).
+    sibling_err = _check_file_doc_specificity(md_path, label)
+    if sibling_err is not None:
+        return _die(sibling_err, code=4)
+
+    sys.stdout.write("validate-file-doc {0}: ok\n".format(md_path))
+    return 0

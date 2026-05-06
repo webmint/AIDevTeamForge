@@ -61,13 +61,14 @@ from ._setters_concern import (
     cmd_set_concern_tree,
     cmd_set_concern_usage_example,
 )
-from ._setters_concern_files import cmd_render_file_skeletons
+from ._setters_concern_files import cmd_render_file_skeletons, cmd_write_file_doc
 from ._status import cmd_status
 from ._validators import (
     cmd_render_concern_doc,
     cmd_render_package_doc,
     cmd_validate_annotation,
     cmd_validate_concern,
+    cmd_validate_file_doc,
     cmd_validate_package,
     cmd_verify_annotations,
 )
@@ -324,6 +325,21 @@ def _build_render_file_skeletons(p: argparse.ArgumentParser) -> None:
     p.add_argument("--concern", required=True)
 
 
+# Per-file-doc subcommands (Step B.3 of VALIDATOR-LOOP-B-PLAN.md).
+
+
+def _build_write_file_doc(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--md-path", required=True)
+    p.add_argument("--label", required=True)
+    p.add_argument("--confidence", required=True)
+    _add_cite_args(p, optional=False)
+    p.add_argument("--model-version", required=True)
+
+
+def _build_validate_file_doc(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--md-path", required=True)
+
+
 # ---------------------------------------------------------------------------
 # Subcommand registry. Append to extend.
 # ---------------------------------------------------------------------------
@@ -368,6 +384,9 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("validate-annotation", _build_validate_annotation, cmd_validate_annotation),
     # Annotation post-batch aggregator (Step A.4 of VALIDATOR-LOOP-PLAN.md).
     ("verify-annotations", _build_verify_annotations, cmd_verify_annotations),
+    # Per-file-doc subcommands (Step B.3 of VALIDATOR-LOOP-B-PLAN.md).
+    ("write-file-doc", _build_write_file_doc, cmd_write_file_doc),
+    ("validate-file-doc", _build_validate_file_doc, cmd_validate_file_doc),
 )
 
 

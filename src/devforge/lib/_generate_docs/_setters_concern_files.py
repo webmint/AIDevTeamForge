@@ -1,24 +1,24 @@
 """Per-source-file .md skeleton flow for the per-md validator-loop Part B architecture.
 
-This module owns the `render-file-skeletons` subcommand (Step B.1 of
-VALIDATOR-LOOP-B-PLAN.md). For each source file registered in
-index.json under `src/<concern>/`, it writes an empty zero-byte .md
-file to `docs/<package>/<concern>/<suffix>.md`. These skeletons become
-the filesystem forcing function for Part B: Step B.2 will gate
-`validate-concern` on the docs tree being non-empty per file.
-
-v0 scope: skeleton creation only (zero-byte files). B.3 will add
-`_write_md_with_frontmatter` for filled-skeleton emit. DO NOT add
-frontmatter or content writing here — that's B.3's responsibility.
+This module owns:
+  - `render-file-skeletons` subcommand (Step B.1 of VALIDATOR-LOOP-B-PLAN.md):
+    walks index.json and writes empty .md skeletons as filesystem forcing function.
+  - `write-file-doc` subcommand (Step B.3 of VALIDATOR-LOOP-B-PLAN.md):
+    fills a skeleton with structured front-matter + body header. The LLM calls
+    this helper instead of using the Write tool freehand — helper-owns-shape.
 
 Stdlib only. Targets Python 3.8+.
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import List, Optional
 
+from generate_docs_schema import ANNOTATION_CONFIDENCE_VALUES
+
+from ._md_frontmatter import render_frontmatter
 from ._render import _project_root
 from ._setters_concern import _load_index_files, _path_contains_trivial_dir
 from ._state import (
@@ -29,7 +29,8 @@ from ._state import (
     _require_package,
     _state_file_path,
 )
-from ._validation import _validate_string
+from ._validation import _validate_in_enum, _validate_string
+from ._validators_annotation import _recompute_content_hash
 
 
 def cmd_render_file_skeletons(args: argparse.Namespace) -> int:
@@ -134,5 +135,122 @@ def cmd_render_file_skeletons(args: argparse.Namespace) -> int:
         "render-file-skeletons {0}/{1}: created={2} preexisting={3}\n".format(
             args.package, args.concern, created, preexisting
         )
+    )
+    return 0
+
+
+def cmd_write_file_doc(args: argparse.Namespace) -> int:
+    """Fill a per-source-file .md with structured front-matter + body header.
+
+    Helper computes content_hash from the cite-file:start..end slice (matching
+    add-annotation's pattern) so the LLM never authors hash values. Overwrites
+    existing content unconditionally: this is the fill operation; the skeleton
+    written by B.1 is intentionally replaced here.
+
+    Exit codes:
+      0 — success (file written)
+      2 — validation failure (incl. cite range out-of-bounds)
+      1 — OS error / cite-file not readable
+    """
+    # --- Boundary validation ---
+    try:
+        _validate_string(args.md_path, "write-file-doc --md-path")
+        _validate_string(args.label, "write-file-doc --label")
+        _validate_in_enum(
+            args.confidence,
+            ANNOTATION_CONFIDENCE_VALUES,
+            "write-file-doc --confidence",
+        )
+        _validate_string(args.cite_file, "write-file-doc --cite-file")
+        _validate_string(args.model_version, "write-file-doc --model-version")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    try:
+        cite_start = int(args.cite_start)
+        cite_end = int(args.cite_end)
+    except (TypeError, ValueError) as err:
+        return _die(
+            "write-file-doc --cite-start/--cite-end: must be integers: {0}".format(err),
+            code=2,
+        )
+
+    if cite_start < 1:
+        return _die(
+            "write-file-doc --cite-start: must be >= 1, got {0}".format(cite_start),
+            code=2,
+        )
+    if cite_end < cite_start:
+        return _die(
+            "write-file-doc --cite-end ({0}) must be >= --cite-start ({1})".format(
+                cite_end, cite_start
+            ),
+            code=2,
+        )
+
+    # --- Resolve target md path ---
+    md_path = Path(args.md_path)
+    if not md_path.is_absolute():
+        md_path = _project_root() / md_path
+
+    # --- Resolve cite-file + compute content_hash ---
+    cite_path = Path(args.cite_file)
+    if not cite_path.is_absolute():
+        cite_path = _project_root() / cite_path
+    if not cite_path.exists():
+        return _die(
+            "write-file-doc: cite-file not found: {0}".format(cite_path),
+            code=2,
+        )
+    try:
+        content_hash = _recompute_content_hash(cite_path, cite_start, cite_end)
+    except ValueError as err:
+        return _die(
+            "write-file-doc: {0}".format(err),
+            code=2,
+        )
+    except OSError as err:
+        return _die(
+            "write-file-doc: cannot read cite-file {0}: {1}".format(cite_path, err),
+            code=1,
+        )
+
+    # --- Build record and render ---
+    record = {
+        "label": args.label,
+        "confidence": args.confidence,
+        "evidence_file": args.cite_file,
+        "evidence_start": cite_start,
+        "evidence_end": cite_end,
+        "content_hash": content_hash,
+        "model_version": args.model_version,
+    }
+
+    # Body header: the original source filename (md_path minus the trailing .md).
+    filename = md_path.name
+    if filename.endswith(".md"):
+        source_name = filename[:-3]
+    else:
+        source_name = filename
+    body_header = "# {0}\n".format(source_name)
+
+    try:
+        content = render_frontmatter(record, body_header)
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # --- Write file (overwrite; no idempotency guard per spec) ---
+    try:
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_text(content, encoding="utf-8")
+    except OSError as err:
+        return _die(
+            "write-file-doc: failed to write {0}: {1}".format(md_path, err),
+            code=1,
+        )
+
+    nbytes = len(content.encode("utf-8"))
+    sys.stdout.write(
+        "write-file-doc {0}: {1} bytes\n".format(md_path, nbytes)
     )
     return 0
