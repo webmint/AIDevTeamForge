@@ -113,6 +113,7 @@ def default_concern_record(concern_name: str) -> Dict[str, Any]:
         "dependencies": [],
         "hazards": [],
         "usage_example": None,
+        "annotations": {},
     }
 
 

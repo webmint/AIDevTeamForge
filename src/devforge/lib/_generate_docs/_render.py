@@ -7,7 +7,7 @@ fixed section order. The same render is used by two subcommands:
   No validation gate — unset fields appear as `[TODO: ...]` slots so the
   LLM can see exactly which setters still need to fire.
 - `render-package-doc` writes `docs/<package-path>/index.md`. Gated by
-  `_validators.validate_package`; render-package-doc is gated by
+  `_validators_package.validate_package`; render-package-doc is gated by
   validate-package while render-package-skeleton is not. After the .md
   file is written, the .skeleton sibling (if present) is removed.
 
@@ -96,9 +96,20 @@ _TODO_TECH_REQUIRED = "[TODO]"
 _OPTIONAL_UNSET_PLACEHOLDER = "—"
 
 
+# Final-mode placeholder for empty optional sections. Skeleton mode emits
+# LLM-targeted setter-name TODOs (so the LLM knows which setter to call);
+# final mode replaces those with this concise human-facing marker so the
+# rendered doc reads as documentation, not as an unfilled form. Required-
+# field TODOs are unchanged in either mode (validate would have caught
+# those — render-final after validate means required fields cannot be
+# empty in practice, but the TODO still surfaces as a defense-in-depth
+# signal if they somehow are).
+_FINAL_NONE = "_(none)_"
+
+
 # The required-field TODO markers — every one of these in a rendered
 # skeleton indicates a required setter that has not been called.
-# `_validators._check_no_todos` matches against these to raise a
+# `_validators_package._check_no_todos` matches against these to raise a
 # todo-marker-present error. Optional-section TODOs (scripts,
 # hazards, usage_example, consumer_pattern) are NOT in this list:
 # the schema declares those fields optional and validate-package must
@@ -112,7 +123,7 @@ REQUIRED_FIELD_TODO_MARKERS = (
 )
 
 
-# Optional-section markers — consumed by `_validators._check_optional_render`
+# Optional-section markers — consumed by `_validators_package._check_optional_render`
 # as a defense-in-depth check: if any of these markers appear in the
 # rendered output AND the corresponding state field is populated, that's
 # a render bug (state has the data but the rendering produced [TODO]).
@@ -172,10 +183,11 @@ def _render_tech_stack(pkg: Dict[str, Any]) -> str:
     return "## Tech Stack\n\n" + "\n".join(rows) + "\n"
 
 
-def _render_scripts(pkg: Dict[str, Any]) -> str:
+def _render_scripts(pkg: Dict[str, Any], mode: str = "skeleton") -> str:
     scripts = pkg.get("scripts") or {}
     if not scripts:
-        return "## Scripts\n\n{0}\n".format(_TODO_SCRIPTS)
+        placeholder = _FINAL_NONE if mode == "final" else _TODO_SCRIPTS
+        return "## Scripts\n\n{0}\n".format(placeholder)
     rows = ["| Script | Command |", "| --- | --- |"]
     for name in sorted(scripts.keys()):
         rows.append("| `{0}` | `{1}` |".format(name, scripts[name]))
@@ -297,10 +309,11 @@ def _render_dependencies(pkg: Dict[str, Any]) -> str:
     return "\n".join(parts).rstrip() + "\n"
 
 
-def _render_hazards(pkg: Dict[str, Any]) -> str:
+def _render_hazards(pkg: Dict[str, Any], mode: str = "skeleton") -> str:
     hazards = pkg.get("hazards") or []
     if not hazards:
-        return "## Hazards\n\n{0}\n".format(_TODO_HAZARDS)
+        placeholder = _FINAL_NONE if mode == "final" else _TODO_HAZARDS
+        return "## Hazards\n\n{0}\n".format(placeholder)
     parts = ["## Hazards", ""]
     for hazard in hazards:
         # Both fields are narrative prose — HTML-escape so generic-syntax
@@ -319,27 +332,37 @@ def _render_hazards(pkg: Dict[str, Any]) -> str:
     return "\n".join(parts) + "\n"
 
 
-def _render_usage_example(pkg: Dict[str, Any]) -> str:
+def _render_usage_example(pkg: Dict[str, Any], mode: str = "skeleton") -> str:
     ue = pkg.get("usage_example")
     if not ue:
-        return "## Usage Example\n\n{0}\n".format(_TODO_USAGE_EXAMPLE)
+        placeholder = _FINAL_NONE if mode == "final" else _TODO_USAGE_EXAMPLE
+        return "## Usage Example\n\n{0}\n".format(placeholder)
     return "## Usage Example\n\n" + _render_code_block(ue)
 
 
-def _render_consumer_pattern(pkg: Dict[str, Any]) -> str:
+def _render_consumer_pattern(pkg: Dict[str, Any], mode: str = "skeleton") -> str:
     cp = pkg.get("consumer_pattern")
     if not cp:
-        return "## Consumer Pattern\n\n{0}\n".format(_TODO_CONSUMER_PATTERN)
+        placeholder = _FINAL_NONE if mode == "final" else _TODO_CONSUMER_PATTERN
+        return "## Consumer Pattern\n\n{0}\n".format(placeholder)
     return "## Consumer Pattern\n\n" + _render_code_block(cp)
 
 
-def render_package_skeleton(state: Dict[str, Any], package_path: str) -> str:
+def render_package_skeleton(
+    state: Dict[str, Any], package_path: str, mode: str = "skeleton",
+) -> str:
     """Pure render function — assembles a markdown string from a state
     record. Does not touch the filesystem.
 
     Both `cmd_render_package_skeleton` and `cmd_render_package_doc` call
-    this; the difference between the two is only the output path and
-    whether validation gates the write.
+    this; the difference between the two is only the output path, whether
+    validation gates the write, and the `mode` argument.
+
+    `mode="skeleton"` (default): empty optional sections emit LLM-targeted
+    setter-name [TODO] markers so the LLM knows which setter to call.
+    `mode="final"`: empty optional sections emit `_(none)_` instead,
+    so the rendered doc reads as documentation rather than an unfilled form.
+    Required-field TODOs are unchanged in either mode.
     """
     pkg = _require_package(state, package_path)
     if pkg is None:
@@ -352,15 +375,15 @@ def render_package_skeleton(state: Dict[str, Any], package_path: str) -> str:
     sections.append(_render_overview(pkg))
     sections.append(_render_directory_tree(pkg))
     sections.append(_render_tech_stack(pkg))
-    sections.append(_render_scripts(pkg))
+    sections.append(_render_scripts(pkg, mode))
     sections.append(_render_main_exports(pkg))
     types_section = _render_types(pkg)
     if types_section is not None:
         sections.append(types_section)
     sections.append(_render_dependencies(pkg))
-    sections.append(_render_hazards(pkg))
-    sections.append(_render_usage_example(pkg))
-    sections.append(_render_consumer_pattern(pkg))
+    sections.append(_render_hazards(pkg, mode))
+    sections.append(_render_usage_example(pkg, mode))
+    sections.append(_render_consumer_pattern(pkg, mode))
     # Each section already ends with a newline; join with a blank line
     # in between so the markdown reads cleanly.
     return "\n".join(sections).rstrip() + "\n"
@@ -491,7 +514,7 @@ def _render_concern_public_surface(concern: Dict[str, Any]) -> str:
     return "\n".join(body_parts).rstrip() + "\n"
 
 
-def _render_concern_types(concern: Dict[str, Any]) -> str:
+def _render_concern_types(concern: Dict[str, Any], mode: str = "skeleton") -> str:
     """Render `## Types` for a concern.
 
     Unlike the package-tier Types section (which is omitted when empty
@@ -499,26 +522,29 @@ def _render_concern_types(concern: Dict[str, Any]) -> str:
     Types is a first-class field — render an explicit `[TODO]` slot
     when empty so the LLM sees the field exists. Validate-concern does
     NOT block on missing types (the [TODO] is in the optional list).
+    In final mode, the empty slot becomes `_(none)_` instead.
     """
     types = concern.get("types") or []
     if not types:
-        return "## Types\n\n{0}\n".format(_TODO_CONCERN_TYPES)
+        placeholder = _FINAL_NONE if mode == "final" else _TODO_CONCERN_TYPES
+        return "## Types\n\n{0}\n".format(placeholder)
     body_parts = ["## Types", ""]
     for tb in types:
         body_parts.append(_render_code_block(tb))
     return "\n".join(body_parts).rstrip() + "\n"
 
 
-def _render_concern_dependencies(concern: Dict[str, Any]) -> str:
+def _render_concern_dependencies(concern: Dict[str, Any], mode: str = "skeleton") -> str:
     """Render `## Dependencies` — same internal/external split as
     package tier."""
     deps = concern.get("dependencies") or []
     internal = [d for d in deps if d.get("kind") == "internal"]
     external = [d for d in deps if d.get("kind") == "external"]
     if not internal and not external:
-        return "## Dependencies\n\n{0}\n".format(
-            _TODO_CONCERN_DEPENDENCIES
+        placeholder = (
+            _FINAL_NONE if mode == "final" else _TODO_CONCERN_DEPENDENCIES
         )
+        return "## Dependencies\n\n{0}\n".format(placeholder)
     parts = ["## Dependencies", ""]
     parts.append("### Workspace-internal")
     parts.append("")
@@ -539,10 +565,11 @@ def _render_concern_dependencies(concern: Dict[str, Any]) -> str:
     return "\n".join(parts).rstrip() + "\n"
 
 
-def _render_concern_hazards(concern: Dict[str, Any]) -> str:
+def _render_concern_hazards(concern: Dict[str, Any], mode: str = "skeleton") -> str:
     hazards = concern.get("hazards") or []
     if not hazards:
-        return "## Hazards\n\n{0}\n".format(_TODO_CONCERN_HAZARDS)
+        placeholder = _FINAL_NONE if mode == "final" else _TODO_CONCERN_HAZARDS
+        return "## Hazards\n\n{0}\n".format(placeholder)
     parts = ["## Hazards", ""]
     for hazard in hazards:
         line = "- **{0}**: {1}".format(
@@ -557,23 +584,33 @@ def _render_concern_hazards(concern: Dict[str, Any]) -> str:
     return "\n".join(parts) + "\n"
 
 
-def _render_concern_usage_example(concern: Dict[str, Any]) -> str:
+def _render_concern_usage_example(concern: Dict[str, Any], mode: str = "skeleton") -> str:
     ue = concern.get("usage_example")
     if not ue:
-        return "## Usage Example\n\n{0}\n".format(
-            _TODO_CONCERN_USAGE_EXAMPLE
+        placeholder = (
+            _FINAL_NONE if mode == "final" else _TODO_CONCERN_USAGE_EXAMPLE
         )
+        return "## Usage Example\n\n{0}\n".format(placeholder)
     return "## Usage Example\n\n" + _render_code_block(ue)
 
 
 def render_concern_skeleton(
-    state: Dict[str, Any], package_path: str, concern_name: str,
+    state: Dict[str, Any],
+    package_path: str,
+    concern_name: str,
+    mode: str = "skeleton",
 ) -> str:
     """Pure render function for ConcernDoc — returns a markdown string.
 
     Both `cmd_render_concern_skeleton` and `cmd_render_concern_doc` call
-    this; the difference between the two is only the output path and
-    whether validation gates the write.
+    this; the difference between the two is only the output path, whether
+    validation gates the write, and the `mode` argument.
+
+    `mode="skeleton"` (default): empty optional sections emit LLM-targeted
+    setter-name [TODO] markers so the LLM knows which setter to call.
+    `mode="final"`: empty optional sections emit `_(none)_` instead,
+    so the rendered doc reads as documentation rather than an unfilled form.
+    Required-field TODOs are unchanged in either mode.
 
     Output sections: H1 (concern name) -> Overview -> Directory ->
     Public Surface -> Types -> Dependencies -> Hazards -> Usage
@@ -599,10 +636,10 @@ def render_concern_skeleton(
     sections.append(_render_concern_overview(concern))
     sections.append(_render_concern_directory_tree(concern))
     sections.append(_render_concern_public_surface(concern))
-    sections.append(_render_concern_types(concern))
-    sections.append(_render_concern_dependencies(concern))
-    sections.append(_render_concern_hazards(concern))
-    sections.append(_render_concern_usage_example(concern))
+    sections.append(_render_concern_types(concern, mode))
+    sections.append(_render_concern_dependencies(concern, mode))
+    sections.append(_render_concern_hazards(concern, mode))
+    sections.append(_render_concern_usage_example(concern, mode))
     return "\n".join(sections).rstrip() + "\n"
 
 

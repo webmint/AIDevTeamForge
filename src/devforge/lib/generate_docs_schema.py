@@ -84,6 +84,12 @@ HAZARD_CATEGORIES: Tuple[str, ...] = (
     "complexity",
 )
 
+ANNOTATION_CONFIDENCE_VALUES: Tuple[str, ...] = (
+    "extracted",
+    "inferred",
+    "ambiguous",
+)
+
 
 # ---------------------------------------------------------------------------
 # Validation helpers.

@@ -10,12 +10,13 @@ manifest extraction, `_render` for skeleton emission, `_validators`
 for validation + final render) and adding one tuple here. The
 dispatch path stays closed against modification (OCP).
 
-The `_add_cite_args` factory is shared by eight subcommands — four
+The `_add_cite_args` factory is shared by nine subcommands — four
 package-tier (`add-package-export`, `add-package-hazard`,
-`set-package-usage-example`, `set-package-consumer-pattern`) and four
+`set-package-usage-example`, `set-package-consumer-pattern`), four
 concern-tier (`add-concern-export`, `add-concern-type`,
-`add-concern-hazard`, `set-concern-usage-example`) — all of which
-accept the `--cite-file / --cite-start / --cite-end` triple.
+`add-concern-hazard`, `set-concern-usage-example`), and the annotation
+setter (`add-annotation`) — all of which accept the
+`--cite-file / --cite-start / --cite-end` triple.
 
 Stdlib only. Targets Python 3.8+.
 """
@@ -47,6 +48,7 @@ from ._setters import (
     cmd_set_package_tree,
     cmd_set_package_usage_example,
 )
+from ._setters_annotation import cmd_add_annotation
 from ._setters_concern import (
     cmd_add_concern,
     cmd_add_concern_dep,
@@ -61,8 +63,10 @@ from ._status import cmd_status
 from ._validators import (
     cmd_render_concern_doc,
     cmd_render_package_doc,
+    cmd_validate_annotation,
     cmd_validate_concern,
     cmd_validate_package,
+    cmd_verify_annotations,
 )
 
 
@@ -291,6 +295,27 @@ def _build_render_concern_doc(p: argparse.ArgumentParser) -> None:
     p.add_argument("--concern", required=True)
 
 
+def _build_add_annotation(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--package", required=True)
+    p.add_argument("--concern", required=True)
+    p.add_argument("--target-path", required=True)
+    p.add_argument("--label", required=True)
+    p.add_argument("--confidence", required=True)
+    _add_cite_args(p, optional=False)
+    p.add_argument("--model-version", required=True)
+
+
+def _build_validate_annotation(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--package", required=True)
+    p.add_argument("--concern", required=True)
+    p.add_argument("--target-path", required=True)
+
+
+def _build_verify_annotations(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--package", required=True)
+    p.add_argument("--concern", required=True)
+
+
 # ---------------------------------------------------------------------------
 # Subcommand registry. Append to extend.
 # ---------------------------------------------------------------------------
@@ -328,6 +353,12 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("render-concern-skeleton", _build_render_concern_skeleton, cmd_render_concern_skeleton),
     ("validate-concern", _build_validate_concern, cmd_validate_concern),
     ("render-concern-doc", _build_render_concern_doc, cmd_render_concern_doc),
+    # Annotation setter (Step A.1 of VALIDATOR-LOOP-PLAN.md).
+    ("add-annotation", _build_add_annotation, cmd_add_annotation),
+    # Annotation validator (Step A.2 of VALIDATOR-LOOP-PLAN.md).
+    ("validate-annotation", _build_validate_annotation, cmd_validate_annotation),
+    # Annotation post-batch aggregator (Step A.4 of VALIDATOR-LOOP-PLAN.md).
+    ("verify-annotations", _build_verify_annotations, cmd_verify_annotations),
 )
 
 

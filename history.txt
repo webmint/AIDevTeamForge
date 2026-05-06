@@ -1,0 +1,25 @@
+#V2
+INFO FOR DB;
+SELECT * FROM project_metadata;
+LET $pid = '/Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/db-cse-ui-strata/apps/app-web-js/apps/app-web';
+SELECT node_type AS kind, count() AS n FROM nodes WHERE project_id = $pid GROUP BY kind ORDER BY n DESC;
+SELECT language, count() AS n FROM nodes WHERE project_id = $pid GROUP BY language ORDER BY n DESC;
+SELECT edge_type, count() AS n FROM edges WHERE from.project_id = $pid GROUP BY edge_type ORDER BY n DESC;
+SELECT node_type AS kind, count() AS n FROM nodes WHERE project_id = '/Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/db-cse-ui-strata/apps/app-web-js/apps/app-web' GROUP BY kind ORDER BY n DESC LIMIT 50;
+SELECT count() FROM nodes;
+SELECT id, project_id, node_type, name FROM nodes LIMIT 3;
+INFO FOR ROOT;
+INFO FOR NS;
+SELECT count() AS n FROM nodes;
+SELECT count() AS n FROM edges;
+SELECT count() AS n FROM chunks;
+SELECT count() AS n FROM file_metadata;
+SELECT count() AS n FROM nodes GROUP ALL;
+SELECT count() AS n FROM edges GROUP ALL;
+SELECT count() AS n FROM chunks GROUP ALL;
+SELECT count() AS n FROM file_metadata GROUP ALL;
+SELECT * FROM edges LIMIT 2;
+SELECT id, name, node_type, file_path, language FROM nodes:`09c1f5b2-34d1-a081-a86d-ad595964b033`;
+SELECT id, name, node_type, file_path, language FROM nodes:`f5a577f5-2663-095a-c364-a25759352e73`;
+SELECT * FROM file_metadata LIMIT 3;
+SELECT count() AS n FROM file_metadata GROUP ALL;

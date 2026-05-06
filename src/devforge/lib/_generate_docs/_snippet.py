@@ -24,7 +24,7 @@ Behavior contract:
   visible mismatch downstream rather than a silent crash here.
 - Line endings are PRESERVED verbatim. The downstream validator
   normalizes CRLF -> LF before equality comparison (see
-  `_validators._normalize_for_compare`) so either choice round-trips
+  `_validators_shared._normalize_for_compare`) so either choice round-trips
   cleanly; preserving keeps `extract-snippet` purely mechanical (no
   surprise mutation).
 
