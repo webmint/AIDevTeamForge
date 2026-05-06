@@ -5,9 +5,11 @@ This module is the Controller (per GRASP): a single entry point
 calls it. Subcommands are appended to `_SUBCOMMANDS` — adding a new
 one means writing a parser-factory + handler in the appropriate
 sibling module (`_setters` / `_setters_concern` for state mutation,
-`_status` for read-only state inspection, `_manifest` for ecosystem
-manifest extraction, `_render` for skeleton emission, `_validators`
-for validation + final render) and adding one tuple here. The
+`_setters_concern_files` for filesystem skeleton emission per source
+file, `_status` for read-only state inspection, `_manifest` for
+ecosystem manifest extraction, `_render` for skeleton emission,
+`_validators` for validation + final render) and adding one tuple
+here. The
 dispatch path stays closed against modification (OCP).
 
 The `_add_cite_args` factory is shared by nine subcommands — four
@@ -59,6 +61,7 @@ from ._setters_concern import (
     cmd_set_concern_tree,
     cmd_set_concern_usage_example,
 )
+from ._setters_concern_files import cmd_render_file_skeletons
 from ._status import cmd_status
 from ._validators import (
     cmd_render_concern_doc,
@@ -316,6 +319,11 @@ def _build_verify_annotations(p: argparse.ArgumentParser) -> None:
     p.add_argument("--concern", required=True)
 
 
+def _build_render_file_skeletons(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--package", required=True)
+    p.add_argument("--concern", required=True)
+
+
 # ---------------------------------------------------------------------------
 # Subcommand registry. Append to extend.
 # ---------------------------------------------------------------------------
@@ -353,6 +361,7 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("render-concern-skeleton", _build_render_concern_skeleton, cmd_render_concern_skeleton),
     ("validate-concern", _build_validate_concern, cmd_validate_concern),
     ("render-concern-doc", _build_render_concern_doc, cmd_render_concern_doc),
+    ("render-file-skeletons", _build_render_file_skeletons, cmd_render_file_skeletons),  # B.1
     # Annotation setter (Step A.1 of VALIDATOR-LOOP-PLAN.md).
     ("add-annotation", _build_add_annotation, cmd_add_annotation),
     # Annotation validator (Step A.2 of VALIDATOR-LOOP-PLAN.md).
