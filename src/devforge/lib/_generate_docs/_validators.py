@@ -81,6 +81,7 @@ from ._validators_annotation import (  # noqa: F401
     cmd_validate_annotation,
     cmd_validate_file_doc,
     cmd_verify_annotations,
+    cmd_verify_file_docs,
 )
 
 # --- render symbols (legacy patch tolerance) ---------------------------------

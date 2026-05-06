@@ -71,6 +71,7 @@ from ._validators import (
     cmd_validate_file_doc,
     cmd_validate_package,
     cmd_verify_annotations,
+    cmd_verify_file_docs,
 )
 
 
@@ -340,6 +341,11 @@ def _build_validate_file_doc(p: argparse.ArgumentParser) -> None:
     p.add_argument("--md-path", required=True)
 
 
+def _build_verify_file_docs(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--package", required=True)
+    p.add_argument("--concern", required=True)
+
+
 # ---------------------------------------------------------------------------
 # Subcommand registry. Append to extend.
 # ---------------------------------------------------------------------------
@@ -387,6 +393,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     # Per-file-doc subcommands (Step B.3 of VALIDATOR-LOOP-B-PLAN.md).
     ("write-file-doc", _build_write_file_doc, cmd_write_file_doc),
     ("validate-file-doc", _build_validate_file_doc, cmd_validate_file_doc),
+    # Per-file-doc post-batch aggregator (Step B.4 of VALIDATOR-LOOP-B-PLAN.md).
+    ("verify-file-docs", _build_verify_file_docs, cmd_verify_file_docs),
 )
 
 

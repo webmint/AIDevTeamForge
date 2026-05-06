@@ -1,4 +1,4 @@
-"""Annotation-tier mechanical validation (Steps A.2, A.4, and B.3 of the validator-loop).
+"""Annotation-tier mechanical validation (Steps A.2, A.4, B.3, and B.4 of the validator-loop).
 
 B.3 adds:
   - `cmd_validate_file_doc` — reads a per-source-file .md, parses its
@@ -9,6 +9,17 @@ B.3 adds:
   - `_check_file_doc_specificity` — sibling label collision check for
     per-md docs. Scans `md_path.parent.glob("*.md")`, parses each sibling's
     front-matter, and returns an error message on label collision (or None).
+
+B.4 adds:
+  - `cmd_verify_file_docs` — post-batch aggregator for filled .md files in
+    one concern's docs dir. Mirrors `cmd_verify_annotations` exactly but
+    sources records from the filesystem (docs/<P>/<C>/**/*.md) instead of
+    state. Applies the same 4 hard gates with identical thresholds.
+
+  NOTE: This module is at ~985 lines (past the 600-line SRP threshold).
+  B.5's brief mandates splitting Part-A (annotation-state) from Part-B
+  (file-doc) concerns into separate sibling modules. B.4 adds here
+  without splitting — the split is B.5's job to execute atomically.
 
 Original module docstring preserved below.
 
@@ -714,3 +725,261 @@ def cmd_validate_file_doc(args: argparse.Namespace) -> int:
 
     sys.stdout.write("validate-file-doc {0}: ok\n".format(md_path))
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Step B.4 — Post-batch aggregator: verify-file-docs
+# ---------------------------------------------------------------------------
+
+
+def cmd_verify_file_docs(args: argparse.Namespace) -> int:
+    """Post-batch quality gate for all filled .md files in one concern's docs dir.
+
+    Mirrors cmd_verify_annotations exactly, but sources records from the
+    filesystem (docs/<P>/<C>/**/*.md) instead of the annotations-in-state dict.
+    Applies the same 4 hard gates with identical thresholds and exit codes.
+
+    Empty .md skeletons (size == 0 bytes) are silently skipped — they count
+    as "not yet filled" and are gated separately by validate-concern's
+    file-docs-incomplete rule (B.2). B.4 evaluates only filled records.
+
+    Exit codes:
+      0 — all gates pass
+      2 — at least one gate failed (stderr names which)
+      5 — state error (package not registered, concern not registered,
+          front-matter parse error in any filled md, or state-corrupt
+          confidence value in any md's record)
+    """
+    try:
+        state = _load_state()
+    except StateLoadError as err:
+        return _die(str(err), code=5)
+
+    # Resolve package (exit 5 — state error, not a lookup miss).
+    pkg = _require_package(state, args.package)
+    if pkg is None:
+        return _die(
+            "package not registered: {0}".format(args.package), code=5,
+        )
+
+    # Resolve concern (exit 5 — state error).
+    concern = _require_concern(state, args.package, args.concern)
+    if concern is None:
+        return _die(
+            "concern not registered: {0}/{1}".format(args.package, args.concern),
+            code=5,
+        )
+
+    project_root = _project_root()
+    docs_dir = project_root / "docs" / args.package / args.concern
+
+    # Collect (md_path, record) tuples from all filled (non-empty) .md files.
+    file_doc_records = []  # type: ignore[var-annotated]
+
+    if docs_dir.is_dir():
+        for md_path in sorted(docs_dir.rglob("*.md")):
+            # Skip zero-byte skeletons — they have no records to evaluate.
+            # validate-concern's file-docs-incomplete rule gates them.
+            try:
+                size = md_path.stat().st_size
+            except OSError:
+                continue
+            if size == 0:
+                continue
+
+            # Parse front-matter. Any parse error on a non-empty file is a
+            # state error (the fill operation produced malformed output).
+            try:
+                text = md_path.read_text(encoding="utf-8", errors="replace")
+            except OSError as err:
+                return _die(
+                    "file-doc read error in {0}: {1}; run write-file-doc again".format(
+                        md_path, err
+                    ),
+                    code=5,
+                )
+
+            try:
+                record, _ = parse_frontmatter(text)
+            except FrontmatterParseError as err:
+                return _die(
+                    "file-doc parse error in {0}: {1}; run write-file-doc again".format(
+                        md_path, err
+                    ),
+                    code=5,
+                )
+
+            file_doc_records.append((md_path, record))
+
+    total = len(file_doc_records)
+
+    # --- Metric 1: banned_phrase_count ---
+    banned_phrase_count = 0
+    for _md, record in file_doc_records:
+        label = record.get("label", "") if isinstance(record, dict) else ""
+        if isinstance(label, str) and _check_annotation_banned_phrase(label) is not None:
+            banned_phrase_count += 1
+
+    # --- Metric 2: sibling_collision_count ---
+    # Count mds whose normalized label collides with ANY other md IN THE SAME
+    # CONCERN'S DOCS TREE (concern-scoped, not directory-scoped). Each
+    # colliding md is counted once. Mirrors cmd_verify_annotations semantics.
+    sibling_collision_count = 0
+    for i, (md_path_i, record_i) in enumerate(file_doc_records):
+        label_i = record_i.get("label", "")
+        if not isinstance(label_i, str):
+            continue
+        norm_i = label_i.lower().strip()
+        for j, (md_path_j, record_j) in enumerate(file_doc_records):
+            if i == j:
+                continue
+            label_j = record_j.get("label", "")
+            if not isinstance(label_j, str):
+                continue
+            if label_j.lower().strip() == norm_i:
+                sibling_collision_count += 1
+                break  # count each md at most once
+
+    # --- Metric 3: missing_cite_count ---
+    # File-exists pre-flight only (no hash recompute).
+    missing_cite_count = 0
+    for _md, record in file_doc_records:
+        cite_file = record.get("evidence_file", "")
+        if cite_file and isinstance(cite_file, str):
+            cite_path = project_root / cite_file
+            if not cite_path.exists() or not cite_path.is_file():
+                missing_cite_count += 1
+
+    # --- Metric 4: confidence_distribution ---
+    # State-corrupt (unknown value) → exit 5.
+    conf_dist = {"ambiguous": 0, "extracted": 0, "inferred": 0}
+    for md_path, record in file_doc_records:
+        conf = record.get("confidence")
+        if conf not in ANNOTATION_CONFIDENCE_VALUES:
+            return _die(
+                "state-corrupt confidence value {0!r} in {1}; "
+                "run write-file-doc again".format(conf, md_path),
+                code=5,
+            )
+        conf_dist[conf] = conf_dist.get(conf, 0) + 1
+
+    ambiguous_rate = conf_dist["ambiguous"] / total if total > 0 else 0.0
+
+    # --- Metric 5: cross_concern_duplicate_count ---
+    # Walk all OTHER concern dirs under the same package's docs dir.
+    # Parse each sibling md (skip empty / parse errors silently — they surface
+    # in their own concern's verify-file-docs run). Build union of normalized
+    # labels from those dirs, then count how many of the current concern's
+    # records appear in that union.
+    all_concern_dirs = []
+    package_docs_dir = project_root / "docs" / args.package
+    if package_docs_dir.is_dir():
+        for entry in package_docs_dir.iterdir():
+            if entry.is_dir() and entry.name != args.concern:
+                all_concern_dirs.append(entry)
+
+    other_labels = set()  # type: ignore[var-annotated]
+    for other_dir in all_concern_dirs:
+        for sibling_md in other_dir.rglob("*.md"):
+            try:
+                ssize = sibling_md.stat().st_size
+            except OSError:
+                continue
+            if ssize == 0:
+                continue
+            try:
+                stext = sibling_md.read_text(encoding="utf-8", errors="replace")
+                srec, _ = parse_frontmatter(stext)
+            except (OSError, FrontmatterParseError):
+                # Silently skip — these surface in the other concern's run.
+                continue
+            slabel = srec.get("label", "")
+            if isinstance(slabel, str) and slabel.strip():
+                other_labels.add(slabel.lower().strip())
+
+    cross_concern_duplicate_count = 0
+    for _md, record in file_doc_records:
+        label = record.get("label", "")
+        if isinstance(label, str) and label.lower().strip() in other_labels:
+            cross_concern_duplicate_count += 1
+
+    cross_concern_duplicate_rate = (
+        cross_concern_duplicate_count / total if total > 0 else 0.0
+    )
+
+    # --- Gate evaluation ---
+    gate_banned = "pass" if banned_phrase_count == 0 else "fail"
+    gate_ambiguous = (
+        "pass" if ambiguous_rate <= AMBIGUOUS_RATE_THRESHOLD else "fail"
+    )
+    gate_cross = (
+        "pass"
+        if cross_concern_duplicate_rate <= CROSS_CONCERN_DUPLICATE_RATE_THRESHOLD
+        else "fail"
+    )
+
+    # --- Gate: vacuous_pass ---
+    # A concern with a non-empty directory_tree but zero filled mds is a
+    # vacuous pass: the orchestrator skipped the fill loop entirely.
+    # A concern with no tree set (None or empty) is legitimately empty.
+    directory_tree = concern.get("directory_tree") or ""
+    if directory_tree and total == 0:
+        gate_vacuous = "fail"
+    else:
+        gate_vacuous = "pass"
+
+    report = {
+        "ambiguous_rate": ambiguous_rate,
+        "banned_phrase_count": banned_phrase_count,
+        "concern": args.concern,
+        "confidence_distribution": conf_dist,
+        "cross_concern_duplicate_count": cross_concern_duplicate_count,
+        "cross_concern_duplicate_rate": cross_concern_duplicate_rate,
+        "gates": {
+            "ambiguous_rate": gate_ambiguous,
+            "banned_phrase": gate_banned,
+            "cross_concern_duplicate": gate_cross,
+            "vacuous_pass": gate_vacuous,
+        },
+        "missing_cite_count": missing_cite_count,
+        "package": args.package,
+        "sibling_collision_count": sibling_collision_count,
+        "total_md_files": total,
+    }
+
+    sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
+
+    # Emit one stderr line per failed gate; collect all failures before exiting.
+    any_fail = False
+
+    if gate_banned == "fail":
+        any_fail = True
+        sys.stderr.write(
+            "verify-file-docs: banned_phrase gate FAIL: "
+            "{0} md file(s) contain banned phrases\n".format(banned_phrase_count)
+        )
+
+    if gate_ambiguous == "fail":
+        any_fail = True
+        pct = round(ambiguous_rate * 100, 1)
+        sys.stderr.write(
+            "verify-file-docs: ambiguous_rate gate FAIL: "
+            "{0}% (threshold: 10%)\n".format(pct)
+        )
+
+    if gate_cross == "fail":
+        any_fail = True
+        pct = round(cross_concern_duplicate_rate * 100, 1)
+        sys.stderr.write(
+            "verify-file-docs: cross_concern_duplicate gate FAIL: "
+            "{0}% (threshold: 5%)\n".format(pct)
+        )
+
+    if gate_vacuous == "fail":
+        any_fail = True
+        sys.stderr.write(
+            "verify-file-docs: vacuous_pass gate FAIL: "
+            "concern has tree but zero filled md files\n"
+        )
+
+    return 2 if any_fail else 0
