@@ -583,8 +583,9 @@ class ValidatorRoundTripTests(_AnnotationTestBase):
 
         # validate-concern should pass (zero errors) — the annotation
         # field is valid and does not surface additional errors.
-        # NOTE: validate-concern may still fail if other required fields
-        # are incomplete. We've populated them above.
+        # NOTE: this fixture does not write index.json, so B.2's
+        # `file-docs-incomplete` rule gracefully degrades and is skipped.
+        # The test exercises annotation-shape rules, not B.2 enforcement.
         vproc = self._run(
             "validate-concern",
             "--package", "apps/web",

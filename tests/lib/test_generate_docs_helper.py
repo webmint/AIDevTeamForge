@@ -3809,6 +3809,45 @@ class _ConcernTestBase(_RenderTestBase):
     def _read_state(self):
         return json.loads(self.state_file.read_text(encoding="utf-8"))
 
+    def _seed_file_docs(self, package="apps/web", concern="auth",
+                        source_files=None):
+        """Write index.json, run render-file-skeletons, fill each skeleton.
+
+        Called by _fill_minimum_valid_concern in each test class to satisfy
+        the B.2 file-docs-incomplete gate (validate-concern fails if expected
+        .md set is missing or below FILE_DOC_MIN_SIZE_BYTES threshold).
+
+        Steps:
+        1. Write index.json fixture mapping package → {"files": source_files}.
+        2. Run render-file-skeletons to create zero-byte .md skeletons.
+        3. Fill each skeleton with > 50 bytes of content.
+        """
+        if source_files is None:
+            source_files = ["src/{0}/login.ts".format(concern)]
+        index = {"packages": {package: {"files": source_files}}}
+        index_path = self.devforge_dir / "index.json"
+        index_path.write_text(
+            json.dumps(index, indent=2), encoding="utf-8"
+        )
+        proc = self._run(
+            "render-file-skeletons",
+            "--package", package,
+            "--concern", concern,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "render-file-skeletons failed: " + proc.stderr.decode()
+            )
+        # Fill every generated skeleton with > 50 bytes so the B.2 size
+        # threshold is cleared.
+        docs_dir = self.project_root / "docs" / package / concern
+        if docs_dir.exists():
+            for md_path in docs_dir.rglob("*.md"):
+                if md_path.stat().st_size == 0:
+                    md_path.write_text(
+                        "x" * 100, encoding="utf-8"
+                    )
+
 
 class AddConcernTests(_ConcernTestBase):
 
@@ -4382,8 +4421,8 @@ class ValidateConcernTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # annotations-missing gate: at least one annotation required when
-        # directory_tree is set.
+        # _check_concern_annotations enforces annotation shape; add-annotation
+        # populates the dict so that schema check passes.
         self._run("add-annotation",
                   "--package", "apps/web", "--concern", "auth",
                   "--target-path", "src/auth/login.ts",
@@ -4392,6 +4431,8 @@ class ValidateConcernTests(_ConcernTestBase):
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "1",
                   "--model-version", "test-model")
+        # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
+        self._seed_file_docs()
 
     def test_full_concern_passes(self):
         self._fill_minimum_valid_concern()
@@ -4468,12 +4509,14 @@ class ValidateConcernTests(_ConcernTestBase):
         self.assertIn(b"types[0]", proc.stderr)
 
     # ------------------------------------------------------------------
-    # annotations-missing gate tests (Fix D of VALIDATOR-LOOP-PLAN.md)
+    # file-docs-incomplete gate tests (Step B.2 of VALIDATOR-LOOP-B-PLAN.md)
+    # Migrated from Fix D's annotations-missing tests.
     # ------------------------------------------------------------------
 
-    def test_validate_concern_fails_when_tree_set_zero_annotations(self):
-        """Concern with directory_tree set but zero annotations registered
-        must fail validate-concern with rule='annotations-missing'."""
+    def test_validate_concern_fails_when_skeletons_missing(self):
+        """Concern with a source file in index.json but no skeletons rendered
+        must fail validate-concern with rule='file-docs-incomplete' and
+        include 'no skeletons rendered' guidance."""
         self._write_source("src/auth/login.ts", [
             "export function login(id) {",
             "  return id;",
@@ -4495,27 +4538,48 @@ class ValidateConcernTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # No add-annotation call — annotations stays {}.
+        self._run("add-annotation",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--target-path", "src/auth/login.ts",
+                  "--label", "Auth entry point",
+                  "--confidence", "extracted",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1",
+                  "--model-version", "test-model")
+        # Write index.json so the rule can compute the expected set, but
+        # do NOT run render-file-skeletons — skeletons never created.
+        import json as _json
+        (self.devforge_dir / "index.json").write_text(
+            _json.dumps({"packages": {"apps/web": {
+                "files": ["src/auth/login.ts"],
+            }}}),
+            encoding="utf-8",
+        )
         proc = self._run("validate-concern",
                          "--package", "apps/web", "--concern", "auth")
         self.assertEqual(proc.returncode, 2)
-        self.assertIn(b"annotations-missing", proc.stderr)
+        self.assertIn(b"file-docs-incomplete", proc.stderr)
+        self.assertIn(b"no skeletons rendered", proc.stderr)
 
     def test_validate_concern_passes_when_tree_unset_zero_annotations(self):
-        """Empty directory_tree + no annotations must NOT fire
-        annotations-missing (other rules may still fail; this specific
-        rule is exempt when tree is unset)."""
+        """Empty directory_tree + no annotations + no index.json must NOT fire
+        the file-docs-incomplete ERROR (index.json missing triggers graceful
+        degrade; other required-field rules will fire, but not the rule).
+
+        The skip-warning text contains 'file-docs-incomplete' but the bracketed
+        error form [file-docs-incomplete] must be absent."""
         self._init_pkg_concern()
         # do NOT set directory_tree — leave it None (default).
+        # No index.json written — graceful degrade path.
         proc = self._run("validate-concern",
                          "--package", "apps/web", "--concern", "auth")
         # Other required-field errors will fire (overview, directory_tree,
-        # public_surface), but annotations-missing must NOT be among them.
-        self.assertNotIn(b"annotations-missing", proc.stderr)
+        # public_surface), but the file-docs-incomplete ERROR must NOT fire.
+        self.assertNotIn(b"[file-docs-incomplete]", proc.stderr)
 
-    def test_validate_concern_passes_when_tree_set_with_annotations(self):
-        """Concern with directory_tree set AND at least one annotation
-        registered must not trigger the annotations-missing rule."""
+    def test_validate_concern_passes_when_file_docs_filled(self):
+        """Concern with source file in index.json, skeletons rendered, and
+        each skeleton filled (>50 bytes) must not trigger file-docs-incomplete."""
         self._write_source("src/auth/login.ts", [
             "export function login(id) {",
             "  return id;",
@@ -4545,14 +4609,17 @@ class ValidateConcernTests(_ConcernTestBase):
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "1",
                   "--model-version", "test-model")
+        # Seed file docs: index.json + render-file-skeletons + fill >50 bytes.
+        self._seed_file_docs()
         proc = self._run("validate-concern",
                          "--package", "apps/web", "--concern", "auth")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertNotIn(b"annotations-missing", proc.stderr)
+        self.assertNotIn(b"file-docs-incomplete", proc.stderr)
 
     def test_validate_concern_passes_when_tree_whitespace_only(self):
-        """directory_tree containing only whitespace is treated as unset —
-        annotations-missing must NOT fire."""
+        """directory_tree containing only whitespace fails required-fields,
+        but file-docs-incomplete must NOT fire (no index.json = graceful
+        degrade)."""
         self._init_pkg_concern()
         # Directly write whitespace-only tree into state to bypass the
         # setter's blank-rejection guard (we test the validator behaviour,
@@ -4568,12 +4635,15 @@ class ValidateConcernTests(_ConcernTestBase):
         proc = self._run("validate-concern",
                          "--package", "apps/web", "--concern", "auth")
         # Other errors will fire (overview unset, public_surface empty),
-        # but NOT annotations-missing.
-        self.assertNotIn(b"annotations-missing", proc.stderr)
+        # but the file-docs-incomplete ERROR must NOT fire (no index.json =
+        # graceful degrade). The skip-warning text contains the rule name but
+        # the bracketed error form [file-docs-incomplete] must be absent.
+        self.assertNotIn(b"[file-docs-incomplete]", proc.stderr)
 
-    def test_validate_concern_legacy_no_annotations_key(self):
-        """A concern record lacking the 'annotations' key entirely (legacy
-        state predating Step A.1) with a tree set must fire annotations-missing."""
+    def test_validate_concern_file_docs_in_error_list_with_other_rules(self):
+        """Concern with multiple problems (source in index, no skeletons,
+        no public_surface) produces BOTH file-docs-incomplete AND
+        public-surface-nonempty errors — orchestrator sees full picture."""
         self._write_source("src/auth/login.ts", [
             "export function login(id) {",
             "  return id;",
@@ -4583,31 +4653,18 @@ class ValidateConcernTests(_ConcernTestBase):
         self._run("set-concern-tree",
                   "--package", "apps/web", "--concern", "auth",
                   "--text", "auth/\n  login.ts")
-        # Remove the 'annotations' key from state to simulate legacy records.
-        state = self._read_state()
-        del state["packages"]["apps/web"]["concerns"]["auth"]["annotations"]
-        self.state_file.write_text(
-            json.dumps(state, indent=2, sort_keys=True) + "\n",
+        import json as _json
+        (self.devforge_dir / "index.json").write_text(
+            _json.dumps({"packages": {"apps/web": {
+                "files": ["src/auth/login.ts"],
+            }}}),
             encoding="utf-8",
         )
+        # No add-concern-export, no render-file-skeletons.
         proc = self._run("validate-concern",
                          "--package", "apps/web", "--concern", "auth")
         self.assertEqual(proc.returncode, 2)
-        self.assertIn(b"annotations-missing", proc.stderr)
-
-    def test_validate_concern_annotations_missing_in_error_list_with_other_rules(self):
-        """Concern with multiple problems (tree set + zero annotations +
-        no public_surface) produces BOTH annotations-missing AND
-        public-surface-nonempty errors — orchestrator sees full picture."""
-        self._init_pkg_concern()
-        self._run("set-concern-tree",
-                  "--package", "apps/web", "--concern", "auth",
-                  "--text", "auth/\n  login.ts")
-        # No add-annotation, no add-concern-export.
-        proc = self._run("validate-concern",
-                         "--package", "apps/web", "--concern", "auth")
-        self.assertEqual(proc.returncode, 2)
-        self.assertIn(b"annotations-missing", proc.stderr)
+        self.assertIn(b"file-docs-incomplete", proc.stderr)
         self.assertIn(b"public surface", proc.stderr)
 
 
@@ -4646,8 +4703,8 @@ class ValidateConcernOptionalRenderTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # annotations-missing gate: at least one annotation required when
-        # directory_tree is set.
+        # _check_concern_annotations enforces annotation shape; add-annotation
+        # populates the dict so that schema check passes.
         self._run("add-annotation",
                   "--package", "apps/web", "--concern", "auth",
                   "--target-path", "src/auth/login.ts",
@@ -4656,6 +4713,8 @@ class ValidateConcernOptionalRenderTests(_ConcernTestBase):
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "1",
                   "--model-version", "test-model")
+        # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
+        self._seed_file_docs()
 
     def _build_state_with_optional_fields(self):
         """Construct an in-memory state dict where every optional
@@ -4875,8 +4934,8 @@ class RenderConcernDocTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # annotations-missing gate: at least one annotation required when
-        # directory_tree is set.
+        # _check_concern_annotations enforces annotation shape; add-annotation
+        # populates the dict so that schema check passes.
         self._run("add-annotation",
                   "--package", "apps/web", "--concern", "auth",
                   "--target-path", "src/auth/login.ts",
@@ -4885,6 +4944,8 @@ class RenderConcernDocTests(_ConcernTestBase):
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "1",
                   "--model-version", "test-model")
+        # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
+        self._seed_file_docs()
 
     def test_render_doc_happy(self):
         self._fill_minimum_valid_concern()
@@ -5060,8 +5121,8 @@ class FinalModeRenderConcernDocEndToEndTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # annotations-missing gate: at least one annotation required when
-        # directory_tree is set.
+        # _check_concern_annotations enforces annotation shape; add-annotation
+        # populates the dict so that schema check passes.
         self._run("add-annotation",
                   "--package", "apps/web", "--concern", "auth",
                   "--target-path", "src/auth/login.ts",
@@ -5070,6 +5131,8 @@ class FinalModeRenderConcernDocEndToEndTests(_ConcernTestBase):
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "1",
                   "--model-version", "test-model")
+        # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
+        self._seed_file_docs()
 
     def test_cmd_render_concern_doc_final_output_has_none_not_todo(self):
         # End-to-end: render-concern-doc with empty optional sections

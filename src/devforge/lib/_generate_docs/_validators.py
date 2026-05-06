@@ -52,6 +52,7 @@ from ._validators_package import (  # noqa: F401
 
 # --- concern-tier ------------------------------------------------------------
 from ._validators_concern import (  # noqa: F401
+    FILE_DOC_MIN_SIZE_BYTES,
     _check_concern_annotations,
     _check_concern_at_least_one_public_surface,
     _check_concern_codeblocks,
@@ -59,6 +60,7 @@ from ._validators_concern import (  # noqa: F401
     _check_concern_no_todos,
     _check_concern_optional_render,
     _check_concern_required_fields,
+    _check_file_docs_complete,
     cmd_render_concern_doc,
     cmd_validate_concern,
     validate_concern,

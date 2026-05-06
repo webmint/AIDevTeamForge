@@ -14,6 +14,7 @@ Stdlib only. Targets Python 3.8+.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -37,13 +38,21 @@ from ._render import (
     _project_root,
     render_concern_skeleton,
 )
+from ._setters_concern import _load_index_files, _path_contains_trivial_dir
 from ._state import (
     StateLoadError,
     _die,
     _load_state,
     _require_concern,
     _require_package,
+    _state_file_path,
 )
+
+# Minimum file size (in bytes) for a per-source-file .md to be considered
+# non-empty. Exactly at threshold (== FILE_DOC_MIN_SIZE_BYTES) fails; must
+# exceed the threshold (> FILE_DOC_MIN_SIZE_BYTES). Locked at 50 per
+# VALIDATOR-LOOP-B-PLAN.md §B.2 — allows future raise without compat break.
+FILE_DOC_MIN_SIZE_BYTES = 50
 
 
 def _check_concern_required_fields(
@@ -227,35 +236,114 @@ def _check_concern_annotations(concern: Dict[str, Any]) -> List[Dict[str, Any]]:
     return errors
 
 
-def _check_concern_annotations_completeness(
-    concern: Dict[str, Any],
+def _check_file_docs_complete(
+    package_path: str,
+    concern_name: str,
+    project_root: Path,
+    devforge_dir: Path,
 ) -> List[Dict[str, Any]]:
-    """Reject concerns that set a directory_tree but registered zero
-    annotations.
+    """Gate: every expected per-source-file .md must exist and exceed
+    FILE_DOC_MIN_SIZE_BYTES.
 
-    Helper-owns-contract enforcement at the mandatory validate-concern
-    gate. The annotation retry loop (spec prose) and verify-annotations
-    post-batch gate are both skippable by the orchestrator. This rule
-    closes the bypass: if a concern has a tree but no annotations,
-    validate-concern fails, render-concern-doc is blocked.
+    Expected set = index.json files filtered to src/<concern>/, trivial-leaf
+    excluded, empty-suffix excluded. Each maps to:
+      project_root/docs/<package>/<concern>/<suffix>.md
 
-    Falsy or whitespace-only `directory_tree` is exempt (concern legitimately
-    has no tree or tree not yet populated).
+    Graceful degrade (return []) on missing/unreadable index.json or package
+    not in index — validate-concern is a quality gate, not a structural
+    prerequisite; the rest of the rule chain must still run.
+
+    Returns a single error dict (aggregated) or empty list on pass.
     """
-    tree = concern.get("directory_tree")
-    if not tree or not str(tree).strip():
+    files = _load_index_files(devforge_dir, package_path)
+    if files is None:
+        # Graceful degrade — see B.2 §plan. index.json is optional from
+        # validate-concern's perspective; render-file-skeletons is the hard
+        # gated command that requires it.
+        sys.stderr.write(
+            "validate-concern: file-docs-incomplete check skipped"
+            " — index.json missing or package not in index\n"
+        )
         return []
-    annotations = concern.get("annotations") or {}
-    if not annotations:
-        return [_err(
-            "annotations-missing",
-            "annotations",
-            "concern has directory_tree set but zero annotations registered; "
-            "run the per-tree-entry annotation loop (add-annotation + "
-            "validate-annotation) for each non-trivial tree entry, or "
-            "document the skip",
-        )]
-    return []
+
+    subfolder_prefix = "src/{0}/".format(concern_name)
+
+    expected_paths = []  # List of (expected_md_path, suffix) tuples
+    for rel_path in files:
+        if not rel_path.startswith(subfolder_prefix):
+            continue
+        if _path_contains_trivial_dir(rel_path):
+            continue
+        suffix = rel_path[len(subfolder_prefix):]
+        if not suffix:
+            continue
+        expected_md = (
+            project_root / "docs" / package_path / concern_name / (suffix + ".md")
+        )
+        expected_paths.append(expected_md)
+
+    if not expected_paths:
+        return []
+
+    missing = []
+    empty = []
+    for md_path in expected_paths:
+        if not md_path.exists():
+            missing.append(md_path)
+        elif os.path.getsize(str(md_path)) <= FILE_DOC_MIN_SIZE_BYTES:
+            empty.append(md_path)
+
+    if not missing and not empty:
+        return []
+
+    # Aggregate all offenders into a single error dict (single-error contract).
+    total_bad = len(missing) + len(empty)
+    total_expected = len(expected_paths)
+
+    # Collect up to 5 representative offenders for the message.
+    offenders = []
+    for p in missing[:5]:
+        try:
+            rel = p.relative_to(project_root)
+        except ValueError:
+            rel = p
+        offenders.append("MISSING: {0}".format(rel))
+    remaining = 5 - len(offenders)
+    if remaining > 0:
+        for p in empty[:remaining]:
+            try:
+                rel = p.relative_to(project_root)
+            except ValueError:
+                rel = p
+            offenders.append("EMPTY: {0}".format(rel))
+
+    # Check whether any skeletons exist in docs/<P>/<C>/ at all.
+    docs_concern_dir = project_root / "docs" / package_path / concern_name
+    any_skeletons_on_disk = (
+        docs_concern_dir.exists()
+        and any(docs_concern_dir.rglob("*.md"))
+    )
+
+    parts = [
+        "{0} of {1} file docs incomplete".format(total_bad, total_expected),
+    ]
+    # Prepend "no skeletons rendered" guidance when any offender is MISSING
+    # and there are no .md files at all in the concern docs dir — indicates
+    # render-file-skeletons was never run (vs. fill loop skipped).
+    if missing and not any_skeletons_on_disk:
+        parts.insert(0, "no skeletons rendered, run render-file-skeletons first")
+
+    parts.append("first 5 offenders: " + "; ".join(offenders))
+    parts.append(
+        "run render-file-skeletons (skeletons missing) and the per-md fill"
+        " loop (skeletons unfilled); see VALIDATOR-LOOP-B-PLAN.md §B.3"
+    )
+
+    return [_err(
+        "file-docs-incomplete",
+        "file_docs",
+        " | ".join(parts),
+    )]
 
 
 def _check_concern_enums(concern: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -383,13 +471,16 @@ def validate_concern(
             "concern {0!r} not registered under {1!r}; run add-concern "
             "first".format(concern_name, package_path),
         )]
+    devforge_dir = _state_file_path().parent
     errors: List[Dict[str, Any]] = []
     errors.extend(_check_concern_required_fields(concern))
     errors.extend(_check_concern_at_least_one_public_surface(concern))
     errors.extend(_check_concern_codeblocks(concern, project_root))
     errors.extend(_check_concern_enums(concern))
     errors.extend(_check_concern_annotations(concern))
-    errors.extend(_check_concern_annotations_completeness(concern))
+    errors.extend(_check_file_docs_complete(
+        package_path, concern_name, project_root, devforge_dir,
+    ))
     errors.extend(_check_concern_no_todos(state, package_path, concern_name))
     errors.extend(_check_concern_optional_render(
         state, concern, package_path, concern_name,
