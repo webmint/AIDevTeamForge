@@ -31,4 +31,5 @@ CLAUDE_AGENT_DEFAULTS_BY_TIER: dict[str, str] = {
     "think":  "opus",
     "do":     "sonnet",
     "verify": "sonnet",
+    "scan":   "haiku",
 }

@@ -21,11 +21,11 @@ Claude file but authoring data.
 Fields in the meta block:
   - name         : agent identifier (required)
   - description  : when-to-use hint (required)
-  - model_tier   : think | do | verify (required; semantic, not a runtime placeholder)
+  - model_tier   : think | do | verify | scan (required; semantic, not a runtime placeholder)
 
 Model tier is translated into Claude boot-safe defaults (NOT placeholders)
 so Claude Code can parse these files at launch without error:
-  opus | sonnet | sonnet (per tier)
+  opus | sonnet | sonnet | haiku (per tier)
 
 Defaults live in `scripts/lib/install_defaults.py`. The wizard OVERWRITES
 these values via key-based regex replacement (not placeholder substitution)
@@ -54,7 +54,7 @@ from lib.install_defaults import CLAUDE_AGENT_DEFAULTS_BY_TIER  # noqa: E402
 # Claude's native agent file format. See _parse_source() below.
 
 
-VALID_TIERS = {"think", "do", "verify"}
+VALID_TIERS = {"think", "do", "verify", "scan"}
 
 TARGET_SUBDIR = ".claude/agents"
 

@@ -2584,7 +2584,7 @@ class ValidatePackageTests(_RenderTestBase):
         bug. Without this validator rule, the render bug surfaces as a
         silently-malformed final doc with [TODO] next to populated state.
         """
-        from _generate_docs import _validators as v
+        from _generate_docs import _validators_package as v
         from _generate_docs._state import (
             default_state,
             default_package_record,
@@ -3110,15 +3110,19 @@ class RenderPackageDocTests(_RenderTestBase):
         self.assertTrue(md_path.exists())
         self.assertFalse(skeleton.exists(), "skeleton should be removed")
         text = md_path.read_text(encoding="utf-8")
-        # Required-field TODOs must NOT appear; optional-section TODOs
-        # (scripts / hazards / usage_example / consumer_pattern) are
-        # acceptable in the .md when the LLM elected not to fill them.
+        # Required-field TODOs must NOT appear in the final doc.
         self.assertNotIn("[TODO: 1-2 paragraphs", text)
         self.assertNotIn("[TODO: ascii tree", text)
         self.assertNotIn("[TODO: enumerate package exports", text)
         self.assertNotIn("[TODO: enumerate via add-package-dep", text)
         # Required Tech Stack [TODO] (primary_language) must not appear.
         self.assertIn("TypeScript", text)
+        # Optional-section LLM-targeted setter-name TODOs must also NOT
+        # appear in the final doc (mode="final" renders _(none)_ instead).
+        self.assertNotIn("add-package-hazard", text)
+        self.assertNotIn("set-package-usage-example", text)
+        self.assertNotIn("set-package-consumer-pattern", text)
+        self.assertNotIn("add-package-script", text)
 
     def test_validation_failure_blocks_md_write(self):
         # Empty package: validation fails, .md must NOT be written.
@@ -4378,6 +4382,16 @@ class ValidateConcernTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
+        # annotations-missing gate: at least one annotation required when
+        # directory_tree is set.
+        self._run("add-annotation",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--target-path", "src/auth/login.ts",
+                  "--label", "Auth entry point",
+                  "--confidence", "extracted",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1",
+                  "--model-version", "test-model")
 
     def test_full_concern_passes(self):
         self._fill_minimum_valid_concern()
@@ -4453,6 +4467,149 @@ class ValidateConcernTests(_ConcernTestBase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn(b"types[0]", proc.stderr)
 
+    # ------------------------------------------------------------------
+    # annotations-missing gate tests (Fix D of VALIDATOR-LOOP-PLAN.md)
+    # ------------------------------------------------------------------
+
+    def test_validate_concern_fails_when_tree_set_zero_annotations(self):
+        """Concern with directory_tree set but zero annotations registered
+        must fail validate-concern with rule='annotations-missing'."""
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Auth.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "src/\n  auth/login.ts")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "Logs in.",
+                  "--language", "ts",
+                  "--code-snippet",
+                  "export function login(id) {\n  return id;\n}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        # No add-annotation call — annotations stays {}.
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"annotations-missing", proc.stderr)
+
+    def test_validate_concern_passes_when_tree_unset_zero_annotations(self):
+        """Empty directory_tree + no annotations must NOT fire
+        annotations-missing (other rules may still fail; this specific
+        rule is exempt when tree is unset)."""
+        self._init_pkg_concern()
+        # do NOT set directory_tree — leave it None (default).
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        # Other required-field errors will fire (overview, directory_tree,
+        # public_surface), but annotations-missing must NOT be among them.
+        self.assertNotIn(b"annotations-missing", proc.stderr)
+
+    def test_validate_concern_passes_when_tree_set_with_annotations(self):
+        """Concern with directory_tree set AND at least one annotation
+        registered must not trigger the annotations-missing rule."""
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Auth.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "Logs in.",
+                  "--language", "ts",
+                  "--code-snippet",
+                  "export function login(id) {\n  return id;\n}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-annotation",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--target-path", "src/auth/login.ts",
+                  "--label", "Auth entry",
+                  "--confidence", "extracted",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1",
+                  "--model-version", "test-model")
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn(b"annotations-missing", proc.stderr)
+
+    def test_validate_concern_passes_when_tree_whitespace_only(self):
+        """directory_tree containing only whitespace is treated as unset —
+        annotations-missing must NOT fire."""
+        self._init_pkg_concern()
+        # Directly write whitespace-only tree into state to bypass the
+        # setter's blank-rejection guard (we test the validator behaviour,
+        # not the setter).
+        state = self._read_state()
+        state["packages"]["apps/web"]["concerns"]["auth"][
+            "directory_tree"
+        ] = "   \n  "
+        self.state_file.write_text(
+            json.dumps(state, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        # Other errors will fire (overview unset, public_surface empty),
+        # but NOT annotations-missing.
+        self.assertNotIn(b"annotations-missing", proc.stderr)
+
+    def test_validate_concern_legacy_no_annotations_key(self):
+        """A concern record lacking the 'annotations' key entirely (legacy
+        state predating Step A.1) with a tree set must fire annotations-missing."""
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        # Remove the 'annotations' key from state to simulate legacy records.
+        state = self._read_state()
+        del state["packages"]["apps/web"]["concerns"]["auth"]["annotations"]
+        self.state_file.write_text(
+            json.dumps(state, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"annotations-missing", proc.stderr)
+
+    def test_validate_concern_annotations_missing_in_error_list_with_other_rules(self):
+        """Concern with multiple problems (tree set + zero annotations +
+        no public_surface) produces BOTH annotations-missing AND
+        public-surface-nonempty errors — orchestrator sees full picture."""
+        self._init_pkg_concern()
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        # No add-annotation, no add-concern-export.
+        proc = self._run("validate-concern",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"annotations-missing", proc.stderr)
+        self.assertIn(b"public surface", proc.stderr)
+
 
 class ValidateConcernOptionalRenderTests(_ConcernTestBase):
     """Tests for the concern-tier `_check_concern_optional_render` rule.
@@ -4489,6 +4646,16 @@ class ValidateConcernOptionalRenderTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
+        # annotations-missing gate: at least one annotation required when
+        # directory_tree is set.
+        self._run("add-annotation",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--target-path", "src/auth/login.ts",
+                  "--label", "Auth entry point",
+                  "--confidence", "extracted",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1",
+                  "--model-version", "test-model")
 
     def _build_state_with_optional_fields(self):
         """Construct an in-memory state dict where every optional
@@ -4610,7 +4777,7 @@ class ValidateConcernOptionalRenderTests(_ConcernTestBase):
         """Patch render_concern_skeleton to return a string containing
         `marker_to_inject` (a `_TODO_CONCERN_*` sentinel), then call
         validate_concern directly. Returns the error list."""
-        from _generate_docs import _validators as v
+        from _generate_docs import _validators_concern as v
         original = v.render_concern_skeleton
 
         def buggy_render(s, p, c):
@@ -4708,6 +4875,16 @@ class RenderConcernDocTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
+        # annotations-missing gate: at least one annotation required when
+        # directory_tree is set.
+        self._run("add-annotation",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--target-path", "src/auth/login.ts",
+                  "--label", "Auth entry point",
+                  "--confidence", "extracted",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1",
+                  "--model-version", "test-model")
 
     def test_render_doc_happy(self):
         self._fill_minimum_valid_concern()
@@ -4754,6 +4931,336 @@ class RenderConcernDocTests(_ConcernTestBase):
                   "--package", "apps/web", "--concern", "auth")
         b = doc_path.read_bytes()
         self.assertEqual(a, b)
+
+
+# ---------------------------------------------------------------------------
+# FinalModeRenderConcernTests
+#
+# Tests that verify the mode="final" render path for concern-tier optional
+# sections. In final mode, empty optional sections must emit `_(none)_`
+# instead of the LLM-targeted setter-name [TODO] markers. Required-field
+# TODOs are unchanged in either mode (required-field setters cannot be
+# empty after validation passes — this tests the pure-function layer
+# directly, bypassing the CLI validation gate).
+# ---------------------------------------------------------------------------
+
+
+class FinalModeRenderConcernTests(_ConcernTestBase):
+    """Unit tests for render_concern_skeleton mode="final" on optional sections.
+
+    Tests use the pure render function directly (not the CLI subprocess) to
+    isolate the mode parameter behaviour without requiring a fully-valid
+    concern state that passes validate-concern.
+    """
+
+    def _make_minimal_state(self, package="apps/web", concern="auth"):
+        """Build a minimal in-memory state dict with one package and one
+        concern. No fields populated — all optional sections empty."""
+        return {
+            "packages": {
+                package: {
+                    "name": "web",
+                    "concerns": {
+                        concern: {
+                            "concern_name": concern,
+                            "overview": None,
+                            "directory_tree": None,
+                            "public_surface": [],
+                            "types": [],
+                            "dependencies": [],
+                            "hazards": [],
+                            "usage_example": None,
+                        }
+                    },
+                }
+            }
+        }
+
+    def _render_direct(self, state, mode, package="apps/web", concern="auth"):
+        from _generate_docs._render import render_concern_skeleton
+        return render_concern_skeleton(state, package, concern, mode=mode)
+
+    def test_empty_hazards_final_mode_emits_none(self):
+        # Empty hazards in final mode must emit _(none)_ and NOT the
+        # LLM-targeted setter-name TODO.
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("add-concern-hazard", md)
+
+    def test_empty_hazards_skeleton_mode_emits_todo(self):
+        # Regression guard: skeleton mode must still emit the LLM-targeted
+        # TODO with "add-concern-hazard" in the Hazards section.
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("add-concern-hazard", md)
+        self.assertNotIn("_(none)_", md)
+
+    def test_empty_usage_example_final_mode_emits_none(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("set-concern-usage-example", md)
+
+    def test_empty_usage_example_skeleton_mode_emits_todo(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("set-concern-usage-example", md)
+
+    def test_empty_types_final_mode_emits_none(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("add-concern-type", md)
+
+    def test_empty_types_skeleton_mode_emits_todo(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("add-concern-type", md)
+
+    def test_empty_dependencies_final_mode_emits_none(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("add-concern-dep", md)
+
+    def test_empty_dependencies_skeleton_mode_emits_todo(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("add-concern-dep", md)
+
+
+class FinalModeRenderConcernDocEndToEndTests(_ConcernTestBase):
+    """End-to-end CLI tests for cmd_render_concern_doc final-mode output.
+
+    Uses subprocess CLI so the real argparse + dispatch + validate + render
+    path is exercised. Requires a fully valid concern state that passes
+    validate-concern.
+    """
+
+    def _fill_minimum_valid_concern(self):
+        self._write_source("src/auth/login.ts", [
+            "export function login(id) {",
+            "  return id;",
+            "}",
+        ])
+        self._init_pkg_concern()
+        self._run("set-concern-overview",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "Auth.")
+        self._run("set-concern-tree",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--text", "auth/\n  login.ts")
+        self._run("add-concern-export",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--name", "login", "--kind", "function",
+                  "--signature", "", "--description", "Logs in.",
+                  "--language", "ts",
+                  "--code-snippet",
+                  "export function login(id) {\n  return id;\n}",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        # annotations-missing gate: at least one annotation required when
+        # directory_tree is set.
+        self._run("add-annotation",
+                  "--package", "apps/web", "--concern", "auth",
+                  "--target-path", "src/auth/login.ts",
+                  "--label", "Auth entry point",
+                  "--confidence", "extracted",
+                  "--cite-file", "src/auth/login.ts",
+                  "--cite-start", "1", "--cite-end", "1",
+                  "--model-version", "test-model")
+
+    def test_cmd_render_concern_doc_final_output_has_none_not_todo(self):
+        # End-to-end: render-concern-doc with empty optional sections
+        # must produce _(none)_ in the final .md, NOT the setter-name TODO.
+        self._fill_minimum_valid_concern()
+        proc = self._run("render-concern-doc",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        doc_path = (
+            self.project_root / "docs" / "apps/web" / "auth" / "index.md"
+        )
+        text = doc_path.read_text(encoding="utf-8")
+        # Optional-section setter-name TODOs must NOT appear in the final doc.
+        self.assertNotIn("add-concern-hazard", text)
+        self.assertNotIn("set-concern-usage-example", text)
+        self.assertNotIn("add-concern-type", text)
+        self.assertNotIn("add-concern-dep", text)
+        # The human-facing placeholder must appear in their place.
+        self.assertIn("_(none)_", text)
+
+    def test_cmd_render_concern_skeleton_still_emits_todos(self):
+        # Regression guard: render-concern-skeleton must still emit
+        # LLM-targeted setter-name TODOs (not _(none)_).
+        self._init_pkg_concern()
+        proc = self._run("render-concern-skeleton",
+                         "--package", "apps/web", "--concern", "auth")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        skel_path = (
+            self.project_root / "docs" / "apps/web" / "auth"
+            / "index.md.skeleton"
+        )
+        text = skel_path.read_text(encoding="utf-8")
+        # Skeleton must have the LLM-targeted TODOs.
+        self.assertIn("add-concern-hazard", text)
+        self.assertIn("set-concern-usage-example", text)
+        # Must NOT have the final-mode _(none)_ placeholder.
+        self.assertNotIn("_(none)_", text)
+
+
+# ---------------------------------------------------------------------------
+# FinalModeRenderPackageTests
+#
+# Mirror of FinalModeRenderConcernTests for the package tier.
+# Covers scripts / hazards / usage_example / consumer_pattern.
+# ---------------------------------------------------------------------------
+
+
+class FinalModeRenderPackageTests(_RenderTestBase):
+    """Unit tests for render_package_skeleton mode="final" on optional sections.
+
+    Tests use the pure render function directly to isolate mode parameter
+    behaviour without requiring a fully-valid package state.
+    """
+
+    def _make_minimal_state(self, package="apps/web"):
+        """Build a minimal in-memory state dict with one empty package."""
+        return {
+            "packages": {
+                package: {
+                    "name": "web",
+                    "overview": None,
+                    "directory_tree": None,
+                    "primary_language": None,
+                    "framework": None,
+                    "build_tool": None,
+                    "scripts": {},
+                    "exports": [],
+                    "dependencies": [],
+                    "hazards": [],
+                    "usage_example": None,
+                    "consumer_pattern": None,
+                    "concerns": {},
+                }
+            }
+        }
+
+    def _render_direct(self, state, mode, package="apps/web"):
+        from _generate_docs._render import render_package_skeleton
+        return render_package_skeleton(state, package, mode=mode)
+
+    def test_empty_hazards_final_mode_emits_none(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("add-package-hazard", md)
+
+    def test_empty_hazards_skeleton_mode_emits_todo(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("add-package-hazard", md)
+        self.assertNotIn("_(none)_", md)
+
+    def test_empty_usage_example_final_mode_emits_none(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("set-package-usage-example", md)
+
+    def test_empty_usage_example_skeleton_mode_emits_todo(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("set-package-usage-example", md)
+
+    def test_empty_consumer_pattern_final_mode_emits_none(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("set-package-consumer-pattern", md)
+
+    def test_empty_consumer_pattern_skeleton_mode_emits_todo(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("set-package-consumer-pattern", md)
+
+    def test_empty_scripts_final_mode_emits_none(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="final")
+        self.assertIn("_(none)_", md)
+        self.assertNotIn("add-package-script", md)
+
+    def test_empty_scripts_skeleton_mode_emits_todo(self):
+        state = self._make_minimal_state()
+        md = self._render_direct(state, mode="skeleton")
+        self.assertIn("add-package-script", md)
+
+
+class FinalModeRenderPackageDocEndToEndTests(_RenderTestBase):
+    """End-to-end CLI tests for cmd_render_package_doc final-mode output."""
+
+    def _fill_minimum_valid(self):
+        src_lines = [
+            "export function fetchUser(id) {",
+            "  return db.users.get(id);",
+            "}",
+        ]
+        self._write_source("src/api.ts", src_lines)
+        self._add_pkg()
+        self._run("set-package-overview",
+                  "--path", "apps/web", "--text", "Web.")
+        self._run("set-package-tree",
+                  "--path", "apps/web", "--text", "src/\n  api.ts")
+        self._run("set-package-language",
+                  "--path", "apps/web", "--value", "TypeScript")
+        self._run("add-package-export",
+                  "--path", "apps/web", "--name", "fetchUser",
+                  "--kind", "function",
+                  "--signature", "",
+                  "--description", "Fetches a user.",
+                  "--language", "ts",
+                  "--code-snippet", "\n".join(src_lines),
+                  "--cite-file", "src/api.ts",
+                  "--cite-start", "1", "--cite-end", "3")
+        self._run("add-package-dep",
+                  "--path", "apps/web", "--name", "react",
+                  "--kind", "external", "--version", "18",
+                  "--purpose", "UI lib.")
+
+    def test_cmd_render_package_doc_final_output_has_none_not_todo(self):
+        # End-to-end: render-package-doc with empty optional sections
+        # must produce _(none)_ in the final .md, NOT setter-name TODOs.
+        self._fill_minimum_valid()
+        proc = self._run("render-package-doc", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        md_path = self.project_root / "docs" / "apps/web" / "index.md"
+        text = md_path.read_text(encoding="utf-8")
+        # Optional-section setter-name TODOs must NOT appear in final doc.
+        self.assertNotIn("add-package-hazard", text)
+        self.assertNotIn("set-package-usage-example", text)
+        self.assertNotIn("set-package-consumer-pattern", text)
+        self.assertNotIn("add-package-script", text)
+        # The human-facing placeholder must appear in their place.
+        self.assertIn("_(none)_", text)
+        # Required-field content must still be correct.
+        self.assertIn("TypeScript", text)
+        self.assertIn("fetchUser", text)
+
+    def test_cmd_render_package_skeleton_still_emits_todos(self):
+        # Regression guard: render-package-skeleton must still emit
+        # LLM-targeted setter-name TODOs (not _(none)_).
+        self._add_pkg()
+        proc = self._run("render-package-skeleton", "--path", "apps/web")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        skel_path = self.project_root / "docs" / "apps/web" / "index.md.skeleton"
+        text = skel_path.read_text(encoding="utf-8")
+        # Skeleton must have the LLM-targeted TODOs for all optional sections.
+        self.assertIn("add-package-hazard", text)
+        self.assertIn("set-package-usage-example", text)
+        self.assertIn("set-package-consumer-pattern", text)
+        self.assertIn("add-package-script", text)
+        # Must NOT have the final-mode _(none)_ placeholder.
+        self.assertNotIn("_(none)_", text)
 
 
 class DecompositionGateTests(_RenderTestBase):

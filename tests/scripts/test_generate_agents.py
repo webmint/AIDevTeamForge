@@ -227,6 +227,41 @@ class ToolsPropagationTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# ScanTierTests — scan → haiku tier mapping.
+# ---------------------------------------------------------------------------
+
+
+class ScanTierTests(unittest.TestCase):
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    # scan tier emits `model: haiku` in frontmatter
+    def test_scan_tier_emits_haiku_model(self):
+        src = (
+            "```yaml\n"
+            "name: tree-annotator\n"
+            'description: "Cheap per-tree-entry annotation calls for generate-docs Phase 3."\n'
+            "model_tier: scan\n"
+            "```\n"
+            "\n"
+            "Body content for scan-tier agent.\n"
+        )
+        _write_source(self.tmp_path, "tree-annotator", src)
+        generate_agents._render_one(
+            self.tmp_path / "src" / "agents" / "tree-annotator.md",
+            self.tmp_path,
+        )
+        rendered = _read_emitted(self.tmp_path, "tree-annotator")
+        fm = _frontmatter_block(rendered)
+        self.assertIn("model: haiku", fm)
+
+
+# ---------------------------------------------------------------------------
 # ExistingAgentRegressionTests — change 5 of the task spec.
 #
 # Real shipped agents must continue to render with EXACTLY name / description /
