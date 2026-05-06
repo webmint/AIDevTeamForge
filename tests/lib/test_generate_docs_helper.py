@@ -4421,16 +4421,6 @@ class ValidateConcernTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # _check_concern_annotations enforces annotation shape; add-annotation
-        # populates the dict so that schema check passes.
-        self._run("add-annotation",
-                  "--package", "apps/web", "--concern", "auth",
-                  "--target-path", "src/auth/login.ts",
-                  "--label", "Auth entry point",
-                  "--confidence", "extracted",
-                  "--cite-file", "src/auth/login.ts",
-                  "--cite-start", "1", "--cite-end", "1",
-                  "--model-version", "test-model")
         # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
         self._seed_file_docs()
 
@@ -4538,14 +4528,6 @@ class ValidateConcernTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        self._run("add-annotation",
-                  "--package", "apps/web", "--concern", "auth",
-                  "--target-path", "src/auth/login.ts",
-                  "--label", "Auth entry point",
-                  "--confidence", "extracted",
-                  "--cite-file", "src/auth/login.ts",
-                  "--cite-start", "1", "--cite-end", "1",
-                  "--model-version", "test-model")
         # Write index.json so the rule can compute the expected set, but
         # do NOT run render-file-skeletons — skeletons never created.
         import json as _json
@@ -4601,14 +4583,6 @@ class ValidateConcernTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        self._run("add-annotation",
-                  "--package", "apps/web", "--concern", "auth",
-                  "--target-path", "src/auth/login.ts",
-                  "--label", "Auth entry",
-                  "--confidence", "extracted",
-                  "--cite-file", "src/auth/login.ts",
-                  "--cite-start", "1", "--cite-end", "1",
-                  "--model-version", "test-model")
         # Seed file docs: index.json + render-file-skeletons + fill >50 bytes.
         self._seed_file_docs()
         proc = self._run("validate-concern",
@@ -4703,16 +4677,6 @@ class ValidateConcernOptionalRenderTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # _check_concern_annotations enforces annotation shape; add-annotation
-        # populates the dict so that schema check passes.
-        self._run("add-annotation",
-                  "--package", "apps/web", "--concern", "auth",
-                  "--target-path", "src/auth/login.ts",
-                  "--label", "Auth entry point",
-                  "--confidence", "extracted",
-                  "--cite-file", "src/auth/login.ts",
-                  "--cite-start", "1", "--cite-end", "1",
-                  "--model-version", "test-model")
         # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
         self._seed_file_docs()
 
@@ -4934,16 +4898,6 @@ class RenderConcernDocTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # _check_concern_annotations enforces annotation shape; add-annotation
-        # populates the dict so that schema check passes.
-        self._run("add-annotation",
-                  "--package", "apps/web", "--concern", "auth",
-                  "--target-path", "src/auth/login.ts",
-                  "--label", "Auth entry point",
-                  "--confidence", "extracted",
-                  "--cite-file", "src/auth/login.ts",
-                  "--cite-start", "1", "--cite-end", "1",
-                  "--model-version", "test-model")
         # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
         self._seed_file_docs()
 
@@ -5121,16 +5075,6 @@ class FinalModeRenderConcernDocEndToEndTests(_ConcernTestBase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        # _check_concern_annotations enforces annotation shape; add-annotation
-        # populates the dict so that schema check passes.
-        self._run("add-annotation",
-                  "--package", "apps/web", "--concern", "auth",
-                  "--target-path", "src/auth/login.ts",
-                  "--label", "Auth entry point",
-                  "--confidence", "extracted",
-                  "--cite-file", "src/auth/login.ts",
-                  "--cite-start", "1", "--cite-end", "1",
-                  "--model-version", "test-model")
         # B.2 file-docs-incomplete gate: index.json + skeletons + filled mds.
         self._seed_file_docs()
 

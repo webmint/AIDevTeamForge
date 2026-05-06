@@ -1,4 +1,4 @@
-"""Re-export shim for the generate_docs validator surface (post-2026-05-06 split).
+"""Re-export shim for the generate_docs validator surface (post-2026-05-07 B.5 cleanup).
 
 Orchestration moved to tier modules: _validators_package owns package-tier
 render-coupled functions; _validators_concern owns concern-tier ones. This
@@ -53,7 +53,6 @@ from ._validators_package import (  # noqa: F401
 # --- concern-tier ------------------------------------------------------------
 from ._validators_concern import (  # noqa: F401
     FILE_DOC_MIN_SIZE_BYTES,
-    _check_concern_annotations,
     _check_concern_at_least_one_public_surface,
     _check_concern_codeblocks,
     _check_concern_enums,
@@ -66,8 +65,8 @@ from ._validators_concern import (  # noqa: F401
     validate_concern,
 )
 
-# --- annotation-tier ---------------------------------------------------------
-from ._validators_annotation import (  # noqa: F401
+# --- file-doc-tier (B.3 + B.4) -----------------------------------------------
+from ._validators_file_doc import (  # noqa: F401
     AMBIGUOUS_RATE_THRESHOLD,
     BANNED_PHRASE_TOLERANCE,
     CROSS_CONCERN_DUPLICATE_RATE_THRESHOLD,
@@ -75,12 +74,9 @@ from ._validators_annotation import (  # noqa: F401
     _check_annotation_banned_phrase,
     _check_annotation_cite_resolves,
     _check_annotation_schema,
-    _check_annotation_specificity,
     _check_file_doc_specificity,
     _recompute_content_hash,
-    cmd_validate_annotation,
     cmd_validate_file_doc,
-    cmd_verify_annotations,
     cmd_verify_file_docs,
 )
 

@@ -136,14 +136,6 @@ class _FileDocsBase(unittest.TestCase):
                   "export function login(id) {\n  return id;\n}",
                   "--cite-file", "src/auth/login.ts",
                   "--cite-start", "1", "--cite-end", "3")
-        self._run("add-annotation",
-                  "--package", pkg, "--concern", concern,
-                  "--target-path", "src/auth/login.ts",
-                  "--label", "Auth entry point",
-                  "--confidence", "extracted",
-                  "--cite-file", "src/auth/login.ts",
-                  "--cite-start", "1", "--cite-end", "1",
-                  "--model-version", "test-model")
 
     def _render_skeletons(self, pkg="apps/web", concern="auth"):
         r = self._run("render-file-skeletons",

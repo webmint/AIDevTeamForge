@@ -1,5 +1,5 @@
 """Concern-tier validation rules: required fields, public surface, CodeBlock
-checks, annotations, enum paranoia, and render-dependent orchestration.
+checks, enum paranoia, file-doc completeness, and render-dependent orchestration.
 
 Owns all concern-tier validation including the render-coupled functions
 (`_check_concern_no_todos`, `_check_concern_optional_render`,
@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from generate_docs_schema import (
-    ANNOTATION_CONFIDENCE_VALUES,
     DEPENDENCY_KINDS,
     EXPORT_KINDS,
     HAZARD_CATEGORIES,
@@ -125,113 +124,6 @@ def _check_concern_codeblocks(
         else:
             errors.extend(_check_codeblock(
                 usage, "usage_example", project_root,
-            ))
-    return errors
-
-
-def _check_concern_annotations(concern: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Validate the structure of each annotation record in concern["annotations"].
-
-    Called by `validate_concern` as a paranoia layer over set-time
-    validation — catches state-file corruption where a field was written
-    directly rather than through the `add-annotation` setter.
-
-    Rules per annotation record:
-    - `label`: non-empty string, no control chars (single-line).
-    - `confidence`: one of the three enumerated values.
-    - `evidence`: dict with `file` (str), `start` (int >= 1), `end` (int >= start).
-    - `model_version`: non-empty string.
-    - `content_hash`: non-empty string (format is sha256 hex — we don't
-      re-compute, just confirm it's present and non-empty).
-    """
-    raw = concern.get("annotations")
-    if raw is None or raw == {}:
-        return []
-    if not isinstance(raw, dict):
-        return [_err(
-            "annotations-malformed", "annotations",
-            "annotations must be a dict, got {0}".format(type(raw).__name__),
-        )]
-    errors: List[Dict[str, Any]] = []
-    for target_path, rec in raw.items():
-        prefix = "annotations[{0!r}]".format(target_path)
-        if not isinstance(rec, dict):
-            errors.append(_err(
-                "annotation-not-dict", prefix,
-                "{0} must be a dict".format(prefix),
-            ))
-            continue
-        # label
-        label = rec.get("label")
-        if not isinstance(label, str) or label.strip() == "":
-            errors.append(_err(
-                "annotation-label-missing", prefix + ".label",
-                "{0}.label must be a non-empty string".format(prefix),
-            ))
-        # confidence enum
-        confidence = rec.get("confidence")
-        if confidence not in ANNOTATION_CONFIDENCE_VALUES:
-            errors.append(_err(
-                "annotation-confidence-invalid", prefix + ".confidence",
-                "{0}.confidence must be one of {1}, got {2!r}".format(
-                    prefix, sorted(ANNOTATION_CONFIDENCE_VALUES), confidence,
-                ),
-            ))
-        # evidence sub-dict
-        evidence = rec.get("evidence")
-        if not isinstance(evidence, dict):
-            errors.append(_err(
-                "annotation-evidence-malformed", prefix + ".evidence",
-                "{0}.evidence must be a dict".format(prefix),
-            ))
-        else:
-            ev_file = evidence.get("file")
-            if not isinstance(ev_file, str) or ev_file.strip() == "":
-                errors.append(_err(
-                    "annotation-evidence-file-missing",
-                    prefix + ".evidence.file",
-                    "{0}.evidence.file must be a non-empty string".format(prefix),
-                ))
-            ev_start = evidence.get("start")
-            ev_end = evidence.get("end")
-            if not isinstance(ev_start, int) or isinstance(ev_start, bool):
-                errors.append(_err(
-                    "annotation-evidence-start-invalid",
-                    prefix + ".evidence.start",
-                    "{0}.evidence.start must be an int".format(prefix),
-                ))
-            elif ev_start < 1:
-                errors.append(_err(
-                    "annotation-evidence-start-invalid",
-                    prefix + ".evidence.start",
-                    "{0}.evidence.start must be >= 1".format(prefix),
-                ))
-            if not isinstance(ev_end, int) or isinstance(ev_end, bool):
-                errors.append(_err(
-                    "annotation-evidence-end-invalid",
-                    prefix + ".evidence.end",
-                    "{0}.evidence.end must be an int".format(prefix),
-                ))
-            elif isinstance(ev_start, int) and not isinstance(ev_start, bool):
-                if ev_end < ev_start:
-                    errors.append(_err(
-                        "annotation-evidence-end-invalid",
-                        prefix + ".evidence.end",
-                        "{0}.evidence.end must be >= start".format(prefix),
-                    ))
-        # model_version
-        model_version = rec.get("model_version")
-        if not isinstance(model_version, str) or model_version.strip() == "":
-            errors.append(_err(
-                "annotation-model-version-missing", prefix + ".model_version",
-                "{0}.model_version must be a non-empty string".format(prefix),
-            ))
-        # content_hash
-        content_hash = rec.get("content_hash")
-        if not isinstance(content_hash, str) or content_hash.strip() == "":
-            errors.append(_err(
-                "annotation-content-hash-missing", prefix + ".content_hash",
-                "{0}.content_hash must be a non-empty string".format(prefix),
             ))
     return errors
 
@@ -477,7 +369,6 @@ def validate_concern(
     errors.extend(_check_concern_at_least_one_public_surface(concern))
     errors.extend(_check_concern_codeblocks(concern, project_root))
     errors.extend(_check_concern_enums(concern))
-    errors.extend(_check_concern_annotations(concern))
     errors.extend(_check_file_docs_complete(
         package_path, concern_name, project_root, devforge_dir,
     ))

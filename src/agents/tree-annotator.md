@@ -89,7 +89,7 @@ Do NOT just rephrase the prior label. Refine the underlying label: pick a differ
 
 ## What NOT to do
 
-- Do not invoke any `add-annotation` / `validate-annotation` / `verify-annotations` helpers — those are Part A legacy. Use `write-file-doc` only.
+- Do not invoke `add-annotation`, `validate-annotation`, or `verify-annotations` — those subcommands were removed in B.5. Use `write-file-doc` only.
 - Do not invoke `write-file-doc` more than once per dispatch. Single dispatch = single `.md` written.
 - Do not write any file other than via the `write-file-doc` Bash command. The Write tool is not in your allowlist; the helper owns the file-shape contract.
 - Do not invoke any Bash command other than `python3 .devforge/lib/generate_docs_helper write-file-doc`. No shell pipelines, no other helpers, no destructive operations.

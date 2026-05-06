@@ -30,7 +30,7 @@ from ._state import (
     _state_file_path,
 )
 from ._validation import _validate_in_enum, _validate_string
-from ._validators_annotation import _recompute_content_hash
+from ._validators_file_doc import _recompute_content_hash
 
 
 def cmd_render_file_skeletons(args: argparse.Namespace) -> int:
@@ -142,8 +142,9 @@ def cmd_render_file_skeletons(args: argparse.Namespace) -> int:
 def cmd_write_file_doc(args: argparse.Namespace) -> int:
     """Fill a per-source-file .md with structured front-matter + body header.
 
-    Helper computes content_hash from the cite-file:start..end slice (matching
-    add-annotation's pattern) so the LLM never authors hash values. Overwrites
+    Helper computes content_hash from the cite-file:start..end slice (same
+    hash logic as the validator's _recompute_content_hash) so the LLM never
+    authors hash values. Overwrites
     existing content unconditionally: this is the fill operation; the skeleton
     written by B.1 is intentionally replaced here.
 

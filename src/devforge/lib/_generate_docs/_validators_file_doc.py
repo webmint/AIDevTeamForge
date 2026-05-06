@@ -1,64 +1,43 @@
-"""Annotation-tier mechanical validation (Steps A.2, A.4, B.3, and B.4 of the validator-loop).
+"""Per-file-doc mechanical validation (Steps B.3 and B.4 of VALIDATOR-LOOP-B-PLAN.md).
 
-B.3 adds:
-  - `cmd_validate_file_doc` — reads a per-source-file .md, parses its
-    front-matter, and runs the same 6-rule check as `cmd_validate_annotation`.
-    Exit codes are identical (locked below). Specificity check uses
-    `_check_file_doc_specificity` which walks sibling .md files on disk
-    instead of reading from state.
-  - `_check_file_doc_specificity` — sibling label collision check for
-    per-md docs. Scans `md_path.parent.glob("*.md")`, parses each sibling's
-    front-matter, and returns an error message on label collision (or None).
+B.5 deletion log (2026-05-07):
+  Removed from the prior _validators_annotation.py:
+    - cmd_validate_annotation  (Part A, Step A.2 — replaced by cmd_validate_file_doc)
+    - cmd_verify_annotations   (Part A, Step A.4 — replaced by cmd_verify_file_docs)
+  File renamed _validators_annotation -> _validators_file_doc because "annotation"
+  no longer describes the contents: all annotation-state code is gone; only the
+  per-.md flow (Parts B.3 + B.4) remains.
 
-B.4 adds:
-  - `cmd_verify_file_docs` — post-batch aggregator for filled .md files in
-    one concern's docs dir. Mirrors `cmd_verify_annotations` exactly but
-    sources records from the filesystem (docs/<P>/<C>/**/*.md) instead of
-    state. Applies the same 4 hard gates with identical thresholds.
+Owns the per-file-doc validation commands and their helper checks:
+  - _check_annotation_schema         — shared record shape validator (used by B.3)
+  - _check_annotation_banned_phrase  — banned-phrase label check
+  - _check_annotation_cite_resolves  — cite file resolution (missing/binary/range/hash)
+  - _recompute_content_hash          — sha256 slice recompute (also imported by
+                                       _setters_concern_files.cmd_write_file_doc)
+  - _check_file_doc_specificity      — sibling .md label collision check (B.3)
+  - cmd_validate_file_doc            — per-md validation command (Step B.3)
+  - cmd_verify_file_docs             — post-batch aggregator command (Step B.4)
 
-  NOTE: This module is at ~985 lines (past the 600-line SRP threshold).
-  B.5's brief mandates splitting Part-A (annotation-state) from Part-B
-  (file-doc) concerns into separate sibling modules. B.4 adds here
-  without splitting — the split is B.5's job to execute atomically.
-
-Original module docstring preserved below.
-
-Annotation-tier mechanical validation (Steps A.2 and A.4 of VALIDATOR-LOOP-PLAN.md).
-
-Owns the annotation-level checks that run BEYOND set-time:
-  - Schema validation (field types, shapes, content_hash format)
-  - Banned-phrase detection in labels
-  - Cite resolution (file missing, binary, range out-of-bounds, hash drift)
-  - Specificity (sibling label collision within the same concern)
-
-Also owns the post-batch aggregator `cmd_verify_annotations` (Step A.4) which
-aggregates 5 metrics over all annotations in a concern and applies four hard
-gates before the spec moves to validate-concern / render-concern-doc.
-
-`cmd_validate_annotation` exit codes (locked in VALIDATOR-LOOP-PLAN.md Step A.2):
+`cmd_validate_file_doc` exit codes (locked in VALIDATOR-LOOP-B-PLAN.md Step B.3):
   0 — all checks pass
-  2 — banned-phrase hit OR lookup failure (not registered)
+  2 — banned-phrase hit in label
   3 — cite unresolvable (missing / range out-of-bounds / hash drift)
-  4 — specificity fail (sibling label collision in same concern)
-  5 — schema invalid (missing required field / bad enum / malformed evidence)
-  6 — cite-file is binary (NUL byte in first 8 KB)
+  4 — specificity fail (sibling label collision in same directory)
+  5 — schema invalid OR file not found OR front-matter parse error
+  6 — cite-file is binary
 
-`cmd_verify_annotations` exit codes (locked in VALIDATOR-LOOP-PLAN.md Step A.4):
+`cmd_verify_file_docs` exit codes (locked in VALIDATOR-LOOP-B-PLAN.md Step B.4):
   0 — all gates pass
   2 — at least one gate failed (stderr names which)
-  5 — schema/state error (concern not registered, package not registered,
-      or state-corrupt confidence value)
+  5 — state error (package not registered, concern not registered,
+      front-matter parse error in any filled md, or state-corrupt
+      confidence value in any md's record)
 
 Gate thresholds (locked constants):
   BANNED_PHRASE_TOLERANCE = 0           — no tolerance
-  AMBIGUOUS_RATE_THRESHOLD = 0.10       — ≤10% ambiguous annotations
+  AMBIGUOUS_RATE_THRESHOLD = 0.10       — ≤10% ambiguous docs
   CROSS_CONCERN_DUPLICATE_RATE_THRESHOLD = 0.05 — ≤5% cross-concern label duplicates
-  VACUOUS_PASS_TOLERANCE = 0            — no vacuous passes (tree set + zero annotations)
-
-`sibling_collision_count` and `missing_cite_count` appear in the report but do
-NOT have hard gates: validate-annotation gates these on the per-record path; if
-any slipped through to verify-annotations, the report surfaces them but the
-build proceeds.
+  VACUOUS_PASS_TOLERANCE = 0            — no vacuous passes (tree set + zero filled mds)
 
 Stdlib only. Targets Python 3.8+.
 """
@@ -86,14 +65,14 @@ from ._state import (
 
 
 # ---------------------------------------------------------------------------
-# Gate thresholds for cmd_verify_annotations (Step A.4).
+# Gate thresholds for cmd_verify_file_docs (Step B.4).
 # Locked constants — do NOT add CLI --threshold flags; callers cannot tune.
 # ---------------------------------------------------------------------------
 
 BANNED_PHRASE_TOLERANCE = 0           # 0 tolerated
 AMBIGUOUS_RATE_THRESHOLD = 0.10       # ≤10%
 CROSS_CONCERN_DUPLICATE_RATE_THRESHOLD = 0.05  # ≤5%
-VACUOUS_PASS_TOLERANCE = 0            # non-empty tree + zero annotations → fail
+VACUOUS_PASS_TOLERANCE = 0            # non-empty tree + zero filled mds → fail
 
 
 # Regex for a valid sha256 hex digest: exactly 64 lowercase hex chars.
@@ -103,9 +82,8 @@ _SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 def _check_annotation_schema(annotation: Dict[str, Any]) -> Optional[str]:
     """Return None on pass, or an error message describing the first bad field.
 
-    Validates the full annotation record shape against the schema defined
-    in _setters_annotation.py. Called by `cmd_validate_annotation` to
-    gate all further checks — schema must pass before anything else runs.
+    Validates the full annotation record shape. Called by `cmd_validate_file_doc`
+    to gate all further checks — schema must pass before anything else runs.
     """
     if not isinstance(annotation, dict):
         return "annotation record must be a dict"
@@ -181,10 +159,9 @@ def _check_annotation_banned_phrase(label: str) -> Optional[str]:
 def _recompute_content_hash(path: Path, start: int, end: int) -> str:
     """Recompute sha256 of the inclusive 1-based line slice [start, end].
 
-    Duplicates the exact semantics of `_setters_annotation._compute_content_hash`:
-    read text with errors='replace', split via splitlines() (strips line
+    Read text with errors='replace', split via splitlines() (strips line
     endings, handles CRLF/CR/LF uniformly), join the slice with '\\n', then
-    sha256.hexdigest(). Same input -> same hash as the setter.
+    sha256.hexdigest(). Same input -> same hash as the write-file-doc setter.
 
     Raises ValueError when start or end exceeds the file's line count so the
     caller can distinguish range-out-of-bounds from hash-drift.
@@ -268,332 +245,6 @@ def _check_annotation_cite_resolves(
     return None
 
 
-def _check_annotation_specificity(
-    annotation: Dict[str, Any],
-    target_path: str,
-    concern: Dict[str, Any],
-) -> Optional[str]:
-    """Return a sibling target_path whose normalized label matches, or None.
-
-    Normalization: lower() + strip(). The annotation under test
-    (identified by target_path) is excluded from the sibling scan.
-    """
-    this_label = annotation.get("label", "").lower().strip()
-    annotations = concern.get("annotations") or {}
-    for sibling_path, sibling_ann in annotations.items():
-        if sibling_path == target_path:
-            continue
-        if not isinstance(sibling_ann, dict):
-            continue
-        sibling_label = sibling_ann.get("label", "").lower().strip()
-        if sibling_label == this_label:
-            return sibling_path
-    return None
-
-
-def cmd_validate_annotation(args: argparse.Namespace) -> int:
-    """Mechanical gate for one LLM-proposed annotation record.
-
-    Loads state, resolves the annotation at
-    state['packages'][pkg]['concerns'][concern]['annotations'][target_path],
-    then runs five checks in order. First failure short-circuits; on
-    all-pass returns 0.
-
-    Exit codes: see module docstring.
-    """
-    try:
-        state = _load_state()
-    except StateLoadError as err:
-        return _die(str(err), code=1)
-
-    # Resolve package (exit 2 if absent).
-    if _require_package(state, args.package) is None:
-        return _die(
-            "package not registered at {0!r}; run add-package first".format(
-                args.package,
-            ),
-            code=2,
-        )
-
-    # Resolve concern (exit 2 if absent).
-    concern = _require_concern(state, args.package, args.concern)
-    if concern is None:
-        return _die(
-            "concern {0!r} not registered under {1!r}; run add-concern "
-            "first".format(args.concern, args.package),
-            code=2,
-        )
-
-    # Resolve annotation (exit 2 if absent).
-    annotations = concern.get("annotations") or {}
-    annotation = annotations.get(args.target_path)
-    if annotation is None:
-        return _die(
-            "annotation not registered at target_path {0!r} in "
-            "{1}/{2}; run add-annotation first".format(
-                args.target_path, args.package, args.concern,
-            ),
-            code=2,
-        )
-
-    # Check 1 — Schema (exit 5).
-    schema_err = _check_annotation_schema(annotation)
-    if schema_err is not None:
-        return _die(schema_err, code=5)
-
-    # Check 2 — Banned phrase (exit 2).
-    label = annotation.get("label", "")
-    banned = _check_annotation_banned_phrase(label)
-    if banned is not None:
-        return _die(
-            "label contains banned phrase: {0!r} in {1!r}".format(banned, label),
-            code=2,
-        )
-
-    # Check 3 + 6 — Cite resolution (binary -> exit 6; all other -> exit 3).
-    project_root = _project_root()
-    cite_result = _check_annotation_cite_resolves(annotation, project_root)
-    if cite_result is not None:
-        subcase, msg = cite_result
-        exit_code = 6 if subcase == "binary" else 3
-        return _die(msg, code=exit_code)
-
-    # Check 4 — Specificity (exit 4).
-    sibling = _check_annotation_specificity(annotation, args.target_path, concern)
-    if sibling is not None:
-        return _die(
-            "label collides with sibling: {0!r} has same label".format(sibling),
-            code=4,
-        )
-
-    return 0
-
-
-# ---------------------------------------------------------------------------
-# Step A.4 — Post-batch aggregator: verify-annotations
-# ---------------------------------------------------------------------------
-
-
-def cmd_verify_annotations(args: argparse.Namespace) -> int:
-    """Post-batch quality gate for all annotations in one concern.
-
-    Aggregates 5 metrics over state['packages'][P]['concerns'][C]['annotations']
-    and applies 4 hard gates. Failed gates are also named on stderr, one line each.
-
-    Emits a structured JSON report to stdout on exit 0 (all gates pass) and exit 2
-    (gate fail). Exit 5 (state error) emits only a stderr message via `_die` — no
-    JSON, since there is no coherent report when state lookup fails or schema is
-    corrupt.
-
-    Exit codes:
-      0 — all gates pass
-      2 — at least one gate failed
-      5 — schema/state error (package not registered, concern not registered,
-          or state-corrupt confidence value in an annotation record)
-
-    Gate thresholds are module-level locked constants; see BANNED_PHRASE_TOLERANCE,
-    AMBIGUOUS_RATE_THRESHOLD, CROSS_CONCERN_DUPLICATE_RATE_THRESHOLD, VACUOUS_PASS_TOLERANCE.
-
-    Metrics reported but NOT gated (diagnostic only — validate-annotation gates
-    these on the per-record path; verify-annotations reports any that slipped through):
-      - sibling_collision_count
-      - missing_cite_count
-    """
-    try:
-        state = _load_state()
-    except StateLoadError as err:
-        return _die(str(err), code=5)
-
-    # Resolve package (exit 5 if absent — state error, not a lookup-miss).
-    pkg = _require_package(state, args.package)
-    if pkg is None:
-        return _die(
-            "package not registered: {0}".format(args.package), code=5,
-        )
-
-    # Resolve concern (exit 5 if absent).
-    concern = _require_concern(state, args.package, args.concern)
-    if concern is None:
-        return _die(
-            "concern not registered: {0}/{1}".format(args.package, args.concern),
-            code=5,
-        )
-
-    # Annotations dict — tolerate missing key (legacy concern records from
-    # before Step A.1 shipped have no "annotations" key).
-    annotations = concern.get("annotations") or {}
-
-    total = len(annotations)
-
-    # --- Metric 1: banned_phrase_count ---
-    banned_phrase_count = 0
-    for ann in annotations.values():
-        label = ann.get("label", "") if isinstance(ann, dict) else ""
-        if _check_annotation_banned_phrase(label) is not None:
-            banned_phrase_count += 1
-
-    # --- Metric 2: sibling_collision_count ---
-    # Count annotations whose normalized label collides with ANY other annotation
-    # in the same concern, regardless of parent directory. Matches
-    # _check_annotation_specificity semantics exactly (concern-scoped, not
-    # directory-scoped). Each colliding annotation is counted once.
-    sibling_collision_count = 0
-    for target_path, ann in annotations.items():
-        if not isinstance(ann, dict):
-            continue
-        this_label = ann.get("label", "").lower().strip()
-        for sibling_path, sibling_ann in annotations.items():
-            if sibling_path == target_path:
-                continue
-            if not isinstance(sibling_ann, dict):
-                continue
-            sibling_label = sibling_ann.get("label", "").lower().strip()
-            if sibling_label == this_label:
-                sibling_collision_count += 1
-                break  # count each annotation at most once
-
-    # --- Metric 3: missing_cite_count ---
-    # File-exists pre-flight only (no hash recompute — that's validate-annotation).
-    project_root = _project_root()
-    missing_cite_count = 0
-    for ann in annotations.values():
-        if not isinstance(ann, dict):
-            continue
-        evidence = ann.get("evidence") or {}
-        cite_file = evidence.get("file", "")
-        if cite_file:
-            cite_path = project_root / cite_file
-            if not cite_path.exists() or not cite_path.is_file():
-                missing_cite_count += 1
-
-    # --- Metric 4: confidence_distribution ---
-    # State-corrupt (unknown value) → exit 5.
-    conf_dist = {"ambiguous": 0, "extracted": 0, "inferred": 0}
-    for ann in annotations.values():
-        if not isinstance(ann, dict):
-            continue
-        conf = ann.get("confidence")
-        if conf not in ANNOTATION_CONFIDENCE_VALUES:
-            return _die(
-                "state-corrupt confidence value {0!r} in {1}/{2}; "
-                "run add-annotation again".format(conf, args.package, args.concern),
-                code=5,
-            )
-        conf_dist[conf] = conf_dist.get(conf, 0) + 1
-
-    ambiguous_rate = conf_dist["ambiguous"] / total if total > 0 else 0.0
-
-    # --- Metric 5: cross_concern_duplicate_count ---
-    # Count annotations in concern C whose normalized label matches a label
-    # in ANY OTHER concern of the SAME package. Cross-package comparison is
-    # intentionally excluded — concerns are scoped per package.
-    all_concerns = pkg.get("concerns") or {}
-    other_labels = set()  # type: ignore[var-annotated]
-    for other_concern_name, other_concern in all_concerns.items():
-        if other_concern_name == args.concern:
-            continue
-        if not isinstance(other_concern, dict):
-            continue
-        other_annotations = other_concern.get("annotations") or {}
-        for other_ann in other_annotations.values():
-            if not isinstance(other_ann, dict):
-                continue
-            other_label = other_ann.get("label", "").lower().strip()
-            if other_label:
-                other_labels.add(other_label)
-
-    cross_concern_duplicate_count = 0
-    for ann in annotations.values():
-        if not isinstance(ann, dict):
-            continue
-        label_norm = ann.get("label", "").lower().strip()
-        if label_norm in other_labels:
-            cross_concern_duplicate_count += 1
-
-    cross_concern_duplicate_rate = (
-        cross_concern_duplicate_count / total if total > 0 else 0.0
-    )
-
-    # --- Gate evaluation ---
-    gate_banned = "pass" if banned_phrase_count == 0 else "fail"
-    gate_ambiguous = (
-        "pass" if ambiguous_rate <= AMBIGUOUS_RATE_THRESHOLD else "fail"
-    )
-    gate_cross = (
-        "pass"
-        if cross_concern_duplicate_rate <= CROSS_CONCERN_DUPLICATE_RATE_THRESHOLD
-        else "fail"
-    )
-
-    # --- Gate: vacuous_pass ---
-    # A concern with a non-empty directory_tree but zero annotations is a
-    # vacuous pass: the orchestrator skipped the annotation loop entirely.
-    # A concern with no tree set (None or empty string) is legitimately
-    # empty — the vacuous_pass gate is "pass" in that case because the
-    # concern may genuinely have no files to annotate yet.
-    directory_tree = concern.get("directory_tree") or ""
-    if directory_tree and total == 0:
-        gate_vacuous = "fail"
-    else:
-        gate_vacuous = "pass"
-
-    report = {
-        "ambiguous_rate": ambiguous_rate,
-        "banned_phrase_count": banned_phrase_count,
-        "concern": args.concern,
-        "confidence_distribution": conf_dist,
-        "cross_concern_duplicate_count": cross_concern_duplicate_count,
-        "cross_concern_duplicate_rate": cross_concern_duplicate_rate,
-        "gates": {
-            "ambiguous_rate": gate_ambiguous,
-            "banned_phrase": gate_banned,
-            "cross_concern_duplicate": gate_cross,
-            "vacuous_pass": gate_vacuous,
-        },
-        "missing_cite_count": missing_cite_count,
-        "package": args.package,
-        "sibling_collision_count": sibling_collision_count,
-        "total_annotations": total,
-    }
-
-    sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")
-
-    # Emit one stderr line per failed gate; collect all failures before exiting.
-    any_fail = False
-
-    if gate_banned == "fail":
-        any_fail = True
-        sys.stderr.write(
-            "verify-annotations: banned_phrase gate FAIL: "
-            "{0} annotation(s) contain banned phrases\n".format(banned_phrase_count)
-        )
-
-    if gate_ambiguous == "fail":
-        any_fail = True
-        pct = round(ambiguous_rate * 100, 1)
-        sys.stderr.write(
-            "verify-annotations: ambiguous_rate gate FAIL: "
-            "{0}% (threshold: 10%)\n".format(pct)
-        )
-
-    if gate_cross == "fail":
-        any_fail = True
-        pct = round(cross_concern_duplicate_rate * 100, 1)
-        sys.stderr.write(
-            "verify-annotations: cross_concern_duplicate gate FAIL: "
-            "{0}% (threshold: 5%)\n".format(pct)
-        )
-
-    if gate_vacuous == "fail":
-        any_fail = True
-        sys.stderr.write(
-            "verify-annotations: vacuous_pass gate FAIL: "
-            "concern has tree but zero annotations registered\n"
-        )
-
-    return 2 if any_fail else 0
-
-
 # ---------------------------------------------------------------------------
 # Step B.3 — Per-file-doc validation helpers and command.
 # ---------------------------------------------------------------------------
@@ -643,9 +294,9 @@ def cmd_validate_file_doc(args: argparse.Namespace) -> int:
 
     Reads the .md at `args.md_path`, parses front-matter, builds an
     annotation-shaped dict, then runs the same 4 helper checks as
-    `cmd_validate_annotation` plus a directory-scoped specificity check.
+    the old cmd_validate_annotation plus a directory-scoped specificity check.
 
-    Exit codes (same contract as cmd_validate_annotation):
+    Exit codes:
       0 — all checks pass
       2 — banned-phrase hit in label
       3 — cite unresolvable (missing / range out-of-bounds / hash drift)
@@ -735,9 +386,8 @@ def cmd_validate_file_doc(args: argparse.Namespace) -> int:
 def cmd_verify_file_docs(args: argparse.Namespace) -> int:
     """Post-batch quality gate for all filled .md files in one concern's docs dir.
 
-    Mirrors cmd_verify_annotations exactly, but sources records from the
-    filesystem (docs/<P>/<C>/**/*.md) instead of the annotations-in-state dict.
-    Applies the same 4 hard gates with identical thresholds and exit codes.
+    Sources records from the filesystem (docs/<P>/<C>/**/*.md).
+    Applies 4 hard gates with identical thresholds and exit codes.
 
     Empty .md skeletons (size == 0 bytes) are silently skipped — they count
     as "not yet filled" and are gated separately by validate-concern's
@@ -823,7 +473,7 @@ def cmd_verify_file_docs(args: argparse.Namespace) -> int:
     # --- Metric 2: sibling_collision_count ---
     # Count mds whose normalized label collides with ANY other md IN THE SAME
     # CONCERN'S DOCS TREE (concern-scoped, not directory-scoped). Each
-    # colliding md is counted once. Mirrors cmd_verify_annotations semantics.
+    # colliding md is counted once.
     sibling_collision_count = 0
     for i, (md_path_i, record_i) in enumerate(file_doc_records):
         label_i = record_i.get("label", "")
