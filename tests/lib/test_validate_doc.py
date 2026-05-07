@@ -120,10 +120,33 @@ class ResolveCitePathTests(unittest.TestCase):
         self.assertTrue(path.is_file())
 
     def test_basename_shortening_resolves(self):
+        # target is `<pkg>/<concern>` (no src/); resolver must insert src/
+        # to match the on-disk source layout.
+        path, mode = _resolve_cite_path(
+            "OrderFooter.ts", "pkg-a/order", self.root
+        )
+        self.assertEqual(mode, "basename")
+        self.assertTrue(path.is_file())
+
+    def test_basename_resolves_for_nested_package_target(self):
+        # Multi-component package targets (db-cse-ui-strata/packages/pkg-x)
+        # split correctly: last segment is concern, prior segments are pkg.
+        nested_root = self.root / "ws" / "packages" / "pkg-x"
+        (nested_root / "src" / "feature").mkdir(parents=True)
+        (nested_root / "src" / "feature" / "Inner.ts").write_text("x\n", encoding="utf-8")
+        path, mode = _resolve_cite_path(
+            "Inner.ts", "ws/packages/pkg-x/feature", self.root
+        )
+        self.assertEqual(mode, "basename")
+        self.assertTrue(path.is_file())
+
+    def test_verbatim_fallback_when_target_already_has_src(self):
+        # Caller passes target that already includes `src/` — verbatim
+        # append still resolves (covers tests that pass full path).
         path, mode = _resolve_cite_path(
             "OrderFooter.ts", "pkg-a/src/order", self.root
         )
-        self.assertEqual(mode, "basename")
+        self.assertEqual(mode, "verbatim")
 
     def test_miss(self):
         path, mode = _resolve_cite_path("nonexistent.ts", "pkg-a/order", self.root)

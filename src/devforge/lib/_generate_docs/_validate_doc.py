@@ -101,24 +101,38 @@ def _resolve_cite_path(
 ) -> Tuple[Path, str]:
     """Resolve a cite-back path string to an absolute file path.
 
-    `cite_path` may be either a full project-relative path or a basename
-    when the cited file is inside the doc's own concern subfolder
-    (in-concern shortening, per Plan F density rules).
+    Plan F allows three cite-path forms (in priority order):
 
-    `target` is the concern target (`<pkg>/<concern>`); used to construct
-    the in-concern lookup root.
+    1. Full project-relative path — `<pkg>/src/<concern>/.../<file>`.
+       Tried first; resolves verbatim under project_root.
+    2. In-concern basename — when the cited file lives in the doc's own
+       concern subfolder, the agent may write only the basename. Source
+       dir is `<pkg>/src/<concern>/` on disk; target convention is
+       `<pkg>/<concern>` (no `src/`). This branch splits target into pkg
+       + concern parts and probes `<project_root>/<pkg>/src/<concern>/<cite_path>`.
+    3. Verbatim target append — fallback `<project_root>/<target>/<cite_path>`
+       for callers passing a target that already includes `src/`.
 
-    Returns (absolute_path, attempted_form). `attempted_form` is the
-    string that succeeded ("full" or "basename") so the caller can phrase
-    error messages accurately. When neither succeeds, returns the full-
-    form path (for diagnostic) so the caller can report it.
+    Returns (absolute_path, mode). Mode ∈ {"full", "basename", "verbatim",
+    "miss"}. On miss the returned path is the full-form attempt (for
+    diagnostic).
     """
     full_attempt = project_root / cite_path
     if full_attempt.is_file():
         return full_attempt, "full"
-    basename_attempt = project_root / target / cite_path
-    if basename_attempt.is_file():
-        return basename_attempt, "basename"
+
+    target_parts = target.split("/")
+    if len(target_parts) >= 2:
+        pkg_part = "/".join(target_parts[:-1])
+        concern_part = target_parts[-1]
+        basename_attempt = project_root / pkg_part / "src" / concern_part / cite_path
+        if basename_attempt.is_file():
+            return basename_attempt, "basename"
+
+    verbatim_attempt = project_root / target / cite_path
+    if verbatim_attempt.is_file():
+        return verbatim_attempt, "verbatim"
+
     return full_attempt, "miss"
 
 
