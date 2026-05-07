@@ -70,11 +70,15 @@ docs/
 
 **File naming**: lowercase kebab-case. Group by topic, not by date or ticket number.
 
-**When to create a NEW file vs update existing**:
-- New feature area with no existing doc → create `docs/features/[name].md`
-- New API resource → create `docs/api/[name].md`
-- Change to existing feature → update the existing file
-- Architecture change → update `docs/architecture.md`
+**When to create a NEW file vs update existing** (Plan F layout — `docs/features/`, `docs/api/`, `docs/guides/` are dropped):
+- New feature work touching an existing concern → update `docs/<package>/<concern>/index.md` Hazards section if behavior introduces a hazard worth documenting
+- New concern (a new `src/` subfolder) → leave to `/generate-docs` to render on next run; do NOT hand-author concern docs
+- New API surface → does NOT live in md (query CBM `search_graph` / `agentic_context` live). Skip.
+- Architecture pattern change → update `docs/<package>/architecture.md` `## Patterns` section with cite-back
+- Project-wide architecture change → update `docs/architecture.md` (project tier)
+- Domain term introduction → add entry to `docs/<package>/glossary.md` with cite-back
+
+NOTE: free-form per-file templates below (`docs/features/`, `docs/api/`, `docs/guides/`) are LEGACY and retained as reference only. Under Plan F, /generate-docs (helper-driven) is the canonical doc author. Tech-writer's role narrows to surgical updates of existing helper-managed docs (preserve frontmatter, section anchors, cite-back format).
 
 ### Your Workflow
 

@@ -28,15 +28,22 @@ specs/
       003-short-task-title.md
 
 docs/
-  overview.md                      # Project overview and getting started
-  architecture.md                  # Architecture patterns, layers, data flow
-  features/                        # Feature-specific docs (one file per feature area)
-    [feature-name].md
-  api/                             # API docs (one file per resource/domain)
-    [resource-name].md
-  guides/                          # How-to guides
-    [topic].md
+  overview.md                      # Project overview + package map (project tier)
+  architecture.md                  # Cross-package architecture + layering rationale (project tier)
+  <package>/                       # One subdir per package detected by /init-forge
+    overview.md                    # Package role + concern enumeration
+    architecture.md                # Package layers + patterns
+    glossary.md                    # Domain terms with definitions + cite-backs
+    <concern>/                     # One subdir per src/ subfolder concern
+      index.md                     # Concern: Purpose + Structure (annotated tree) + Hazards
 ```
+
+NOTE: legacy layout (`docs/features/`, `docs/api/`, `docs/guides/`) is dropped.
+Structural information (exports, types, deps, public-surface, call chains) is
+NOT pre-rendered into docs/ — query the codebase-memory-mcp graph live via
+`search_graph`, `trace_call_path`, `get_code_snippet`, `agentic_context`,
+`semantic_query`. Md files carry the narrative + judgment layer; CBM carries
+the structural-query layer.
 
 ## Naming Rules
 
@@ -159,43 +166,68 @@ audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; sta
 
 ## Documentation Rules
 
+### Audience
+Docs/ are LLM context source first, dev-greppable second. Density and structure are optimized for LLM consumption (compact, parseable, cite-backed); humans grep them as a side benefit.
+
 ### File Naming
-- Lowercase kebab-case: `cart-management.md`, `order-api.md`
-- Group by topic, not by date or ticket number
-- One file per logical feature area — don't create a new file per task
+- Tier files use fixed names: `overview.md`, `architecture.md`, `glossary.md`
+- Concern dirs use the source-subfolder name verbatim (e.g., `docs/<package>/order/index.md` for `<package>/src/order/`)
+- Package dirs mirror the package's index.json key (e.g., `docs/db-cse-ui-strata/apps/app-web/`)
 
-### When Docs Are Updated
-- During finalize — the tech-writer agent generates feature documentation
-- The agent reads ONLY the completed task, spec, and changed files
-- It updates existing docs or creates new ones in the appropriate subfolder
-- Not every task produces doc changes — internal refactoring, bug fixes, and test-only changes are skipped
+### When Docs Are Generated
+- /generate-docs (Plan F) walks all tiers bottom-up: concerns → packages → project
+- Incremental: each doc carries `source_stamp` in frontmatter; helper skips regeneration when the stamp matches the current source-subfolder content hash
+- Manual `--full` flag forces regeneration of everything
 
-### Doc File Structure
+### Doc Structure (LLM-first density format)
+
+Every doc opens with YAML-subset frontmatter, then fixed section anchors.
+
+**Concern doc** (`docs/<package>/<concern>/index.md`):
 ```markdown
-# [Topic Name]
+---
+concern: <name>
+package: <package-path>
+files: <count>
+source_stamp: <sha256-prefix>
+last_indexed: <YYYY-MM-DD>
+---
 
-## Overview
-[1-2 sentences: what this is and why it exists]
+# <concern>
 
-## How It Works
-[Explanation with code examples from actual implementation]
+## Purpose
+<1-2 sentences; no preamble>
 
-## Usage
-[How to use it — code examples]
+## Structure
+<ASCII tree of files in subfolder; each leaf annotated 1-line ≤60 chars>
 
-## Configuration
-[If applicable]
-
-## Related
-- [Links to related docs]
+## Hazards
+- <one-liner gotcha> — <file:line>
+- <3-7 entries; cite-back required>
 ```
 
+**Package architecture** (`docs/<package>/architecture.md`): `## Layers` + `## Patterns` sections, each entry cite-backed.
+
+**Package glossary** (`docs/<package>/glossary.md`): `## Terms` flat list, one line + cite-back per term.
+
+**Package overview** (`docs/<package>/overview.md`): `## Purpose` + `## Concerns` (list with cite-backs to concern dirs).
+
+**Project overview/architecture** (`docs/overview.md`, `docs/architecture.md`): same shape as package tier but at project scope; package list / cross-package layers.
+
+### Density rules (validate-doc enforces)
+- Banned phrases: "This document...", "In this section...", "We will...", "various", "several", "many", "some"
+- Per-bullet length cap: ≤120 chars (annotation: ≤60)
+- Hazard requires concrete cite-back (`file:line` or `file:start-end`)
+- No prose tables for structural data — exports/types/deps/callees lists live in CBM, NOT in md
+
+### CBM auto-indexing
+Md files are walked by `codebase-memory-mcp index_repository` automatically. Their content becomes searchable via `search_code` + `semantic_query`. No separate registration step.
+
 ### Rules
-- Every code example must come from the actual implementation — no pseudocode
-- Update existing docs instead of creating new files when possible
-- `docs/architecture.md` is updated when architectural patterns change
-- `docs/features/` files are updated when feature behavior changes
-- `docs/api/` files are updated when API contracts change
+- Every cite-back must resolve at validation time (file exists, line range valid)
+- Vue cite-backs (`<f>.vue:N`) are validated through the `.vue.ts.map` sourcemap chain
+- Concerns are derived from `src/` subfolders enumerated by /init-forge's index.json
+- `docs/api/`, `docs/features/`, `docs/guides/` are NOT generated under Plan F
 
 ## Bug Report Rules
 
