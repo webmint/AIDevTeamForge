@@ -31,12 +31,19 @@ node index.mjs /path/to/repo -q --exclude "**/__fixtures__/**,**/storybook/**"
 
 ## What gets emitted
 
+For each `<name>.vue` two files are written (sidecar mode default):
+
+- `<name>.vue.ts` (or `.js`) — compiled script + provenance header + `//# sourceMappingURL=` comment
+- `<name>.vue.ts.map` — Source Map V3 mapping `.vue.ts` line/col back to original `.vue` source
+
 By default, only the compiled `<script>` content is emitted. Macros (`defineProps`, `defineEmits`, `defineExpose`) are expanded; TypeScript is preserved when `<script lang="ts">` is detected.
+
+The source map's `mappings` field is shifted by the provenance header line count so a consumer applying the map directly to the emitted `.vue.ts` recovers correct original positions. The map only covers the `<script>` block — the optional `--include-template` compiled render fn and `--raw-template-comment` raw template appended after the script are unmapped (they would need their own map from `compileTemplate`).
 
 Optional flags add the template:
 
-- `--include-template` — appends the compiled render function. Useful when the indexer should see template-referenced identifiers as JS expressions.
-- `--raw-template-comment` — appends the raw template as a `//` comment block. Useful for human review without affecting symbol extraction.
+- `--include-template` — appends the compiled render function. Useful when the indexer should see template-referenced identifiers as JS expressions. Unmapped.
+- `--raw-template-comment` — appends the raw template as a `//` comment block. Useful for human review without affecting symbol extraction. Unmapped.
 
 `<style>` blocks are dropped — irrelevant for symbol extraction.
 
@@ -64,6 +71,6 @@ Files with no content, or files with no `<script>` and no `<template>`, get a st
 ## Limitations
 
 - The compiled render function is verbose and not human-readable. Treat it as machine input.
-- Source maps are not emitted.
+- Source maps cover the `<script>` block only. Template content (compiled render fn or raw comment) appended via `--include-template` / `--raw-template-comment` is unmapped.
 - Custom Vue compiler plugins (e.g., `@vitejs/plugin-vue` transforms beyond core SFC compilation) are not applied.
 - The tool does not type-check — it produces compilable script output, not validated TS.

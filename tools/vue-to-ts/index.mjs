@@ -2,7 +2,7 @@
 import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
 import fg from 'fast-glob'
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { createHash } from 'node:crypto'
 
@@ -178,7 +178,7 @@ async function processFile(absPath, rel) {
     try {
       compiledScript = compileScript(descriptor, {
         id,
-        sourceMap: false,
+        sourceMap: true,
         inlineTemplate: false,
         babelParserPlugins: isTs ? ['typescript'] : [],
       })
@@ -223,7 +223,6 @@ async function processFile(absPath, rel) {
     : buildHeader(rel, hasScriptSetup ? '<script setup>' : hasScript ? '<script>' : '(no script)', lang)
 
   const scriptContent = compiledScript ? compiledScript.content : 'export default {}\n'
-  const output = header + scriptContent + templateBlock + rawTemplateComment
 
   let outAbs
   let outRel
@@ -235,12 +234,42 @@ async function processFile(absPath, rel) {
     outRel = relative(process.cwd(), outAbs)
   }
 
+  // Source map: shift compiledScript.map by header line count + retarget
+  // sources to a path relative to the .map file. The map only covers the
+  // <script> block; templateBlock + rawTemplateComment after it are
+  // unmapped (template would need its own map from compileTemplate).
+  const mapAbs = outAbs + '.map'
+  let mapWrite = null
+  let sourceMappingComment = ''
+  if (compiledScript && compiledScript.map) {
+    const headerLineOffset = countLines(header)
+    const sourceRel = relative(dirname(outAbs), absPath)
+    const adjusted = {
+      ...compiledScript.map,
+      sources: [sourceRel],
+      mappings: ';'.repeat(headerLineOffset) + compiledScript.map.mappings,
+    }
+    mapWrite = JSON.stringify(adjusted) + '\n'
+    sourceMappingComment = `\n//# sourceMappingURL=${basename(mapAbs)}\n`
+  }
+
+  const output = header + scriptContent + templateBlock + rawTemplateComment + sourceMappingComment
+
   if (!args.values['dry-run']) {
     await mkdir(dirname(outAbs), { recursive: true })
     await writeFile(outAbs, output, 'utf8')
+    if (mapWrite !== null) {
+      await writeFile(mapAbs, mapWrite, 'utf8')
+    }
   }
 
   return { outAbs, outRel }
+}
+
+function countLines(s) {
+  if (!s) return 0
+  // Header always terminates with '\n'; newline count == line count.
+  return (s.match(/\n/g) || []).length
 }
 
 async function writeStub(absPath, rel, lang, reason) {
