@@ -20,7 +20,7 @@ Plan E premise was "pre-compute 7-section markdown per concern so future LLM wor
 - 1 of E's 7 sections (overview / Purpose) is NOT in any graph — pure LLM judgment over source. Stays md.
 - 1 of E's 7 sections (annotated tree / Structure) is mechanical structure + LLM 1-line annotations per leaf. Keep as md.
 - Hazards moved out of concern docs entirely (2026-05-07 V4 finding) — `/audit` command is the right home for adversarial gotcha discovery; pre-rendering hazards into every concern doc bloats output for LLM consumers (research/specify/plan) who care about orientation, not gotchas. Quality-review territory ≠ orientation territory.
-- New tiers Plan E didn't address: glossary (domain-term meanings), package overview/architecture, project overview/architecture. These are also pure LLM judgment over the codebase, regenerated rarely. Add as md.
+- New tiers Plan E didn't address: package overview/architecture, project overview/architecture. These are also pure LLM judgment over the codebase, regenerated rarely. Add as md. (Glossary tier dropped 2026-05-07 — V4 confirmed concern Purpose paragraphs surface domain terms in context; a separate glossary file is redundant. Cross-concern terms can land in the package overview's Purpose paragraph or via CBM `semantic_query` live.)
 
 Result: docs/ becomes the **orientation + narrative** layer (Purpose + Structure per concern; package + project tiers); CBM becomes the **structural-query** layer; `/audit` becomes the **hazard-discovery** layer.
 
@@ -116,7 +116,6 @@ docs/
   <package>/
     overview.md                     (F.7 package tier)
     architecture.md                 (F.7 package tier)
-    glossary.md                     (F.7 package tier)
     <concern>/
       index.md                      (F.2/F.3 concern tier)
 constitution.md                     (existing; root; unchanged)
@@ -132,17 +131,16 @@ Universal rules (encoded in F.3 doc-composer prompt + F.5 validate-doc):
 
 - **Frontmatter mandatory** — every doc opens with YAML-subset front-matter. Required keys per tier:
   - Concern: `concern`, `package`, `files`, `source_stamp`, `last_indexed`
-  - Package overview/architecture/glossary: `package`, `last_indexed` (+ `source_stamp` for overview/architecture)
+  - Package overview/architecture: `package`, `last_indexed`, `source_stamp`
   - Project overview/architecture: `last_indexed` only
   Helper writes the frontmatter; LLM never edits it.
-- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Layers`, `## Patterns`, `## Terms`, `## Concerns`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor. Hazards moved to `/audit` (separate command); concern docs do NOT carry hazard content.
+- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Layers`, `## Patterns`, `## Concerns`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor. Hazards moved to `/audit` (separate command); concern docs do NOT carry hazard content. Glossary dropped — Purpose paragraphs surface terms in context.
 - **No preamble paragraphs** — section content starts on the first line after the anchor. Banned phrases (case-insensitive): "this document", "in this section", "we will", "various", "several", "many", "some", "other".
 - **Tree formatting** — `## Structure` content is plain text directly under the heading. No code fence. Helper provides the tree verbatim from F.2 output; LLM appends `— <annotation ≤60 chars>` to each LEAF on the same line.
 - **Density caps** (calibrated 2026-05-07 on testForge20 helpers + V4 finding):
   - Per-section caps only — no whole-doc budget. Tree section grows with file count; that is intentional.
-  - Per-bullet length: ≤200 chars (Terms/Layers/Patterns/Concerns/Packages/Cross-Cuts); Structure annotations: ≤60 chars
-  - Glossary entry: 1 line per term + 1 cite-back
-- **Cite-back format** (Glossary/Layers/Patterns/Concerns/Packages/Cross-Cuts only — concern docs have no cites): `<project-relative-path>:<line>` or `<project-relative-path>:<start>-<end>`. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
+  - Per-bullet length: ≤200 chars (Layers/Patterns/Concerns/Packages/Cross-Cuts); Structure annotations: ≤60 chars
+- **Cite-back format** (Layers/Patterns/Concerns/Packages/Cross-Cuts only — concern docs have no cites): `<project-relative-path>:<line>` or `<project-relative-path>:<start>-<end>`. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
 - **No prose tables for structural data** — exports, types, deps, callees lists are NEVER in docs/. Those queries hit CBM live.
 
 Example concern doc (target shape):
@@ -192,22 +190,6 @@ last_indexed: 2026-05-07
 - BLoC over Pinia for cross-package state — pkg-cse-core/src/*/presentation/*BLoC.ts
 - ref() for primitives, reactive() for nested objects — convention; verify on edit
 - @vue/compiler-sfc Source Map V3 emitted to .devforge/vue-tmp/ — used by /research cite-back
-```
-
-Example glossary:
-
-```markdown
----
-package: db-cse-ui-strata/apps/app-web
-last_indexed: 2026-05-07
----
-
-# glossary
-
-- BLoC — Business Logic Component (Flutter pattern); pkg-cse-core/src/*/presentation/*BLoC.ts
-- EMEA division — sales region with distinct T&C component swap; constant in pkg-cse-core/src/EMEA_DIVISION
-- IdentityType.Internal — staff identity flag controlling bulk-order surface; src/types/symbols.ts
-- AssetId — internal SKU identifier; toggled via IsShowAssetId inject token
 ```
 
 ---
@@ -342,7 +324,7 @@ Location: `src/agents/doc-composer.md` (new file).
 Frontmatter:
 ```yaml
 name: doc-composer
-description: "Multi-tier doc composer for /generate-docs Plan F. Receives batch JSON from concern-input / package-input / project-input helpers. Emits 1-2 LLM-first dense sections per dispatch (Purpose/Structure for concern; Layers/Patterns for architecture; Terms for glossary; Purpose/Concerns for overviews). Strict density format. Orchestrator parses sections into setter calls."
+description: "Multi-tier doc composer for /generate-docs Plan F. Receives batch JSON from concern-input / package-input / project-input helpers. Emits 1-2 LLM-first dense sections per dispatch (Purpose/Structure for concern; Layers/Patterns for architecture; Purpose/Concerns for overviews). Strict density format. Orchestrator parses sections into setter calls."
 model_tier: scan
 tools: Read
 ```
@@ -355,9 +337,9 @@ Output contract: structured Markdown with anchors. Sections:
 - Concern tier: `## Purpose`, `## Structure` (NO Hazards — moved to /audit)
 - Package overview: `## Purpose`, `## Concerns`
 - Package architecture: `## Layers`, `## Patterns`
-- Package glossary: `## Terms`
 - Project overview: `## Purpose`, `## Packages`
 - Project architecture: `## Layers`, `## Cross-Cuts`
+- (Glossary tier dropped 2026-05-07 — Purpose paragraphs surface terms in context.)
 
 Density discipline (encoded in agent body):
 - Banned phrases list ("This document...", "In this section...", "We will...", "various", "several", "many", "some", "other")
@@ -393,7 +375,7 @@ Replace iteration scaffold (`src/commands/generate-docs/main.md` at commit `3223
 ## Phase 3 — Package tier loop (reads concern frontmatter for Concerns list)
   For each package P:
     If all P's concern docs were SKIPPED above AND P-stamp unchanged → SKIP
-    Else: render docs/<P>/{overview,architecture,glossary}.md.skeleton
+    Else: render docs/<P>/{overview,architecture}.md.skeleton
           Dispatch doc-composer with package-input helper output
           Parse 3 docs of sections → call setters
           Validate + render
@@ -425,7 +407,6 @@ Setter primitives (helper-owned, NEW for F.4):
 - `add-doc-hazard --tier concern --target X --text "..." --cite "file:line"`
 - `set-doc-layers --tier T --target X --layers '[{name, role, cite}]'`
 - `set-doc-patterns --tier T --target X --patterns '[{name, rule, cite}]'`
-- `add-glossary-term --target X --term T --def "..." --cite "..."`
 - `set-overview-concerns --target X --concerns '[{name, role, cite}]'`
 - `set-overview-packages --target X --packages '[{name, role, cite}]'`
 
@@ -483,14 +464,13 @@ After F.1–F.5 ship:
 Three docs per package:
 - `docs/<package>/overview.md` — package role + concern enumeration
 - `docs/<package>/architecture.md` — layers + patterns
-- `docs/<package>/glossary.md` — domain terms
 
 Each generated by ONE doc-composer dispatch with package-input helper output. Helper input: package's index.json file list + per-concern overview seeds (read from already-generated concern docs at this phase) + selected README/comment-dense files at package root.
 
 Concern-tier docs MUST exist before package tier dispatches (overview's "Concerns" list reads from concern doc frontmatter). Phase ordering locked bottom-up: concerns → packages → project (matches F.4 phases 3 → 4 → 5).
 
 #### Verify F.7
-- Package tier helper test: 4+ cases (input shape, glossary extraction signal, overview seed read from concern frontmatter, missing concern seeds → graceful warning)
+- Package tier helper test: 4+ cases (input shape, overview seed read from concern frontmatter, architecture pattern extraction signal, missing concern seeds → graceful warning)
 - Live: app-web package generates all 3 docs cleanly
 
 ### F.8 — Project-tier docs
@@ -511,7 +491,7 @@ Update consumer commands so they encode (a) preflight invocation as the first st
 
 | Command | Step 1 (always) | Step 2+ (read tier) |
 |---|---|---|
-| `/research` | preflight | glossary.md → concern md → architecture.md → CBM (`agentic_context` + `search_graph`) → source (Read) |
+| `/research` | preflight | concern md → architecture.md → CBM (`agentic_context` + `search_graph` + `semantic_query` for fuzzy term lookup) → source (Read) |
 | `/specify` | preflight | concern md → architecture.md → constitution.md → CBM (verify constraints) → user clarifications |
 | `/plan` | preflight | architecture.md → CBM (`trace_call_path`, `agentic_impact`) → constitution.md |
 | `/breakdown` | preflight | plan.md (input) + concern md per affected concern → CBM for any unresolved structural question |
@@ -574,11 +554,7 @@ Update `src/CLAUDE.md` template + storage-rules:
 
 1. **Source stamp granularity**. F.2's `source_stamp` SHA over subfolder content lets F.0/F.4 skip unchanged concerns. Risk: noise edits (whitespace, comment-only changes) trigger needless regeneration. v0 = strict byte hash; v0+1 = AST-aware hash. Defer.
 
-2. **Glossary signal extraction**. F.7's package-input helper needs a way to surface glossary candidates without LLM. Heuristic: top-N most-CALLed Functions in package + symbols with lowercase names appearing 5+ times in user-prompt-style strings. Empirical tune. v0 = LLM extracts from package source verbatim; v0+1 = mechanical signal.
-
-3. **Cite-back for hazards on regenerated source**. If hazard cites `file:line` and source line drifts (refactor inserts a line above), the cite goes stale. F.5 detects via line-content hash; F.0 incremental regen rebuilds the doc when stamp shifts. Acceptable.
-
-4. **Cross-concern hazards**. Some hazards span concerns (e.g., "BLoC subscribes via Pinia store; if you call BLoC method directly, store doesn't refresh"). Where does this hazard live? Decision: package architecture.md `## Patterns` section, with explicit cite-backs to multiple concerns. Concerns themselves only carry concern-local hazards.
+2. **Cite-back for cross-cuts on regenerated source**. If a Layers/Patterns/Cross-Cuts cite-back's source line drifts (refactor inserts a line above), the cite goes stale. F.5 detects via line-content hash; F.0 incremental regen rebuilds the affected doc when its stamp shifts. Acceptable. (Concern docs have no cite-backs, so this risk only applies to package + project tiers.)
 
 5. **Order-of-tiers with frontmatter dependencies**. Package overview reads concern docs' frontmatter; project overview reads package docs' frontmatter. Bottom-up order locked: concerns → packages → project. F.4 enforces.
 

@@ -33,7 +33,6 @@ docs/
   <package>/                       # One subdir per package detected by /init-forge
     overview.md                    # Package role + concern enumeration
     architecture.md                # Package layers + patterns
-    glossary.md                    # Domain terms with definitions + cite-backs
     <concern>/                     # One subdir per src/ subfolder concern
       index.md                     # Concern: Purpose + Structure (annotated tree) + Hazards
 ```
@@ -170,7 +169,7 @@ audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; sta
 Docs/ are LLM context source first, dev-greppable second. Density and structure are optimized for LLM consumption (compact, parseable, cite-backed); humans grep them as a side benefit.
 
 ### File Naming
-- Tier files use fixed names: `overview.md`, `architecture.md`, `glossary.md`
+- Tier files use fixed names: `overview.md`, `architecture.md`
 - Concern dirs use the source-subfolder name verbatim (e.g., `docs/<package>/order/index.md` for `<package>/src/order/`)
 - Package dirs mirror the package's index.json key (e.g., `docs/db-cse-ui-strata/apps/app-web/`)
 
@@ -199,25 +198,22 @@ last_indexed: <YYYY-MM-DD>
 <1-2 sentences; no preamble>
 
 ## Structure
-<ASCII tree of files in subfolder; each leaf annotated 1-line ≤60 chars>
 
-## Hazards
-- <one-liner gotcha> — <file:line>
-- <3-7 entries; cite-back required>
+```text
+<ASCII tree of files in subfolder; each leaf annotated `  # <≤60 chars>`>
+```
 ```
 
 **Package architecture** (`docs/<package>/architecture.md`): `## Layers` + `## Patterns` sections, each entry cite-backed.
-
-**Package glossary** (`docs/<package>/glossary.md`): `## Terms` flat list, one line + cite-back per term.
 
 **Package overview** (`docs/<package>/overview.md`): `## Purpose` + `## Concerns` (list with cite-backs to concern dirs).
 
 **Project overview/architecture** (`docs/overview.md`, `docs/architecture.md`): same shape as package tier but at project scope; package list / cross-package layers.
 
 ### Density rules (validate-doc enforces)
-- Banned phrases: "This document...", "In this section...", "We will...", "various", "several", "many", "some"
-- Per-bullet length cap: ≤120 chars (annotation: ≤60)
-- Hazard requires concrete cite-back (`file:line` or `file:start-end`)
+- Banned phrases: "This document...", "In this section...", "We will...", "various", "several", "many", "some", "other"
+- Per-bullet length cap: ≤200 chars (Layers/Patterns/Concerns/Packages/Cross-Cuts); Structure annotations: ≤60 chars
+- Concern docs ship `## Purpose` + `## Structure` only (Hazards moved to `/audit`; Glossary tier dropped — Purpose paragraphs surface terms in context)
 - No prose tables for structural data — exports/types/deps/callees lists live in CBM, NOT in md
 
 ### CBM auto-indexing

@@ -239,9 +239,8 @@ docs/
   <package>/                   # One subdir per package (from .devforge/index.json)
     overview.md                # Package role + concerns list
     architecture.md            # Package layers + patterns
-    glossary.md                # Domain terms + cite-backs
     <concern>/                 # One subdir per src/ subfolder
-      index.md                 # Concern: Purpose + Structure + Hazards (LLM-first density)
+      index.md                 # Concern: Purpose + Structure (annotated tree, fenced) — LLM-first density
 ```
 
 - Feature dirs: `NNN-kebab-name`, sequential numbering (001, 002, ...)
