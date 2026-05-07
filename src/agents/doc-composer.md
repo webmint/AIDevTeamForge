@@ -94,17 +94,32 @@ Plain-prose paragraph, 1–3 sentences. Names what the unit does in concrete ter
 
 ### `## Structure` (concern only)
 
-Plain text directly under the heading. NO code fence. The helper-supplied `tree_text` is the structural skeleton — copy it verbatim, then append ` — <annotation ≤60 chars>` to each LEAF entry on the same line. Directory entries get no annotation. Skip annotations for canonical-aggregator filenames (`mod.rs`, `lib.rs`, `__init__.py`, `index.ts`, `index.js`, `doc.go`).
+Plain text directly under the heading. NO code fence. The helper-supplied `tree_text` is the structural skeleton — copy it verbatim, then append ` — <annotation ≤60 chars>` to each LEAF entry on the same line.
+
+Annotation rules:
+- The first line of `tree_text` (the subfolder path header, e.g. `db-cse-ui-strata/apps/app-web/src/helpers/`) is NOT a leaf. No annotation on that line.
+- Directory entries (lines whose final box-drawing element points at a sub-tree) get no annotation.
+- Canonical-aggregator filenames (`mod.rs`, `lib.rs`, `__init__.py`, `index.ts`, `index.js`, `doc.go`) get no annotation; their content is conventional.
+- Self-describing filenames (`delay.ts`, `concatenateWithSpace.ts`) STILL get an annotation. Density wins by surfacing the API shape in the annotation (return type, key arg) rather than skipping. Example: `delay.ts                    — Promise<void> wrapper around setTimeout(ms)`.
 
 Annotations are filename-inferred + comment-rich-span informed. Specific verbs over generic ones. The post-batch validator regex-rejects banned phrases on the entire doc, so do not slip them into annotations.
 
 ### `## Hazards` (concern only)
 
-Bullet list. **3–12 entries.** Each bullet ≤200 chars. Each bullet ends with one or more cite-backs in the form `<rel-path>:<line>` or `<rel-path>:<start>-<end>`. Multi-cite per bullet is allowed when one hazard genuinely spans multiple files; separate cite-backs with `, `.
+Bullet list. **3–15 entries.** Each bullet ≤200 chars. Each bullet ends with one or more cite-backs in the form `<rel-path>:<line>`, `<rel-path>:<start>-<end>`, or `<rel-path>:<line1>,<line2>` (non-contiguous lines in the same file). Multi-cite per bullet (across files) is allowed when one hazard genuinely spans multiple files; separate file cites with `, `.
+
+**In-concern cite shortening**: when the cited file lives inside this doc's own concern subfolder, use the basename only (`<basename>:<line>`); for files outside the concern, use the full project-relative path. Saves tokens without losing cross-package context.
 
 Hazard claims must trace to a span you were given in `files[].comment_rich_span`. If a span is too short to support a hazard claim about a file, skip that file rather than fabricate. Do NOT invent line numbers — every cite-back must be a line number that appears verbatim in some span you were given (the helper prefixes spans with `{ln:>4}: ` so the line number is recoverable).
 
-A hazard is a load-bearing pitfall an editor could trip on: silent branch swaps, deep watchers triggering full re-renders, non-obvious mathematical conventions (Banker's rounding), reactivity edge cases, lifecycle ordering constraints. NOT: "this file does X" descriptions, refactor suggestions, marketing about what the code does well.
+If more than 15 hazard candidates exist, prioritize by load-bearing impact (drop the rest):
+1. Silent semantic mismatches — file-named-X exports Y, return type lies, hardcoded value disregards an arg
+2. Shared mutable state — module-scoped vars, leaked listeners, global side-effects
+3. Lifecycle / ordering constraints — call-order before guard, eager evaluation at module-import time
+4. Reactivity edge cases — primitive-vs-object reactive(), watcher mutation triggers
+5. Non-obvious mathematical / numerical conventions — Banker's rounding, integer-truncation surprises, ID collision spaces
+
+Hazards include filename↔export mismatches (e.g. `requiredQuote.ts` exports `quoteTypeGuard`) — they are exactly the kind of trap an editor stumbles into. NOT hazards: "this file does X" descriptions, refactor suggestions, marketing about what the code does well, edge cases the span doesn't actually evidence.
 
 ### `## Layers` (package-architecture, project-architecture)
 

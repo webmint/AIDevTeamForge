@@ -129,13 +129,14 @@ Universal rules (encoded in F.3 doc-composer prompt + F.5 validate-doc):
 - **Section anchors fixed** — `## Purpose`, `## Structure`, `## Hazards`, `## Layers`, `## Patterns`, `## Terms`, `## Concerns`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor.
 - **No preamble paragraphs** — section content starts on the first line after the anchor. Banned phrases (case-insensitive): "this document", "in this section", "we will", "various", "several", "many", "some", "other".
 - **Tree formatting** — `## Structure` content is plain text directly under the heading. No code fence. Helper provides the tree verbatim from F.2 output; LLM appends `— <annotation ≤60 chars>` to each LEAF on the same line.
-- **Density caps** (calibrated 2026-05-07 on testForge20 helpers concern):
+- **Density caps** (calibrated 2026-05-07 on testForge20 helpers concern; smoke 2 confirmed real codebases surface 12-15 hazards):
   - Per-section caps only — no whole-doc budget. Tree section grows with file count; that is intentional.
   - Per-bullet length: ≤200 chars (Hazards/Terms/etc.); Structure annotations: ≤60 chars
-  - Hazard list: **3–12 entries** (calibration showed real codebases routinely surface 8-12 worthwhile hazards; tighter caps drop signal)
-  - Each Hazard requires concrete cite-back (`<rel-path>:<line>` or `<rel-path>:<start>-<end>`). Multi-cite per bullet is allowed when one hazard spans multiple files.
+  - Hazard list: **3–15 entries**. If more candidates exist, prioritize by load-bearing impact (silent semantic mismatches, shared mutable state, lifecycle ordering, type lies) and drop the rest.
+  - Each Hazard requires concrete cite-back (`<rel-path>:<line>`, `<rel-path>:<start>-<end>`, OR `<rel-path>:<line1>,<line2>` for non-contiguous lines in the same file). Multi-cite per bullet is allowed when one hazard spans multiple files (separator: `, `).
+  - **In-concern cite shortening**: when the cited file lives inside the doc's own concern subfolder, use the basename only (`<basename>:<line>`); for files outside the concern, use the full project-relative path. This keeps prose tight without losing cross-package context.
   - Glossary entry: 1 line per term + 1 cite-back
-- **Cite-back format**: `<project-relative-path>:<line>` or `<project-relative-path>:<start>-<end>`. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
+- **Cite-back format**: project-relative path or basename per shortening rule above. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
 - **No prose tables for structural data** — exports, types, deps, callees lists are NEVER in docs/. Those queries hit CBM live.
 
 Example concern doc (target shape):
