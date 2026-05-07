@@ -30,7 +30,7 @@ from typing import Dict, List, Tuple
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 
 _CONCERN_REQUIRED_KEYS = ("concern", "package", "files", "source_stamp", "last_indexed")
-_CONCERN_REQUIRED_SECTIONS = ("## Purpose", "## Structure", "## Hazards")
+_CONCERN_REQUIRED_SECTIONS = ("## Purpose", "## Structure")
 
 _BANNED_PHRASES_RE = re.compile(
     r"\b(this document|in this section|we will|various|several|many|some|other)\b",
@@ -168,26 +168,6 @@ def _validate_concern_doc(
         errors.append(f"banned phrase {match.group(0)!r} at body line {line_idx}")
 
     sections = _split_sections(body)
-    hazards_text = sections.get("Hazards", "")
-    hazards = _parse_bullets(hazards_text)
-
-    if hazards or "## Hazards" in body:
-        if not (_HAZARD_COUNT_MIN <= len(hazards) <= _HAZARD_COUNT_MAX):
-            errors.append(
-                f"hazard count {len(hazards)} outside range "
-                f"[{_HAZARD_COUNT_MIN}, {_HAZARD_COUNT_MAX}]"
-            )
-        for i, hz in enumerate(hazards, start=1):
-            if len(hz) > _HAZARD_BULLET_CAP:
-                errors.append(
-                    f"hazard {i} length {len(hz)} > {_HAZARD_BULLET_CAP} "
-                    f"(first 80 chars: {hz[:80]!r})"
-                )
-            if not _CITE_RE.search(hz):
-                errors.append(
-                    f"hazard {i} missing cite-back: {hz[:80]!r}"
-                )
-
     structure_text = sections.get("Structure", "")
     for line in structure_text.split("\n"):
         if " — " in line:
@@ -196,33 +176,6 @@ def _validate_concern_doc(
                 errors.append(
                     f"structure annotation {annotation!r} length "
                     f"{len(annotation)} > {_ANNOTATION_CAP}"
-                )
-
-    for match in _CITE_RE.finditer(body):
-        cite_path = match.group("path")
-        # Skip a few common false positives (URL-ish patterns, dates).
-        if cite_path.endswith("/") or cite_path.startswith("http"):
-            continue
-        resolved, mode = _resolve_cite_path(cite_path, target, project_root)
-        if mode == "miss":
-            errors.append(f"cite path not found: {cite_path!r}")
-            continue
-        try:
-            line_count = len(resolved.read_text(encoding="utf-8", errors="replace").splitlines())
-        except OSError as exc:
-            errors.append(f"cite file unreadable {cite_path!r}: {exc}")
-            continue
-        for group_name in ("start", "end", "extra"):
-            ln_str = match.group(group_name)
-            if ln_str is None:
-                continue
-            try:
-                ln = int(ln_str)
-            except ValueError:
-                continue
-            if ln < 1 or ln > line_count:
-                errors.append(
-                    f"cite {cite_path}:{ln} out of range (file has {line_count} lines)"
                 )
 
     return errors

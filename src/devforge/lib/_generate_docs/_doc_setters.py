@@ -5,7 +5,6 @@ Four CLI subcommands ship under this module:
 - `init-doc        --tier concern --target T --frontmatter <json>`
 - `set-doc-purpose --tier concern --target T --text "..."`
 - `set-doc-structure --tier concern --target T --tree "..." --annotations <json>`
-- `add-doc-hazard --tier concern --target T --text "..." --cite "..."`
 - `render-doc      --tier concern --target T [--out PATH]`
 
 Per-doc state lives at `<devforge_dir>/.f4-doc-state.json`. Setter calls
@@ -13,12 +12,13 @@ mutate the state slot for `<tier>:<target>` keyed entry; `render-doc`
 emits the assembled Markdown to `docs/<target>/index.md` (or `--out`).
 
 Helper owns markdown structure: frontmatter shape, section ordering,
-tree-text + annotation interleaving, hazard bullet format. LLM owns
-values via the setters. `validate-doc` (F.5) gates the rendered doc
-before it is final; this helper does NOT auto-invoke validate.
+tree-text + annotation interleaving. LLM owns values via the setters.
+`validate-doc` (F.5) gates the rendered doc before it is final; this
+helper does NOT auto-invoke validate.
 
-Concern tier only in this v0; package + project tier setters land
-under forthcoming F.4 expansion.
+Concern docs ship only `## Purpose` and `## Structure`. Hazards moved
+to `/audit` (separate command). Concern tier only in this v0; package
++ project tier setters land under forthcoming F.4 expansion.
 
 Stdlib only. Targets Python 3.8+.
 """
@@ -91,7 +91,6 @@ def _ensure_concern_slot(
             "sections": {
                 "Purpose": "",
                 "Structure": "",
-                "Hazards": [],
             },
         }
         docs[key] = slot
@@ -134,7 +133,11 @@ def _annotate_tree(tree_text: str, annotations: Dict[str, str]) -> str:
 
 
 def _render_concern_doc(slot: Dict[str, Any]) -> str:
-    """Assemble full Markdown for a concern-tier slot."""
+    """Assemble full Markdown for a concern-tier slot.
+
+    Concern docs ship only ## Purpose + ## Structure. Hazards moved to
+    /audit (separate command); not authored under /generate-docs.
+    """
     frontmatter = dict(slot.get("frontmatter") or {})
     sections = slot.get("sections") or {}
     target = slot.get("target", "")
@@ -146,25 +149,12 @@ def _render_concern_doc(slot: Dict[str, Any]) -> str:
     parts: List[str] = [fm_block.rstrip("\n"), ""]
     purpose = (sections.get("Purpose") or "").strip()
     structure = (sections.get("Structure") or "").rstrip("\n")
-    hazards: List[Dict[str, str]] = sections.get("Hazards") or []
 
     parts.append("## Purpose")
     parts.append(purpose if purpose else "(not yet authored)")
     parts.append("")
     parts.append("## Structure")
     parts.append(structure if structure else "(not yet authored)")
-    parts.append("")
-    parts.append("## Hazards")
-    if hazards:
-        for hz in hazards:
-            text = (hz.get("text") or "").strip()
-            cite = (hz.get("cite") or "").strip()
-            if text and cite:
-                parts.append(f"- {text} — {cite}")
-            elif text:
-                parts.append(f"- {text}")
-    else:
-        parts.append("- (no hazards authored)")
     parts.append("")
 
     return "\n".join(parts)
@@ -205,7 +195,6 @@ def cmd_init_doc(args: argparse.Namespace) -> int:
         "sections": {
             "Purpose": "",
             "Structure": "",
-            "Hazards": [],
         },
     }
     _save_state(devforge_dir, state)
@@ -237,15 +226,6 @@ def cmd_set_doc_structure(args: argparse.Namespace) -> int:
     state = _load_state(devforge_dir)
     slot = _ensure_concern_slot(state, args.tier, args.target)
     slot["sections"]["Structure"] = _annotate_tree(args.tree, annotations)
-    _save_state(devforge_dir, state)
-    return 0
-
-
-def cmd_add_doc_hazard(args: argparse.Namespace) -> int:
-    devforge_dir = Path(args.devforge_dir)
-    state = _load_state(devforge_dir)
-    slot = _ensure_concern_slot(state, args.tier, args.target)
-    slot["sections"]["Hazards"].append({"text": args.text, "cite": args.cite})
     _save_state(devforge_dir, state)
     return 0
 
@@ -304,12 +284,6 @@ def _build_set_doc_structure(p: argparse.ArgumentParser) -> None:
         default="",
         help="JSON object {leaf_basename: annotation_text}",
     )
-
-
-def _build_add_doc_hazard(p: argparse.ArgumentParser) -> None:
-    _common_target_args(p)
-    p.add_argument("--text", required=True)
-    p.add_argument("--cite", required=True)
 
 
 def _build_render_doc(p: argparse.ArgumentParser) -> None:

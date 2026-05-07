@@ -10,11 +10,11 @@ Cases:
   7.  set-doc-structure: skips canonical-aggregator filenames
   8.  set-doc-structure: skips path-header line + directory entries
   9.  set-doc-structure: invalid annotations JSON → exit 2
- 10.  add-doc-hazard: appends entry to Hazards list
- 11.  add-doc-hazard: order preserved across multiple calls
- 12.  render-doc: writes valid markdown to docs/<target>/index.md
- 13.  render-doc: emits frontmatter + 3 sections
- 14.  render-doc: missing slot → exit 2
+  (Hazards dropped 2026-05-07 — moved to /audit; concern docs ship
+   only ## Purpose + ## Structure)
+ 10.  render-doc: writes valid markdown to docs/<target>/index.md
+ 11.  render-doc: emits frontmatter + 2 sections (Purpose + Structure)
+ 12.  render-doc: missing slot → exit 2
  15.  render-doc: --out override path used
  16.  end-to-end: init + 3 setters + render → output validates against F.5
 
@@ -40,7 +40,6 @@ if str(_LIB_DIR) not in sys.path:
 from _generate_docs._doc_setters import (  # noqa: E402
     _annotate_tree,
     _load_state,
-    cmd_add_doc_hazard,
     cmd_init_doc,
     cmd_render_doc,
     cmd_set_doc_purpose,
@@ -147,9 +146,9 @@ class CmdInitDocTests(unittest.TestCase):
         self.assertEqual(state["docs"]["concern:pkg-a/order"]["frontmatter"]["source_stamp"], "v2")
 
     def test_reinit_clears_sections(self):
-        """init-doc on an existing slot wipes Purpose/Structure/Hazards.
+        """init-doc on an existing slot wipes Purpose/Structure.
 
-        Otherwise a re-run would append to stale hazards. Forcing the
+        Otherwise a re-run would carry stale prior content. Forcing the
         orchestrator to clean state before init-doc is bad UX — init-doc
         owns the reset.
         """
@@ -161,9 +160,8 @@ class CmdInitDocTests(unittest.TestCase):
             frontmatter=json.dumps({"concern": "order", "source_stamp": "v1"}),
         )
         _run(cmd_init_doc, first_init)
-        # Populate sections via setters
+        # Populate Purpose
         from _generate_docs._doc_setters import (  # noqa: E402
-            cmd_add_doc_hazard,
             cmd_set_doc_purpose,
         )
         _run(
@@ -173,16 +171,6 @@ class CmdInitDocTests(unittest.TestCase):
                 target=target,
                 devforge_dir=str(self.devforge),
                 text="prior purpose",
-            ),
-        )
-        _run(
-            cmd_add_doc_hazard,
-            argparse.Namespace(
-                tier="concern",
-                target=target,
-                devforge_dir=str(self.devforge),
-                text="prior hazard",
-                cite="src/x.ts:1",
             ),
         )
         # Re-init
@@ -196,7 +184,7 @@ class CmdInitDocTests(unittest.TestCase):
         slot = _load_state(self.devforge)["docs"][f"concern:{target}"]
         self.assertEqual(slot["sections"]["Purpose"], "")
         self.assertEqual(slot["sections"]["Structure"], "")
-        self.assertEqual(slot["sections"]["Hazards"], [])
+        self.assertNotIn("Hazards", slot["sections"])
         self.assertEqual(slot["frontmatter"]["source_stamp"], "v2")
 
 
@@ -252,16 +240,6 @@ class CmdSettersTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("valid JSON", err)
 
-    def test_add_hazard_appends_entry(self):
-        args = self._make_args(text="bug 1", cite="src/foo.ts:5")
-        _run(cmd_add_doc_hazard, args)
-        args = self._make_args(text="bug 2", cite="src/foo.ts:9")
-        _run(cmd_add_doc_hazard, args)
-        state = _load_state(self.devforge)
-        hz = state["docs"]["concern:pkg-a/order"]["sections"]["Hazards"]
-        self.assertEqual(len(hz), 2)
-        self.assertEqual(hz[0]["text"], "bug 1")
-        self.assertEqual(hz[1]["cite"], "src/foo.ts:9")
 
 
 class CmdRenderDocTests(unittest.TestCase):
@@ -311,22 +289,6 @@ class CmdRenderDocTests(unittest.TestCase):
                 annotations=json.dumps({"A.ts": "a desc", "B.ts": "b desc"}),
             ),
         )
-        # hazards (3 to satisfy F.5 minimum)
-        for txt, cite in (
-            ("hazard one", "pkg-a/src/order/A.ts:1"),
-            ("hazard two", "pkg-a/src/order/A.ts:2"),
-            ("hazard three", "pkg-a/src/order/B.ts:1"),
-        ):
-            _run(
-                cmd_add_doc_hazard,
-                argparse.Namespace(
-                    tier="concern",
-                    target="pkg-a/order",
-                    devforge_dir=str(self.devforge),
-                    text=txt,
-                    cite=cite,
-                ),
-            )
 
     def test_render_writes_doc(self):
         self._run_full_pipeline()
@@ -345,8 +307,9 @@ class CmdRenderDocTests(unittest.TestCase):
         self.assertIn("source_stamp:", text)
         self.assertIn("## Purpose", text)
         self.assertIn("## Structure", text)
-        self.assertIn("## Hazards", text)
-        self.assertIn("- hazard one — pkg-a/src/order/A.ts:1", text)
+        # Hazards moved to /audit; concern docs no longer carry that section
+        self.assertNotIn("## Hazards", text)
+        self.assertIn("A.ts — a desc", text)
 
     def test_missing_slot_returns_2(self):
         args = argparse.Namespace(
@@ -422,21 +385,6 @@ class EndToEndValidateTests(unittest.TestCase):
                 annotations=json.dumps({"A.ts": "alpha", "B.ts": "beta"}),
             ),
         )
-        for txt, cite in (
-            ("first hazard about side-effects", "pkg-a/src/order/A.ts:5"),
-            ("second hazard about ordering", "pkg-a/src/order/A.ts:10"),
-            ("third hazard about reactivity", "pkg-a/src/order/B.ts:7"),
-        ):
-            _run(
-                cmd_add_doc_hazard,
-                argparse.Namespace(
-                    tier="concern",
-                    target="pkg-a/src/order",
-                    devforge_dir=str(self.devforge),
-                    text=txt,
-                    cite=cite,
-                ),
-            )
         _run(
             cmd_render_doc,
             argparse.Namespace(

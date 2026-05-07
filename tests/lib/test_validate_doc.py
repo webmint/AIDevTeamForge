@@ -66,11 +66,6 @@ Cross-cutting order flow for pkg-a.
 src/order/
 ├── OrderFooter.ts — submit/cancel + T&C handler
 └── OrderLines.ts — line-item editor
-
-## Hazards
-- OrderFooter mutates props.lines silently — pkg-a/src/order/OrderFooter.ts:5
-- OrderLines deep-watches lines triggering full re-render — pkg-a/src/order/OrderLines.ts:3
-- Pricing rounds with Banker's rounding; do NOT swap to Math.round — pkg-a/src/order/OrderFooter.ts:8
 """
 
 
@@ -182,10 +177,10 @@ class ValidateConcernDocTests(unittest.TestCase):
         self.assertTrue(any("source_stamp" in e for e in errors))
 
     def test_missing_section_anchor(self):
-        broken = _VALID_DOC_TEMPLATE.replace("## Hazards", "## Hzrds_typo")
+        broken = _VALID_DOC_TEMPLATE.replace("## Structure", "## Strct_typo")
         self._write(broken)
         errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
-        self.assertTrue(any("missing required section" in e and "Hazards" in e for e in errors))
+        self.assertTrue(any("missing required section" in e and "Structure" in e for e in errors))
 
     def test_banned_phrase(self):
         broken = _VALID_DOC_TEMPLATE.replace(
@@ -196,49 +191,6 @@ class ValidateConcernDocTests(unittest.TestCase):
         errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
         self.assertTrue(any("banned phrase" in e for e in errors))
 
-    def test_hazard_count_below_three(self):
-        broken = _VALID_DOC_TEMPLATE.replace(
-            "## Hazards\n"
-            "- OrderFooter mutates props.lines silently — pkg-a/src/order/OrderFooter.ts:5\n"
-            "- OrderLines deep-watches lines triggering full re-render — pkg-a/src/order/OrderLines.ts:3\n"
-            "- Pricing rounds with Banker's rounding; do NOT swap to Math.round — pkg-a/src/order/OrderFooter.ts:8\n",
-            "## Hazards\n- only one hazard — pkg-a/src/order/OrderFooter.ts:5\n",
-        )
-        self._write(broken)
-        errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
-        self.assertTrue(any("hazard count 1 outside range" in e for e in errors))
-
-    def test_hazard_count_above_fifteen(self):
-        # Build a doc with 16 hazards
-        many_hazards = "\n".join(
-            f"- hazard #{i} description — pkg-a/src/order/OrderFooter.ts:{i}"
-            for i in range(1, 17)
-        )
-        replacement_section = "## Hazards\n" + many_hazards + "\n"
-        broken = _VALID_DOC_TEMPLATE[: _VALID_DOC_TEMPLATE.index("## Hazards")] + replacement_section
-        self._write(broken)
-        errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
-        self.assertTrue(any("outside range" in e and "16" in e for e in errors))
-
-    def test_hazard_missing_cite_back(self):
-        broken = _VALID_DOC_TEMPLATE.replace(
-            "- Pricing rounds with Banker's rounding; do NOT swap to Math.round — pkg-a/src/order/OrderFooter.ts:8",
-            "- Pricing rounds with Banker's rounding; do NOT swap to Math.round",
-        )
-        self._write(broken)
-        errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
-        self.assertTrue(any("missing cite-back" in e for e in errors))
-
-    def test_hazard_exceeds_length_cap(self):
-        long_hazard = "- " + ("X" * 250) + " — pkg-a/src/order/OrderFooter.ts:1"
-        broken = _VALID_DOC_TEMPLATE.replace(
-            "- OrderFooter mutates props.lines silently — pkg-a/src/order/OrderFooter.ts:5",
-            long_hazard,
-        )
-        self._write(broken)
-        errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
-        self.assertTrue(any("hazard 1 length" in e and "200" in e for e in errors))
-
     def test_structure_annotation_exceeds_cap(self):
         long_annotation = "├── X.ts — " + ("a" * 70)
         broken = _VALID_DOC_TEMPLATE.replace(
@@ -248,24 +200,6 @@ class ValidateConcernDocTests(unittest.TestCase):
         self._write(broken)
         errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
         self.assertTrue(any("annotation" in e and "60" in e for e in errors))
-
-    def test_cite_path_not_found(self):
-        broken = _VALID_DOC_TEMPLATE.replace(
-            "pkg-a/src/order/OrderFooter.ts:5",
-            "pkg-a/src/order/Missing.ts:5",
-        )
-        self._write(broken)
-        errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
-        self.assertTrue(any("cite path not found" in e for e in errors))
-
-    def test_cite_line_out_of_range(self):
-        broken = _VALID_DOC_TEMPLATE.replace(
-            "pkg-a/src/order/OrderFooter.ts:5",
-            "pkg-a/src/order/OrderFooter.ts:9999",
-        )
-        self._write(broken)
-        errors = _validate_concern_doc(self.doc_path, "pkg-a/src/order", self.root)
-        self.assertTrue(any("9999 out of range" in e for e in errors))
 
 
 class CmdValidateDocTests(unittest.TestCase):

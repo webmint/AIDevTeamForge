@@ -17,11 +17,12 @@ Plan E premise was "pre-compute 7-section markdown per concern so future LLM wor
 
 - CBM's structural queries (`search_graph`, `trace_call_path`, `get_code_snippet`, `agentic_context`, `semantic_query`) deliver in 1–10ms what Plan E proposed pre-rendering for $5–15/concern of LLM cost.
 - 5 of E's 7 sections (exports, types, dependencies, usage_example, public-surface descriptions) are derivable live from CBM with strictly fresher data than any pre-rendered md.
-- 2 of E's 7 sections (overview, hazards) are NOT in any graph — pure LLM judgment over source. Those stay md.
-- 1 of E's 7 sections (annotated tree) is mechanical structure + LLM 1-line annotations — half-graph half-judgment. Keep as md.
+- 1 of E's 7 sections (overview / Purpose) is NOT in any graph — pure LLM judgment over source. Stays md.
+- 1 of E's 7 sections (annotated tree / Structure) is mechanical structure + LLM 1-line annotations per leaf. Keep as md.
+- Hazards moved out of concern docs entirely (2026-05-07 V4 finding) — `/audit` command is the right home for adversarial gotcha discovery; pre-rendering hazards into every concern doc bloats output for LLM consumers (research/specify/plan) who care about orientation, not gotchas. Quality-review territory ≠ orientation territory.
 - New tiers Plan E didn't address: glossary (domain-term meanings), package overview/architecture, project overview/architecture. These are also pure LLM judgment over the codebase, regenerated rarely. Add as md.
 
-Result: docs/ becomes the **narrative + judgment** layer; CBM becomes the **structural-query** layer. Different commands consult them in different orders.
+Result: docs/ becomes the **orientation + narrative** layer (Purpose + Structure per concern; package + project tiers); CBM becomes the **structural-query** layer; `/audit` becomes the **hazard-discovery** layer.
 
 LLM-first density: docs/ files are LLM context source first, dev-greppable second. Format is structured-prompt-fragment, not wiki page.
 
@@ -134,17 +135,14 @@ Universal rules (encoded in F.3 doc-composer prompt + F.5 validate-doc):
   - Package overview/architecture/glossary: `package`, `last_indexed` (+ `source_stamp` for overview/architecture)
   - Project overview/architecture: `last_indexed` only
   Helper writes the frontmatter; LLM never edits it.
-- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Hazards`, `## Layers`, `## Patterns`, `## Terms`, `## Concerns`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor.
+- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Layers`, `## Patterns`, `## Terms`, `## Concerns`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor. Hazards moved to `/audit` (separate command); concern docs do NOT carry hazard content.
 - **No preamble paragraphs** — section content starts on the first line after the anchor. Banned phrases (case-insensitive): "this document", "in this section", "we will", "various", "several", "many", "some", "other".
 - **Tree formatting** — `## Structure` content is plain text directly under the heading. No code fence. Helper provides the tree verbatim from F.2 output; LLM appends `— <annotation ≤60 chars>` to each LEAF on the same line.
-- **Density caps** (calibrated 2026-05-07 on testForge20 helpers concern; smoke 2 confirmed real codebases surface 12-15 hazards):
+- **Density caps** (calibrated 2026-05-07 on testForge20 helpers + V4 finding):
   - Per-section caps only — no whole-doc budget. Tree section grows with file count; that is intentional.
-  - Per-bullet length: ≤200 chars (Hazards/Terms/etc.); Structure annotations: ≤60 chars
-  - Hazard list: **3–15 entries**. If more candidates exist, prioritize by load-bearing impact (silent semantic mismatches, shared mutable state, lifecycle ordering, type lies) and drop the rest.
-  - Each Hazard requires concrete cite-back (`<rel-path>:<line>`, `<rel-path>:<start>-<end>`, OR `<rel-path>:<line1>,<line2>` for non-contiguous lines in the same file). Multi-cite per bullet is allowed when one hazard spans multiple files (separator: `, `).
-  - **In-concern cite shortening**: when the cited file lives inside the doc's own concern subfolder, use the basename only (`<basename>:<line>`); for files outside the concern, use the full project-relative path. This keeps prose tight without losing cross-package context.
+  - Per-bullet length: ≤200 chars (Terms/Layers/Patterns/Concerns/Packages/Cross-Cuts); Structure annotations: ≤60 chars
   - Glossary entry: 1 line per term + 1 cite-back
-- **Cite-back format**: project-relative path or basename per shortening rule above. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
+- **Cite-back format** (Glossary/Layers/Patterns/Concerns/Packages/Cross-Cuts only — concern docs have no cites): `<project-relative-path>:<line>` or `<project-relative-path>:<start>-<end>`. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
 - **No prose tables for structural data** — exports, types, deps, callees lists are NEVER in docs/. Those queries hit CBM live.
 
 Example concern doc (target shape):
@@ -172,11 +170,6 @@ src/components/order/
 │   └── OrderLinePrice.vue   — price formatter per division
 └── helpers/
     └── data.ts              — modal config provider
-
-## Hazards
-- OrderFooter EMEA division branch silently swaps T&C component; verify division before edits — src/components/order/OrderFooter.vue:54
-- OrderLines watches `props.lines` deep; mutating elements triggers full re-render — src/components/order/OrderLines.vue:72
-- Pricing rounds with Banker's rounding via roundedDecimal; do NOT swap to Math.round — apps/app-web/src/helpers/calculatePrice.ts:18
 ```
 
 Example package architecture.md:
@@ -349,17 +342,17 @@ Location: `src/agents/doc-composer.md` (new file).
 Frontmatter:
 ```yaml
 name: doc-composer
-description: "Multi-tier doc composer for /generate-docs Plan F. Receives batch JSON from concern-input / package-input / project-input helpers. Emits 1-3 LLM-first dense sections per dispatch (Purpose/Structure/Hazards for concern; Layers/Patterns for architecture; Terms for glossary; Purpose/Concerns for overviews). Strict density format. Orchestrator parses sections into setter calls."
+description: "Multi-tier doc composer for /generate-docs Plan F. Receives batch JSON from concern-input / package-input / project-input helpers. Emits 1-2 LLM-first dense sections per dispatch (Purpose/Structure for concern; Layers/Patterns for architecture; Terms for glossary; Purpose/Concerns for overviews). Strict density format. Orchestrator parses sections into setter calls."
 model_tier: scan
 tools: Read
 ```
 
-`model_tier: scan` (Haiku) — density caps are LLM-first; scan tier produces tighter output than think tier in this format. Empirically tune up to think only if hazard quality proves insufficient.
+`model_tier: scan` (Haiku) — density caps are LLM-first; scan tier produces tighter output than think tier in this format.
 
 Tool allowlist: `Read` only. Composer doesn't need CBM tools — concern-input helper already extracted what it needs. NO Bash (no helper invocation from subagent; orchestrator parses output and calls setters).
 
 Output contract: structured Markdown with anchors. Sections:
-- Concern tier: `## Purpose`, `## Structure`, `## Hazards`
+- Concern tier: `## Purpose`, `## Structure` (NO Hazards — moved to /audit)
 - Package overview: `## Purpose`, `## Concerns`
 - Package architecture: `## Layers`, `## Patterns`
 - Package glossary: `## Terms`
@@ -368,13 +361,12 @@ Output contract: structured Markdown with anchors. Sections:
 
 Density discipline (encoded in agent body):
 - Banned phrases list ("This document...", "In this section...", "We will...", "various", "several", "many", "some", "other")
-- Per-bullet length cap (≤120 chars; annotation ≤60)
-- Hazard requires concrete cite-back (`file:line`) — helper rejects hazard without cite
+- Per-bullet length cap (≤200 chars; annotation ≤60)
 - Concern Structure section: ASCII tree only, with per-leaf 1-line annotation; helper provides the tree pre-computed, LLM fills annotations only
 
 #### Verify F.3
 - Agent file authored via instruction-author + claude-code-guide (per `feedback_dual_agent_verify_command_statements`)
-- Sample dispatches on testForge20 (helpers concern, order concern, app-web package architecture): orchestrator parses cleanly, all cite-backs valid, density caps met
+- Sample dispatches on testForge20 (helpers concern, order concern, app-web package architecture): orchestrator parses cleanly, density caps met
 - Test scope override (single concern): from F.4 spec carry-over
 
 ### F.4 — /generate-docs spec rewrite (multi-tier loop)
@@ -396,7 +388,7 @@ Replace iteration scaffold (`src/commands/generate-docs/main.md` at commit `3223
     Else (status in {"changed", "new"}):
           render docs/<P>/<C>/index.md.skeleton
           Dispatch doc-composer with concern-input batch JSON
-          Parse 3 sections (Purpose/Structure/Hazards) → setters
+          Parse 2 sections (Purpose, Structure-as-flat-annotations) → setters
           Validate + render
 ## Phase 3 — Package tier loop (reads concern frontmatter for Concerns list)
   For each package P:
