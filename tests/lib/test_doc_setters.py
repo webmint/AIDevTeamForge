@@ -146,6 +146,59 @@ class CmdInitDocTests(unittest.TestCase):
         state = _load_state(self.devforge)
         self.assertEqual(state["docs"]["concern:pkg-a/order"]["frontmatter"]["source_stamp"], "v2")
 
+    def test_reinit_clears_sections(self):
+        """init-doc on an existing slot wipes Purpose/Structure/Hazards.
+
+        Otherwise a re-run would append to stale hazards. Forcing the
+        orchestrator to clean state before init-doc is bad UX — init-doc
+        owns the reset.
+        """
+        target = "pkg-a/order"
+        first_init = argparse.Namespace(
+            tier="concern",
+            target=target,
+            devforge_dir=str(self.devforge),
+            frontmatter=json.dumps({"concern": "order", "source_stamp": "v1"}),
+        )
+        _run(cmd_init_doc, first_init)
+        # Populate sections via setters
+        from _generate_docs._doc_setters import (  # noqa: E402
+            cmd_add_doc_hazard,
+            cmd_set_doc_purpose,
+        )
+        _run(
+            cmd_set_doc_purpose,
+            argparse.Namespace(
+                tier="concern",
+                target=target,
+                devforge_dir=str(self.devforge),
+                text="prior purpose",
+            ),
+        )
+        _run(
+            cmd_add_doc_hazard,
+            argparse.Namespace(
+                tier="concern",
+                target=target,
+                devforge_dir=str(self.devforge),
+                text="prior hazard",
+                cite="src/x.ts:1",
+            ),
+        )
+        # Re-init
+        second_init = argparse.Namespace(
+            tier="concern",
+            target=target,
+            devforge_dir=str(self.devforge),
+            frontmatter=json.dumps({"concern": "order", "source_stamp": "v2"}),
+        )
+        _run(cmd_init_doc, second_init)
+        slot = _load_state(self.devforge)["docs"][f"concern:{target}"]
+        self.assertEqual(slot["sections"]["Purpose"], "")
+        self.assertEqual(slot["sections"]["Structure"], "")
+        self.assertEqual(slot["sections"]["Hazards"], [])
+        self.assertEqual(slot["frontmatter"]["source_stamp"], "v2")
+
 
 class CmdSettersTests(unittest.TestCase):
     def setUp(self):

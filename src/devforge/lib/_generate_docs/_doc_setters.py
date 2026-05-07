@@ -174,6 +174,13 @@ def _render_concern_doc(slot: Dict[str, Any]) -> str:
 
 
 def cmd_init_doc(args: argparse.Namespace) -> int:
+    """Initialise (or RESET) a doc slot for `<tier>:<target>`.
+
+    init-doc is idempotent: a re-run wipes any prior Purpose / Structure /
+    Hazards content for the slot and replaces frontmatter wholesale. This
+    is the contract that lets the orchestrator restart per-concern dispatch
+    cycles without writing defensive state-cleanup itself.
+    """
     devforge_dir = Path(args.devforge_dir)
     try:
         frontmatter = json.loads(args.frontmatter)
@@ -184,8 +191,23 @@ def cmd_init_doc(args: argparse.Namespace) -> int:
         print("--frontmatter must decode to a JSON object", file=sys.stderr)
         return 2
     state = _load_state(devforge_dir)
-    slot = _ensure_concern_slot(state, args.tier, args.target)
-    slot["frontmatter"] = frontmatter
+    if args.tier != "concern":
+        print(
+            f"only tier=concern supported in this v0 (got tier={args.tier!r})",
+            file=sys.stderr,
+        )
+        return 2
+    key = _doc_key(args.tier, args.target)
+    state.setdefault("docs", {})[key] = {
+        "tier": args.tier,
+        "target": args.target,
+        "frontmatter": frontmatter,
+        "sections": {
+            "Purpose": "",
+            "Structure": "",
+            "Hazards": [],
+        },
+    }
     _save_state(devforge_dir, state)
     return 0
 
