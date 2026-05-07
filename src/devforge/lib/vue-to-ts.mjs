@@ -1,23 +1,43 @@
 #!/usr/bin/env node
-import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
-import fg from 'fast-glob'
-import { readFile, writeFile, mkdir, stat } from 'node:fs/promises'
+// Compile every .vue Single File Component under <root> to a plain .ts/.js file
+// using the consumer project's own @vue/compiler-sfc (resolved from <root>'s
+// node_modules via createRequire). Output is intended for downstream graph
+// indexing — TS parsers can read the compiled scripts and extract symbols
+// otherwise invisible inside SFCs.
+//
+// This tool has ZERO npm dependencies of its own. It is shipped as a single
+// .mjs file. The consumer project must have @vue/compiler-sfc installed
+// (every Vue 3 project does — it's a transitive dep of `vue` and an explicit
+// devDep in most setups).
+//
+// Recommended usage: write to a system temp dir + delete after codegraph
+// ingest, so no .vue.ts artifacts ever land inside the consumer repo:
+//
+//   TEMP=$(mktemp -d) && \
+//     node vue-to-ts.mjs <root> --mode mirror --out "$TEMP" && \
+//     codegraph build --root <root> --vue-extract-dir "$TEMP" && \
+//     rm -rf "$TEMP"
+import { readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 
 const HELP = `Usage: vue-to-ts <root> [options]
 
-Walks <root> recursively, compiles every .vue file to .ts (or .js) using
-@vue/compiler-sfc, and writes the result for downstream graph indexing.
+Walks <root> recursively, compiles every .vue file to .ts (or .js) using the
+consumer project's @vue/compiler-sfc (resolved from <root>'s node_modules),
+and writes the result for downstream graph indexing.
 
 Options:
   --mode <sidecar|mirror>   sidecar: write next to source as <name>.vue.ts
                             mirror:  write under --out preserving tree
                             (default: sidecar)
   -o, --out <dir>           Required when --mode mirror
-  --include <glob>          Extra include glob (repeatable, comma-separated)
-  --exclude <glob>          Extra exclude glob (repeatable, comma-separated)
+  --include <name>          (reserved — currently ignored; only *.vue files
+                            are processed)
+  --exclude <substr>        Skip files whose relative path contains <substr>
+                            (repeatable, comma-separated)
   --include-template        Append compiled render fn (default: script only)
   --raw-template-comment    Append raw template as a trailing comment
   --no-header               Omit the auto-generated provenance header
@@ -26,14 +46,17 @@ Options:
   -h, --help                Show this message
 
 Defaults
-  - Skips: node_modules, dist, build, coverage, .git, .cache, .nuxt, .output, .turbo
+  - Skip directories by name: node_modules, dist, build, coverage, .git,
+    .cache, .nuxt, .output, .turbo
   - Output language: .ts if <script lang="ts"> detected, else .js
   - Style blocks are dropped (irrelevant for symbol extraction)
+  - Source maps emitted as Source Map V3 sidecar (<name>.vue.ts.map)
+    with mappings shifted by header line count
 
 Exit codes
   0  all files compiled
   1  one or more files failed
-  2  invalid arguments
+  2  invalid arguments OR @vue/compiler-sfc missing in <root>'s node_modules
 `
 
 const args = (() => {
@@ -88,33 +111,66 @@ try {
   process.exit(2)
 }
 
-const DEFAULT_IGNORE = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/build/**',
-  '**/coverage/**',
-  '**/.git/**',
-  '**/.cache/**',
-  '**/.nuxt/**',
-  '**/.output/**',
-  '**/.turbo/**',
-]
+// Resolve @vue/compiler-sfc from <root>'s node_modules (consumer-provided).
+// createRequire walks UP from the given path's directory looking for
+// node_modules; the placeholder filename ensures resolution starts from <root>.
+let parse, compileScript, compileTemplate
+try {
+  const consumerRequire = createRequire(`${root}/__resolve_anchor__`)
+  const sfc = consumerRequire('@vue/compiler-sfc')
+  parse = sfc.parse
+  compileScript = sfc.compileScript
+  compileTemplate = sfc.compileTemplate
+} catch (err) {
+  console.error(`Failed to resolve @vue/compiler-sfc from ${root}: ${err.message}`)
+  console.error(`Install it in the consumer project: cd ${root} && npm install @vue/compiler-sfc`)
+  process.exit(2)
+}
 
-const includes = ['**/*.vue', ...flatten(args.values.include)]
-const ignores = [...DEFAULT_IGNORE, ...flatten(args.values.exclude)]
+// Skip directories by name (replaces fast-glob's `**/<name>/**` patterns
+// for the common case). Walking is recursive; entries matching these names
+// are not descended into.
+const SKIP_DIRS = new Set([
+  'node_modules', 'dist', 'build', 'coverage', '.git',
+  '.cache', '.nuxt', '.output', '.turbo',
+])
+
+const userExcludes = flatten(args.values.exclude)
 
 function flatten(arr) {
   if (!arr) return []
   return arr.flatMap((s) => s.split(',').map((x) => x.trim()).filter(Boolean))
 }
 
-const files = await fg(includes, {
-  cwd: root,
-  absolute: true,
-  ignore: ignores,
-  onlyFiles: true,
-  followSymbolicLinks: false,
-})
+function pathExcluded(rel) {
+  for (const sub of userExcludes) {
+    if (rel.includes(sub)) return true
+  }
+  return false
+}
+
+async function* walkVueFiles(dir) {
+  let entries
+  try {
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue
+      yield* walkVueFiles(fullPath)
+    } else if (entry.isFile() && entry.name.endsWith('.vue')) {
+      const rel = relative(root, fullPath)
+      if (pathExcluded(rel)) continue
+      yield fullPath
+    }
+  }
+}
+
+const files = []
+for await (const f of walkVueFiles(root)) files.push(f)
 
 if (files.length === 0) {
   console.error(`No .vue files found under ${root}`)
