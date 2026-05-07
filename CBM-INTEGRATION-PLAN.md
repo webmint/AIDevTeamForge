@@ -1,6 +1,6 @@
 # CBM Integration Plan — Plan E (codebase-memory-mcp + sourcemap bridge)
 
-**Status (2026-05-07)**: Approved, not started. Successor architecture to Part D for /generate-docs concern-fill scaling.
+**Status (2026-05-07)**: E.1 done (uncommitted); E.2 next. CBM CLI mode + dotfile-walking confirmed via empirical probe; mirror layout locked. Successor architecture to Part D for /generate-docs concern-fill scaling.
 **Branch**: continues on `develop-2.0-init`.
 **Predecessors**:
 - `VALIDATOR-LOOP-PLAN.md` (Part A, frozen).
@@ -49,6 +49,29 @@ Result projection:
     JSON
 ```
 
+## CBM topology + indexing layout (locked 2026-05-07)
+
+Single CBM index covers source + Vue mirror in one walk. Two facts make this work:
+
+1. **CBM `index_repository` takes ONE `repo_path`.** No multi-root flag. Verified against codebase-memory-mcp 0.6.1 README + CLI probe (`list_projects` shows one `root_path` per project).
+2. **CBM walks dotfile-prefixed dirs.** Verified empirically: `.devforge/template/CLAUDE.md` already appears in current testForge20 index (file_pattern probe via `cli search_graph`).
+
+**Mirror layout**: `vue-extract` emits `.vue.ts` + `.vue.ts.map` to `<index-root>/.devforge/vue-tmp/<rel-source-path>/`. Layout symmetry across modes:
+
+| Mode | Index root | Source tree | Mirror dir |
+|---|---|---|---|
+| Wrapper (testForge20-style) | `<wrapper>/` | `<wrapper>/<project>/...` | `<wrapper>/.devforge/vue-tmp/<project>/...` |
+| Non-wrapper | `<project>/` | `<project>/...` | `<project>/.devforge/vue-tmp/...` |
+
+Both: ONE `index_repository` call against `<index-root>` picks up source `.ts/.js` + compiled `.vue.ts` mirror in a single walk. CBM returns cite-paths in two flavors:
+
+- Original TS/JS path (`<package>/src/<concern>/Foo.ts`) — passes through verbatim
+- Mirror path (`.devforge/vue-tmp/<package>/src/<concern>/Foo.vue.ts`) — E.2 applies sourcemap resolution to rewrite back to original `.vue` path
+
+**Mirror is regenerable**. Add `.devforge/vue-tmp/` to `.gitignore` template (via wizard's STEP 0 gitignore prompt; `feedback project_wrapper_gitignore_moved_to_wizard`).
+
+**vue-extract default**: `--out .devforge/vue-tmp/` (locked; previous default `.vue-tmp/` superseded).
+
 ## Components
 
 ### E.1 — Python sourcemap V3 consumer
@@ -64,9 +87,12 @@ class SourceMap:
     mappings: str  # raw VLQ string
 
 def parse_sourcemap(text: str) -> SourceMap
-def apply_mapping(sm: SourceMap, gen_line: int, gen_col: int = 0) -> Tuple[str, int, int]
+def apply_mapping(sm: SourceMap, gen_line: int, gen_col: int = 1) -> Tuple[str, int, int]
+    # 1-based on input AND output (gen_line>=1, gen_col>=1; orig_line/col returned 1-based).
     # Returns (original_file_path, original_line, original_col)
-    # Raises MappingNotFoundError if no mapping covers (gen_line, gen_col)
+    # Raises MappingNotFoundError if no mapping covers (gen_line, gen_col), if line
+    # is beyond the mapped range, or if the matched segment is gen-col-only (no
+    # original mapping). Multi-source maps rejected at parse (single-source only).
 ```
 
 Implementation: stdlib only. `json` parses the .map JSON. Custom VLQ decoder (~60 lines: base64 → 5-bit groups → signed integers). `mappings` field decoded into per-line segment lists; binary-search finds nearest mapping for query position.
@@ -80,7 +106,7 @@ Test scope (`tests/lib/test_sourcemap.py`):
 
 #### Verify E.1
 - `tests/lib/test_sourcemap.py` — ≥10 cases all green
-- Manual: parse a real `.vue.ts.map` from testForge20's `.vue-tmp/`, apply to a known node from codebase-memory-mcp's graph, verify cite resolves to original `.vue` line
+- Manual: parse a real `.vue.ts.map` from testForge20's `.devforge/vue-tmp/`, apply to a known node from codebase-memory-mcp's graph, verify cite resolves to original `.vue` line
 
 ---
 
@@ -91,6 +117,7 @@ Location: `src/devforge/lib/_generate_docs/_cbm_query.py` (new module).
 CLI signature:
 ```
 generate_docs_helper query-concern --package P --concern C [--vue-extract-dir D]
+                                    [--cbm-project-name N]
 ```
 
 Behavior:
@@ -103,7 +130,7 @@ Behavior:
    - `query_graph(cypher)` for types defined in subfolder
    - `query_graph(cypher)` for dependencies imported BY subfolder (npm/cargo/etc.)
 4. For each cite returned by graph that points at a `.vue.ts` file:
-   - Locate the corresponding `.vue.ts.map` in `--vue-extract-dir` (or `<concern>/.vue-tmp/` auto-detect)
+   - Locate the corresponding `.vue.ts.map` in `--vue-extract-dir` (default `<index-root>/.devforge/vue-tmp/<rel-source-path>.vue.ts.map`)
    - Apply E.1 sourcemap resolution → original `.vue` path + line
    - Replace cite-file/cite-start/cite-end in returned data with original-`.vue` values
 5. Output to stdout: batch JSON containing all mechanical fields ready for concern-composer dispatch.
@@ -277,7 +304,7 @@ After E.1–E.5 ship:
 
 ## Risks + open questions
 
-1. **MCP server invocation from forge helper.** codebase-memory-mcp speaks MCP stdio JSON-RPC. Forge helper is Python. Either (a) spawn MCP server subprocess + speak protocol from Python (~200 lines client), (b) shell out to a CLI mode if the binary supports it, (c) orchestrator (Claude Code) does MCP queries, passes results to forge helper as JSON. Option (c) cleanest — orchestrator already has MCP access via Claude Code's harness; helper just receives JSON, applies sourcemap resolution, returns enriched JSON. Defer (a) implementation to v0+1. Test: verify CLI mode availability of codebase-memory-mcp binary.
+1. **~~MCP server invocation from forge helper.~~ RESOLVED (2026-05-07).** codebase-memory-mcp 0.6.1 ships CLI mode: `codebase-memory-mcp cli <tool> '<json-args>'`. E.2 helper shells out via `subprocess.run`; no JSON-RPC client needed. Per-call cost ~12-25ms (binary spawn + memory init). Project name auto-derived from `cwd → list_projects` mapping; helper accepts `--cbm-project-name` override.
 
 2. **Sourcemap multi-source maps.** vue-to-ts emits single-source maps. If toolchain ever emits multi-source (e.g., post-bundling), E.1 must support sources length > 1. v0 rejects multi-source with explicit error. Defer to v0+1.
 

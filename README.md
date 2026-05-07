@@ -32,6 +32,8 @@ The wizard will:
 
 **Context7** — Fetches up-to-date documentation for libraries and frameworks directly into context. Powered by `@upstash/context7-mcp`. Pre-configured in `.mcp.json` for all projects. No setup required — runs via `npx`.
 
+**codebase-memory-mcp** — Local code-intelligence engine: tree-sitter knowledge graph (functions, classes, calls, routes) over 155 languages, queryable via 14 MCP tools (`search_graph`, `query_graph`, `trace_call_path`, `get_code_snippet`, etc.). Used by `/generate-docs` Phase 3 to gather mechanical fields per concern in a single batched dispatch (Plan E). Pre-configured in `.mcp.json`; binary must be installed first via [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) (`curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash`). After install, the binary self-registers on PATH; restart Claude Code so the MCP connection comes up.
+
 **Chrome DevTools** (conditional) — Connects to Chrome/Chromium debugger for screenshots, DOM interaction, and AC verification against the running app. Only added to `.mcp.json` when `/setup-wizard` sets AC verification to "auto" or "browser-only" (frontend/fullstack projects). The script at `scripts/chrome-devtools-mcp.sh` auto-detects the debugging port across JetBrains IDEs, Chrome, and manual launches (macOS, Linux, WSL). Set `CHROME_DEBUG_PORT` env var to override detection.
 
 ## Updating Projects
