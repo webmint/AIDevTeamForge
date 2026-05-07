@@ -121,15 +121,21 @@ Killed: `docs/api/`, `docs/features/`, `docs/guides/` (legacy CLAUDE.md template
 
 Universal rules (encoded in F.3 doc-composer prompt + F.5 validate-doc):
 
-- **Frontmatter mandatory** — every doc opens with YAML-subset front-matter (concern/package/last_indexed/files/source_stamp). Helper writes; LLM never edits.
-- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Hazards`, `## Layers`, `## Patterns`, `## Terms`. Orchestrator parses by anchor.
-- **No preamble paragraphs** — section content starts on first line after the anchor. Banned phrases: "This document...", "In this section...", "We will...".
-- **Density caps**:
-  - Concern doc total budget: 600–1200 tokens
-  - Per-bullet length: ≤ 120 chars (annotation: ≤ 60 chars)
-  - Hazard list: 3–7 entries; each entry = 1 line + cite-back (file:line)
+- **Frontmatter mandatory** — every doc opens with YAML-subset front-matter. Required keys per tier:
+  - Concern: `concern`, `package`, `files`, `source_stamp`, `last_indexed`
+  - Package overview/architecture/glossary: `package`, `last_indexed` (+ `source_stamp` for overview/architecture)
+  - Project overview/architecture: `last_indexed` only
+  Helper writes the frontmatter; LLM never edits it.
+- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Hazards`, `## Layers`, `## Patterns`, `## Terms`, `## Concerns`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor.
+- **No preamble paragraphs** — section content starts on the first line after the anchor. Banned phrases (case-insensitive): "this document", "in this section", "we will", "various", "several", "many", "some", "other".
+- **Tree formatting** — `## Structure` content is plain text directly under the heading. No code fence. Helper provides the tree verbatim from F.2 output; LLM appends `— <annotation ≤60 chars>` to each LEAF on the same line.
+- **Density caps** (calibrated 2026-05-07 on testForge20 helpers concern):
+  - Per-section caps only — no whole-doc budget. Tree section grows with file count; that is intentional.
+  - Per-bullet length: ≤200 chars (Hazards/Terms/etc.); Structure annotations: ≤60 chars
+  - Hazard list: **3–12 entries** (calibration showed real codebases routinely surface 8-12 worthwhile hazards; tighter caps drop signal)
+  - Each Hazard requires concrete cite-back (`<rel-path>:<line>` or `<rel-path>:<start>-<end>`). Multi-cite per bullet is allowed when one hazard spans multiple files.
   - Glossary entry: 1 line per term + 1 cite-back
-- **Cite-back format**: `<rel-path>:<line>` or `<rel-path>:<start>-<end>`. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
+- **Cite-back format**: `<project-relative-path>:<line>` or `<project-relative-path>:<start>-<end>`. Helper validates each cite resolves to an existing line in an existing file. For Vue cite-back, helper applies sourcemap (E.1.b nearest mode) before validating.
 - **No prose tables for structural data** — exports, types, deps, callees lists are NEVER in docs/. Those queries hit CBM live.
 
 Example concern doc (target shape):
