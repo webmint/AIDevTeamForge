@@ -802,6 +802,31 @@ echo "$COPY_IF_MISSING_ACTUAL" | while IFS= read -r f; do
   added "Added (was missing): $f"
 done
 
+# ── Execute: re-emit promoted dir-shaped commands ──────────────────────────
+# manifest.json's mergeFiles + templateOwned cover flat command files only.
+# Promoted dir-shaped commands (init-forge, onboard, generate-docs,
+# constitute) live at src/commands/<name>/main.md + references/ and are
+# emitted to .claude/commands/<name>.md by scripts/emitters/claude.py.
+# Without re-running the emitter, edits to dir-shaped command sources never
+# propagate to existing targets — install.sh emits them once, update.sh
+# previously skipped them.
+#
+# Overwrite semantics here are deliberate: commands are framework-owned
+# (matches templateOwned policy). User-modified target commands are NOT
+# preserved across updates. Project customizations live in CLAUDE.md /
+# constitution.md / agents — those still three-way merge upstream.
+if [ -n "$PYTHON3_CMD" ]; then
+  if $PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" \
+       --src "$TEMPLATE_DIR/src" \
+       --target "$TARGET_DIR" >/dev/null 2>&1; then
+    added "Re-emitted promoted commands (init-forge, onboard, generate-docs, constitute)"
+  else
+    warn "Promoted-command re-emit failed — dir-shaped commands may be stale"
+  fi
+else
+  warn "Python 3 not found — promoted commands will not be re-emitted this run"
+fi
+
 # ── Write version marker ──────────────────────────────────────────────────
 echo "$TEMPLATE_VERSION" > "$TARGET_VERSION_FILE"
 added "Version marker updated: $TEMPLATE_VERSION"
