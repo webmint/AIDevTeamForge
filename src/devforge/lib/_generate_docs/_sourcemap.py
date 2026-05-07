@@ -167,45 +167,80 @@ def parse_sourcemap(text: str) -> SourceMap:
 
 
 def apply_mapping(
-    sm: SourceMap, gen_line: int, gen_col: int = 1
+    sm: SourceMap,
+    gen_line: int,
+    gen_col: int = 1,
+    nearest: bool = False,
 ) -> Tuple[str, int, int]:
     """Resolve a 1-based generated position to a 1-based original position.
 
     Returns (source_path, orig_line, orig_col); source_path is verbatim from
     the map's `sources[0]` (caller canonicalises to project-root-relative).
 
-    Strategy: pick the largest segment on `gen_line` whose `gen_col` is
-    <= the requested column. A gen-col-only segment (1-field) is "covered
-    but unmapped" — raises MappingNotFoundError so callers don't silently
-    receive a sentinel position.
+    Strict mode (default, `nearest=False`): pick the largest segment on
+    `gen_line` whose `gen_col` is <= the requested column. Raises
+    MappingNotFoundError when the line has no segments, when no segment is
+    at-or-before the requested column, or when the matched segment is
+    gen-col-only (1-field; no original position).
+
+    Nearest mode (`nearest=True`): used for cite-back over sparse maps —
+    Vue's compiler emits no segments for synthesized boilerplate lines (the
+    defineComponent wrapper, __expose()/__returned__, etc.), so a strict
+    lookup at a Function's start_line frequently misses. With nearest=True,
+    if `gen_line` has no usable segment, walk BACKWARD line-by-line to the
+    most recent line that does, and return ITS last mapped segment. Returns
+    the orig position of the closest mapped point at-or-before the query.
+    Still raises MappingNotFoundError if no mapping exists at all on or
+    before the query.
     """
     if gen_line < 1:
         raise MappingNotFoundError(f"gen_line must be >= 1 (got {gen_line})")
     if gen_col < 1:
         raise MappingNotFoundError(f"gen_col must be >= 1 (got {gen_col})")
+    if not sm._decoded_lines:
+        raise MappingNotFoundError("source map has no mapped lines")
     line_idx = gen_line - 1
     col_idx = gen_col - 1
-    if line_idx >= len(sm._decoded_lines):
-        raise MappingNotFoundError(
-            f"gen_line {gen_line} beyond mapped lines ({len(sm._decoded_lines)})"
-        )
-    segs = sm._decoded_lines[line_idx]
-    if not segs:
-        raise MappingNotFoundError(f"no segments on gen_line {gen_line}")
+
+    # Strict pass on the query line: largest source-mapped seg with gen_col <= col_idx.
     chosen: Optional[_Segment] = None
-    for seg in segs:
-        if seg.gen_col > col_idx:
-            break
-        chosen = seg
+    if line_idx < len(sm._decoded_lines):
+        for seg in sm._decoded_lines[line_idx]:
+            if seg.gen_col > col_idx:
+                break
+            if seg.source_idx >= 0:
+                chosen = seg
+
     if chosen is None:
-        raise MappingNotFoundError(
-            f"no segment covers gen_line {gen_line} col {gen_col}"
-        )
-    if chosen.source_idx < 0:
-        raise MappingNotFoundError(
-            f"gen_line {gen_line} col {gen_col} maps to a gen-col-only "
-            f"segment (no original position)"
-        )
+        if not nearest:
+            if line_idx >= len(sm._decoded_lines):
+                raise MappingNotFoundError(
+                    f"gen_line {gen_line} beyond mapped lines ({len(sm._decoded_lines)})"
+                )
+            if not sm._decoded_lines[line_idx]:
+                raise MappingNotFoundError(f"no segments on gen_line {gen_line}")
+            # Either no seg at-or-before col, or the at-or-before seg is gen-col-only.
+            raise MappingNotFoundError(
+                f"no source-mapped segment covers gen_line {gen_line} col {gen_col}"
+            )
+        # Nearest mode: walk backward through prior lines, take their LAST
+        # source-mapped seg. (The query line was already exhausted strictly.)
+        if line_idx >= len(sm._decoded_lines):
+            scan_idx = len(sm._decoded_lines) - 1
+        else:
+            scan_idx = line_idx - 1
+        while scan_idx >= 0:
+            for seg in sm._decoded_lines[scan_idx]:
+                if seg.source_idx >= 0:
+                    chosen = seg
+            if chosen is not None:
+                break
+            scan_idx -= 1
+        if chosen is None:
+            raise MappingNotFoundError(
+                f"nearest: no mapped segment at or before gen_line {gen_line}"
+            )
+
     return (
         sm.sources[chosen.source_idx],
         chosen.orig_line + 1,

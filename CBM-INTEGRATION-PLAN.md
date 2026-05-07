@@ -1,6 +1,6 @@
 # CBM Integration Plan — Plan E (codebase-memory-mcp + sourcemap bridge)
 
-**Status (2026-05-07)**: E.1 done (uncommitted); E.2 next. CBM CLI mode + dotfile-walking confirmed via empirical probe; mirror layout locked. Successor architecture to Part D for /generate-docs concern-fill scaling.
+**Status (2026-05-07)**: E.1 + E.1.b done (commits `b08fdfd`, `8126443`, plus pending E.1.b commit). E.2 next. CBM CLI mode + dotfile-walking + CALLS-based public surface confirmed via empirical probe; mirror layout locked. Successor architecture to Part D for /generate-docs concern-fill scaling.
 **Branch**: continues on `develop-2.0-init`.
 **Predecessors**:
 - `VALIDATOR-LOOP-PLAN.md` (Part A, frozen).
@@ -87,12 +87,19 @@ class SourceMap:
     mappings: str  # raw VLQ string
 
 def parse_sourcemap(text: str) -> SourceMap
-def apply_mapping(sm: SourceMap, gen_line: int, gen_col: int = 1) -> Tuple[str, int, int]
+def apply_mapping(sm: SourceMap, gen_line: int, gen_col: int = 1,
+                  nearest: bool = False) -> Tuple[str, int, int]
     # 1-based on input AND output (gen_line>=1, gen_col>=1; orig_line/col returned 1-based).
-    # Returns (original_file_path, original_line, original_col)
-    # Raises MappingNotFoundError if no mapping covers (gen_line, gen_col), if line
-    # is beyond the mapped range, or if the matched segment is gen-col-only (no
-    # original mapping). Multi-source maps rejected at parse (single-source only).
+    # Returns (original_file_path, original_line, original_col).
+    # Strict (default): raises MappingNotFoundError if no mapping covers
+    # (gen_line, gen_col), if line is beyond the mapped range, or if the
+    # matched segment is gen-col-only (no original mapping).
+    # Nearest (E.1.b, for Vue cite-back over sparse maps): walks BACKWARD
+    # to the most recent source-mapped segment when the strict lookup misses.
+    # Vue's compiler emits no segments on synthesized boilerplate lines
+    # (defineComponent wrapper, __expose, __returned__) — strict mode misses
+    # Function start_line frequently. E.2 always passes nearest=True.
+    # Multi-source maps rejected at parse (single-source only).
 ```
 
 Implementation: stdlib only. `json` parses the .map JSON. Custom VLQ decoder (~60 lines: base64 → 5-bit groups → signed integers). `mappings` field decoded into per-line segment lists; binary-search finds nearest mapping for query position.
@@ -122,18 +129,41 @@ generate_docs_helper query-concern --package P --concern C [--vue-extract-dir D]
 
 Behavior:
 1. Resolve concern's source subfolder: `<package>/src/<concern>/`.
-2. Spawn codebase-memory-mcp via stdio (JSON-RPC) OR shell out to its CLI mode (verify which path is supported by the binary).
+2. Shell out to CBM CLI (`codebase-memory-mcp cli <tool> '<json>'` per upstream 0.6.1).
 3. Issue queries:
-   - `search_graph(file_pattern='<subfolder>.*')` for file enumeration
-   - `query_graph(cypher)` for cross-concern import discovery (exports in subfolder imported from outside)
-   - `get_code_snippet(qualified_name)` per cross-concern export for verbatim snippet + cite range
-   - `query_graph(cypher)` for types defined in subfolder
-   - `query_graph(cypher)` for dependencies imported BY subfolder (npm/cargo/etc.)
-4. For each cite returned by graph that points at a `.vue.ts` file:
+   - `query_graph` Cypher: `MATCH (f:File) WHERE f.file_path STARTS WITH "<subfolder>" RETURN f.file_path` — file enumeration
+   - `query_graph` Cypher: **CALLS-based public-surface discovery** (see "Why CALLS not IMPORTS" below):
+     ```cypher
+     MATCH (caller)-[:CALLS]->(callee)
+     WHERE callee.file_path STARTS WITH "<subfolder>"
+       AND NOT caller.file_path STARTS WITH "<subfolder>"
+     RETURN callee.qualified_name, callee.name, callee.file_path,
+            callee.start_line, callee.end_line,
+            COLLECT(DISTINCT caller.file_path) AS used_by
+     ```
+   - `get_code_snippet(qualified_name)` per public-surface entry for verbatim snippet + signature
+   - `query_graph` Cypher: types defined in subfolder (`MATCH (t:Interface|:Class) WHERE t.file_path STARTS WITH "<subfolder>" RETURN t.name, t.file_path`)
+   - Dependencies imported BY subfolder: parse `package.json`/`pyproject.toml` directly (CBM's import-target list is filtered to in-graph nodes, missing externals)
+4. For each entry whose `file_path` is under `.devforge/vue-tmp/`:
    - Locate the corresponding `.vue.ts.map` in `--vue-extract-dir` (default `<index-root>/.devforge/vue-tmp/<rel-source-path>.vue.ts.map`)
-   - Apply E.1 sourcemap resolution → original `.vue` path + line
+   - Apply E.1 sourcemap resolution with `nearest=True` (Vue compiler emits sparse maps; strict mode misses Function start_line on synthesized boilerplate) → original `.vue` path + line
+   - Canonicalize `sources[0]` (relative to .map dir) to project-root-relative
    - Replace cite-file/cite-start/cite-end in returned data with original-`.vue` values
 5. Output to stdout: batch JSON containing all mechanical fields ready for concern-composer dispatch.
+
+**Why CALLS not IMPORTS** (empirical verification 2026-05-07):
+- CBM's IMPORTS extractor skips `.vue.ts` files entirely. `extra_extensions: {".vue.ts": "typescript"}` in `.codebase-memory.json` does NOT fix it. 944 IMPORTS edges in graph; 0 originate from `.devforge/vue-tmp/`. testForge20's `OrderFooter.vue` has 15 import statements; mirror captures none.
+- CBM's CALLS extractor DOES fire on `.vue.ts`. 1493 CALLS edges originate from `.devforge/vue-tmp/`. Cross-concern CALLS captured cleanly (e.g., `AccountsExternalTab.vue.ts CALLS isExistingState in helpers/coreStateKindCheckers.ts`).
+- For helpers concern, CALLS-based public-surface query returned 47 distinct exports (vs Plan E §E.6 target of ≥30; vs Part D's LLM-curated 8). Mechanical completeness achieved.
+- IMPORTS still works for non-Vue-importer cross-concern (`.ts → .ts`); kept as supplementary signal but not the primary primitive.
+
+**Cypher subset gotchas** (encoded so E.2 doesn't waste cycles):
+- `labels(node)` projection returns single empty column — DON'T use
+- `substring()` returns empty — DON'T use
+- `COUNT(DISTINCT x.field)` parser breaks; `COUNT(DISTINCT x)` works
+- Stick to `MATCH ... WHERE ... RETURN x.prop, COUNT(...), COLLECT(DISTINCT ...)` — that subset is reliable
+- `f.extension` property on File nodes is empty across all samples — DON'T use as filter; use `STARTS WITH`/`ENDS WITH` on `f.file_path` instead
+- For File-label search via the CLI `search_graph` tool, use `name_pattern` (regex on file_path), NOT `file_pattern` (filters non-File nodes only)
 
 JSON shape:
 ```json
@@ -150,7 +180,7 @@ JSON shape:
       "cite_start": 4,
       "cite_end": 13,
       "code_snippet": "export default function checkUserWebRoles...",
-      "imported_by": ["apps/app-web/src/components/auth/RoleGuard.vue", ...]
+      "used_by": ["apps/app-web/src/components/auth/RoleGuard.vue", ...]
     },
     ...
   ],

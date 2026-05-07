@@ -183,6 +183,81 @@ class ApplyMappingTests(unittest.TestCase):
             apply_mapping(sm, 0, 1)
 
 
+class ApplyMappingNearestTests(unittest.TestCase):
+    """Nearest-mode lookup for sparse maps (Vue compiler skips boilerplate lines)."""
+
+    def test_nearest_unmapped_line_walks_backward(self):
+        # Line 1 has segment AACA (origLine 1->2 1-based); lines 2,3 unmapped.
+        # Query gen_line=3 nearest=True -> uses line 1's last segment.
+        sm = parse_sourcemap(_build_map(mappings="AACA;;"))
+        path, line, col = apply_mapping(sm, 3, 1, nearest=True)
+        self.assertEqual(line, 2)
+        self.assertEqual(col, 1)
+
+    def test_nearest_beyond_mapped_range_uses_last_mapped_line(self):
+        # ;;AACA -> line 3 has segment; query gen_line=99 nearest=True -> uses line 3.
+        sm = parse_sourcemap(_build_map(mappings=";;AACA"))
+        path, line, col = apply_mapping(sm, 99, 1, nearest=True)
+        self.assertEqual(line, 2)
+
+    def test_nearest_no_mapping_anywhere_raises(self):
+        # All-empty mappings (one empty line) -> nearest still raises.
+        sm = parse_sourcemap(_build_map(mappings=""))
+        with self.assertRaises(MappingNotFoundError):
+            apply_mapping(sm, 1, 1, nearest=True)
+
+    def test_nearest_on_mapped_line_behaves_strictly(self):
+        # Mapped line should return its own segment, not walk backward.
+        sm = parse_sourcemap(_build_map(mappings="AACA;GACA"))
+        # gen_line=2 col=1 -> seg on line 2 has gen_col=3, query col_idx=0 < 3.
+        # Strict would raise; nearest walks back to line 1's segment.
+        path, line, col = apply_mapping(sm, 2, 1, nearest=True)
+        self.assertEqual(line, 2)  # line 1's seg has origLine=1 (0-based) = 2 (1-based)
+
+    def test_nearest_picks_last_segment_of_prior_line(self):
+        # Line 1 has two segments; nearest should pick the LAST mapped one.
+        # AACA = [0,0,1,0]; GCCA = [3,1,1,0]... need only one source. Use AACA,GACA.
+        # AACA -> seg1 (genCol 0, origLine 1)
+        # GACA -> seg2 (genCol 3, origLine 2)
+        # Line 2 unmapped. Query gen_line=2 nearest=True -> last seg of line 1 = seg2 -> origLine 3.
+        sm = parse_sourcemap(_build_map(mappings="AACA,GACA;"))
+        path, line, col = apply_mapping(sm, 2, 1, nearest=True)
+        self.assertEqual(line, 3)
+
+    def test_nearest_skips_gen_col_only_segments(self):
+        # Line 1 has only a gen-col-only segment ('C' = 1-field, no orig).
+        # Line 2 unmapped. Query gen_line=2 nearest=True -> no source-mapped seg
+        # at or before -> raises.
+        sm = parse_sourcemap(_build_map(mappings="C;"))
+        with self.assertRaises(MappingNotFoundError):
+            apply_mapping(sm, 2, 1, nearest=True)
+
+    def test_nearest_default_is_false_strict_still_raises(self):
+        sm = parse_sourcemap(_build_map(mappings="AACA;;"))
+        with self.assertRaises(MappingNotFoundError):
+            apply_mapping(sm, 3, 1)  # no nearest kwarg -> strict
+
+
+class NearestRealProducerRoundTripTests(unittest.TestCase):
+    """Nearest-mode against the committed tiny.vue.ts.map fixture.
+
+    tiny.vue.ts has only one mapped line (gen_line 8 -> orig line 6 of tiny.vue).
+    Querying gen_line=20 nearest=True resolves back to orig line 6 — the
+    cite-back use case for any Function whose start_line lands on a synthesized
+    boilerplate line below line 8.
+    """
+
+    def test_unmapped_gen_line_resolves_via_nearest_to_prior_mapping(self):
+        # tiny.vue.ts gen_line 8 is the only mapping at-or-before gen_line 9
+        # (Vue compiler emits no segment for gen_line 9). Nearest walks back
+        # to gen_line 8 -> orig line 6 (the import).
+        map_path = FIXTURE_DIR / "tiny.vue.ts.map"
+        sm = parse_sourcemap(map_path.read_text(encoding="utf-8"))
+        path, line, col = apply_mapping(sm, 9, 1, nearest=True)
+        self.assertEqual(path, "tiny.vue")
+        self.assertEqual(line, 6)
+
+
 class RealProducerRoundTripTests(unittest.TestCase):
     """Round-trip via real vue-to-ts.mjs output (committed fixture).
 
