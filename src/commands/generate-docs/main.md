@@ -10,6 +10,41 @@ The full Plan E skeleton-fill spec is preserved at git commit `bdae59d` (`git sh
 
 ---
 
+## ⚠️ TEST SCOPE OVERRIDE — TWO TARGETS (TEMPORARY)
+
+**Active until removed.** Phase 2 concern tier loop is restricted to the two scope sets below for the empirical iteration cycle. All other concerns from preflight's `concerns[]` list are DEFERRED — they remain unrendered for this run.
+
+**In-scope concerns**:
+1. `db-cse-ui-strata/apps/app-web/components` — single concern
+2. `db-cse-ui-strata/packages/pkg-cse-core/*` — every concern under pkg-cse-core (e.g., `accounts`, `activeQuote`, `alerts`, `common`, `configurationMenu`, `customItem`, `favoriteQuotes`, `featureFlags`, `helpers`, `irw`, `itemsByBQids`, `itemsByPartNumbers`, `order`, `organizations`, `quote`, `quotes`, `salesForceContacts`, `securityRoles`)
+
+Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` matches one of the two patterns above. Process the filtered list. Skip every other concern silently.
+
+**Removing this override**: when the iteration locks shape, delete this `## ⚠️ TEST SCOPE OVERRIDE` section. Phase 2 then processes the full preflight `concerns[]` list.
+
+---
+
+## ⚠️ HELPER CHAIN MANDATORY — NO ALTERNATIVE PATHS
+
+**Active for the entirety of this command.** The Phase 2 per-concern dispatch MUST go through the helper chain documented below, in the order shown:
+
+```
+init-doc → set-doc-purpose → set-doc-structure → add-doc-hazard (×N) → render-doc → validate-doc
+```
+
+The following are FORBIDDEN under /generate-docs:
+
+- Writing concern markdown to disk via the Write tool (helper owns that path via `render-doc`)
+- Running custom Python or bash that emits markdown content directly to `docs/<pkg>/<concern>/index.md`
+- Invoking Part D setters (`set-concern-overview`, `set-concern-tree`, `add-concern-export`, `add-concern-type`, `add-concern-dep`, `add-concern-hazard`, `set-concern-usage-example`, `render-concern-doc`, `validate-concern`) — those are dormant Plan E primitives; they emit the wrong shape
+- Running `reset` (Part D primitive) — `init-doc` resets the F.4 state slot wholesale on every call
+- Writing defensive cleanup of `.devforge/.f4-doc-state.json` — `init-doc` is idempotent and self-resets
+- Using `set-package-*` or `add-package-*` setters — those are package tier (Plan E shape, not yet ported)
+
+The helper chain is the ONLY canonical path for concern-tier doc authoring. Any divergence emits the wrong shape (Plan E sections like `## Overview`, `## Public Surface`, `## Types`, `## Dependencies`, `## Usage Example`) and breaks downstream consumers expecting Plan F (`## Purpose`, `## Structure`, `## Hazards`).
+
+---
+
 ## Phase 0 — Pre-flight gate
 
 1. `.devforge/index.json` exists:
@@ -41,36 +76,22 @@ vue-extract regenerates `.devforge/vue-tmp/`; CBM `index_repository` reindexes. 
 
 ---
 
-## Phase 2 — Concern tier loop (only changed/new)
+## Phase 2 — Concern tier loop (only changed/new, scope-filtered)
 
-For each `concerns[*]` entry where `status` is `changed` or `new`:
+After preflight returns `concerns[]`, apply the TEST SCOPE OVERRIDE filter (above) — keep only entries matching `db-cse-ui-strata/apps/app-web/components` OR any concern under `db-cse-ui-strata/packages/pkg-cse-core/`. Drop the rest.
 
-### Step 2.1 — Pull batch input
+Then for each kept entry where `status` is `changed` or `new`, run Steps 2.1–2.6 in order. The retry loop wraps Steps 2.2–2.6 (capped at 3 retries; init-doc is NOT re-run on retry because it wipes setter state).
+
+### Step 2.1 — Pull batch input (helper, once per concern)
 
 ```
 ./.devforge/lib/generate_docs_helper concern-input \
     --package "$pkg" --concern "$concern"
 ```
 
-Capture the batch JSON. Pipe to the dispatch.
+Capture full JSON output to a variable. Used downstream for both the dispatch payload and the `tree_text` passed to `set-doc-structure`.
 
-### Step 2.2 — Dispatch doc-composer (Task tool, agent type `doc-composer`)
-
-Pass:
-- `tier=concern`
-- `batch_json=<F.2 output>`
-- `previous_attempt_feedback=<empty on first attempt; populated on retry>`
-
-Agent's full instructions live at `src/agents/doc-composer.md` (or installed at `.claude/agents/doc-composer.md`). Strict LLM-first density format; output is Markdown with `## Purpose`, `## Structure`, `## Hazards` anchors.
-
-### Step 2.3 — Parse + invoke setters
-
-Parse the agent's output by `## ` anchor:
-- Purpose section → `set-doc-purpose --tier concern --target "$pkg/$concern" --text "..."`
-- Structure section → extract leaf annotations (lines containing ` — `) into a `{filename: annotation}` JSON map; `set-doc-structure --tier concern --target X --tree "<F.2 tree_text>" --annotations '<json-map>'`
-- Each hazard bullet → `add-doc-hazard --tier concern --target X --text "..." --cite "..."`
-
-First call to any setter for a target auto-creates the state slot via `init-doc`. Frontmatter is helper-supplied: source_stamp comes from preflight's `concerns[*].source_stamp`; files count from the same source; last_indexed = today's ISO date; concern + package = literals.
+### Step 2.2 — init-doc with helper-built frontmatter
 
 ```
 ./.devforge/lib/generate_docs_helper init-doc --tier concern --target "$pkg/$concern" \
@@ -79,21 +100,67 @@ First call to any setter for a target auto-creates the state slot via `init-doc`
                        '{concern:$c, package:$p, files:$f, source_stamp:$s, last_indexed:$d}')"
 ```
 
-### Step 2.4 — Render
+Frontmatter values:
+- `concern`, `package` — string literals from the preflight entry
+- `files` — `concerns[*].source_stamp` count is implicit; use the count from `concern-input`'s JSON output (`files` field)
+- `source_stamp` — `concerns[*].source_stamp` from preflight
+- `last_indexed` — today's ISO date (`date -u +%Y-%m-%d`)
+
+`init-doc` resets the slot every call (Purpose / Structure / Hazards wiped to empty). The orchestrator does NOT need to clear `.devforge/.f4-doc-state.json` separately — that file is helper-owned.
+
+### Step 2.3 — Dispatch doc-composer (Task tool, agent type `doc-composer`)
+
+Pass:
+- `tier=concern`
+- `batch_json=<Step 2.1 JSON output>`
+- `previous_attempt_feedback=<empty on first attempt; verbatim Step 2.6 stderr on retry>`
+
+Agent's full instructions live at `src/agents/doc-composer.md` (installed at `.claude/agents/doc-composer.md`). Strict LLM-first density format; output is Markdown with `## Purpose`, `## Structure`, `## Hazards` anchors.
+
+### Step 2.4 — Parse + invoke setters
+
+Parse the agent's output by `## ` anchor. Then run the three setters in this order:
+
+```
+./.devforge/lib/generate_docs_helper set-doc-purpose --tier concern --target "$pkg/$concern" \
+    --text "<purpose section content>"
+
+./.devforge/lib/generate_docs_helper set-doc-structure --tier concern --target "$pkg/$concern" \
+    --tree "<step 2.1 tree_text verbatim>" \
+    --annotations '<json map of {filename: annotation_string} extracted from composer Structure>'
+
+# Hazards: one add-doc-hazard call per bullet
+./.devforge/lib/generate_docs_helper add-doc-hazard --tier concern --target "$pkg/$concern" \
+    --text "<bullet text without trailing cite>" \
+    --cite "<file:line OR file:start-end OR file:line1,line2>"
+```
+
+The orchestrator MUST NOT:
+- Write the markdown directly via the Write tool
+- Run custom Python that bypasses these setters
+- Concatenate composer output into `docs/<pkg>/<concern>/index.md` itself
+
+The setter chain owns disk writes via Step 2.5's `render-doc`.
+
+### Step 2.5 — Render
 
 ```
 ./.devforge/lib/generate_docs_helper render-doc --tier concern --target "$pkg/$concern"
 ```
 
-Writes `docs/$pkg/$concern/index.md`.
+Writes `docs/$pkg/$concern/index.md`. Helper owns the markdown shape (frontmatter + 3 sections); LLM-supplied values fill the slots. No Write-tool call by the orchestrator at any phase.
 
-### Step 2.5 — Validate
+### Step 2.6 — Validate
 
 ```
 ./.devforge/lib/generate_docs_helper validate-doc --tier concern --target "$pkg/$concern"
 ```
 
-Exit 0 → done. Exit 2 → capture stderr verbatim. Re-dispatch doc-composer (Step 2.2) with `previous_attempt_feedback=<verbatim stderr>`. Cap at 3 retries; on the 4th, surface failure to the user and continue with the next concern (the failed one is left unrendered for the user to inspect).
+- Exit 0 → done with this concern; advance to next.
+- Exit 2 → capture stderr verbatim; loop back to Step 2.3 with `previous_attempt_feedback=<verbatim stderr>`. Do NOT re-run Step 2.2 (init-doc) on retry — that wipes prior setter state and forces composer to redo its work for no reason. Re-running setters via Step 2.4 OVERWRITES purpose/structure (those setters are idempotent); for Hazards, the orchestrator MUST clear them first by running `init-doc` again — accept the trade-off (one re-init per failed validate).
+- Cap at 3 retries; on the 4th, surface failure to the user and continue with the next concern. The failed doc is left unrendered.
+
+**Retry-cycle nuance**: because `add-doc-hazard` appends, the only safe way to retry hazards is to re-init the slot (which re-wipes Purpose / Structure / Hazards). On retry, the cycle becomes: init-doc → composer → set-doc-purpose → set-doc-structure → add-doc-hazard ×N → render-doc → validate-doc. Same shape as the first attempt; just re-runs.
 
 ---
 
