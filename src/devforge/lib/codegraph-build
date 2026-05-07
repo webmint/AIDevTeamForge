@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# codegraph-build — single-command codegraph index build with Vue SFC extraction.
+#
+# Designed for AIDevTeamForge wrapper-mode setups where the actual Vue project
+# sits inside the wrapper directory. Run from the INNER Vue project root.
+#
+# Steps:
+#   1. mktemp .vue-tmp-XXXXXX inside CWD (the inner Vue project root)
+#   2. node <SCRIPT_DIR>/vue-to-ts.mjs . --mode mirror --out <tmp>
+#      (uses target Vue project's @vue/compiler-sfc from its own node_modules)
+#   3. codegraph build --root . [<extra-codegraph-args>...]
+#      (codegraph auto-detects .vue.ts files via the sibling .map files;
+#      stores nodes against original .vue paths)
+#   4. rm -rf <tmp>  (unless --keep-tmp)
+#
+# Usage:
+#   <wrapper-relative-path>/.devforge/lib/codegraph-build [--keep-tmp] [<extra codegraph args>]
+#
+# From the inner Vue project root in a wrapper-mode install, that's typically:
+#   ../.devforge/lib/codegraph-build
+#
+# Flags:
+#   --keep-tmp     Don't delete the temp directory on exit (debugging)
+#
+# Anything after --keep-tmp (or anything if --keep-tmp not set) is forwarded
+# verbatim to `codegraph build`.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VUE_TO_TS="$SCRIPT_DIR/vue-to-ts.mjs"
+
+if [ ! -f "$VUE_TO_TS" ]; then
+  echo "codegraph-build: vue-to-ts.mjs not found at $VUE_TO_TS" >&2
+  exit 1
+fi
+
+if ! command -v codegraph >/dev/null 2>&1; then
+  echo "codegraph-build: 'codegraph' command not found in PATH" >&2
+  echo "  install codegraph first; see codegraph project for instructions" >&2
+  exit 1
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "codegraph-build: 'node' command not found in PATH" >&2
+  echo "  install Node.js (>=18) in the Vue project's runtime" >&2
+  exit 1
+fi
+
+KEEP_TMP=false
+if [ "${1:-}" = "--keep-tmp" ]; then
+  KEEP_TMP=true
+  shift
+fi
+
+TMP_DIR="$(mktemp -d "$(pwd)/.vue-tmp-XXXXXX")"
+
+cleanup() {
+  if [ "$KEEP_TMP" = true ]; then
+    echo "→ Kept extraction at: $TMP_DIR"
+  else
+    rm -rf "$TMP_DIR"
+  fi
+}
+trap cleanup EXIT
+
+echo "→ Extracting Vue SFCs to $TMP_DIR ..."
+node "$VUE_TO_TS" . --mode mirror --out "$TMP_DIR" -q
+
+echo "→ Running codegraph build ..."
+codegraph build --root . "$@"
+
+echo "→ Done."
