@@ -4503,6 +4503,7 @@ class ValidateConcernTests(_ConcernTestBase):
     # Migrated from Fix D's annotations-missing tests.
     # ------------------------------------------------------------------
 
+    @unittest.skip("Part D revert: _check_file_docs_complete dormant; revive when codegraph batch dispatch lands")
     def test_validate_concern_fails_when_skeletons_missing(self):
         """Concern with a source file in index.json but no skeletons rendered
         must fail validate-concern with rule='file-docs-incomplete' and
@@ -4614,6 +4615,7 @@ class ValidateConcernTests(_ConcernTestBase):
         # the bracketed error form [file-docs-incomplete] must be absent.
         self.assertNotIn(b"[file-docs-incomplete]", proc.stderr)
 
+    @unittest.skip("Part D revert: _check_file_docs_complete dormant; revive when codegraph batch dispatch lands")
     def test_validate_concern_file_docs_in_error_list_with_other_rules(self):
         """Concern with multiple problems (source in index, no skeletons,
         no public_surface) produces BOTH file-docs-incomplete AND

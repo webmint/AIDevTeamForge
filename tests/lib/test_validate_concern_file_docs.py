@@ -42,6 +42,22 @@ if str(_LIB_DIR) not in sys.path:
 import generate_docs_helper as gdh  # noqa: E402
 
 
+def setUpModule():
+    # Part D revert (2026-05-07): _check_file_docs_complete rule is unwired
+    # from validate_concern's active rule chain. Per-file md primitive proved
+    # cost-prohibitive on testForge20 empirical run; reverted to concern-level
+    # fill (single tree-annotator dispatch composes inline tree descriptions
+    # for per-file recall). The rule function stays defined for future revival
+    # via codegraph-augmented batch dispatch (Part C planning, parked).
+    # These integration tests assert the rule fires through validate-concern
+    # — they cannot pass while the rule is dormant. Skipped wholesale; revive
+    # by deleting this setUpModule when the rule is rewired.
+    raise unittest.SkipTest(
+        "Part D revert: _check_file_docs_complete dormant; "
+        "revive when codegraph batch dispatch lands"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Shared infrastructure
 # ---------------------------------------------------------------------------

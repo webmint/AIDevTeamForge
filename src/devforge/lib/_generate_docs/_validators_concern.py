@@ -363,15 +363,15 @@ def validate_concern(
             "concern {0!r} not registered under {1!r}; run add-concern "
             "first".format(concern_name, package_path),
         )]
-    devforge_dir = _state_file_path().parent
     errors: List[Dict[str, Any]] = []
     errors.extend(_check_concern_required_fields(concern))
     errors.extend(_check_concern_at_least_one_public_surface(concern))
     errors.extend(_check_concern_codeblocks(concern, project_root))
     errors.extend(_check_concern_enums(concern))
-    errors.extend(_check_file_docs_complete(
-        package_path, concern_name, project_root, devforge_dir,
-    ))
+    # _check_file_docs_complete is dormant (Part D revert, 2026-05-07).
+    # Per-file md primitive proved overkill on testForge20 empirical; reverted
+    # to concern-level fill with inline tree descriptions. Function kept
+    # defined for future revival via codegraph-augmented batch dispatch.
     errors.extend(_check_concern_no_todos(state, package_path, concern_name))
     errors.extend(_check_concern_optional_render(
         state, concern, package_path, concern_name,

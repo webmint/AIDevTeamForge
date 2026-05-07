@@ -1,8 +1,27 @@
 # Validator-Loop Plan — Part B (per-file `.md` docs)
 
-**Status**: Draft, not started. Successor architecture to Part A's annotations-in-state model.
+**Status (2026-05-07)**: **RETIRED — see Part D revert below.** Steps B.1–B.5 shipped (commits `7a1f912` through `fa588a7`); per-file primitive then proved overkill empirically — single per-md fill loop dispatched 388 Haiku calls per concern on testForge20 with ~10s/dispatch wall-clock + subscription quota burn that made the design unworkable. Reverted to concern-level fill (Part D) on 2026-05-07. Per-md helpers (`render-file-skeletons`, `write-file-doc`, `validate-file-doc`, `verify-file-docs`) and the `_check_file_docs_complete` rule are kept defined in code as dormant primitives for future revival via codegraph-augmented batch dispatch (Part C planning, parked). The `_md_frontmatter.py` parser/writer survives as a generic helper.
+
+**Original status**: Draft, not started. Successor architecture to Part A's annotations-in-state model.
 **Branch**: continues on `develop-2.0-init`.
 **Predecessor**: `VALIDATOR-LOOP-PLAN.md` (Part A, Steps A.1–A.5). Empirical run on testForge20 surfaced three-layer bypass: orchestrator skipped annotation loop + verify-annotations + coverage gate. Fix D (validate-concern enforcement) closed the verify-annotations bypass post-run. Architectural follow-up: filesystem becomes the forcing function.
+
+## Part D revert (2026-05-07) — concern-level fill restored
+
+Rationale: per-file md primitive proved cost-prohibitive on testForge20 empirical run. Per-file recall (the value prop driving Part B) is preserved more cheaply via inline `# <description>` per file in the concern's tree-text section — the v1.28 baseline's file-level retrieval mechanism. Single tree-annotator dispatch per concern composes the full tree text at once; orchestrator passes to `set-concern-tree --text`. Cost: 7 dispatches per testForge20 run instead of ~600+.
+
+What stays from Part B (committed, won't be reverted):
+- B.5 deprecate annotations-in-state (commit `fa588a7`) — was redundant code regardless of granularity
+- Per-md helper code + tests (Steps B.1–B.4) — preserved dormant
+- `_md_frontmatter.py` — generic YAML-subset parser/writer, useful for any future per-md need
+- Vue source map fix in `vue-to-ts.mjs` (commit `fc5fad8`) + walk-down resolver — independent of doc strategy
+
+What changed in spec / agent:
+- `src/commands/generate-docs/main.md` Phase 3 step 10: per-md fill loop block replaced with single-dispatch-per-concern tree composition note (commit pending)
+- `src/agents/tree-annotator.md`: output contract reverted from "invoke write-file-doc via Bash" to "return ASCII tree text"; tools `Read, Bash` → `Read` (commit pending)
+- `_validators_concern.py:validate_concern`: `_check_file_docs_complete` removed from active rule chain (function still defined for future revival)
+
+When per-md primitive could revive: codegraph batch query helper lands → graph subset query returns mechanical fields per file → ONE LLM dispatch per concern composes ALL per-file mds in single context (instead of one dispatch per md). Cost amortizes; Part B helpers re-enable as the writer layer. Parked; no timeline.
 
 ## Why Part B
 
