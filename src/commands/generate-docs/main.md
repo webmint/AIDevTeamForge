@@ -10,17 +10,20 @@ The full Plan E skeleton-fill spec is preserved at git commit `bdae59d` (`git sh
 
 ---
 
-## ⚠️ TEST SCOPE OVERRIDE — TWO TARGETS (TEMPORARY)
+## ⚠️ TEST SCOPE OVERRIDE — pkg-cse-core ONLY (TEMPORARY)
 
-**Active until removed.** Phase 2 concern tier loop is restricted to the two scope sets below for the empirical iteration cycle. All other concerns from preflight's `concerns[]` list are DEFERRED — they remain unrendered for this run.
+**Active until removed.** Phase 2 concern tier loop is restricted to the scope below for the empirical iteration cycle. All other concerns from preflight's `concerns[]` list are DEFERRED — they remain unrendered for this run.
 
 **In-scope concerns**:
-1. `db-cse-ui-strata/apps/app-web/components` — single concern
-2. `db-cse-ui-strata/packages/pkg-cse-core/*` — every concern under pkg-cse-core (e.g., `accounts`, `activeQuote`, `alerts`, `common`, `configurationMenu`, `customItem`, `favoriteQuotes`, `featureFlags`, `helpers`, `irw`, `itemsByBQids`, `itemsByPartNumbers`, `order`, `organizations`, `quote`, `quotes`, `salesForceContacts`, `securityRoles`)
+- `db-cse-ui-strata/packages/pkg-cse-core/*` — every concern under pkg-cse-core (e.g., `accounts`, `activeQuote`, `alerts`, `common`, `configurationMenu`, `customItem`, `favoriteQuotes`, `featureFlags`, `helpers`, `irw`, `itemsByBQids`, `itemsByPartNumbers`, `order`, `organizations`, `quote`, `quotes`, `salesForceContacts`, `securityRoles`)
 
-Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` matches one of the two patterns above. Process the filtered list. Skip every other concern silently.
+**Out-of-scope (deferred)**:
+- `db-cse-ui-strata/apps/app-web/components` — 200+ files; doc-composer's single dispatch can't fit Purpose + 200-leaf annotated Structure + Hazards within Haiku output budget. Big-concern strategy (split dispatch / model-tier bump / package-arch-tier alt-coverage) is a separate Plan F follow-up.
+- All other app-web concerns (helpers, composables, etc.) — focus this iteration on pkg-cse-core where every concern is small-medium (<60 files).
 
-**Removing this override**: when the iteration locks shape, delete this `## ⚠️ TEST SCOPE OVERRIDE` section. Phase 2 then processes the full preflight `concerns[]` list.
+Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` starts with `db-cse-ui-strata/packages/pkg-cse-core/`. Process the filtered list. Skip every other concern silently.
+
+**Removing this override**: when the iteration locks shape AND the big-concern strategy is decided, delete this `## ⚠️ TEST SCOPE OVERRIDE` section. Phase 2 then processes the full preflight `concerns[]` list.
 
 ---
 
