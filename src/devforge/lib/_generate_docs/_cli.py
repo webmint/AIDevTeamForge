@@ -33,6 +33,7 @@ from . import _circuit, _trace
 from ._concern_input import _build_concern_input, cmd_concern_input
 from ._manifest import cmd_extract_package_scripts
 from ._preflight import _build_preflight, cmd_preflight
+from ._validate_doc import _build_validate_doc, cmd_validate_doc
 from ._render import (
     cmd_render_concern_skeleton,
     cmd_render_package_skeleton,
@@ -372,6 +373,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("concern-input", _build_concern_input, cmd_concern_input),
     # Plan F.0 — preflight (vue-extract + index_repository + stamp diff).
     ("preflight", _build_preflight, cmd_preflight),
+    # Plan F.5 — validate-doc (concern tier; v0).
+    ("validate-doc", _build_validate_doc, cmd_validate_doc),
 )
 
 
