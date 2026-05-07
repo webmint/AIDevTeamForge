@@ -43,6 +43,35 @@ Pre-existing `docs/` content under any path other than `docs/db-cse-ui-strata/ap
 
 ---
 
+## ⚠️ TEST SCOPE OVERRIDE — SINGLE CONCERN (TEMPORARY)
+
+**This override is in effect until removed. Layered on top of `## ⚠️ ITERATION MODE` above.** Phase 3 step 8 worklist is restricted to a single concern for the empirical test cycle. All other concerns from `validate-package`'s decomposition errors are DEFERRED — they remain unregistered for this run.
+
+**Test scope concern**: `helpers`
+
+Behavior changes in Phase 3:
+
+| Step | Behavior under TEST SCOPE OVERRIDE |
+|---|---|
+| Step 7 (build worklist from decomposition errors) | After parsing decomposition errors, FILTER the resulting concern list to entries matching the test-scope name above (case-sensitive exact match on `concern_name`). Discard all other entries. If the filtered list is empty, abort the command with: "TEST SCOPE OVERRIDE: concern `<name>` not in decomposition errors — verify spelling against `validate-package` output, or remove the override section." |
+| Step 8 (apply user-confirmed worklist) | Worklist is the filtered single-entry list from step 7. |
+| Step 9 (user-confirm checkpoint) | Print the test-scope warning prominently in the summary block: "TEST SCOPE: only `<concern>` will be processed; remaining concerns from decomposition errors are deferred." |
+| Step 10 (per-concern iteration) | Iterates exactly once over the single concern. |
+| Step 12 (re-run validate-package) | Decomposition errors WILL still surface (other concerns missing). Treat as expected under TEST SCOPE OVERRIDE: do NOT abort; surface the error count to the user but continue to step 13. |
+| Step 13 (render-package-doc) | This call WILL FAIL under TEST SCOPE OVERRIDE because validate-package emits decomposition errors for the deferred concerns. Skip this step under TEST SCOPE OVERRIDE; surface to user: "Skipped render-package-doc under TEST SCOPE OVERRIDE; package doc remains at `.skeleton`. Remove the override + re-run for full package doc." |
+
+**Pass criteria for the test cycle (Part D verification)**:
+
+- ~1 dispatch fires for the single concern's tree composition
+- The concern's `docs/<P>/<C>/index.md` is rendered (not `.skeleton`)
+- The tree section has inline `# <description>` per non-trivial entry
+- A grep for any source filename in `src/<concern>/` (e.g., `grep -r "<filename>" docs/<P>/<C>/`) returns a hit in the tree section
+- No quota burn (single dispatch is subscription-friendly)
+
+**Removing this override**: delete this entire `## ⚠️ TEST SCOPE OVERRIDE` section. Full per-package run (all concerns) resumes via standard `## ⚠️ ITERATION MODE` rules.
+
+---
+
 ## Phase 0 — Pre-flight
 
 **Wall-clock telemetry (mandatory for cost visibility):** record the wall-clock time at the entry of each phase (Phase 0 entry, Phase 1 entry, ..., Phase 5 entry) into a session-local variable. At Phase 5's report, compute deltas and emit them as the phase-timing table (see Phase 5). The recording is in-session memory only — no persistence required, no helper invocation. The orchestrator's own clock (whatever Claude Code's environment exposes) is sufficient.
