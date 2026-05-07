@@ -111,20 +111,74 @@ try {
   process.exit(2)
 }
 
-// Resolve @vue/compiler-sfc from <root>'s node_modules (consumer-provided).
-// createRequire walks UP from the given path's directory looking for
-// node_modules; the placeholder filename ensures resolution starts from <root>.
+// Resolve @vue/compiler-sfc from <root>'s tree. Try in order:
+//   1. <root>/node_modules/@vue/compiler-sfc           (target-is-Vue-project)
+//   2. ancestors of <root> via createRequire walk-up   (target-is-subdir-of-vue-project)
+//   3. descendants — walk DOWN for first `node_modules/@vue/compiler-sfc/package.json`
+//      hit, using <root>'s skip rules                  (wrapper-mode + monorepo)
+// First hit wins.
 let parse, compileScript, compileTemplate
-try {
-  const consumerRequire = createRequire(`${root}/__resolve_anchor__`)
-  const sfc = consumerRequire('@vue/compiler-sfc')
+{
+  const tried = []
+
+  function tryResolve(anchorDir) {
+    tried.push(anchorDir)
+    try {
+      const req = createRequire(`${anchorDir}/__resolve_anchor__`)
+      return req('@vue/compiler-sfc')
+    } catch {
+      return null
+    }
+  }
+
+  // Strategies 1 + 2: Node's standard resolution from <root> (walks up).
+  let sfc = tryResolve(root)
+
+  // Strategy 3: walk DOWN for first node_modules/@vue/compiler-sfc/package.json hit.
+  if (!sfc) {
+    const SKIP_FOR_DEP_SEARCH = new Set([
+      'dist', 'build', 'coverage', '.git', '.cache',
+      '.nuxt', '.output', '.turbo',
+    ])
+    async function* findSfcAnchors(dir) {
+      let entries
+      try {
+        entries = await readdir(dir, { withFileTypes: true })
+      } catch { return }
+      for (const e of entries) {
+        if (!e.isDirectory()) continue
+        const full = join(dir, e.name)
+        if (e.name === 'node_modules') {
+          // Check this node_modules for @vue/compiler-sfc directly.
+          try {
+            const pkg = await readFile(
+              join(full, '@vue', 'compiler-sfc', 'package.json'),
+              'utf8',
+            )
+            if (pkg) yield dirname(full)  // parent of node_modules = anchor
+          } catch {}
+          continue  // never descend into node_modules
+        }
+        if (SKIP_FOR_DEP_SEARCH.has(e.name)) continue
+        yield* findSfcAnchors(full)
+      }
+    }
+    for await (const anchor of findSfcAnchors(root)) {
+      sfc = tryResolve(anchor)
+      if (sfc) break
+    }
+  }
+
+  if (!sfc) {
+    console.error(`Failed to resolve @vue/compiler-sfc anywhere under ${root}.`)
+    console.error(`Tried anchors: ${tried.join(', ')}`)
+    console.error(`Install it in the consumer Vue project (or its monorepo root):`)
+    console.error(`  cd <vue-project-dir> && npm install @vue/compiler-sfc`)
+    process.exit(2)
+  }
   parse = sfc.parse
   compileScript = sfc.compileScript
   compileTemplate = sfc.compileTemplate
-} catch (err) {
-  console.error(`Failed to resolve @vue/compiler-sfc from ${root}: ${err.message}`)
-  console.error(`Install it in the consumer project: cd ${root} && npm install @vue/compiler-sfc`)
-  process.exit(2)
 }
 
 // Skip directories by name (replaces fast-glob's `**/<name>/**` patterns
