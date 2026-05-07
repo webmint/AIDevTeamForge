@@ -1,6 +1,6 @@
 # Plan F — Multi-tier docs/ + CBM as structural-query layer
 
-**Status (2026-05-07)**: Approved. Supersedes Plan E. E.1 (sourcemap consumer) + E.1.b (nearest mode) + topology lock + iteration scaffold are committed foundations; F reshapes E.2–E.6 and adds F.7–F.10.
+**Status (2026-05-07)**: Approved. Supersedes Plan E. E.1 (sourcemap consumer) + E.1.b (nearest mode) + topology lock + iteration scaffold are committed foundations; F reshapes E.2–E.6 and adds F.0 + F.7–F.10. F.0 (preflight) added 2026-05-07 to reframe freshness from "invariant-to-maintain" to "operation-to-run" — collapsed three risk classes (reindex-discipline, stale cite-back, wasted dispatch) to non-issues.
 
 **Branch**: continues on `develop-2.0-init`.
 
@@ -50,26 +50,34 @@ These ship as-is into Plan F. Sourcemap module is consumed by F.2 (concern-input
 │ /generate-docs (rewritten under F.4 — multi-tier loop)           │
 └─────────────────────────────────┬────────────────────────────────┘
                                   │
+                                  ▼
+         F.0 preflight ── vue-extract → cli index_repository → stamp diff
+                          (idempotent;  (idempotent)         (ms; per concern)
+                           5-15s)                             returns
+                                                              concerns[].status
+                                  │
                   ┌───────────────┼────────────────┐
                   ▼               ▼                ▼
-         F.7 project tier  F.8 package tier   F.2 concern tier
-         (1 dispatch ×    (3 dispatches ×    (1 dispatch × N
-          2 docs)          M packages)        concerns × M packages)
+         F.4 project tier  F.4 package tier   F.4 concern tier
+         (1 dispatch ×    (3 dispatches ×    (1 dispatch ×
+          2 docs;          M packages;        N concerns;
+          gated by         gated by           gated by
+          project-stamp)   pkg-stamp)         source_stamp)
               │                │                  │
               ▼                ▼                  ▼
          doc-composer agent (F.3) — same agent, tier-specific prompts
               │
               ▼
-         orchestrator parses output, calls setters
+         orchestrator parses output, calls setters (F.4 primitives)
               │
               ▼
          helper renders md (helper owns structure; LLM owns values)
               │
               ▼
-         validate-doc gate (helper) — frontmatter + cite-backs + density
+         validate-doc gate (F.5) — frontmatter + cite-backs + density
               │
               ▼
-         render-doc (helper) — `.skeleton` → `.md` once validation passes
+         render-doc (F.4) — `.skeleton` → `.md` once validation passes
 ```
 
 CBM provides the structural-query layer. Commands consult it directly via MCP tools — no batch-pre-rendering of structural fields.
@@ -213,6 +221,74 @@ last_indexed: 2026-05-07
 
 ## Components
 
+### F.0 — Preflight (entry-point freshness operation)
+
+Locked 2026-05-07. Reframes freshness from "invariant-to-maintain" (commands assume `.devforge/vue-tmp/` and the CBM graph are current; staleness causes silent cite-back drift) to "operation-to-run" (every entry point that consults docs/ or CBM invokes preflight first; cheap operations always run, expensive operations gate on stamp diff).
+
+**F.0.a — `generate_docs_helper preflight`** (new subcommand, ~80 lines + tests).
+
+Behavior:
+1. Run `vue-extract` (idempotent: regenerates `.devforge/vue-tmp/` mirror; no-op when source `.vue` files unchanged).
+2. Run `codebase-memory-mcp cli index_repository '{"repo_path":"<index-root-abs>"}'` (idempotent: incremental reindex via watcher artifact).
+3. For each `<package>/src/<concern>/` subfolder, compute its source_stamp (reuses `_build_spans_and_stamp` from F.2). Read existing `docs/<package>/<concern>/index.md` frontmatter (if present) and diff its `source_stamp` against the freshly-computed value.
+4. Emit JSON to stdout:
+   ```json
+   {
+     "vue_extract": {"compiled": N, "failed": 0, "duration_ms": ...},
+     "index_repository": {"nodes": N, "edges": M, "duration_ms": ...},
+     "concerns": [
+       {"package": "P", "concern": "C", "source_stamp": "...",
+        "prior_stamp": "...", "status": "unchanged|changed|new"},
+       ...
+     ]
+   }
+   ```
+5. Exit 0 on success; non-zero with stderr diagnostic if vue-extract or CBM fails.
+
+CLI:
+```
+generate_docs_helper preflight [--devforge-dir D] [--skip-vue-extract] [--skip-index]
+```
+
+The skip flags are escape valves only; default behavior runs both. Cache: a `<devforge-dir>/.preflight-stamp` file records the wall-time of the last successful preflight; consumer commands MAY skip preflight when stamp is fresher than 60s (per-command policy, not enforced here).
+
+**F.0.b — Stamp-gate rule in F.4**.
+
+`/generate-docs` Phase 3 (concern tier loop) reads preflight's `concerns[]` list. For each concern with `status=unchanged`, SKIP the doc-composer dispatch + setter chain entirely. Only concerns marked `changed` or `new` get a dispatch.
+
+Phase 4 (package tier) and Phase 5 (project tier) gates similarly: package overview/architecture/glossary regenerate when ANY concern in the package changed OR when `package_stamp` (sha over package's concern stamps + package-root file hashes) differs from prior; project regenerates when ANY package changed OR project-root files differ.
+
+#### Cost profile
+
+| Operation | Cost | Frequency |
+|---|---|---|
+| vue-extract (idempotent) | 5-15s | every preflight |
+| index_repository (incremental) | 5-30s | every preflight |
+| stamp diff | ms | every concern in /generate-docs |
+| doc-composer dispatch | $0.10-0.20 + 10s | only changed concerns |
+
+Worst case (every concern changed): full /generate-docs ~$10-25, ~15min. Best case (one concern changed): one dispatch / ~10s / ~$0.20.
+
+#### What dies (fragility classes collapsed by F.0)
+- "Did I remember to reindex?" — gone (preflight forces it)
+- Stale-map cite-back on Vue files — gone (vue-extract idempotent + always-fresh)
+- Stale-graph cite-back from old indexes — gone (index_repository always-fresh)
+- Wasted LLM spend on unchanged concerns — gone (stamp gate)
+
+#### Test scope (`tests/lib/test_preflight.py`)
+- Happy path: testForge20-style synthetic project; preflight emits valid JSON with all three sections (vue_extract, index_repository, concerns)
+- Stamp diff: change one file under `<pkg>/src/<concern>/`, run preflight twice; first run marks concern `new` (no prior doc), second run marks it `unchanged`; touching the file flips back to `changed`
+- Skip flags: `--skip-vue-extract` omits vue_extract section; `--skip-index` omits index_repository section
+- Failure: CBM binary missing → exit 2 with install-instruction stderr; vue-extract failure → exit 1 with launcher's stderr verbatim
+- Frontmatter parse: doc with malformed frontmatter is treated as `prior_stamp=null` → status `new` (graceful degrade, not crash)
+
+#### Verify F.0
+- ≥ 6 tests green
+- End-to-end smoke on testForge20: preflight runs, second run reports all concerns `unchanged`, touching one file marks one concern `changed`
+- Wall-clock budget on testForge20: ≤ 30s for the mechanical phases (vue-extract + index_repository + stamp-diff for ~64 concerns)
+
+---
+
 ### F.1 — Sourcemap consumer (DONE under E.1 + E.1.b)
 
 Carried as-is. Used by F.2 to translate `.vue.ts:line` cite-backs to `.vue:line` for inclusion in concern docs.
@@ -306,33 +382,46 @@ Density discipline (encoded in agent body):
 Replace iteration scaffold (`src/commands/generate-docs/main.md` at commit `3223c90`) with multi-tier flow:
 
 ```markdown
-## Phase 0 — Pre-flight (existing)
-## Phase 1 — Vue mirror pre-pass (existing)
-## Phase 2 — Index via CBM CLI (existing)
-## Phase 3 — Concern tier loop (bottom of doc hierarchy; runs first because higher tiers read concern frontmatter)
-  For each package P × concern C from index.json:
-    If skip-stamp matches existing doc.frontmatter.source_stamp → SKIP (incremental)
-    Else: render docs/<P>/<C>/index.md.skeleton
+## Phase 0 — Pre-flight gate
+  Hard-check `command -v codebase-memory-mcp`. If missing, ABORT with
+  install instructions. Hard-check `.devforge/index.json` exists (run
+  /init-forge first).
+## Phase 1 — Preflight (delegates to F.0)
+  Invoke `generate_docs_helper preflight`. Capture concerns[] list with
+  per-concern status (unchanged | changed | new). vue-extract +
+  index_repository run unconditionally inside preflight; idempotent.
+## Phase 2 — Concern tier loop (bottom of doc hierarchy; runs first because higher tiers read concern frontmatter)
+  For each package P × concern C from preflight's concerns[]:
+    If status == "unchanged" → SKIP (F.0.b stamp gate)
+    Else (status in {"changed", "new"}):
+          render docs/<P>/<C>/index.md.skeleton
           Dispatch doc-composer with concern-input batch JSON
           Parse 3 sections (Purpose/Structure/Hazards) → setters
           Validate + render
-## Phase 4 — Package tier loop (reads concern frontmatter for Concerns list)
-  For each package P from index.json:
-    If all P's concern docs unchanged AND P-stamp matches → SKIP (incremental)
+## Phase 3 — Package tier loop (reads concern frontmatter for Concerns list)
+  For each package P:
+    If all P's concern docs were SKIPPED above AND P-stamp unchanged → SKIP
     Else: render docs/<P>/{overview,architecture,glossary}.md.skeleton
           Dispatch doc-composer with package-input helper output
           Parse 3 docs of sections → call setters
           Validate + render
-## Phase 5 — Project tier (reads package frontmatter for Packages list)
-  If all packages unchanged AND project-stamp matches → SKIP (incremental)
+## Phase 4 — Project tier (reads package frontmatter for Packages list)
+  If all packages were SKIPPED above AND project-stamp unchanged → SKIP
   Else: render skeletons: docs/overview.md.skeleton + docs/architecture.md.skeleton
         Dispatch doc-composer with project-input helper output
         Parse 2 docs of sections → call setters
         Validate + render
-## Phase 6 — Verify
+## Phase 5 — Verify
   Walk docs/, ensure every doc has valid frontmatter + cite-backs resolve
-## Phase 7 — Report
+## Phase 6 — Report
+  Print: N concerns dispatched of M total; M-N skipped via stamp gate.
+  Print: cumulative LLM token estimate + cost.
+  Print: vue-extract + index_repository wall-clock from preflight.
 ```
+
+(Phases renumbered: legacy Phase 0/1/2 collapsed into the new Phase 1
+preflight delegation; F.0.b stamp gate now drives the SKIP branches in
+Phase 2/3/4 instead of inline stamp comparisons.)
 
 Cost gate (subscription-aware):
 - Pre-Phase-3: print expected dispatches + token estimate (~10K input + ~5K output per dispatch; ~$0.10–0.20 per concern).
@@ -426,25 +515,28 @@ Generated by ONE doc-composer dispatch with project-input helper output. Helper 
 
 ### F.9 — Per-command read-tier specs
 
-Update consumer commands so they encode the layered read order:
+Update consumer commands so they encode (a) preflight invocation as the first step and (b) the layered read order for narrative + structural lookups:
 
-| Command | Read tier |
-|---|---|
-| `/research` | glossary.md → concern md → architecture.md → CBM (`agentic_context` + `search_graph`) → source (Read) |
-| `/specify` | concern md → architecture.md → constitution.md → CBM (verify constraints) → user clarifications |
-| `/plan` | architecture.md → CBM (`trace_call_path`, `agentic_impact`) → constitution.md |
-| `/breakdown` | plan.md (input) + concern md per affected concern → CBM for any unresolved structural question |
-| `/execute-task` | task.md (input) + CBM (function-level `get_code_snippet`) → source |
-| `/fix` | CBM (locate fault) → source → docs (verify hazard awareness for that concern) |
-| `/refactor` | CBM (find usages) → source → concern md (avoid touching documented hazards) |
-| `/audit` | CBM (`agentic_quality`) + walk docs/ for stale frontmatter (source_stamp mismatch with current files) |
+| Command | Step 1 (always) | Step 2+ (read tier) |
+|---|---|---|
+| `/research` | preflight | glossary.md → concern md → architecture.md → CBM (`agentic_context` + `search_graph`) → source (Read) |
+| `/specify` | preflight | concern md → architecture.md → constitution.md → CBM (verify constraints) → user clarifications |
+| `/plan` | preflight | architecture.md → CBM (`trace_call_path`, `agentic_impact`) → constitution.md |
+| `/breakdown` | preflight | plan.md (input) + concern md per affected concern → CBM for any unresolved structural question |
+| `/execute-task` | preflight | task.md (input) + CBM (function-level `get_code_snippet`) → source |
+| `/fix` | preflight | CBM (locate fault) → source → docs (verify hazard awareness for that concern) |
+| `/refactor` | preflight | CBM (find usages) → source → concern md (avoid touching documented hazards) |
+| `/audit` | preflight | CBM (`agentic_quality`) + walk docs/ for stale frontmatter (preflight already surfaces this list as `concerns[].status="changed"`) |
 
-Each command spec gets one paragraph: "Before authoring/executing, consult [tier list]. Use CBM tools for any structural lookup; consult docs/ for narrative orientation."
+Each command spec gets one short paragraph: "Before authoring/executing, invoke `generate_docs_helper preflight` (skipped if `.devforge/.preflight-stamp` is fresher than 60s). Then consult [tier list]. Use CBM tools for any structural lookup; consult docs/ for narrative orientation."
+
+The 60-second freshness shortcut prevents preflight thrashing when several commands chain in the same session (e.g., `/research` → `/specify` → `/plan` within minutes).
 
 #### Verify F.9
 - 8 command specs updated
 - instruction-author + instruction-reviewer pass on each
 - claude-code-guide verifies CBM tool name conventions per command
+- Each updated command spec mentions `preflight` as Step 1 and references the 60s stamp shortcut
 
 ### F.10 — Template directory rules
 
@@ -480,21 +572,35 @@ Update `src/CLAUDE.md` template + storage-rules:
 
 ## Risks + open questions
 
-1. **Source stamp granularity**. F.2's `source_stamp` SHA over subfolder content lets F.4 skip unchanged concerns. Risk: noise edits (whitespace, comment-only changes) trigger needless regeneration. v0 = strict byte hash; v0+1 = AST-aware hash. Defer.
+### Collapsed by F.0 preflight (no longer risks)
+
+- ~~**"Did I remember to reindex?"**~~ — F.0 forces vue-extract + index_repository on every entry-point invocation. Stale-mirror and stale-graph cite-back drift become impossible.
+- ~~**Wasted LLM spend on unchanged concerns**~~ — F.0.b stamp gate skips dispatch for `unchanged` concerns.
+- ~~**CBM unavailability mid-run**~~ — Preflight hard-checks `command -v codebase-memory-mcp` and aborts with install instructions before any other phase runs. Same check applies to all F.9 consumer commands via the preflight invocation.
+
+### Open
+
+1. **Source stamp granularity**. F.2's `source_stamp` SHA over subfolder content lets F.0/F.4 skip unchanged concerns. Risk: noise edits (whitespace, comment-only changes) trigger needless regeneration. v0 = strict byte hash; v0+1 = AST-aware hash. Defer.
 
 2. **Glossary signal extraction**. F.7's package-input helper needs a way to surface glossary candidates without LLM. Heuristic: top-N most-CALLed Functions in package + symbols with lowercase names appearing 5+ times in user-prompt-style strings. Empirical tune. v0 = LLM extracts from package source verbatim; v0+1 = mechanical signal.
 
-3. **Cite-back for hazards on regenerated source**. If hazard cites `file:line` and source line drifts (refactor inserts a line above), the cite goes stale. F.5 detects via line-content hash; F.4 incremental regen rebuilds the doc when stamp shifts. Acceptable.
+3. **Cite-back for hazards on regenerated source**. If hazard cites `file:line` and source line drifts (refactor inserts a line above), the cite goes stale. F.5 detects via line-content hash; F.0 incremental regen rebuilds the doc when stamp shifts. Acceptable.
 
 4. **Cross-concern hazards**. Some hazards span concerns (e.g., "BLoC subscribes via Pinia store; if you call BLoC method directly, store doesn't refresh"). Where does this hazard live? Decision: package architecture.md `## Patterns` section, with explicit cite-backs to multiple concerns. Concerns themselves only carry concern-local hazards.
 
-5. **CBM unavailability mid-run**. /generate-docs requires CBM (Phase 2 indexes; downstream commands query). Phase 0 hard-checks `command -v codebase-memory-mcp` already (per iteration scaffold). For consumer commands (/research etc.), abort with clear install prompt rather than fall back to grep.
+5. **Order-of-tiers with frontmatter dependencies**. Package overview reads concern docs' frontmatter; project overview reads package docs' frontmatter. Bottom-up order locked: concerns → packages → project. F.4 enforces.
 
-6. **Order-of-tiers with frontmatter dependencies**. Package overview reads concern docs' frontmatter; project overview reads package docs' frontmatter. Bottom-up order locked: concerns → packages → project. F.4 enforces.
+6. **Density-cap regressions**. doc-composer might drift to verbose prose in long sessions. F.5 validate-doc rejects banned phrases + length cap violations; orchestrator re-dispatches with the failure message. Cap at 3 retries; on 4th, surface to user.
 
-7. **Density-cap regressions**. doc-composer might drift to verbose prose in long sessions. F.5 validate-doc rejects banned phrases + length cap violations; orchestrator re-dispatches with the failure message. Cap at 3 retries; on 4th, surface to user.
+7. **Vue cite-back through sourcemap**. Hazards in Vue concerns must cite `.vue:line`. Composer reads `.vue.ts:line` from helper input + applies E.1.b nearest mode. Helper validates the resolution end-to-end.
 
-8. **Vue cite-back through sourcemap**. Hazards in Vue concerns must cite `.vue:line`. Composer reads `.vue.ts:line` from helper input + applies E.1.b nearest mode. Helper validates the resolution end-to-end.
+8. **Path canonicalization** (residual one-time hardening, not freshness). Map's `sources[0]` is path RELATIVE to .map dir; helper must canonicalize to project-root-relative for downstream cite-validate. Verify via end-to-end smoke under F.5.
+
+9. **Multi-source map reject**. v0 hard-rejects multi-source maps. vue-to-ts emits single-source only; if toolchain ever emits multi-source (post-bundling, etc.), revisit. No incidence yet.
+
+10. **Template-only `.vue` fallback**. Vue files with no `<script>` block emit a stub `.vue.ts` containing `export default {}`. CBM indexes the stub; graph returns no Functions. concern-composer must still emit tree entry + filename-inferred annotation; helper must not crash on empty span. Already specified.
+
+11. **Preflight thrashing**. Multiple consumer commands chained in one session (e.g. `/research` → `/specify` → `/plan`) would each re-run vue-extract + index_repository (~15-30s each). Mitigation: F.9's `.preflight-stamp` 60s freshness check; preflight skips its mechanical phases when the stamp is fresh. Stamp gate inside preflight still runs (cheap; ms).
 
 ---
 
@@ -505,8 +611,9 @@ Update `src/CLAUDE.md` template + storage-rules:
 3. Read `VALIDATOR-LOOP-B-PLAN.md` (Part B retired + Part D revert note).
 4. Read this file (Plan F, active).
 5. Determine current step:
-   - F.2 not started → start with concern-input helper
-   - F.3 in progress → continue doc-composer agent
+   - F.0 not started → build preflight subcommand + tests
+   - F.4 in progress → continue setter primitives + Phase wiring
+   - F.5 in progress → continue validate-doc helper
    - etc.
 6. Files NOT to delete (Plan F + earlier artifacts):
    - `src/agents/tree-annotator.md` (Part D historical)
