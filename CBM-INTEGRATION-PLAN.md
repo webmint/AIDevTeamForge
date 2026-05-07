@@ -220,11 +220,11 @@ generate_docs_helper concern-input --package P --concern C [--vue-extract-dir D]
 ```
 
 Behavior:
-1. Resolve subfolder from index.json: `<package>/src/<concern>/` (or package's actual source root).
-2. Read all files under subfolder via index.json (per `_load_index_files` Fix C pattern).
-3. Build mechanical ASCII tree (subfolder-relative paths; preserves dir structure).
-4. For each file, extract a "comment-rich span" — top 30 lines + any function with leading docstring/comment block + any `// TODO`/`// FIXME`/`// HACK`/`// WARNING` line. Cap total spans at 6KB per file, 60KB per batch.
-5. Output to stdout: batch JSON.
+1. Resolve concern's source subfolder: `<project_root>/<package>/src/<concern>/`.
+2. Walk filesystem under the subfolder recursively (NOT via `.devforge/index.json` — that file caps at 500 entries per package and loses concerns on real monorepos; testForge20 app-web hits the cap and the `helpers/` subfolder falls past it). Apply `_path_contains_trivial_dir` skip rule (node_modules / dist / build / etc.) during the walk.
+3. Build mechanical ASCII tree of the surviving project-relative paths. Subfolder header is the first line; directories grouped above leaves at each level.
+4. For each file, extract a "comment-rich span" — top 30 lines plus any line containing a hazard marker (TODO / FIXME / HACK / WARNING / XXX) with 2-line context above + below. Overlapping windows merge; non-adjacent windows separated by `...`. Cap per-file at 6KB, total batch at 60KB (excess files emit a `<batch cap reached>` placeholder).
+5. Output to stdout: batch JSON. Caller pipes to F.3 doc-composer dispatch.
 
 JSON shape:
 ```json
@@ -252,7 +252,7 @@ Test scope (`tests/lib/test_concern_input.py`):
 - Index.json with 5 files in subfolder → tree_text contains all 5 with correct indentation
 - Comment-rich span: file with top doc-block returns top span + doc block; file with TODOs returns spans containing TODOs
 - Source stamp: byte-identical inputs → identical stamp; one file changed → different stamp
-- Vue file: span is read from `.devforge/vue-tmp/<rel>.vue.ts` (mirror), NOT the `.vue` source — composer needs the compiled-out form for accurate hazard inference; helper records this fact in batch JSON
+- Vue file: span is read from the `.vue` source verbatim, NOT the mirror. Mirror's `.vue.ts` strips template content unless `--include-template` was passed to vue-extract; template-side hazards (v-for misuse, reactivity gotchas) are only visible in the source. The CBM mirror is for graph queries (CALLS edges); helpers read source for span extraction.
 - Concern not in index.json → exit 2
 
 #### Verify F.2

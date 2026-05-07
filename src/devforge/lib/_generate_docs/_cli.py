@@ -30,6 +30,7 @@ import time
 from typing import Callable, List, Optional, Tuple
 
 from . import _circuit, _trace
+from ._concern_input import _build_concern_input, cmd_concern_input
 from ._manifest import cmd_extract_package_scripts
 from ._render import (
     cmd_render_concern_skeleton,
@@ -366,6 +367,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("validate-file-doc", _build_validate_file_doc, cmd_validate_file_doc),
     # Per-file-doc post-batch aggregator (Step B.4 of VALIDATOR-LOOP-B-PLAN.md).
     ("verify-file-docs", _build_verify_file_docs, cmd_verify_file_docs),
+    # Plan F.2 — concern-input helper for doc-composer dispatch.
+    ("concern-input", _build_concern_input, cmd_concern_input),
 )
 
 
