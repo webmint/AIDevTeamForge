@@ -102,22 +102,23 @@ Capture full JSON output to a variable. Fields used downstream:
 - `files[].comment_rich_span` — top-of-file lines + TODO context windows; used by orchestrator to infer leaf annotations
 - `source_stamp` — frontmatter input
 
-### Step 2.2 — init-doc with helper-built frontmatter
+### Step 2.2 — init-doc with helper-built frontmatter + F.2 tree
 
 ```
 ./.devforge/lib/generate_docs_helper init-doc --tier concern --target "$pkg/$concern" \
     --frontmatter "$(jq -n --arg c "$concern" --arg p "$pkg" --argjson f "$files_count" \
                        --arg s "$source_stamp" --arg d "$today" \
-                       '{concern:$c, package:$p, files:$f, source_stamp:$s, last_indexed:$d}')"
+                       '{concern:$c, package:$p, files:$f, source_stamp:$s, last_indexed:$d}')" \
+    --tree "<step 2.1 tree_text verbatim>"
 ```
 
 Frontmatter values:
 - `concern`, `package` — string literals from the preflight entry
-- `files` — count from `concern-input`'s JSON `files` field (length of array, OR `files` count field if the helper provides one)
+- `files` — count from `concern-input`'s JSON `files` field
 - `source_stamp` — `concerns[*].source_stamp` from preflight
 - `last_indexed` — today's ISO date (`date -u +%Y-%m-%d`)
 
-`init-doc` resets the slot every call (Purpose + Structure wiped to empty). The orchestrator does NOT need to clear `.devforge/.f4-doc-state.json` separately — that file is helper-owned.
+`init-doc` writes `docs/<target>/index.md.skeleton` with frontmatter + Purpose placeholder + ## Structure section + the F.2 tree wrapped in a `text` code fence. Re-running overwrites the skeleton. No `.devforge/.f4-doc-state.json` — the skeleton file IS the state.
 
 ### Step 2.3 — Compose Purpose + leaf annotations (orchestrator-direct, NO subagent)
 
@@ -133,22 +134,25 @@ For monster concerns (>100 leaves), the orchestrator emits the annotations map p
 
 ### Step 2.4 — Setters
 
-Two setter calls (Hazards dropped — `/audit` territory):
+Two setter calls (Hazards dropped — `/audit` territory). Setters edit the skeleton file in-place:
 
 ```
 ./.devforge/lib/generate_docs_helper set-doc-purpose --tier concern --target "$pkg/$concern" \
     --text "<orchestrator-composed Purpose>"
 
 ./.devforge/lib/generate_docs_helper set-doc-structure --tier concern --target "$pkg/$concern" \
-    --tree "<step 2.1 tree_text verbatim>" \
-    --annotations '<orchestrator-composed annotations JSON>'
+    --annotations '<orchestrator-composed {basename: annotation} JSON>'
 ```
+
+`set-doc-purpose` replaces the `<!-- TODO: purpose -->` placeholder with the supplied text (idempotent — re-running with new text replaces the prior content).
+
+`set-doc-structure` walks lines inside the ` ```text ` fence and appends `  # <annotation>` to each leaf line whose basename matches an entry in `--annotations`. Idempotent — leaves already annotated are passed through.
 
 The orchestrator MUST NOT:
 - Write the markdown directly via the Write tool
 - Run custom Python or bash that emits markdown directly to docs/
 
-The setter chain owns disk writes via Step 2.5's `render-doc`.
+Disk writes happen via the setters (in-place skeleton edit) and Step 2.5's `render-doc` (atomic rename).
 
 ### Step 2.5 — Render + validate
 
@@ -157,10 +161,12 @@ The setter chain owns disk writes via Step 2.5's `render-doc`.
 ./.devforge/lib/generate_docs_helper validate-doc --tier concern --target "$pkg/$concern"
 ```
 
-- Both exit 0 → done with this concern; advance to next.
-- validate-doc exit 2 → capture stderr verbatim. Re-run Step 2.2 (init-doc, fresh slot), then Step 2.3 (orchestrator re-composes Purpose + annotations using the stderr as feedback) → Step 2.4 → Step 2.5. Cap at 3 retries; on the 4th, surface failure to the user and continue with the next concern.
+`render-doc` renames `docs/<target>/index.md.skeleton` → `docs/<target>/index.md` (atomic; no content mutation).
 
-**Why init-doc on retry**: `set-doc-purpose` and `set-doc-structure` are idempotent (overwrite). Re-running init-doc is cheap (just frontmatter rewrite + section reset). Cleaner than tracking partial state.
+- Both exit 0 → done with this concern; advance to next.
+- validate-doc exit 2 → capture stderr verbatim. Re-run Step 2.2 (init-doc, wipes the skeleton), then Step 2.3 (orchestrator re-composes Purpose + annotations using the stderr as feedback) → Step 2.4 → Step 2.5. Cap at 3 retries; on the 4th, surface failure to the user and continue with the next concern.
+
+**Why init-doc on retry**: re-init wipes the skeleton wholesale; setters overwrite cleanly. Cheaper than tracking partial state.
 
 ---
 

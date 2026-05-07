@@ -1,24 +1,34 @@
-"""F.4 — concern-tier setter primitives + render-doc (v0 vertical slice).
+"""F.4 — concern-tier skeleton-fill primitives + render-doc (v0).
 
 Four CLI subcommands ship under this module:
 
-- `init-doc        --tier concern --target T --frontmatter <json>`
+- `init-doc        --tier concern --target T --frontmatter <json> --tree <tree_text>`
 - `set-doc-purpose --tier concern --target T --text "..."`
-- `set-doc-structure --tier concern --target T --tree "..." --annotations <json>`
+- `set-doc-structure --tier concern --target T --annotations <json>`
 - `render-doc      --tier concern --target T [--out PATH]`
 
-Per-doc state lives at `<devforge_dir>/.f4-doc-state.json`. Setter calls
-mutate the state slot for `<tier>:<target>` keyed entry; `render-doc`
-emits the assembled Markdown to `docs/<target>/index.md` (or `--out`).
+Skeleton-fill design (replaces prior state-JSON approach):
 
-Helper owns markdown structure: frontmatter shape, section ordering,
-tree-text + annotation interleaving. LLM owns values via the setters.
-`validate-doc` (F.5) gates the rendered doc before it is final; this
-helper does NOT auto-invoke validate.
+1. `init-doc` writes `docs/<target>/index.md.skeleton` with frontmatter,
+   `# <concern>` H1, `## Purpose` + placeholder marker, and `## Structure`
+   + the F.2 tree_text wrapped in a `text` code fence. Re-running
+   overwrites the skeleton wholesale.
+2. `set-doc-purpose` reads the skeleton file in-place, replaces the
+   `<!-- TODO: purpose -->` placeholder (or an already-filled Purpose
+   section) with the supplied text.
+3. `set-doc-structure` reads the skeleton in-place, walks the lines
+   inside the ` ```text ` fence, and appends `  # <annotation>` to each
+   leaf line whose basename matches an entry in `--annotations`.
+   Idempotent: leaves already carrying `  # ` are skipped.
+4. `render-doc` renames `<...>/index.md.skeleton` → `<...>/index.md`
+   atomically. No content mutation.
+
+The skeleton file IS the state. No `.f4-doc-state.json`. Helper owns
+markdown structure (frontmatter, section anchors, code fence around
+tree); orchestrator owns values (purpose text, leaf annotations).
 
 Concern docs ship only `## Purpose` and `## Structure`. Hazards moved
-to `/audit` (separate command). Concern tier only in this v0; package
-+ project tier setters land under forthcoming F.4 expansion.
+to `/audit` (separate command).
 
 Stdlib only. Targets Python 3.8+.
 """
@@ -27,14 +37,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ._md_frontmatter import render_frontmatter
 
-_DOC_STATE_FILE = ".f4-doc-state.json"
-_STATE_VERSION = 1
+_PURPOSE_PLACEHOLDER = "<!-- TODO: purpose -->"
+_TREE_FENCE_OPEN = "```text"
+_TREE_FENCE_CLOSE = "```"
+_ANNOTATION_SEPARATOR = "  # "  # two spaces + hash + space (matches cse-strata reference)
+_LEAF_CONNECTORS = ("├── ", "└── ")
 _CANONICAL_AGGREGATORS = (
     "mod.rs",
     "lib.rs",
@@ -42,136 +57,116 @@ _CANONICAL_AGGREGATORS = (
     "index.ts",
     "index.js",
     "doc.go",
+    "index.tsx",
+    "index.jsx",
 )
 
 
-def _state_path(devforge_dir: Path) -> Path:
-    return devforge_dir / _DOC_STATE_FILE
+def _doc_path_for(args: argparse.Namespace) -> Path:
+    """Resolve the doc skeleton/output path under <project_root>/docs/<target>/."""
+    devforge_dir = Path(args.devforge_dir)
+    project_root = devforge_dir.parent.resolve()
+    return project_root / "docs" / args.target / "index.md"
 
 
-def _load_state(devforge_dir: Path) -> Dict[str, Any]:
-    path = _state_path(devforge_dir)
-    if not path.exists():
-        return {"version": _STATE_VERSION, "docs": {}}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"f4-doc-state load failed: {exc}")
-    if not isinstance(data, dict) or "docs" not in data:
-        raise SystemExit("f4-doc-state malformed: missing 'docs' map")
-    return data
+def _build_skeleton(frontmatter: Dict[str, object], tree_text: str) -> str:
+    """Render the full skeleton text: frontmatter + body."""
+    concern_name = frontmatter.get("concern") or frontmatter.get("package") or "doc"
+    body = (
+        f"# {concern_name}\n\n"
+        f"## Purpose\n\n"
+        f"{_PURPOSE_PLACEHOLDER}\n\n"
+        f"## Structure\n\n"
+        f"{_TREE_FENCE_OPEN}\n"
+        f"{tree_text.rstrip(chr(10))}\n"
+        f"{_TREE_FENCE_CLOSE}\n"
+    )
+    return render_frontmatter(dict(frontmatter), "\n" + body)
 
 
-def _save_state(devforge_dir: Path, state: Dict[str, Any]) -> None:
-    path = _state_path(devforge_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+def _replace_purpose_block(content: str, new_text: str) -> str:
+    """Replace either the placeholder OR an already-filled Purpose section."""
+    new_text = new_text.strip()
+    if _PURPOSE_PLACEHOLDER in content:
+        return content.replace(_PURPOSE_PLACEHOLDER, new_text, 1)
+    # Already filled — replace from `## Purpose\n\n` to next `## ` or EOF.
+    pattern = re.compile(
+        r"(## Purpose\n\n)(.*?)(\n## )",
+        flags=re.DOTALL,
+    )
+    return pattern.sub(rf"\g<1>{new_text}\g<3>", content, count=1)
 
 
-def _doc_key(tier: str, target: str) -> str:
-    return f"{tier}:{target}"
-
-
-def _ensure_concern_slot(
-    state: Dict[str, Any], tier: str, target: str
-) -> Dict[str, Any]:
-    """Get-or-create the concern-tier slot in state. Pre-init defaults."""
-    if tier != "concern":
-        raise SystemExit(
-            f"only tier=concern supported in this v0 (got tier={tier!r})"
-        )
-    key = _doc_key(tier, target)
-    docs = state.setdefault("docs", {})
-    slot = docs.get(key)
-    if slot is None:
-        slot = {
-            "tier": tier,
-            "target": target,
-            "frontmatter": {},
-            "sections": {
-                "Purpose": "",
-                "Structure": "",
-            },
-        }
-        docs[key] = slot
-    return slot
-
-
-def _annotate_tree(tree_text: str, annotations: Dict[str, str]) -> str:
-    """Append ` — <annotation>` to each leaf line of the tree.
-
-    Tree leaves are box-drawing lines whose final entry name appears in
-    the annotations map. Leaves whose name matches a canonical-aggregator
-    filename get NO annotation (per F.3 spec). Header/path-line gets no
-    annotation. Directory entries (lines whose name has a sub-tree below)
-    get no annotation — heuristic: if the next non-empty line indented
-    more than current line's leaf, treat as directory.
-    """
-    if not annotations:
-        return tree_text
-    out_lines: List[str] = []
-    for line in tree_text.split("\n"):
-        if " — " in line:
-            # Already annotated; pass through verbatim (idempotent).
-            out_lines.append(line)
+def _annotate_leaf_line(line: str, annotations: Dict[str, str]) -> str:
+    """Append `  # <annotation>` to a leaf line if its basename is in `annotations`."""
+    if _ANNOTATION_SEPARATOR in line:
+        # Already annotated; pass through (idempotent).
+        return line
+    for connector in _LEAF_CONNECTORS:
+        idx = line.rfind(connector)
+        if idx < 0:
             continue
-        # Leaf detection: line must contain a connector (├── or └──).
-        connector_idx = max(line.rfind("├── "), line.rfind("└── "))
-        if connector_idx < 0:
-            out_lines.append(line)
+        tail = line[idx + len(connector):].rstrip()
+        if not tail or tail in _CANONICAL_AGGREGATORS:
+            return line
+        # Heuristic leaf detection: tail must contain a `.` (file extension).
+        if "." not in tail:
+            return line
+        annotation = annotations.get(tail)
+        if not annotation:
+            return line
+        return f"{line.rstrip()}{_ANNOTATION_SEPARATOR}{annotation.strip()}"
+    return line
+
+
+def _interleave_annotations(content: str, annotations: Dict[str, str]) -> str:
+    """Walk lines inside the ` ```text ` fence, annotate matching leaves."""
+    out: List[str] = []
+    in_fence = False
+    for line in content.split("\n"):
+        if not in_fence and line.strip() == _TREE_FENCE_OPEN:
+            in_fence = True
+            out.append(line)
             continue
-        name = line[connector_idx + 4 :].strip()
-        if not name or name in _CANONICAL_AGGREGATORS:
-            out_lines.append(line)
+        if in_fence and line.strip() == _TREE_FENCE_CLOSE:
+            in_fence = False
+            out.append(line)
             continue
-        annotation = annotations.get(name)
-        if annotation:
-            out_lines.append(f"{line} — {annotation}")
+        if in_fence:
+            out.append(_annotate_leaf_line(line, annotations))
         else:
-            out_lines.append(line)
-    return "\n".join(out_lines)
+            out.append(line)
+    return "\n".join(out)
 
 
-def _render_concern_doc(slot: Dict[str, Any]) -> str:
-    """Assemble full Markdown for a concern-tier slot.
+def _skeleton_path(doc_path: Path) -> Path:
+    return doc_path.with_suffix(doc_path.suffix + ".skeleton")
 
-    Concern docs ship only ## Purpose + ## Structure. Hazards moved to
-    /audit (separate command); not authored under /generate-docs.
+
+def _load_active(doc_path: Path) -> Tuple[Optional[Path], Optional[str]]:
+    """Return (path, content) for whichever of <doc>.md.skeleton or <doc>.md exists.
+
+    Skeleton takes priority. Returns (None, None) when neither is present.
     """
-    frontmatter = dict(slot.get("frontmatter") or {})
-    sections = slot.get("sections") or {}
-    target = slot.get("target", "")
-    concern_name = frontmatter.get("concern", target.split("/")[-1] if target else "")
-
-    body_header = f"\n# {concern_name}\n\n"
-    fm_block = render_frontmatter(frontmatter, body_header)
-
-    parts: List[str] = [fm_block.rstrip("\n"), ""]
-    purpose = (sections.get("Purpose") or "").strip()
-    structure = (sections.get("Structure") or "").rstrip("\n")
-
-    parts.append("## Purpose")
-    parts.append(purpose if purpose else "(not yet authored)")
-    parts.append("")
-    parts.append("## Structure")
-    parts.append(structure if structure else "(not yet authored)")
-    parts.append("")
-
-    return "\n".join(parts)
+    skel = _skeleton_path(doc_path)
+    if skel.is_file():
+        return skel, skel.read_text(encoding="utf-8")
+    if doc_path.is_file():
+        return doc_path, doc_path.read_text(encoding="utf-8")
+    return None, None
 
 
 # ── Subcommand handlers ─────────────────────────────────────────────────────
 
 
 def cmd_init_doc(args: argparse.Namespace) -> int:
-    """Initialise (or RESET) a doc slot for `<tier>:<target>`.
-
-    init-doc is idempotent: a re-run wipes any prior Purpose / Structure /
-    Hazards content for the slot and replaces frontmatter wholesale. This
-    is the contract that lets the orchestrator restart per-concern dispatch
-    cycles without writing defensive state-cleanup itself.
-    """
-    devforge_dir = Path(args.devforge_dir)
+    """Render the doc skeleton with frontmatter + Purpose placeholder + fenced tree."""
+    if args.tier != "concern":
+        print(
+            f"only tier=concern supported in this v0 (got tier={args.tier!r})",
+            file=sys.stderr,
+        )
+        return 2
     try:
         frontmatter = json.loads(args.frontmatter)
     except json.JSONDecodeError as exc:
@@ -180,38 +175,47 @@ def cmd_init_doc(args: argparse.Namespace) -> int:
     if not isinstance(frontmatter, dict):
         print("--frontmatter must decode to a JSON object", file=sys.stderr)
         return 2
-    state = _load_state(devforge_dir)
-    if args.tier != "concern":
-        print(
-            f"only tier=concern supported in this v0 (got tier={args.tier!r})",
-            file=sys.stderr,
-        )
+    if not args.tree:
+        print("--tree is required (pass concern-input's tree_text verbatim)", file=sys.stderr)
         return 2
-    key = _doc_key(args.tier, args.target)
-    state.setdefault("docs", {})[key] = {
-        "tier": args.tier,
-        "target": args.target,
-        "frontmatter": frontmatter,
-        "sections": {
-            "Purpose": "",
-            "Structure": "",
-        },
-    }
-    _save_state(devforge_dir, state)
+
+    doc_path = _doc_path_for(args)
+    skel_path = _skeleton_path(doc_path)
+    skel_path.parent.mkdir(parents=True, exist_ok=True)
+    skel_path.write_text(_build_skeleton(frontmatter, args.tree), encoding="utf-8")
+
+    # If a previous .md exists from an earlier render, blow it away — the
+    # incoming run will produce a fresh one via render-doc.
+    if doc_path.is_file():
+        doc_path.unlink()
+
+    print(str(skel_path))
     return 0
 
 
 def cmd_set_doc_purpose(args: argparse.Namespace) -> int:
-    devforge_dir = Path(args.devforge_dir)
-    state = _load_state(devforge_dir)
-    slot = _ensure_concern_slot(state, args.tier, args.target)
-    slot["sections"]["Purpose"] = args.text
-    _save_state(devforge_dir, state)
+    if args.tier != "concern":
+        print(f"only tier=concern supported (got {args.tier!r})", file=sys.stderr)
+        return 2
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(
+            f"no skeleton or doc found at {doc_path} or {_skeleton_path(doc_path)} "
+            f"— run init-doc first",
+            file=sys.stderr,
+        )
+        return 2
+    new_content = _replace_purpose_block(content, args.text)
+    path.write_text(new_content, encoding="utf-8")
+    print(str(path))
     return 0
 
 
 def cmd_set_doc_structure(args: argparse.Namespace) -> int:
-    devforge_dir = Path(args.devforge_dir)
+    if args.tier != "concern":
+        print(f"only tier=concern supported (got {args.tier!r})", file=sys.stderr)
+        return 2
     annotations: Dict[str, str] = {}
     if args.annotations:
         try:
@@ -223,33 +227,45 @@ def cmd_set_doc_structure(args: argparse.Namespace) -> int:
             print("--annotations must decode to a JSON object", file=sys.stderr)
             return 2
         annotations = {str(k): str(v) for k, v in decoded.items()}
-    state = _load_state(devforge_dir)
-    slot = _ensure_concern_slot(state, args.tier, args.target)
-    slot["sections"]["Structure"] = _annotate_tree(args.tree, annotations)
-    _save_state(devforge_dir, state)
+
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(
+            f"no skeleton or doc found at {doc_path} or {_skeleton_path(doc_path)} "
+            f"— run init-doc first",
+            file=sys.stderr,
+        )
+        return 2
+    if _TREE_FENCE_OPEN not in content:
+        print(
+            f"no `{_TREE_FENCE_OPEN}` code fence found in {path}; "
+            f"init-doc must run before set-doc-structure",
+            file=sys.stderr,
+        )
+        return 2
+
+    new_content = _interleave_annotations(content, annotations)
+    path.write_text(new_content, encoding="utf-8")
+    print(str(path))
     return 0
 
 
 def cmd_render_doc(args: argparse.Namespace) -> int:
-    devforge_dir = Path(args.devforge_dir)
-    project_root = devforge_dir.parent.resolve()
-    state = _load_state(devforge_dir)
-    key = _doc_key(args.tier, args.target)
-    slot = state.get("docs", {}).get(key)
-    if slot is None:
-        print(
-            f"no state for {key!r}; call init-doc + setters before render-doc",
-            file=sys.stderr,
-        )
+    """Atomic rename: <doc>.md.skeleton → <doc>.md."""
+    if args.tier != "concern":
+        print(f"only tier=concern supported (got {args.tier!r})", file=sys.stderr)
         return 2
-    text = _render_concern_doc(slot)
+    doc_path = _doc_path_for(args)
     if args.out:
-        out_path = Path(args.out)
-    else:
-        out_path = project_root / "docs" / args.target / "index.md"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(text, encoding="utf-8")
-    print(str(out_path))
+        doc_path = Path(args.out)
+    skel_path = _skeleton_path(doc_path)
+    if not skel_path.is_file():
+        print(f"no skeleton at {skel_path} — run init-doc first", file=sys.stderr)
+        return 2
+    doc_path.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(str(skel_path), str(doc_path))
+    print(str(doc_path))
     return 0
 
 
@@ -264,11 +280,8 @@ def _common_target_args(p: argparse.ArgumentParser) -> None:
 
 def _build_init_doc(p: argparse.ArgumentParser) -> None:
     _common_target_args(p)
-    p.add_argument(
-        "--frontmatter",
-        required=True,
-        help="JSON object of frontmatter key/value pairs",
-    )
+    p.add_argument("--frontmatter", required=True, help="JSON object of frontmatter key/value pairs")
+    p.add_argument("--tree", required=True, help="ASCII tree text (concern-input's tree_text verbatim)")
 
 
 def _build_set_doc_purpose(p: argparse.ArgumentParser) -> None:
@@ -278,7 +291,6 @@ def _build_set_doc_purpose(p: argparse.ArgumentParser) -> None:
 
 def _build_set_doc_structure(p: argparse.ArgumentParser) -> None:
     _common_target_args(p)
-    p.add_argument("--tree", required=True, help="Helper-supplied tree_text verbatim")
     p.add_argument(
         "--annotations",
         default="",
