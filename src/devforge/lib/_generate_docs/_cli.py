@@ -31,6 +31,18 @@ from typing import Callable, List, Optional, Tuple
 
 from . import _circuit, _trace
 from ._concern_input import _build_concern_input, cmd_concern_input
+from ._doc_setters import (
+    _build_add_doc_hazard,
+    _build_init_doc,
+    _build_render_doc,
+    _build_set_doc_purpose,
+    _build_set_doc_structure,
+    cmd_add_doc_hazard,
+    cmd_init_doc,
+    cmd_render_doc,
+    cmd_set_doc_purpose,
+    cmd_set_doc_structure,
+)
 from ._manifest import cmd_extract_package_scripts
 from ._preflight import _build_preflight, cmd_preflight
 from ._validate_doc import _build_validate_doc, cmd_validate_doc
@@ -375,6 +387,12 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("preflight", _build_preflight, cmd_preflight),
     # Plan F.5 — validate-doc (concern tier; v0).
     ("validate-doc", _build_validate_doc, cmd_validate_doc),
+    # Plan F.4 — concern-tier setter primitives + render-doc (v0).
+    ("init-doc", _build_init_doc, cmd_init_doc),
+    ("set-doc-purpose", _build_set_doc_purpose, cmd_set_doc_purpose),
+    ("set-doc-structure", _build_set_doc_structure, cmd_set_doc_structure),
+    ("add-doc-hazard", _build_add_doc_hazard, cmd_add_doc_hazard),
+    ("render-doc", _build_render_doc, cmd_render_doc),
 )
 
 
