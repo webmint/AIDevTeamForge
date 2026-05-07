@@ -32,6 +32,7 @@ from typing import Callable, List, Optional, Tuple
 from . import _circuit, _trace
 from ._concern_input import _build_concern_input, cmd_concern_input
 from ._manifest import cmd_extract_package_scripts
+from ._preflight import _build_preflight, cmd_preflight
 from ._render import (
     cmd_render_concern_skeleton,
     cmd_render_package_skeleton,
@@ -369,6 +370,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("verify-file-docs", _build_verify_file_docs, cmd_verify_file_docs),
     # Plan F.2 — concern-input helper for doc-composer dispatch.
     ("concern-input", _build_concern_input, cmd_concern_input),
+    # Plan F.0 — preflight (vue-extract + index_repository + stamp diff).
+    ("preflight", _build_preflight, cmd_preflight),
 )
 
 
