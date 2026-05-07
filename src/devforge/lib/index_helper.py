@@ -28,7 +28,7 @@ Architecture:
 - Manifest parsing is best-effort. Unsupported / malformed manifests
   produce `manifest_parse_skipped: true` for that package, do NOT
   fail the whole `build-index` run, and emit a stderr warning.
-- File listings are capped at 500 per package; `files_truncated: true`
+- File listings are capped at 10000 per package; `files_truncated: true`
   is set when the cap is hit. A small set of common build-output dirs
   is hard-skipped (node_modules, dist, build, target, .git) plus any
   hidden dir starting with `.`.
@@ -81,7 +81,13 @@ _FILE_WALK_SKIP_DIRS = {
 }
 
 # Maximum files listed per package. Above this, `files_truncated: true`.
-_MAX_FILES_PER_PACKAGE = 500
+# Bumped 500 → 10000 (2026-05-07): Plan F doc generation reads index.json
+# as the canonical per-concern file list. Real Vue+TS monorepos hit the old
+# 500 cap on app-level packages (testForge20 app-web + pkg-cse-core both
+# truncated at 500), making concerns past the cut invisible to /generate-docs.
+# 10000 covers any realistic monorepo package; the Linux kernel (75K files
+# total) is the only structurally larger codebase and its packages still fit.
+_MAX_FILES_PER_PACKAGE = 10000
 
 # Manifest detection registry. First match wins per package. Includes the
 # bounded set documented in the brief; `*.csproj` is a glob (handled

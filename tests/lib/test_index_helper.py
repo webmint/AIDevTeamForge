@@ -161,14 +161,15 @@ class FileListingTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(files, ["src/main.ts"])
         self.assertFalse(truncated)
 
-    def test_files_listing_truncates_at_500(self):
+    def test_files_listing_truncates_at_cap(self):
         pkg = self.project_root / "pkg"
         pkg.mkdir()
-        # 600 sibling files exceeds the cap of 500.
-        for i in range(600):
-            (pkg / "f{0:04d}.txt".format(i)).write_text("x", encoding="utf-8")
+        cap = index_helper._MAX_FILES_PER_PACKAGE
+        # cap+100 sibling files exceeds the cap.
+        for i in range(cap + 100):
+            (pkg / "f{0:05d}.txt".format(i)).write_text("x", encoding="utf-8")
         files, truncated = index_helper._list_package_files(pkg)
-        self.assertEqual(len(files), 500)
+        self.assertEqual(len(files), cap)
         self.assertTrue(truncated)
 
     def test_files_listing_empty_package(self):
@@ -666,11 +667,12 @@ class BuildIndexEndToEndTests(_EnvIsolationMixin, unittest.TestCase):
 
     def test_files_truncated_flag_propagates_to_index(self):
         # End-to-end check that files_truncated: true shows up in
-        # index.json when a package exceeds 500 files.
+        # index.json when a package exceeds the cap.
         pkg = self.project_root / "huge"
         pkg.mkdir()
-        for i in range(550):
-            (pkg / "f{0:04d}.txt".format(i)).write_text("x", encoding="utf-8")
+        cap = index_helper._MAX_FILES_PER_PACKAGE
+        for i in range(cap + 50):
+            (pkg / "f{0:05d}.txt".format(i)).write_text("x", encoding="utf-8")
         # Need a manifest so init.yaml `manifest` value is non-empty.
         (pkg / "package.json").write_text("{}", encoding="utf-8")
         self._seed_init_yaml([
@@ -681,7 +683,7 @@ class BuildIndexEndToEndTests(_EnvIsolationMixin, unittest.TestCase):
         index = json.loads(self.index_path.read_text(encoding="utf-8"))
         rec = index["packages"]["huge"]
         self.assertTrue(rec["files_truncated"])
-        self.assertEqual(len(rec["files"]), 500)
+        self.assertEqual(len(rec["files"]), cap)
 
 
 # ---------------------------------------------------------------------------
