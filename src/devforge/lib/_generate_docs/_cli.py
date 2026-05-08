@@ -42,6 +42,7 @@ from ._doc_setters import (
     _build_set_doc_patterns,
     _build_set_doc_purpose,
     _build_set_doc_structure,
+    _build_set_doc_subconcerns,
     cmd_init_doc,
     cmd_render_doc,
     cmd_set_doc_concerns,
@@ -52,6 +53,7 @@ from ._doc_setters import (
     cmd_set_doc_patterns,
     cmd_set_doc_purpose,
     cmd_set_doc_structure,
+    cmd_set_doc_subconcerns,
 )
 from ._manifest import cmd_extract_package_scripts
 from ._package_input import _build_package_input, cmd_package_input
@@ -415,6 +417,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("set-doc-patterns", _build_set_doc_patterns, cmd_set_doc_patterns),
     ("set-doc-packages", _build_set_doc_packages, cmd_set_doc_packages),
     ("set-doc-cross-cuts", _build_set_doc_cross_cuts, cmd_set_doc_cross_cuts),
+    # Plan F 3a — split-aware concern setter (parent's `## Sub-concerns`).
+    ("set-doc-subconcerns", _build_set_doc_subconcerns, cmd_set_doc_subconcerns),
     ("render-doc", _build_render_doc, cmd_render_doc),
 )
 

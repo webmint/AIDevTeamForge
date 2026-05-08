@@ -2,14 +2,21 @@
 
 Subcommands:
 
-  init-doc          --tier {concern,package-overview,package-architecture}
-                    --target T --frontmatter <json> [--tree <text>]
-  set-doc-purpose   --tier {concern,package-overview} --target T --text "..."
-  set-doc-structure --tier concern --target T --annotations <json>
-  set-doc-concerns  --tier package-overview --target T --concerns <json>
-  set-doc-layers    --tier package-architecture --target T --layers <json>
-  set-doc-patterns  --tier package-architecture --target T --patterns <json>
-  render-doc        --tier T --target T [--out PATH]
+  init-doc            --tier {concern,package-overview,package-architecture,
+                              project-overview,project-architecture}
+                      --target T --frontmatter <json> [--tree <text>] [--split]
+  set-doc-purpose     --tier {concern,package-overview,project-overview}
+                      --target T --text "..."
+  set-doc-structure   --tier concern --target T --annotations <json>
+  set-doc-concerns    --tier package-overview --target T --concerns <json>
+  set-doc-files       --tier package-overview --target T --files <json>
+  set-doc-layers      --tier {package-architecture,project-architecture}
+                      --target T --layers <json>
+  set-doc-patterns    --tier package-architecture --target T --patterns <json>
+  set-doc-packages    --tier project-overview --target T --packages <json>
+  set-doc-cross-cuts  --tier project-architecture --target T --cross-cuts <json>
+  set-doc-subconcerns --tier concern --target T --subconcerns <json>   (Plan F 3a)
+  render-doc          --tier T --target T [--out PATH]
 
 Skeleton-fill design:
 1. `init-doc` writes the appropriate skeleton file for the tier:
@@ -52,6 +59,7 @@ _LAYERS_PLACEHOLDER = "<!-- TODO: layers -->"
 _PATTERNS_PLACEHOLDER = "<!-- TODO: patterns -->"
 _PACKAGES_PLACEHOLDER = "<!-- TODO: packages -->"
 _CROSS_CUTS_PLACEHOLDER = "<!-- TODO: cross-cuts -->"
+_SUBCONCERNS_PLACEHOLDER = "<!-- TODO: sub-concerns -->"
 _TREE_FENCE_OPEN = "```text"
 _TREE_FENCE_CLOSE = "```"
 _ANNOTATION_SEPARATOR = "  # "
@@ -131,6 +139,24 @@ def _build_concern_skeleton(frontmatter: Dict[str, Any], tree_text: str) -> str:
         f"{_TREE_FENCE_OPEN}\n"
         f"{tree_text.rstrip(chr(10))}\n"
         f"{_TREE_FENCE_CLOSE}\n"
+    )
+    return render_frontmatter(dict(frontmatter), "\n" + body)
+
+
+def _build_concern_split_skeleton(frontmatter: Dict[str, Any]) -> str:
+    """Skeleton for a parent concern doc whose children were split-dispatched.
+
+    Plan F 3a: parent has no `## Structure` (it's an aggregator, not a leaf).
+    Sections: `## Purpose` (orchestrator-direct synthesis) + `## Sub-concerns`
+    (bulleted list with links to child docs).
+    """
+    concern_name = frontmatter.get("concern") or frontmatter.get("package") or "doc"
+    body = (
+        f"# {concern_name}\n\n"
+        f"## Purpose\n\n"
+        f"{_PURPOSE_PLACEHOLDER}\n\n"
+        f"## Sub-concerns\n\n"
+        f"{_SUBCONCERNS_PLACEHOLDER}\n"
     )
     return render_frontmatter(dict(frontmatter), "\n" + body)
 
@@ -231,6 +257,12 @@ def _replace_patterns_block(content: str, bullet_text: str) -> str:
     return _replace_or_substitute(content, _PATTERNS_PLACEHOLDER, "Patterns", bullet_text)
 
 
+def _replace_subconcerns_block(content: str, bullet_text: str) -> str:
+    return _replace_or_substitute(
+        content, _SUBCONCERNS_PLACEHOLDER, "Sub-concerns", bullet_text
+    )
+
+
 # ── Concern-tier annotation interleaving ───────────────────────────────────
 
 
@@ -326,6 +358,28 @@ def _render_patterns_bullets(entries: List[Dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def _render_subconcerns_bullets(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {name, purpose_summary, doc_path} →
+    '- <name> — <purpose_summary> ([→](<doc_path>))'.
+
+    Plan F 3a: parent concern doc lists each split sub_concern with a
+    1-line summary + link to its child index.md. ALL THREE fields
+    (name, purpose_summary, doc_path) are required — entries missing
+    any of them are skipped silently. The 3a.5 validate-doc parser
+    expects the full ``<name> — <summary> ([→](<path>))`` shape; partial
+    bullets would fail that regex, so we don't emit them at all.
+    """
+    lines: List[str] = []
+    for e in entries:
+        name = (e.get("name") or "").strip()
+        summary = (e.get("purpose_summary") or "").strip()
+        doc_path = (e.get("doc_path") or "").strip()
+        if not (name and summary and doc_path):
+            continue
+        lines.append(f"- {name} — {summary} ([→]({doc_path}))")
+    return "\n".join(lines)
+
+
 # ── Subcommand handlers ─────────────────────────────────────────────────────
 
 
@@ -342,14 +396,28 @@ def cmd_init_doc(args: argparse.Namespace) -> int:
         print("--frontmatter must decode to a JSON object", file=sys.stderr)
         return 2
 
+    is_split = bool(getattr(args, "split", False))
+    if is_split and args.tier != "concern":
+        print(
+            f"--split is only valid with tier=concern; got tier={args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.tier == "concern":
-        if not args.tree:
-            print(
-                "--tree is required for tier=concern (pass concern-input's tree_text)",
-                file=sys.stderr,
-            )
-            return 2
-        skeleton_text = _build_concern_skeleton(frontmatter, args.tree)
+        if is_split:
+            # Parent concern doc: aggregator with Sub-concerns + Purpose.
+            # NO `## Structure` (children carry their own trees) → --tree
+            # is ignored when --split true.
+            skeleton_text = _build_concern_split_skeleton(frontmatter)
+        else:
+            if not args.tree:
+                print(
+                    "--tree is required for tier=concern (pass concern-input's tree_text)",
+                    file=sys.stderr,
+                )
+                return 2
+            skeleton_text = _build_concern_skeleton(frontmatter, args.tree)
     elif args.tier == "package-overview":
         skeleton_text = _build_package_overview_skeleton(frontmatter)
     elif args.tier == "package-architecture":
@@ -577,6 +645,39 @@ def cmd_set_doc_cross_cuts(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_doc_subconcerns(args: argparse.Namespace) -> int:
+    """Plan F 3a: write the parent concern's `## Sub-concerns` bulleted list."""
+    if args.tier != "concern":
+        print(
+            f"set-doc-subconcerns supports tier=concern only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.subconcerns, "subconcerns")
+    if entries is None:
+        return 2
+    bullet_text = _render_subconcerns_bullets(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(
+            f"no skeleton or doc at {doc_path} or {_skeleton_path(doc_path)} — "
+            "run init-doc --split true first",
+            file=sys.stderr,
+        )
+        return 2
+    if "## Sub-concerns" not in content:
+        print(
+            f"{path} has no `## Sub-concerns` section — was init-doc called "
+            "with --split true?",
+            file=sys.stderr,
+        )
+        return 2
+    path.write_text(_replace_subconcerns_block(content, bullet_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
 def cmd_render_doc(args: argparse.Namespace) -> int:
     if args.tier not in _VALID_TIERS:
         print(f"unknown tier {args.tier!r}", file=sys.stderr)
@@ -606,7 +707,19 @@ def _common_target_args(p: argparse.ArgumentParser, tiers: Tuple[str, ...]) -> N
 def _build_init_doc(p: argparse.ArgumentParser) -> None:
     _common_target_args(p, _VALID_TIERS)
     p.add_argument("--frontmatter", required=True, help="JSON object of frontmatter key/value pairs")
-    p.add_argument("--tree", default="", help="ASCII tree text (REQUIRED for tier=concern)")
+    p.add_argument(
+        "--tree",
+        default="",
+        help="ASCII tree text (REQUIRED for tier=concern unless --split true)",
+    )
+    p.add_argument(
+        "--split",
+        action="store_true",
+        help=(
+            "tier=concern only: emit parent-aggregator skeleton (Purpose + "
+            "Sub-concerns; no Structure). Used by Plan F 3a split-dispatch."
+        ),
+    )
 
 
 def _build_set_doc_purpose(p: argparse.ArgumentParser) -> None:
@@ -675,6 +788,18 @@ def _build_set_doc_cross_cuts(p: argparse.ArgumentParser) -> None:
         dest="cross_cuts",
         required=True,
         help='JSON array [{"name": "...", "role": "...", "cite": "..."}]',
+    )
+
+
+def _build_set_doc_subconcerns(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("concern",))
+    p.add_argument(
+        "--subconcerns",
+        required=True,
+        help=(
+            'JSON array [{"name": "<>", "purpose_summary": "<>", '
+            '"doc_path": "<rel-path-to-child-index.md>"}]'
+        ),
     )
 
 
