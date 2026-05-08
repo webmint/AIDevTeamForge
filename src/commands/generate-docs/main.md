@@ -10,20 +10,22 @@ The full Plan E skeleton-fill spec is preserved at git commit `bdae59d` (`git sh
 
 ---
 
-## ⚠️ TEST SCOPE OVERRIDE — pkg-cse-core ONLY (TEMPORARY)
+## ⚠️ TEST SCOPE OVERRIDE — pkg-cse-client ONLY (V5 SMOKE)
 
-**Active until removed.** Phase 2 concern tier loop is restricted to the scope below for the empirical iteration cycle. All other concerns from preflight's `concerns[]` list are DEFERRED — they remain unrendered for this run.
+**Active until removed.** V5 empirical smoke for the F.7 package tier flow on the smallest viable package. Phase 2 concern tier loop is restricted to the scope below; Phase 3 package tier loop runs against the same package set.
 
 **In-scope concerns**:
-- `db-cse-ui-strata/packages/pkg-cse-core/*` — every concern under pkg-cse-core (e.g., `accounts`, `activeQuote`, `alerts`, `common`, `configurationMenu`, `customItem`, `favoriteQuotes`, `featureFlags`, `helpers`, `irw`, `itemsByBQids`, `itemsByPartNumbers`, `order`, `organizations`, `quote`, `quotes`, `salesForceContacts`, `securityRoles`)
+- `db-cse-ui-strata/packages/pkg-cse-client/*` — 14 files / 2 concerns. Exercises both per-concern dispatch (Phase 2) AND multi-concern aggregation in package overview/architecture (Phase 3).
 
 **Out-of-scope (deferred)**:
-- `db-cse-ui-strata/apps/app-web/components` — 200+ files; doc-composer's single dispatch can't fit Purpose + 200-leaf annotated Structure + Hazards within Haiku output budget. Big-concern strategy (split dispatch / model-tier bump / package-arch-tier alt-coverage) is a separate Plan F follow-up.
-- All other app-web concerns (helpers, composables, etc.) — focus this iteration on pkg-cse-core where every concern is small-medium (<60 files).
+- `pkg-cse-core/*` — already rendered via prior V4 round. Stamp-gate skips concerns; package tier deferred until V5 design proven on pkg-cse-client first.
+- Every other package + app-web — focus V5 on smallest viable target.
 
-Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` starts with `db-cse-ui-strata/packages/pkg-cse-core/`. Process the filtered list. Skip every other concern silently.
+Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` starts with `db-cse-ui-strata/packages/pkg-cse-client/`. Process the filtered list. Phase 3 derives unique packages from the filtered concerns set (just `pkg-cse-client` here) and runs the package overview + architecture pipelines.
 
-**Removing this override**: when the iteration locks shape AND the big-concern strategy is decided, delete this `## ⚠️ TEST SCOPE OVERRIDE` section. Phase 2 then processes the full preflight `concerns[]` list.
+**Expected dispatches**: 2 concern + 2 package-tier (overview + architecture) = 4 dispatch units. Wall-clock target: ~3-4 min. Cost target: ~$0.50.
+
+**Removing this override**: after V5 passes (clean docs land + validate-doc green), expand to multi-package or rip the override entirely. Phase 2/3 then process the full preflight `concerns[]` list.
 
 ---
 
