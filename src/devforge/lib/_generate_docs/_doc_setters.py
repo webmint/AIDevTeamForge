@@ -60,6 +60,12 @@ _PATTERNS_PLACEHOLDER = "<!-- TODO: patterns -->"
 _PACKAGES_PLACEHOLDER = "<!-- TODO: packages -->"
 _CROSS_CUTS_PLACEHOLDER = "<!-- TODO: cross-cuts -->"
 _SUBCONCERNS_PLACEHOLDER = "<!-- TODO: sub-concerns -->"
+# Track 4 Phase 1 — project-tier mechanical sections.
+_TECH_STACK_PLACEHOLDER = "<!-- TODO: tech-stack -->"
+_PROJECT_STRUCTURE_PLACEHOLDER = "<!-- TODO: project-structure -->"
+_KEY_COMMANDS_PLACEHOLDER = "<!-- TODO: key-commands -->"
+_TEST_FILES_PLACEHOLDER = "<!-- TODO: test-files -->"
+_CROSS_MODULE_DEPS_PLACEHOLDER = "<!-- TODO: cross-module-dependencies -->"
 _TREE_FENCE_OPEN = "```text"
 _TREE_FENCE_CLOSE = "```"
 _ANNOTATION_SEPARATOR = "  # "
@@ -196,6 +202,11 @@ def _build_package_architecture_skeleton(frontmatter: Dict[str, Any]) -> str:
 # user/command adds).
 _PROJECT_OVERVIEW_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
     ("Purpose", _PURPOSE_PLACEHOLDER),
+    ("Tech Stack", _TECH_STACK_PLACEHOLDER),
+    ("Project Structure", _PROJECT_STRUCTURE_PLACEHOLDER),
+    ("Key Commands", _KEY_COMMANDS_PLACEHOLDER),
+    ("Cross-Module Dependencies", _CROSS_MODULE_DEPS_PLACEHOLDER),
+    ("Test Files", _TEST_FILES_PLACEHOLDER),
     ("Packages", _PACKAGES_PLACEHOLDER),
 )
 _PROJECT_ARCHITECTURE_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
@@ -270,6 +281,16 @@ def _build_project_overview_skeleton(frontmatter: Dict[str, Any], target: str) -
         f"# {name}\n\n"
         f"## Purpose\n\n"
         f"{_PURPOSE_PLACEHOLDER}\n\n"
+        f"## Tech Stack\n\n"
+        f"{_TECH_STACK_PLACEHOLDER}\n\n"
+        f"## Project Structure\n\n"
+        f"{_PROJECT_STRUCTURE_PLACEHOLDER}\n\n"
+        f"## Key Commands\n\n"
+        f"{_KEY_COMMANDS_PLACEHOLDER}\n\n"
+        f"## Cross-Module Dependencies\n\n"
+        f"{_CROSS_MODULE_DEPS_PLACEHOLDER}\n\n"
+        f"## Test Files\n\n"
+        f"{_TEST_FILES_PLACEHOLDER}\n\n"
         f"## Packages\n\n"
         f"{_PACKAGES_PLACEHOLDER}\n"
     )
@@ -337,6 +358,36 @@ def _replace_patterns_block(content: str, bullet_text: str) -> str:
 def _replace_subconcerns_block(content: str, bullet_text: str) -> str:
     return _replace_or_substitute(
         content, _SUBCONCERNS_PLACEHOLDER, "Sub-concerns", bullet_text
+    )
+
+
+def _replace_tech_stack_block(content: str, table_text: str) -> str:
+    return _replace_or_substitute(
+        content, _TECH_STACK_PLACEHOLDER, "Tech Stack", table_text
+    )
+
+
+def _replace_project_structure_block(content: str, fenced_text: str) -> str:
+    return _replace_or_substitute(
+        content, _PROJECT_STRUCTURE_PLACEHOLDER, "Project Structure", fenced_text
+    )
+
+
+def _replace_key_commands_block(content: str, table_text: str) -> str:
+    return _replace_or_substitute(
+        content, _KEY_COMMANDS_PLACEHOLDER, "Key Commands", table_text
+    )
+
+
+def _replace_test_files_block(content: str, bullet_text: str) -> str:
+    return _replace_or_substitute(
+        content, _TEST_FILES_PLACEHOLDER, "Test Files", bullet_text
+    )
+
+
+def _replace_cross_module_deps_block(content: str, fenced_text: str) -> str:
+    return _replace_or_substitute(
+        content, _CROSS_MODULE_DEPS_PLACEHOLDER, "Cross-Module Dependencies", fenced_text
     )
 
 
@@ -455,6 +506,58 @@ def _render_subconcerns_bullets(entries: List[Dict[str, str]]) -> str:
             continue
         lines.append(f"- {name} — {summary} ([→]({doc_path}))")
     return "\n".join(lines)
+
+
+# ── Track 4 Phase 1 — project-overview mechanical render helpers ───────────
+
+
+def _render_tech_stack_table(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {layer, technology} → markdown table row."""
+    lines = ["| Layer | Technology |", "|---|---|"]
+    for e in entries:
+        layer = (e.get("layer") or "").strip()
+        tech = (e.get("technology") or "").strip()
+        if not (layer and tech):
+            continue
+        lines.append(f"| {layer} | {tech} |")
+    return "\n".join(lines)
+
+
+def _render_key_commands_table(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {command, description} → markdown table row.
+
+    Command cell wrapped in backticks for shell-style rendering. Description
+    is empty-string-tolerant; absent description renders as empty cell.
+    """
+    lines = ["| Command | Description |", "|---|---|"]
+    for e in entries:
+        cmd = (e.get("command") or "").strip()
+        desc = (e.get("description") or "").strip()
+        if not cmd:
+            continue
+        lines.append(f"| `{cmd}` | {desc} |")
+    return "\n".join(lines)
+
+
+def _render_test_files_bullets(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {path[, description]} → '- `<path>` — <description>'."""
+    lines: List[str] = []
+    for e in entries:
+        path = (e.get("path") or "").strip()
+        desc = (e.get("description") or "").strip()
+        if not path:
+            continue
+        line = f"- `{path}`"
+        if desc:
+            line += f" — {desc}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _render_fenced_text(text: str, language: str = "text") -> str:
+    """Wrap text in a fenced code block. Default language tag is `text`."""
+    body = text.rstrip("\n")
+    return f"```{language}\n{body}\n```"
 
 
 # ── Subcommand handlers ─────────────────────────────────────────────────────
@@ -769,6 +872,117 @@ def cmd_set_doc_subconcerns(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_overview_tech_stack(args: argparse.Namespace) -> int:
+    """Track 4 Phase 1 — write project-overview's `## Tech Stack` table."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-tech-stack supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.tech_stack, "tech-stack")
+    if entries is None:
+        return 2
+    table_text = _render_tech_stack_table(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_tech_stack_block(content, table_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_key_commands(args: argparse.Namespace) -> int:
+    """Track 4 Phase 1 — write project-overview's `## Key Commands` table."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-key-commands supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.key_commands, "key-commands")
+    if entries is None:
+        return 2
+    table_text = _render_key_commands_table(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_key_commands_block(content, table_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_test_files(args: argparse.Namespace) -> int:
+    """Track 4 Phase 1 — write project-overview's `## Test Files` bullets."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-test-files supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.test_files, "test-files")
+    if entries is None:
+        return 2
+    bullet_text = _render_test_files_bullets(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_test_files_block(content, bullet_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_cross_module_deps(args: argparse.Namespace) -> int:
+    """Track 4 Phase 1 — write project-overview's `## Cross-Module Dependencies` fenced block."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-cross-module-deps supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    fenced_text = _render_fenced_text(args.text)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_cross_module_deps_block(content, fenced_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_project_structure_tree(args: argparse.Namespace) -> int:
+    """Track 4 Phase 1 — write project-overview's `## Project Structure` fenced block.
+
+    Phase 1 writes the bare tree only — no per-leaf annotations. Phase 2
+    will add a separate annotations setter that interleaves descriptions
+    onto leaves of an already-set tree (mirrors concern-tier two-step
+    set-doc-structure pattern).
+    """
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-project-structure-tree supports tier=project-overview only; "
+            f"got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    fenced_text = _render_fenced_text(args.text)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_project_structure_block(content, fenced_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
 def cmd_render_doc(args: argparse.Namespace) -> int:
     if args.tier not in _VALID_TIERS:
         print(f"unknown tier {args.tier!r}", file=sys.stderr)
@@ -900,4 +1114,55 @@ def _build_render_doc(p: argparse.ArgumentParser) -> None:
         "--out",
         default="",
         help="Output path override (default: docs/<target>/<tier-filename>)",
+    )
+
+
+# ── Track 4 Phase 1 — project-overview mechanical setter factories ─────────
+
+
+def _build_set_overview_tech_stack(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--tech-stack",
+        dest="tech_stack",
+        required=True,
+        help='JSON array [{"layer": "Framework", "technology": "Vue 3"}]',
+    )
+
+
+def _build_set_overview_key_commands(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--key-commands",
+        dest="key_commands",
+        required=True,
+        help='JSON array [{"command": "npm run build", "description": "..."}]',
+    )
+
+
+def _build_set_overview_test_files(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--test-files",
+        dest="test_files",
+        required=True,
+        help='JSON array [{"path": "tests/", "description": "..."}]',
+    )
+
+
+def _build_set_overview_cross_module_deps(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--text",
+        required=True,
+        help="ASCII tree text rendering the cross-package dependency graph",
+    )
+
+
+def _build_set_overview_project_structure_tree(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--text",
+        required=True,
+        help="ASCII tree text of project structure (no annotations — Phase 1 bare tree)",
     )

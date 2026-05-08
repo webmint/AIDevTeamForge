@@ -316,7 +316,17 @@ After Phase 3's package overviews + architectures are all rendered + validated, 
 ./.devforge/lib/generate_docs_helper project-input [--project "<label>"]
 ```
 
-Returns JSON with `package_seeds[]` (frontmatter + Purpose text from each rendered package overview) + `project_root_files[]` (top-level README/CHANGELOG/package.json comment-rich spans) + `source_stamp`. `--project` defaults to the project_root basename.
+Returns JSON with:
+- `package_seeds[]` — frontmatter + Purpose text from each rendered package overview
+- `project_root_files[]` — top-level README/CHANGELOG/package.json comment-rich spans
+- `source_stamp`
+- `tech_stack_candidates[]` — `[{layer, technology}]` derived from `package.json` deps + manifest detection (Track 4 Phase 1, mechanical)
+- `key_commands[]` — `[{command, description}]` from `package.json scripts` block (Track 4 Phase 1, mechanical)
+- `test_file_paths[]` — `[{path, description}]` from filesystem walk for test directories + `*.test.ts` / `test_*.py` style suffixes (Track 4 Phase 1, mechanical)
+- `cross_module_deps_tree` — ASCII tree of internal cross-workspace dependencies (Track 4 Phase 1, mechanical)
+- `project_structure_tree` — ASCII directory tree, depth=3, ignore-filtered (Track 4 Phase 1, mechanical)
+
+`--project` defaults to the project_root basename.
 
 If all packages were `unchanged` AND prior project overview/architecture docs' `source_stamp` matches the new project-input `source_stamp` → SKIP project tier dispatches.
 
@@ -334,17 +344,39 @@ Frontmatter:
     --frontmatter "$FM"
 ```
 
-Compose orchestrator-direct:
-- **Purpose** — synthesize across `package_seeds[*].purpose_text` + `project_root_files[*].comment_rich_span`. Cross-package coordination named.
-- **Packages** — bullet list, one entry per `package_seeds[*]`: `{name: <pkg-path>, role: <one-line role>, cite: <docs/<pkg>/overview.md>}`.
+The skeleton emits seven sections — five mechanical (Track 4 Phase 1), two synthesized:
+
+| Section | Source | Setter |
+|---|---|---|
+| Purpose | LLM synthesis from `package_seeds[*].purpose_text` + `project_root_files` | `set-doc-purpose` |
+| Tech Stack | `project-input.tech_stack_candidates` (verbatim) | `set-overview-tech-stack` |
+| Project Structure | `project-input.project_structure_tree` (verbatim) | `set-overview-project-structure-tree` |
+| Key Commands | `project-input.key_commands` (verbatim) | `set-overview-key-commands` |
+| Cross-Module Dependencies | `project-input.cross_module_deps_tree` (verbatim) | `set-overview-cross-module-deps` |
+| Test Files | `project-input.test_file_paths` (verbatim) | `set-overview-test-files` |
+| Packages | LLM synthesis from `package_seeds[*]` | `set-doc-packages` |
+
+Compose order:
 
 ```
 ./.devforge/lib/generate_docs_helper set-doc-purpose --tier project-overview --target "<project-label>" --text "..."
+./.devforge/lib/generate_docs_helper set-overview-tech-stack --tier project-overview --target "<project-label>" \
+    --tech-stack '<from project-input.tech_stack_candidates>'
+./.devforge/lib/generate_docs_helper set-overview-project-structure-tree --tier project-overview --target "<project-label>" \
+    --text "<from project-input.project_structure_tree>"
+./.devforge/lib/generate_docs_helper set-overview-key-commands --tier project-overview --target "<project-label>" \
+    --key-commands '<from project-input.key_commands>'
+./.devforge/lib/generate_docs_helper set-overview-cross-module-deps --tier project-overview --target "<project-label>" \
+    --text "<from project-input.cross_module_deps_tree>"
+./.devforge/lib/generate_docs_helper set-overview-test-files --tier project-overview --target "<project-label>" \
+    --test-files '<from project-input.test_file_paths>'
 ./.devforge/lib/generate_docs_helper set-doc-packages --tier project-overview --target "<project-label>" \
     --packages '<json array>'
 ./.devforge/lib/generate_docs_helper render-doc --tier project-overview --target "<project-label>"
 ./.devforge/lib/generate_docs_helper validate-doc --tier project-overview --target "<project-label>"
 ```
+
+The five mechanical setters pass `project-input` output through verbatim — no orchestrator interpretation. Purpose + Packages remain orchestrator-direct LLM compose. When `project-input` returns empty for a mechanical field (e.g., no `package.json` → empty `tech_stack_candidates`), call the setter with the empty input shape (`'[]'` / empty `--text`) — `validate-doc` enforces section presence, not content depth.
 
 Retry semantics same as Phase 3.
 

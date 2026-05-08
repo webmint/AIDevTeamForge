@@ -43,6 +43,11 @@ from ._doc_setters import (
     _build_set_doc_purpose,
     _build_set_doc_structure,
     _build_set_doc_subconcerns,
+    _build_set_overview_cross_module_deps,
+    _build_set_overview_key_commands,
+    _build_set_overview_project_structure_tree,
+    _build_set_overview_tech_stack,
+    _build_set_overview_test_files,
     cmd_init_doc,
     cmd_render_doc,
     cmd_set_doc_concerns,
@@ -54,6 +59,11 @@ from ._doc_setters import (
     cmd_set_doc_purpose,
     cmd_set_doc_structure,
     cmd_set_doc_subconcerns,
+    cmd_set_overview_cross_module_deps,
+    cmd_set_overview_key_commands,
+    cmd_set_overview_project_structure_tree,
+    cmd_set_overview_tech_stack,
+    cmd_set_overview_test_files,
 )
 from ._manifest import cmd_extract_package_scripts
 from ._package_input import _build_package_input, cmd_package_input
@@ -419,6 +429,21 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("set-doc-cross-cuts", _build_set_doc_cross_cuts, cmd_set_doc_cross_cuts),
     # Plan F 3a — split-aware concern setter (parent's `## Sub-concerns`).
     ("set-doc-subconcerns", _build_set_doc_subconcerns, cmd_set_doc_subconcerns),
+    # Track 4 Phase 1 — project-overview mechanical setters (Tech Stack,
+    # Project Structure, Key Commands, Cross-Module Dependencies, Test Files).
+    ("set-overview-tech-stack", _build_set_overview_tech_stack, cmd_set_overview_tech_stack),
+    ("set-overview-key-commands", _build_set_overview_key_commands, cmd_set_overview_key_commands),
+    ("set-overview-test-files", _build_set_overview_test_files, cmd_set_overview_test_files),
+    (
+        "set-overview-cross-module-deps",
+        _build_set_overview_cross_module_deps,
+        cmd_set_overview_cross_module_deps,
+    ),
+    (
+        "set-overview-project-structure-tree",
+        _build_set_overview_project_structure_tree,
+        cmd_set_overview_project_structure_tree,
+    ),
     ("render-doc", _build_render_doc, cmd_render_doc),
 )
 

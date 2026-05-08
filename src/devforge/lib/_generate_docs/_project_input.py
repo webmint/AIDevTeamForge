@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -56,6 +57,62 @@ _PROJECT_ROOT_FILES = (
     "go.mod",
 )
 _DOCS_DIR = "docs"
+
+# Track 4 Phase 1 — directories ignored when walking project structure.
+_TREE_IGNORE_DIRS = frozenset({
+    "node_modules", ".git", ".hg", ".svn",
+    "dist", "build", "out", "target",
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".venv", "venv", ".env",
+    ".idea", ".vscode",
+    "coverage", ".coverage",
+    ".turbo", ".next", ".nuxt", ".cache",
+})
+_TREE_DEFAULT_DEPTH = 3
+_TREE_DEFAULT_FANOUT = 30  # max children per directory in emitted tree
+
+# Track 4 Phase 1 — Tech Stack detection: package.json dep-name → (layer, technology).
+# Order matters: first-match wins per (layer). Extending: append, don't reorder.
+_TECH_STACK_RULES: Tuple[Tuple[str, str, str], ...] = (
+    # (dep_name, layer, technology)
+    ("vue", "Framework", "Vue"),
+    ("react", "Framework", "React"),
+    ("next", "Framework", "Next.js"),
+    ("svelte", "Framework", "Svelte"),
+    ("@angular/core", "Framework", "Angular"),
+    ("express", "Framework", "Express"),
+    ("fastify", "Framework", "Fastify"),
+    ("typescript", "Language", "TypeScript"),
+    ("vite", "Build Tool", "Vite"),
+    ("webpack", "Build Tool", "Webpack"),
+    ("rollup", "Build Tool", "Rollup"),
+    ("turbo", "Monorepo", "Turborepo"),
+    ("nx", "Monorepo", "Nx"),
+    ("lerna", "Monorepo", "Lerna"),
+    ("vitest", "Testing", "Vitest"),
+    ("jest", "Testing", "Jest"),
+    ("mocha", "Testing", "Mocha"),
+    ("playwright", "Testing", "Playwright"),
+    ("cypress", "Testing", "Cypress"),
+    ("tailwindcss", "Styling", "Tailwind CSS"),
+    ("sass", "Styling", "Sass/SCSS"),
+    ("pinia", "State Management", "Pinia"),
+    ("redux", "State Management", "Redux"),
+    ("mobx", "State Management", "MobX"),
+    ("@tanstack/react-query", "State Management", "TanStack Query"),
+    ("@apollo/client", "API Layer", "Apollo Client (GraphQL)"),
+    ("graphql", "API Layer", "GraphQL"),
+    ("axios", "API Layer", "Axios"),
+    ("vue-i18n", "i18n", "vue-i18n"),
+    ("react-i18next", "i18n", "react-i18next"),
+)
+
+# Test directory names + file glob patterns. Returned paths are relative to project_root.
+_TEST_DIR_NAMES = ("test", "tests", "__tests__", "spec", "specs")
+_TEST_FILE_SUFFIXES = (".test.ts", ".test.tsx", ".test.js", ".test.jsx",
+                       ".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx")
+_TEST_PY_PREFIX = "test_"
+_TEST_PY_SUFFIX = "_test.py"
 
 
 def _enumerate_packages_with_overviews(project_root: Path) -> List[str]:
@@ -197,6 +254,68 @@ def _read_project_root_from_init_yaml(devforge_dir: Path) -> Optional[str]:
     return None
 
 
+def _read_project_root_relpath_from_init_yaml(devforge_dir: Path) -> Optional[str]:
+    """Like `_read_project_root_from_init_yaml` but returns the full relpath.
+
+    Where `_read_project_root_from_init_yaml` returns just the basename (used
+    for project label fallback), this returns the verbatim `project_root:`
+    value as written in init.yaml — necessary for resolving the inner
+    monorepo's filesystem location in wrapper mode.
+
+    Returns None for missing file, missing field, or the standalone-mode
+    value `.`.
+    """
+    yaml_path = devforge_dir / "init.yaml"
+    if not yaml_path.is_file():
+        return None
+    try:
+        text = yaml_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.split("\n"):
+        if line.startswith("project_root:"):
+            value = line.split(":", 1)[1].strip().strip('"').strip("'")
+            if not value or value == ".":
+                return None
+            return value.rstrip("/")
+    return None
+
+
+def _resolve_effective_project_root(
+    project_root: Path, devforge_dir: Path, package_paths: List[str]
+) -> Path:
+    """Return the directory where mechanical extraction should look for package.json.
+
+    Wrapper mode: testForge20-style layout where the framework's `.devforge/`
+    sits at the wrapper root, but the actual monorepo (with package.json,
+    workspaces config, source tree) lives at `<wrapper>/<inner>/`. Mechanical
+    helpers (tech stack, key commands, cross-package deps, structure tree,
+    test files) must operate on the inner monorepo, not the wrapper.
+
+    Priority:
+      1. `<project_root>/package.json` exists → standalone mode, use project_root.
+      2. `init.yaml project_root:` value → use that as relpath under project_root.
+      3. Common first-segment across package_paths (when 2+ packages share
+         a parent dir, e.g. `db-cse-ui-strata/apps/app-web` and
+         `db-cse-ui-strata/packages/pkg-cse-core` share `db-cse-ui-strata`).
+      4. Fallback: project_root.
+    """
+    project_root = project_root.resolve()
+    if (project_root / "package.json").is_file():
+        return project_root
+    init_relpath = _read_project_root_relpath_from_init_yaml(devforge_dir)
+    if init_relpath:
+        candidate = (project_root / init_relpath).resolve()
+        if candidate.is_dir():
+            return candidate
+    common = _common_path_prefix(package_paths)
+    if common:
+        candidate = (project_root / common).resolve()
+        if candidate.is_dir():
+            return candidate
+    return project_root
+
+
 def _common_path_prefix(packages: List[str]) -> Optional[str]:
     """Return the deepest common parent directory across all package paths.
 
@@ -276,6 +395,323 @@ def _compute_source_stamp(
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+# ── Track 4 Phase 1 — mechanical extraction helpers ─────────────────────────
+
+
+def _read_root_package_json(project_root: Path) -> Optional[Dict[str, Any]]:
+    """Return parsed package.json at project_root, or None if missing/invalid."""
+    pkg_path = project_root / "package.json"
+    if not pkg_path.is_file():
+        return None
+    try:
+        return json.loads(pkg_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _gather_all_deps(pkg: Dict[str, Any]) -> Dict[str, str]:
+    """Collect dependencies + devDependencies + peerDependencies into one flat map."""
+    out: Dict[str, str] = {}
+    for key in ("dependencies", "devDependencies", "peerDependencies"):
+        section = pkg.get(key)
+        if isinstance(section, dict):
+            for name, version in section.items():
+                if isinstance(name, str) and name and name not in out:
+                    out[name] = str(version) if version is not None else ""
+    return out
+
+
+def _gather_workspace_deps(pkg: Dict[str, Any], project_root: Path) -> Dict[str, str]:
+    """Aggregate deps + devDeps + peerDeps across every workspace package.json.
+
+    Monorepo orchestration-root package.jsons typically declare only
+    build-tooling (turbo, lerna, eslint), not application-layer deps. Tech
+    stack detection must walk into each workspace to see Vue/TS/Pinia/Apollo
+    which are the load-bearing tech for a real project. Returns a flat
+    {dep_name: version} map across all workspaces, first-version wins on
+    conflict.
+    """
+    raw_workspaces = pkg.get("workspaces")
+    if isinstance(raw_workspaces, dict):
+        raw_workspaces = raw_workspaces.get("packages")
+    if not isinstance(raw_workspaces, list):
+        return {}
+    aggregate: Dict[str, str] = {}
+    for glob_pat in raw_workspaces:
+        if not isinstance(glob_pat, str):
+            continue
+        for path in sorted(project_root.glob(glob_pat)):
+            if not path.is_dir():
+                continue
+            ws_pkg = path / "package.json"
+            if not ws_pkg.is_file():
+                continue
+            try:
+                ws_data = json.loads(ws_pkg.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            for name, version in _gather_all_deps(ws_data).items():
+                aggregate.setdefault(name, version)
+    return aggregate
+
+
+def _detect_tech_stack(project_root: Path) -> List[Dict[str, str]]:
+    """Detect tech-stack candidates from package.json + manifest presence.
+
+    Strategy: walk `_TECH_STACK_RULES`; for each (dep_name, layer, tech),
+    if dep_name appears in deps map, add entry. Returns list deduplicated
+    by layer (first match per layer wins). Also surfaces non-JS languages
+    when their manifest exists at project_root (pyproject.toml, Cargo.toml,
+    go.mod).
+
+    For monorepos: aggregates deps across the root package.json AND every
+    workspace package.json. Monorepo orchestration roots typically declare
+    only tooling deps; the real tech (Vue, TypeScript, Apollo, Pinia, etc.)
+    lives in workspace packages.
+    """
+    project_root = project_root.resolve()
+    out: List[Dict[str, str]] = []
+    seen_layers: set = set()
+
+    pkg = _read_root_package_json(project_root)
+    if pkg is not None:
+        deps = _gather_all_deps(pkg)
+        # Merge workspace deps when monorepo. Root deps win on conflict.
+        for name, version in _gather_workspace_deps(pkg, project_root).items():
+            deps.setdefault(name, version)
+        for dep_name, layer, technology in _TECH_STACK_RULES:
+            if dep_name in deps and layer not in seen_layers:
+                out.append({"layer": layer, "technology": technology})
+                seen_layers.add(layer)
+        if "Language" not in seen_layers:
+            out.append({"layer": "Language", "technology": "JavaScript"})
+            seen_layers.add("Language")
+
+    if (project_root / "pyproject.toml").is_file() and "Language" not in seen_layers:
+        out.append({"layer": "Language", "technology": "Python"})
+        seen_layers.add("Language")
+    if (project_root / "Cargo.toml").is_file() and "Language" not in seen_layers:
+        out.append({"layer": "Language", "technology": "Rust"})
+        seen_layers.add("Language")
+    if (project_root / "go.mod").is_file() and "Language" not in seen_layers:
+        out.append({"layer": "Language", "technology": "Go"})
+        seen_layers.add("Language")
+
+    return out
+
+
+def _extract_key_commands(project_root: Path) -> List[Dict[str, str]]:
+    """Read package.json `scripts` block; emit list of {command, description}.
+
+    Command renders as `npm run <script-name>` (Phase 1 npm convention; Phase 2
+    LLM judgment can rewrite for yarn/pnpm/bun). Description is the verbatim
+    script value — Phase 2 may replace with prose.
+    """
+    pkg = _read_root_package_json(project_root)
+    if pkg is None:
+        return []
+    scripts = pkg.get("scripts")
+    if not isinstance(scripts, dict):
+        return []
+    out: List[Dict[str, str]] = []
+    for name, value in scripts.items():
+        if not isinstance(name, str) or not name:
+            continue
+        out.append({
+            "command": f"npm run {name}",
+            "description": str(value) if value is not None else "",
+        })
+    return out
+
+
+def _walk_test_file_paths(project_root: Path) -> List[Dict[str, str]]:
+    """Filesystem walk for test directories + test file suffixes.
+
+    Returns deduplicated list of {path, description}; paths are project-relative
+    POSIX strings. Two output kinds:
+      - test directories (`test/`, `tests/`, `__tests__/`) — directory paths
+      - individual test file globs collapsed to nearest containing directory
+
+    Phase 1 emits directory-level paths only — file-level granularity is
+    excessive for the project-tier overview's Test Files section.
+    """
+    project_root = project_root.resolve()
+    if not project_root.is_dir():
+        return []
+    found_dirs: Dict[str, str] = {}
+
+    for current, dirs, files in os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in _TREE_IGNORE_DIRS and not d.startswith(".")]
+        current_path = Path(current)
+        try:
+            rel_dir = current_path.relative_to(project_root).as_posix()
+        except ValueError:
+            continue
+        for d in list(dirs):
+            if d in _TEST_DIR_NAMES:
+                key = (Path(rel_dir) / d).as_posix() if rel_dir else d
+                found_dirs.setdefault(key, "test directory")
+        for f in files:
+            if any(f.endswith(suf) for suf in _TEST_FILE_SUFFIXES) or (
+                f.startswith(_TEST_PY_PREFIX) and f.endswith(".py")
+            ) or f.endswith(_TEST_PY_SUFFIX):
+                # Collapse to containing directory.
+                key = rel_dir or "."
+                found_dirs.setdefault(key, "tests collocated with source")
+
+    return [
+        {"path": path, "description": desc}
+        for path, desc in sorted(found_dirs.items())
+    ]
+
+
+def _enumerate_workspace_packages(pkg: Dict[str, Any], project_root: Path) -> List[str]:
+    """Return list of workspace-internal package names from npm-workspaces config.
+
+    Reads `workspaces` (array or {packages: array}); each entry is a glob like
+    `packages/*`. Resolves each glob to existing dirs containing package.json
+    and returns their `name` field.
+    """
+    raw_workspaces = pkg.get("workspaces")
+    if isinstance(raw_workspaces, dict):
+        raw_workspaces = raw_workspaces.get("packages")
+    if not isinstance(raw_workspaces, list):
+        return []
+    package_names: List[str] = []
+    for glob_pat in raw_workspaces:
+        if not isinstance(glob_pat, str):
+            continue
+        for path in sorted(project_root.glob(glob_pat)):
+            if not path.is_dir():
+                continue
+            ws_pkg = path / "package.json"
+            if not ws_pkg.is_file():
+                continue
+            try:
+                ws_data = json.loads(ws_pkg.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            ws_name = ws_data.get("name")
+            if isinstance(ws_name, str) and ws_name:
+                package_names.append(ws_name)
+    return package_names
+
+
+def _build_cross_module_deps_tree(project_root: Path) -> str:
+    """Render an ASCII tree of cross-workspace internal deps.
+
+    For npm-workspaces monorepos: walk each workspace package, for each
+    workspace package P enumerate its dependencies that are themselves
+    workspace packages, and render `P\\n  +-- internal_dep_1\\n  +-- ...`.
+
+    For non-monorepo projects (no `workspaces` field): emit the root
+    package's name + flat list of its non-dev dependencies.
+
+    Empty string when no package.json or no dependencies to report.
+    """
+    project_root = project_root.resolve()
+    pkg = _read_root_package_json(project_root)
+    if pkg is None:
+        return ""
+    workspace_names = set(_enumerate_workspace_packages(pkg, project_root))
+    if not workspace_names:
+        # Non-monorepo: list root package + its prod deps.
+        root_name = pkg.get("name") or project_root.name
+        deps = pkg.get("dependencies")
+        if not isinstance(deps, dict) or not deps:
+            return ""
+        lines = [str(root_name)]
+        sorted_deps = sorted(d for d in deps if isinstance(d, str))
+        for dep in sorted_deps:
+            lines.append(f"  +-- {dep}")
+        return "\n".join(lines)
+
+    # Monorepo: per-package internal-dep block.
+    blocks: List[str] = []
+    raw_workspaces = pkg.get("workspaces")
+    if isinstance(raw_workspaces, dict):
+        raw_workspaces = raw_workspaces.get("packages")
+    if not isinstance(raw_workspaces, list):
+        raw_workspaces = []
+    seen_pkg_paths: List[Path] = []
+    for glob_pat in raw_workspaces:
+        if not isinstance(glob_pat, str):
+            continue
+        for path in sorted(project_root.glob(glob_pat)):
+            if path.is_dir() and path not in seen_pkg_paths:
+                seen_pkg_paths.append(path)
+
+    for path in seen_pkg_paths:
+        ws_pkg_path = path / "package.json"
+        if not ws_pkg_path.is_file():
+            continue
+        try:
+            ws_data = json.loads(ws_pkg_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        ws_name = ws_data.get("name")
+        if not isinstance(ws_name, str) or not ws_name:
+            continue
+        ws_deps = _gather_all_deps(ws_data)
+        internal = sorted(d for d in ws_deps if d in workspace_names and d != ws_name)
+        if not internal:
+            blocks.append(ws_name)
+            continue
+        block_lines = [ws_name]
+        for dep in internal:
+            block_lines.append(f"  +-- {dep}")
+        blocks.append("\n".join(block_lines))
+    return "\n\n".join(blocks)
+
+
+def _build_project_structure_tree(
+    project_root: Path,
+    max_depth: int = _TREE_DEFAULT_DEPTH,
+    max_fanout: int = _TREE_DEFAULT_FANOUT,
+) -> str:
+    """ASCII directory tree of project_root, depth-limited and ignore-filtered.
+
+    Format mirrors `_concern_input` tree style: ├──/└── connectors. Cap
+    children per dir at `max_fanout` (truncated indicator added when reached).
+    Hidden dirs (`.x`) and entries in `_TREE_IGNORE_DIRS` are excluded.
+
+    Returns "" when project_root is missing.
+    """
+    project_root = project_root.resolve()
+    if not project_root.is_dir():
+        return ""
+    lines: List[str] = [f"{project_root.name}/"]
+
+    def walk(dir_path: Path, prefix: str, depth: int) -> None:
+        if depth > max_depth:
+            return
+        try:
+            entries = sorted(dir_path.iterdir(), key=lambda p: (not p.is_dir(), p.name))
+        except OSError:
+            return
+        kept = [
+            e for e in entries
+            if not (e.name.startswith(".") or e.name in _TREE_IGNORE_DIRS)
+        ]
+        truncated = False
+        if len(kept) > max_fanout:
+            kept = kept[:max_fanout]
+            truncated = True
+        for i, entry in enumerate(kept):
+            is_last = (i == len(kept) - 1) and not truncated
+            connector = "└── " if is_last else "├── "
+            display = entry.name + ("/" if entry.is_dir() else "")
+            lines.append(f"{prefix}{connector}{display}")
+            if entry.is_dir() and depth < max_depth:
+                next_prefix = prefix + ("    " if is_last else "│   ")
+                walk(entry, next_prefix, depth + 1)
+        if truncated:
+            lines.append(f"{prefix}└── ... ({len(entries) - max_fanout} more)")
+
+    walk(project_root, "", 1)
+    return "\n".join(lines)
+
+
 def cmd_project_input(args: argparse.Namespace) -> int:
     """Handler for `project-input` subcommand. Returns CLI exit code."""
     devforge_dir = Path(args.devforge_dir)
@@ -313,11 +749,25 @@ def cmd_project_input(args: argparse.Namespace) -> int:
     project_label = _resolve_project_label(
         args.project, devforge_dir, project_root, pkg_paths
     )
+    # Track 4 Phase 1 — mechanical extraction. Each helper degrades to empty
+    # output when its source is absent (no package.json, no test dirs, etc.),
+    # so the orchestrator can render a partial overview rather than failing.
+    # In wrapper mode the inner monorepo holds the manifests + source tree;
+    # `_resolve_effective_project_root` returns that dir so extraction looks
+    # in the right place. In standalone mode it returns project_root unchanged.
+    effective_root = _resolve_effective_project_root(
+        project_root, devforge_dir, pkg_paths
+    )
     output: Dict[str, Any] = {
         "project": project_label,
         "package_seeds": package_seeds,
         "project_root_files": root_records,
         "source_stamp": source_stamp,
+        "tech_stack_candidates": _detect_tech_stack(effective_root),
+        "key_commands": _extract_key_commands(effective_root),
+        "test_file_paths": _walk_test_file_paths(effective_root),
+        "cross_module_deps_tree": _build_cross_module_deps_tree(effective_root),
+        "project_structure_tree": _build_project_structure_tree(effective_root),
     }
     if missing:
         output["missing_package_overviews"] = missing

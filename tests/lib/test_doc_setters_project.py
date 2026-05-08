@@ -45,6 +45,11 @@ from _generate_docs._doc_setters import (  # noqa: E402
     cmd_set_doc_layers,
     cmd_set_doc_packages,
     cmd_set_doc_purpose,
+    cmd_set_overview_cross_module_deps,
+    cmd_set_overview_key_commands,
+    cmd_set_overview_project_structure_tree,
+    cmd_set_overview_tech_stack,
+    cmd_set_overview_test_files,
 )
 
 
@@ -400,6 +405,359 @@ class EndToEndProjectTests(unittest.TestCase):
         text = (self.root / "docs" / "architecture.md").read_text(encoding="utf-8")
         self.assertIn("- presentation — Vue UI", text)
         self.assertIn("- auth — Okta-mediated identity", text)
+
+
+class CmdInitDocPhase1AnchorsTests(unittest.TestCase):
+    """Track 4 Phase 1 — verify project-overview skeleton emits 5 new anchors."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+
+    def test_project_overview_skeleton_includes_phase1_anchors(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            frontmatter=json.dumps({"project": "my-proj"}),
+            tree="",
+        )
+        code, _, _ = _run(cmd_init_doc, args)
+        self.assertEqual(code, 0)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        # Phase 0 anchors (still required).
+        self.assertIn("## Purpose", content)
+        self.assertIn("## Packages", content)
+        # Phase 1 mechanical anchors.
+        self.assertIn("## Tech Stack", content)
+        self.assertIn("## Project Structure", content)
+        self.assertIn("## Key Commands", content)
+        self.assertIn("## Cross-Module Dependencies", content)
+        self.assertIn("## Test Files", content)
+        # Phase 1 placeholder markers.
+        self.assertIn("<!-- TODO: tech-stack -->", content)
+        self.assertIn("<!-- TODO: project-structure -->", content)
+        self.assertIn("<!-- TODO: key-commands -->", content)
+        self.assertIn("<!-- TODO: cross-module-dependencies -->", content)
+        self.assertIn("<!-- TODO: test-files -->", content)
+
+    def test_skeleton_anchor_order_matches_emit_order(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            frontmatter=json.dumps({"project": "my-proj"}),
+            tree="",
+        )
+        _run(cmd_init_doc, args)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        # Expected order: Purpose, Tech Stack, Project Structure, Key Commands,
+        # Cross-Module Dependencies, Test Files, Packages.
+        positions = [
+            content.index(f"## {anchor}")
+            for anchor in (
+                "Purpose",
+                "Tech Stack",
+                "Project Structure",
+                "Key Commands",
+                "Cross-Module Dependencies",
+                "Test Files",
+                "Packages",
+            )
+        ]
+        self.assertEqual(positions, sorted(positions), msg=f"out-of-order: {positions}")
+
+
+class CmdSetOverviewTechStackTests(unittest.TestCase):
+    """Track 4 Phase 1 — set-overview-tech-stack writes a markdown table."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_replaces_placeholder_with_table(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            tech_stack=json.dumps([
+                {"layer": "Framework", "technology": "Vue 3"},
+                {"layer": "Language", "technology": "TypeScript"},
+            ]),
+        )
+        code, _, err = _run(cmd_set_overview_tech_stack, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: tech-stack -->", content)
+        self.assertIn("| Layer | Technology |", content)
+        self.assertIn("|---|---|", content)
+        self.assertIn("| Framework | Vue 3 |", content)
+        self.assertIn("| Language | TypeScript |", content)
+
+    def test_rejects_non_project_overview_tier(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            tech_stack=json.dumps([{"layer": "X", "technology": "Y"}]),
+        )
+        code, _, err = _run(cmd_set_overview_tech_stack, args)
+        self.assertEqual(code, 2)
+        self.assertIn("set-overview-tech-stack supports", err)
+
+    def test_invalid_json_exits_2(self):
+        args = _ns(self.devforge, "project-overview", tech_stack="not-json")
+        code, _, err = _run(cmd_set_overview_tech_stack, args)
+        self.assertEqual(code, 2)
+        self.assertIn("valid JSON", err)
+
+    def test_skips_partial_entries(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            tech_stack=json.dumps([
+                {"layer": "Framework", "technology": "Vue 3"},
+                {"layer": "Language"},   # missing technology — skipped
+                {"technology": "Vite"},  # missing layer — skipped
+            ]),
+        )
+        code, _, _ = _run(cmd_set_overview_tech_stack, args)
+        self.assertEqual(code, 0)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertIn("| Framework | Vue 3 |", content)
+        self.assertNotIn("| Language |  |", content)
+
+
+class CmdSetOverviewKeyCommandsTests(unittest.TestCase):
+    """Track 4 Phase 1 — set-overview-key-commands writes Command table."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_replaces_placeholder_with_table(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            key_commands=json.dumps([
+                {"command": "npm run build", "description": "turbo run build"},
+                {"command": "npm run test", "description": "vitest"},
+            ]),
+        )
+        code, _, err = _run(cmd_set_overview_key_commands, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: key-commands -->", content)
+        self.assertIn("| Command | Description |", content)
+        self.assertIn("| `npm run build` | turbo run build |", content)
+        self.assertIn("| `npm run test` | vitest |", content)
+
+
+class CmdSetOverviewTestFilesTests(unittest.TestCase):
+    """Track 4 Phase 1 — set-overview-test-files writes bulleted list."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_replaces_placeholder_with_bullets(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            test_files=json.dumps([
+                {"path": "tests/unit/", "description": "App-level tests"},
+                {"path": "src/test/", "description": "Core tests"},
+            ]),
+        )
+        code, _, err = _run(cmd_set_overview_test_files, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: test-files -->", content)
+        self.assertIn("- `tests/unit/` — App-level tests", content)
+        self.assertIn("- `src/test/` — Core tests", content)
+
+
+class CmdSetOverviewCrossModuleDepsTests(unittest.TestCase):
+    """Track 4 Phase 1 — set-overview-cross-module-deps writes fenced text block."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_replaces_placeholder_with_fence(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            text="app-web\n  +-- pkg-core\n  +-- pkg-utils",
+        )
+        code, _, err = _run(cmd_set_overview_cross_module_deps, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: cross-module-dependencies -->", content)
+        self.assertIn("```text\napp-web\n  +-- pkg-core\n  +-- pkg-utils\n```", content)
+
+
+class CmdSetOverviewProjectStructureTreeTests(unittest.TestCase):
+    """Track 4 Phase 1 — set-overview-project-structure-tree writes fenced tree."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_replaces_placeholder(self):
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            text="my-proj/\n├── apps/\n└── packages/",
+        )
+        code, _, err = _run(cmd_set_overview_project_structure_tree, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: project-structure -->", content)
+        self.assertIn("```text\nmy-proj/\n├── apps/\n└── packages/\n```", content)
+
+    def test_rejects_non_project_overview_tier(self):
+        args = _ns(
+            self.devforge,
+            "concern",
+            text="x",
+        )
+        code, _, err = _run(cmd_set_overview_project_structure_tree, args)
+        self.assertEqual(code, 2)
+        self.assertIn("set-overview-project-structure-tree supports", err)
+
+
+class EndToEndPhase1OverviewPipelineTests(unittest.TestCase):
+    """Track 4 Phase 1 — full project-overview pipeline with all 7 sections."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+
+    def test_full_pipeline_renders_all_phase1_sections(self):
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps(
+                    {"project": "my-proj", "last_indexed": "2026-05-08", "source_stamp": "p1"}
+                ),
+                tree="",
+            ),
+        )
+        _run(
+            cmd_set_doc_purpose,
+            _ns(self.devforge, "project-overview", text="Project does X."),
+        )
+        _run(
+            cmd_set_overview_tech_stack,
+            _ns(
+                self.devforge,
+                "project-overview",
+                tech_stack=json.dumps([{"layer": "Framework", "technology": "Vue 3"}]),
+            ),
+        )
+        _run(
+            cmd_set_overview_project_structure_tree,
+            _ns(self.devforge, "project-overview", text="my-proj/\n├── apps/"),
+        )
+        _run(
+            cmd_set_overview_key_commands,
+            _ns(
+                self.devforge,
+                "project-overview",
+                key_commands=json.dumps([{"command": "npm run build", "description": "turbo build"}]),
+            ),
+        )
+        _run(
+            cmd_set_overview_cross_module_deps,
+            _ns(self.devforge, "project-overview", text="app-web\n  +-- pkg-core"),
+        )
+        _run(
+            cmd_set_overview_test_files,
+            _ns(
+                self.devforge,
+                "project-overview",
+                test_files=json.dumps([{"path": "tests/", "description": "unit tests"}]),
+            ),
+        )
+        _run(
+            cmd_set_doc_packages,
+            _ns(
+                self.devforge,
+                "project-overview",
+                packages=json.dumps([{"name": "pkg-core", "role": "shared utilities"}]),
+            ),
+        )
+        _run(cmd_render_doc, _ns(self.devforge, "project-overview", out=""))
+
+        text = (self.root / "docs" / "overview.md").read_text(encoding="utf-8")
+        # Every Phase 1 section + Phase 0 sections present.
+        self.assertIn("Project does X.", text)
+        self.assertIn("| Framework | Vue 3 |", text)
+        self.assertIn("```text\nmy-proj/", text)
+        self.assertIn("| `npm run build` | turbo build |", text)
+        self.assertIn("```text\napp-web", text)
+        self.assertIn("- `tests/` — unit tests", text)
+        self.assertIn("- pkg-core — shared utilities", text)
+        # No leftover placeholders.
+        self.assertNotIn("<!-- TODO:", text)
 
 
 if __name__ == "__main__":
