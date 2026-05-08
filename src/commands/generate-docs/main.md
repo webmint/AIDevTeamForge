@@ -111,6 +111,8 @@ Capture full JSON output to a variable. Fields used downstream:
 - `files[].comment_rich_span` — top-of-file lines + TODO context windows; used by orchestrator to infer leaf annotations
 - `source_stamp` — frontmatter input
 
+**Branch on split (Plan F 3a):** if the JSON output has `"split": true`, jump to Step 2.S (split path) below. Steps 2.2–2.5 below document the single-batch flow only (the default for concerns under the split threshold). The split path reuses Steps 2.2–2.5 once per child sub_concern + adds a parent-aggregator pass.
+
 ### Step 2.2 — init-doc with helper-built frontmatter + F.2 tree
 
 ```
@@ -176,6 +178,78 @@ Disk writes happen via the setters (in-place skeleton edit) and Step 2.5's `rend
 - validate-doc exit 2 → capture stderr verbatim. Re-run Step 2.2 (init-doc, wipes the skeleton), then Step 2.3 (orchestrator re-composes Purpose + annotations using the stderr as feedback) → Step 2.4 → Step 2.5. Cap at 3 retries; on the 4th, surface failure to the user and continue with the next concern.
 
 **Why init-doc on retry**: re-init wipes the skeleton wholesale; setters overwrite cleanly. Cheaper than tracking partial state.
+
+### Step 2.S — Split path (only when concern-input emits `split: true`)
+
+When the Step 2.1 JSON has `"split": true`, the concern was over the threshold + has ≥2 immediate child dirs (Plan F 3a). The output carries `parent_meta` (full tree + `subconcern_names` + `loose_files`) and `sub_concerns[]` (one self-sufficient batch per child). Run the per-child pass first, then the parent-aggregator pass.
+
+**Iterate `sub_concerns[]` directly — do not drive the loop from `parent_meta.subconcern_names`.** The helper drops children whose file list is empty after trivial-leaf filtering, so `sub_concerns[]` may be shorter than `subconcern_names`. The split-batch top-level JSON has NO `files[]` key (unlike single-batch); `files[]` only exists per-child inside `sub_concerns[i]`.
+
+#### Step 2.S.1 — Per-child sub_concern pass
+
+For each entry in `sub_concerns[]`, run the existing Steps 2.2–2.5 unchanged with these substitutions:
+- `--target` → `"$pkg/$concern/$sub_name"` (where `$sub_name` is `sub_concerns[i].concern`)
+- Frontmatter `concern` → `$sub_name`; `package` → `$pkg`; `parent_concern` → `$concern`; `source_stamp` → `sub_concerns[i].source_stamp`; `files` → `len(sub_concerns[i].files)` (Step 2.2 originally pulls `files_count` from the top-level `files` field, but that field is absent in split-batch — use the per-child entry instead)
+- `--tree` → `sub_concerns[i].tree_text` (rooted at `<pkg>/src/<concern>/<sub_name>/`)
+- Annotations source → `sub_concerns[i].files[].comment_rich_span` (NOT the parent's full file list)
+
+Each child renders to `docs/<pkg>/<concern>/<sub_name>/index.md`. Validation rules are identical to single-batch concerns (Purpose + Structure required; cite-backs resolve).
+
+Retry budget per child: 3 (same as Step 2.5). On 4th failure, surface that child to the user and continue with the next child. Do NOT abort the parent-aggregator pass — emit the parent with whatever children rendered.
+
+#### Step 2.S.2 — Parent skeleton init
+
+After all children pass (or are surfaced as failed):
+
+```
+./.devforge/lib/generate_docs_helper init-doc --tier concern --target "$pkg/$concern" --split \
+    --frontmatter "$(jq -n --arg c "$concern" --arg p "$pkg" \
+                       --arg s "$source_stamp" --arg d "$today" \
+                       '{concern:$c, package:$p, source_stamp:$s, last_indexed:$d, split:true}')"
+```
+
+Notes:
+- `--split` is a bare flag for `init-doc` (no value; `action="store_true"`). Do NOT write `--split true` here — argparse would treat `true` as an unexpected positional argument.
+- `--split` flag triggers the parent skeleton (Purpose + Sub-concerns; NO Structure section).
+- `--tree` is omitted; the parent has no Structure tree.
+- Frontmatter `source_stamp` = the aggregate stamp from Step 2.1's top-level `source_stamp` field (which already aggregates over child stamps + loose files).
+- The frontmatter `split: true` flag lets validate-doc / preflight tell parent docs apart from leaf concern docs.
+
+#### Step 2.S.3 — Parent compose (orchestrator-direct, NO subagent)
+
+The orchestrator reads each rendered child's frontmatter Purpose text + names a per-child 1-line summary. Output:
+
+1. **Parent Purpose** — 1–3 sentences describing the parent concern's role at the package level. Concrete, names the cross-cuts that span children. No banned phrases.
+
+2. **Sub-concerns list** — JSON array `[{name, purpose_summary, doc_path}, ...]` where:
+   - `name` = `sub_concerns[i].concern` (the child dir name)
+   - `purpose_summary` = ≤200-char one-liner describing that child's role (synthesised from the child's Purpose paragraph; do NOT verbatim-copy)
+   - `doc_path` = `<sub_name>/index.md` (parent-relative; matches the rendered child path)
+
+#### Step 2.S.4 — Parent setters
+
+```
+./.devforge/lib/generate_docs_helper set-doc-purpose --tier concern --target "$pkg/$concern" \
+    --text "<orchestrator-composed parent Purpose>"
+
+./.devforge/lib/generate_docs_helper set-doc-subconcerns --tier concern --target "$pkg/$concern" \
+    --subconcerns '<orchestrator-composed sub-concerns JSON>'
+```
+
+`set-doc-subconcerns` writes `## Sub-concerns` bullets in the locked shape `- <name> — <purpose_summary> ([→](<doc_path>))`. The helper silently skips entries missing any of the three fields (no error, exit 0); validate-doc will catch the resulting empty section in Step 2.S.5. Sanity check before invoking: confirm the bullet count emitted equals `len(sub_concerns[])` to detect dropped entries early.
+
+#### Step 2.S.5 — Parent render + validate
+
+```
+./.devforge/lib/generate_docs_helper render-doc --tier concern --target "$pkg/$concern"
+./.devforge/lib/generate_docs_helper validate-doc --tier concern --target "$pkg/$concern" --split true
+```
+
+Validation for split parents (planned for Plan F 3a.5; not yet implemented at the time of this spec edit): required sections = `## Purpose` + `## Sub-concerns` only (no `## Structure`); each Sub-concerns bullet matches the locked shape; each `doc_path` resolves to an existing rendered child doc. The `--split true` flag on `validate-doc` (NOT on `init-doc`, which uses a bare `--split`) selects the parent rule set.
+
+Retry on validation failure: re-run Steps 2.S.2–2.S.5 (re-init wipes parent skeleton). Cap at 3 retries; on 4th, surface failure to the user. Children are NOT regenerated by parent retries.
+
+**Why per-child first**: parent's `purpose_summary` synthesises from each child's Purpose paragraph, so children must exist + have valid frontmatter Purpose before the parent compose step.
 
 ---
 
