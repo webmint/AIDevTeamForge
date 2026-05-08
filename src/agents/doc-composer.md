@@ -178,7 +178,7 @@ No "elegant", "robust", "powerful", "easy-to-use", "seamless", "leverage". Descr
 
 ### No prose tables for structural data
 
-Exports, types, dependencies, callees, public surface — none of these go in your output. Those queries hit CBM live (`search_graph`, `trace_call_path`, `get_code_snippet`). Your scope is narrative + judgment only.
+Exports, types, dependencies, callees, public surface — none of these go in your output. Those queries hit CBM live (`search_graph`, `trace_path`, `get_code_snippet`). Your scope is narrative + judgment only.
 
 ### Length caps
 
@@ -200,7 +200,7 @@ The retry budget is 3 attempts; on the 4th, orchestrator surfaces the failure to
 - Do not invent hazards. Every hazard claim must trace to a span you were given. If the span is too short to support a claim about a file, skip that file rather than fabricate.
 - Do not write to ANY file. The Write and Edit tools are not in your allowlist; the helper owns doc structure via setters.
 - Do not call any helper subcommand or Bash. The orchestrator calls setters and `validate-doc` after you return.
-- Do not call CBM MCP tools (`search_graph`, `trace_call_path`, `get_code_snippet`, `agentic_context`, `semantic_query`, etc.). The helper provides everything you need; CBM is for downstream consumer commands, not for doc authoring.
+- Do not call CBM MCP tools (`search_graph`, `trace_path`, `get_code_snippet`, `agentic_context`, `search_code`, etc.). The helper provides everything you need; CBM is for downstream consumer commands, not for doc authoring.
 - Do not return JSON or wrap your output in a code fence. The orchestrator parses your assistant message body verbatim by section anchor.
 - Do not add preamble paragraphs, summary headers, "for example" lists, marketing tone, or "you can use this for X" closers.
 - Do not add a code fence around `## Structure` content. Plain text under the heading. (Calibration found that fences break the helper's per-leaf annotation parser.)

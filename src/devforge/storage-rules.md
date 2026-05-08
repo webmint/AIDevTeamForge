@@ -40,8 +40,8 @@ docs/
 NOTE: legacy layout (`docs/features/`, `docs/api/`, `docs/guides/`) is dropped.
 Structural information (exports, types, deps, public-surface, call chains) is
 NOT pre-rendered into docs/ — query the codebase-memory-mcp graph live via
-`search_graph`, `trace_call_path`, `get_code_snippet`, `agentic_context`,
-`semantic_query`. Md files carry the narrative + judgment layer; CBM carries
+`search_graph`, `trace_path`, `get_code_snippet`, `agentic_context`,
+`search_code`. Md files carry the narrative + judgment layer; CBM carries
 the structural-query layer.
 
 ## Naming Rules
@@ -217,7 +217,7 @@ last_indexed: <YYYY-MM-DD>
 - No prose tables for structural data — exports/types/deps/callees lists live in CBM, NOT in md
 
 ### CBM auto-indexing
-Md files are walked by `codebase-memory-mcp index_repository` automatically. Their content becomes searchable via `search_code` + `semantic_query`. No separate registration step.
+Md files are walked by `codebase-memory-mcp index_repository` automatically. Their content becomes searchable via `search_code`. No separate registration step.
 
 ### Rules
 - Every cite-back must resolve at validation time (file exists, line range valid)

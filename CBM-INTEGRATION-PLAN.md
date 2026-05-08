@@ -15,12 +15,12 @@
 
 Plan E premise was "pre-compute 7-section markdown per concern so future LLM workflows skip codebase exploration." That premise dissolved when codebase-memory-mcp landed:
 
-- CBM's structural queries (`search_graph`, `trace_call_path`, `get_code_snippet`, `agentic_context`, `semantic_query`) deliver in 1–10ms what Plan E proposed pre-rendering for $5–15/concern of LLM cost.
+- CBM's structural queries (`search_graph`, `trace_path`, `get_code_snippet`, `agentic_context`, `search_code`) deliver in 1–10ms what Plan E proposed pre-rendering for $5–15/concern of LLM cost.
 - 5 of E's 7 sections (exports, types, dependencies, usage_example, public-surface descriptions) are derivable live from CBM with strictly fresher data than any pre-rendered md.
 - 1 of E's 7 sections (overview / Purpose) is NOT in any graph — pure LLM judgment over source. Stays md.
 - 1 of E's 7 sections (annotated tree / Structure) is mechanical structure + LLM 1-line annotations per leaf. Keep as md.
 - Hazards moved out of concern docs entirely (2026-05-07 V4 finding) — `/audit` command is the right home for adversarial gotcha discovery; pre-rendering hazards into every concern doc bloats output for LLM consumers (research/specify/plan) who care about orientation, not gotchas. Quality-review territory ≠ orientation territory.
-- New tiers Plan E didn't address: package overview/architecture, project overview/architecture. These are also pure LLM judgment over the codebase, regenerated rarely. Add as md. (Glossary tier dropped 2026-05-07 — V4 confirmed concern Purpose paragraphs surface domain terms in context; a separate glossary file is redundant. Cross-concern terms can land in the package overview's Purpose paragraph or via CBM `semantic_query` live.)
+- New tiers Plan E didn't address: package overview/architecture, project overview/architecture. These are also pure LLM judgment over the codebase, regenerated rarely. Add as md. (Glossary tier dropped 2026-05-07 — V4 confirmed concern Purpose paragraphs surface domain terms in context; a separate glossary file is redundant. Cross-concern terms can land in the package overview's Purpose paragraph or via CBM `search_code` live.)
 
 Result: docs/ becomes the **orientation + narrative** layer (Purpose + Structure per concern; package + project tiers); CBM becomes the **structural-query** layer; `/audit` becomes the **hazard-discovery** layer.
 
@@ -505,9 +505,9 @@ Update consumer commands so they encode (a) preflight invocation as the first st
 
 | Command | Step 1 (always) | Step 2+ (read tier) |
 |---|---|---|
-| `/research` | preflight | concern md → architecture.md → CBM (`agentic_context` + `search_graph` + `semantic_query` for fuzzy term lookup) → source (Read) |
+| `/research` | preflight | concern md → architecture.md → CBM (`agentic_context` + `search_graph` + `search_code` for fuzzy term lookup) → source (Read) |
 | `/specify` | preflight | concern md → architecture.md → constitution.md → CBM (verify constraints) → user clarifications |
-| `/plan` | preflight | architecture.md → CBM (`trace_call_path`, `agentic_impact`) → constitution.md |
+| `/plan` | preflight | architecture.md → CBM (`trace_path`, `agentic_impact`) → constitution.md |
 | `/breakdown` | preflight | plan.md (input) + concern md per affected concern → CBM for any unresolved structural question |
 | `/execute-task` | preflight | task.md (input) + CBM (function-level `get_code_snippet`) → source |
 | `/fix` | preflight | CBM (locate fault) → source → docs (verify hazard awareness for that concern) |
@@ -542,7 +542,7 @@ F.9 documents the soft read-tier order in command specs ("consult preflight → 
 
 | Hook | Event | Purpose |
 |---|---|---|
-| `cbm-code-discovery-gate` | PreToolUse on Read/Grep/Glob | Advisory message: "consider `search_graph` / `agentic_context` / `semantic_query` before text search". Exit code 0 (non-blocking) |
+| `cbm-code-discovery-gate` | PreToolUse on Read/Grep/Glob | Advisory message: "consider `search_graph` / `agentic_context` / `search_code` before text search". Exit code 0 (non-blocking) |
 | `cbm-mcp-marker` | PostToolUse on Bash + MCP tools | Telemetry: marks each CBM tool invocation in the transcript so adoption is measurable |
 | `cbm-session-reminder` | SessionStart (resume / clear / compact) | Re-injects CBM-first protocol when the prior context window is dropped |
 | `bash-ban-raw-tools` | PreToolUse on Bash | Soft-rejects raw `grep`/`find`/`cat` patterns over source files; suggests CBM equivalent |
