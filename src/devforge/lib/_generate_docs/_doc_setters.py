@@ -50,7 +50,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ._md_frontmatter import render_frontmatter
+from ._md_frontmatter import FrontmatterParseError, parse_frontmatter, render_frontmatter
 
 _PURPOSE_PLACEHOLDER = "<!-- TODO: purpose -->"
 _CONCERNS_PLACEHOLDER = "<!-- TODO: concerns -->"
@@ -185,6 +185,80 @@ def _build_package_architecture_skeleton(frontmatter: Dict[str, Any]) -> str:
         f"{_PATTERNS_PLACEHOLDER}\n"
     )
     return render_frontmatter(dict(frontmatter), "\n" + body)
+
+
+# Project-tier section ownership. /generate-docs owns these 4 anchors;
+# every other `## ` anchor in `docs/overview.md` or `docs/architecture.md`
+# is preserved verbatim across init-doc re-runs (e.g. anchors written by
+# `/constitute`: `## What this project is for`, `## How it's used`,
+# `## Architectural Decisions`, `## Layer Boundaries & Dependency Rules`,
+# `## Data Flow`, `## Cross-cutting Concerns` — or any future anchor a
+# user/command adds).
+_PROJECT_OVERVIEW_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
+    ("Purpose", _PURPOSE_PLACEHOLDER),
+    ("Packages", _PACKAGES_PLACEHOLDER),
+)
+_PROJECT_ARCHITECTURE_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
+    ("Layers", _LAYERS_PLACEHOLDER),
+    ("Cross-Cuts", _CROSS_CUTS_PLACEHOLDER),
+)
+
+
+def _merge_project_skeleton(
+    doc_path: Path,
+    fresh_skeleton: str,
+    owned_anchors_with_placeholders: Tuple[Tuple[str, str], ...],
+) -> str:
+    """Merge an existing project-tier doc with a freshly built skeleton.
+
+    Cold start (file missing or unparseable): return ``fresh_skeleton``
+    verbatim — caller writes it as-is.
+
+    Existing file (typical case): preserve the entire existing body
+    EXCEPT the owned-anchor sections (those are reset to placeholders so
+    setters can refill cleanly). Frontmatter is merged: existing keys
+    stay; fresh keys (e.g. ``last_indexed``, ``source_stamp``) override.
+
+    Owned anchors that don't exist in the existing file (cold-install
+    stubs that haven't been touched by /generate-docs yet) are appended
+    in their declared order at the end of the body.
+
+    Owned anchors that DO exist in the existing file are reset in-place
+    via the same regex `_replace_or_substitute` setters use — body
+    becomes ``<!-- TODO: ... -->`` placeholder again, ready for the
+    setter to replace.
+    """
+    # Cold start: no existing file → use fresh skeleton verbatim.
+    if not doc_path.is_file():
+        return fresh_skeleton
+    try:
+        existing_text = doc_path.read_text(encoding="utf-8")
+    except OSError:
+        return fresh_skeleton
+
+    try:
+        existing_fm, existing_body = parse_frontmatter(existing_text)
+    except FrontmatterParseError:
+        # Malformed existing file — refuse to merge; cold-write the fresh
+        # skeleton (caller's init-doc semantics already wipe stale state).
+        return fresh_skeleton
+
+    try:
+        fresh_fm, _fresh_body = parse_frontmatter(fresh_skeleton)
+    except FrontmatterParseError:  # pragma: no cover — fresh always parses
+        return fresh_skeleton
+
+    merged_fm: Dict[str, Any] = {**existing_fm, **fresh_fm}
+
+    # Normalize edge whitespace so re-runs are byte-stable.
+    body = existing_body.strip("\n")
+    for anchor, placeholder in owned_anchors_with_placeholders:
+        if f"## {anchor}\n" in body or f"## {anchor} " in body or body.endswith(f"## {anchor}"):
+            body = _replace_or_substitute(body, placeholder, anchor, placeholder)
+        else:
+            body = body.rstrip("\n") + "\n\n" + f"## {anchor}\n\n{placeholder}"
+        body = body.rstrip("\n")
+    return render_frontmatter(merged_fm, "\n" + body + "\n")
 
 
 def _build_project_overview_skeleton(frontmatter: Dict[str, Any], target: str) -> str:
@@ -431,6 +505,20 @@ def cmd_init_doc(args: argparse.Namespace) -> int:
         return 2
 
     doc_path = _doc_path_for(args)
+
+    # Project-tier docs may carry user/constitute-owned anchors alongside
+    # generate-docs's own. Merge instead of wholesale-overwrite so those
+    # anchors survive re-runs. Concern + package tiers are 100%
+    # generate-docs territory — wholesale overwrite stays correct there.
+    if args.tier == "project-overview":
+        skeleton_text = _merge_project_skeleton(
+            doc_path, skeleton_text, _PROJECT_OVERVIEW_OWNED_ANCHORS
+        )
+    elif args.tier == "project-architecture":
+        skeleton_text = _merge_project_skeleton(
+            doc_path, skeleton_text, _PROJECT_ARCHITECTURE_OWNED_ANCHORS
+        )
+
     skel_path = _skeleton_path(doc_path)
     skel_path.parent.mkdir(parents=True, exist_ok=True)
     skel_path.write_text(skeleton_text, encoding="utf-8")

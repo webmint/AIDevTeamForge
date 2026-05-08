@@ -154,6 +154,110 @@ def _collect_project_root_files(
     return records, hash_pairs
 
 
+def _read_project_name_from_config(devforge_dir: Path) -> Optional[str]:
+    """Read PROJECT_NAME from `.devforge/project-config.json` if non-null/non-empty."""
+    cfg_path = devforge_dir / "project-config.json"
+    if not cfg_path.is_file():
+        return None
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    name = cfg.get("PROJECT_NAME")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+def _read_project_root_from_init_yaml(devforge_dir: Path) -> Optional[str]:
+    """Extract `project_root:` value from `.devforge/init.yaml`.
+
+    `/init-forge` writes init.yaml with `project_root: <inner-monorepo-dir>`
+    in wrapper mode; in standalone mode the value is `.` (uninformative).
+    Returns the basename of the value when it's a non-trivial path; None
+    when the file is missing, the field is absent, or the value is `.`.
+
+    Plain regex parse — avoids a YAML dependency and the file format is
+    flat key:value at this level.
+    """
+    yaml_path = devforge_dir / "init.yaml"
+    if not yaml_path.is_file():
+        return None
+    try:
+        text = yaml_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.split("\n"):
+        if line.startswith("project_root:"):
+            value = line.split(":", 1)[1].strip().strip('"').strip("'")
+            if not value or value == ".":
+                return None
+            # Last path segment — handles both bare names and rare nested paths.
+            return value.rstrip("/").split("/")[-1]
+    return None
+
+
+def _common_path_prefix(packages: List[str]) -> Optional[str]:
+    """Return the deepest common parent directory across all package paths.
+
+    `packages` are project-relative paths like `db-cse-ui-strata/apps/app-web`
+    or `pkg-cse-core`. The returned value is the first path segment shared by
+    every entry — used as a fall-back project label in wrapper-mode setups
+    where the wrapper folder is structurally meaningless and every package
+    sits under a single inner monorepo dir.
+
+    Returns None when fewer than 2 packages OR no shared first segment.
+    """
+    if len(packages) < 2:
+        return None
+    first_segments = []
+    for pkg in packages:
+        if not pkg:
+            return None
+        head = pkg.split("/", 1)[0]
+        if not head:
+            return None
+        first_segments.append(head)
+    candidate = first_segments[0]
+    for seg in first_segments[1:]:
+        if seg != candidate:
+            return None
+    return candidate
+
+
+def _resolve_project_label(
+    cli_arg: str,
+    devforge_dir: Path,
+    project_root: Path,
+    package_paths: List[str],
+) -> str:
+    """Pick the most informative project label given current state.
+
+    Priority:
+      1. `--project` CLI arg (explicit override).
+      2. `PROJECT_NAME` in `.devforge/project-config.json` (populated by
+         a future `/configure` command — null until then).
+      3. `project_root` in `.devforge/init.yaml` (populated by `/init-forge`;
+         in wrapper mode this is the inner monorepo dir, e.g. `db-cse-ui-strata`;
+         in standalone mode it's `.` and skipped).
+      4. Common first-path-segment across all package paths (wrapper-mode
+         monorepos: every package lives under the same inner dir).
+      5. `project_root.name` (the wrapper folder's basename — the legacy default).
+    """
+    if cli_arg:
+        return cli_arg
+    cfg_name = _read_project_name_from_config(devforge_dir)
+    if cfg_name:
+        return cfg_name
+    init_root = _read_project_root_from_init_yaml(devforge_dir)
+    if init_root:
+        return init_root
+    common = _common_path_prefix(package_paths)
+    if common and common != project_root.name:
+        return common
+    return project_root.name
+
+
 def _compute_source_stamp(
     package_seeds: List[Dict[str, Any]],
     project_root_hashes: List[Tuple[str, str]],
@@ -206,7 +310,9 @@ def cmd_project_input(args: argparse.Namespace) -> int:
     root_records, root_hashes = _collect_project_root_files(project_root)
     source_stamp = _compute_source_stamp(package_seeds, root_hashes)
 
-    project_label = args.project or project_root.name
+    project_label = _resolve_project_label(
+        args.project, devforge_dir, project_root, pkg_paths
+    )
     output: Dict[str, Any] = {
         "project": project_label,
         "package_seeds": package_seeds,
