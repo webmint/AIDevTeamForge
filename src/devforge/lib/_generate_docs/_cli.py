@@ -42,6 +42,7 @@ from ._doc_setters import (
     cmd_set_doc_structure,
 )
 from ._manifest import cmd_extract_package_scripts
+from ._package_input import _build_package_input, cmd_package_input
 from ._preflight import _build_preflight, cmd_preflight
 from ._validate_doc import _build_validate_doc, cmd_validate_doc
 from ._render import (
@@ -381,6 +382,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("verify-file-docs", _build_verify_file_docs, cmd_verify_file_docs),
     # Plan F.2 — concern-input helper for doc-composer dispatch.
     ("concern-input", _build_concern_input, cmd_concern_input),
+    # Plan F.7 — package-input helper for package-tier dispatch.
+    ("package-input", _build_package_input, cmd_package_input),
     # Plan F.0 — preflight (vue-extract + index_repository + stamp diff).
     ("preflight", _build_preflight, cmd_preflight),
     # Plan F.5 — validate-doc (concern tier; v0).
