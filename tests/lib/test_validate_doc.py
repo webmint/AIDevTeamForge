@@ -41,10 +41,15 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from _generate_docs._validate_doc import (  # noqa: E402
+    _PACKAGE_ARCHITECTURE_REQUIRED_KEYS,
+    _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS,
+    _PACKAGE_OVERVIEW_REQUIRED_KEYS,
+    _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
     _parse_bullets,
     _resolve_cite_path,
     _split_sections,
     _validate_concern_doc,
+    _validate_package_doc,
     cmd_validate_doc,
 )
 
@@ -202,6 +207,198 @@ class ValidateConcernDocTests(unittest.TestCase):
         self.assertTrue(any("annotation" in e and "60" in e for e in errors))
 
 
+_VALID_PACKAGE_OVERVIEW = """---
+package: pkg-a
+last_indexed: 2026-05-08
+source_stamp: stamp-1
+---
+
+
+# pkg-a
+
+## Purpose
+
+Package purpose paragraph.
+
+## Concerns
+
+- alpha — first concern
+- beta — second concern; src/beta/
+- gamma — third concern
+"""
+
+
+_VALID_PACKAGE_ARCHITECTURE = """---
+package: pkg-a
+last_indexed: 2026-05-08
+source_stamp: stamp-1
+---
+
+
+# pkg-a architecture
+
+## Layers
+
+- presentation — Vue components; src/components/
+- data — repos; src/data/
+
+## Patterns
+
+- BLoC over Pinia — for cross-package state
+- ref vs reactive — primitives use ref(); src/lib.ts:5
+"""
+
+
+class ValidatePackageOverviewTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def _write(self, content: str) -> Path:
+        path = self.root / "docs" / "pkg-a" / "overview.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_well_formed_no_errors(self):
+        path = self._write(_VALID_PACKAGE_OVERVIEW)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_OVERVIEW_REQUIRED_KEYS,
+            _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
+        )
+        self.assertEqual(errors, [])
+
+    def test_missing_concerns_section(self):
+        broken = _VALID_PACKAGE_OVERVIEW.replace("## Concerns", "## Cncrns_typo")
+        path = self._write(broken)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_OVERVIEW_REQUIRED_KEYS,
+            _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
+        )
+        self.assertTrue(any("Concerns" in e for e in errors))
+
+    def test_missing_frontmatter_key(self):
+        broken = _VALID_PACKAGE_OVERVIEW.replace("source_stamp: stamp-1\n", "")
+        path = self._write(broken)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_OVERVIEW_REQUIRED_KEYS,
+            _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
+        )
+        self.assertTrue(any("source_stamp" in e for e in errors))
+
+    def test_bullet_exceeds_cap(self):
+        long_bullet = "- " + ("X" * 250) + " — alpha role"
+        broken = _VALID_PACKAGE_OVERVIEW.replace(
+            "- alpha — first concern", long_bullet
+        )
+        path = self._write(broken)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_OVERVIEW_REQUIRED_KEYS,
+            _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
+        )
+        self.assertTrue(any("length" in e and "200" in e for e in errors))
+
+    def test_banned_phrase_rejected(self):
+        broken = _VALID_PACKAGE_OVERVIEW.replace(
+            "Package purpose paragraph.",
+            "This document covers various aspects of pkg-a.",
+        )
+        path = self._write(broken)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_OVERVIEW_REQUIRED_KEYS,
+            _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
+        )
+        self.assertTrue(any("banned phrase" in e for e in errors))
+
+
+class ValidatePackageArchitectureTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def _write(self, content: str) -> Path:
+        path = self.root / "docs" / "pkg-a" / "architecture.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_well_formed_no_errors(self):
+        path = self._write(_VALID_PACKAGE_ARCHITECTURE)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_ARCHITECTURE_REQUIRED_KEYS,
+            _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS,
+        )
+        self.assertEqual(errors, [])
+
+    def test_missing_layers_section(self):
+        broken = _VALID_PACKAGE_ARCHITECTURE.replace("## Layers", "## Lrs_typo")
+        path = self._write(broken)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_ARCHITECTURE_REQUIRED_KEYS,
+            _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS,
+        )
+        self.assertTrue(any("Layers" in e for e in errors))
+
+    def test_missing_patterns_section(self):
+        broken = _VALID_PACKAGE_ARCHITECTURE.replace("## Patterns", "## Ptrns_typo")
+        path = self._write(broken)
+        errors = _validate_package_doc(
+            path,
+            _PACKAGE_ARCHITECTURE_REQUIRED_KEYS,
+            _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS,
+        )
+        self.assertTrue(any("Patterns" in e for e in errors))
+
+
+class CmdValidateDocPackageDispatchTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        self.devforge.mkdir()
+
+    def _write_doc(self, filename: str, content: str) -> None:
+        path = self.root / "docs" / "pkg-a" / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def _run(self, args):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cmd_validate_doc(args)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_overview_dispatch_passes(self):
+        self._write_doc("overview.md", _VALID_PACKAGE_OVERVIEW)
+        args = argparse.Namespace(
+            tier="package-overview",
+            target="pkg-a",
+            devforge_dir=str(self.devforge),
+        )
+        code, _, err = self._run(args)
+        self.assertEqual(code, 0, err)
+
+    def test_architecture_dispatch_passes(self):
+        self._write_doc("architecture.md", _VALID_PACKAGE_ARCHITECTURE)
+        args = argparse.Namespace(
+            tier="package-architecture",
+            target="pkg-a",
+            devforge_dir=str(self.devforge),
+        )
+        code, _, err = self._run(args)
+        self.assertEqual(code, 0, err)
+
+
 class CmdValidateDocTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -216,15 +413,15 @@ class CmdValidateDocTests(unittest.TestCase):
             code = cmd_validate_doc(args)
         return code, out.getvalue(), err.getvalue()
 
-    def test_unsupported_tier_returns_2(self):
+    def test_unknown_tier_returns_2(self):
         args = argparse.Namespace(
-            tier="package-overview",
+            tier="bogus-tier",
             target="pkg-a",
             devforge_dir=str(self.devforge),
         )
         code, _, err = self._run(args)
         self.assertEqual(code, 2)
-        self.assertIn("only tier=concern", err)
+        self.assertIn("unknown tier", err)
 
     def test_missing_doc_returns_2(self):
         args = argparse.Namespace(

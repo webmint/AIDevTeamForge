@@ -32,6 +32,14 @@ from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 _CONCERN_REQUIRED_KEYS = ("concern", "package", "files", "source_stamp", "last_indexed")
 _CONCERN_REQUIRED_SECTIONS = ("## Purpose", "## Structure")
 
+_PACKAGE_OVERVIEW_REQUIRED_KEYS = ("package", "source_stamp", "last_indexed")
+_PACKAGE_OVERVIEW_REQUIRED_SECTIONS = ("## Purpose", "## Concerns")
+
+_PACKAGE_ARCHITECTURE_REQUIRED_KEYS = ("package", "source_stamp", "last_indexed")
+_PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS = ("## Layers", "## Patterns")
+
+_BULLET_CAP = 200
+
 _BANNED_PHRASES_RE = re.compile(
     r"\b(this document|in this section|we will|various|several|many|some|other)\b",
     re.IGNORECASE,
@@ -181,6 +189,65 @@ def _validate_concern_doc(
     return errors
 
 
+_TIER_DOC_FILENAMES = {
+    "concern": "index.md",
+    "package-overview": "overview.md",
+    "package-architecture": "architecture.md",
+}
+
+
+def _validate_package_doc(
+    doc_path: Path,
+    required_keys: Tuple[str, ...],
+    required_sections: Tuple[str, ...],
+) -> List[str]:
+    """Validate a package-tier doc (overview or architecture).
+
+    Checks: file exists, frontmatter parses + has required keys, all
+    required section anchors present, no banned phrases, every bullet
+    inside required sections is ≤200 chars.
+    """
+    errors: List[str] = []
+    if not doc_path.is_file():
+        return [f"doc not found: {doc_path}"]
+    try:
+        text = doc_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"doc unreadable: {exc}"]
+
+    record: Dict[str, object] = {}
+    body = text
+    try:
+        record, body = parse_frontmatter(text)
+    except FrontmatterParseError as exc:
+        errors.append(f"frontmatter parse: {exc}")
+
+    missing_keys = [k for k in required_keys if k not in record]
+    if missing_keys:
+        errors.append(f"frontmatter missing keys: {missing_keys}")
+
+    for anchor in required_sections:
+        if anchor not in body:
+            errors.append(f"missing required section: {anchor!r}")
+
+    for match in _BANNED_PHRASES_RE.finditer(body):
+        line_idx = body[: match.start()].count("\n") + 1
+        errors.append(f"banned phrase {match.group(0)!r} at body line {line_idx}")
+
+    sections = _split_sections(body)
+    for anchor in required_sections:
+        section_name = anchor[3:]  # strip "## "
+        bullets = _parse_bullets(sections.get(section_name, ""))
+        for i, b in enumerate(bullets, start=1):
+            if len(b) > _BULLET_CAP:
+                errors.append(
+                    f"{section_name} bullet {i} length {len(b)} > {_BULLET_CAP} "
+                    f"(first 80 chars: {b[:80]!r})"
+                )
+
+    return errors
+
+
 def cmd_validate_doc(args: argparse.Namespace) -> int:
     """Handler for `validate-doc` subcommand. Returns CLI exit code."""
     tier = args.tier
@@ -188,16 +255,31 @@ def cmd_validate_doc(args: argparse.Namespace) -> int:
     devforge_dir = Path(args.devforge_dir)
     project_root = devforge_dir.parent.resolve()
 
-    if tier != "concern":
+    if tier not in _TIER_DOC_FILENAMES:
         print(
-            f"only tier=concern supported in this build (got tier={tier!r}); "
-            f"package + project tiers ship under forthcoming F.5 expansion",
+            f"unknown tier {tier!r} (supported: {tuple(_TIER_DOC_FILENAMES)})",
             file=sys.stderr,
         )
         return 2
 
-    doc_path = project_root / "docs" / target / "index.md"
-    errors = _validate_concern_doc(doc_path, target, project_root)
+    doc_path = project_root / "docs" / target / _TIER_DOC_FILENAMES[tier]
+    if tier == "concern":
+        errors = _validate_concern_doc(doc_path, target, project_root)
+    elif tier == "package-overview":
+        errors = _validate_package_doc(
+            doc_path,
+            _PACKAGE_OVERVIEW_REQUIRED_KEYS,
+            _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
+        )
+    elif tier == "package-architecture":
+        errors = _validate_package_doc(
+            doc_path,
+            _PACKAGE_ARCHITECTURE_REQUIRED_KEYS,
+            _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS,
+        )
+    else:  # pragma: no cover — guarded above
+        errors = [f"unhandled tier {tier!r}"]
+
     if errors:
         for line in errors:
             print(line, file=sys.stderr)
@@ -207,10 +289,14 @@ def cmd_validate_doc(args: argparse.Namespace) -> int:
 
 def _build_validate_doc(p: argparse.ArgumentParser) -> None:
     """argparse factory for the `validate-doc` subcommand."""
-    p.add_argument("--tier", required=True, choices=("concern",))
+    p.add_argument(
+        "--tier",
+        required=True,
+        choices=tuple(_TIER_DOC_FILENAMES),
+    )
     p.add_argument(
         "--target",
         required=True,
-        help="Tier target (concern: <package>/<concern>)",
+        help="Tier target (concern: <package>/<concern>; package-*: <package>)",
     )
     p.add_argument("--devforge-dir", default=".devforge")
