@@ -239,9 +239,12 @@ def _merge_project_skeleton(
     try:
         existing_fm, existing_body = parse_frontmatter(existing_text)
     except FrontmatterParseError:
-        # Malformed existing file — refuse to merge; cold-write the fresh
-        # skeleton (caller's init-doc semantics already wipe stale state).
-        return fresh_skeleton
+        # Stub file may ship without frontmatter (install-shipped stubs at
+        # docs/overview.md / docs/architecture.md have an H1 + section
+        # anchors but no `---` block). Treat the whole file as body and
+        # take frontmatter exclusively from the fresh skeleton.
+        existing_fm = {}
+        existing_body = existing_text
 
     try:
         fresh_fm, _fresh_body = parse_frontmatter(fresh_skeleton)

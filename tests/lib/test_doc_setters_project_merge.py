@@ -11,7 +11,8 @@ Cases:
   6.  Architecture-tier merge: Layers + Cross-Cuts owned, Architectural
       Decisions stub preserved
   7.  Frontmatter merge: existing keys preserved + fresh keys override
-  8.  Existing file with malformed frontmatter → cold-write fresh skeleton
+  8.  Existing file with no frontmatter (install-shipped stub) → merge
+      treats whole text as body, owned anchors appended, fresh frontmatter applied
   9.  Idempotent re-run: second init-doc produces same output as first
 
 Stdlib only. Python 3.8+.
@@ -206,12 +207,30 @@ class MergeProjectSkeletonTests(unittest.TestCase):
         self.assertIn("last_indexed: 2026-05-08", out)  # fresh overrides
         self.assertIn("source_stamp: fresh1234", out)  # fresh adds
 
-    def test_malformed_frontmatter_falls_back_to_cold_write(self):
-        self.doc_path.write_text("not even frontmatter\n", encoding="utf-8")
+    def test_no_frontmatter_treated_as_body(self):
+        # Stub files at src/docs/overview.md ship WITHOUT frontmatter
+        # (install copies them verbatim; constitute populates frontmatter
+        # later). Merger must treat the whole text as body so stub
+        # content (H1 + intro prose + section anchors) survives.
+        self.doc_path.write_text(
+            "# {{PROJECT_NAME}}\n\n## What this project is for\n\nstub.\n",
+            encoding="utf-8",
+        )
         out = _merge_project_skeleton(
             self.doc_path, _FRESH_OVERVIEW_SKELETON, _PROJECT_OVERVIEW_OWNED_ANCHORS
         )
-        self.assertEqual(out, _FRESH_OVERVIEW_SKELETON)
+        # Stub content preserved
+        self.assertIn("{{PROJECT_NAME}}", out)
+        self.assertIn("## What this project is for", out)
+        self.assertIn("stub.", out)
+        # Owned anchors appended with placeholders
+        self.assertIn("## Purpose", out)
+        self.assertIn("<!-- TODO: purpose -->", out)
+        self.assertIn("## Packages", out)
+        self.assertIn("<!-- TODO: packages -->", out)
+        # Fresh frontmatter applied (existing had none to merge from)
+        self.assertIn("project: my-proj", out)
+        self.assertIn("source_stamp: fresh1234", out)
 
     def test_idempotent_rerun_stable_output(self):
         # First run merges stub + adds owned anchors
