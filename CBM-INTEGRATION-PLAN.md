@@ -1,6 +1,11 @@
 # Plan F — Multi-tier docs/ + CBM as structural-query layer
 
-**Status (2026-05-08)**: COMPLETE end-to-end. F.0 / F.1 / F.2 / F.3 / F.4 / F.5 / F.7 / F.8 / F.9 / F.10 + 3a (split-dispatch v0) all shipped + V7 split-dispatch smoke + full-scale testForge20 run validated (148 docs across all 3 tiers, 0 unrecovered failures). F.11 (CBM-first enforcement hooks) is the only remaining placeholder — optional follow-on, not blocking. Plan F + 3a fully production-ready as of `662eca4` (project-tier section coexistence) + downstream commits. See per-section ✅ markers below.
+**Status (2026-05-08)**: Pipeline shipped + smoke-validated. NOT COMPLETE. F.0 / F.1 / F.2 / F.3 / F.4 / F.5 / F.7 / F.8 / F.9 / F.10 + 3a (split-dispatch v0) all shipped + V7 split-dispatch smoke + full-scale testForge20 run produced 148 docs across all 3 tiers with 0 unrecovered failures. Open work remaining:
+- **Project-tier shape gap** — current `docs/overview.md` + `docs/architecture.md` produce 2 sections each (Purpose+Packages / Layers+Cross-Cuts). cse-strata-ws-forge's curated equivalents are 9-10 sections each (Tech Stack, Project Structure, Entry Points, Key Commands, Module Map, Cross-Module Deps, Routes, Navigation Guards, Test Files for overview; Patterns, Conventions, Cross-Cuts with snippets, Dependency Direction Rules, Dependency Overview mermaid for architecture). Coverage ~5-10 % of bar. Schema-anchored expansion locked in memory `project_schema_anchored_generate_docs` (2026-04-30 ProjectIndexDoc + ArchitectureDoc + PackageDoc schemas). See `NEXT-SESSION-DUMP.md` Track 4 for full scope.
+- **F.11** — CBM-first enforcement hooks (4 sgaabdu4-style hooks, placeholder only).
+- **Incremental smoke** — single-file edit → 1 sub_concern + 1 parent regen — not exercised on testForge20 yet.
+
+Concern + package tiers ARE production-ready at current shape; project-tier needs the Track 4 expansion before Plan F can be marked COMPLETE.
 
 **Status (2026-05-07, historical)**: Approved. Supersedes Plan E. E.1 (sourcemap consumer) + E.1.b (nearest mode) + topology lock + iteration scaffold are committed foundations; F reshapes E.2–E.6 and adds F.0 + F.7–F.10. F.0 (preflight) added 2026-05-07 to reframe freshness from "invariant-to-maintain" to "operation-to-run" — collapsed three risk classes (reindex-discipline, stale cite-back, wasted dispatch) to non-issues.
 
