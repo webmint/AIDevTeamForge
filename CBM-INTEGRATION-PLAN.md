@@ -563,6 +563,97 @@ F.9 documents the soft read-tier order in command specs ("consult preflight → 
 - Empirical: in testForge20, run /research with hooks active; confirm `cbm-code-discovery-gate` fires when Claude tries Read/Grep/Glob on source files; confirm `bash-ban-raw-tools` fires on naive grep
 - Documentation: CLAUDE.md template has the section; instruction-author + claude-code-guide sign off on hook contract conventions
 
+### 3a — Split-dispatch for big concerns
+
+**Problem**
+
+F.2's `concern-input` helper enforces 6 KB/file + 60 KB total span batch caps. Concerns whose source subfolder exceeds the total cap (testForge20 reference: `db-cse-ui-strata/apps/app-web/src/components/` = 23 immediate subdirs + 457 vue/ts files) emit a `<batch cap reached>` placeholder; doc-composer dispatched with truncated input → low-fidelity concern doc. V4/V5/V6 sidestepped via `TEST SCOPE OVERRIDE` (commit `d449f74` dropped components, kept pkg-cse-core/* only). 3a removes the override.
+
+**Locked decision**
+
+Split-dispatch at depth 1: when total > `--split-threshold-kb` AND concern has ≥ 2 immediate child dirs, split into sub-concerns where each immediate child = one dispatch. Parent doc gets orchestrator-direct synthesized `## Sub-concerns` section listing each child + 1-line summary + link to child's doc. Recursive split (depth > 1) deferred to v0.2.
+
+**Components**
+
+#### 3a.1 — concern-input helper split logic (DONE — commit `1f21b2b`)
+
+`src/devforge/lib/_generate_docs/_concern_input.py`:
+- `--split-threshold-kb N` flag (default 50, 0 disables).
+- Build all spans uncapped first; measure total; if `total > threshold AND ≥2 immediate dirs` → emit split-batch JSON.
+- Split shape: `{concern, package, subfolder, split: true, parent_meta: {tree_text, subconcern_names, loose_files}, sub_concerns: [<batch>, ...], source_stamp: <agg>}`.
+- Each sub_concern is a self-sufficient batch with own `source_stamp` + per-batch 60 KB cap re-applied.
+- Aggregate `source_stamp` = SHA-256 prefix-16 over (sorted sub_concern stamps + sorted loose-file content_hash strings).
+- Backward-compat: under threshold OR < 2 children → single-batch shape unchanged.
+- `_build_spans_and_stamp` signature widened from `(records, stamp)` to `(records, file_hashes, stamp)`. Two consumers updated (`_preflight.py`, tests).
+- 21 new tests in `tests/lib/test_concern_input_split.py`. python-reviewer findings folded.
+
+#### 3a.2 — Setter primitives + skeleton
+
+Add to `src/devforge/lib/_generate_docs/_doc_setters.py`:
+- `init-doc --tier concern --target X --split true|false`. With `--split true`: skeleton = `## Purpose` + `## Sub-concerns` (no `## Structure` for parents — parents are dir aggregates, leaves live in children).
+- `set-doc-subconcerns --tier concern --target X --subconcerns '[{"name":"<>","purpose_summary":"<>","doc_path":"<>"},...]'`. Renders bulleted `## Sub-concerns` section.
+
+#### 3a.3 — `/generate-docs` Phase 2 split-aware dispatch
+
+Edit `src/commands/generate-docs/main.md` Phase 2 (concern tier loop):
+- Per concern: read `concern-input` output.
+- `split: false` → existing flow (1 dispatch → render `docs/<P>/<concern>/index.md`).
+- `split: true`:
+  1. For each `sub_concern` in `sub_concerns[]`: render `docs/<P>/<concern>/<sub>/index.md.skeleton` → dispatch doc-composer with sub_concern batch (tier `sub-concern` = same as concern) → parse 2 sections (Purpose + Structure) → setters → validate → render.
+  2. Render parent `docs/<P>/<concern>/index.md` orchestrator-direct (NO subagent dispatch — pure synthesis): `## Purpose` (1-paragraph synthesis listing each sub_concern's role) + `## Sub-concerns` (bullet list `<name> — <purpose_summary>` linked to child).
+
+#### 3a.4 — Preflight stamp aggregation
+
+`src/devforge/lib/_generate_docs/_preflight.py`:
+- For split concerns: parent `source_stamp` = SHA over sorted sub_concerns' stamps. Each sub_concern gets its own status (`new`/`unchanged`/`changed`) against `docs/<P>/<concern>/<sub>/index.md`.
+- Parent concern status: `unchanged` iff all sub_concerns are `unchanged`. Else `changed`.
+- F.4 Phase 2 split-aware skip: skip individual sub_concern dispatch when its status is `unchanged`. Skip parent re-synthesis when ALL sub_concerns skipped. Result: 1 file edit under `components/accounts/` → 1 sub_concern dispatch + 1 parent re-synthesis, not 23.
+
+#### 3a.5 — validate-doc split extensions
+
+`src/devforge/lib/_generate_docs/_validate_doc.py`:
+- Sub-concern doc shape = same as concern (Purpose + Structure required); validation reuses concern rules.
+- Parent concern (split) required sections = `## Purpose` + `## Sub-concerns` (NO Structure). Validate: each `## Sub-concerns` bullet has format `<name> — <text> ([→](<rel-path>))` where `<rel-path>` resolves to a real file under `docs/<P>/<concern>/<name>/index.md`; `<text>` ≤ 200 chars.
+
+#### 3a.6 — Test scope (per component)
+
+- `tests/lib/test_concern_input_split.py` — DONE in 3a.1 (21 tests).
+- `tests/lib/test_doc_setters_split.py` — `init-doc --split true` produces 2-section skeleton; `set-doc-subconcerns` writes correct bullet format; malformed JSON → exit 2.
+- `tests/lib/test_validate_doc_split.py` — parent doc with valid `## Sub-concerns` passes; broken `doc_path` fails; sub-concern doc identical to current concern passes (no regression).
+
+#### 3a.7 — V7 empirical smoke
+
+After helpers + setters + validators ship:
+1. `TEST SCOPE OVERRIDE` set to `db-cse-ui-strata/apps/app-web` package only (or just one big concern: `components`).
+2. Run `/generate-docs`. Expect: 1 preflight + 23 sub_concern dispatches (Haiku) + 1 parent synthesis (orchestrator-direct, no dispatch). 23 sub_concern docs at `docs/<package>/components/<sub>/index.md` + 1 parent at `docs/<package>/components/index.md`. Cost ~23 × $0.20 = ~$4.60. Wall-clock ~4 min for components alone.
+3. Incremental run: touch one file under `components/accounts/` → only `accounts` sub_concern + parent regenerate; other 22 sub_concerns skip via stamp gate.
+4. Validate all 24 docs pass `validate-doc`.
+
+#### Verify 3a
+- 3a.1 helper tests green (21 tests, DONE — commit `1f21b2b`)
+- 3a.2 setter tests green (≥3)
+- 3a.5 validator tests green (≥3)
+- V7 smoke: 23 sub_concern docs + 1 parent rendered cleanly on testForge20 app-web components concern
+- Incremental: single-file edit triggers exactly 1 sub_concern + 1 parent regen
+- Cost-gate prose includes split factor estimate (F.4 Phase 2 prompt updated)
+
+**Open risks**
+
+1. **Recursive split (depth > 1)** — sub_concern itself over 60 KB → emits `truncated:true` warning in v0; defer recursion to v0.2 if testForge20 reveals real cases.
+2. **Cost gate UX** — F.4 cost-gate prompt currently estimates per-concern, blind to split. Update to surface "23 sub-concerns under `components`" before AskUserQuestion.
+3. **Loose files at concern root with split** — listed in `parent_meta.loose_files` (paths only), not deep-documented. v0.2 can promote to a synthetic sub_concern.
+4. **Naming collisions** — n/a; sub_concern paths scoped under parent.
+
+**Step order (commit shape)**
+
+1. ✅ 3a.1 — concern-input helper split logic + tests (commit `1f21b2b`)
+2. ⬜ 3a.2 — setters + skeleton (`init-doc --split` + `set-doc-subconcerns` + tests)
+3. ⬜ 3a.3 — /generate-docs Phase 2 split-aware dispatch (spec edit)
+4. ⬜ 3a.4 — preflight stamp aggregation (helper edit + tests)
+5. ⬜ 3a.5 — validate-doc split extensions (helper edit + tests)
+6. ⬜ V7 empirical smoke on testForge20 components concern
+7. ⬜ F.4 cost-gate prose update for split factor
+
 ---
 
 ## Disposition of prior work
