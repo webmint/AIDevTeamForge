@@ -170,19 +170,76 @@ Disk writes happen via the setters (in-place skeleton edit) and Step 2.5's `rend
 
 ---
 
-## Phase 3 — Package tier (NO-OP in this build)
+## Phase 3 — Package tier loop (after concern tier completes)
 
-Package overview/architecture/glossary docs ship under forthcoming F.4 expansion. Skip silently.
+After Phase 2's concern docs are all rendered + validated, run the package tier for every package whose concerns appeared in the concern-tier loop. Two docs per package: `overview.md` + `architecture.md`. (Glossary tier dropped 2026-05-08 — Purpose paragraphs surface terms in context.)
+
+For each in-scope package P (derive the unique set from preflight's `concerns[*].package`):
+
+### Step 3.1 — Pull batch input
+
+```
+./.devforge/lib/generate_docs_helper package-input --package "$P"
+```
+
+Returns JSON with `concern_seeds[]` (frontmatter + Purpose text from each rendered concern doc) + `package_root_files[]` (README/CHANGELOG/package.json comment-rich spans) + `source_stamp`.
+
+If all of P's concerns were `status=unchanged` AND the prior package overview/architecture docs' frontmatter `source_stamp` matches the new `source_stamp` from package-input → SKIP this package's package-tier dispatches. (Per-package stamp comparison; F.0 currently does NOT compute package stamps, so the orchestrator does this check inline.)
+
+### Step 3.2 — package-overview pipeline
+
+Frontmatter:
+```json
+{"package": "<P>", "last_indexed": "<today>", "source_stamp": "<from package-input>"}
+```
+
+```
+./.devforge/lib/generate_docs_helper init-doc --tier package-overview --target "$P" \
+    --frontmatter "$FM"
+```
+
+Compose orchestrator-direct (no subagent):
+- **Purpose** (1-3 sentences) — synthesize across `concern_seeds[*].purpose_text` + `package_root_files[*].comment_rich_span`. Cross-cuts named. Banned phrases absent.
+- **Concerns** (bullet list) — one entry per `concern_seeds[*]`: `{name: <concern>, role: <one-line role from concern_seeds[*].purpose_text>, cite: <docs/<P>/<concern>/>}`.
+
+```
+./.devforge/lib/generate_docs_helper set-doc-purpose --tier package-overview --target "$P" --text "..."
+./.devforge/lib/generate_docs_helper set-doc-concerns --tier package-overview --target "$P" \
+    --concerns '<json array>'
+./.devforge/lib/generate_docs_helper render-doc --tier package-overview --target "$P"
+./.devforge/lib/generate_docs_helper validate-doc --tier package-overview --target "$P"
+```
+
+On validate-doc failure: re-init the slot + re-compose with stderr as feedback. Cap 3 retries.
+
+### Step 3.3 — package-architecture pipeline
+
+Frontmatter (same shape as 3.2). Sections:
+- **Layers** (bullet list) — derived from concern groupings in `concern_seeds[]` (e.g., concerns under `presentation/`, `domain/`, `data/`) + cross-package layer cites. Each entry `{name, role, cite}`.
+- **Patterns** (bullet list) — package-wide conventions from `package_root_files[]` + cross-concern patterns observed in `concern_seeds[]`. Each entry `{name, rule, cite}`.
+
+```
+./.devforge/lib/generate_docs_helper init-doc --tier package-architecture --target "$P" \
+    --frontmatter "$FM"
+./.devforge/lib/generate_docs_helper set-doc-layers --tier package-architecture --target "$P" \
+    --layers '<json array>'
+./.devforge/lib/generate_docs_helper set-doc-patterns --tier package-architecture --target "$P" \
+    --patterns '<json array>'
+./.devforge/lib/generate_docs_helper render-doc --tier package-architecture --target "$P"
+./.devforge/lib/generate_docs_helper validate-doc --tier package-architecture --target "$P"
+```
+
+Same retry semantics as Step 3.2.
 
 ## Phase 4 — Project tier (NO-OP in this build)
 
-Project overview/architecture docs ship under forthcoming F.4 expansion. Skip silently.
+Project overview/architecture docs ship under forthcoming F.8. Skip silently.
 
 ---
 
 ## Phase 5 — Verify
 
-For each rendered concern doc, walk `docs/<pkg>/<concern>/index.md` and run `validate-doc` once more (defensive — Step 2.5 should have caught everything). Aggregate any new failures.
+For each rendered doc — concern AND package tier — walk the on-disk file and run `validate-doc` once more (defensive — per-tier validation in Steps 2.5/3.2/3.3 should have caught everything). Aggregate any new failures.
 
 ---
 
@@ -194,8 +251,12 @@ Print:
 - Concerns skipped via stamp gate: `unchanged`
 - Concerns rendered + validated: count of green
 - Concerns failed after 3 retries: list with paths
-- Wall-clock: vue-extract + index_repository + per-concern dispatch totals
-- Token-cost estimate: ~$0.10-0.20 per dispatched concern (Haiku, ~10K input + ~5K output)
+- Packages dispatched (Phase 3): count + skipped count
+- Package overview docs rendered + validated: N
+- Package architecture docs rendered + validated: N
+- Package-tier failures: list with paths
+- Wall-clock: vue-extract + index_repository + per-concern + per-package dispatch totals
+- Token-cost estimate: ~$0.10-0.20 per dispatched concern + ~$0.05-0.15 per package tier doc (Haiku)
 
 ---
 
