@@ -1,6 +1,8 @@
 # Plan F — Multi-tier docs/ + CBM as structural-query layer
 
-**Status (2026-05-07)**: Approved. Supersedes Plan E. E.1 (sourcemap consumer) + E.1.b (nearest mode) + topology lock + iteration scaffold are committed foundations; F reshapes E.2–E.6 and adds F.0 + F.7–F.10. F.0 (preflight) added 2026-05-07 to reframe freshness from "invariant-to-maintain" to "operation-to-run" — collapsed three risk classes (reindex-discipline, stale cite-back, wasted dispatch) to non-issues.
+**Status (2026-05-08)**: COMPLETE end-to-end. F.0 / F.1 / F.2 / F.3 / F.4 / F.5 / F.7 / F.8 / F.9 / F.10 + 3a (split-dispatch v0) all shipped + V7 split-dispatch smoke + full-scale testForge20 run validated (148 docs across all 3 tiers, 0 unrecovered failures). F.11 (CBM-first enforcement hooks) is the only remaining placeholder — optional follow-on, not blocking. Plan F + 3a fully production-ready as of `662eca4` (project-tier section coexistence) + downstream commits. See per-section ✅ markers below.
+
+**Status (2026-05-07, historical)**: Approved. Supersedes Plan E. E.1 (sourcemap consumer) + E.1.b (nearest mode) + topology lock + iteration scaffold are committed foundations; F reshapes E.2–E.6 and adds F.0 + F.7–F.10. F.0 (preflight) added 2026-05-07 to reframe freshness from "invariant-to-maintain" to "operation-to-run" — collapsed three risk classes (reindex-discipline, stale cite-back, wasted dispatch) to non-issues.
 
 **Branch**: continues on `develop-2.0-init`.
 
@@ -617,9 +619,10 @@ Edit `src/commands/generate-docs/main.md` Phase 2 (concern tier loop):
 
 #### 3a.6 — Test scope (per component)
 
-- `tests/lib/test_concern_input_split.py` — DONE in 3a.1 (21 tests).
-- `tests/lib/test_doc_setters_split.py` — `init-doc --split true` produces 2-section skeleton; `set-doc-subconcerns` writes correct bullet format; malformed JSON → exit 2.
-- `tests/lib/test_validate_doc_split.py` — parent doc with valid `## Sub-concerns` passes; broken `doc_path` fails; sub-concern doc identical to current concern passes (no regression).
+- `tests/lib/test_concern_input_split.py` — DONE in 3a.1 (21 tests, commit `1f21b2b`).
+- `tests/lib/test_doc_setters_split.py` — DONE in 3a.2 (22 tests, commit `0bc6e93`): `init-doc --split` (bare flag) produces 2-section skeleton; `set-doc-subconcerns` writes correct bullet format; partial-entry skip; non-concern tier rejected; multi-line bullet continuation; mixed complete+partial entries.
+- `tests/lib/test_preflight_split.py` — DONE in 3a.4 (15 tests, commit `60c2c8b`): cross-helper aggregate-stamp consistency with concern-input; per-child + parent status classification; `subconcern_counts` populated.
+- `tests/lib/test_validate_doc_split.py` — DONE in 3a.5 (17 tests, commit `751effc`): parent doc with valid `## Sub-concerns` passes; broken `doc_path` fails; multi-line bullet continuation parses + resolves; summary > 200 chars caught; `--split` rejected on non-concern tiers.
 
 #### 3a.7 — V7 empirical smoke
 
@@ -630,12 +633,14 @@ After helpers + setters + validators ship:
 4. Validate all 24 docs pass `validate-doc`.
 
 #### Verify 3a
-- 3a.1 helper tests green (21 tests, DONE — commit `1f21b2b`)
-- 3a.2 setter tests green (≥3)
-- 3a.5 validator tests green (≥3)
-- V7 smoke: 23 sub_concern docs + 1 parent rendered cleanly on testForge20 app-web components concern
-- Incremental: single-file edit triggers exactly 1 sub_concern + 1 parent regen
-- Cost-gate prose includes split factor estimate (F.4 Phase 2 prompt updated)
+- ✅ 3a.1 helper tests green (21 tests, commit `1f21b2b`)
+- ✅ 3a.2 setter tests green (22 tests, commit `0bc6e93`)
+- ✅ 3a.4 preflight tests green (15 tests, commit `60c2c8b`; cross-helper stamp parity enforced)
+- ✅ 3a.5 validator tests green (17 tests, commit `751effc`)
+- ✅ V7 smoke: 23 sub_concern docs + 1 parent rendered cleanly on testForge20 (commit `8a6e14c` scope, closeout `0cf9265`); first-attempt success, 0 retries, ~10 min wall-clock orchestrator-direct compose
+- ✅ Cost-gate prose includes split factor estimate (commit `0cf9265`; subconcern_counts surfaced + total_dispatches formula in Phase 1)
+- ⬜ Incremental smoke (single-file edit → 1 sub_concern + 1 parent regen) — not yet exercised on testForge20; full-run validation passed instead. Defer to next session if needed.
+- ✅ Full-scale validation (beyond V7 single-concern scope): 148 docs across all 3 tiers (100 concern + 46 package + 2 project), 0 unrecovered failures, retry budget=1 sufficient at testForge20 scale.
 
 **Open risks**
 
@@ -647,12 +652,19 @@ After helpers + setters + validators ship:
 **Step order (commit shape)**
 
 1. ✅ 3a.1 — concern-input helper split logic + tests (commit `1f21b2b`)
-2. ⬜ 3a.2 — setters + skeleton (`init-doc --split` + `set-doc-subconcerns` + tests)
-3. ⬜ 3a.3 — /generate-docs Phase 2 split-aware dispatch (spec edit)
-4. ⬜ 3a.4 — preflight stamp aggregation (helper edit + tests)
-5. ⬜ 3a.5 — validate-doc split extensions (helper edit + tests)
-6. ⬜ V7 empirical smoke on testForge20 components concern
-7. ⬜ F.4 cost-gate prose update for split factor
+2. ✅ 3a.2 — setters + skeleton: `init-doc --split` + `set-doc-subconcerns` + 22 tests (commit `0bc6e93`)
+3. ✅ 3a.3 — /generate-docs Phase 2 split-aware dispatch spec edit (commit `992962b`)
+4. ✅ 3a.4 — preflight stamp aggregation + cross-helper consistency + 15 tests (commit `60c2c8b`)
+5. ✅ 3a.5 — validate-doc split extensions + 17 tests (commit `751effc`)
+6. ✅ V7 empirical smoke on testForge20 app-web/components concern (scope `8a6e14c`, closeout `0cf9265`): 23 sub_concern + 1 parent rendered first attempt, 0 retries
+7. ✅ F.4 cost-gate prose update for split factor (commit `0cf9265`)
+
+**Beyond 3a — production hardening (same session, 2026-05-08):**
+
+8. ✅ Production cleanup of /generate-docs spec (commit `adb16f0`): drop CSE refs / V4-V7 dev tags / Plan F-versioning / vertical slice framing / doc-composer subagent file
+9. ✅ vue-extract gated on `.vue` substring presence in `.devforge/index.json` (commit `3da8102`)
+10. ✅ Project-tier label resolver + section coexistence with constitute stubs (commit `662eca4` + follow-up): `_resolve_project_label` chain (--project arg → project-config PROJECT_NAME → init.yaml `project_root` → common path prefix → wrapper basename); `_merge_project_skeleton` preserves non-owned anchors verbatim across re-runs
+11. ✅ Full-scale validation: 148 docs / 0 unrecovered failures across all 3 tiers on testForge20
 
 ---
 
