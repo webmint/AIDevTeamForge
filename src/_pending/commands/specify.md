@@ -10,6 +10,18 @@ Create a structured specification for a feature or change. This command takes a 
 ## Arguments
 - `$ARGUMENTS` — The feature description provided by the user. If empty, ask the user to describe what they want.
 
+## Preflight (CBM Refresh + Read Tier)
+
+Before authoring/executing, invoke `./.devforge/lib/generate_docs_helper preflight`. Skip if `.devforge/.preflight-stamp` is fresher than 60s. Then consult, in order:
+
+1. Concern md (`docs/<package>/<concern>/index.md`) per affected area
+2. `docs/architecture.md` (project) + `docs/<package>/architecture.md` (package)
+3. `constitution.md` for non-negotiable rules
+4. CBM tools (`agentic_context`, `search_graph`) to verify constraints against actual code
+5. User clarifications for spec gaps
+
+Use CBM tools for structural lookups (functions, callers, types, deps); consult `docs/` for narrative orientation.
+
 ## PHASE 0: Branch Setup
 
 Before any spec work, ensure you're on a dedicated spec branch.

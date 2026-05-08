@@ -50,6 +50,16 @@ No `Co-Authored-By`. No AI traces. No conventional commit prefixes.
 
 **Recovery**: Phase 0 checks source repo state via wip.md's `## Source Repo Checkpoint` section. Rollback resets source: `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`.
 
+## Preflight (CBM Refresh + Read Tier)
+
+Before authoring/executing, invoke `./.devforge/lib/generate_docs_helper preflight`. Skip if `.devforge/.preflight-stamp` is fresher than 60s. Then consult, in order:
+
+1. CBM: `search_graph`, `trace_path`, `agentic_impact` for usages + blast-radius before moving symbols
+2. Source files (Read) for restructuring
+3. Concern md (`docs/<package>/<concern>/index.md`) to avoid touching documented hazards
+
+Use CBM tools for structural lookups (functions, callers, types, deps); consult `docs/` for narrative orientation.
+
 ## PHASE 0: Recovery Check
 
 Before anything else, check if a previous refactoring was interrupted.

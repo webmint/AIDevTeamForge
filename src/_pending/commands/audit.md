@@ -17,6 +17,15 @@ Standalone, on-demand whole-codebase audit for periodic "second opinion" quality
 ## Arguments
 - `$ARGUMENTS` — empty (default: `--full`), `--full`, `--uncommitted`, file path (with optional `:start-end`), or directory path. Empty means **full codebase**, deliberately differing from `/security` where empty means uncommitted.
 
+## Preflight (CBM Refresh + Read Tier)
+
+Before authoring/executing, invoke `./.devforge/lib/generate_docs_helper preflight`. Skip if `.devforge/.preflight-stamp` is fresher than 60s. Then consult, in order:
+
+1. CBM: `agentic_quality` for hotspots, coupling, complexity
+2. Walk `docs/` for stale frontmatter — preflight surfaces concerns where source changed since last doc write as `concerns[].status="changed"`
+
+Use CBM tools for structural lookups (functions, callers, types, deps); consult `docs/` for narrative orientation.
+
 ## PHASE 1 — Load Context & Guard
 
 **Step order matters**: cheapest guards first, mode determination before mode-conditional I/O.

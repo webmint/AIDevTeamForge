@@ -17,6 +17,16 @@ Takes an approved specification and breaks it into ordered, atomic tasks with de
 3. If the spec is not approved: "Run `/specify` first, then get it approved."
 4. If the plan is not approved: "Run `/plan` first, then get it approved."
 
+## Preflight (CBM Refresh + Read Tier)
+
+Before authoring/executing, invoke `./.devforge/lib/generate_docs_helper preflight`. Skip if `.devforge/.preflight-stamp` is fresher than 60s. Then consult, in order:
+
+1. `plan.md` (input)
+2. Concern md (`docs/<package>/<concern>/index.md`) per affected concern
+3. CBM: `agentic_context` for unresolved structural questions
+
+Use CBM tools for structural lookups (functions, callers, types, deps); consult `docs/` for narrative orientation.
+
 ## PHASE 1: Load Context
 
 Read these files in order:

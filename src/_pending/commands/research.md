@@ -32,6 +32,17 @@ Lightweight pre-step before `/specify`. Use when you have a vague idea or topic 
 | `/research` | Vague idea or topic | Does this fit? What exists? What are the options? | Feasibility report |
 | `/specify` | Feature description (any clarity level) | Create a formal contract with acceptance criteria | Spec file |
 
+## Preflight (CBM Refresh + Read Tier)
+
+Before authoring/executing, invoke `./.devforge/lib/generate_docs_helper preflight`. Skip if `.devforge/.preflight-stamp` is fresher than 60s. Then consult, in order:
+
+1. Concern md (`docs/<package>/<concern>/index.md`) for orientation on the relevant area
+2. `docs/architecture.md` (project) + `docs/<package>/architecture.md` (package) for cross-cuts
+3. CBM: `agentic_context "<topic>"`, `search_graph`, `search_code` for fuzzy term lookup
+4. Source files (Read) only when CBM lookup is insufficient
+
+Use CBM tools for structural lookups (functions, callers, types, deps); consult `docs/` for narrative orientation.
+
 ## PHASE 1: Load Context
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, scope all codebase scanning to that path.

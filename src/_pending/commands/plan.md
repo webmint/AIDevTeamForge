@@ -38,6 +38,16 @@ Architect is a pure director: it decides HOW, but never writes implementation co
 
 Decisions produced during this command follow the "Output Format for Decisions" in `architect.md` and are embedded into the plan's Key Design Decisions section and the research.md file when applicable.
 
+## Preflight (CBM Refresh + Read Tier)
+
+Before authoring/executing, invoke `./.devforge/lib/generate_docs_helper preflight`. Skip if `.devforge/.preflight-stamp` is fresher than 60s. Then consult, in order:
+
+1. `docs/architecture.md` (project) + `docs/<package>/architecture.md` (package)
+2. CBM: `trace_path`, `agentic_impact` for call-chain + impact analysis
+3. `constitution.md` for architecture rules
+
+Use CBM tools for structural lookups (functions, callers, types, deps); consult `docs/` for narrative orientation.
+
 ## PHASE 0: Research Evaluation
 
 **Guard**: Read `constitution.md`. If it contains `_Run /constitute to populate_`, stop: "⛔ constitution.md has not been populated yet. Run `/constitute` before using `/plan`."

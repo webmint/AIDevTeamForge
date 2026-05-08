@@ -41,6 +41,16 @@ Skip this section entirely when `SOURCE_ROOT` is `.` (standalone mode).
 
 **Recovery**: Phase 0 checks source repo state via wip.md's `## Source Repo Checkpoint` section. Rollback resets source: `git -C $SOURCE_ROOT reset --hard $SOURCE_CHECKPOINT`.
 
+## Preflight (CBM Refresh + Read Tier)
+
+Before authoring/executing, invoke `./.devforge/lib/generate_docs_helper preflight`. Skip if `.devforge/.preflight-stamp` is fresher than 60s. Then consult, in order:
+
+1. `task.md` (input)
+2. CBM: `get_code_snippet` at function level for the symbols the task touches
+3. Source files (Read) for implementation context
+
+Use CBM tools for structural lookups (functions, callers, types, deps); consult `docs/` for narrative orientation.
+
 ## PHASE 0: Recovery Check
 
 Before anything else, check if a previous task execution was interrupted.
