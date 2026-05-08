@@ -44,6 +44,7 @@ if str(_LIB_DIR) not in sys.path:
 from _generate_docs._preflight import (  # noqa: E402
     _diff_concern,
     _enumerate_concerns,
+    _index_has_vue_files,
     _read_prior_stamp,
     cmd_preflight,
 )
@@ -144,6 +145,42 @@ class ReadPriorStampTests(unittest.TestCase):
         doc = self.root / "no_stamp.md"
         doc.write_text("---\nconcern: order\n---\n\nbody\n", encoding="utf-8")
         self.assertIsNone(_read_prior_stamp(doc))
+
+
+class IndexHasVueFilesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+
+    def test_missing_index_returns_none(self):
+        # Index file doesn't exist → None (caller fails open by running vue-extract)
+        self.assertIsNone(_index_has_vue_files(self.devforge))
+
+    def test_index_with_vue_path_returns_true(self):
+        _write_index_json(
+            self.devforge,
+            packages={"pkg-a": {"files": ["src/components/Foo.vue", "src/order/x.ts"]}},
+        )
+        self.assertIs(_index_has_vue_files(self.devforge), True)
+
+    def test_index_without_vue_path_returns_false(self):
+        _write_index_json(
+            self.devforge,
+            packages={"pkg-a": {"files": ["src/order/x.ts", "src/order/y.ts"]}},
+        )
+        self.assertIs(_index_has_vue_files(self.devforge), False)
+
+    def test_substring_anywhere_in_file_counts(self):
+        # Plain text scan — `.vue` substring in any string field triggers True.
+        # Even if the path is in a `description` or comment-like field.
+        self.devforge.mkdir(parents=True, exist_ok=True)
+        (self.devforge / "index.json").write_text(
+            '{"version":1,"description":"a .vue project","packages":{}}',
+            encoding="utf-8",
+        )
+        self.assertIs(_index_has_vue_files(self.devforge), True)
 
 
 class DiffConcernTests(unittest.TestCase):

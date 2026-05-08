@@ -31,7 +31,6 @@ The following are FORBIDDEN under /generate-docs:
 - Running custom Python or bash that emits markdown content directly to `docs/<pkg>/<concern>/index.md`.
 - Invoking legacy concern setters (`set-concern-overview`, `set-concern-tree`, `add-concern-export`, `add-concern-type`, `add-concern-dep`, `add-concern-hazard`, `set-concern-usage-example`, `render-concern-doc`, `validate-concern`). Those primitives emit a different shape and are out of scope.
 - Running `reset` — `init-doc` is idempotent and resets its state slot wholesale on every call.
-- Adding `## Hazards` to concern docs. Hazards belong to `/audit` (separate on-demand quality review). Concern docs carry **only** `## Purpose` and `## Structure` (annotated tree).
 
 The helper chain is the ONLY canonical path. Any divergence emits the wrong shape and breaks downstream consumers expecting `## Purpose` + `## Structure`.
 
@@ -65,7 +64,7 @@ Captures stdout JSON. Key fields used downstream:
 - `subconcern_counts` — `{unchanged, changed, new}` aggregated across every split parent's children. Used for cost estimation.
 - `vue_extract` + `index_repository` — wall-clock and counts; surface to user
 
-vue-extract regenerates `.devforge/vue-tmp/`; CBM `index_repository` reindexes. Both idempotent. On non-zero exit → ABORT with stderr verbatim.
+vue-extract regenerates `.devforge/vue-tmp/` ONLY when `.devforge/index.json` contains the substring `.vue` (cheap text scan, no JSON parse). On Vue-free codebases the helper auto-skips it (`vue_extract.ran=false`, `reason="no .vue files in .devforge/index.json"`) without invoking the launcher. CBM `index_repository` reindexes. Both idempotent. On non-zero exit → ABORT with stderr verbatim.
 
 ### Cost gate (split-aware estimate)
 

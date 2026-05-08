@@ -257,6 +257,22 @@ def _diff_concern(
     }
 
 
+def _index_has_vue_files(devforge_dir: Path) -> Optional[bool]:
+    """Plain text scan of .devforge/index.json for any `.vue` substring.
+
+    Returns True if `.vue` appears anywhere in the file, False if not,
+    None if the index file is missing or unreadable (caller fails open
+    by running vue-extract).
+    """
+    index_path = devforge_dir / "index.json"
+    if not index_path.is_file():
+        return None
+    try:
+        return ".vue" in index_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 def _run_vue_extract(
     devforge_dir: Path, project_root: Path
 ) -> Dict[str, Any]:
@@ -365,6 +381,8 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
     if args.skip_vue_extract:
         output["vue_extract"] = {"ran": False, "reason": "skipped via flag"}
+    elif _index_has_vue_files(devforge_dir) is False:
+        output["vue_extract"] = {"ran": False, "reason": "no .vue files in .devforge/index.json"}
     else:
         output["vue_extract"] = _run_vue_extract(devforge_dir, project_root)
         if output["vue_extract"].get("exit_code", 0) not in (0,) and output["vue_extract"].get("ran"):
