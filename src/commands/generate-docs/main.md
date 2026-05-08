@@ -10,22 +10,29 @@ The full Plan E skeleton-fill spec is preserved at git commit `bdae59d` (`git sh
 
 ---
 
-## ⚠️ TEST SCOPE OVERRIDE — pkg-cse-client ONLY (V5 SMOKE)
+## ⚠️ TEST SCOPE OVERRIDE — V6 (3 small packages for project-tier smoke)
 
-**Active until removed.** V5 empirical smoke for the F.7 package tier flow on the smallest viable package. Phase 2 concern tier loop is restricted to the scope below; Phase 3 package tier loop runs against the same package set.
+**Active until removed.** V6 empirical smoke for the F.8 project-tier flow. Three small packages give the project doc enough package_seeds[] material for meaningful Layers / Cross-Cuts synthesis without spending big on a full pass.
 
-**In-scope concerns**:
-- `db-cse-ui-strata/packages/pkg-cse-client/*` — 14 files / 2 concerns. Exercises both per-concern dispatch (Phase 2) AND multi-concern aggregation in package overview/architecture (Phase 3).
+**In-scope packages** (any concern under any of these matches):
+- `db-cse-ui-strata/packages/pkg-cse-client/*` — 14 files / 2 concerns (already rendered in V5; stamp-gate will skip)
+- `db-cse-ui-strata/packages/pkg-cse-organizations/*` — 11 files / 1 concern
+- `db-cse-ui-strata/packages/pkg-cse-equipment/*` — 18 files / 1 concern
 
-**Out-of-scope (deferred)**:
-- `pkg-cse-core/*` — already rendered via prior V4 round. Stamp-gate skips concerns; package tier deferred until V5 design proven on pkg-cse-client first.
-- Every other package + app-web — focus V5 on smallest viable target.
+Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` starts with one of:
+- `db-cse-ui-strata/packages/pkg-cse-client/`
+- `db-cse-ui-strata/packages/pkg-cse-organizations/`
+- `db-cse-ui-strata/packages/pkg-cse-equipment/`
 
-Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` starts with `db-cse-ui-strata/packages/pkg-cse-client/`. Process the filtered list. Phase 3 derives unique packages from the filtered concerns set (just `pkg-cse-client` here) and runs the package overview + architecture pipelines.
+Process the filtered list. Phase 3 derives unique packages from the filtered concerns set (3 packages) and runs the package overview + architecture pipelines. Phase 4 (project tier) runs once against `project-input` which sees ALL package overviews currently rendered under `docs/` (3 from V6 + the existing pkg-cse-client from V5 = same 3).
 
-**Expected dispatches**: 2 concern + 2 package-tier (overview + architecture) = 4 dispatch units. Wall-clock target: ~3-4 min. Cost target: ~$0.50.
+**Expected dispatches** (excluding stamp-gate skips):
+- 2 concern (organizations + equipment; pkg-cse-client unchanged)
+- 4 package tier (organizations + equipment overview/architecture; pkg-cse-client tier may skip via stamp-gate)
+- 2 project tier (overview + architecture)
+- Total: ~8 dispatches, ~$1-2 Haiku, ~5-7 min wall-clock.
 
-**Removing this override**: after V5 passes (clean docs land + validate-doc green), expand to multi-package or rip the override entirely. Phase 2/3 then process the full preflight `concerns[]` list.
+**Removing this override**: after V6 passes (clean docs across 3 tiers), either expand further or rip the override entirely. Phase 2/3/4 then process the full preflight `concerns[]` list.
 
 ---
 
