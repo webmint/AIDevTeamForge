@@ -34,10 +34,16 @@ from ._concern_input import _build_concern_input, cmd_concern_input
 from ._doc_setters import (
     _build_init_doc,
     _build_render_doc,
+    _build_set_doc_concerns,
+    _build_set_doc_layers,
+    _build_set_doc_patterns,
     _build_set_doc_purpose,
     _build_set_doc_structure,
     cmd_init_doc,
     cmd_render_doc,
+    cmd_set_doc_concerns,
+    cmd_set_doc_layers,
+    cmd_set_doc_patterns,
     cmd_set_doc_purpose,
     cmd_set_doc_structure,
 )
@@ -389,10 +395,14 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     # Plan F.5 — validate-doc (concern tier; v0).
     ("validate-doc", _build_validate_doc, cmd_validate_doc),
     # Plan F.4 — concern-tier setter primitives + render-doc (v0).
+    # F.7b — package-tier setters (set-doc-concerns / -layers / -patterns).
     # Hazards dropped: /audit owns hazard discovery; concern docs ship Purpose + Structure only.
     ("init-doc", _build_init_doc, cmd_init_doc),
     ("set-doc-purpose", _build_set_doc_purpose, cmd_set_doc_purpose),
     ("set-doc-structure", _build_set_doc_structure, cmd_set_doc_structure),
+    ("set-doc-concerns", _build_set_doc_concerns, cmd_set_doc_concerns),
+    ("set-doc-layers", _build_set_doc_layers, cmd_set_doc_layers),
+    ("set-doc-patterns", _build_set_doc_patterns, cmd_set_doc_patterns),
     ("render-doc", _build_render_doc, cmd_render_doc),
 )
 
