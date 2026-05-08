@@ -66,6 +66,12 @@ _PROJECT_STRUCTURE_PLACEHOLDER = "<!-- TODO: project-structure -->"
 _KEY_COMMANDS_PLACEHOLDER = "<!-- TODO: key-commands -->"
 _TEST_FILES_PLACEHOLDER = "<!-- TODO: test-files -->"
 _CROSS_MODULE_DEPS_PLACEHOLDER = "<!-- TODO: cross-module-dependencies -->"
+# Track 4 Phase 2 — mixed mechanical+LLM sections (helper renders structure;
+# LLM provides purpose/description/role text inside JSON input).
+_ENTRY_POINTS_PLACEHOLDER = "<!-- TODO: entry-points -->"
+_MODULE_MAP_PLACEHOLDER = "<!-- TODO: module-map -->"
+_APPLICATION_ROUTES_PLACEHOLDER = "<!-- TODO: application-routes -->"
+_NAVIGATION_GUARDS_PLACEHOLDER = "<!-- TODO: navigation-guards -->"
 _TREE_FENCE_OPEN = "```text"
 _TREE_FENCE_CLOSE = "```"
 _ANNOTATION_SEPARATOR = "  # "
@@ -204,8 +210,12 @@ _PROJECT_OVERVIEW_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
     ("Purpose", _PURPOSE_PLACEHOLDER),
     ("Tech Stack", _TECH_STACK_PLACEHOLDER),
     ("Project Structure", _PROJECT_STRUCTURE_PLACEHOLDER),
+    ("Entry Points", _ENTRY_POINTS_PLACEHOLDER),
     ("Key Commands", _KEY_COMMANDS_PLACEHOLDER),
+    ("Module Map", _MODULE_MAP_PLACEHOLDER),
     ("Cross-Module Dependencies", _CROSS_MODULE_DEPS_PLACEHOLDER),
+    ("Application Routes", _APPLICATION_ROUTES_PLACEHOLDER),
+    ("Navigation Guards", _NAVIGATION_GUARDS_PLACEHOLDER),
     ("Test Files", _TEST_FILES_PLACEHOLDER),
     ("Packages", _PACKAGES_PLACEHOLDER),
 )
@@ -285,10 +295,18 @@ def _build_project_overview_skeleton(frontmatter: Dict[str, Any], target: str) -
         f"{_TECH_STACK_PLACEHOLDER}\n\n"
         f"## Project Structure\n\n"
         f"{_PROJECT_STRUCTURE_PLACEHOLDER}\n\n"
+        f"## Entry Points\n\n"
+        f"{_ENTRY_POINTS_PLACEHOLDER}\n\n"
         f"## Key Commands\n\n"
         f"{_KEY_COMMANDS_PLACEHOLDER}\n\n"
+        f"## Module Map\n\n"
+        f"{_MODULE_MAP_PLACEHOLDER}\n\n"
         f"## Cross-Module Dependencies\n\n"
         f"{_CROSS_MODULE_DEPS_PLACEHOLDER}\n\n"
+        f"## Application Routes\n\n"
+        f"{_APPLICATION_ROUTES_PLACEHOLDER}\n\n"
+        f"## Navigation Guards\n\n"
+        f"{_NAVIGATION_GUARDS_PLACEHOLDER}\n\n"
         f"## Test Files\n\n"
         f"{_TEST_FILES_PLACEHOLDER}\n\n"
         f"## Packages\n\n"
@@ -388,6 +406,30 @@ def _replace_test_files_block(content: str, bullet_text: str) -> str:
 def _replace_cross_module_deps_block(content: str, fenced_text: str) -> str:
     return _replace_or_substitute(
         content, _CROSS_MODULE_DEPS_PLACEHOLDER, "Cross-Module Dependencies", fenced_text
+    )
+
+
+def _replace_entry_points_block(content: str, table_text: str) -> str:
+    return _replace_or_substitute(
+        content, _ENTRY_POINTS_PLACEHOLDER, "Entry Points", table_text
+    )
+
+
+def _replace_module_map_block(content: str, body_text: str) -> str:
+    return _replace_or_substitute(
+        content, _MODULE_MAP_PLACEHOLDER, "Module Map", body_text
+    )
+
+
+def _replace_application_routes_block(content: str, table_text: str) -> str:
+    return _replace_or_substitute(
+        content, _APPLICATION_ROUTES_PLACEHOLDER, "Application Routes", table_text
+    )
+
+
+def _replace_navigation_guards_block(content: str, list_text: str) -> str:
+    return _replace_or_substitute(
+        content, _NAVIGATION_GUARDS_PLACEHOLDER, "Navigation Guards", list_text
     )
 
 
@@ -558,6 +600,150 @@ def _render_fenced_text(text: str, language: str = "text") -> str:
     """Wrap text in a fenced code block. Default language tag is `text`."""
     body = text.rstrip("\n")
     return f"```{language}\n{body}\n```"
+
+
+# ── Track 4 Phase 2 — mixed mechanical+LLM render helpers ──────────────────
+
+
+def _render_entry_points_table(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {label, path, purpose} → table row.
+
+    Path cell wrapped in backticks. Skip rows missing label OR path; allow
+    empty purpose (renders as empty cell).
+    """
+    lines = ["| Entry Point | Path | Purpose |", "|---|---|---|"]
+    for e in entries:
+        label = (e.get("label") or "").strip()
+        path = (e.get("path") or "").strip()
+        purpose = (e.get("purpose") or "").strip()
+        if not (label and path):
+            continue
+        lines.append(f"| {label} | `{path}` | {purpose} |")
+    return "\n".join(lines)
+
+
+def _render_application_routes_table(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {path, component, description} → table row.
+
+    Path + component cells in backticks. Skip rows missing path.
+    """
+    lines = ["| Route | Component | Description |", "|---|---|---|"]
+    for e in entries:
+        path = (e.get("path") or "").strip()
+        component = (e.get("component") or "").strip()
+        description = (e.get("description") or "").strip()
+        if not path:
+            continue
+        component_cell = f"`{component}`" if component else ""
+        lines.append(f"| `{path}` | {component_cell} | {description} |")
+    return "\n".join(lines)
+
+
+def _render_navigation_guards_list(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {name, role} → numbered list item.
+
+    Format: `1. **<name>** — <role>`. The `**bold**` matches cse-strata bar
+    convention. Numbering reflects guard chain order from input.
+    """
+    lines: List[str] = []
+    for i, e in enumerate(entries, start=1):
+        name = (e.get("name") or "").strip()
+        role = (e.get("role") or "").strip()
+        if not name:
+            continue
+        line = f"{i}. **{name}**"
+        if role:
+            line += f" — {role}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _render_module_map_sections(entries: Dict[str, List[Dict[str, str]]]) -> str:
+    """Three sub-sections (Infrastructure / Core / Domain), each a Package table.
+
+    Input dict: {"infrastructure": [...], "core": [...], "domain": [...]}.
+    Each list entry: {name, purpose}. Sub-sections with empty lists are
+    omitted entirely (cleaner render than empty headers).
+
+    Sub-headings emit as `### Infrastructure Packages` etc., matching
+    cse-strata bar literal style.
+    """
+    section_order = (
+        ("infrastructure", "Infrastructure Packages"),
+        ("core", "Core Package"),
+        ("domain", "Domain Packages"),
+    )
+    blocks: List[str] = []
+    for key, heading in section_order:
+        items = entries.get(key) or []
+        if not items:
+            continue
+        block_lines = [f"### {heading}", "", "| Package | Purpose |", "|---|---|"]
+        for item in items:
+            name = (item.get("name") or "").strip()
+            purpose = (item.get("purpose") or "").strip()
+            if not name:
+                continue
+            block_lines.append(f"| `{name}` | {purpose} |")
+        blocks.append("\n".join(block_lines))
+    return "\n\n".join(blocks)
+
+
+def _annotate_dir_line(line: str, annotations: Dict[str, str]) -> str:
+    """Augment a project-structure tree line with an annotation comment.
+
+    Matches lines ending with `<dirname>/` (project tree dirs) — a project-
+    structure tree annotates DIRECTORIES (e.g. `apps/` → "Vue 3 SPA shell"),
+    where concern-tier `_annotate_leaf_line` annotates FILES. Returns the
+    line unchanged when:
+      - it already has an annotation (`  # ` separator present)
+      - no `├──` / `└──` connector
+      - the entry doesn't end with `/` (skip files in mixed trees)
+      - no annotation registered for the dir basename
+    """
+    if _ANNOTATION_SEPARATOR in line:
+        return line
+    for connector in _LEAF_CONNECTORS:
+        idx = line.rfind(connector)
+        if idx < 0:
+            continue
+        tail = line[idx + len(connector):].rstrip()
+        if not tail or not tail.endswith("/"):
+            return line
+        # Strip trailing "/" for annotations dict lookup; users register by
+        # directory basename, not the rendered "name/" form.
+        basename = tail.rstrip("/")
+        if not basename:
+            return line
+        annotation = annotations.get(basename)
+        if not annotation:
+            return line
+        return f"{line.rstrip()}{_ANNOTATION_SEPARATOR}{annotation.strip()}"
+    return line
+
+
+def _interleave_dir_annotations(content: str, annotations: Dict[str, str]) -> str:
+    """Walk the fenced ```text block and apply `_annotate_dir_line` per line.
+
+    Same fenced-block boundary logic as `_interleave_annotations` but uses
+    the dir variant for project structure (annotates directories, not files).
+    """
+    out: List[str] = []
+    in_fence = False
+    for line in content.split("\n"):
+        if not in_fence and line.strip() == _TREE_FENCE_OPEN:
+            in_fence = True
+            out.append(line)
+            continue
+        if in_fence and line.strip() == _TREE_FENCE_CLOSE:
+            in_fence = False
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(_annotate_dir_line(line, annotations))
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 # ── Subcommand handlers ─────────────────────────────────────────────────────
@@ -983,6 +1169,156 @@ def cmd_set_overview_project_structure_tree(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_overview_entry_points(args: argparse.Namespace) -> int:
+    """Track 4 Phase 2 — write project-overview's `## Entry Points` table."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-entry-points supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.entry_points, "entry-points")
+    if entries is None:
+        return 2
+    table_text = _render_entry_points_table(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_entry_points_block(content, table_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_application_routes(args: argparse.Namespace) -> int:
+    """Track 4 Phase 2 — write project-overview's `## Application Routes` table."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-application-routes supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.routes, "routes")
+    if entries is None:
+        return 2
+    table_text = _render_application_routes_table(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_application_routes_block(content, table_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_navigation_guards(args: argparse.Namespace) -> int:
+    """Track 4 Phase 2 — write project-overview's `## Navigation Guards` numbered list."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-navigation-guards supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.guards, "guards")
+    if entries is None:
+        return 2
+    list_text = _render_navigation_guards_list(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_navigation_guards_block(content, list_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_module_map(args: argparse.Namespace) -> int:
+    """Track 4 Phase 2 — write project-overview's `## Module Map` 3 sub-section tables."""
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-module-map supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        decoded = json.loads(args.modules)
+    except json.JSONDecodeError as exc:
+        print(f"--modules must be valid JSON: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(decoded, dict):
+        print("--modules must decode to a JSON object", file=sys.stderr)
+        return 2
+    # Coerce inner lists; skip any non-list value.
+    sections: Dict[str, List[Dict[str, str]]] = {}
+    for key in ("infrastructure", "core", "domain"):
+        items = decoded.get(key)
+        if isinstance(items, list):
+            sections[key] = [
+                {k: str(v) for k, v in item.items()}
+                for item in items if isinstance(item, dict)
+            ]
+        else:
+            sections[key] = []
+    body_text = _render_module_map_sections(sections)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_module_map_block(content, body_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_overview_project_structure_annotations(args: argparse.Namespace) -> int:
+    """Track 4 Phase 2 — augment Phase 1 tree leaves with dir-level annotations.
+
+    Mirrors concern-tier `set-doc-structure` mechanism but operates on
+    directories (`<name>/` lines) not files. Phase 1 must have run first
+    to plant the `## Project Structure` fenced tree; this setter walks
+    the fence content and applies `<basename> → annotation` per leaf dir.
+    Idempotent — re-applying overwrites any prior annotation when the
+    annotation dict changes; lines not present in the dict are unchanged.
+    """
+    if args.tier != "project-overview":
+        print(
+            f"set-overview-project-structure-annotations supports tier=project-overview only; "
+            f"got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    annotations: Dict[str, str] = {}
+    if args.annotations:
+        try:
+            decoded = json.loads(args.annotations)
+        except json.JSONDecodeError as exc:
+            print(f"--annotations must be valid JSON: {exc}", file=sys.stderr)
+            return 2
+        if not isinstance(decoded, dict):
+            print("--annotations must decode to a JSON object", file=sys.stderr)
+            return 2
+        annotations = {str(k): str(v) for k, v in decoded.items()}
+
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    if _TREE_FENCE_OPEN not in content:
+        print(
+            f"no `{_TREE_FENCE_OPEN}` code fence in {path}; "
+            f"run set-overview-project-structure-tree first",
+            file=sys.stderr,
+        )
+        return 2
+    path.write_text(_interleave_dir_annotations(content, annotations), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
 def cmd_render_doc(args: argparse.Namespace) -> int:
     if args.tier not in _VALID_TIERS:
         print(f"unknown tier {args.tier!r}", file=sys.stderr)
@@ -1165,4 +1501,56 @@ def _build_set_overview_project_structure_tree(p: argparse.ArgumentParser) -> No
         "--text",
         required=True,
         help="ASCII tree text of project structure (no annotations — Phase 1 bare tree)",
+    )
+
+
+# ── Track 4 Phase 2 — mixed mechanical+LLM setter factories ─────────────────
+
+
+def _build_set_overview_entry_points(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--entry-points",
+        dest="entry_points",
+        required=True,
+        help='JSON array [{"label": "App entry", "path": "src/main.ts", "purpose": "..."}]',
+    )
+
+
+def _build_set_overview_application_routes(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--routes",
+        required=True,
+        help='JSON array [{"path": "/quote", "component": "PageQuote.vue", "description": "..."}]',
+    )
+
+
+def _build_set_overview_navigation_guards(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--guards",
+        required=True,
+        help='JSON array [{"name": "oktaGuard", "role": "Checks Okta auth state"}]',
+    )
+
+
+def _build_set_overview_module_map(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--modules",
+        required=True,
+        help=(
+            'JSON object {"infrastructure": [{name, purpose}], '
+            '"core": [...], "domain": [...]}'
+        ),
+    )
+
+
+def _build_set_overview_project_structure_annotations(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--annotations",
+        default="",
+        help='JSON object {dir_basename: annotation_text} — augments Phase 1 tree leaves',
     )

@@ -114,6 +114,31 @@ _TEST_FILE_SUFFIXES = (".test.ts", ".test.tsx", ".test.js", ".test.jsx",
 _TEST_PY_PREFIX = "test_"
 _TEST_PY_SUFFIX = "_test.py"
 
+# Track 4 Phase 2 — entry-point candidate filename heuristics.
+# Filenames examined when walking effective_root for app entry candidates.
+_ENTRY_POINT_FILENAMES = ("main.ts", "main.js", "main.tsx", "main.jsx",
+                          "index.ts", "index.js", "App.vue", "app.tsx", "app.jsx")
+_ENTRY_POINT_DIRS = ("router", "plugins", "store")  # also walked for entry-like files
+
+# Track 4 Phase 2 — router-route + nav-guard discovery globs.
+_ROUTE_DIR_NAMES = ("routes",)
+_GUARD_DIR_NAMES = ("router-guards", "guards", "navigation-guards")
+
+# Track 4 Phase 2 — package classification hints. Mechanical pattern matcher.
+# Maps name-substring → category. First-match wins per package; packages
+# matching no rule fall through to "domain" (the residual category).
+_PACKAGE_CLASSIFICATION_RULES: Tuple[Tuple[str, str], ...] = (
+    ("common", "infrastructure"),
+    ("types", "infrastructure"),
+    ("client", "infrastructure"),
+    ("notifications", "infrastructure"),
+    ("test", "infrastructure"),
+    ("starter", "infrastructure"),
+    ("util", "infrastructure"),
+    ("shared", "infrastructure"),
+    ("core", "core"),
+)
+
 
 def _enumerate_packages_with_overviews(project_root: Path) -> List[str]:
     """List packages whose overview doc exists at docs/<pkg>/overview.md.
@@ -712,6 +737,178 @@ def _build_project_structure_tree(
     return "\n".join(lines)
 
 
+# ── Track 4 Phase 2 — mixed mechanical+LLM candidate helpers ───────────────
+
+
+def _walk_entry_point_candidates(project_root: Path) -> List[Dict[str, str]]:
+    """Filesystem walk for app entry candidate files.
+
+    Returns list of `{label, path}` (no `purpose` — LLM fills downstream).
+    Heuristic:
+      - emit `main.*` / `App.*` / `app.*` files unconditionally (always entry-like)
+      - emit `index.*` files ONLY when inside an entry-point dir (`router/`,
+        `plugins/`, `store/`) — bare `index.ts` files at arbitrary depth
+        (e.g., `locales/en/index.ts`) are i18n / module barrels, not app
+        entries; including them as candidates pollutes the orchestrator's
+        Phase 2 entry-points compose
+      - emit any `.ts`/`.js`/`.vue` file inside an entry-point dir (catches
+        `plugins/okta.ts`, `router/index.ts`, etc.)
+
+    Walk depth capped at 6 + ignore-filtered. `label` is a short hint based
+    on filename + containing dir; `path` is project-relative POSIX. LLM
+    owns the human-readable Purpose.
+    """
+    project_root = project_root.resolve()
+    if not project_root.is_dir():
+        return []
+    out: List[Dict[str, str]] = []
+    seen: set = set()
+
+    for current, dirs, files in os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in _TREE_IGNORE_DIRS and not d.startswith(".")]
+        current_path = Path(current).resolve()
+        try:
+            rel_parts = current_path.relative_to(project_root).parts
+        except ValueError:
+            continue
+        if len(rel_parts) > 6:
+            dirs[:] = []
+            continue
+        rel_dir = "/".join(rel_parts) if rel_parts else ""
+        in_entry_dir = any(seg in _ENTRY_POINT_DIRS for seg in rel_parts)
+        for f in files:
+            base = f.lower()
+            is_index_file = base.startswith("index.") and f in _ENTRY_POINT_FILENAMES
+            is_unconditional = (
+                f in _ENTRY_POINT_FILENAMES and not is_index_file
+            )
+            include = False
+            if is_unconditional:
+                include = True
+            elif is_index_file and in_entry_dir:
+                include = True
+            elif in_entry_dir and f.endswith((".ts", ".js", ".tsx", ".jsx", ".vue")):
+                include = True
+            if not include:
+                continue
+            rel_path = (Path(rel_dir) / f).as_posix() if rel_dir else f
+            if rel_path in seen:
+                continue
+            seen.add(rel_path)
+            out.append({"label": _entry_point_label(f, rel_dir), "path": rel_path})
+
+    out.sort(key=lambda e: e["path"])
+    return out
+
+
+def _entry_point_label(filename: str, rel_dir: str) -> str:
+    """Cheap label heuristic for an entry-point candidate file.
+
+    Mechanical only — LLM Phase 2 can rewrite for prose. Maps common
+    entry-point shapes to human-readable hints; falls back to filename.
+    """
+    base = filename.lower()
+    if base.startswith("main."):
+        return "App entry"
+    if base.startswith("index."):
+        if "router" in rel_dir:
+            return "Router"
+        if "plugins" in rel_dir:
+            return "Plugin"
+        if "store" in rel_dir:
+            return "Store"
+        return "Module index"
+    if base.startswith("app."):
+        return "Root component"
+    if "router" in rel_dir:
+        return "Router config"
+    if "plugins" in rel_dir:
+        return "Plugin"
+    if "store" in rel_dir:
+        return "Store module"
+    return filename
+
+
+def _walk_router_route_files(project_root: Path) -> List[str]:
+    """Walk for `router/routes/**/*.{ts,js,tsx,jsx}` route definition files.
+
+    Returns project-relative POSIX paths. Mechanical extraction stops at
+    file enumeration — actual route-string parsing is text-heavy and
+    deferred to the orchestrator-LLM (which Reads each file + extracts
+    `path: '/foo'` literals and component identifiers).
+    """
+    project_root = project_root.resolve()
+    if not project_root.is_dir():
+        return []
+    out: List[str] = []
+    for current, dirs, files in os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in _TREE_IGNORE_DIRS and not d.startswith(".")]
+        current_path = Path(current)
+        parts = current_path.relative_to(project_root).parts if current_path != project_root else ()
+        # Match when the path contains a `routes` segment whose parent is `router`.
+        if not (len(parts) >= 2 and parts[-1] in _ROUTE_DIR_NAMES and parts[-2] == "router"):
+            continue
+        for f in files:
+            if f.endswith((".ts", ".js", ".tsx", ".jsx")):
+                rel_path = (current_path / f).relative_to(project_root).as_posix()
+                out.append(rel_path)
+    return sorted(out)
+
+
+def _walk_nav_guard_files(project_root: Path) -> List[str]:
+    """Walk for navigation-guard files in `**/router-guards/`, `**/guards/`,
+    `**/navigation-guards/` directories.
+
+    Returns project-relative POSIX paths sorted alphabetically. Guard order
+    in the chain is NOT inferable from filesystem alone (depends on
+    `addBeforeEach` call order in router setup); LLM resolves order by
+    reading the router config.
+    """
+    project_root = project_root.resolve()
+    if not project_root.is_dir():
+        return []
+    out: List[str] = []
+    for current, dirs, files in os.walk(project_root):
+        dirs[:] = [d for d in dirs if d not in _TREE_IGNORE_DIRS and not d.startswith(".")]
+        current_path = Path(current)
+        if current_path.name not in _GUARD_DIR_NAMES:
+            continue
+        for f in files:
+            if f.endswith((".ts", ".js", ".tsx", ".jsx")):
+                rel_path = (current_path / f).relative_to(project_root).as_posix()
+                out.append(rel_path)
+    return sorted(out)
+
+
+def _classify_packages(package_names: List[str]) -> Dict[str, List[str]]:
+    """Bucket workspace package names into infrastructure / core / domain.
+
+    First-match-wins on `_PACKAGE_CLASSIFICATION_RULES`; anything matching
+    no rule lands in `domain` (residual). This is a HINT — LLM may regroup
+    based on actual package contents (the pattern matcher only sees names).
+    """
+    out: Dict[str, List[str]] = {"infrastructure": [], "core": [], "domain": []}
+    for name in package_names:
+        lowered = name.lower()
+        category = "domain"
+        for substring, target in _PACKAGE_CLASSIFICATION_RULES:
+            if substring in lowered:
+                category = target
+                break
+        out[category].append(name)
+    for key in out:
+        out[key].sort()
+    return out
+
+
+def _extract_workspace_package_names(project_root: Path) -> List[str]:
+    """Return all workspace package names (npm-workspaces only; empty otherwise)."""
+    pkg = _read_root_package_json(project_root)
+    if pkg is None:
+        return []
+    return _enumerate_workspace_packages(pkg, project_root)
+
+
 def cmd_project_input(args: argparse.Namespace) -> int:
     """Handler for `project-input` subcommand. Returns CLI exit code."""
     devforge_dir = Path(args.devforge_dir)
@@ -758,16 +955,25 @@ def cmd_project_input(args: argparse.Namespace) -> int:
     effective_root = _resolve_effective_project_root(
         project_root, devforge_dir, pkg_paths
     )
+    workspace_packages = _extract_workspace_package_names(effective_root)
     output: Dict[str, Any] = {
         "project": project_label,
         "package_seeds": package_seeds,
         "project_root_files": root_records,
         "source_stamp": source_stamp,
+        # Track 4 Phase 1 — purely mechanical fields.
         "tech_stack_candidates": _detect_tech_stack(effective_root),
         "key_commands": _extract_key_commands(effective_root),
         "test_file_paths": _walk_test_file_paths(effective_root),
         "cross_module_deps_tree": _build_cross_module_deps_tree(effective_root),
         "project_structure_tree": _build_project_structure_tree(effective_root),
+        # Track 4 Phase 2 — mixed mechanical+LLM. Helper provides candidate
+        # locations + classifications; orchestrator-LLM provides purpose /
+        # description / role text + may regroup packages based on contents.
+        "entry_point_candidates": _walk_entry_point_candidates(effective_root),
+        "router_route_files": _walk_router_route_files(effective_root),
+        "nav_guard_files": _walk_nav_guard_files(effective_root),
+        "package_classification_hints": _classify_packages(workspace_packages),
     }
     if missing:
         output["missing_package_overviews"] = missing

@@ -320,11 +320,21 @@ Returns JSON with:
 - `package_seeds[]` — frontmatter + Purpose text from each rendered package overview
 - `project_root_files[]` — top-level README/CHANGELOG/package.json comment-rich spans
 - `source_stamp`
-- `tech_stack_candidates[]` — `[{layer, technology}]` derived from `package.json` deps + manifest detection (Track 4 Phase 1, mechanical)
-- `key_commands[]` — `[{command, description}]` from `package.json scripts` block (Track 4 Phase 1, mechanical)
-- `test_file_paths[]` — `[{path, description}]` from filesystem walk for test directories + `*.test.ts` / `test_*.py` style suffixes (Track 4 Phase 1, mechanical)
-- `cross_module_deps_tree` — ASCII tree of internal cross-workspace dependencies (Track 4 Phase 1, mechanical)
-- `project_structure_tree` — ASCII directory tree, depth=3, ignore-filtered (Track 4 Phase 1, mechanical)
+
+**Phase 1 mechanical fields** (verbatim passthrough to setters):
+- `tech_stack_candidates[]` — `[{layer, technology}]` derived from `package.json` deps + manifest detection
+- `key_commands[]` — `[{command, description}]` from `package.json scripts` block
+- `test_file_paths[]` — `[{path, description}]` from filesystem walk for test directories + `*.test.ts` / `test_*.py` style suffixes
+- `cross_module_deps_tree` — ASCII tree of internal cross-workspace dependencies
+- `project_structure_tree` — ASCII directory tree, depth=3, ignore-filtered
+
+**Phase 2 candidate fields** (mechanical pre-extraction; LLM augments with purpose/description/role text):
+- `entry_point_candidates[]` — `[{label, path}]` for `main.ts` / `index.ts` / `App.vue` / `router/`-`plugins/`-`store/` files; LLM fills `purpose`
+- `router_route_files[]` — file paths under `**/router/routes/`; LLM Reads + extracts `path` literals + components
+- `nav_guard_files[]` — file paths in `**/router-guards/`, `**/guards/`; LLM Reads + extracts guard name + role + chain order
+- `package_classification_hints` — `{infrastructure: [names], core: [names], domain: [names]}` name-pattern bucket; LLM may regroup based on actual package contents
+
+In wrapper-mode setups (testForge20-style: `.devforge/` at wrapper, monorepo at `<wrapper>/<inner>/`) the helper auto-resolves the inner monorepo via `init.yaml`'s `project_root` field, so all mechanical extraction operates on the right tree.
 
 `--project` defaults to the project_root basename.
 
@@ -344,17 +354,27 @@ Frontmatter:
     --frontmatter "$FM"
 ```
 
-The skeleton emits seven sections — five mechanical (Track 4 Phase 1), two synthesized:
+The skeleton emits eleven sections — five Phase 1 mechanical (verbatim from `project-input`), four Phase 2 mixed (helper renders structure; LLM provides purpose/description/role text), two LLM-synthesized:
 
 | Section | Source | Setter |
 |---|---|---|
 | Purpose | LLM synthesis from `package_seeds[*].purpose_text` + `project_root_files` | `set-doc-purpose` |
 | Tech Stack | `project-input.tech_stack_candidates` (verbatim) | `set-overview-tech-stack` |
-| Project Structure | `project-input.project_structure_tree` (verbatim) | `set-overview-project-structure-tree` |
+| Project Structure | `project-input.project_structure_tree` (verbatim tree) | `set-overview-project-structure-tree` |
+| Entry Points | `project-input.entry_point_candidates` + LLM `purpose` per row | `set-overview-entry-points` |
 | Key Commands | `project-input.key_commands` (verbatim) | `set-overview-key-commands` |
+| Module Map | `project-input.package_classification_hints` + LLM `purpose` per package; LLM may regroup | `set-overview-module-map` |
 | Cross-Module Dependencies | `project-input.cross_module_deps_tree` (verbatim) | `set-overview-cross-module-deps` |
+| Application Routes | LLM Reads `project-input.router_route_files`, extracts `{path, component}` + writes `description` | `set-overview-application-routes` |
+| Navigation Guards | LLM Reads `project-input.nav_guard_files` + router config, extracts `{name, role}` in chain order | `set-overview-navigation-guards` |
 | Test Files | `project-input.test_file_paths` (verbatim) | `set-overview-test-files` |
 | Packages | LLM synthesis from `package_seeds[*]` | `set-doc-packages` |
+
+After Project Structure tree is set, Phase 2 also augments tree leaves with directory-level annotations:
+
+| Augmentation | Source | Setter |
+|---|---|---|
+| Project Structure annotations | LLM provides `{dir_basename: annotation_text}` per top-level dir | `set-overview-project-structure-annotations` |
 
 Compose order:
 
@@ -364,10 +384,20 @@ Compose order:
     --tech-stack '<from project-input.tech_stack_candidates>'
 ./.devforge/lib/generate_docs_helper set-overview-project-structure-tree --tier project-overview --target "<project-label>" \
     --text "<from project-input.project_structure_tree>"
+./.devforge/lib/generate_docs_helper set-overview-project-structure-annotations --tier project-overview --target "<project-label>" \
+    --annotations '<LLM-supplied {dir_basename: text}>'
+./.devforge/lib/generate_docs_helper set-overview-entry-points --tier project-overview --target "<project-label>" \
+    --entry-points '<{label, path, purpose} from project-input.entry_point_candidates + LLM purpose>'
 ./.devforge/lib/generate_docs_helper set-overview-key-commands --tier project-overview --target "<project-label>" \
     --key-commands '<from project-input.key_commands>'
+./.devforge/lib/generate_docs_helper set-overview-module-map --tier project-overview --target "<project-label>" \
+    --modules '<{infrastructure, core, domain} with LLM purpose per package>'
 ./.devforge/lib/generate_docs_helper set-overview-cross-module-deps --tier project-overview --target "<project-label>" \
     --text "<from project-input.cross_module_deps_tree>"
+./.devforge/lib/generate_docs_helper set-overview-application-routes --tier project-overview --target "<project-label>" \
+    --routes '<{path, component, description} parsed from project-input.router_route_files>'
+./.devforge/lib/generate_docs_helper set-overview-navigation-guards --tier project-overview --target "<project-label>" \
+    --guards '<{name, role} parsed from project-input.nav_guard_files in chain order>'
 ./.devforge/lib/generate_docs_helper set-overview-test-files --tier project-overview --target "<project-label>" \
     --test-files '<from project-input.test_file_paths>'
 ./.devforge/lib/generate_docs_helper set-doc-packages --tier project-overview --target "<project-label>" \
@@ -376,7 +406,9 @@ Compose order:
 ./.devforge/lib/generate_docs_helper validate-doc --tier project-overview --target "<project-label>"
 ```
 
-The five mechanical setters pass `project-input` output through verbatim — no orchestrator interpretation. Purpose + Packages remain orchestrator-direct LLM compose. When `project-input` returns empty for a mechanical field (e.g., no `package.json` → empty `tech_stack_candidates`), call the setter with the empty input shape (`'[]'` / empty `--text`) — `validate-doc` enforces section presence, not content depth.
+Phase 1 mechanical setters pass `project-input` output through verbatim — no orchestrator interpretation. Phase 2 mixed setters need LLM-supplied prose for purpose/description/role cells, but helper still owns table/list structure. Purpose + Packages stay orchestrator-direct LLM compose. When `project-input` returns empty for a mechanical/candidate field (e.g., no `package.json` → empty `tech_stack_candidates`; no `router/` dir → empty `router_route_files`), call the setter with empty input (`'[]'` / `'{}'`) — `validate-doc` enforces section presence, not content depth.
+
+For `set-overview-application-routes` and `set-overview-navigation-guards`: orchestrator MUST Read each file from `router_route_files` / `nav_guard_files` to extract `path:`, `component:`, guard chain order from `router.beforeEach()` calls. project-input emits paths only (mechanical); content parsing is LLM judgment.
 
 Retry semantics same as Phase 3.
 

@@ -43,8 +43,13 @@ from ._doc_setters import (
     _build_set_doc_purpose,
     _build_set_doc_structure,
     _build_set_doc_subconcerns,
+    _build_set_overview_application_routes,
     _build_set_overview_cross_module_deps,
+    _build_set_overview_entry_points,
     _build_set_overview_key_commands,
+    _build_set_overview_module_map,
+    _build_set_overview_navigation_guards,
+    _build_set_overview_project_structure_annotations,
     _build_set_overview_project_structure_tree,
     _build_set_overview_tech_stack,
     _build_set_overview_test_files,
@@ -59,8 +64,13 @@ from ._doc_setters import (
     cmd_set_doc_purpose,
     cmd_set_doc_structure,
     cmd_set_doc_subconcerns,
+    cmd_set_overview_application_routes,
     cmd_set_overview_cross_module_deps,
+    cmd_set_overview_entry_points,
     cmd_set_overview_key_commands,
+    cmd_set_overview_module_map,
+    cmd_set_overview_navigation_guards,
+    cmd_set_overview_project_structure_annotations,
     cmd_set_overview_project_structure_tree,
     cmd_set_overview_tech_stack,
     cmd_set_overview_test_files,
@@ -443,6 +453,34 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
         "set-overview-project-structure-tree",
         _build_set_overview_project_structure_tree,
         cmd_set_overview_project_structure_tree,
+    ),
+    # Track 4 Phase 2 — mixed mechanical+LLM project-overview setters
+    # (Entry Points / Application Routes / Navigation Guards / Module Map /
+    # Project Structure dir-level annotations).
+    (
+        "set-overview-entry-points",
+        _build_set_overview_entry_points,
+        cmd_set_overview_entry_points,
+    ),
+    (
+        "set-overview-application-routes",
+        _build_set_overview_application_routes,
+        cmd_set_overview_application_routes,
+    ),
+    (
+        "set-overview-navigation-guards",
+        _build_set_overview_navigation_guards,
+        cmd_set_overview_navigation_guards,
+    ),
+    (
+        "set-overview-module-map",
+        _build_set_overview_module_map,
+        cmd_set_overview_module_map,
+    ),
+    (
+        "set-overview-project-structure-annotations",
+        _build_set_overview_project_structure_annotations,
+        cmd_set_overview_project_structure_annotations,
     ),
     ("render-doc", _build_render_doc, cmd_render_doc),
 )

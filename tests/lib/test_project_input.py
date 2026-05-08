@@ -37,6 +37,7 @@ if str(_LIB_DIR) not in sys.path:
 from _generate_docs._project_input import (  # noqa: E402
     _build_cross_module_deps_tree,
     _build_project_structure_tree,
+    _classify_packages,
     _collect_project_root_files,
     _compute_source_stamp,
     _detect_tech_stack,
@@ -44,6 +45,9 @@ from _generate_docs._project_input import (  # noqa: E402
     _extract_key_commands,
     _read_package_seed,
     _resolve_effective_project_root,
+    _walk_entry_point_candidates,
+    _walk_nav_guard_files,
+    _walk_router_route_files,
     _walk_test_file_paths,
     cmd_project_input,
 )
@@ -638,6 +642,220 @@ class CmdProjectInputPhase1FieldsTests(unittest.TestCase):
         self.assertIn("tests", test_paths)
         # Project structure tree includes root basename.
         self.assertTrue(payload["project_structure_tree"].startswith(self.root.name + "/"))
+
+
+class WalkEntryPointCandidatesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_finds_main_ts(self):
+        (self.root / "src").mkdir()
+        (self.root / "src" / "main.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_entry_point_candidates(self.root)
+        paths = [e["path"] for e in result]
+        self.assertIn("src/main.ts", paths)
+        labels = {e["path"]: e["label"] for e in result}
+        self.assertEqual(labels["src/main.ts"], "App entry")
+
+    def test_finds_router_index(self):
+        (self.root / "src" / "router").mkdir(parents=True)
+        (self.root / "src" / "router" / "index.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_entry_point_candidates(self.root)
+        paths = [e["path"] for e in result]
+        self.assertIn("src/router/index.ts", paths)
+        labels = {e["path"]: e["label"] for e in result}
+        self.assertEqual(labels["src/router/index.ts"], "Router")
+
+    def test_finds_plugin_files(self):
+        (self.root / "src" / "plugins").mkdir(parents=True)
+        (self.root / "src" / "plugins" / "okta.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_entry_point_candidates(self.root)
+        paths = [e["path"] for e in result]
+        self.assertIn("src/plugins/okta.ts", paths)
+
+    def test_skips_node_modules(self):
+        (self.root / "node_modules" / "foo" / "src").mkdir(parents=True)
+        (self.root / "node_modules" / "foo" / "src" / "main.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_entry_point_candidates(self.root)
+        paths = [e["path"] for e in result]
+        self.assertFalse(any(p.startswith("node_modules") for p in paths))
+
+    def test_empty_when_no_entries(self):
+        self.assertEqual(_walk_entry_point_candidates(self.root), [])
+
+    def test_skips_module_barrel_index_outside_entry_dirs(self):
+        # locales/<lang>/index.ts is a module barrel, not an app entry —
+        # exclude even though `index.ts` appears in _ENTRY_POINT_FILENAMES.
+        # Including these produces noise in the orchestrator's compose step
+        # (testForge20 has 7 locale index.ts files which polluted candidates).
+        deep = self.root / "src" / "locales" / "en"
+        deep.mkdir(parents=True)
+        (deep / "index.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_entry_point_candidates(self.root)
+        paths = [e["path"] for e in result]
+        self.assertNotIn("src/locales/en/index.ts", paths)
+
+    def test_index_inside_entry_dir_kept(self):
+        # `router/index.ts` IS an app entry — keep.
+        d = self.root / "src" / "router"
+        d.mkdir(parents=True)
+        (d / "index.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_entry_point_candidates(self.root)
+        paths = [e["path"] for e in result]
+        self.assertIn("src/router/index.ts", paths)
+
+
+class WalkRouterRouteFilesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_finds_router_routes_files(self):
+        routes_dir = self.root / "src" / "router" / "routes"
+        routes_dir.mkdir(parents=True)
+        (routes_dir / "quote.ts").write_text("// stub", encoding="utf-8")
+        (routes_dir / "catalog.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_router_route_files(self.root)
+        self.assertIn("src/router/routes/quote.ts", result)
+        self.assertIn("src/router/routes/catalog.ts", result)
+
+    def test_ignores_routes_dir_outside_router(self):
+        # `routes/` not under `router/` is unrelated (e.g. server routes).
+        d = self.root / "server" / "routes"
+        d.mkdir(parents=True)
+        (d / "users.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_router_route_files(self.root)
+        self.assertEqual(result, [])
+
+    def test_empty_when_no_router(self):
+        self.assertEqual(_walk_router_route_files(self.root), [])
+
+
+class WalkNavGuardFilesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_finds_router_guards_dir(self):
+        d = self.root / "src" / "helpers" / "router-guards"
+        d.mkdir(parents=True)
+        (d / "okta-guard.ts").write_text("// stub", encoding="utf-8")
+        (d / "identity-guard.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_nav_guard_files(self.root)
+        self.assertIn("src/helpers/router-guards/okta-guard.ts", result)
+        self.assertIn("src/helpers/router-guards/identity-guard.ts", result)
+
+    def test_finds_guards_dir(self):
+        d = self.root / "guards"
+        d.mkdir()
+        (d / "auth.ts").write_text("// stub", encoding="utf-8")
+        result = _walk_nav_guard_files(self.root)
+        self.assertEqual(result, ["guards/auth.ts"])
+
+    def test_sorted_alphabetically(self):
+        d = self.root / "guards"
+        d.mkdir()
+        for name in ("zebra.ts", "alpha.ts", "mango.ts"):
+            (d / name).write_text("// stub", encoding="utf-8")
+        result = _walk_nav_guard_files(self.root)
+        self.assertEqual(result, ["guards/alpha.ts", "guards/mango.ts", "guards/zebra.ts"])
+
+
+class ClassifyPackagesTests(unittest.TestCase):
+    def test_infrastructure_bucket(self):
+        result = _classify_packages(["pkg-cse-common", "pkg-cse-types", "pkg-cse-client", "pkg-cse-notifications"])
+        self.assertEqual(
+            result["infrastructure"],
+            sorted(["pkg-cse-common", "pkg-cse-types", "pkg-cse-client", "pkg-cse-notifications"]),
+        )
+        self.assertEqual(result["core"], [])
+        self.assertEqual(result["domain"], [])
+
+    def test_core_bucket(self):
+        result = _classify_packages(["pkg-cse-core"])
+        self.assertEqual(result["core"], ["pkg-cse-core"])
+
+    def test_domain_residual(self):
+        result = _classify_packages(["pkg-cse-quote", "pkg-cse-order", "pkg-cse-catalog"])
+        self.assertEqual(
+            result["domain"],
+            sorted(["pkg-cse-quote", "pkg-cse-order", "pkg-cse-catalog"]),
+        )
+
+    def test_first_match_wins(self):
+        # `pkg-cse-common-test` matches both `common` (infra) and `test` (infra)
+        # — both rules same bucket, first match wins is fine.
+        result = _classify_packages(["pkg-cse-common-test"])
+        self.assertEqual(result["infrastructure"], ["pkg-cse-common-test"])
+
+    def test_empty_input(self):
+        result = _classify_packages([])
+        self.assertEqual(result, {"infrastructure": [], "core": [], "domain": []})
+
+
+class CmdProjectInputPhase2FieldsTests(unittest.TestCase):
+    """Track 4 Phase 2 — cmd_project_input surfaces 4 new candidate fields."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        self.devforge.mkdir()
+        # Minimal viable project with router + guards + workspace pkgs.
+        path = self.root / "docs" / "pkg-a" / "overview.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            _PKG_OVERVIEW_TEMPLATE.format(pkg="pkg-a", stamp="X", purpose="alpha"),
+            encoding="utf-8",
+        )
+        (self.root / "package.json").write_text(
+            json.dumps({
+                "name": "root",
+                "workspaces": ["packages/*"],
+                "dependencies": {"vue": "^3.0.0"},
+            }),
+            encoding="utf-8",
+        )
+        (self.root / "packages" / "pkg-common").mkdir(parents=True)
+        (self.root / "packages" / "pkg-common" / "package.json").write_text(
+            json.dumps({"name": "pkg-common"}),
+            encoding="utf-8",
+        )
+        (self.root / "packages" / "pkg-feature").mkdir(parents=True)
+        (self.root / "packages" / "pkg-feature" / "package.json").write_text(
+            json.dumps({"name": "pkg-feature"}),
+            encoding="utf-8",
+        )
+        # Entry point + router + guards.
+        (self.root / "src").mkdir()
+        (self.root / "src" / "main.ts").write_text("// boot", encoding="utf-8")
+        (self.root / "src" / "router" / "routes").mkdir(parents=True)
+        (self.root / "src" / "router" / "routes" / "home.ts").write_text("// route", encoding="utf-8")
+        (self.root / "src" / "helpers" / "router-guards").mkdir(parents=True)
+        (self.root / "src" / "helpers" / "router-guards" / "okta-guard.ts").write_text("// guard", encoding="utf-8")
+
+    def test_phase2_fields_present(self):
+        args = argparse.Namespace(project="my-proj", devforge_dir=str(self.devforge))
+        code, out, err = _run(cmd_project_input, args)
+        self.assertEqual(code, 0, msg=err)
+        payload = json.loads(out)
+        self.assertIn("entry_point_candidates", payload)
+        self.assertIn("router_route_files", payload)
+        self.assertIn("nav_guard_files", payload)
+        self.assertIn("package_classification_hints", payload)
+        ep_paths = [e["path"] for e in payload["entry_point_candidates"]]
+        self.assertIn("src/main.ts", ep_paths)
+        self.assertIn("src/router/routes/home.ts", payload["router_route_files"])
+        self.assertIn("src/helpers/router-guards/okta-guard.ts", payload["nav_guard_files"])
+        # Classification: pkg-common → infrastructure, pkg-feature → domain.
+        hints = payload["package_classification_hints"]
+        self.assertIn("pkg-common", hints["infrastructure"])
+        self.assertIn("pkg-feature", hints["domain"])
 
 
 if __name__ == "__main__":

@@ -67,15 +67,21 @@ _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS = ("## Layers", "## Patterns")
 
 _PROJECT_OVERVIEW_REQUIRED_KEYS = ("source_stamp", "last_indexed")
 # Track 4 Phase 1: 5 mechanical sections added (Tech Stack, Project Structure,
-# Key Commands, Cross-Module Dependencies, Test Files). Order in tuple does
-# not affect validation, but mirrors the skeleton emit order in
+# Key Commands, Cross-Module Dependencies, Test Files).
+# Track 4 Phase 2: 4 mixed mechanical+LLM sections added (Entry Points,
+# Module Map, Application Routes, Navigation Guards). Order in tuple does
+# not affect validation, but mirrors skeleton emit order in
 # `_doc_setters._build_project_overview_skeleton` for human readability.
 _PROJECT_OVERVIEW_REQUIRED_SECTIONS = (
     "## Purpose",
     "## Tech Stack",
     "## Project Structure",
+    "## Entry Points",
     "## Key Commands",
+    "## Module Map",
     "## Cross-Module Dependencies",
+    "## Application Routes",
+    "## Navigation Guards",
     "## Test Files",
     "## Packages",
 )
