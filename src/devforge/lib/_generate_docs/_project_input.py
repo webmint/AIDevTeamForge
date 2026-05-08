@@ -1,8 +1,8 @@
-"""F.8a — project-input helper.
+"""project-input helper.
 
 Walks `<project_root>/` and the project's already-rendered package
-overview docs, emits batch JSON for the doc-composer dispatch under
-/generate-docs Phase 4 (Plan F project tier).
+overview docs, emits batch JSON consumed by the /generate-docs
+orchestrator's project-tier compose step (Phase 4).
 
 Output shape:
     {

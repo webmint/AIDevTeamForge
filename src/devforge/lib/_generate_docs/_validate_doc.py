@@ -19,8 +19,8 @@ existence + line-range of cited paths is checked (concern-tier only).
 Exit codes:
 - 0 — every check passed
 - 2 — at least one violation; stderr lists every error; orchestrator
-       passes stderr verbatim back to doc-composer as
-       previous_attempt_feedback for retry
+       captures stderr as `previous_attempt_feedback` for the next
+       compose retry
 
 Stdlib only. Targets Python 3.8+.
 """

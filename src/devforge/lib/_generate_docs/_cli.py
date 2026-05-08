@@ -395,7 +395,7 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("validate-file-doc", _build_validate_file_doc, cmd_validate_file_doc),
     # Per-file-doc post-batch aggregator (Step B.4 of VALIDATOR-LOOP-B-PLAN.md).
     ("verify-file-docs", _build_verify_file_docs, cmd_verify_file_docs),
-    # Plan F.2 — concern-input helper for doc-composer dispatch.
+    # concern-input helper — feeds batch JSON to the orchestrator's compose step.
     ("concern-input", _build_concern_input, cmd_concern_input),
     # Plan F.7 — package-input helper for package-tier dispatch.
     ("package-input", _build_package_input, cmd_package_input),

@@ -1,8 +1,8 @@
-"""F.7a — package-input helper.
+"""package-input helper.
 
 Walks `<project_root>/<package>/` and the package's already-rendered
-concern docs, emits batch JSON for the doc-composer dispatch under
-/generate-docs Phase 3 (Plan F package tier).
+concern docs, emits batch JSON consumed by the /generate-docs
+orchestrator's package-tier compose step (Phase 3).
 
 Output shape:
     {

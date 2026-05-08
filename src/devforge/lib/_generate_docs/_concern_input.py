@@ -1,7 +1,7 @@
-"""F.2 — concern-input helper.
+"""concern-input helper.
 
-Walks the concern's source subfolder on disk, emits batch JSON for the
-doc-composer agent dispatch under /generate-docs Phase 3 (Plan F).
+Walks the concern's source subfolder on disk, emits batch JSON consumed
+by the /generate-docs orchestrator's concern-tier compose step.
 
 Why filesystem and not index.json: /init-forge's index.json caps file lists
 at 500 entries per package (`files_truncated: true` flag). On real

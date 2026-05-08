@@ -1,41 +1,17 @@
 ---
-description: Plan F vertical slice (concern tier only) — preflight + per-concern compose/render/validate. Package + project tiers ship under forthcoming F.4 expansion.
+description: Generate the docs/ knowledge base — bottom-up bottom-tier (concern → package → project), incremental skip via source_stamp, helper-owned shape, orchestrator-direct compose.
 ---
 
-# /generate-docs — Plan F vertical slice (concern tier)
+# /generate-docs
 
-**Status (2026-05-07)**: this command runs the concern-tier pipeline end-to-end. Package and project tier dispatches (F.7 / F.8 / F.4 expansion) are NOT yet wired — those phases are no-ops in this build. The vertical slice exists to validate F.0 → F.2 → F.3 → F.4 setters → F.5 validate-doc → F.4 render-doc against testForge20 before scaling to upper tiers.
+Generates the project's `docs/` knowledge base end-to-end. The pipeline is
+bottom-up across three tiers (concern → package → project), gated by per-tier
+`source_stamp` so unchanged areas skip dispatch. The orchestrator (this thread)
+composes Purpose paragraphs + leaf annotations inline; helpers own all markdown
+structure (skeletons, setters, render, validate). No subagent dispatch.
 
-The full Plan E skeleton-fill spec is preserved at git commit `bdae59d` (`git show bdae59d:src/commands/generate-docs/main.md > src/commands/generate-docs/main.md` to restore).
-
----
-
-## ⚠️ TEST SCOPE OVERRIDE — V7 (single big concern for split-dispatch smoke)
-
-**Active until removed.** V7 empirical smoke for Plan F 3a split-dispatch. Targets the largest single concern in testForge20 (`db-cse-ui-strata/apps/app-web` package, `components` concern — 23 immediate child dirs, 457 vue/ts files, ~1MB span data). Verifies preflight emits split:true + sub_concerns[] + aggregate stamp, /generate-docs Phase 2 Step 2.S routes per-child, parent skeleton + setters render the locked Sub-concerns shape, validate-doc --split passes the parent, incremental run skips unchanged sub_concerns.
-
-**In-scope concerns** (preflight `concerns[]` filtered to entries whose `<package>/<concern>` matches):
-- `db-cse-ui-strata/apps/app-web/components` ONLY
-
-Skip Phase 3 (package tier) + Phase 4 (project tier) entirely under V7 — V7 is concern-tier-only smoke.
-
-**Expected behavior (cold run)**:
-- Preflight: 1 concern entry with `split: true`, `sub_concerns[]` length 23 (all status `new`), aggregate `source_stamp` set.
-- Phase 2 Step 2.S.1: 23 sub_concern dispatches (orchestrator-direct compose; each renders `docs/db-cse-ui-strata/apps/app-web/components/<sub>/index.md`).
-- Phase 2 Step 2.S.2-S.5: 1 parent compose (no dispatch), `init-doc --split`, `set-doc-purpose`, `set-doc-subconcerns`, `render-doc`, `validate-doc --split` → all green.
-- Final state: 24 docs under `docs/db-cse-ui-strata/apps/app-web/components/` (1 parent index.md + 23 child index.md files).
-
-**Expected metrics**:
-- Wall-clock: ~4-6 min for components alone (Haiku at ~10s/dispatch × 23).
-- Cost: ~$4.60-5.00 Haiku.
-- Validation pass rate: ≥ 90% on first attempt; ≤ 2 retries per failed sub_concern.
-
-**Expected behavior (incremental run, edit one file under `components/accounts/`)**:
-- Preflight: parent `status: changed`, sub_concerns: 22 `unchanged` + 1 (`accounts`) `changed`.
-- Phase 2: 1 sub_concern dispatch (`accounts`) + 1 parent re-synthesis.
-- 22 sub_concern docs untouched (stamp-gate skip).
-
-**Removing this override**: after V7 passes, expand to full app-web scope (Phase 3 + Phase 4 included) or rip override entirely.
+Optional scope filter: a runtime-configured prefix list can narrow Phase 2-4 to
+specific packages or concerns. Without a filter, all preflight entries process.
 
 ---
 
@@ -47,20 +23,17 @@ Skip Phase 3 (package tier) + Phase 4 (project tier) entirely under V7 — V7 is
 init-doc → set-doc-purpose → set-doc-structure → render-doc → validate-doc
 ```
 
-Concern-tier authoring is **orchestrator-direct**: the main /generate-docs thread reads the F.2 concern-input batch JSON inline and emits Purpose + per-leaf annotations itself. NO Task-tool dispatch to the doc-composer subagent. Empirical V4 finding: doc-composer subagent dispatch costs 30-90K tokens per concern + redundant source-file Read calls inside the subagent. Orchestrator-direct is 3-10× cheaper because the orchestrator already has session context loaded; it just inlines the concern's batch JSON (~3-5K tokens) and emits structured output (~2-4K tokens).
+Concern-tier authoring is **orchestrator-direct**: this thread reads the `concern-input` batch JSON inline and emits Purpose + per-leaf annotations itself. NO Task-tool dispatch to any compose subagent. Subagent dispatch costs 30-90K tokens per concern + redundant source-file reads inside the subagent. Orchestrator-direct is 3-10× cheaper because session context is already loaded; the concern's batch JSON inlines (~3-5K tokens) and structured output emits (~2-4K tokens).
 
 The following are FORBIDDEN under /generate-docs:
 
-- Dispatching the `doc-composer` subagent via the Task tool. The agent file at `src/agents/doc-composer.md` is reference material describing the output contract; it is NOT invoked at runtime in this build.
 - Writing concern markdown to disk via the Write tool (helper owns that path via `render-doc`).
 - Running custom Python or bash that emits markdown content directly to `docs/<pkg>/<concern>/index.md`.
-- Invoking Part D setters (`set-concern-overview`, `set-concern-tree`, `add-concern-export`, `add-concern-type`, `add-concern-dep`, `add-concern-hazard`, `set-concern-usage-example`, `render-concern-doc`, `validate-concern`) — those are dormant Plan E primitives that emit the wrong shape.
-- Running `reset` (Part D primitive) — `init-doc` resets the F.4 state slot wholesale on every call.
-- Writing defensive cleanup of `.devforge/.f4-doc-state.json` — `init-doc` is idempotent and self-resets.
-- Using `set-package-*` or `add-package-*` setters — those are Plan E package tier (not yet ported).
-- Adding `## Hazards` to concern docs. Hazards are out of scope for /generate-docs; they belong to `/audit` (separate command, on-demand quality review). Concern docs carry **only** `## Purpose` and `## Structure` (annotated tree).
+- Invoking legacy concern setters (`set-concern-overview`, `set-concern-tree`, `add-concern-export`, `add-concern-type`, `add-concern-dep`, `add-concern-hazard`, `set-concern-usage-example`, `render-concern-doc`, `validate-concern`). Those primitives emit a different shape and are out of scope.
+- Running `reset` — `init-doc` is idempotent and resets its state slot wholesale on every call.
+- Adding `## Hazards` to concern docs. Hazards belong to `/audit` (separate on-demand quality review). Concern docs carry **only** `## Purpose` and `## Structure` (annotated tree).
 
-The helper chain is the ONLY canonical path. Any divergence emits the wrong shape and breaks downstream consumers expecting Plan F (`## Purpose`, `## Structure`).
+The helper chain is the ONLY canonical path. Any divergence emits the wrong shape and breaks downstream consumers expecting `## Purpose` + `## Structure`.
 
 ---
 
@@ -80,23 +53,23 @@ The helper chain is the ONLY canonical path. Any divergence emits the wrong shap
 
 ---
 
-## Phase 1 — Preflight (delegates to F.0)
+## Phase 1 — Preflight
 
 ```
 ./.devforge/lib/generate_docs_helper preflight
 ```
 
 Captures stdout JSON. Key fields used downstream:
-- `concerns[]` — list of `{package, concern, source_stamp, prior_stamp, status, [split, sub_concerns[]]}`. Split parents (Plan F 3a) carry `split:true` + embedded `sub_concerns[]` (each sub_concern is `{concern, source_stamp, prior_stamp, status}`).
+- `concerns[]` — list of `{package, concern, source_stamp, prior_stamp, status, [split, sub_concerns[]]}`. Split parents carry `split:true` + embedded `sub_concerns[]` (each sub_concern is `{concern, source_stamp, prior_stamp, status}`).
 - `concern_counts` — `{unchanged, changed, new, empty}` over concern-tier entries.
 - `subconcern_counts` — `{unchanged, changed, new}` aggregated across every split parent's children. Used for cost estimation.
 - `vue_extract` + `index_repository` — wall-clock and counts; surface to user
 
 vue-extract regenerates `.devforge/vue-tmp/`; CBM `index_repository` reindexes. Both idempotent. On non-zero exit → ABORT with stderr verbatim.
 
-### Cost gate (Plan F 3a — split-aware estimate)
+### Cost gate (split-aware estimate)
 
-Before kicking off Phase 2, surface to the user the dispatch volume + cost estimate using preflight's counts. Apply the TEST SCOPE OVERRIDE filter first, then count:
+Before kicking off Phase 2, surface to the user the dispatch volume + cost estimate using preflight's counts. Apply any configured scope filter first (see "Optional scope filter" in the intro), then count:
 
 - **Single-batch dispatches** = scoped concerns with `status ∈ {changed, new}` AND `split != true`.
 - **Sub_concern dispatches** = sum of scoped split parents' `sub_concerns[]` entries with `status ∈ {changed, new}`. (Parent concerns themselves are orchestrator-direct synthesis — no Haiku dispatch.)
@@ -107,13 +80,13 @@ Cost model (Haiku, ~$0.20 per dispatch + ~10s wall-clock):
 - `total_cost ≈ total_dispatches × $0.20`
 - `total_wall_clock ≈ total_dispatches × 10s` (sequential, single-thread)
 
-**Surface the breakdown to the user before Phase 2 starts** — name the count of each bucket, the total, and the estimated cost + wall-clock. For runs over $5 / 5min, recommend confirming with the user before proceeding. Stamp-gate skips are free; advertise the savings (e.g., "22/23 sub_concerns under `components` skip via stamp gate").
+**Surface the breakdown to the user before Phase 2 starts** — name the count of each bucket, the total, and the estimated cost + wall-clock. For runs over $5 / 5min, recommend confirming with the user before proceeding. Stamp-gate skips are free; surface the savings (e.g., "N/M sub_concerns skip via stamp gate").
 
 ---
 
 ## Phase 2 — Concern tier loop (only changed/new, scope-filtered)
 
-After preflight returns `concerns[]`, apply the TEST SCOPE OVERRIDE filter from the block at the top of this file (the override is the SINGLE source of truth for the in-scope package(s); read it before this phase, NOT a hardcoded reference here). Drop every concern that does not match.
+After preflight returns `concerns[]`, apply the configured scope filter (if any). Drop every concern that does not match. Without a filter, all entries process.
 
 Then for each kept entry where `status` is `changed` or `new`, run Steps 2.1–2.5 in order. The retry loop wraps Steps 2.3–2.5 (capped at 3 retries).
 
@@ -130,9 +103,9 @@ Capture full JSON output to a variable. Fields used downstream:
 - `files[].comment_rich_span` — top-of-file lines + TODO context windows; used by orchestrator to infer leaf annotations
 - `source_stamp` — frontmatter input
 
-**Branch on split (Plan F 3a):** if the JSON output has `"split": true`, jump to Step 2.S (split path) below. Steps 2.2–2.5 below document the single-batch flow only (the default for concerns under the split threshold). The split path reuses Steps 2.2–2.5 once per child sub_concern + adds a parent-aggregator pass.
+**Branch on split:** if the JSON output has `"split": true`, jump to Step 2.S (split path) below. Steps 2.2–2.5 below document the single-batch flow only (the default for concerns under the split threshold). The split path reuses Steps 2.2–2.5 once per child sub_concern + adds a parent-aggregator pass.
 
-### Step 2.2 — init-doc with helper-built frontmatter + F.2 tree
+### Step 2.2 — init-doc with helper-built frontmatter + tree
 
 ```
 ./.devforge/lib/generate_docs_helper init-doc --tier concern --target "$pkg/$concern" \
@@ -148,7 +121,7 @@ Frontmatter values:
 - `source_stamp` — `concerns[*].source_stamp` from preflight
 - `last_indexed` — today's ISO date (`date -u +%Y-%m-%d`)
 
-`init-doc` writes `docs/<target>/index.md.skeleton` with frontmatter + Purpose placeholder + ## Structure section + the F.2 tree wrapped in a `text` code fence. Re-running overwrites the skeleton. No `.devforge/.f4-doc-state.json` — the skeleton file IS the state.
+`init-doc` writes `docs/<target>/index.md.skeleton` with frontmatter + Purpose placeholder + `## Structure` section + the tree wrapped in a `text` code fence. Re-running overwrites the skeleton. The skeleton file IS the state — no separate state JSON.
 
 ### Step 2.3 — Compose Purpose + leaf annotations (orchestrator-direct, NO subagent)
 
@@ -158,9 +131,7 @@ The orchestrator (the main /generate-docs thread) reads the Step 2.1 batch JSON 
 
 2. **Annotations** — a flat `{<basename>: <1-line description ≤60 chars>}` JSON map covering every non-trivial leaf in `tree_text`. One annotation per leaf. Skip canonical-aggregator filenames (`mod.rs`, `lib.rs`, `__init__.py`, `index.ts`, `index.js`, `doc.go`).
 
-Do NOT dispatch the `doc-composer` subagent. Agent file at `src/agents/doc-composer.md` describes the contract for reference; it is not invoked at runtime in this build.
-
-For monster concerns (>100 leaves), the orchestrator emits the annotations map progressively in chunks during a single response — Plan F's set-doc-structure helper accepts the full map atomically; the orchestrator must build the map fully before invoking the setter.
+For very large concerns (>100 leaves), the orchestrator emits the annotations map progressively in chunks during a single response — `set-doc-structure` accepts the full map atomically; the orchestrator must build the map fully before invoking the setter.
 
 ### Step 2.4 — Setters
 
@@ -200,7 +171,7 @@ Disk writes happen via the setters (in-place skeleton edit) and Step 2.5's `rend
 
 ### Step 2.S — Split path (only when concern-input emits `split: true`)
 
-When the Step 2.1 JSON has `"split": true`, the concern was over the threshold + has ≥2 immediate child dirs (Plan F 3a). The output carries `parent_meta` (full tree + `subconcern_names` + `loose_files`) and `sub_concerns[]` (one self-sufficient batch per child). Run the per-child pass first, then the parent-aggregator pass.
+When the Step 2.1 JSON has `"split": true`, the concern was over the threshold + has ≥2 immediate child dirs. The output carries `parent_meta` (full tree + `subconcern_names` + `loose_files`) and `sub_concerns[]` (one self-sufficient batch per child). Run the per-child pass first, then the parent-aggregator pass.
 
 **Iterate `sub_concerns[]` directly — do not drive the loop from `parent_meta.subconcern_names`.** The helper drops children whose file list is empty after trivial-leaf filtering, so `sub_concerns[]` may be shorter than `subconcern_names`. The split-batch top-level JSON has NO `files[]` key (unlike single-batch); `files[]` only exists per-child inside `sub_concerns[i]`.
 
@@ -264,7 +235,7 @@ The orchestrator reads each rendered child's frontmatter Purpose text + names a 
 ./.devforge/lib/generate_docs_helper validate-doc --tier concern --target "$pkg/$concern" --split
 ```
 
-Validation for split parents (Plan F 3a.5): required sections = `## Purpose` + `## Sub-concerns` only (`## Structure` is forbidden); each Sub-concerns bullet matches the locked shape `- <name> — <summary> ([→](<doc_path>))`; each `doc_path` resolves to an existing rendered child doc under `docs/<pkg>/<concern>/`. Both `init-doc` and `validate-doc` use bare `--split` (store_true) for parent-shape selection.
+Validation for split parents: required sections = `## Purpose` + `## Sub-concerns` only (`## Structure` is forbidden); each Sub-concerns bullet matches the locked shape `- <name> — <summary> ([→](<doc_path>))`; each `doc_path` resolves to an existing rendered child doc under `docs/<pkg>/<concern>/`. Both `init-doc` and `validate-doc` use bare `--split` (store_true) for parent-shape selection.
 
 Retry on validation failure: re-run Steps 2.S.2–2.S.5 (re-init wipes parent skeleton). Cap at 3 retries; on 4th, surface failure to the user. Children are NOT regenerated by parent retries.
 
@@ -274,7 +245,7 @@ Retry on validation failure: re-run Steps 2.S.2–2.S.5 (re-init wipes parent sk
 
 ## Phase 3 — Package tier loop (after concern tier completes)
 
-After Phase 2's concern docs are all rendered + validated, run the package tier for every package whose concerns appeared in the concern-tier loop. Two docs per package: `overview.md` + `architecture.md`. (Glossary tier dropped 2026-05-08 — Purpose paragraphs surface terms in context.)
+After Phase 2's concern docs are all rendered + validated, run the package tier for every package whose concerns appeared in the concern-tier loop. Two docs per package: `overview.md` + `architecture.md`. Domain glossary lives inline in each Purpose paragraph; no separate glossary file.
 
 For each in-scope package P (derive the unique set from preflight's `concerns[*].package`):
 
@@ -286,7 +257,7 @@ For each in-scope package P (derive the unique set from preflight's `concerns[*]
 
 Returns JSON with `concern_seeds[]` (frontmatter + Purpose text from each rendered concern doc) + `package_root_files[]` (README/CHANGELOG/package.json comment-rich spans) + `source_stamp`.
 
-If all of P's concerns were `status=unchanged` AND the prior package overview/architecture docs' frontmatter `source_stamp` matches the new `source_stamp` from package-input → SKIP this package's package-tier dispatches. (Per-package stamp comparison; F.0 currently does NOT compute package stamps, so the orchestrator does this check inline.)
+If all of P's concerns were `status=unchanged` AND the prior package overview/architecture docs' frontmatter `source_stamp` matches the new `source_stamp` from package-input → SKIP this package's package-tier dispatches. (Per-package stamp comparison runs inline in the orchestrator; preflight does not compute package-level stamps.)
 
 ### Step 3.2 — package-overview pipeline
 
@@ -381,7 +352,7 @@ Retry semantics same as Phase 3.
 ### Step 4.3 — project-architecture pipeline
 
 Sections:
-- **Layers** — cross-package architectural seams (presentation in apps/, business in pkg-cse-core/, etc.). `{name, role, cite}` with `cite` using `<package>/<path>:<line>` form.
+- **Layers** — cross-package architectural seams (e.g., presentation packages, domain/business packages, data/persistence packages, shared utility packages). `{name, role, cite}` with `cite` using `<package>/<path>:<line>` form.
 - **Cross-Cuts** — concerns/patterns spanning multiple packages (auth flow, observability, error-handling). `{name, role, cite}` — multi-cite per bullet allowed when one cross-cut spans several files.
 
 ```
@@ -415,11 +386,4 @@ Print:
 - Package overview docs rendered + validated: N
 - Package architecture docs rendered + validated: N
 - Package-tier failures: list with paths
-- Wall-clock: vue-extract + index_repository + per-concern + per-package dispatch totals
-- Token-cost estimate: ~$0.10-0.20 per dispatched concern + ~$0.05-0.15 per package tier doc (Haiku)
 
----
-
-## Restoring the full Plan F flow
-
-This is the vertical slice. The full multi-tier flow (F.4 with all tiers) lands once F.7 + F.8 input helpers ship and the package/project setter primitives are added. When that lands, replace this main.md with the full Plan F.4 spec.
