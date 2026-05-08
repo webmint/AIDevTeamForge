@@ -87,7 +87,7 @@ vue-extract regenerates `.devforge/vue-tmp/`; CBM `index_repository` reindexes. 
 
 ## Phase 2 — Concern tier loop (only changed/new, scope-filtered)
 
-After preflight returns `concerns[]`, apply the TEST SCOPE OVERRIDE filter (above) — keep only entries under `db-cse-ui-strata/packages/pkg-cse-core/`. Drop the rest.
+After preflight returns `concerns[]`, apply the TEST SCOPE OVERRIDE filter from the block at the top of this file (the override is the SINGLE source of truth for the in-scope package(s); read it before this phase, NOT a hardcoded reference here). Drop every concern that does not match.
 
 Then for each kept entry where `status` is `changed` or `new`, run Steps 2.1–2.5 in order. The retry loop wraps Steps 2.3–2.5 (capped at 3 retries).
 
