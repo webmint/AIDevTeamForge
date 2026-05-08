@@ -5,7 +5,7 @@ State at hand-off: Plan F + 3a COMPLETE end-to-end, validated on testForge20 ful
 ## Reading order at session start
 
 1. `CLAUDE.md` (auto-loaded).
-2. This file — start at **Track 4** (user-marked entry point) for project-tier richness; then **Track 3 + Track 1 paired** (research redesign + F.11 hooks land together — the enforcement leg of Plan F COMPLETE).
+2. This file — start at **Track 4** (user-marked entry point) for project-tier richness; then **Track 1 (F.11 hooks)** standalone as the enforcement leg of Plan F COMPLETE. Track 3 (/research redesign) deferred per 2026-05-08 user direction.
 3. Track-specific plan (linked under each track).
 
 ## Track 4 — project-tier shape expansion (START HERE)
@@ -170,7 +170,8 @@ Plan F COMPLETE requires three legs: pipeline (DONE) + project-tier richness (Tr
 
 1. **Track 4 (project-tier shape expansion)** — user-marked starting point. Closes the cse-strata-richness gap. Without rich docs, enforcement (Track 1) gates consumption of thin content. Phased approach recommended.
 2. Track 2 (codegraph scrub) — small, mechanical, lands in 30-60 min. Frees Track 1 + 3 from inheriting stale refs. Interleavable between Track 4 phases.
-3. **Track 3 (/research redesign) PAIRED WITH Track 1 (F.11 hooks)** — land together. Track 3 encodes the locked discovery chain (CBM `search_graph` → `search_code` → `Read`) in spec prose; Track 1 hooks enforce it at the tool-call layer. Plan F's "CBM is structural-query layer" contract holds only if consumer commands actually USE CBM — hooks are the forcing function. /research is the first consumer in the per-command revision pass per memory `project_post_codex_command_revision`; subsequent commands (/specify /plan /breakdown /fix /refactor /audit) inherit the enforcement.
+3. **Track 1 (F.11 hooks)** — lands solo after Track 4 ships. Provides the enforcement leg of Plan F COMPLETE. Hooks enforce CBM-first protocol for ALL consumer commands (existing pending specs + future revisions). Doesn't depend on Track 3 timing.
+4. **Track 3 (/research redesign) — DEFERRED** (per 2026-05-08 user direction). Re-enter when /research priority surfaces. The locked discovery chain (CBM `search_graph` → `search_code` → `Read`) stays captured in `feedback_cbm_discovery_chain_search_graph_then_code` memory + REDESIGN-RESEARCH-PLAN.md for whenever Track 3 picks up.
 
 Why F.11 sequencing matters: spec prose decays in long sessions (LLM forgets after context compaction); hooks survive. Empirical 2026-05-08 evidence — even with the locked discovery-chain memory, my behavior fell back to "guess-the-suspect" without enforcement. `cbm-code-discovery-gate` (advisory) + `bash-ban-raw-tools` (soft-reject raw grep on source) + `cbm-mcp-marker` (telemetry) + `cbm-session-reminder` (re-inject on context drop) are the four hooks. See CBM-INTEGRATION-PLAN.md §F.11.
 
