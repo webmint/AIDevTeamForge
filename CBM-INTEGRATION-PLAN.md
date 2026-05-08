@@ -536,6 +536,33 @@ Update `src/CLAUDE.md` template + storage-rules:
 - Template diff reviewed by instruction-author
 - One end-to-end install on a fresh project confirms layout matches template
 
+### F.11 — CBM-first enforcement hooks (sgaabdu4-style)
+
+F.9 documents the soft read-tier order in command specs ("consult preflight → docs → CBM → source"). F.11 makes it ENFORCEABLE at the Claude-Code tool-call level via four hooks at `~/.claude/hooks/` (or, for project-scoped enforcement, `<project>/.claude/hooks/`). Pattern adopted from `sgaabdu4/claude-code-tips` (https://github.com/sgaabdu4/claude-code-tips/tree/main/hooks).
+
+| Hook | Event | Purpose |
+|---|---|---|
+| `cbm-code-discovery-gate` | PreToolUse on Read/Grep/Glob | Advisory message: "consider `search_graph` / `agentic_context` / `semantic_query` before text search". Exit code 0 (non-blocking) |
+| `cbm-mcp-marker` | PostToolUse on Bash + MCP tools | Telemetry: marks each CBM tool invocation in the transcript so adoption is measurable |
+| `cbm-session-reminder` | SessionStart (resume / clear / compact) | Re-injects CBM-first protocol when the prior context window is dropped |
+| `bash-ban-raw-tools` | PreToolUse on Bash | Soft-rejects raw `grep`/`find`/`cat` patterns over source files; suggests CBM equivalent |
+
+**F.11.a — Hook reference scripts** ship in `src/devforge/hooks/` (or similar). Each hook is a stand-alone shell/python script that consumes the Claude Code hook JSON contract on stdin and emits the appropriate response.
+
+**F.11.b — install.sh / wizard integration**:
+- Wizard prompts: `Install CBM-first enforcement hooks to .claude/hooks/? (recommended for /research /specify /plan workflows) [yes/no]`.
+- On `yes`: copy hook scripts to `<target>/.claude/hooks/` (presence-guarded; never overwrite existing same-named hooks) and add their entries to `<target>/.claude/settings.json` under the appropriate event arrays.
+- On `no`: skip; user can re-run wizard or manually copy later.
+
+**F.11.c — CLAUDE.md template documentation**:
+- Section "CBM-first protocol enforcement" describes each hook's role + how to disable individually + linkback to sgaabdu4 reference.
+
+#### Verify F.11
+- 4 hook scripts authored + manually invoked against sample tool-call JSON to confirm exit codes + stderr messages
+- install.sh adds the hooks (presence-guarded) on wizard `yes`; doesn't overwrite custom hooks; doesn't error when `~/.claude/hooks/` lacks settings.json keys
+- Empirical: in testForge20, run /research with hooks active; confirm `cbm-code-discovery-gate` fires when Claude tries Read/Grep/Glob on source files; confirm `bash-ban-raw-tools` fires on naive grep
+- Documentation: CLAUDE.md template has the section; instruction-author + claude-code-guide sign off on hook contract conventions
+
 ---
 
 ## Disposition of prior work
