@@ -38,7 +38,15 @@ _PACKAGE_OVERVIEW_REQUIRED_SECTIONS = ("## Purpose", "## Concerns")
 _PACKAGE_ARCHITECTURE_REQUIRED_KEYS = ("package", "source_stamp", "last_indexed")
 _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS = ("## Layers", "## Patterns")
 
-_BULLET_CAP = 200
+# Bullet length cap (Concerns/Layers/Patterns/Cross-Cuts).
+# Bumped 200 → 300 (2026-05-08) after V5 smoke on pkg-cse-client surfaced
+# Patterns bullets at 219-332 chars where the content was REAL (Vite dual-
+# bundle build, AppSync subscription transport subclass override, etc.),
+# not LLM rambling. 200 was Hazards-calibrated (smoke #5); Patterns/Layers
+# are inherently more discursive — `<name> — <rule with explanation> —
+# <cite>` plus deep monorepo paths eat 100+ chars on cite alone. 300 =
+# 30 (name) + 150 (rule) + 100 (cite) with headroom.
+_BULLET_CAP = 300
 
 _BANNED_PHRASES_RE = re.compile(
     r"\b(this document|in this section|we will|various|several|many|some|other)\b",

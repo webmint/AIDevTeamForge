@@ -291,7 +291,8 @@ class ValidatePackageOverviewTests(unittest.TestCase):
         self.assertTrue(any("source_stamp" in e for e in errors))
 
     def test_bullet_exceeds_cap(self):
-        long_bullet = "- " + ("X" * 250) + " — alpha role"
+        # Cap is 300 (post-V5 calibration); push past with a 350-char bullet.
+        long_bullet = "- " + ("X" * 350) + " — alpha role"
         broken = _VALID_PACKAGE_OVERVIEW.replace(
             "- alpha — first concern", long_bullet
         )
@@ -301,7 +302,7 @@ class ValidatePackageOverviewTests(unittest.TestCase):
             _PACKAGE_OVERVIEW_REQUIRED_KEYS,
             _PACKAGE_OVERVIEW_REQUIRED_SECTIONS,
         )
-        self.assertTrue(any("length" in e and "200" in e for e in errors))
+        self.assertTrue(any("length" in e and "300" in e for e in errors))
 
     def test_banned_phrase_rejected(self):
         broken = _VALID_PACKAGE_OVERVIEW.replace(
