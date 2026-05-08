@@ -137,7 +137,7 @@ def _diff_concern(
             "prior_stamp": None,
             "status": "empty",
         }
-    _records, source_stamp = _build_spans_and_stamp(concern_files, project_root)
+    _records, _hashes, source_stamp = _build_spans_and_stamp(concern_files, project_root)
     doc_path = docs_root / pkg / concern / "index.md"
     prior_stamp = _read_prior_stamp(doc_path)
     if prior_stamp is None:

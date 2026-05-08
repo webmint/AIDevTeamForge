@@ -167,29 +167,32 @@ class BuildSpansAndStampTests(unittest.TestCase):
         (self.root / "b.ts").write_text("export const b = 2;\n", encoding="utf-8")
 
     def test_identical_inputs_same_stamp(self):
-        records1, stamp1 = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
-        records2, stamp2 = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
+        records1, _h1, stamp1 = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
+        records2, _h2, stamp2 = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
         self.assertEqual(stamp1, stamp2)
         self.assertEqual(len(records1), 2)
         self.assertEqual(len(records2), 2)
 
     def test_content_change_changes_stamp(self):
-        _, stamp_before = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
+        _, _h1, stamp_before = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
         (self.root / "a.ts").write_text("export const a = 999;\n", encoding="utf-8")
-        _, stamp_after = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
+        _, _h2, stamp_after = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
         self.assertNotEqual(stamp_before, stamp_after)
 
     def test_input_order_does_not_affect_stamp(self):
-        _, stamp_a = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
-        _, stamp_b = _build_spans_and_stamp(["b.ts", "a.ts"], self.root)
+        _, _h1, stamp_a = _build_spans_and_stamp(["a.ts", "b.ts"], self.root)
+        _, _h2, stamp_b = _build_spans_and_stamp(["b.ts", "a.ts"], self.root)
         self.assertEqual(stamp_a, stamp_b)
 
     def test_unreadable_file_recorded_does_not_crash(self):
-        records, stamp = _build_spans_and_stamp(["a.ts", "missing.ts"], self.root)
+        records, hashes, stamp = _build_spans_and_stamp(["a.ts", "missing.ts"], self.root)
         self.assertEqual(len(records), 2)
         missing = next(r for r in records if r["path"] == "missing.ts")
         self.assertEqual(missing["comment_rich_span"], "<unreadable>")
         self.assertTrue(stamp)
+        # Sanity-check hashes shape
+        self.assertEqual(len(hashes), 2)
+        self.assertTrue(all(len(h) == 2 for h in hashes))
 
 
 class CmdConcernInputTests(unittest.TestCase):
