@@ -146,6 +146,23 @@ class CmdSetDocPurposeProjectTests(unittest.TestCase):
         content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
         self.assertIn("Project purpose.", content)
 
+    def test_argparse_factory_accepts_project_overview(self):
+        """Regression test: cmd handler accepts project-overview but argparse
+        factory must list it in --tier choices too. Earlier bug — cmd was
+        wired but factory's tier-allowlist was stale."""
+        from _generate_docs._doc_setters import _build_set_doc_purpose
+        parser = argparse.ArgumentParser()
+        _build_set_doc_purpose(parser)
+        args = parser.parse_args(
+            [
+                "--tier", "project-overview",
+                "--target", "x",
+                "--text", "purpose",
+                "--devforge-dir", "/tmp",
+            ]
+        )
+        self.assertEqual(args.tier, "project-overview")
+
     def test_purpose_rejects_project_architecture(self):
         args = _ns(self.devforge, "project-architecture", text="X")
         code, _, err = _run(cmd_set_doc_purpose, args)

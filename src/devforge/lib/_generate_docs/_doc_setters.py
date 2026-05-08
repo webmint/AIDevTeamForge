@@ -610,7 +610,7 @@ def _build_init_doc(p: argparse.ArgumentParser) -> None:
 
 
 def _build_set_doc_purpose(p: argparse.ArgumentParser) -> None:
-    _common_target_args(p, ("concern", "package-overview"))
+    _common_target_args(p, ("concern", "package-overview", "project-overview"))
     p.add_argument("--text", required=True)
 
 
