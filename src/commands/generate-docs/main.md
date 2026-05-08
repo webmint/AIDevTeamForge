@@ -10,29 +10,32 @@ The full Plan E skeleton-fill spec is preserved at git commit `bdae59d` (`git sh
 
 ---
 
-## ⚠️ TEST SCOPE OVERRIDE — V6 (3 small packages for project-tier smoke)
+## ⚠️ TEST SCOPE OVERRIDE — V7 (single big concern for split-dispatch smoke)
 
-**Active until removed.** V6 empirical smoke for the F.8 project-tier flow. Three small packages give the project doc enough package_seeds[] material for meaningful Layers / Cross-Cuts synthesis without spending big on a full pass.
+**Active until removed.** V7 empirical smoke for Plan F 3a split-dispatch. Targets the largest single concern in testForge20 (`db-cse-ui-strata/apps/app-web` package, `components` concern — 23 immediate child dirs, 457 vue/ts files, ~1MB span data). Verifies preflight emits split:true + sub_concerns[] + aggregate stamp, /generate-docs Phase 2 Step 2.S routes per-child, parent skeleton + setters render the locked Sub-concerns shape, validate-doc --split passes the parent, incremental run skips unchanged sub_concerns.
 
-**In-scope packages** (any concern under any of these matches):
-- `db-cse-ui-strata/packages/pkg-cse-client/*` — 14 files / 2 concerns (already rendered in V5; stamp-gate will skip)
-- `db-cse-ui-strata/packages/pkg-cse-organizations/*` — 11 files / 1 concern
-- `db-cse-ui-strata/packages/pkg-cse-equipment/*` — 18 files / 1 concern
+**In-scope concerns** (preflight `concerns[]` filtered to entries whose `<package>/<concern>` matches):
+- `db-cse-ui-strata/apps/app-web/components` ONLY
 
-Behavior: after preflight returns `concerns[]`, FILTER to entries whose `<package>/<concern>` starts with one of:
-- `db-cse-ui-strata/packages/pkg-cse-client/`
-- `db-cse-ui-strata/packages/pkg-cse-organizations/`
-- `db-cse-ui-strata/packages/pkg-cse-equipment/`
+Skip Phase 3 (package tier) + Phase 4 (project tier) entirely under V7 — V7 is concern-tier-only smoke.
 
-Process the filtered list. Phase 3 derives unique packages from the filtered concerns set (3 packages) and runs the package overview + architecture pipelines. Phase 4 (project tier) runs once against `project-input` which sees ALL package overviews currently rendered under `docs/` (3 from V6 + the existing pkg-cse-client from V5 = same 3).
+**Expected behavior (cold run)**:
+- Preflight: 1 concern entry with `split: true`, `sub_concerns[]` length 23 (all status `new`), aggregate `source_stamp` set.
+- Phase 2 Step 2.S.1: 23 sub_concern dispatches (orchestrator-direct compose; each renders `docs/db-cse-ui-strata/apps/app-web/components/<sub>/index.md`).
+- Phase 2 Step 2.S.2-S.5: 1 parent compose (no dispatch), `init-doc --split`, `set-doc-purpose`, `set-doc-subconcerns`, `render-doc`, `validate-doc --split` → all green.
+- Final state: 24 docs under `docs/db-cse-ui-strata/apps/app-web/components/` (1 parent index.md + 23 child index.md files).
 
-**Expected dispatches** (excluding stamp-gate skips):
-- 2 concern (organizations + equipment; pkg-cse-client unchanged)
-- 4 package tier (organizations + equipment overview/architecture; pkg-cse-client tier may skip via stamp-gate)
-- 2 project tier (overview + architecture)
-- Total: ~8 dispatches, ~$1-2 Haiku, ~5-7 min wall-clock.
+**Expected metrics**:
+- Wall-clock: ~4-6 min for components alone (Haiku at ~10s/dispatch × 23).
+- Cost: ~$4.60-5.00 Haiku.
+- Validation pass rate: ≥ 90% on first attempt; ≤ 2 retries per failed sub_concern.
 
-**Removing this override**: after V6 passes (clean docs across 3 tiers), either expand further or rip the override entirely. Phase 2/3/4 then process the full preflight `concerns[]` list.
+**Expected behavior (incremental run, edit one file under `components/accounts/`)**:
+- Preflight: parent `status: changed`, sub_concerns: 22 `unchanged` + 1 (`accounts`) `changed`.
+- Phase 2: 1 sub_concern dispatch (`accounts`) + 1 parent re-synthesis.
+- 22 sub_concern docs untouched (stamp-gate skip).
+
+**Removing this override**: after V7 passes, expand to full app-web scope (Phase 3 + Phase 4 included) or rip override entirely.
 
 ---
 
