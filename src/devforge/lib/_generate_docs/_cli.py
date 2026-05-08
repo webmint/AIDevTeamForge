@@ -35,16 +35,20 @@ from ._doc_setters import (
     _build_init_doc,
     _build_render_doc,
     _build_set_doc_concerns,
+    _build_set_doc_cross_cuts,
     _build_set_doc_files,
     _build_set_doc_layers,
+    _build_set_doc_packages,
     _build_set_doc_patterns,
     _build_set_doc_purpose,
     _build_set_doc_structure,
     cmd_init_doc,
     cmd_render_doc,
     cmd_set_doc_concerns,
+    cmd_set_doc_cross_cuts,
     cmd_set_doc_files,
     cmd_set_doc_layers,
+    cmd_set_doc_packages,
     cmd_set_doc_patterns,
     cmd_set_doc_purpose,
     cmd_set_doc_structure,
@@ -52,6 +56,7 @@ from ._doc_setters import (
 from ._manifest import cmd_extract_package_scripts
 from ._package_input import _build_package_input, cmd_package_input
 from ._preflight import _build_preflight, cmd_preflight
+from ._project_input import _build_project_input, cmd_project_input
 from ._validate_doc import _build_validate_doc, cmd_validate_doc
 from ._render import (
     cmd_render_concern_skeleton,
@@ -392,6 +397,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("concern-input", _build_concern_input, cmd_concern_input),
     # Plan F.7 — package-input helper for package-tier dispatch.
     ("package-input", _build_package_input, cmd_package_input),
+    # Plan F.8 — project-input helper for project-tier dispatch.
+    ("project-input", _build_project_input, cmd_project_input),
     # Plan F.0 — preflight (vue-extract + index_repository + stamp diff).
     ("preflight", _build_preflight, cmd_preflight),
     # Plan F.5 — validate-doc (concern tier; v0).
@@ -406,6 +413,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("set-doc-files", _build_set_doc_files, cmd_set_doc_files),
     ("set-doc-layers", _build_set_doc_layers, cmd_set_doc_layers),
     ("set-doc-patterns", _build_set_doc_patterns, cmd_set_doc_patterns),
+    ("set-doc-packages", _build_set_doc_packages, cmd_set_doc_packages),
+    ("set-doc-cross-cuts", _build_set_doc_cross_cuts, cmd_set_doc_cross_cuts),
     ("render-doc", _build_render_doc, cmd_render_doc),
 )
 

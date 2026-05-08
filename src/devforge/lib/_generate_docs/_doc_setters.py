@@ -50,6 +50,8 @@ _CONCERNS_PLACEHOLDER = "<!-- TODO: concerns -->"
 _FILES_PLACEHOLDER = "<!-- TODO: files -->"
 _LAYERS_PLACEHOLDER = "<!-- TODO: layers -->"
 _PATTERNS_PLACEHOLDER = "<!-- TODO: patterns -->"
+_PACKAGES_PLACEHOLDER = "<!-- TODO: packages -->"
+_CROSS_CUTS_PLACEHOLDER = "<!-- TODO: cross-cuts -->"
 _TREE_FENCE_OPEN = "```text"
 _TREE_FENCE_CLOSE = "```"
 _ANNOTATION_SEPARATOR = "  # "
@@ -65,23 +67,40 @@ _CANONICAL_AGGREGATORS = (
     "index.jsx",
 )
 
-_VALID_TIERS = ("concern", "package-overview", "package-architecture")
+_VALID_TIERS = (
+    "concern",
+    "package-overview",
+    "package-architecture",
+    "project-overview",
+    "project-architecture",
+)
 
 _TIER_DOC_FILENAMES: Dict[str, str] = {
     "concern": "index.md",
     "package-overview": "overview.md",
     "package-architecture": "architecture.md",
+    "project-overview": "overview.md",
+    "project-architecture": "architecture.md",
 }
+
+_PROJECT_TIERS = ("project-overview", "project-architecture")
 
 
 # ── Path resolution ─────────────────────────────────────────────────────────
 
 
 def _doc_path_for(args: argparse.Namespace) -> Path:
-    """Resolve the doc path: docs/<target>/<tier-specific-filename>."""
+    """Resolve the doc path.
+
+    Concern + package tiers: docs/<target>/<tier-filename>.
+    Project tiers: docs/<tier-filename> (no per-target subdir; target arg
+    is treated as a label only for the H1 / frontmatter).
+    """
     devforge_dir = Path(args.devforge_dir)
     project_root = devforge_dir.parent.resolve()
     filename = _TIER_DOC_FILENAMES.get(args.tier, "index.md")
+    if args.tier in _PROJECT_TIERS:
+        return project_root / "docs" / filename
     return project_root / "docs" / args.target / filename
 
 
@@ -142,6 +161,30 @@ def _build_package_architecture_skeleton(frontmatter: Dict[str, Any]) -> str:
     return render_frontmatter(dict(frontmatter), "\n" + body)
 
 
+def _build_project_overview_skeleton(frontmatter: Dict[str, Any], target: str) -> str:
+    name = frontmatter.get("project") or target or "project"
+    body = (
+        f"# {name}\n\n"
+        f"## Purpose\n\n"
+        f"{_PURPOSE_PLACEHOLDER}\n\n"
+        f"## Packages\n\n"
+        f"{_PACKAGES_PLACEHOLDER}\n"
+    )
+    return render_frontmatter(dict(frontmatter), "\n" + body)
+
+
+def _build_project_architecture_skeleton(frontmatter: Dict[str, Any], target: str) -> str:
+    name = frontmatter.get("project") or target or "project"
+    body = (
+        f"# {name} architecture\n\n"
+        f"## Layers\n\n"
+        f"{_LAYERS_PLACEHOLDER}\n\n"
+        f"## Cross-Cuts\n\n"
+        f"{_CROSS_CUTS_PLACEHOLDER}\n"
+    )
+    return render_frontmatter(dict(frontmatter), "\n" + body)
+
+
 # ── Section replacers ──────────────────────────────────────────────────────
 
 
@@ -170,6 +213,14 @@ def _replace_concerns_block(content: str, bullet_text: str) -> str:
 
 def _replace_files_block(content: str, bullet_text: str) -> str:
     return _replace_or_substitute(content, _FILES_PLACEHOLDER, "Files", bullet_text)
+
+
+def _replace_packages_block(content: str, bullet_text: str) -> str:
+    return _replace_or_substitute(content, _PACKAGES_PLACEHOLDER, "Packages", bullet_text)
+
+
+def _replace_cross_cuts_block(content: str, bullet_text: str) -> str:
+    return _replace_or_substitute(content, _CROSS_CUTS_PLACEHOLDER, "Cross-Cuts", bullet_text)
 
 
 def _replace_layers_block(content: str, bullet_text: str) -> str:
@@ -303,6 +354,10 @@ def cmd_init_doc(args: argparse.Namespace) -> int:
         skeleton_text = _build_package_overview_skeleton(frontmatter)
     elif args.tier == "package-architecture":
         skeleton_text = _build_package_architecture_skeleton(frontmatter)
+    elif args.tier == "project-overview":
+        skeleton_text = _build_project_overview_skeleton(frontmatter, args.target)
+    elif args.tier == "project-architecture":
+        skeleton_text = _build_project_architecture_skeleton(frontmatter, args.target)
     else:  # pragma: no cover — guard above already filters
         print(f"unhandled tier {args.tier!r}", file=sys.stderr)
         return 2
@@ -318,9 +373,10 @@ def cmd_init_doc(args: argparse.Namespace) -> int:
 
 
 def cmd_set_doc_purpose(args: argparse.Namespace) -> int:
-    if args.tier not in ("concern", "package-overview"):
+    if args.tier not in ("concern", "package-overview", "project-overview"):
         print(
-            f"set-doc-purpose supports tier in (concern, package-overview); got {args.tier!r}",
+            f"set-doc-purpose supports tier in (concern, package-overview, project-overview); "
+            f"got {args.tier!r}",
             file=sys.stderr,
         )
         return 2
@@ -437,9 +493,10 @@ def cmd_set_doc_files(args: argparse.Namespace) -> int:
 
 
 def cmd_set_doc_layers(args: argparse.Namespace) -> int:
-    if args.tier != "package-architecture":
+    if args.tier not in ("package-architecture", "project-architecture"):
         print(
-            f"set-doc-layers supports tier=package-architecture only; got {args.tier!r}",
+            f"set-doc-layers supports tier in (package-architecture, project-architecture); "
+            f"got {args.tier!r}",
             file=sys.stderr,
         )
         return 2
@@ -474,6 +531,48 @@ def cmd_set_doc_patterns(args: argparse.Namespace) -> int:
         print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
         return 2
     path.write_text(_replace_patterns_block(content, bullet_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_doc_packages(args: argparse.Namespace) -> int:
+    if args.tier != "project-overview":
+        print(
+            f"set-doc-packages supports tier=project-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.packages, "packages")
+    if entries is None:
+        return 2
+    bullet_text = _render_concerns_bullets(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_packages_block(content, bullet_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_doc_cross_cuts(args: argparse.Namespace) -> int:
+    if args.tier != "project-architecture":
+        print(
+            f"set-doc-cross-cuts supports tier=project-architecture only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.cross_cuts, "cross-cuts")
+    if entries is None:
+        return 2
+    bullet_text = _render_concerns_bullets(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_cross_cuts_block(content, bullet_text), encoding="utf-8")
     print(str(path))
     return 0
 
@@ -543,7 +642,7 @@ def _build_set_doc_files(p: argparse.ArgumentParser) -> None:
 
 
 def _build_set_doc_layers(p: argparse.ArgumentParser) -> None:
-    _common_target_args(p, ("package-architecture",))
+    _common_target_args(p, ("package-architecture", "project-architecture"))
     p.add_argument(
         "--layers",
         required=True,
@@ -557,6 +656,25 @@ def _build_set_doc_patterns(p: argparse.ArgumentParser) -> None:
         "--patterns",
         required=True,
         help='JSON array [{"name": "...", "rule": "...", "cite": "..."}]',
+    )
+
+
+def _build_set_doc_packages(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-overview",))
+    p.add_argument(
+        "--packages",
+        required=True,
+        help='JSON array [{"name": "<pkg-path>", "role": "...", "cite": "..."}]',
+    )
+
+
+def _build_set_doc_cross_cuts(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--cross-cuts",
+        dest="cross_cuts",
+        required=True,
+        help='JSON array [{"name": "...", "role": "...", "cite": "..."}]',
     )
 
 

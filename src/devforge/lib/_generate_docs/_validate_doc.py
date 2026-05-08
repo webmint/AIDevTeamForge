@@ -38,6 +38,12 @@ _PACKAGE_OVERVIEW_REQUIRED_SECTIONS = ("## Purpose", "## Concerns", "## Files")
 _PACKAGE_ARCHITECTURE_REQUIRED_KEYS = ("package", "source_stamp", "last_indexed")
 _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS = ("## Layers", "## Patterns")
 
+_PROJECT_OVERVIEW_REQUIRED_KEYS = ("source_stamp", "last_indexed")
+_PROJECT_OVERVIEW_REQUIRED_SECTIONS = ("## Purpose", "## Packages")
+
+_PROJECT_ARCHITECTURE_REQUIRED_KEYS = ("source_stamp", "last_indexed")
+_PROJECT_ARCHITECTURE_REQUIRED_SECTIONS = ("## Layers", "## Cross-Cuts")
+
 # Bullet length cap (Concerns/Layers/Patterns/Cross-Cuts).
 # Bumped 200 → 300 (2026-05-08) after V5 smoke on pkg-cse-client surfaced
 # Patterns bullets at 219-332 chars where the content was REAL (Vite dual-
@@ -201,7 +207,10 @@ _TIER_DOC_FILENAMES = {
     "concern": "index.md",
     "package-overview": "overview.md",
     "package-architecture": "architecture.md",
+    "project-overview": "overview.md",
+    "project-architecture": "architecture.md",
 }
+_PROJECT_TIERS = ("project-overview", "project-architecture")
 
 
 def _validate_package_doc(
@@ -270,7 +279,11 @@ def cmd_validate_doc(args: argparse.Namespace) -> int:
         )
         return 2
 
-    doc_path = project_root / "docs" / target / _TIER_DOC_FILENAMES[tier]
+    if tier in _PROJECT_TIERS:
+        doc_path = project_root / "docs" / _TIER_DOC_FILENAMES[tier]
+    else:
+        doc_path = project_root / "docs" / target / _TIER_DOC_FILENAMES[tier]
+
     if tier == "concern":
         errors = _validate_concern_doc(doc_path, target, project_root)
     elif tier == "package-overview":
@@ -284,6 +297,18 @@ def cmd_validate_doc(args: argparse.Namespace) -> int:
             doc_path,
             _PACKAGE_ARCHITECTURE_REQUIRED_KEYS,
             _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS,
+        )
+    elif tier == "project-overview":
+        errors = _validate_package_doc(
+            doc_path,
+            _PROJECT_OVERVIEW_REQUIRED_KEYS,
+            _PROJECT_OVERVIEW_REQUIRED_SECTIONS,
+        )
+    elif tier == "project-architecture":
+        errors = _validate_package_doc(
+            doc_path,
+            _PROJECT_ARCHITECTURE_REQUIRED_KEYS,
+            _PROJECT_ARCHITECTURE_REQUIRED_SECTIONS,
         )
     else:  # pragma: no cover — guarded above
         errors = [f"unhandled tier {tier!r}"]

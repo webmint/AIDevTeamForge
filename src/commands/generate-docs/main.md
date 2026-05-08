@@ -236,9 +236,64 @@ Frontmatter (same shape as 3.2). Sections:
 
 Same retry semantics as Step 3.2.
 
-## Phase 4 — Project tier (NO-OP in this build)
+## Phase 4 — Project tier loop (after package tier completes)
 
-Project overview/architecture docs ship under forthcoming F.8. Skip silently.
+After Phase 3's package overviews + architectures are all rendered + validated, run the project tier. Two docs at `docs/overview.md` and `docs/architecture.md` (NO `<package>` subdir at this tier).
+
+### Step 4.1 — Pull batch input
+
+```
+./.devforge/lib/generate_docs_helper project-input [--project "<label>"]
+```
+
+Returns JSON with `package_seeds[]` (frontmatter + Purpose text from each rendered package overview) + `project_root_files[]` (top-level README/CHANGELOG/package.json comment-rich spans) + `source_stamp`. `--project` defaults to the project_root basename.
+
+If all packages were `unchanged` AND prior project overview/architecture docs' `source_stamp` matches the new project-input `source_stamp` → SKIP project tier dispatches.
+
+### Step 4.2 — project-overview pipeline
+
+Frontmatter:
+```json
+{"last_indexed": "<today>", "source_stamp": "<from project-input>"}
+```
+
+`--target` is used as the H1 label only (no per-target subdir at this tier). Pass the project label.
+
+```
+./.devforge/lib/generate_docs_helper init-doc --tier project-overview --target "<project-label>" \
+    --frontmatter "$FM"
+```
+
+Compose orchestrator-direct:
+- **Purpose** — synthesize across `package_seeds[*].purpose_text` + `project_root_files[*].comment_rich_span`. Cross-package coordination named.
+- **Packages** — bullet list, one entry per `package_seeds[*]`: `{name: <pkg-path>, role: <one-line role>, cite: <docs/<pkg>/overview.md>}`.
+
+```
+./.devforge/lib/generate_docs_helper set-doc-purpose --tier project-overview --target "<project-label>" --text "..."
+./.devforge/lib/generate_docs_helper set-doc-packages --tier project-overview --target "<project-label>" \
+    --packages '<json array>'
+./.devforge/lib/generate_docs_helper render-doc --tier project-overview --target "<project-label>"
+./.devforge/lib/generate_docs_helper validate-doc --tier project-overview --target "<project-label>"
+```
+
+Retry semantics same as Phase 3.
+
+### Step 4.3 — project-architecture pipeline
+
+Sections:
+- **Layers** — cross-package architectural seams (presentation in apps/, business in pkg-cse-core/, etc.). `{name, role, cite}` with `cite` using `<package>/<path>:<line>` form.
+- **Cross-Cuts** — concerns/patterns spanning multiple packages (auth flow, observability, error-handling). `{name, role, cite}` — multi-cite per bullet allowed when one cross-cut spans several files.
+
+```
+./.devforge/lib/generate_docs_helper init-doc --tier project-architecture --target "<project-label>" \
+    --frontmatter "$FM"
+./.devforge/lib/generate_docs_helper set-doc-layers --tier project-architecture --target "<project-label>" \
+    --layers '<json array>'
+./.devforge/lib/generate_docs_helper set-doc-cross-cuts --tier project-architecture --target "<project-label>" \
+    --cross-cuts '<json array>'
+./.devforge/lib/generate_docs_helper render-doc --tier project-architecture --target "<project-label>"
+./.devforge/lib/generate_docs_helper validate-doc --tier project-architecture --target "<project-label>"
+```
 
 ---
 
