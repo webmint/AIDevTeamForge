@@ -28,7 +28,15 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ._concern_input import _build_spans_and_stamp, _walk_concern_subfolder
+from ._concern_input import (
+    _DEFAULT_SPLIT_THRESHOLD_KB,
+    _aggregate_stamp,
+    _build_spans_and_stamp,
+    _enumerate_immediate_dirs,
+    _partition_files_by_immediate_dir,
+    _stamp_from_hashes,
+    _walk_concern_subfolder,
+)
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 from ._setters_concern import _path_contains_trivial_dir
 
@@ -120,15 +128,33 @@ def _read_prior_stamp(doc_path: Path) -> Optional[str]:
     return None
 
 
+def _classify_status(prior_stamp: Optional[str], source_stamp: str) -> str:
+    """Map (prior, current) stamps → status string."""
+    if prior_stamp is None:
+        return "new"
+    if prior_stamp == source_stamp:
+        return "unchanged"
+    return "changed"
+
+
 def _diff_concern(
     pkg: str,
     concern: str,
     project_root: Path,
     docs_root: Path,
+    split_threshold_kb: int = _DEFAULT_SPLIT_THRESHOLD_KB,
 ) -> Dict[str, Any]:
-    """Compute source_stamp for one concern + diff against existing doc."""
+    """Compute source_stamp for one concern + diff against existing doc.
+
+    Plan F 3a: when ``split_threshold_kb > 0`` and the concern's total span
+    exceeds the threshold AND it has ≥ 2 immediate child dirs, emit a
+    split entry with embedded ``sub_concerns[]`` (per-child stamp + status)
+    + an aggregate parent stamp + parent status. Stamp aggregation matches
+    concern-input's split-batch shape so the orchestrator's stamp-gate
+    logic is symmetric across the two helpers.
+    """
     project_root = project_root.resolve()
-    _subfolder_abs, concern_files = _walk_concern_subfolder(project_root, pkg, concern)
+    subfolder_abs, concern_files = _walk_concern_subfolder(project_root, pkg, concern)
     if not concern_files:
         return {
             "package": pkg,
@@ -137,21 +163,97 @@ def _diff_concern(
             "prior_stamp": None,
             "status": "empty",
         }
+
+    if split_threshold_kb > 0:
+        all_records, all_hashes, _stamp = _build_spans_and_stamp(
+            concern_files, project_root, batch_cap=None
+        )
+        total_bytes = sum(
+            len(r["comment_rich_span"].encode("utf-8")) for r in all_records
+        )
+        immediate_dirs = _enumerate_immediate_dirs(subfolder_abs, project_root)
+        should_split = (
+            total_bytes > split_threshold_kb * 1024 and len(immediate_dirs) >= 2
+        )
+    else:
+        all_hashes = []
+        immediate_dirs = []
+        should_split = False
+
+    if should_split:
+        subfolder_prefix = f"{pkg}/src/{concern}/"
+        subdir_groups, loose_files = _partition_files_by_immediate_dir(
+            concern_files, subfolder_prefix, immediate_dirs
+        )
+        sub_concerns_out: List[Dict[str, Any]] = []
+        sub_stamps: List[str] = []
+        for child_name in immediate_dirs:
+            child_files = subdir_groups.get(child_name, [])
+            if not child_files:
+                continue
+            child_set = set(child_files)
+            child_hashes = [(p, h) for p, h in all_hashes if p in child_set]
+            child_stamp = _stamp_from_hashes(child_hashes)
+            child_doc = docs_root / pkg / concern / child_name / "index.md"
+            child_prior = _read_prior_stamp(child_doc)
+            sub_concerns_out.append(
+                {
+                    "concern": child_name,
+                    "source_stamp": child_stamp,
+                    "prior_stamp": child_prior,
+                    "status": _classify_status(child_prior, child_stamp),
+                }
+            )
+            sub_stamps.append(child_stamp)
+
+        # Defensive: if every immediate child group ended up empty (only
+        # loose files survive the walk), the split branch would emit
+        # `split:true, sub_concerns:[]` — a shape no downstream consumer
+        # handles. Fall back to single-batch in that case.
+        if not sub_concerns_out:
+            should_split = False
+
+    if should_split:
+        loose_set = set(loose_files)
+        loose_parts = [
+            f"{p}\t{h}" for p, h in sorted(all_hashes) if p in loose_set
+        ]
+        agg_stamp = _aggregate_stamp(sub_stamps + loose_parts)
+
+        parent_doc = docs_root / pkg / concern / "index.md"
+        parent_prior = _read_prior_stamp(parent_doc)
+        # Parent is unchanged ONLY if every child is unchanged AND aggregate
+        # stamp matches prior. Otherwise either the parent doc is missing
+        # (new) or one of (child set / aggregate) drifted (changed).
+        all_children_unchanged = all(
+            sc["status"] == "unchanged" for sc in sub_concerns_out
+        )
+        if parent_prior is None:
+            parent_status = "new"
+        elif parent_prior == agg_stamp and all_children_unchanged:
+            parent_status = "unchanged"
+        else:
+            parent_status = "changed"
+
+        return {
+            "package": pkg,
+            "concern": concern,
+            "source_stamp": agg_stamp,
+            "prior_stamp": parent_prior,
+            "status": parent_status,
+            "split": True,
+            "sub_concerns": sub_concerns_out,
+        }
+
     _records, _hashes, source_stamp = _build_spans_and_stamp(concern_files, project_root)
     doc_path = docs_root / pkg / concern / "index.md"
     prior_stamp = _read_prior_stamp(doc_path)
-    if prior_stamp is None:
-        status = "new"
-    elif prior_stamp == source_stamp:
-        status = "unchanged"
-    else:
-        status = "changed"
     return {
         "package": pkg,
         "concern": concern,
         "source_stamp": source_stamp,
         "prior_stamp": prior_stamp,
-        "status": status,
+        "status": _classify_status(prior_stamp, source_stamp),
     }
 
 
@@ -293,13 +395,21 @@ def cmd_preflight(args: argparse.Namespace) -> int:
             return 1
 
     pairs = _enumerate_concerns(devforge_dir, project_root)
-    concerns = [_diff_concern(pkg, c, project_root, docs_root) for pkg, c in pairs]
+    threshold_kb = getattr(args, "split_threshold_kb", _DEFAULT_SPLIT_THRESHOLD_KB)
+    concerns = [
+        _diff_concern(pkg, c, project_root, docs_root, threshold_kb)
+        for pkg, c in pairs
+    ]
     output["concerns"] = concerns
 
     counts = {"unchanged": 0, "changed": 0, "new": 0, "empty": 0}
+    sub_counts = {"unchanged": 0, "changed": 0, "new": 0}
     for entry in concerns:
         counts[entry["status"]] = counts.get(entry["status"], 0) + 1
+        for sc in entry.get("sub_concerns", []):
+            sub_counts[sc["status"]] = sub_counts.get(sc["status"], 0) + 1
     output["concern_counts"] = counts
+    output["subconcern_counts"] = sub_counts
 
     stamp_path = devforge_dir / _PREFLIGHT_STAMP_FILE
     try:
@@ -330,4 +440,16 @@ def _build_preflight(p: argparse.ArgumentParser) -> None:
         "--skip-index",
         action="store_true",
         help="Skip the codebase-memory-mcp index_repository call (escape valve only)",
+    )
+    p.add_argument(
+        "--split-threshold-kb",
+        type=int,
+        default=_DEFAULT_SPLIT_THRESHOLD_KB,
+        help=(
+            "Plan F 3a — total span data threshold (KB) above which a concern "
+            "with ≥ 2 immediate child dirs is treated as a split parent + per-child "
+            "stamp diff. 0 disables (every concern is single-batch). Default 50; "
+            "must match concern-input's --split-threshold-kb to keep the stamp gate "
+            "symmetric."
+        ),
     )

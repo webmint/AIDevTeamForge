@@ -311,15 +311,15 @@ def _build_sub_concern(
     """Compose one sub_concern dict from pre-extracted records.
 
     Avoids re-reading files: the parent's uncapped pass already extracted
-    every span. We just slice + re-cap per child.
+    every span. We just slice + re-cap per child + reuse `_stamp_from_hashes`
+    so the per-child stamp formula stays in lockstep with F.0 preflight.
     """
     child_subfolder_prefix = f"{parent_subfolder_prefix}{child_name}/"
     child_set = set(child_files)
     child_records = [r for r in all_records if r["path"] in child_set]
     child_hashes = [(p, h) for p, h in all_hashes if p in child_set]
     capped_records, truncated = _apply_batch_cap_to_records(child_records, _BATCH_SPAN_CAP)
-    stamp_input = "\n".join(f"{p}\t{h}" for p, h in sorted(child_hashes))
-    source_stamp = hashlib.sha256(stamp_input.encode("utf-8")).hexdigest()[:16]
+    source_stamp = _stamp_from_hashes(child_hashes)
     sub: Dict[str, object] = {
         "concern": child_name,
         "parent_concern": parent_concern,
@@ -337,6 +337,19 @@ def _build_sub_concern(
 def _aggregate_stamp(parts: List[str]) -> str:
     """SHA-256 prefix-16 over ``"\\n".join(sorted(parts))``."""
     return hashlib.sha256("\n".join(sorted(parts)).encode("utf-8")).hexdigest()[:16]
+
+
+def _stamp_from_hashes(hashes: List[Tuple[str, str]]) -> str:
+    """SHA-256 prefix-16 over sorted ``<path>\\t<content_sha256>`` lines.
+
+    Same formula `_build_spans_and_stamp` uses internally; exposed for
+    callers that already have the (path, hash) pairs in hand (e.g.,
+    F.0 preflight reusing a parent walk's hashes to stamp a sub_concern
+    subset without re-reading the files).
+    """
+    return hashlib.sha256(
+        "\n".join(f"{p}\t{h}" for p, h in sorted(hashes)).encode("utf-8")
+    ).hexdigest()[:16]
 
 
 def _walk_concern_subfolder(
