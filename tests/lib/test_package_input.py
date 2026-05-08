@@ -39,6 +39,7 @@ if str(_LIB_DIR) not in sys.path:
 
 from _generate_docs._package_input import (  # noqa: E402
     _collect_package_root_files,
+    _collect_src_root_files,
     _compute_source_stamp,
     _enumerate_concerns,
     _read_concern_seed,
@@ -170,6 +171,31 @@ class CollectPackageRootFilesTests(unittest.TestCase):
         self.assertEqual(hashes, [])
 
 
+class CollectSrcRootFilesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_picks_loose_files_skips_subdirs(self):
+        src = self.root / "pkg-a" / "src"
+        src.mkdir(parents=True)
+        (src / "index.ts").write_text("export * from './helpers';\n", encoding="utf-8")
+        (src / "apolloClient.ts").write_text("// apollo client\n", encoding="utf-8")
+        (src / "helpers").mkdir()
+        (src / "helpers" / "x.ts").write_text("// concern file\n", encoding="utf-8")
+        records, hashes = _collect_src_root_files(self.root, "pkg-a")
+        names = sorted(r["basename"] for r in records)
+        self.assertEqual(names, ["apolloClient.ts", "index.ts"])
+        # subdir helpers/ is NOT a leaf at src/ root and not surfaced
+        self.assertEqual(len(hashes), 2)
+
+    def test_no_src_dir(self):
+        (self.root / "pkg-a").mkdir()
+        records, _ = _collect_src_root_files(self.root, "pkg-a")
+        self.assertEqual(records, [])
+
+
 class ComputeSourceStampTests(unittest.TestCase):
     def test_deterministic_across_reordering(self):
         seed_a = {"concern": "alpha", "frontmatter": {"source_stamp": "1"}}
@@ -212,6 +238,13 @@ class CmdPackageInputTests(unittest.TestCase):
         (self.root / "pkg-a" / "README.md").write_text(
             "# pkg-a\n\nintro\n", encoding="utf-8"
         )
+        # Loose files at src/ root
+        (self.root / "pkg-a" / "src" / "index.ts").write_text(
+            "export * from './order';\n", encoding="utf-8"
+        )
+        (self.root / "pkg-a" / "src" / "env.d.ts").write_text(
+            "/// <reference types='node' />\n", encoding="utf-8"
+        )
         code, out, _ = _run(cmd_package_input, _ns(self.devforge, package="pkg-a"))
         self.assertEqual(code, 0)
         payload = json.loads(out)
@@ -223,6 +256,10 @@ class CmdPackageInputTests(unittest.TestCase):
         )
         names = [r["path"] for r in payload["package_root_files"]]
         self.assertIn("pkg-a/README.md", names)
+        # F.7 Files extension: src_root_files surfaced
+        self.assertIn("src_root_files", payload)
+        src_basenames = sorted(r["basename"] for r in payload["src_root_files"])
+        self.assertEqual(src_basenames, ["env.d.ts", "index.ts"])
         self.assertRegex(payload["source_stamp"], r"^[0-9a-f]{16}$")
 
     def test_no_concerns_returns_2(self):

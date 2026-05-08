@@ -47,6 +47,7 @@ from ._md_frontmatter import render_frontmatter
 
 _PURPOSE_PLACEHOLDER = "<!-- TODO: purpose -->"
 _CONCERNS_PLACEHOLDER = "<!-- TODO: concerns -->"
+_FILES_PLACEHOLDER = "<!-- TODO: files -->"
 _LAYERS_PLACEHOLDER = "<!-- TODO: layers -->"
 _PATTERNS_PLACEHOLDER = "<!-- TODO: patterns -->"
 _TREE_FENCE_OPEN = "```text"
@@ -122,7 +123,9 @@ def _build_package_overview_skeleton(frontmatter: Dict[str, Any]) -> str:
         f"## Purpose\n\n"
         f"{_PURPOSE_PLACEHOLDER}\n\n"
         f"## Concerns\n\n"
-        f"{_CONCERNS_PLACEHOLDER}\n"
+        f"{_CONCERNS_PLACEHOLDER}\n\n"
+        f"## Files\n\n"
+        f"{_FILES_PLACEHOLDER}\n"
     )
     return render_frontmatter(dict(frontmatter), "\n" + body)
 
@@ -163,6 +166,10 @@ def _replace_purpose_block(content: str, new_text: str) -> str:
 
 def _replace_concerns_block(content: str, bullet_text: str) -> str:
     return _replace_or_substitute(content, _CONCERNS_PLACEHOLDER, "Concerns", bullet_text)
+
+
+def _replace_files_block(content: str, bullet_text: str) -> str:
+    return _replace_or_substitute(content, _FILES_PLACEHOLDER, "Files", bullet_text)
 
 
 def _replace_layers_block(content: str, bullet_text: str) -> str:
@@ -237,6 +244,16 @@ def _render_concerns_bullets(entries: List[Dict[str, str]]) -> str:
 
 def _render_layers_bullets(entries: List[Dict[str, str]]) -> str:
     """Each entry: {name, role, cite} → '- <name> — <role>; <cite>'."""
+    return _render_concerns_bullets(entries)
+
+
+def _render_files_bullets(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {name, role[, cite]} → '- <name> — <role>; <cite>'.
+
+    Same shape as concerns; cite is the project-relative file path
+    (e.g. <pkg>/src/<basename>) and is optional — basenames alone are
+    self-locating since they live at the package's src/ root.
+    """
     return _render_concerns_bullets(entries)
 
 
@@ -398,6 +415,27 @@ def cmd_set_doc_concerns(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_doc_files(args: argparse.Namespace) -> int:
+    if args.tier != "package-overview":
+        print(
+            f"set-doc-files supports tier=package-overview only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.files, "files")
+    if entries is None:
+        return 2
+    bullet_text = _render_files_bullets(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_files_block(content, bullet_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
 def cmd_set_doc_layers(args: argparse.Namespace) -> int:
     if args.tier != "package-architecture":
         print(
@@ -492,6 +530,15 @@ def _build_set_doc_concerns(p: argparse.ArgumentParser) -> None:
         "--concerns",
         required=True,
         help='JSON array [{"name": "...", "role": "...", "cite": "..."}]',
+    )
+
+
+def _build_set_doc_files(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("package-overview",))
+    p.add_argument(
+        "--files",
+        required=True,
+        help='JSON array [{"name": "<basename>", "role": "...", "cite": "..."}]',
     )
 
 

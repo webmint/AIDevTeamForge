@@ -48,6 +48,7 @@ from _generate_docs._doc_setters import (  # noqa: E402
     cmd_init_doc,
     cmd_render_doc,
     cmd_set_doc_concerns,
+    cmd_set_doc_files,
     cmd_set_doc_layers,
     cmd_set_doc_patterns,
     cmd_set_doc_purpose,
@@ -96,8 +97,10 @@ class CmdInitDocPackageTests(unittest.TestCase):
         content = skel.read_text(encoding="utf-8")
         self.assertIn("## Purpose", content)
         self.assertIn("## Concerns", content)
+        self.assertIn("## Files", content)
         self.assertIn("<!-- TODO: purpose -->", content)
         self.assertIn("<!-- TODO: concerns -->", content)
+        self.assertIn("<!-- TODO: files -->", content)
         self.assertNotIn("```text", content)  # no fenced tree on overview
 
     def test_package_architecture_skeleton(self):
@@ -250,6 +253,50 @@ class CmdSetDocConcernsTests(unittest.TestCase):
         self.assertNotIn("- alpha — X", content)
 
 
+class CmdSetDocFilesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "package-overview",
+                frontmatter=json.dumps({"package": "pkg-a"}),
+                tree="",
+            ),
+        )
+
+    def test_replaces_files_placeholder(self):
+        args = _ns(
+            self.devforge,
+            "package-overview",
+            files=json.dumps(
+                [
+                    {"name": "index.ts", "role": "barrel re-export"},
+                    {"name": "env.d.ts", "role": "ambient module decls"},
+                ]
+            ),
+        )
+        code, _, _ = _run(cmd_set_doc_files, args)
+        self.assertEqual(code, 0)
+        skel = self.root / "docs" / "pkg-a" / "overview.md.skeleton"
+        content = skel.read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: files -->", content)
+        self.assertIn("- index.ts — barrel re-export", content)
+        self.assertIn("- env.d.ts — ambient module decls", content)
+        # Concerns placeholder unchanged
+        self.assertIn("<!-- TODO: concerns -->", content)
+
+    def test_rejects_non_overview_tier(self):
+        args = _ns(self.devforge, "concern", files=json.dumps([]))
+        code, _, err = _run(cmd_set_doc_files, args)
+        self.assertEqual(code, 2)
+        self.assertIn("set-doc-files supports", err)
+
+
 class CmdSetDocLayersPatternsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -387,6 +434,16 @@ class EndToEndPackageTests(unittest.TestCase):
                 ),
             ),
         )
+        _run(
+            cmd_set_doc_files,
+            _ns(
+                self.devforge,
+                "package-overview",
+                files=json.dumps(
+                    [{"name": "index.ts", "role": "barrel re-export"}]
+                ),
+            ),
+        )
         _run(cmd_render_doc, _ns(self.devforge, "package-overview", out=""))
         doc = self.root / "docs" / "pkg-a" / "overview.md"
         self.assertTrue(doc.is_file())
@@ -394,6 +451,8 @@ class EndToEndPackageTests(unittest.TestCase):
         self.assertIn("Package purpose paragraph.", text)
         self.assertIn("- alpha — first concern role", text)
         self.assertIn("- beta — second concern role", text)
+        self.assertIn("- index.ts — barrel re-export", text)
+        self.assertNotIn("<!-- TODO: files -->", text)
 
     def test_architecture_pipeline(self):
         _run(

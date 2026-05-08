@@ -63,6 +63,7 @@ _PACKAGE_ROOT_FILES = (
     "build.gradle",
     "pom.xml",
 )
+_ROOT_FILE_BATCH_CAP = 60 * 1024
 _CONCERN_DOCS_RELATIVE = "docs"
 
 
@@ -162,11 +163,62 @@ def _collect_package_root_files(
     return records, hash_pairs
 
 
+def _collect_src_root_files(
+    project_root: Path, pkg: str
+) -> Tuple[List[Dict[str, str]], List[Tuple[str, str]]]:
+    """Walk `<project_root>/<pkg>/src/` for direct files (non-dir).
+
+    Returns (records, hash_pairs). Each record has `path` (project-relative),
+    `basename`, and `comment_rich_span` extracted via F.2's helper.
+    """
+    project_root = project_root.resolve()
+    src_dir = (project_root / pkg / "src").resolve()
+    records: List[Dict[str, str]] = []
+    hash_pairs: List[Tuple[str, str]] = []
+    if not src_dir.is_dir():
+        return records, hash_pairs
+    total_span_bytes = 0
+    try:
+        entries = sorted(src_dir.iterdir())
+    except OSError:
+        return records, hash_pairs
+    for entry in entries:
+        if not entry.is_file():
+            continue
+        try:
+            content = entry.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        try:
+            rel = entry.resolve().relative_to(project_root).as_posix()
+        except ValueError:
+            rel = entry.as_posix()
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        hash_pairs.append((rel, content_hash))
+        if total_span_bytes >= _ROOT_FILE_BATCH_CAP:
+            records.append(
+                {
+                    "path": rel,
+                    "basename": entry.name,
+                    "comment_rich_span": "<...batch cap reached, span omitted...>",
+                }
+            )
+            continue
+        span = _extract_comment_rich_span(content, _PER_FILE_SPAN_CAP)
+        total_span_bytes += len(span.encode("utf-8"))
+        records.append(
+            {"path": rel, "basename": entry.name, "comment_rich_span": span}
+        )
+    return records, hash_pairs
+
+
 def _compute_source_stamp(
     concern_seeds: List[Dict[str, Any]],
     package_root_hashes: List[Tuple[str, str]],
+    src_root_hashes: List[Tuple[str, str]] = (),
 ) -> str:
-    """Aggregate stamp over concern source_stamps + package-root file hashes."""
+    """Aggregate stamp over concern source_stamps + package-root file hashes
+    + src-root file hashes."""
     parts: List[str] = []
     for seed in concern_seeds:
         fm = seed.get("frontmatter") or {}
@@ -175,6 +227,8 @@ def _compute_source_stamp(
         parts.append(f"concern\t{c}\t{s}")
     for path, h in package_root_hashes:
         parts.append(f"root\t{path}\t{h}")
+    for path, h in src_root_hashes:
+        parts.append(f"src-root\t{path}\t{h}")
     parts.sort()
     blob = "\n".join(parts)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
@@ -213,12 +267,16 @@ def cmd_package_input(args: argparse.Namespace) -> int:
         return 2
 
     root_records, root_hashes = _collect_package_root_files(project_root, pkg)
-    source_stamp = _compute_source_stamp(concern_seeds, root_hashes)
+    src_root_records, src_root_hashes = _collect_src_root_files(project_root, pkg)
+    source_stamp = _compute_source_stamp(
+        concern_seeds, root_hashes, src_root_hashes
+    )
 
     output: Dict[str, Any] = {
         "package": pkg,
         "concern_seeds": concern_seeds,
         "package_root_files": root_records,
+        "src_root_files": src_root_records,
         "source_stamp": source_stamp,
     }
     if missing:

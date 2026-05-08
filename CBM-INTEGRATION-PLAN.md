@@ -134,7 +134,7 @@ Universal rules (encoded in F.3 doc-composer prompt + F.5 validate-doc):
   - Package overview/architecture: `package`, `last_indexed`, `source_stamp`
   - Project overview/architecture: `last_indexed` only
   Helper writes the frontmatter; LLM never edits it.
-- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Layers`, `## Patterns`, `## Concerns`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor. Hazards moved to `/audit` (separate command); concern docs do NOT carry hazard content. Glossary dropped — Purpose paragraphs surface terms in context.
+- **Section anchors fixed** — `## Purpose`, `## Structure`, `## Layers`, `## Patterns`, `## Concerns`, `## Files`, `## Packages`, `## Cross-Cuts`. Orchestrator parses by anchor. Hazards moved to `/audit` (separate command); concern docs do NOT carry hazard content. Glossary dropped — Purpose paragraphs surface terms in context. `## Files` (added 2026-05-08 after V5 smoke) surfaces loose files at `<pkg>/src/` root that don't belong to any concern subfolder (e.g. `index.ts` barrels, `env.d.ts` ambient declarations).
 - **No preamble paragraphs** — section content starts on the first line after the anchor. Banned phrases (case-insensitive): "this document", "in this section", "we will", "various", "several", "many", "some", "other".
 - **Tree formatting** — `## Structure` content is plain text directly under the heading. No code fence. Helper provides the tree verbatim from F.2 output; LLM appends `— <annotation ≤60 chars>` to each LEAF on the same line.
 - **Density caps** (calibrated 2026-05-07 on testForge20 helpers + V4 finding):
@@ -335,7 +335,7 @@ Tool allowlist: `Read` only. Composer doesn't need CBM tools — concern-input h
 
 Output contract: structured Markdown with anchors. Sections:
 - Concern tier: `## Purpose`, `## Structure` (NO Hazards — moved to /audit)
-- Package overview: `## Purpose`, `## Concerns`
+- Package overview: `## Purpose`, `## Concerns`, `## Files`
 - Package architecture: `## Layers`, `## Patterns`
 - Project overview: `## Purpose`, `## Packages`
 - Project architecture: `## Layers`, `## Cross-Cuts`

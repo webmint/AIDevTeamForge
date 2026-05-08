@@ -225,6 +225,11 @@ Package purpose paragraph.
 - alpha — first concern
 - beta — second concern; src/beta/
 - gamma — third concern
+
+## Files
+
+- index.ts — barrel re-export of public API
+- env.d.ts — ambient TypeScript module declarations
 """
 
 

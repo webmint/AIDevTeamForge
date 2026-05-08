@@ -33,7 +33,7 @@ _CONCERN_REQUIRED_KEYS = ("concern", "package", "files", "source_stamp", "last_i
 _CONCERN_REQUIRED_SECTIONS = ("## Purpose", "## Structure")
 
 _PACKAGE_OVERVIEW_REQUIRED_KEYS = ("package", "source_stamp", "last_indexed")
-_PACKAGE_OVERVIEW_REQUIRED_SECTIONS = ("## Purpose", "## Concerns")
+_PACKAGE_OVERVIEW_REQUIRED_SECTIONS = ("## Purpose", "## Concerns", "## Files")
 
 _PACKAGE_ARCHITECTURE_REQUIRED_KEYS = ("package", "source_stamp", "last_indexed")
 _PACKAGE_ARCHITECTURE_REQUIRED_SECTIONS = ("## Layers", "## Patterns")

@@ -203,11 +203,14 @@ Frontmatter:
 Compose orchestrator-direct (no subagent):
 - **Purpose** (1-3 sentences) — synthesize across `concern_seeds[*].purpose_text` + `package_root_files[*].comment_rich_span`. Cross-cuts named. Banned phrases absent.
 - **Concerns** (bullet list) — one entry per `concern_seeds[*]`: `{name: <concern>, role: <one-line role from concern_seeds[*].purpose_text>, cite: <docs/<P>/<concern>/>}`.
+- **Files** (bullet list) — one entry per `src_root_files[*]`: `{name: <basename>, role: <1-line description from comment_rich_span>}`. Loose files at `<P>/src/` root (e.g. `index.ts` barrel, `env.d.ts`, `apolloClient.ts`) are NOT inside any concern subfolder; this section surfaces them at package tier so they don't fall through unannotated.
 
 ```
 ./.devforge/lib/generate_docs_helper set-doc-purpose --tier package-overview --target "$P" --text "..."
 ./.devforge/lib/generate_docs_helper set-doc-concerns --tier package-overview --target "$P" \
     --concerns '<json array>'
+./.devforge/lib/generate_docs_helper set-doc-files --tier package-overview --target "$P" \
+    --files '<json array>'
 ./.devforge/lib/generate_docs_helper render-doc --tier package-overview --target "$P"
 ./.devforge/lib/generate_docs_helper validate-doc --tier package-overview --target "$P"
 ```
