@@ -1,14 +1,20 @@
-"""F.5 — validate-doc helper (concern tier; v0).
+"""F.5 / 3a.5 — validate-doc helper (all tiers).
 
-Walks a rendered concern doc at `docs/<package>/<concern>/index.md` and
-checks every Plan F density invariant: frontmatter required keys present,
-section anchors present, no banned phrases, hazard count within range,
-hazard bullets carry a resolvable cite-back within the per-bullet length
-cap, structure annotations within their cap.
+Walks a rendered doc and checks every Plan F density invariant: frontmatter
+required keys present, section anchors present, no banned phrases, bullet
+length within cap, structure annotations within their cap.
 
-Concern-tier only in this build. Package + project tiers ship under
-forthcoming F.5 expansion. Vue cite-back through-sourcemap validation
-likewise deferred — currently only existence + line-range is checked.
+All tiers are implemented:
+- ``concern`` (leaf): Purpose + Structure required (default path).
+- ``concern --split`` (parent, Plan F 3a.5): Purpose + Sub-concerns required;
+  Structure forbidden; each Sub-concerns bullet matches the locked shape
+  ``- <name> — <summary> ([→](<doc_path>))`` + each `doc_path` resolves
+  to a rendered child doc; summary capped at 200 chars per the spec.
+- ``package-overview`` / ``package-architecture``.
+- ``project-overview`` / ``project-architecture``.
+
+Vue cite-back through-sourcemap validation is deferred — currently only
+existence + line-range of cited paths is checked (concern-tier only).
 
 Exit codes:
 - 0 — every check passed
@@ -31,6 +37,27 @@ from ._md_frontmatter import FrontmatterParseError, parse_frontmatter
 
 _CONCERN_REQUIRED_KEYS = ("concern", "package", "files", "source_stamp", "last_indexed")
 _CONCERN_REQUIRED_SECTIONS = ("## Purpose", "## Structure")
+
+# Plan F 3a — split-parent concern doc (Purpose + Sub-concerns; NO Structure).
+# Parent docs are aggregators over child concern docs; the structural detail
+# lives inside each child. `files` is intentionally absent from required keys
+# because the parent has no leaf file list — it's a list of sub_concerns.
+_SPLIT_PARENT_REQUIRED_KEYS = ("concern", "package", "source_stamp", "last_indexed")
+_SPLIT_PARENT_REQUIRED_SECTIONS = ("## Purpose", "## Sub-concerns")
+_SPLIT_PARENT_FORBIDDEN_SECTIONS = ("## Structure",)
+
+# Locked bullet shape from 3a.2 (`_render_subconcerns_bullets`):
+#   - <name> — <purpose_summary> ([→](<doc_path>))
+# Match-anchored to the entire bullet text after the `- ` prefix (which
+# `_parse_bullets` strips). Path may contain forward slashes + dots; name
+# is the first non-whitespace token.
+_SUBCONCERN_BULLET_RE = re.compile(
+    r"^(?P<name>\S+) — (?P<summary>.+?) \(\[→\]\((?P<path>[^)]+)\)\)$"
+)
+# Per the 3a.3 spec (Step 2.S.3) `purpose_summary = ≤200-char one-liner`;
+# enforce here so verbose summaries surface as a validation error rather
+# than slipping through under the broader 300-char whole-bullet cap.
+_SUBCONCERN_SUMMARY_CAP = 200
 
 _PACKAGE_OVERVIEW_REQUIRED_KEYS = ("package", "source_stamp", "last_indexed")
 _PACKAGE_OVERVIEW_REQUIRED_SECTIONS = ("## Purpose", "## Concerns", "## Files")
@@ -203,6 +230,87 @@ def _validate_concern_doc(
     return errors
 
 
+def _validate_split_parent_doc(
+    doc_path: Path, target: str, project_root: Path
+) -> List[str]:
+    """Plan F 3a.5 — validate a split-parent concern doc.
+
+    Required: frontmatter has the split-parent keys, body has Purpose +
+    Sub-concerns (and NOT Structure), each Sub-concerns bullet matches
+    the locked shape, each child `doc_path` resolves to an existing file
+    under `docs/<target>/`. Bullets capped at the standard 300-char limit.
+    """
+    errors: List[str] = []
+    if not doc_path.is_file():
+        return [f"doc not found: {doc_path}"]
+    try:
+        text = doc_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"doc unreadable: {exc}"]
+
+    record: Dict[str, object] = {}
+    body = text
+    try:
+        record, body = parse_frontmatter(text)
+    except FrontmatterParseError as exc:
+        errors.append(f"frontmatter parse: {exc}")
+
+    missing_keys = [k for k in _SPLIT_PARENT_REQUIRED_KEYS if k not in record]
+    if missing_keys:
+        errors.append(f"frontmatter missing keys: {missing_keys}")
+
+    for anchor in _SPLIT_PARENT_REQUIRED_SECTIONS:
+        if anchor not in body:
+            errors.append(f"missing required section: {anchor!r}")
+
+    for anchor in _SPLIT_PARENT_FORBIDDEN_SECTIONS:
+        if anchor in body:
+            errors.append(
+                f"forbidden section for split parent: {anchor!r} "
+                f"(parent docs aggregate sub_concerns; structure lives in children)"
+            )
+
+    for match in _BANNED_PHRASES_RE.finditer(body):
+        line_idx = body[: match.start()].count("\n") + 1
+        errors.append(f"banned phrase {match.group(0)!r} at body line {line_idx}")
+
+    sections = _split_sections(body)
+    sub_section = sections.get("Sub-concerns", "")
+    bullets = _parse_bullets(sub_section)
+    if not bullets:
+        errors.append("`## Sub-concerns` section has no bullets")
+    parent_doc_dir = doc_path.parent
+    for i, bullet in enumerate(bullets, start=1):
+        if len(bullet) > _BULLET_CAP:
+            errors.append(
+                f"Sub-concerns bullet {i} length {len(bullet)} > {_BULLET_CAP} "
+                f"(first 80 chars: {bullet[:80]!r})"
+            )
+        match = _SUBCONCERN_BULLET_RE.match(bullet)
+        if not match:
+            errors.append(
+                f"Sub-concerns bullet {i} fails locked shape "
+                f"`<name> — <summary> ([→](<doc_path>))`: {bullet!r}"
+            )
+            continue
+        summary = match.group("summary")
+        if len(summary) > _SUBCONCERN_SUMMARY_CAP:
+            errors.append(
+                f"Sub-concerns bullet {i} summary length {len(summary)} > "
+                f"{_SUBCONCERN_SUMMARY_CAP}"
+            )
+        rel_path = match.group("path").strip()
+        # `doc_path` in bullet is parent-relative (e.g., `accounts/index.md`).
+        child_path = (parent_doc_dir / rel_path).resolve()
+        if not child_path.is_file():
+            errors.append(
+                f"Sub-concerns bullet {i} doc_path does not resolve: {rel_path!r} "
+                f"(expected file at {child_path})"
+            )
+
+    return errors
+
+
 _TIER_DOC_FILENAMES = {
     "concern": "index.md",
     "package-overview": "overview.md",
@@ -279,13 +387,23 @@ def cmd_validate_doc(args: argparse.Namespace) -> int:
         )
         return 2
 
+    if getattr(args, "split", False) and tier != "concern":
+        print(
+            f"--split is only valid for tier=concern, got tier={tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+
     if tier in _PROJECT_TIERS:
         doc_path = project_root / "docs" / _TIER_DOC_FILENAMES[tier]
     else:
         doc_path = project_root / "docs" / target / _TIER_DOC_FILENAMES[tier]
 
     if tier == "concern":
-        errors = _validate_concern_doc(doc_path, target, project_root)
+        if getattr(args, "split", False):
+            errors = _validate_split_parent_doc(doc_path, target, project_root)
+        else:
+            errors = _validate_concern_doc(doc_path, target, project_root)
     elif tier == "package-overview":
         errors = _validate_package_doc(
             doc_path,
@@ -333,3 +451,14 @@ def _build_validate_doc(p: argparse.ArgumentParser) -> None:
         help="Tier target (concern: <package>/<concern>; package-*: <package>)",
     )
     p.add_argument("--devforge-dir", default=".devforge")
+    p.add_argument(
+        "--split",
+        action="store_true",
+        help=(
+            "Plan F 3a — tier=concern only: validate the split-parent shape "
+            "(Purpose + Sub-concerns; NO Structure) instead of the leaf-concern "
+            "shape. Each Sub-concerns bullet must match the locked "
+            "`- <name> — <summary> ([→](<doc_path>))` form + each doc_path must "
+            "resolve to a rendered child doc."
+        ),
+    )
