@@ -5782,6 +5782,13 @@ class CircuitBreakerTests(_EnvIsolationMixin, unittest.TestCase):
         # back for the in-process check (tests that subprocess the CLI
         # set it via env= already).
         os.environ["DEVFORGE_DIR"] = str(self.devforge_dir)
+        # Pin invocation budget to 500 for the legacy test fixtures (which
+        # write 501-record traces to trip the breaker). The production
+        # default was bumped 500 → 5000 after V7 split-dispatch revealed
+        # 500 was too low for real monorepo runs; tests pin the historical
+        # value so trip-condition fixtures stay small. Individual tests
+        # may override.
+        os.environ["DEVFORGE_CIRCUIT_INVOCATION_BUDGET"] = "500"
 
     def tearDown(self):
         for k, v in self._saved_circuit_env.items():

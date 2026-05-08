@@ -77,7 +77,14 @@ from ._trace import _trace_file_path
 # ---------------------------------------------------------------------------
 
 DOOM_LOOP_THRESHOLD = 3
-INVOCATION_BUDGET = 500
+# Bumped 500 → 5000 (2026-05-08) after V7 split-dispatch smoke hit the cap
+# mid-run on testForge20 app-web/components: 23 sub_concerns × ~6 helper
+# calls per child + parent chain + preflight chain ≈ 150 calls per BIG
+# split concern alone. Full project run (63 concerns including ~15 split
+# parents) easily clears 500. 5000 = 10× headroom against runaway loops
+# while accommodating real-scale monorepos. Override per-run via
+# DEVFORGE_CIRCUIT_INVOCATION_BUDGET env var.
+INVOCATION_BUDGET = 5000
 
 _ENV_DOOM = "DEVFORGE_CIRCUIT_DOOM_LOOP_THRESHOLD"
 _ENV_INVOCATION = "DEVFORGE_CIRCUIT_INVOCATION_BUDGET"

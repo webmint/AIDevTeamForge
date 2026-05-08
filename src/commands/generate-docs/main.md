@@ -87,11 +87,27 @@ The helper chain is the ONLY canonical path. Any divergence emits the wrong shap
 ```
 
 Captures stdout JSON. Key fields used downstream:
-- `concerns[]` — list of `{package, concern, source_stamp, prior_stamp, status}`
-- `concern_counts` — `{unchanged, changed, new, empty}`
+- `concerns[]` — list of `{package, concern, source_stamp, prior_stamp, status, [split, sub_concerns[]]}`. Split parents (Plan F 3a) carry `split:true` + embedded `sub_concerns[]` (each sub_concern is `{concern, source_stamp, prior_stamp, status}`).
+- `concern_counts` — `{unchanged, changed, new, empty}` over concern-tier entries.
+- `subconcern_counts` — `{unchanged, changed, new}` aggregated across every split parent's children. Used for cost estimation.
 - `vue_extract` + `index_repository` — wall-clock and counts; surface to user
 
 vue-extract regenerates `.devforge/vue-tmp/`; CBM `index_repository` reindexes. Both idempotent. On non-zero exit → ABORT with stderr verbatim.
+
+### Cost gate (Plan F 3a — split-aware estimate)
+
+Before kicking off Phase 2, surface to the user the dispatch volume + cost estimate using preflight's counts. Apply the TEST SCOPE OVERRIDE filter first, then count:
+
+- **Single-batch dispatches** = scoped concerns with `status ∈ {changed, new}` AND `split != true`.
+- **Sub_concern dispatches** = sum of scoped split parents' `sub_concerns[]` entries with `status ∈ {changed, new}`. (Parent concerns themselves are orchestrator-direct synthesis — no Haiku dispatch.)
+- **Skipped via stamp gate** = scoped concerns with `status == unchanged` + scoped split parents' children with `status == unchanged`.
+
+Cost model (Haiku, ~$0.20 per dispatch + ~10s wall-clock):
+- `total_dispatches = single_batch + sub_concerns_changed_or_new`
+- `total_cost ≈ total_dispatches × $0.20`
+- `total_wall_clock ≈ total_dispatches × 10s` (sequential, single-thread)
+
+**Surface the breakdown to the user before Phase 2 starts** — name the count of each bucket, the total, and the estimated cost + wall-clock. For runs over $5 / 5min, recommend confirming with the user before proceeding. Stamp-gate skips are free; advertise the savings (e.g., "22/23 sub_concerns under `components` skip via stamp gate").
 
 ---
 
