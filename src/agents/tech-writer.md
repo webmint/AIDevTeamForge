@@ -73,7 +73,7 @@ docs/
 **When to create a NEW file vs update existing** (Plan F layout — `docs/features/`, `docs/api/`, `docs/guides/` are dropped):
 - New feature work touching an existing concern → update `docs/<package>/<concern>/index.md` Hazards section if behavior introduces a hazard worth documenting
 - New concern (a new `src/` subfolder) → leave to `/generate-docs` to render on next run; do NOT hand-author concern docs
-- New API surface → does NOT live in md (query CBM `search_graph` / `agentic_context` live). Skip.
+- New API surface → does NOT live in md (query CBM `search_graph` / `search_code` / `query_graph` live). Skip.
 - Architecture pattern change → update `docs/<package>/architecture.md` `## Patterns` section with cite-back
 - Project-wide architecture change → update `docs/architecture.md` (project tier)
 - Domain term introduction → add entry to `docs/<package>/glossary.md` with cite-back

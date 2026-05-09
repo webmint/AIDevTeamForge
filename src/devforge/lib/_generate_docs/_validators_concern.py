@@ -371,7 +371,7 @@ def validate_concern(
     # _check_file_docs_complete is dormant (Part D revert, 2026-05-07).
     # Per-file md primitive proved overkill on testForge20 empirical; reverted
     # to concern-level fill with inline tree descriptions. Function kept
-    # defined for future revival via codegraph-augmented batch dispatch.
+    # defined for future revival via batch dispatch over CBM query_graph.
     errors.extend(_check_concern_no_todos(state, package_path, concern_name))
     errors.extend(_check_concern_optional_render(
         state, concern, package_path, concern_name,
