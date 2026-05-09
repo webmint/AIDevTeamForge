@@ -135,9 +135,13 @@ cp "$TARGET_DIR/CLAUDE.md" "$TARGET_DIR/.devforge/template/CLAUDE.md"
 # ── Copy Claude config files ──────────────────────────────────────────────
 #   .mcp.json             — MCP servers (project-scope)
 #   .claude/settings.json — hooks, permissions, plugins
+#   .claude/hooks/        — CBM-first enforcement hook scripts (F.11)
 cp "$TEMPLATE_DIR/src/mcp.json" "$TARGET_DIR/.mcp.json"
 mkdir -p "$TARGET_DIR/.claude"
 cp "$TEMPLATE_DIR/src/settings.template.json" "$TARGET_DIR/.claude/settings.json"
+mkdir -p "$TARGET_DIR/.claude/hooks"
+cp -R "$TEMPLATE_DIR/src/hooks/." "$TARGET_DIR/.claude/hooks/"
+chmod +x "$TARGET_DIR/.claude/hooks/"*
 
 echo ""
 echo "Done. AIDevTeamForge installed."
