@@ -40,8 +40,8 @@ docs/
 NOTE: legacy layout (`docs/features/`, `docs/api/`, `docs/guides/`) is dropped.
 Structural information (exports, types, deps, public-surface, call chains) is
 NOT pre-rendered into docs/ — query the codebase-memory-mcp graph live via
-`search_graph`, `trace_path`, `get_code_snippet`, `agentic_context`,
-`search_code`. Md files carry the narrative + judgment layer; CBM carries
+`search_graph`, `trace_path`, `get_code_snippet`, `search_code`,
+`query_graph`. Md files carry the narrative + judgment layer; CBM carries
 the structural-query layer.
 
 ## Naming Rules
