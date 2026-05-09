@@ -29,6 +29,24 @@ The same gap applies to React hooks, Vue computed/watch, Svelte reactive blocks,
 
 Memory cross-ref: `feedback_cbm_discovery_chain_search_graph_then_code.md`.
 
+### 2. Hypothesis-enumeration + diagnose-first discipline
+
+**Rule**: When a symptom has multiple plausible causes (provide/inject mismatches, async-timing races, vendor microfrontend bundles, framework lifecycle gaps, etc.), enumerate the FULL hypothesis set BEFORE proposing fixes. For each plausible cause that can't be falsified from static analysis alone, mandate a runtime-verification step (e.g., `app.config.warnHandler` capture, console-log probe, breakpoint dump) before committing to a fix path.
+
+**Why**: Empirical 2026-05-10 comparison on testForge20 `[Vue warn]: injection "notificationsBLoC" not found` ticket. The docs+CBM-driven investigation reached the same root-cause GENRE as the main-branch `/research` flow (provide/inject mismatch on vendor inject sites) but stopped at the FIRST plausible theory ("Pinia store factory context breaks inject"). The main-branch flow enumerated 4 candidate causes (vendor suffixed-key mismatch, teleport-to-non-Vue-tree, plugin install-time setup, vendor module-load side-effect) and recommended a `app.config.warnHandler` capture to identify the actual emitter component before patching. The four-hypothesis breadth mattered because the suffixed-key vendor pattern (`notificationsBLoC-${id}` in `chunk-BZDCDJU3.js:47094`) would have made a host-side `app.provide('notificationsBLoC', ...)` fix a partial fix only — not visible from a single-hypothesis path.
+
+The single-hypothesis failure mode is hard to detect during the investigation itself — the first plausible theory feels sufficient. Discipline must enforce enumeration as a step, not leave it to judgment.
+
+**How to encode in /research spec**:
+- Discovery protocol after the search-chain (§1): MANDATORY hypothesis-enumeration step. Output shape: bullet list of N≥2 candidate causes for the symptom, each with a one-line "what would falsify this" probe.
+- For each hypothesis whose falsification probe needs runtime data (cannot be answered from static analysis): MANDATORY runtime-verification recommendation in the report. Examples: `app.config.warnHandler` capture for Vue warnings, network-tab probe for HTTP-shaped issues, breakpoint dump for timing/lifecycle issues.
+- Output schema gains a `hypotheses` field (array of `{cause, falsifier}`) and a `verify_step` field (the recommended runtime probe). Helper enforces non-empty hypotheses array (≥2 entries) for symptom-driven research; freezes if LLM provides only 1.
+- The fix recommendation MUST cite which hypothesis it addresses + which others it would NOT cover. Forces explicit acknowledgement of remaining uncertainty.
+
+**Anti-pattern this prevents**: confident "root cause = X, fix = Y" output when only X was enumerated and Y is partial because non-enumerated causes also contribute. Hypothesis-enumeration surfaces the gaps before they become regressions.
+
+**Cross-CBM-discovery interaction**: this rule layers on top of §1. CBM search-chain finds candidate code surfaces; hypothesis-enumeration explains WHY each surface might be the root cause. Two-rule combo: §1 finds WHERE, §2 explains WHY (and which other WHYs are still in play).
+
 ## Constraints (apply when authoring redesign)
 
 - Zero-escape-hatch policy: no "OR / if / except / unless / use-judgment" clauses in the discovery protocol. Each step has a single mandated action.
