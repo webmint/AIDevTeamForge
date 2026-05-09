@@ -1,89 +1,79 @@
 # Next-session work dump
 
-State at hand-off: Plan F + 3a COMPLETE end-to-end, validated on testForge20 full-scale (148 docs / 0 failures). This file lists the deferred work picked up in a fresh session.
+State at hand-off (2026-05-09): **Track 4 (project-tier shape expansion) SHIPPED end-to-end** across 3 phases. testForge20 validated empirically — 6-min wall-clock for 2 project-tier docs (11-section overview + 8-section architecture). Plan F PIPELINE complete; 2 tier-quality legs remain (snippet-fidelity validation + F.11 hooks enforcement). This file lists the deferred work to pick up next.
 
 ## Reading order at session start
 
 1. `CLAUDE.md` (auto-loaded).
-2. This file — start at **Track 4** (user-marked entry point) for project-tier richness; then **Track 1 (F.11 hooks)** standalone as the enforcement leg of Plan F COMPLETE. Track 3 (/research redesign) deferred per 2026-05-08 user direction.
+2. This file — start at **Track 1 (F.11 hooks)** as the enforcement leg of Plan F COMPLETE. Then optional Track 4 follow-ups (targeted-retry, snippet-fidelity). Track 3 (/research redesign) deferred per 2026-05-08 direction.
 3. Track-specific plan (linked under each track).
 
-## Track 4 — project-tier shape expansion (START HERE)
+## State summary
 
-**Trigger**: 2026-05-08 session comparison of `cse-strata-ws-forge/docs/{overview,architecture}.md` (user-curated/onboarded — the IDEAL bar, ~32 KB combined) vs current testForge20 auto-generated `docs/{overview,architecture}.md` (~7 KB combined). Coverage gap: testForge20 produces ~5-10 % of cse-strata's section/content richness.
-
-**Current /generate-docs project-tier shape** (helper-enforced via `_doc_setters.py`):
-- `overview.md`: `## Purpose` + `## Packages` (2 sections only).
-- `architecture.md`: `## Layers` + `## Cross-Cuts` (2 sections only).
-
-**cse-strata-ws-forge ideal shape — what's missing in current**:
-
-`overview.md` should add:
-| Section | Source | Helper-can-derive? |
+| Track | Status | Last commit |
 |---|---|---|
-| Tech Stack table | package.json deps + framework detection | ✓ (mostly mechanical) |
-| Project Structure (annotated tree) | filesystem walk + per-dir purpose | partial — tree mechanical, annotations need LLM |
-| Entry Points table | package.json `main`/`module` + router/index files + plugin entry files | ✓ (mechanical from package.json + router glob) |
-| Key Commands table | package.json `scripts` block | ✓ (fully mechanical) |
-| Module Map (Infrastructure / Core / Domain sub-sections) | concern docs' frontmatter + LLM grouping | LLM judgment |
-| Cross-Module Dependencies (ASCII tree or text) | package.json `dependencies` graph | ✓ (mechanical) |
-| Application Routes table | walk `router/routes/*.ts` + parse | partial — paths mechanical, descriptions LLM |
-| Navigation Guards sequence | `router-guards/` walk + LLM ordering | partial |
-| Test Files paths | filesystem walk for `**/test/`, `**/__tests__/`, `*.test.ts` | ✓ (fully mechanical) |
+| Plan F pipeline (concern + package + project tiers) | **SHIPPED** | bcd5f1c |
+| Track 4 Phase 1 — project-overview mechanical | **SHIPPED 2026-05-09** | 9577705 |
+| Track 4 Phase 2 — project-overview mixed mech/LLM | **SHIPPED 2026-05-09** | 36076a2 |
+| Track 4 Phase 3 — project-architecture LLM-judgment + cite-back | **SHIPPED 2026-05-09** | 70b547e |
+| Track 4 follow-up A — snippet-fidelity validation | OPEN | — |
+| Track 4 follow-up B — targeted retry on validate-doc fail | OPEN | — |
+| Track 1 — F.11 hooks (CBM-first enforcement) | OPEN | — |
+| Track 2 — codegraph reference scrub | OPEN | — |
+| Track 3 — /research command redesign | DEFERRED | — |
 
-`architecture.md` should add:
-| Section | Source | Helper-can-derive? |
-|---|---|---|
-| Architecture Overview (multi-paragraph narrative) | LLM synthesis from package_seeds | LLM judgment |
-| Module/Package Structure (annotated tree) | filesystem walk + LLM annotations | partial |
-| Patterns (named, with "applies-in" + code example) | LLM extraction from concern docs + CBM `get_code_snippet` for examples | LLM judgment + helper for snippet retrieval |
-| Conventions (Naming / File Organization / Import Style / Error Handling) | LLM extraction from concern docs + filesystem patterns | LLM judgment |
-| Cross-Cutting Concerns with code samples + cite-backs | currently partial — bullets only, no code | LLM + helper for snippet retrieval |
-| Dependency Direction Rules | package.json deps + LLM rule synthesis | partial |
-| Dependency Overview (mermaid diagram) | package.json deps → mermaid generator | ✓ (mechanical) |
+Suite at hand-off: **1284 passed + 11 skipped** on `develop-2.0-init`.
 
-**Scope to land**:
+## Track 4 — what shipped (so next session knows what's there)
 
-1. Add helper setters for the new mechanical sections:
-   - `set-overview-tech-stack` — accept tech_stack JSON array
-   - `set-overview-key-commands` — read package.json scripts, render table
-   - `set-overview-entry-points` — read package.json + plugin files
-   - `set-overview-test-files` — filesystem walk
-   - `set-overview-routes` — walk router/routes/
-   - `set-overview-cross-module-deps` — render package dep graph
-   - `set-overview-project-structure` — annotated filesystem tree
-   - `set-architecture-patterns` — accept patterns array (each has applies_in + cite + optional snippet)
-   - `set-architecture-conventions` — accept conventions JSON map
-   - `set-architecture-dependency-overview` — render mermaid from deps
-2. Extend project-tier skeleton in `_doc_setters.py`: `_build_project_overview_skeleton` + `_build_project_architecture_skeleton` add the new section anchors with placeholders.
-3. Extend `validate-doc` for project tier: required sections list grows; bullet shape regex per section.
-4. Extend `project-input` helper to surface mechanical fields the orchestrator needs (Tech Stack candidates, route paths, dep graph, test file list).
-5. Update `/generate-docs` Phase 4 spec to call the new setters in order.
-6. testForge20 re-run + eyeball result against cse-strata-ws-forge as benchmark.
+`docs/overview.md` rendered with 11 sections (cse-strata bar parity):
+Purpose · Tech Stack · Project Structure · Entry Points · Key Commands · Module Map · Cross-Module Dependencies · Application Routes · Navigation Guards · Test Files · Packages
 
-**Alignment with existing plans**:
-- Memory `project_schema_anchored_generate_docs` (2026-04-30) locks ProjectIndexDoc + ArchitectureDoc + PackageDoc schemas. Current implementation is BELOW these schemas. Track 4 IS the schema-anchored expansion (Step 2 of architecture pivot per `project_4command_architecture_pivot`). Read that memory's referenced schemas before designing.
-- ProjectIndexDoc schema fields (per memory): name + workspace_mode + path + overview + directory_tree + main_exports + cross_package_deps_summary. Confirms direction.
-- ArchitectureDoc schema fields: architecture_shape + patterns + layers + cross_package_dep_graph + key_decisions. Confirms direction.
+`docs/architecture.md` rendered with 8 sections:
+Architecture Overview · Module / Package Structure · Patterns · Conventions · Layers · Cross-Cuts (subsection-style with cite-backed snippets) · Dependency Direction Rules · Dependency Overview (mermaid)
 
-**Verify Track 4**:
-- Generate testForge20's `docs/{overview,architecture}.md` post-expansion. Side-by-side with cse-strata-ws-forge equivalents. Sections present at parity (≥ 90% section coverage). Mechanical fields populated correctly. LLM-judgment fields readable + ungrounded claims absent.
-- `validate-doc` enforces new section requirements.
-- Tests cover each new setter + each new validation rule.
+`project-input` extended outputs (mechanical + candidate fields):
+- Phase 1: tech_stack_candidates, key_commands, test_file_paths, cross_module_deps_tree, project_structure_tree
+- Phase 2: entry_point_candidates, router_route_files, nav_guard_files, package_classification_hints
+- Phase 3: dep_graph_mermaid
 
-**Decision before starting**:
-- Match cse-strata's literal shape (mermaid in architecture, ASCII deps in overview, etc.), OR pick a unified format? Mermaid requires a renderer dep — confirm acceptable.
-- LLM compose budget: cse-strata-quality docs likely need 5-10K token output per file vs current ~1-2K. Cost gate updated.
-- One-shot expansion vs phased? Phased: ship mechanical fields first (Tech Stack, Key Commands, Test Files, Project Structure, Cross-Module Deps), then LLM-judgment fields (Patterns, Conventions, Cross-Cuts with snippets). Lower risk.
+`_resolve_effective_project_root` reads init.yaml's `project_root` field for wrapper-mode projects (testForge20-style) so mechanical extraction operates on the inner monorepo, not the wrapper.
 
-**When resuming Track 4**:
-1. Read this section.
-2. Read `cse-strata-ws-forge/docs/overview.md` + `architecture.md` end-to-end (these are the bar).
-3. Read memory `project_schema_anchored_generate_docs` (locked schema fields).
-4. Read current `_doc_setters.py` `_build_project_overview_skeleton` + `_build_project_architecture_skeleton` (~10 lines each).
-5. Decide: phased (mechanical first) or one-shot. Then start.
+`_gather_workspace_deps` aggregates deps across npm-workspaces packages so monorepo root package.jsons (orchestration-only) don't mask app-layer Vue/TS/Pinia/Apollo detection.
 
----
+12 new setters total (5 Phase 1 + 5 Phase 2 + 7 Phase 3, two of which share placeholder slots with Phase 0 — `set-doc-cross-cuts` for bullet-list shape vs `set-architecture-cross-cuts-detailed` for subsection shape).
+
+## 2h 19m stall investigation (2026-05-09)
+
+A testForge20 run of project-tier (2 docs) took 138 minutes. Investigation (session log + trace log) showed:
+- Helper code is INNOCENT — every helper call sub-second
+- Two huge gaps: 47min mid-tier (extended-thinking on long context) + 76min after validate-doc fail (assistant turn stuck at empty `<assistant>` block, user manually prodded "why did u stopped" to resume)
+- Subsequent 6-min run validates Phase 3 cost shape is fine
+- Stall caused by Claude Code session-side: long accumulated context (concern + package + project all in one session) + stuck assistant turn that didn't auto-recover
+
+**Two follow-ups address the stall pattern:**
+
+### Track 4 follow-up B — targeted retry on validate-doc fail (recommended FIRST)
+
+**Trigger**: Stall investigation 2026-05-09. Current orchestrator behavior on validate-doc exit=2 = full re-compose of all sections. Targeted retry would re-fire only the failing section.
+
+**Scope**:
+- `validate-doc` enriched stderr to emit `<section_name>: <error_kind>: <detail>` per failure
+- `/generate-docs` Phase 4 spec adds retry rule: "on validate-doc failure, parse stderr; re-fire ONLY the named section's setter with corrected JSON; full re-compose ONLY when retry budget exhausted"
+- Retry budget tracked separately per section (≤ 3) before falling back to tier-level retry
+
+**Verify**: testForge20 run with intentionally-broken section completes via targeted retry path; total wall-clock < 30s vs minutes for full re-compose.
+
+### Track 4 follow-up A — snippet-fidelity validation
+
+**Trigger**: Phase 3 ships presence-only validation per `project_schema_anchored_generate_docs` memory. Locked schema specifies snippet-fidelity check (helper reads cited file + diffs against rendered snippet). Currently: orchestrator-LLM is on the honor system for snippet correctness.
+
+**Scope**:
+- Inside `validate-doc` for `project-architecture` tier, when subsection-style sections (Patterns, Cross-Cuts) contain `<!-- <file>:<line> -->` cite-back HTML comment + fenced code block, parse pairs + read `<file>` lines from FS + diff against snippet
+- Mismatch → exit=2 with specific error string identifying the cite + diff
+- Same logic concern-tier already implements (`_validators_concern.py` handles this for concern tier docs); extract shared primitive + wire into project-architecture path
+
+**Verify**: testForge20 architecture.md re-validates with fidelity check enabled; intentionally-mutated snippet produces non-zero exit.
 
 ## Track 1 — F.11 hooks (CBM-first enforcement)
 
@@ -91,7 +81,7 @@ State at hand-off: Plan F + 3a COMPLETE end-to-end, validated on testForge20 ful
 
 | Hook | Event | Purpose |
 |---|---|---|
-| `cbm-code-discovery-gate` | PreToolUse on Read/Grep/Glob | Advisory: "consider `search_graph` / `agentic_context` / `search_code` before text search". Exit 0 (non-blocking) |
+| `cbm-code-discovery-gate` | PreToolUse on Read/Grep/Glob | Advisory: "consider `search_graph` / `search_code` before text search". Exit 0 (non-blocking) |
 | `cbm-mcp-marker` | PostToolUse on Bash + MCP tools | Telemetry: marks each CBM tool invocation in transcript so adoption is measurable |
 | `cbm-session-reminder` | SessionStart (resume / clear / compact) | Re-injects CBM-first protocol when prior context window dropped |
 | `bash-ban-raw-tools` | PreToolUse on Bash | Soft-rejects raw `grep`/`find`/`cat` patterns over source files; suggests CBM equivalent |
@@ -160,32 +150,37 @@ src/devforge/lib/vue-to-ts.mjs
 - Tests pass.
 - testForge20 sync via `update.sh` succeeds; spec emits with no codegraph references.
 
-## Track 3 — /research command redesign (separate plan)
+## Track 3 — /research command redesign (DEFERRED)
 
 See `REDESIGN-RESEARCH-PLAN.md`. Locked finding §1 = CBM discovery chain (`search_graph` → 0 hits → fall through to `search_code`). Tracks 1 + 2 should fold their relevant changes into the /research redesign rather than landing standalone.
 
 ## Recommended session order
 
-Plan F COMPLETE requires three legs: pipeline (DONE) + project-tier richness (Track 4) + enforcement (Track 1 / F.11). Two legs missing. Sequence:
+Plan F COMPLETE requires three legs: pipeline (DONE) + project-tier richness (DONE — Track 4 Phase 1+2+3) + enforcement (Track 1 / F.11). Sequence:
 
-1. **Track 4 (project-tier shape expansion)** — user-marked starting point. Closes the cse-strata-richness gap. Without rich docs, enforcement (Track 1) gates consumption of thin content. Phased approach recommended.
-2. Track 2 (codegraph scrub) — small, mechanical, lands in 30-60 min. Frees Track 1 + 3 from inheriting stale refs. Interleavable between Track 4 phases.
-3. **Track 1 (F.11 hooks)** — lands solo after Track 4 ships. Provides the enforcement leg of Plan F COMPLETE. Hooks enforce CBM-first protocol for ALL consumer commands (existing pending specs + future revisions). Doesn't depend on Track 3 timing.
-4. **Track 3 (/research redesign) — DEFERRED** (per 2026-05-08 user direction). Re-enter when /research priority surfaces. The locked discovery chain (CBM `search_graph` → `search_code` → `Read`) stays captured in `feedback_cbm_discovery_chain_search_graph_then_code` memory + REDESIGN-RESEARCH-PLAN.md for whenever Track 3 picks up.
+1. **Track 4 follow-up B (targeted retry)** — biggest cost win + closes the stall mitigation gap. Spec edit + helper enrichment, no new setter surface. ~30-60 min session.
+2. **Track 4 follow-up A (snippet-fidelity validation)** — extracts `_validators_concern.py` shared primitive + wires into project-architecture path. Closes the locked-schema discipline gap.
+3. **Track 1 (F.11 hooks)** — provides the enforcement leg. Hooks enforce CBM-first protocol for ALL consumer commands.
+4. Track 2 (codegraph scrub) — small, mechanical, interleavable.
+5. **Track 3 (/research redesign) — DEFERRED** per 2026-05-08 user direction.
 
-Why F.11 sequencing matters: spec prose decays in long sessions (LLM forgets after context compaction); hooks survive. Empirical 2026-05-08 evidence — even with the locked discovery-chain memory, my behavior fell back to "guess-the-suspect" without enforcement. `cbm-code-discovery-gate` (advisory) + `bash-ban-raw-tools` (soft-reject raw grep on source) + `cbm-mcp-marker` (telemetry) + `cbm-session-reminder` (re-inject on context drop) are the four hooks. See CBM-INTEGRATION-PLAN.md §F.11.
+Why follow-up B first: empirical evidence — 76min stall observed in testForge20 run was triggered by validate-doc fail + full re-compose retry path. Targeted retry would have made that run ~10s vs 76min. Highest-impact single change.
 
 ## When resuming
 
 ```bash
 cd /Users/mykolakudlyk/Projects/ai-dev-team-forge
 git status
-git log --oneline -5
-grep -rn "agentic_context\|agentic_impact\|agentic_quality\|agentic_architecture" src/ scripts/ install.sh update.sh | grep -v __pycache__ | wc -l   # baseline ref count
+git log --oneline -8
+# Track 4 work landed at: 9577705 (Phase 1) → 36076a2 (Phase 2) → 70b547e (Phase 3)
+
+# Cross-check stale codegraph refs (Track 2 baseline):
+grep -rn "agentic_context\|agentic_impact\|agentic_quality\|agentic_architecture" src/ scripts/ install.sh update.sh | grep -v __pycache__ | wc -l
 ```
 
 Memory bookmarks (auto-loaded):
-- `project_cbm_integration_plan_e.md` — Plan F status (now COMPLETE)
+- `project_cbm_integration_plan_e.md` — Plan F status (now SHIPPED with 3-tier pipeline + 11+8 sections)
 - `project_codegraph_state_2026_05_06.md` — codegraph LLM-disabled
+- `project_schema_anchored_generate_docs.md` — schema-anchored doc-gen + fidelity-validation discipline (Phase 3 ships presence-only; fidelity is follow-up)
 - `feedback_cbm_discovery_chain_search_graph_then_code.md` — locked discovery chain
 - `project_post_codex_command_revision.md` — per-command revision pass context
