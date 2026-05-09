@@ -1,5 +1,12 @@
 # /generate-docs — new command via python-skeleton primitive
 
+> **STATUS — 2026-05-09: `/generate-docs` is FEATURE-CLOSED.** Track A (project-overview, project-architecture) shipped. The judgment-layer additions (Suggested Research Starts + project-tier glossary) shipped via `JUDGMENT-LAYER-PLAN.md` as the final feature plan. After this point, only bug fixes + CBM-API-evolution adjustments are accepted; no new enhancement plans for `/generate-docs`.
+>
+> **Track B status (this file's Steps 6.1–6.8):**
+> - **Step 6.3 (Glossary)** — superseded by `JUDGMENT-LAYER-PLAN.md` Track B (`docs/glossary.md` produced via CBM-augmented helper). See commit `432135a` for the helper, `d673bf6` for the spec, `48af692` for cross-refs.
+> - **Step 6.4 (Topic index)** — the "Consider on entry" sub-block (Suggested research starting points) is superseded by `JUDGMENT-LAYER-PLAN.md` Track A (`## Suggested Research Starts` section in `docs/overview.md`). See commits `a35be1f` / `cd56713` / `e26c472`. The main topic-index body is REJECTED per the docs+CBM-split argument in `JUDGMENT-LAYER-PLAN.md` ("Why not topic-index / reverse-index / pattern-catalog").
+> - **Steps 6.2 / 6.5 / 6.6 / 6.7 / 6.8** — REJECTED. Structural queries (reverse-index, accuracy validation, pattern catalog, constitution anchors, freshness footers) belong in CBM live-query, not pre-rendered into `docs/`. See `JUDGMENT-LAYER-PLAN.md` "Why not" section for the full argument.
+
 **Status**: Draft, not yet executed. Awaiting user approval.
 **Branch**: `develop-2.0-init` (continues from Step 1 of `ARCHITECTURE-PIVOT-PLAN.md`).
 **Coexistence (this iteration only)**: `/onboard` (existing, with vault-restored helper + iteration banner) is **NOT modified by this plan**. `/generate-docs` is a NEW command that ships alongside `/onboard`. Once `/generate-docs` is proven via the empirical gate (Phase 8), Phase 8.2 retires `/onboard` and removes the old code (vault `onboard_helper.py`, `/onboard` spec, `_PROMOTED` entry, install/update references). Per user directive: "u will develop new scripts, old will be removed" — old is removed AFTER new is proven, not before.
@@ -1009,6 +1016,8 @@ This sketch is intentionally rough — it only gets fleshed out if Step 3.3.6 de
 
 ## Track B — Retrieval-optimization scripts
 
+> **STATUS — 2026-05-09: This entire Track B section is closed for execution.** Step 6.3 superseded; Step 6.4 partially superseded (Suggested research starting points sub-block only); Steps 6.2 / 6.4 main body / 6.5 / 6.6 / 6.7 / 6.8 are REJECTED per the docs+CBM-split argument in `JUDGMENT-LAYER-PLAN.md` "Why not topic-index / reverse-index / pattern-catalog". Structural queries belong in CBM live-query (`search_graph`, `query_graph`, `trace_path`, `get_code_snippet`, `search_code`), not pre-rendered into `docs/`. The shipped successors are `JUDGMENT-LAYER-PLAN.md` Track A + Track B.
+
 These scripts run on already-generated `docs/` and produce the artifacts `/research` directly consumes.
 
 **Execution order (priority-driven, NOT numerical step order)** — based on `/research` consumer protocol priority table:
@@ -1027,7 +1036,9 @@ Each script is a `python-engineer` task with `python-reviewer` audit per the man
 
 Already specified as part of Step 1.2's helper subcommand surface. No separate script — this is a helper subcommand, not a standalone script.
 
-### Step 6.2: Script B — Reverse index (`scripts/build_docs_index.py`)
+### Step 6.2: Script B — Reverse index (`scripts/build_docs_index.py`) — REJECTED (2026-05-09)
+
+> Rejected per `JUDGMENT-LAYER-PLAN.md`: file→doc lookup is a structural query answerable live via CBM `search_graph` / `search_code`. Pre-rendering into `docs/reverse-index.md` violates the docs+CBM split principle.
 
 **Brief to `python-engineer`**:
 - **Goal**: parse all `*.md` in `docs/<project>/` for `<!-- path:line -->` markers + prose path mentions; build forward index doc→files; invert to file→docs; extract H2/H3 + bolded terms for concept→docs; write `docs/index.md`.
@@ -1036,7 +1047,9 @@ Already specified as part of Step 1.2's helper subcommand surface. No separate s
 - **Tests**: ~15. End-to-end on testForge20 docs/.
 - **Loop**: reviewer audits.
 
-### Step 6.3: Script C-extraction — Glossary terms (`scripts/extract_glossary_terms.py`)
+### Step 6.3: Script C-extraction — Glossary terms (`scripts/extract_glossary_terms.py`) — SUPERSEDED (2026-05-09)
+
+> Superseded by `JUDGMENT-LAYER-PLAN.md` Track B. The shipped solution is `_glossary.py` (commit `432135a`) producing `docs/glossary.md` via CBM-augmented classification (code-anchored / fuzzy-anchored / prose-only) with helper-validated 30-150 entries — see commits `d673bf6` (spec) + `48af692` (cross-refs). The original brief below is preserved for historical context only.
 
 **Brief**: extract candidate terms by ecosystem-aware identifier convention (per Principle 5 — ecosystem-agnostic by design):
 
@@ -1055,7 +1068,11 @@ For each candidate term: search for definitions in language-specific docstring c
 
 Tests ~10, covering at minimum JS/TS, Python, Rust, and Go fixtures.
 
-### Step 6.4: Script J — Topic index (`scripts/build_topic_index.py`)
+### Step 6.4: Script J — Topic index (`scripts/build_topic_index.py`) — REJECTED main body / SUPERSEDED sub-block (2026-05-09)
+
+> The "Consider on entry" sub-block (Suggested research starting points, line 1075 below) is SUPERSEDED by `JUDGMENT-LAYER-PLAN.md` Track A. The shipped solution is the `## Suggested Research Starts` section of `docs/overview.md` (commits `a35be1f` / `cd56713` / `e26c472`).
+>
+> The main topic-index body (table of topics + domain terms + code locations + reference docs) is REJECTED. Topic mapping is a structural query answerable live via CBM `search_graph` / `get_architecture` — pre-rendering it into `docs/topic-index.md` violates the docs+CBM split principle. Original brief preserved below for historical context only.
 
 **Brief**: read `.devforge/init.yaml`'s `packages_detected` array (populated by `/init-forge`, ecosystem-neutral) for the workspace's package set. For each detected package, build one topic-index row. Sub-topic iteration dispatches by ecosystem (per Principle 5): for JS/TS and Rust → scan `src/*`; for Go → scan `cmd/`, `pkg/`, `internal/` at the unit root; for Python → scan `src/<pkg>/` subfolders (PEP 621 `src/` layout) or the package root's direct subfolders (flat layout); for Java/Kotlin → scan immediate children of `src/main/java/<groupId>/<pkg>/` (Java) or `src/main/kotlin/<groupId>/<pkg>/` (Kotlin); use whichever root directory exists (some hybrid projects have both — scan both in that case); for all other ecosystems → fall back to any direct subdirectory at the unit root with ≥5 source files. Apply the sub-topic threshold uniformly across ecosystems: ≥3 substantive subdirectories AND each containing ≥5 source files OR clear architectural role (e.g., `src/quote/`, `cmd/server/`, `pkg/auth/`). Below threshold → one row per package; at-or-above threshold → iterate inner folders as sub-topics.
 
@@ -1076,11 +1093,15 @@ Each row's columns:
 
 **Note**: this is the highest-priority Track B script per the consumer protocol — it is `/research`'s entry point.
 
-### Step 6.5: Script A — Accuracy validation (`scripts/validate_doc_claims.py`)
+### Step 6.5: Script A — Accuracy validation (`scripts/validate_doc_claims.py`) — REJECTED (2026-05-09)
+
+> Rejected per `JUDGMENT-LAYER-PLAN.md`. Citation freshness checking belongs in CBM's index-update path (the watcher absorbs writes; stale citations surface as broken `query_graph` results live), not in a pre-rendered batch script. Original brief preserved below for historical context only.
 
 **Brief**: for each citation marker → re-read source at cited range → compare to doc's code block (whitespace-normalized) → flag STALE with diff. For prose path mentions → verify file exists. For script-command mentions, dispatch by ecosystem (per Principle 5, mirroring Step 1.2's manifest dispatch table): `npm run X` (JS/TS) → check `package.json` `scripts` contains X; `poetry run X` or `python -m X` (Python) → check `[tool.poetry.scripts]` in `pyproject.toml` or `[project.scripts]` in PEP 621 form; `cargo X` (Rust) → validate against known cargo subcommands + `[package.metadata.scripts]` if present; `mvn X` (Java/Maven) → validate against Maven standard lifecycle phases and goals; `./gradlew X` (Java/Gradle) → validate against known Gradle lifecycle phases plus best-effort static parse of top-level `task` declarations in `build.gradle` / `build.gradle.kts`; do NOT shell out to `./gradlew tasks`; `dotnet X` (.NET) → validate against standard `dotnet` subcommands; `go X` (Go) → validate against the standard `go` subcommand list; `bundle exec rake X` (Ruby) → best-effort static parse of top-level `task :name` declarations in Rakefile; mark as N/A for dynamically-defined tasks; do NOT shell out to `rake -T`; `composer X` (PHP) → check `composer.json` `scripts` block contains X; other ecosystems → skip script-command validation and log as N/A. Tests ~10 including stale/missing fixtures.
 
-### Step 6.6: Script D — Pattern catalog (`scripts/build_pattern_catalog.py`)
+### Step 6.6: Script D — Pattern catalog (`scripts/build_pattern_catalog.py`) — REJECTED (2026-05-09)
+
+> Rejected per `JUDGMENT-LAYER-PLAN.md`. Pattern discovery via import-graph fan-in is a structural query — `query_graph` with `:CALLS|USAGE|DEFINES` edges answers "what's the canonical implementation of pattern Y" live. Pre-rendering into `docs/pattern-catalog.md` violates the docs+CBM split principle. Original brief preserved below for historical context only.
 
 **Brief**: per pattern category, identify the canonical reference implementation by import-graph fan-in (most-imported file = canonical example). Pattern categories are **discovered per project, not hardcoded** (per Principle 5 — ecosystem-agnostic by design):
 
@@ -1091,11 +1112,15 @@ Each row's columns:
 
 Output table: `Pattern | Reference implementation path | Used when (one-line description extracted from file's top comment if present, else [TODO])`. Tests ~5, covering JS/TS + Python + Rust fixtures at minimum.
 
-### Step 6.7: Script H — Constitution anchors (`scripts/scan_constitution_anchors.py`)
+### Step 6.7: Script H — Constitution anchors (`scripts/scan_constitution_anchors.py`) — REJECTED (2026-05-09)
+
+> Rejected per `JUDGMENT-LAYER-PLAN.md`. Constitution rule cross-referencing is a `search_code` / `search_graph` query against the live indexed corpus — pre-rendering into a stale audit report violates the docs+CBM split principle.
 
 **Brief**: parse constitution.md for rule markers; search docs/ for cross-references; output report of unanchored rules. Tests ~5.
 
-### Step 6.8: Script I — Freshness footers (`scripts/add_freshness_footers.py`)
+### Step 6.8: Script I — Freshness footers (`scripts/add_freshness_footers.py`) — REJECTED (2026-05-09)
+
+> Rejected per `JUDGMENT-LAYER-PLAN.md`. Per-doc git timestamps are answerable via `git log` directly when needed; embedding stale timestamp footers in `docs/` violates the docs-as-narrative principle (CBM watcher absorbs writes; freshness is implicit).
 
 **Brief**: for each doc, run `git log -1 --format=%H,%ai` against doc itself and citation-referenced source files; append footer with most-recent timestamp. Tests ~5.
 
