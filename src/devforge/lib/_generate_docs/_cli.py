@@ -58,6 +58,7 @@ from ._doc_setters import (
     _build_set_overview_navigation_guards,
     _build_set_overview_project_structure_annotations,
     _build_set_overview_project_structure_tree,
+    _build_set_overview_suggested_research_starts,
     _build_set_overview_tech_stack,
     _build_set_overview_test_files,
     cmd_init_doc,
@@ -86,6 +87,7 @@ from ._doc_setters import (
     cmd_set_overview_navigation_guards,
     cmd_set_overview_project_structure_annotations,
     cmd_set_overview_project_structure_tree,
+    cmd_set_overview_suggested_research_starts,
     cmd_set_overview_tech_stack,
     cmd_set_overview_test_files,
 )
@@ -475,6 +477,12 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
         "set-overview-entry-points",
         _build_set_overview_entry_points,
         cmd_set_overview_entry_points,
+    ),
+    # Track A.1 — Suggested Research Starts judgment-layer section.
+    (
+        "set-overview-suggested-research-starts",
+        _build_set_overview_suggested_research_starts,
+        cmd_set_overview_suggested_research_starts,
     ),
     (
         "set-overview-application-routes",

@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -60,6 +61,7 @@ from _generate_docs._doc_setters import (  # noqa: E402
     cmd_set_overview_navigation_guards,
     cmd_set_overview_project_structure_annotations,
     cmd_set_overview_project_structure_tree,
+    cmd_set_overview_suggested_research_starts,
     cmd_set_overview_tech_stack,
     cmd_set_overview_test_files,
 )
@@ -801,7 +803,7 @@ class EndToEndPhase1OverviewPipelineTests(unittest.TestCase):
 
 
 class EndToEndPhase2OverviewPipelineTests(unittest.TestCase):
-    """Track 4 Phase 2 — full project-overview pipeline filling all 11 sections."""
+    """Track 4 Phase 2 — full project-overview pipeline filling all 12 sections."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -809,7 +811,13 @@ class EndToEndPhase2OverviewPipelineTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.devforge = self.root / ".devforge"
 
-    def test_all_11_sections_render_no_placeholders(self):
+    def test_all_12_sections_render_no_placeholders(self):
+        # Create cite_path stub files so validate_cite_paths passes (helper
+        # resolves paths relative to cwd — save and restore around the call).
+        (self.root / "src").mkdir(parents=True, exist_ok=True)
+        (self.root / "src" / "main.ts").write_text("// stub", encoding="utf-8")
+        (self.root / "src" / "router.ts").write_text("// stub", encoding="utf-8")
+
         _run(
             cmd_init_doc,
             _ns(
@@ -867,6 +875,36 @@ class EndToEndPhase2OverviewPipelineTests(unittest.TestCase):
                 ]),
             ),
         )
+        # Track A.1 — Suggested Research Starts (chdir to tmp so cite_paths resolve).
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(str(self.root))
+            _run(
+                cmd_set_overview_suggested_research_starts,
+                _ns(
+                    self.devforge,
+                    "project-overview",
+                    suggested_research_starts=json.dumps([
+                        {
+                            "question": "How does the app bootstrap?",
+                            "scope_hint": "entry + router",
+                            "cite_paths": ["src/main.ts", "src/router.ts"],
+                        },
+                        {
+                            "question": "How are routes registered?",
+                            "scope_hint": "router module",
+                            "cite_paths": ["src/main.ts", "src/router.ts"],
+                        },
+                        {
+                            "question": "What is the top-level component tree?",
+                            "scope_hint": "App.vue + layout",
+                            "cite_paths": ["src/main.ts", "src/router.ts"],
+                        },
+                    ]),
+                ),
+            )
+        finally:
+            os.chdir(orig_cwd)
         _run(
             cmd_set_overview_module_map,
             _ns(
@@ -929,6 +967,9 @@ class EndToEndPhase2OverviewPipelineTests(unittest.TestCase):
         self.assertIn("1. **oktaGuard** — Auth", text)
         self.assertIn("- `tests/` — unit tests", text)
         self.assertIn("- pkg-core — shared", text)
+        # Track A.1 spot-check.
+        self.assertIn("| Question | Scope hint | Start here |", text)
+        self.assertIn("How does the app bootstrap?", text)
         # NO leftover placeholders anywhere.
         self.assertNotIn("<!-- TODO:", text)
 
@@ -960,6 +1001,8 @@ class CmdInitDocPhase2AnchorsTests(unittest.TestCase):
         self.assertIn("<!-- TODO: module-map -->", content)
         self.assertIn("<!-- TODO: application-routes -->", content)
         self.assertIn("<!-- TODO: navigation-guards -->", content)
+        self.assertIn("## Suggested Research Starts", content)
+        self.assertIn("<!-- TODO: suggested-research-starts -->", content)
 
     def test_phase2_full_section_order(self):
         args = _ns(
@@ -971,8 +1014,8 @@ class CmdInitDocPhase2AnchorsTests(unittest.TestCase):
         _run(cmd_init_doc, args)
         content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
         # Expected order: Purpose, Tech Stack, Project Structure, Entry Points,
-        # Key Commands, Module Map, Cross-Module Deps, Application Routes,
-        # Navigation Guards, Test Files, Packages.
+        # Suggested Research Starts, Key Commands, Module Map, Cross-Module Deps,
+        # Application Routes, Navigation Guards, Test Files, Packages.
         positions = [
             content.index(f"## {anchor}")
             for anchor in (
@@ -980,6 +1023,7 @@ class CmdInitDocPhase2AnchorsTests(unittest.TestCase):
                 "Tech Stack",
                 "Project Structure",
                 "Entry Points",
+                "Suggested Research Starts",
                 "Key Commands",
                 "Module Map",
                 "Cross-Module Dependencies",
@@ -1741,6 +1785,219 @@ class EndToEndPhase3ArchitecturePipelineTests(unittest.TestCase):
         self.assertIn("```mermaid\ngraph TD", text)
         # No leftover placeholders.
         self.assertNotIn("<!-- TODO:", text)
+
+
+class CmdSetOverviewSuggestedResearchStartsTests(unittest.TestCase):
+    """Track A.1 — set-overview-suggested-research-starts tests (~13 cases)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        # Create dummy source files for cite_paths existence checks.
+        (self.root / "src").mkdir(parents=True, exist_ok=True)
+        for fname in ["alpha.ts", "beta.ts", "gamma.ts", "delta.ts"]:
+            (self.root / "src" / fname).write_text("// stub", encoding="utf-8")
+        # Init the skeleton.
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+        self._orig_cwd = os.getcwd()
+
+    def tearDown(self):
+        os.chdir(self._orig_cwd)
+
+    def _valid_entries(self, n=3):
+        """Return n valid entries using stubs that exist under self.root."""
+        questions = [
+            "How does the app bootstrap?",
+            "How are routes registered?",
+            "What is the component tree?",
+            "How does auth flow work?",
+            "How is state managed?",
+            "Where does data fetching happen?",
+        ]
+        return [
+            {
+                "question": questions[i],
+                "scope_hint": f"scope hint {i}",
+                "cite_paths": ["src/alpha.ts", "src/beta.ts"],
+            }
+            for i in range(n)
+        ]
+
+    def _run_with_chdir(self, entries):
+        """Call cmd with chdir to self.root so cite_paths resolve correctly."""
+        os.chdir(str(self.root))
+        args = _ns(
+            self.devforge,
+            "project-overview",
+            suggested_research_starts=json.dumps(entries),
+        )
+        return _run(cmd_set_overview_suggested_research_starts, args)
+
+    # ── Happy path ──────────────────────────────────────────────────────────
+
+    def test_happy_3_entries_exit0_table_rendered(self):
+        """3 valid entries → exit 0; rendered table appears in skeleton."""
+        code, out, err = self._run_with_chdir(self._valid_entries(3))
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: suggested-research-starts -->", content)
+        self.assertIn("| Question | Scope hint | Start here |", content)
+        self.assertIn("How does the app bootstrap?", content)
+        self.assertIn("`src/alpha.ts`", content)
+
+    def test_happy_6_entries_exit0(self):
+        """6 valid entries → exit 0."""
+        code, _, err = self._run_with_chdir(self._valid_entries(6))
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: suggested-research-starts -->", content)
+
+    def test_happy_existing_placeholder_replaced(self):
+        """Existing skeleton with placeholder → replaced with table on second run."""
+        # Verify placeholder is present initially.
+        content_before = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertIn("<!-- TODO: suggested-research-starts -->", content_before)
+        code, _, err = self._run_with_chdir(self._valid_entries(3))
+        self.assertEqual(code, 0, msg=err)
+        content_after = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: suggested-research-starts -->", content_after)
+        self.assertIn("| Question | Scope hint | Start here |", content_after)
+
+    # ── Count bounds ─────────────────────────────────────────────────────────
+
+    def test_count_2_entries_exit2(self):
+        """2 entries (below floor of 3) → exit 2."""
+        code, _, err = self._run_with_chdir(self._valid_entries(2))
+        self.assertEqual(code, 2)
+        self.assertIn("at least 3", err)
+
+    def test_count_7_entries_exit2(self):
+        """7 entries (above ceiling of 6) → exit 2."""
+        entries = self._valid_entries(6)
+        entries.append({
+            "question": "Extra question number seven?",
+            "scope_hint": "some scope",
+            "cite_paths": ["src/alpha.ts", "src/beta.ts"],
+        })
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("at most 6", err)
+
+    def test_count_0_entries_exit2(self):
+        """Empty list → exit 2."""
+        code, _, err = self._run_with_chdir([])
+        self.assertEqual(code, 2)
+        self.assertIn("at least 3", err)
+
+    # ── Per-entry validation ─────────────────────────────────────────────────
+
+    def test_empty_question_exit2(self):
+        """question empty → exit 2."""
+        entries = self._valid_entries(3)
+        entries[0]["question"] = ""
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("question is empty", err)
+
+    def test_question_no_question_mark_exit2(self):
+        """question not ending with '?' → exit 2."""
+        entries = self._valid_entries(3)
+        entries[0]["question"] = "No question mark here"
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("must end with '?'", err)
+
+    def test_question_exceeds_140_chars_exit2(self):
+        """question > 140 chars → exit 2."""
+        entries = self._valid_entries(3)
+        entries[0]["question"] = "A" * 139 + "?"  # 140 chars — OK boundary
+        code_ok, _, _ = self._run_with_chdir(entries)
+        self.assertEqual(code_ok, 0)
+        # Re-init skeleton for second call.
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-overview",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+        entries2 = self._valid_entries(3)
+        entries2[0]["question"] = "A" * 140 + "?"  # 141 chars — too long
+        code_bad, _, err = self._run_with_chdir(entries2)
+        self.assertEqual(code_bad, 2)
+        self.assertIn("exceeds 140 chars", err)
+
+    def test_scope_hint_contains_newline_exit2(self):
+        """scope_hint contains \\n → exit 2."""
+        entries = self._valid_entries(3)
+        entries[0]["scope_hint"] = "good scope\nnewline"
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("contains newline", err)
+
+    def test_cite_paths_only_1_path_exit2(self):
+        """cite_paths with only 1 path → exit 2 (requires ≥2)."""
+        entries = self._valid_entries(3)
+        entries[0]["cite_paths"] = ["src/alpha.ts"]
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("at least 2 paths", err)
+
+    # ── Cross-entry validation ────────────────────────────────────────────────
+
+    def test_cite_path_not_on_disk_exit2(self):
+        """cite_path that doesn't exist on disk → exit 2."""
+        entries = self._valid_entries(3)
+        entries[0]["cite_paths"] = ["src/alpha.ts", "src/nonexistent_file.ts"]
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("paths not found", err)
+        self.assertIn("src/nonexistent_file.ts", err)
+
+    def test_duplicate_questions_case_insensitive_exit2(self):
+        """Duplicate questions (case-insensitive) → exit 2."""
+        entries = self._valid_entries(3)
+        entries[1]["question"] = entries[0]["question"].upper()
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("duplicate question", err)
+
+    def test_scope_hint_with_trailing_newline_rejected(self):
+        """scope_hint with trailing \\n (pre-strip) → exit 2, stderr mentions newline.
+
+        Regression for Finding 1: newline check must run on raw value before strip,
+        not on the stripped result which silently drops the trailing newline.
+        """
+        entries = self._valid_entries(3)
+        entries[0]["scope_hint"] = "valid scope\n"
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("contains newline", err)
+
+    def test_cite_paths_non_string_element_rejected(self):
+        """cite_paths element that is not a string → exit 2, stderr mentions cite_paths[0].
+
+        Regression for Finding 3: non-string elements must be rejected with a clear
+        type error rather than silently coerced via str().
+        """
+        entries = self._valid_entries(3)
+        entries[0]["cite_paths"] = [42, "src/alpha.ts", "src/beta.ts"]
+        code, _, err = self._run_with_chdir(entries)
+        self.assertEqual(code, 2)
+        self.assertIn("cite_paths[0]", err)
+        self.assertIn("must be a string", err)
 
 
 if __name__ == "__main__":
