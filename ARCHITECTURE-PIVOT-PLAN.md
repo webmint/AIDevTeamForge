@@ -222,13 +222,22 @@ Commits: `a55d923`, `052cf2a`, `bd544ff` on `develop-2.0-init`. See "Step 1 outc
 
 ### Step 4: Write `/configure` spec
 
-Create `src/commands/configure/main.md` + references. Combines:
+**Detailed plan: `CONFIGURE-PLAN.md`** (design locked 2026-05-10; empirical pass against testForge20 + locked decisions on helper foundation, state shape, and bulk-confirmation flow). The original "consume legacy onboard docs + reuse `detect_report` / `wizard_render`" framing below is superseded by the plan file — read CONFIGURE-PLAN.md before starting Step 4.
+
+Original framing (kept as historical context):
 - Doc-reading logic (read all per-package docs, extract evidence per detect.md field)
 - Yaml-population logic (invoke detect_report setters with doc-cited evidence)
 - Q1–Q12 transferred from current `src/commands/setup-wizard/references/questions.md`
 - Template substitution (replaces `{{...}}` placeholders with final values)
 
-**Verify**: running `/configure` on a project where `/init-forge` + `/generate-docs` have completed produces a fully-populated detection_report.yaml + project-config.json + substituted CLAUDE.md and agent files. All Q1–Q12 user choices are captured. Templates have no remaining `{{...}}` markers.
+Updated framing (per CONFIGURE-PLAN.md):
+- New `configure_helper.py` (mirrors `init_helper.py` pattern); `detect_report` + `wizard_render` are deprecated and not reused.
+- Single source-of-truth state file: `.devforge/configure.yaml`; `project-config.json` becomes a render artifact.
+- Inputs: `init.yaml` + `index.json` + `docs/{overview,architecture}.md` + config files (basename-matched against `index.json` file list, no fresh scan).
+- Helper-owns-shape extends to template substitution (`substitute-templates` subcmd; LLM does not edit CLAUDE.md / agents directly).
+- Bulk-confirmation for ~22 detection-derived fields + 4-6 sequential AskUserQuestion calls for user-only preferences (Q9-Q12 inc. NEW Q11 + Q12).
+
+**Verify**: running `/configure` on a project where `/init-forge` + `/generate-docs` have completed produces a fully-populated `.devforge/configure.yaml` (27 fields) + a regenerated `project-config.json` + substituted `CLAUDE.md` and agent files. All Q9-Q12 user choices captured. Templates have no remaining `{{...}}` markers.
 
 ### Step 5: Migrate Q1–Q12 INTENT (not implementation) from current questions.md to /configure
 

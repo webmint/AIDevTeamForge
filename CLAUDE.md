@@ -9,6 +9,7 @@ When picking up work mid-stream, check the repo root for active plan files. **Re
 Currently active:
 
 - **`ARCHITECTURE-PIVOT-PLAN.md`** — approved 2026-04-30 pivot from current `/setup-wizard` + `/onboard` + `/constitute` to a 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Detection moves from Phase 1 light-scan to onboard's deep scan. Read it first if working on `develop-2.0-init` or any successor branch; if the user mentions setup-wizard, onboard, configure, init, init-forge, or pivot; or if you encounter Phase 1 detection logic that seems redundant with /onboard's depth.
+- **`CONFIGURE-PLAN.md`** — design locked 2026-05-10 for ARCHITECTURE-PIVOT-PLAN Step 4 (`/configure` command). Empirical pass + locked decisions on `configure_helper.py` foundation, single-yaml state, helper-owned template substitution, and bulk-confirm + sequential-prompt flow. Read it first if working on Step 4, if the user mentions /configure / configure_helper / template substitution / Q11 / Q12, or before any helper buildout work for the third command in the 4-command sequence.
 - **`CODEX-REMOVAL-PLAN.md`** — iterative removal of Codex runtime support (in progress on `feature/codex-remove`). Read it first if working on that branch, if the user mentions codex-removal / Codex drop / Claude-native cleanup, or if `git tag -l 'codex-remove/*'` shows in-progress checkpoints.
 
 ## Conventions for ongoing work
