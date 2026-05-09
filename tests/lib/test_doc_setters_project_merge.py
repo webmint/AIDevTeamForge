@@ -28,6 +28,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
@@ -290,6 +291,168 @@ class CmdInitDocProjectMergeTests(unittest.TestCase):
         self.assertIn("<!-- TODO: purpose -->", body)
         self.assertIn("## Packages", body)
         self.assertIn("<!-- TODO: packages -->", body)
+
+
+# ── Declared-order insertion tests (Unit B — JUDGMENT-LAYER-PLAN Step 0) ────
+
+
+# A controlled 4-anchor tuple for isolation — independent of the production
+# tuple so that future Track A additions (inserting "Suggested Research Starts"
+# between "Entry Points" and "Key Commands") do not break these tests.
+_TEST_ANCHORS: Tuple[Tuple[str, str], ...] = (
+    ("A", "<!-- A -->"),
+    ("B", "<!-- B -->"),
+    ("C", "<!-- C -->"),
+    ("D", "<!-- D -->"),
+)
+
+_FRESH_TEST_SKELETON = (
+    "---\n"
+    "project: my-proj\n"
+    "source_stamp: s1\n"
+    "---\n"
+    "\n"
+    "# my-proj\n\n"
+    "## A\n\n<!-- A -->\n\n"
+    "## B\n\n<!-- B -->\n\n"
+    "## C\n\n<!-- C -->\n\n"
+    "## D\n\n<!-- D -->\n"
+)
+
+
+def _body_with_anchors(*sections: str) -> str:
+    """Build a minimal existing-file body containing only the given section names."""
+    parts = ["# my-proj"]
+    for sec in sections:
+        placeholder = dict(_TEST_ANCHORS).get(sec, f"<!-- {sec} content -->")
+        parts.append(f"\n## {sec}\n\n{placeholder}")
+    return "\n".join(parts) + "\n"
+
+
+def _existing_file(doc_path: Path, *sections: str) -> None:
+    """Write a minimal existing doc file with frontmatter + given sections."""
+    body = _body_with_anchors(*sections)
+    content = "---\nproject: my-proj\nlast_indexed: 2025-01-01\n---\n\n" + body
+    doc_path.write_text(content, encoding="utf-8")
+
+
+class DeclaredOrderInsertionTests(unittest.TestCase):
+    """Unit B — declared-order insertion of missing owned anchors."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.doc_path = self.root / "docs" / "overview.md"
+        self.doc_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def test_missing_middle_anchor_inserted_before_next_existing(self):
+        """Body has A, C, D (B missing) → B inserted before C."""
+        _existing_file(self.doc_path, "A", "C", "D")
+        out = _merge_project_skeleton(self.doc_path, _FRESH_TEST_SKELETON, _TEST_ANCHORS)
+
+        self.assertIn("## A", out)
+        self.assertIn("## B", out)
+        self.assertIn("## C", out)
+        self.assertIn("## D", out)
+
+        i_b = out.index("## B")
+        i_c = out.index("## C")
+        i_a = out.index("## A")
+        # B must appear after A and before C (declared order).
+        self.assertLess(i_a, i_b)
+        self.assertLess(i_b, i_c)
+
+    def test_missing_last_anchor_appended_at_end(self):
+        """Body has A, B, C (D missing) → D appended at end."""
+        _existing_file(self.doc_path, "A", "B", "C")
+        out = _merge_project_skeleton(self.doc_path, _FRESH_TEST_SKELETON, _TEST_ANCHORS)
+
+        self.assertIn("## D", out)
+
+        i_c = out.index("## C")
+        i_d = out.index("## D")
+        self.assertLess(i_c, i_d)
+
+    def test_all_missing_series_inserted_before_next_existing(self):
+        """Body has A, D (B and C missing) → output order is A, B, C, D."""
+        _existing_file(self.doc_path, "A", "D")
+        out = _merge_project_skeleton(self.doc_path, _FRESH_TEST_SKELETON, _TEST_ANCHORS)
+
+        self.assertIn("## B", out)
+        self.assertIn("## C", out)
+
+        i_a = out.index("## A")
+        i_b = out.index("## B")
+        i_c = out.index("## C")
+        i_d = out.index("## D")
+        self.assertLess(i_a, i_b)
+        self.assertLess(i_b, i_c)
+        self.assertLess(i_c, i_d)
+
+    def test_cold_start_unchanged_regression(self):
+        """Cold start (doc_path does not exist) → fresh_skeleton returned verbatim."""
+        # doc_path must NOT exist for this test.
+        self.assertFalse(self.doc_path.exists())
+        out = _merge_project_skeleton(self.doc_path, _FRESH_TEST_SKELETON, _TEST_ANCHORS)
+        self.assertEqual(out, _FRESH_TEST_SKELETON)
+
+    def test_prefix_match_heading_not_treated_as_anchor_present(self):
+        """Finding 1 regression: a heading that PREFIX-matches an owned anchor
+        must NOT suppress insertion of the real anchor.
+
+        Scenario: existing body has '## Key Commands Reference' (a non-owned
+        heading that prefix-matches the owned anchor 'Key Commands').  The body
+        does NOT contain '## Key Commands'.  Expected: merge MUST insert
+        '## Key Commands' at the correct declared-order position; the spurious
+        '## Key Commands Reference' heading must be preserved verbatim.
+
+        Implemented using _TEST_ANCHORS with a short anchor ('B') whose name is
+        a prefix of a non-owned heading ('B Reference') present in the file.
+        """
+        # Build a body that has "## B Reference" (non-owned) but NOT "## B".
+        # Also include A, C, D so we have a well-defined insertion target.
+        body = (
+            "---\n"
+            "project: my-proj\n"
+            "last_indexed: 2025-01-01\n"
+            "---\n"
+            "\n"
+            "# my-proj\n\n"
+            "## A\n\n<!-- A -->\n\n"
+            "## B Reference\n\nSome non-owned content.\n\n"
+            "## C\n\n<!-- C -->\n\n"
+            "## D\n\n<!-- D -->\n"
+        )
+        self.doc_path.write_text(body, encoding="utf-8")
+        out = _merge_project_skeleton(self.doc_path, _FRESH_TEST_SKELETON, _TEST_ANCHORS)
+
+        # '## B' MUST be inserted (not suppressed by the prefix match).
+        self.assertIn("## B\n", out)
+        # The non-owned heading must be preserved verbatim.
+        self.assertIn("## B Reference", out)
+        self.assertIn("Some non-owned content.", out)
+        # '## B' must appear BEFORE '## C' (declared order).
+        i_b = out.index("## B\n")
+        i_c = out.index("## C\n")
+        self.assertLess(i_b, i_c)
+
+    def test_multi_pattern_missing_then_existing_then_missing(self):
+        """Body has B, C (A and D missing) → output order is A, B, C, D."""
+        _existing_file(self.doc_path, "B", "C")
+        out = _merge_project_skeleton(self.doc_path, _FRESH_TEST_SKELETON, _TEST_ANCHORS)
+
+        self.assertIn("## A", out)
+        self.assertIn("## D", out)
+
+        i_a = out.index("## A")
+        i_b = out.index("## B")
+        i_c = out.index("## C")
+        i_d = out.index("## D")
+        # A inserted before B (A is missing, next existing is B).
+        self.assertLess(i_a, i_b)
+        # D appended after C (D is missing, no later anchors exist in body).
+        self.assertLess(i_c, i_d)
 
 
 if __name__ == "__main__":

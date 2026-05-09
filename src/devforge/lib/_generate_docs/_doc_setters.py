@@ -290,12 +290,64 @@ def _merge_project_skeleton(
 
     # Normalize edge whitespace so re-runs are byte-stable.
     body = existing_body.strip("\n")
-    for anchor, placeholder in owned_anchors_with_placeholders:
-        if f"## {anchor}\n" in body or f"## {anchor} " in body or body.endswith(f"## {anchor}"):
+
+    # First pass: determine which declared anchors already exist in body.
+    def _anchor_in_body(anchor: str, text: str) -> bool:
+        return bool(re.search(
+            r"^## " + re.escape(anchor) + r"( \(|$|\n)",
+            text,
+            re.MULTILINE,
+        ))
+
+    existing_anchors: set = {
+        anchor
+        for anchor, _ in owned_anchors_with_placeholders
+        if _anchor_in_body(anchor, body)
+    }
+
+    # Second pass: process each declared anchor in order.
+    for idx, (anchor, placeholder) in enumerate(owned_anchors_with_placeholders):
+        if anchor in existing_anchors:
+            # Anchor is present: reset its content to the placeholder.
             body = _replace_or_substitute(body, placeholder, anchor, placeholder)
         else:
-            body = body.rstrip("\n") + "\n\n" + f"## {anchor}\n\n{placeholder}"
+            # Anchor is missing: find the first later-declared anchor that
+            # currently exists in the body (or was already inserted).
+            insertion_target: Optional[str] = None
+            for later_anchor, _ in owned_anchors_with_placeholders[idx + 1:]:
+                if later_anchor in existing_anchors:
+                    insertion_target = later_anchor
+                    break
+
+            new_section = f"## {anchor}\n\n{placeholder}"
+            if insertion_target is not None:
+                # Insert immediately before the insertion_target heading.
+                target_pattern = re.compile(
+                    r"^## " + re.escape(insertion_target) + r"\b",
+                    re.MULTILINE,
+                )
+                m = target_pattern.search(body)
+                if m:
+                    insert_pos = m.start()
+                    # Ensure two newlines of separation on both sides.
+                    before = body[:insert_pos].rstrip("\n")
+                    after = body[insert_pos:]
+                    body = before + "\n\n" + new_section + "\n\n" + after
+                    # Collapse runs of 3+ newlines to exactly 2.
+                    body = re.sub(r"\n{3,}", "\n\n", body)
+                else:
+                    # Fallback: insertion_target not found by regex → append.
+                    body = body.rstrip("\n") + "\n\n" + new_section
+            else:
+                # No later anchor in body → append at end.
+                body = body.rstrip("\n") + "\n\n" + new_section
+
+            # Mark this anchor as now existing so subsequent missing anchors
+            # can use it as an insertion target.
+            existing_anchors.add(anchor)
+
         body = body.rstrip("\n")
+
     return render_frontmatter(merged_fm, "\n" + body + "\n")
 
 
