@@ -909,6 +909,109 @@ def _extract_workspace_package_names(project_root: Path) -> List[str]:
     return _enumerate_workspace_packages(pkg, project_root)
 
 
+def _build_dep_graph_mermaid(project_root: Path) -> str:
+    """Render `graph TD` mermaid syntax of cross-workspace internal deps.
+
+    Format mirrors the cse-strata bar reference:
+      graph TD
+          a[pkg-a]
+          b[pkg-b]
+          a --> b
+
+    Each workspace package gets a node (lowercased + sanitized id, original
+    name as label). Edges added per internal dependency. Non-workspace deps
+    (npm registry packages) are excluded — graph is structural-internal only.
+
+    Empty string when project_root has no `workspaces` config or no packages.
+    LLM may pass this verbatim to set-architecture-dependency-overview-mermaid
+    OR substitute a curated/grouped variant.
+    """
+    project_root = project_root.resolve()
+    pkg = _read_root_package_json(project_root)
+    if pkg is None:
+        return ""
+    workspace_names = set(_enumerate_workspace_packages(pkg, project_root))
+    if not workspace_names:
+        return ""
+
+    raw_workspaces = pkg.get("workspaces")
+    if isinstance(raw_workspaces, dict):
+        raw_workspaces = raw_workspaces.get("packages")
+    if not isinstance(raw_workspaces, list):
+        raw_workspaces = []
+    nodes: List[Tuple[str, str]] = []  # (id, label)
+    edges: List[Tuple[str, str]] = []  # (from_id, to_id)
+    seen_ids: Dict[str, str] = {}
+
+    def make_node_id(name: str) -> str:
+        # Mermaid node ids: alphanumeric only — strip non-[A-Za-z0-9] +
+        # lowercase. Collision-resistant via numeric suffix on duplicate.
+        base = "".join(c for c in name if c.isalnum()) or "node"
+        node_id = base[0].lower() + base[1:] if base else "node"
+        if node_id in seen_ids and seen_ids[node_id] != name:
+            suffix = 2
+            while f"{node_id}{suffix}" in seen_ids:
+                suffix += 1
+            node_id = f"{node_id}{suffix}"
+        seen_ids[node_id] = name
+        return node_id
+
+    pkg_to_id: Dict[str, str] = {}
+    for glob_pat in raw_workspaces:
+        if not isinstance(glob_pat, str):
+            continue
+        for path in sorted(project_root.glob(glob_pat)):
+            ws_pkg_path = path / "package.json"
+            if not ws_pkg_path.is_file():
+                continue
+            try:
+                ws_data = json.loads(ws_pkg_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            ws_name = ws_data.get("name")
+            if not isinstance(ws_name, str) or not ws_name:
+                continue
+            if ws_name in pkg_to_id:
+                continue
+            node_id = make_node_id(ws_name)
+            pkg_to_id[ws_name] = node_id
+            nodes.append((node_id, ws_name))
+
+    for ws_name, node_id in pkg_to_id.items():
+        # Re-resolve workspace path → package.json to read its deps. We
+        # iterate again (rather than caching) to keep the function
+        # self-contained; n^2 over workspace count is fine at typical scale.
+        for glob_pat in raw_workspaces:
+            if not isinstance(glob_pat, str):
+                continue
+            for path in sorted(project_root.glob(glob_pat)):
+                ws_pkg_path = path / "package.json"
+                if not ws_pkg_path.is_file():
+                    continue
+                try:
+                    ws_data = json.loads(ws_pkg_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if ws_data.get("name") != ws_name:
+                    continue
+                ws_deps = _gather_all_deps(ws_data)
+                for dep_name in sorted(ws_deps):
+                    if dep_name in pkg_to_id and dep_name != ws_name:
+                        edges.append((node_id, pkg_to_id[dep_name]))
+
+    if not nodes:
+        return ""
+
+    lines = ["graph TD"]
+    for node_id, label in nodes:
+        lines.append(f"    {node_id}[{label}]")
+    if edges:
+        lines.append("")
+        for from_id, to_id in edges:
+            lines.append(f"    {from_id} --> {to_id}")
+    return "\n".join(lines)
+
+
 def cmd_project_input(args: argparse.Namespace) -> int:
     """Handler for `project-input` subcommand. Returns CLI exit code."""
     devforge_dir = Path(args.devforge_dir)
@@ -974,6 +1077,10 @@ def cmd_project_input(args: argparse.Namespace) -> int:
         "router_route_files": _walk_router_route_files(effective_root),
         "nav_guard_files": _walk_nav_guard_files(effective_root),
         "package_classification_hints": _classify_packages(workspace_packages),
+        # Track 4 Phase 3 — architecture-tier mechanical input. LLM may
+        # substitute a curated mermaid variant; default is mechanical render
+        # of the same workspace deps walk that produces cross_module_deps_tree.
+        "dep_graph_mermaid": _build_dep_graph_mermaid(effective_root),
     }
     if missing:
         output["missing_package_overviews"] = missing

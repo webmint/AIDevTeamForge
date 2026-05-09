@@ -414,20 +414,47 @@ Retry semantics same as Phase 3.
 
 ### Step 4.3 — project-architecture pipeline
 
-Sections:
-- **Layers** — cross-package architectural seams (e.g., presentation packages, domain/business packages, data/persistence packages, shared utility packages). `{name, role, cite}` with `cite` using `<package>/<path>:<line>` form.
-- **Cross-Cuts** — concerns/patterns spanning multiple packages (auth flow, observability, error-handling). `{name, role, cite}` — multi-cite per bullet allowed when one cross-cut spans several files.
+The skeleton emits eight sections (Track 4 Phase 3 expansion). Six are LLM-judgment-heavy + cite-back-via-CBM-snippet; two (Layers, Dependency Overview) accept verbatim mechanical input.
+
+| Section | Source | Setter |
+|---|---|---|
+| Architecture Overview | LLM multi-paragraph narrative synthesizing across `package_seeds[*]` | `set-architecture-overview-narrative` |
+| Module / Package Structure | LLM emits annotated tree of workspace + per-feature subdir layout | `set-architecture-module-structure` |
+| Patterns | LLM via CBM `get_code_snippet` — `[{name, applies_in, rule, language, code_snippet, cite}]` per pattern | `set-architecture-patterns` |
+| Conventions | LLM extracts from concern docs + filesystem patterns — `{naming, file_organization, import_style, error_handling}` 4-bucket bullets | `set-architecture-conventions` |
+| Layers | LLM `[{name, role, cite}]` (Phase 0 shape) | `set-doc-layers` |
+| Cross-Cuts | LLM via CBM — `[{name, description, language, code_snippet, cite}]` per cross-cut subsection | `set-architecture-cross-cuts-detailed` |
+| Dependency Direction Rules | LLM `[bullet_strings]` per package layer | `set-architecture-dependency-direction-rules` |
+| Dependency Overview | `project-input.dep_graph_mermaid` (verbatim) OR LLM-curated mermaid graph | `set-architecture-dependency-overview-mermaid` |
+
+For Patterns + Cross-Cuts: orchestrator queries CBM `get_code_snippet(qualified_name)` to fetch verbatim source + line range, then passes the snippet + `<file>:<line>` cite into the setter. Helper renders subsection-style (`### <name>` + applies-in + rule prose + cite-back HTML comment + fenced code block).
 
 ```
 ./.devforge/lib/generate_docs_helper init-doc --tier project-architecture --target "<project-label>" \
     --frontmatter "$FM"
+./.devforge/lib/generate_docs_helper set-architecture-overview-narrative --tier project-architecture --target "<project-label>" \
+    --text "<multi-paragraph narrative>"
+./.devforge/lib/generate_docs_helper set-architecture-module-structure --tier project-architecture --target "<project-label>" \
+    --text "<annotated tree>"
+./.devforge/lib/generate_docs_helper set-architecture-patterns --tier project-architecture --target "<project-label>" \
+    --patterns '<JSON array of patterns with snippet+cite>'
+./.devforge/lib/generate_docs_helper set-architecture-conventions --tier project-architecture --target "<project-label>" \
+    --conventions '<{naming, file_organization, import_style, error_handling} JSON>'
 ./.devforge/lib/generate_docs_helper set-doc-layers --tier project-architecture --target "<project-label>" \
-    --layers '<json array>'
-./.devforge/lib/generate_docs_helper set-doc-cross-cuts --tier project-architecture --target "<project-label>" \
-    --cross-cuts '<json array>'
+    --layers '<JSON array>'
+./.devforge/lib/generate_docs_helper set-architecture-cross-cuts-detailed --tier project-architecture --target "<project-label>" \
+    --cross-cuts '<JSON array of cross-cuts with snippet+cite>'
+./.devforge/lib/generate_docs_helper set-architecture-dependency-direction-rules --tier project-architecture --target "<project-label>" \
+    --rules '<JSON bullet-strings array>'
+./.devforge/lib/generate_docs_helper set-architecture-dependency-overview-mermaid --tier project-architecture --target "<project-label>" \
+    --text "<from project-input.dep_graph_mermaid OR LLM-curated mermaid syntax>"
 ./.devforge/lib/generate_docs_helper render-doc --tier project-architecture --target "<project-label>"
 ./.devforge/lib/generate_docs_helper validate-doc --tier project-architecture --target "<project-label>"
 ```
+
+Phase 0 callers using bullet-list `set-doc-cross-cuts` remain functional; Phase 3 callers use the enriched `set-architecture-cross-cuts-detailed` (subsections with code samples). Both target the same `## Cross-Cuts` anchor — last setter call wins.
+
+Phase 3 ships presence-only validation (sections required + bullet caps). Snippet-fidelity validation (helper reads cited file + diffs against rendered snippet) is a deferred follow-up — same evolution pattern as concern-tier validation (F.5 v0 → enrichment).
 
 ---
 

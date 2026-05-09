@@ -87,7 +87,23 @@ _PROJECT_OVERVIEW_REQUIRED_SECTIONS = (
 )
 
 _PROJECT_ARCHITECTURE_REQUIRED_KEYS = ("source_stamp", "last_indexed")
-_PROJECT_ARCHITECTURE_REQUIRED_SECTIONS = ("## Layers", "## Cross-Cuts")
+# Track 4 Phase 3: 6 architecture sections added (Architecture Overview,
+# Module / Package Structure, Patterns, Conventions, Dependency Direction
+# Rules, Dependency Overview). Layers + Cross-Cuts retained as Phase 0
+# anchors. Subsection-style sections (Patterns, Cross-Cuts, Conventions)
+# don't trigger _BULLET_CAP false-positives because _parse_bullets only
+# matches `- ` prefix lines (subsections use `### ` headings + prose +
+# fenced blocks, no top-level `- ` bullets).
+_PROJECT_ARCHITECTURE_REQUIRED_SECTIONS = (
+    "## Architecture Overview",
+    "## Module / Package Structure",
+    "## Patterns",
+    "## Conventions",
+    "## Layers",
+    "## Cross-Cuts",
+    "## Dependency Direction Rules",
+    "## Dependency Overview",
+)
 
 # Bullet length cap (Concerns/Layers/Patterns/Cross-Cuts).
 # Bumped 200 → 300 (2026-05-08) after V5 smoke on pkg-cse-client surfaced

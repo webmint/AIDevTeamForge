@@ -72,6 +72,14 @@ _ENTRY_POINTS_PLACEHOLDER = "<!-- TODO: entry-points -->"
 _MODULE_MAP_PLACEHOLDER = "<!-- TODO: module-map -->"
 _APPLICATION_ROUTES_PLACEHOLDER = "<!-- TODO: application-routes -->"
 _NAVIGATION_GUARDS_PLACEHOLDER = "<!-- TODO: navigation-guards -->"
+# Track 4 Phase 3 — architecture-tier sections (LLM-judgment heavy +
+# code-snippet cite-back via CBM get_code_snippet).
+_ARCH_OVERVIEW_NARRATIVE_PLACEHOLDER = "<!-- TODO: architecture-overview-narrative -->"
+_MODULE_STRUCTURE_PLACEHOLDER = "<!-- TODO: module-structure -->"
+_ARCH_PATTERNS_PLACEHOLDER = "<!-- TODO: architecture-patterns -->"
+_CONVENTIONS_PLACEHOLDER = "<!-- TODO: conventions -->"
+_DEP_DIRECTION_RULES_PLACEHOLDER = "<!-- TODO: dependency-direction-rules -->"
+_DEP_OVERVIEW_MERMAID_PLACEHOLDER = "<!-- TODO: dependency-overview-mermaid -->"
 _TREE_FENCE_OPEN = "```text"
 _TREE_FENCE_CLOSE = "```"
 _ANNOTATION_SEPARATOR = "  # "
@@ -220,8 +228,14 @@ _PROJECT_OVERVIEW_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
     ("Packages", _PACKAGES_PLACEHOLDER),
 )
 _PROJECT_ARCHITECTURE_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
+    ("Architecture Overview", _ARCH_OVERVIEW_NARRATIVE_PLACEHOLDER),
+    ("Module / Package Structure", _MODULE_STRUCTURE_PLACEHOLDER),
+    ("Patterns", _ARCH_PATTERNS_PLACEHOLDER),
+    ("Conventions", _CONVENTIONS_PLACEHOLDER),
     ("Layers", _LAYERS_PLACEHOLDER),
     ("Cross-Cuts", _CROSS_CUTS_PLACEHOLDER),
+    ("Dependency Direction Rules", _DEP_DIRECTION_RULES_PLACEHOLDER),
+    ("Dependency Overview", _DEP_OVERVIEW_MERMAID_PLACEHOLDER),
 )
 
 
@@ -319,10 +333,22 @@ def _build_project_architecture_skeleton(frontmatter: Dict[str, Any], target: st
     name = frontmatter.get("project") or target or "project"
     body = (
         f"# {name} architecture\n\n"
+        f"## Architecture Overview\n\n"
+        f"{_ARCH_OVERVIEW_NARRATIVE_PLACEHOLDER}\n\n"
+        f"## Module / Package Structure\n\n"
+        f"{_MODULE_STRUCTURE_PLACEHOLDER}\n\n"
+        f"## Patterns\n\n"
+        f"{_ARCH_PATTERNS_PLACEHOLDER}\n\n"
+        f"## Conventions\n\n"
+        f"{_CONVENTIONS_PLACEHOLDER}\n\n"
         f"## Layers\n\n"
         f"{_LAYERS_PLACEHOLDER}\n\n"
         f"## Cross-Cuts\n\n"
-        f"{_CROSS_CUTS_PLACEHOLDER}\n"
+        f"{_CROSS_CUTS_PLACEHOLDER}\n\n"
+        f"## Dependency Direction Rules\n\n"
+        f"{_DEP_DIRECTION_RULES_PLACEHOLDER}\n\n"
+        f"## Dependency Overview\n\n"
+        f"{_DEP_OVERVIEW_MERMAID_PLACEHOLDER}\n"
     )
     return render_frontmatter(dict(frontmatter), "\n" + body)
 
@@ -430,6 +456,42 @@ def _replace_application_routes_block(content: str, table_text: str) -> str:
 def _replace_navigation_guards_block(content: str, list_text: str) -> str:
     return _replace_or_substitute(
         content, _NAVIGATION_GUARDS_PLACEHOLDER, "Navigation Guards", list_text
+    )
+
+
+def _replace_arch_overview_narrative_block(content: str, prose: str) -> str:
+    return _replace_or_substitute(
+        content, _ARCH_OVERVIEW_NARRATIVE_PLACEHOLDER, "Architecture Overview", prose
+    )
+
+
+def _replace_module_structure_block(content: str, fenced_text: str) -> str:
+    return _replace_or_substitute(
+        content, _MODULE_STRUCTURE_PLACEHOLDER, "Module / Package Structure", fenced_text
+    )
+
+
+def _replace_arch_patterns_block(content: str, body_text: str) -> str:
+    return _replace_or_substitute(
+        content, _ARCH_PATTERNS_PLACEHOLDER, "Patterns", body_text
+    )
+
+
+def _replace_conventions_block(content: str, body_text: str) -> str:
+    return _replace_or_substitute(
+        content, _CONVENTIONS_PLACEHOLDER, "Conventions", body_text
+    )
+
+
+def _replace_dep_direction_rules_block(content: str, body_text: str) -> str:
+    return _replace_or_substitute(
+        content, _DEP_DIRECTION_RULES_PLACEHOLDER, "Dependency Direction Rules", body_text
+    )
+
+
+def _replace_dep_overview_mermaid_block(content: str, fenced_text: str) -> str:
+    return _replace_or_substitute(
+        content, _DEP_OVERVIEW_MERMAID_PLACEHOLDER, "Dependency Overview", fenced_text
     )
 
 
@@ -720,6 +782,120 @@ def _annotate_dir_line(line: str, annotations: Dict[str, str]) -> str:
             return line
         return f"{line.rstrip()}{_ANNOTATION_SEPARATOR}{annotation.strip()}"
     return line
+
+
+# ── Track 4 Phase 3 — architecture-tier render helpers ──────────────────────
+
+
+def _render_arch_patterns_subsections(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {name, applies_in, rule, language, code_snippet, cite} →
+    `### <name>` heading + applies-in line + rule prose + cite-back HTML
+    comment + fenced code block.
+
+    Skip entries missing `name`; allow any other field empty (renders that
+    part as absent rather than failing). The cite-back HTML comment uses
+    the format `<!-- <cite> -->` mirroring concern + package tier convention.
+    """
+    blocks: List[str] = []
+    for e in entries:
+        name = (e.get("name") or "").strip()
+        applies_in = (e.get("applies_in") or "").strip()
+        rule = (e.get("rule") or "").strip()
+        language = (e.get("language") or "").strip()
+        snippet = (e.get("code_snippet") or "").rstrip()
+        cite = (e.get("cite") or "").strip()
+        if not name:
+            continue
+        block_lines = [f"### {name}"]
+        if applies_in:
+            block_lines.append("")
+            block_lines.append(f"**Applies in**: {applies_in}")
+        if rule:
+            block_lines.append("")
+            block_lines.append(rule)
+        if snippet:
+            block_lines.append("")
+            if cite:
+                block_lines.append(f"<!-- {cite} -->")
+            fence_lang = language or "text"
+            block_lines.append(f"```{fence_lang}")
+            block_lines.append(snippet)
+            block_lines.append("```")
+        blocks.append("\n".join(block_lines))
+    return "\n\n".join(blocks)
+
+
+def _render_conventions_subsections(entries: Dict[str, List[str]]) -> str:
+    """Render 4 sub-sections: Naming, File Organization, Import Style, Error Handling.
+
+    Input dict: each key maps to list of bullet-point strings. Sub-sections
+    with empty lists are omitted. Sub-headings use `**bold**` paragraph form
+    (cse-strata bar literal style: `**Naming**\\n- bullet\\n...`).
+    """
+    section_order = (
+        ("naming", "Naming"),
+        ("file_organization", "File Organization"),
+        ("import_style", "Import Style"),
+        ("error_handling", "Error Handling"),
+    )
+    blocks: List[str] = []
+    for key, heading in section_order:
+        items = entries.get(key) or []
+        if not items:
+            continue
+        block_lines = [f"**{heading}**"]
+        for item in items:
+            text = str(item).strip()
+            if not text:
+                continue
+            block_lines.append(f"- {text}")
+        blocks.append("\n".join(block_lines))
+    return "\n\n".join(blocks)
+
+
+def _render_cross_cuts_detailed_subsections(entries: List[Dict[str, str]]) -> str:
+    """Each entry: {name, description, language, code_snippet, cite} →
+    `### <name>` heading + description prose + cite-back HTML comment +
+    fenced code block.
+
+    Phase 3 enriched shape supersedes Phase 0 Cross-Cuts bullet list when
+    the orchestrator wants per-cross-cut code samples + cite-backs. Skip
+    entries missing `name`.
+    """
+    blocks: List[str] = []
+    for e in entries:
+        name = (e.get("name") or "").strip()
+        description = (e.get("description") or "").strip()
+        language = (e.get("language") or "").strip()
+        snippet = (e.get("code_snippet") or "").rstrip()
+        cite = (e.get("cite") or "").strip()
+        if not name:
+            continue
+        block_lines = [f"### {name}"]
+        if description:
+            block_lines.append("")
+            block_lines.append(description)
+        if snippet:
+            block_lines.append("")
+            if cite:
+                block_lines.append(f"<!-- {cite} -->")
+            fence_lang = language or "text"
+            block_lines.append(f"```{fence_lang}")
+            block_lines.append(snippet)
+            block_lines.append("```")
+        blocks.append("\n".join(block_lines))
+    return "\n\n".join(blocks)
+
+
+def _render_dep_direction_rules_bullets(entries: List[str]) -> str:
+    """Each entry is a bullet-point rule string. Skip empty strings."""
+    lines: List[str] = []
+    for entry in entries:
+        text = str(entry).strip()
+        if not text:
+            continue
+        lines.append(f"- {text}")
+    return "\n".join(lines)
 
 
 def _interleave_dir_annotations(content: str, annotations: Dict[str, str]) -> str:
@@ -1319,6 +1495,187 @@ def cmd_set_overview_project_structure_annotations(args: argparse.Namespace) -> 
     return 0
 
 
+def cmd_set_architecture_overview_narrative(args: argparse.Namespace) -> int:
+    """Track 4 Phase 3 — write project-architecture's `## Architecture Overview`."""
+    if args.tier != "project-architecture":
+        print(
+            f"set-architecture-overview-narrative supports tier=project-architecture only; "
+            f"got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_arch_overview_narrative_block(content, args.text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_architecture_module_structure(args: argparse.Namespace) -> int:
+    """Track 4 Phase 3 — write project-architecture's `## Module / Package Structure` fenced tree."""
+    if args.tier != "project-architecture":
+        print(
+            f"set-architecture-module-structure supports tier=project-architecture only; "
+            f"got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    fenced_text = _render_fenced_text(args.text)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_module_structure_block(content, fenced_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_architecture_patterns(args: argparse.Namespace) -> int:
+    """Track 4 Phase 3 — write project-architecture's `## Patterns` subsections."""
+    if args.tier != "project-architecture":
+        print(
+            f"set-architecture-patterns supports tier=project-architecture only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.patterns, "patterns")
+    if entries is None:
+        return 2
+    body_text = _render_arch_patterns_subsections(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_arch_patterns_block(content, body_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_architecture_conventions(args: argparse.Namespace) -> int:
+    """Track 4 Phase 3 — write project-architecture's `## Conventions` 4 sub-sections.
+
+    Note: this setter targets the project-architecture tier ONLY; do not
+    confuse with the package-architecture tier's `set-doc-patterns`.
+    """
+    if args.tier != "project-architecture":
+        print(
+            f"set-architecture-conventions supports tier=project-architecture only; got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        decoded = json.loads(args.conventions)
+    except json.JSONDecodeError as exc:
+        print(f"--conventions must be valid JSON: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(decoded, dict):
+        print("--conventions must decode to a JSON object", file=sys.stderr)
+        return 2
+    sections: Dict[str, List[str]] = {}
+    for key in ("naming", "file_organization", "import_style", "error_handling"):
+        items = decoded.get(key)
+        if isinstance(items, list):
+            sections[key] = [str(x) for x in items]
+        else:
+            sections[key] = []
+    body_text = _render_conventions_subsections(sections)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_conventions_block(content, body_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_architecture_cross_cuts_detailed(args: argparse.Namespace) -> int:
+    """Track 4 Phase 3 — write enriched `## Cross-Cuts` (subsections + code snippets).
+
+    Replaces the existing `## Cross-Cuts` body. Phase 0 callers using the
+    bullet-list `set-doc-cross-cuts` setter remain functional; this setter
+    targets richer per-cross-cut subsections with cite-backed code samples.
+    """
+    if args.tier != "project-architecture":
+        print(
+            f"set-architecture-cross-cuts-detailed supports tier=project-architecture only; "
+            f"got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    entries = _decode_entry_list(args.cross_cuts, "cross-cuts")
+    if entries is None:
+        return 2
+    body_text = _render_cross_cuts_detailed_subsections(entries)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_cross_cuts_block(content, body_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_architecture_dependency_direction_rules(args: argparse.Namespace) -> int:
+    """Track 4 Phase 3 — write `## Dependency Direction Rules` bullets."""
+    if args.tier != "project-architecture":
+        print(
+            f"set-architecture-dependency-direction-rules supports tier=project-architecture only; "
+            f"got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        decoded = json.loads(args.rules)
+    except json.JSONDecodeError as exc:
+        print(f"--rules must be valid JSON: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(decoded, list):
+        print("--rules must decode to a JSON array", file=sys.stderr)
+        return 2
+    body_text = _render_dep_direction_rules_bullets(decoded)
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_dep_direction_rules_block(content, body_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
+def cmd_set_architecture_dependency_overview_mermaid(args: argparse.Namespace) -> int:
+    """Track 4 Phase 3 — write `## Dependency Overview` fenced ```mermaid block.
+
+    Mechanical input — orchestrator passes either project-input's
+    `dep_graph_mermaid` verbatim OR an LLM-curated mermaid graph. Helper
+    wraps as fenced ```mermaid block; markdown viewers render the diagram
+    natively. No Python mermaid renderer dep.
+    """
+    if args.tier != "project-architecture":
+        print(
+            f"set-architecture-dependency-overview-mermaid supports tier=project-architecture only; "
+            f"got {args.tier!r}",
+            file=sys.stderr,
+        )
+        return 2
+    fenced_text = _render_fenced_text(args.text, language="mermaid")
+    doc_path = _doc_path_for(args)
+    path, content = _load_active(doc_path)
+    if path is None:
+        print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
+        return 2
+    path.write_text(_replace_dep_overview_mermaid_block(content, fenced_text), encoding="utf-8")
+    print(str(path))
+    return 0
+
+
 def cmd_render_doc(args: argparse.Namespace) -> int:
     if args.tier not in _VALID_TIERS:
         print(f"unknown tier {args.tier!r}", file=sys.stderr)
@@ -1553,4 +1910,80 @@ def _build_set_overview_project_structure_annotations(p: argparse.ArgumentParser
         "--annotations",
         default="",
         help='JSON object {dir_basename: annotation_text} — augments Phase 1 tree leaves',
+    )
+
+
+# ── Track 4 Phase 3 — architecture-tier setter factories ────────────────────
+
+
+def _build_set_architecture_overview_narrative(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--text",
+        required=True,
+        help="Multi-paragraph narrative describing the architectural shape",
+    )
+
+
+def _build_set_architecture_module_structure(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--text",
+        required=True,
+        help="Annotated tree (project-architecture variant) — fenced text block",
+    )
+
+
+def _build_set_architecture_patterns(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--patterns",
+        required=True,
+        help=(
+            'JSON array [{"name": "...", "applies_in": "...", "rule": "...", '
+            '"language": "typescript", "code_snippet": "...", "cite": "<file>:<line>"}]'
+        ),
+    )
+
+
+def _build_set_architecture_conventions(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--conventions",
+        required=True,
+        help=(
+            'JSON object {"naming": [bullets], "file_organization": [bullets], '
+            '"import_style": [bullets], "error_handling": [bullets]}'
+        ),
+    )
+
+
+def _build_set_architecture_cross_cuts_detailed(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--cross-cuts",
+        dest="cross_cuts",
+        required=True,
+        help=(
+            'JSON array [{"name": "...", "description": "...", '
+            '"language": "...", "code_snippet": "...", "cite": "<file>:<line>"}]'
+        ),
+    )
+
+
+def _build_set_architecture_dependency_direction_rules(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--rules",
+        required=True,
+        help='JSON array of bullet-point rule strings',
+    )
+
+
+def _build_set_architecture_dependency_overview_mermaid(p: argparse.ArgumentParser) -> None:
+    _common_target_args(p, ("project-architecture",))
+    p.add_argument(
+        "--text",
+        required=True,
+        help='Mermaid graph syntax (e.g. `graph TD\\n  a-->b`); helper wraps in ```mermaid fence',
     )

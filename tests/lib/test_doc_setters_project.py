@@ -41,6 +41,13 @@ if str(_LIB_DIR) not in sys.path:
 from _generate_docs._doc_setters import (  # noqa: E402
     cmd_init_doc,
     cmd_render_doc,
+    cmd_set_architecture_conventions,
+    cmd_set_architecture_cross_cuts_detailed,
+    cmd_set_architecture_dependency_direction_rules,
+    cmd_set_architecture_dependency_overview_mermaid,
+    cmd_set_architecture_module_structure,
+    cmd_set_architecture_overview_narrative,
+    cmd_set_architecture_patterns,
     cmd_set_doc_cross_cuts,
     cmd_set_doc_layers,
     cmd_set_doc_packages,
@@ -73,6 +80,26 @@ def _ns(devforge: Path, tier: str, target: str = "my-project", **overrides):
     }
     base.update(overrides)
     return argparse.Namespace(**base)
+
+
+def _section_body(content: str, heading: str) -> str:
+    """Extract body text under `## <heading>` up to the next `## ` (level-2)
+    heading or EOF. Walks line-by-line so `### subsection` headings INSIDE
+    the section (Phase 3 Patterns / Cross-Cuts use them) are preserved
+    rather than incorrectly cutting the section short — naive
+    `content.split("##")` does that.
+    """
+    in_section = False
+    out_lines = []
+    for line in content.split("\n"):
+        if line.startswith(f"## {heading}"):
+            in_section = True
+            continue
+        if in_section and line.startswith("## ") and not line.startswith("### "):
+            break
+        if in_section:
+            out_lines.append(line)
+    return "\n".join(out_lines)
 
 
 class CmdInitDocProjectTests(unittest.TestCase):
@@ -1236,6 +1263,484 @@ class CmdSetOverviewProjectStructureAnnotationsTests(unittest.TestCase):
         )
         self.assertEqual(code, 2)
         self.assertIn("no `", err)
+
+
+class CmdInitDocPhase3ArchitectureAnchorsTests(unittest.TestCase):
+    """Track 4 Phase 3 — verify project-architecture skeleton emits 8 anchors."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+
+    def test_phase3_anchors_in_skeleton(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            frontmatter=json.dumps({"project": "my-proj"}),
+            tree="",
+        )
+        code, _, _ = _run(cmd_init_doc, args)
+        self.assertEqual(code, 0)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        for anchor in (
+            "## Architecture Overview",
+            "## Module / Package Structure",
+            "## Patterns",
+            "## Conventions",
+            "## Layers",
+            "## Cross-Cuts",
+            "## Dependency Direction Rules",
+            "## Dependency Overview",
+        ):
+            self.assertIn(anchor, content, msg=f"missing anchor {anchor!r}")
+        for placeholder in (
+            "<!-- TODO: architecture-overview-narrative -->",
+            "<!-- TODO: module-structure -->",
+            "<!-- TODO: architecture-patterns -->",
+            "<!-- TODO: conventions -->",
+            "<!-- TODO: dependency-direction-rules -->",
+            "<!-- TODO: dependency-overview-mermaid -->",
+        ):
+            self.assertIn(placeholder, content)
+
+    def test_skeleton_anchor_order(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            frontmatter=json.dumps({"project": "my-proj"}),
+            tree="",
+        )
+        _run(cmd_init_doc, args)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        positions = [
+            content.index(f"## {anchor}")
+            for anchor in (
+                "Architecture Overview",
+                "Module / Package Structure",
+                "Patterns",
+                "Conventions",
+                "Layers",
+                "Cross-Cuts",
+                "Dependency Direction Rules",
+                "Dependency Overview",
+            )
+        ]
+        self.assertEqual(positions, sorted(positions))
+
+
+class CmdSetArchitectureOverviewNarrativeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_replaces_placeholder(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            text="Multi-paragraph narrative.\n\nSecond paragraph.",
+        )
+        code, _, err = _run(cmd_set_architecture_overview_narrative, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: architecture-overview-narrative -->", content)
+        self.assertIn("Multi-paragraph narrative.", content)
+        self.assertIn("Second paragraph.", content)
+
+    def test_rejects_other_tier(self):
+        args = _ns(self.devforge, "project-overview", text="x")
+        code, _, err = _run(cmd_set_architecture_overview_narrative, args)
+        self.assertEqual(code, 2)
+        self.assertIn("set-architecture-overview-narrative supports", err)
+
+
+class CmdSetArchitectureModuleStructureTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_writes_fenced_text_block(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            text="root/\n  apps/\n  packages/",
+        )
+        code, _, err = _run(cmd_set_architecture_module_structure, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: module-structure -->", content)
+        self.assertIn("```text\nroot/\n  apps/\n  packages/\n```", content)
+
+
+class CmdSetArchitecturePatternsTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_renders_subsection_per_pattern(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            patterns=json.dumps([
+                {
+                    "name": "Clean Architecture",
+                    "applies_in": "every pkg",
+                    "rule": "data/domain/presentation split",
+                    "language": "typescript",
+                    "code_snippet": "export class X {}",
+                    "cite": "pkg/x.ts:1",
+                },
+            ]),
+        )
+        code, _, err = _run(cmd_set_architecture_patterns, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: architecture-patterns -->", content)
+        self.assertIn("### Clean Architecture", content)
+        self.assertIn("**Applies in**: every pkg", content)
+        self.assertIn("data/domain/presentation split", content)
+        self.assertIn("<!-- pkg/x.ts:1 -->", content)
+        self.assertIn("```typescript\nexport class X {}\n```", content)
+
+    def test_skips_entry_without_name(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            patterns=json.dumps([{"applies_in": "x", "rule": "y"}]),
+        )
+        code, _, _ = _run(cmd_set_architecture_patterns, args)
+        self.assertEqual(code, 0)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        section = _section_body(content, "Patterns")
+        self.assertNotIn("### ", section)
+
+    def test_no_snippet_no_cite(self):
+        # When snippet empty, no fenced block + no cite-back comment.
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            patterns=json.dumps([
+                {"name": "P1", "rule": "rule prose"}
+            ]),
+        )
+        _run(cmd_set_architecture_patterns, args)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        section = _section_body(content, "Patterns")
+        self.assertIn("### P1", section)
+        self.assertIn("rule prose", section)
+        self.assertNotIn("```", section)
+
+
+class CmdSetArchitectureConventionsTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_emits_four_subsections(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            conventions=json.dumps({
+                "naming": ["Classes: PascalCase", "Factories: camelCase"],
+                "file_organization": ["Feature dir per module"],
+                "import_style": ["Use package root names"],
+                "error_handling": ["Either monad outside core"],
+            }),
+        )
+        code, _, err = _run(cmd_set_architecture_conventions, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: conventions -->", content)
+        self.assertIn("**Naming**", content)
+        self.assertIn("**File Organization**", content)
+        self.assertIn("**Import Style**", content)
+        self.assertIn("**Error Handling**", content)
+        self.assertIn("- Classes: PascalCase", content)
+        self.assertIn("- Either monad outside core", content)
+
+    def test_omits_empty_buckets(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            conventions=json.dumps({"naming": ["X"]}),
+        )
+        _run(cmd_set_architecture_conventions, args)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        conv_section = _section_body(content, "Conventions")
+        self.assertIn("**Naming**", conv_section)
+        self.assertNotIn("**File Organization**", conv_section)
+        self.assertNotIn("**Import Style**", conv_section)
+        self.assertNotIn("**Error Handling**", conv_section)
+
+
+class CmdSetArchitectureCrossCutsDetailedTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_renders_subsection_with_snippet(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            cross_cuts=json.dumps([
+                {
+                    "name": "Authentication",
+                    "description": "Okta + Apollo singleton",
+                    "language": "typescript",
+                    "code_snippet": "const TOKEN = getToken();",
+                    "cite": "pkg-cse-client/src/x.ts:29",
+                },
+            ]),
+        )
+        code, _, err = _run(cmd_set_architecture_cross_cuts_detailed, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: cross-cuts -->", content)
+        self.assertIn("### Authentication", content)
+        self.assertIn("Okta + Apollo singleton", content)
+        self.assertIn("<!-- pkg-cse-client/src/x.ts:29 -->", content)
+        self.assertIn("```typescript\nconst TOKEN = getToken();\n```", content)
+
+    def test_replaces_phase0_bullet_list(self):
+        # Phase 0's set-doc-cross-cuts uses bullet shape; Phase 3's enriched
+        # setter targets same anchor — last call wins.
+        _run(
+            cmd_set_doc_cross_cuts,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                cross_cuts=json.dumps([{"name": "old", "role": "bullet shape"}]),
+            ),
+        )
+        _run(
+            cmd_set_architecture_cross_cuts_detailed,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                cross_cuts=json.dumps([{"name": "new", "description": "subsection shape"}]),
+            ),
+        )
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        cross_section = _section_body(content, "Cross-Cuts")
+        self.assertNotIn("- old", cross_section)
+        self.assertIn("### new", cross_section)
+
+
+class CmdSetArchitectureDependencyDirectionRulesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_renders_bullets(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            rules=json.dumps([
+                "pkg-types is a leaf — no upstream pkg deps",
+                "feature pkgs depend on common + types + client",
+            ]),
+        )
+        code, _, err = _run(cmd_set_architecture_dependency_direction_rules, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: dependency-direction-rules -->", content)
+        self.assertIn("- pkg-types is a leaf — no upstream pkg deps", content)
+        self.assertIn("- feature pkgs depend on common + types + client", content)
+
+
+class CmdSetArchitectureDependencyOverviewMermaidTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps({"project": "my-proj"}),
+                tree="",
+            ),
+        )
+
+    def test_writes_mermaid_fenced_block(self):
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            text="graph TD\n    a[A]\n    b[B]\n    a --> b",
+        )
+        code, _, err = _run(cmd_set_architecture_dependency_overview_mermaid, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        self.assertNotIn("<!-- TODO: dependency-overview-mermaid -->", content)
+        self.assertIn("```mermaid\ngraph TD\n    a[A]\n    b[B]\n    a --> b\n```", content)
+
+
+class EndToEndPhase3ArchitecturePipelineTests(unittest.TestCase):
+    """Track 4 Phase 3 — full project-architecture pipeline filling all 8 sections."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+
+    def test_all_8_sections_render_no_placeholders(self):
+        _run(
+            cmd_init_doc,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                frontmatter=json.dumps(
+                    {"project": "my-proj", "last_indexed": "2026-05-08", "source_stamp": "p3"}
+                ),
+                tree="",
+            ),
+        )
+        _run(
+            cmd_set_architecture_overview_narrative,
+            _ns(self.devforge, "project-architecture", text="Architecture is X."),
+        )
+        _run(
+            cmd_set_architecture_module_structure,
+            _ns(self.devforge, "project-architecture", text="root/\n  apps/"),
+        )
+        _run(
+            cmd_set_architecture_patterns,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                patterns=json.dumps([
+                    {"name": "P1", "rule": "rule", "language": "ts", "code_snippet": "x", "cite": "f.ts:1"},
+                ]),
+            ),
+        )
+        _run(
+            cmd_set_architecture_conventions,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                conventions=json.dumps({"naming": ["PascalCase classes"]}),
+            ),
+        )
+        _run(
+            cmd_set_doc_layers,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                layers=json.dumps([{"name": "presentation", "role": "Vue UI"}]),
+            ),
+        )
+        _run(
+            cmd_set_architecture_cross_cuts_detailed,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                cross_cuts=json.dumps([
+                    {"name": "Auth", "description": "Okta-Apollo handshake", "language": "ts", "code_snippet": "const t = getToken()", "cite": "x.ts:1"},
+                ]),
+            ),
+        )
+        _run(
+            cmd_set_architecture_dependency_direction_rules,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                rules=json.dumps(["pkg-types is leaf", "core depends on client + types"]),
+            ),
+        )
+        _run(
+            cmd_set_architecture_dependency_overview_mermaid,
+            _ns(
+                self.devforge,
+                "project-architecture",
+                text="graph TD\n    a[pkg-a]\n    b[pkg-b]\n    a --> b",
+            ),
+        )
+        _run(cmd_render_doc, _ns(self.devforge, "project-architecture", out=""))
+
+        text = (self.root / "docs" / "architecture.md").read_text(encoding="utf-8")
+        # Every Phase 3 section spot-check.
+        self.assertIn("Architecture is X.", text)
+        self.assertIn("```text\nroot/", text)
+        self.assertIn("### P1", text)
+        self.assertIn("**Naming**", text)
+        self.assertIn("- PascalCase classes", text)
+        self.assertIn("- presentation — Vue UI", text)
+        self.assertIn("### Auth", text)
+        self.assertIn("Okta-Apollo handshake", text)
+        self.assertIn("- pkg-types is leaf", text)
+        self.assertIn("```mermaid\ngraph TD", text)
+        # No leftover placeholders.
+        self.assertNotIn("<!-- TODO:", text)
 
 
 if __name__ == "__main__":

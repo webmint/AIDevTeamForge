@@ -36,6 +36,7 @@ if str(_LIB_DIR) not in sys.path:
 
 from _generate_docs._project_input import (  # noqa: E402
     _build_cross_module_deps_tree,
+    _build_dep_graph_mermaid,
     _build_project_structure_tree,
     _classify_packages,
     _collect_project_root_files,
@@ -856,6 +857,75 @@ class CmdProjectInputPhase2FieldsTests(unittest.TestCase):
         hints = payload["package_classification_hints"]
         self.assertIn("pkg-common", hints["infrastructure"])
         self.assertIn("pkg-feature", hints["domain"])
+
+
+class BuildDepGraphMermaidTests(unittest.TestCase):
+    """Track 4 Phase 3 — _build_dep_graph_mermaid renders graph TD syntax."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_workspace_internal_deps_emitted(self):
+        (self.root / "package.json").write_text(
+            json.dumps({"name": "root", "workspaces": ["packages/*"]}),
+            encoding="utf-8",
+        )
+        for sub in ("pkg-a", "pkg-b"):
+            (self.root / "packages" / sub).mkdir(parents=True)
+        (self.root / "packages" / "pkg-a" / "package.json").write_text(
+            json.dumps({"name": "pkg-a", "dependencies": {"pkg-b": "*", "lodash": "^4"}}),
+            encoding="utf-8",
+        )
+        (self.root / "packages" / "pkg-b" / "package.json").write_text(
+            json.dumps({"name": "pkg-b"}),
+            encoding="utf-8",
+        )
+        result = _build_dep_graph_mermaid(self.root)
+        self.assertTrue(result.startswith("graph TD"))
+        self.assertIn("[pkg-a]", result)
+        self.assertIn("[pkg-b]", result)
+        # External lodash filtered.
+        self.assertNotIn("lodash", result)
+        # Edge syntax present.
+        self.assertIn(" --> ", result)
+
+    def test_no_workspaces_returns_empty(self):
+        (self.root / "package.json").write_text(
+            json.dumps({"name": "single"}),
+            encoding="utf-8",
+        )
+        self.assertEqual(_build_dep_graph_mermaid(self.root), "")
+
+    def test_no_package_json(self):
+        self.assertEqual(_build_dep_graph_mermaid(self.root), "")
+
+    def test_node_id_sanitization(self):
+        # Package names with non-alnum chars (e.g. @scope/name) sanitize cleanly.
+        (self.root / "package.json").write_text(
+            json.dumps({"name": "root", "workspaces": ["packages/*"]}),
+            encoding="utf-8",
+        )
+        ws = self.root / "packages" / "scoped"
+        ws.mkdir(parents=True)
+        (ws / "package.json").write_text(
+            json.dumps({"name": "@scope/pkg-name"}),
+            encoding="utf-8",
+        )
+        result = _build_dep_graph_mermaid(self.root)
+        # Node id must be alnum-only (mermaid requirement).
+        self.assertIn("[@scope/pkg-name]", result)
+        # Verify the id token before `[` contains only alnum.
+        for line in result.split("\n"):
+            stripped = line.strip()
+            if "[" in stripped and not stripped.startswith("graph"):
+                node_id = stripped.split("[", 1)[0].strip()
+                if node_id:
+                    self.assertTrue(
+                        node_id.isalnum() or all(c.isalnum() for c in node_id),
+                        msg=f"non-alnum node id: {node_id!r}",
+                    )
 
 
 if __name__ == "__main__":
