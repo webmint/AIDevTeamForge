@@ -255,6 +255,7 @@ specs/
 docs/
   overview.md                  # Project overview + package map (project tier)
   architecture.md              # Cross-package architecture + layering rationale
+  glossary.md                  # CBM-augmented project glossary (project tier; Phase B)
   <package>/                   # One subdir per package (from .devforge/index.json)
     overview.md                # Package role + concerns list
     architecture.md            # Package layers + patterns
@@ -270,6 +271,7 @@ docs/
 - Structural queries (exports, types, callers, deps, dead code) are NOT in docs/ — query the codebase-memory-mcp graph live via MCP tools (`search_graph`, `trace_path`, `get_code_snippet`, `search_code`, `query_graph`)
 - Md files are auto-indexed by codebase-memory-mcp; `search_graph(query="<fuzzy topic>")` plus `search_code(pattern)` together surface md narrative + code structure
 - `docs/overview.md` carries a `## Suggested Research Starts` section — 3-6 LLM-curated research questions with scope hints and cite_paths to seed cold-start orientation for fresh sessions
+- `docs/glossary.md` is the project-tier consolidated glossary produced by Phase B — 30-150 CBM-classified terms (code-anchored / fuzzy-anchored / prose-only) with 1-2 sentence definitions and cite-back paths; concern-tier Purpose paragraphs still carry inline disambiguation
 - See `.devforge/storage-rules.md` for full conventions including density rules + cite-back validation
 - **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{PROJECT_ROOT}}`
 

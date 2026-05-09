@@ -30,6 +30,7 @@ specs/
 docs/
   overview.md                      # Project overview + package map (project tier)
   architecture.md                  # Cross-package architecture + layering rationale (project tier)
+  glossary.md                      # CBM-augmented project glossary (project tier; Phase B)
   <package>/                       # One subdir per package detected by /init-forge
     overview.md                    # Package role + concern enumeration
     architecture.md                # Package layers + patterns
@@ -52,6 +53,17 @@ docs/ before diving into code. Validator-enforced shape (count 3..6, question
 existing on disk). Section is owned by `/generate-docs`; user-authored
 additions to overview.md outside owned anchors are preserved verbatim across
 re-runs.
+
+`docs/glossary.md` is the project-tier consolidated glossary produced by
+Phase B of `/generate-docs` — 30-150 entries classified by CBM presence
+(code-anchored: exact name match in graph; fuzzy-anchored: BM25 hit; prose-
+only: no graph match) with 1-2 sentence definitions and cite-back paths.
+Validator-enforced shape (term unique case-insensitive, definition ≤280 chars
+single paragraph, cite_md_paths ≥1 each on disk, code/fuzzy-anchored
+snippet must resolve via CBM, prose-only ≥2 cite_md_paths, related_terms
+must reference other entries, count 30..150). Concern-tier Purpose paragraphs
+still carry inline term disambiguation; this file is the project-tier
+consolidation, not a replacement.
 
 ## Naming Rules
 
