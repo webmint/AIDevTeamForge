@@ -43,7 +43,7 @@ The "do NOT reference codegraph's `agentic_*` tools" prohibition (`src/CLAUDE.md
   - BM25 `search_graph(query="...")` works for fuzzy term lookup
   - Cypher subset: MATCH / WHERE / RETURN / COUNT / DISTINCT / ORDER BY / LIMIT (no WITH / COLLECT / OPTIONAL MATCH / IS NOT NULL)
 - **Lifecycle**: CBM auto-sync watcher absorbs `/generate-docs` writes — manual reindex on testForge20 post-Track-4-run was a no-op (`changed=0 unchanged=2947`). Explicit `index_repository` between Phase A and Phase B is OPTIONAL belt-and-suspenders, not required.
-- **/init-forge index trigger** (memory `project_4command_architecture_pivot`): /init-forge does NOT currently trigger `index_repository`. Track B pre-req is to add the trigger (small separate commit before B.1) OR have helper detect missing index and shell out to CBM CLI as fallback. Default: pre-req commit.
+- **/init-forge index trigger** — RESOLVED 2026-05-09: not needed. `src/devforge/lib/_generate_docs/_preflight.py:326-410` already shells out to `codebase-memory-mcp cli index_repository` during /generate-docs preflight (before Phase 2). Track B fires inside Phase B → graph is populated by the time Track B queries. The pre-req commit originally proposed in this plan was based on incomplete codebase knowledge; preflight is the single source of truth for project indexing. No /init-forge spec change required.
 
 ## Shared engineering substrate (Step 0)
 
@@ -81,10 +81,12 @@ Ship as one commit `feat(generate-docs): _doc_corpus substrate + declared-order 
 
 ```
 T0 install:
-  /init-forge → index_repository ONCE (pre-req commit ahead of Track B)
-  auto_index=true → CBM watcher running thereafter
+  /init-forge runs (no CBM call — preflight handles indexing on first /generate-docs)
 
 Tn /generate-docs run:
+  Phase 0 preflight: existing _preflight.py:326-410 shells out to
+    `codebase-memory-mcp cli index_repository` (idempotent — repeat runs are no-ops once indexed)
+  auto_index=true → CBM watcher running thereafter
   Phase 1-N (existing): per-concern → per-package → project-overview → project-architecture
   
   Track A fires INSIDE project-overview phase, after Module Map step,
@@ -268,7 +270,6 @@ helper Step 6 (validate + render):
 ## Sequencing recommendation
 
 ```
-Pre-req:  Add `index_repository` trigger to /init-forge spec      (1 commit)
 Step 0:   Ship _doc_corpus.py + _merge_project_skeleton enhancement (1 commit)
 Step A1:  Track A helper                                           (1 commit)
 Step A2:  Track A spec                                             (1 commit)
@@ -281,7 +282,7 @@ Step Z:   GENERATE-DOCS-PLAN.md annotation pass — mark
           /generate-docs feature-closed                            (1 commit)
 ```
 
-9 commits total. ~2 sessions. Each commit independent + reversible.
+8 commits total. ~2 sessions. Each commit independent + reversible. (Originally 9; pre-req commit dropped 2026-05-09 — preflight already triggers indexing, see "Context for next session" above.)
 
 ## Open decisions
 
@@ -292,7 +293,7 @@ Step Z:   GENERATE-DOCS-PLAN.md annotation pass — mark
 5. **Track B noise-filter list location**: hardcoded baseline + optional `.devforge/glossary-noise.txt` user override. Lock at B.1 entry.
 6. **Track B term-cache for refresh (v2 feature)**: ship in v1 or defer? Default: defer. v1 = full rebuild every run.
 7. **Track B fuzzy-match threshold**: BM25 rank ≥ -25 (default). Lock at B.1 entry.
-8. **/init-forge index trigger placement**: pre-req commit (default) vs helper-side fallback that shells out to CBM CLI on missing project. Default: pre-req keeps helper free of CLI shell-out.
+8. **/init-forge index trigger placement**: RESOLVED 2026-05-09 — neither option needed. Existing `_preflight.py:326-410` (in /generate-docs preflight) already shells out to CBM CLI `index_repository`; both proposed paths were redundant. See "Context for next session" → "/init-forge index trigger" entry.
 9. **Cross-track v2 synergies (auto-link, glossary-consumes-research-starts)**: defer to bug-fix-only commits post feature-closure of `/generate-docs`. Not in this plan's scope.
 
 ## When resuming work
@@ -309,7 +310,7 @@ Step Z:   GENERATE-DOCS-PLAN.md annotation pass — mark
 ## Integration with existing plans + memory
 
 - **GENERATE-DOCS-PLAN.md** Step 6.3 (Glossary) + Step 6.4 (Topic index "consider on entry") — superseded by this plan. Step Z annotates them. Other Track B steps (6.2 / 6.5 / 6.6 / 6.7 / 6.8) are NOT shipped and will not be — explicitly rejected per docs+CBM split.
-- **ARCHITECTURE-PIVOT-PLAN.md** Step 1 (`/init-forge`) — gains `index_repository` trigger as pre-req commit. Doesn't change Step 2 (`/generate-docs`) scope. Steps 3-8 unaffected.
+- **ARCHITECTURE-PIVOT-PLAN.md** Step 1 (`/init-forge`) — unchanged by this plan (originally proposed as pre-req commit; resolved 2026-05-09 — not needed, see Open Decision #8). Steps 2-8 also unaffected.
 - **CBM-INTEGRATION-PLAN.md F.11** — already shipped this session (commits `65b0a24` / `e0ca9bb` / `cdddf76`). Track B's CBM queries align with F.11 hook enforcement; symbiotic.
 - **CODEX-REMOVAL-PLAN.md** — orthogonal. Independent merge.
 - **REDESIGN-RESEARCH-PLAN.md** — DEFERRED per dump 2026-05-08. Track A's output (Suggested Research Starts) feeds the future `/research` redesign whenever that unblocks; not a pre-req for either.
