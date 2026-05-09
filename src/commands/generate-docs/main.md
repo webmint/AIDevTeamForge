@@ -244,7 +244,7 @@ Retry on validation failure: re-run Steps 2.S.2–2.S.5 (re-init wipes parent sk
 
 ## Phase 3 — Package tier loop (after concern tier completes)
 
-After Phase 2's concern docs are all rendered + validated, run the package tier for every package whose concerns appeared in the concern-tier loop. Two docs per package: `overview.md` + `architecture.md`. Domain glossary lives inline in each Purpose paragraph; no separate glossary file.
+After Phase 2's concern docs are all rendered + validated, run the package tier for every package whose concerns appeared in the concern-tier loop. Two docs per package: `overview.md` + `architecture.md`. Domain glossary lives inline in each Purpose paragraph for in-context disambiguation; project-tier consolidated glossary lives at `docs/glossary.md` produced by Phase B.
 
 For each in-scope package P (derive the unique set from preflight's `concerns[*].package`):
 
@@ -483,6 +483,99 @@ Phase 3 ships presence-only validation (sections required + bullet caps). Snippe
 
 ---
 
+## Phase B — Glossary (after project tier completes)
+
+After Phase 4's project-tier docs are rendered + validated, run the project-tier glossary at `docs/glossary.md`. The glossary is a judgment-layer artifact: term → 1–2-sentence definition, with code anchors for terms backed by CBM-indexed symbols and prose-only entries for narrative-only concepts. The lettered label ("Phase B" rather than a continued number) marks this as a judgment-layer phase added on top of the original 1–4 pipeline; future judgment-layer phases follow the same lettered-label pattern.
+
+The orchestrator drives two helper SUBCMDs: `build-glossary-bundles` (helper walks `docs/`, classifies terms via CBM, ranks, emits JSON to stdout) and `set-glossary-entries` (helper consumes LLM-composed entries JSON, validates, renders `docs/glossary.md` atomically). Helper owns markdown structure + validation; LLM provides definition values + related-term picks.
+
+### Step B.1 — Build candidate bundles
+
+```
+./.devforge/lib/generate_docs_helper build-glossary-bundles \
+    --devforge-dir .devforge \
+    --top-n 80 \
+    --bm25-threshold -25 \
+    > /tmp/glossary-bundles.json
+```
+
+Capture stdout JSON to a tmp file (the file path is reused as `--bundles-file` in Step B.3). Each bundle entry is:
+
+- `term` — string identifier surfaced in the docs corpus
+- `class` — one of `code-anchored` (CBM `query_graph` exact match on a `Function`/`Method`/`Class`/`Type`/`Interface`/`Enum` node), `fuzzy-anchored` (CBM `search_graph` BM25 match above the threshold), or `prose-only` (no CBM hit; term appears in ≥2 distinct md paths)
+- `doc_context` — concatenated context windows from each docs occurrence (space-joined)
+- `code_anchor` — `{qn, file, line, snippet}` for code-anchored / fuzzy-anchored entries (snippet is the first 5 lines via `get_code_snippet`); fuzzy-anchored entries also carry `"fuzzy": true`. `null` for prose-only.
+- `related_set` — list of CBM `SEMANTICALLY_RELATED` neighbor names (may be empty)
+- `cite_md_paths` — unique md paths where the term occurs (preserves first-seen order)
+
+Defaults `--top-n 80` and `--bm25-threshold -25` match the helper's argparse defaults. Override either to widen / narrow the candidate pool. The bundles list is already top-N-sorted by combined rank; preserve that order when composing entries.
+
+### Step B.2 — Compose entries (orchestrator-direct, NO subagent)
+
+Before composing: count entries in the bundles JSON from Step B.1. If `len(bundles) < 30`, surface the limitation to the user (suggested message: "Project glossary requires ≥30 candidate terms; only N found after noise filter — project may be too small for a project-tier glossary") and stop Phase B. Do NOT compose entries or call `set-glossary-entries` — retries cannot fix a below-floor bundle pool.
+
+For each bundle, draft a `{term, definition, related_terms}` object. The orchestrator (this thread) reads each bundle inline and emits the array; no Task-tool dispatch.
+
+**Definition drafting** — seed the prose from the bundle's `doc_context` and `code_anchor.snippet` (when present); aim for 1–2 sentences. The helper's `_validate_entries` enforces the following hard rules (exit 2 + stderr on any failure):
+
+- non-empty after strip
+- ≤280 chars after strip
+- single paragraph — no `\n` in the stripped value
+
+**`related_terms` rules:**
+
+- Pick from the bundle's `related_set` (CBM-derived) plus any other glossary terms the orchestrator judges semantically related
+- Each `related_terms` value MUST appear as a `term` in some other entry in the same array — dangling references are rejected
+- No self-reference (the entry's own term must not appear in its own `related_terms`)
+
+**Thin-context guard:** if a bundle's `doc_context` totals fewer than 2 sentences, the orchestrator must NOT fabricate a definition (regardless of whether `code_anchor.snippet` is present). Emit the entry with `"definition": "[TODO: human-define]"` instead. The literal `[TODO: human-define]` string passes the validator (non-empty, ≤280 chars, single paragraph) — surface these terms in Phase 6's report so a human can fill them post-run.
+
+**Hard floor / ceiling:** the helper enforces `30 ≤ N ≤ 150` entries. Above 150, drop the lowest-ranked candidates from the bundles list before composing; the bundles are pre-sorted by combined rank.
+
+### Step B.3 — Set entries + render
+
+```
+./.devforge/lib/generate_docs_helper set-glossary-entries \
+    --devforge-dir .devforge \
+    --bundles-file /tmp/glossary-bundles.json \
+    --entries '<orchestrator-composed [{term, definition, related_terms}] JSON array>'
+```
+
+The helper validates the entries (count, definition shape, term-uniqueness case-insensitive, bundle match per term, cite-path existence, prose-only ≥2 cite_md_paths, code-anchored / fuzzy-anchored requires non-empty `qn` + live `get_code_snippet` resolution, `related_terms` reference closure) and on success renders `docs/glossary.md` atomically.
+
+**Output shape** (helper-owned):
+
+- Frontmatter: `generated_by: /generate-docs (Phase B — glossary)`, `last_indexed: <UTC date>`, `total_terms: <N>`
+- H1 `# Project Glossary` + intro paragraph
+- Entries sorted alphabetically (case-insensitive). Per entry:
+  - `## TermName` heading
+  - Definition paragraph
+  - `- **Defined**: \`qn:line\`` line — omitted for prose-only; gets `(fuzzy)` suffix for fuzzy-anchored
+  - `- **Used in**: \`path1\`, \`path2\`, \`path3\`` line — capped at 3 inline; if more, append ` (and N others)` with the overflow count
+  - `- **Related**: term1, term2` line — omitted if `related_terms` is empty
+
+Helper stdout on success is the rendered path (`docs/glossary.md`).
+
+### Step B.4 — Retry semantics
+
+- **Exit 0** → done; advance to Phase 5.
+- **Exit 1** (I/O failure: cannot read bundles file, atomic write failed, OR CBM unreachable mid-validation while resolving a `code-anchored` / `fuzzy-anchored` entry's snippet) → retry once after the underlying I/O / CBM is back. Transient.
+- **Exit 2** (validation rejection) → capture stderr verbatim, re-compose the entries array with the rejection reason as feedback, then re-invoke `set-glossary-entries`. Cap at 3 retries; on the 4th, surface failure to the user and continue with Phase 5 (the glossary is best-effort — its absence does not block the rest of the pipeline).
+- If exit 2 stderr includes "bundles file is not valid JSON" (or similar JSON-decode signal pointing at `--bundles-file`), the bundles tmp file from Step B.1 is corrupted — re-run Step B.1 to regenerate it before retrying Step B.3. Re-composing entries will not fix this.
+
+`build-glossary-bundles` itself is idempotent and re-runnable; if Step B.3 keeps failing because the bundle pool is bad, re-run Step B.1 with adjusted `--top-n` / `--bm25-threshold` to reshape the pool.
+
+### Cost (Phase B)
+
+Surface to the user before kicking off Step B.1:
+
+- CBM: ~80 `query_graph` + ~20 `search_graph` fallbacks + ~80 `get_code_snippet` ≈ 1.5s total
+- LLM: ~80 define-prompts × ~150 tokens ≈ 12K input + 6K output. Haiku ~$0.10; Sonnet ~$0.30
+
+Phase B assumes CBM is indexed. Phase 1's `preflight` SUBCMD calls `index_repository` (see the `vue_extract` + `index_repository` field in Phase 1's "Captures stdout JSON" list); no additional reindex is required between Phase 4 and Phase B.
+
+---
+
 ## Phase 5 — Verify
 
 For each rendered doc — concern AND package tier — walk the on-disk file and run `validate-doc` once more (defensive — per-tier validation in Steps 2.5/3.2/3.3 should have caught everything). Aggregate any new failures.
@@ -501,4 +594,5 @@ Print:
 - Package overview docs rendered + validated: N
 - Package architecture docs rendered + validated: N
 - Package-tier failures: list with paths
+- Glossary (Phase B): rendered N entries; M entries marked `[TODO: human-define]` (list those terms); failed-after-retries: yes/no
 
