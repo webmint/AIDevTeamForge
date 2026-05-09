@@ -604,7 +604,7 @@ def _validate_entries(
                 ),
                 2,
             )
-        ok, missing = validate_cite_paths(cite_paths, project_root)
+        ok, missing = validate_cite_paths(cite_paths, project_root / "docs")
         if not ok:
             return (
                 "set-glossary-entries: entry[{0}] ({1}): cite_md_paths not found: {2}".format(
@@ -676,6 +676,19 @@ def _validate_entries(
     return None, 0
 
 
+def _escape_md_inline(text: str) -> str:
+    """Escape characters that md previewers parse as raw HTML.
+
+    `<S>` in a paragraph triggers strikethrough in WebStorm + GitHub renderers
+    when no closing `</S>` follows. Generic-type syntax like `BLoC<S>` is
+    legitimate technical content and must round-trip as literal text in the
+    rendered output, so encode `&`, `<`, `>` to HTML entities. Order matters:
+    escape `&` first, then the angle brackets, otherwise the `&` from the
+    just-inserted entities gets re-encoded.
+    """
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _render_glossary(
     entries: List[Dict[str, Any]],
     bundles_by_term: Dict[str, Dict[str, Any]],
@@ -720,9 +733,9 @@ def _render_glossary(
         code_anchor = bundle.get("code_anchor")
         cite_paths: List[str] = bundle.get("cite_md_paths") or []
 
-        lines.append("## {0}".format(term))
+        lines.append("## {0}".format(_escape_md_inline(term)))
         lines.append("")
-        lines.append(definition)
+        lines.append(_escape_md_inline(definition))
         lines.append("")
 
         # "Defined" line (omit for prose-only).
@@ -752,8 +765,9 @@ def _render_glossary(
 
         # "Related" line (omit if empty).
         if related_terms:
+            escaped_related = [_escape_md_inline(rt) for rt in related_terms]
             lines.append(
-                "- **Related**: {0}".format(", ".join(related_terms))
+                "- **Related**: {0}".format(", ".join(escaped_related))
             )
 
         lines.append("")

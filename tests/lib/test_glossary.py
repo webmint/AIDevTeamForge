@@ -141,13 +141,14 @@ def _make_valid_bundles(
 ) -> List[Dict]:
     """Return n bundles for prose-only terms.
 
-    If docs_root is given, the cite_md_paths will point to real files created
-    under docs_root so validate_cite_paths passes.
+    Cite paths are docs_root-relative (no "docs/" prefix) — matches the shape
+    walk_doc_corpus produces in production. If docs_root is given, files are
+    materialized at docs_root/<rel> so validate_cite_paths passes.
     """
     bundles = []
     for i in range(n):
         term = "{0}{1}".format(prefix, i)
-        cite_paths = ["docs/file{0}a.md".format(i), "docs/file{0}b.md".format(i)]
+        cite_paths = ["file{0}a.md".format(i), "file{0}b.md".format(i)]
         if docs_root is not None:
             for cp in cite_paths:
                 fp = docs_root / cp
@@ -425,7 +426,7 @@ class SetGlossaryEntriesHappyPathTests(unittest.TestCase):
     def test_30_valid_entries_exit_0(self):
         """Case 10: 30 valid prose-only entries → exit 0, glossary.md written."""
         n = 30
-        bundles = _make_valid_bundles(n, docs_root=self.root)
+        bundles = _make_valid_bundles(n, docs_root=self.root / "docs")
         entries = _make_valid_entries(n)
         bundles_file = self._write_bundles_file(bundles)
         args = _make_args_set(self.devforge, entries, bundles_file)
@@ -439,7 +440,7 @@ class SetGlossaryEntriesHappyPathTests(unittest.TestCase):
     def test_150_valid_entries_exit_0(self):
         """Case 11: 150 valid entries → exit 0."""
         n = 150
-        bundles = _make_valid_bundles(n, docs_root=self.root)
+        bundles = _make_valid_bundles(n, docs_root=self.root / "docs")
         entries = _make_valid_entries(n)
         bundles_file = self._write_bundles_file(bundles)
         args = _make_args_set(self.devforge, entries, bundles_file)
@@ -453,7 +454,7 @@ class SetGlossaryEntriesHappyPathTests(unittest.TestCase):
         from datetime import datetime, timezone
 
         n = 30
-        bundles = _make_valid_bundles(n, docs_root=self.root)
+        bundles = _make_valid_bundles(n, docs_root=self.root / "docs")
         entries = _make_valid_entries(n)
         bundles_file = self._write_bundles_file(bundles)
         args = _make_args_set(self.devforge, entries, bundles_file)
@@ -490,7 +491,7 @@ class SetGlossaryEntriesCountBoundsTests(unittest.TestCase):
     def test_29_entries_exit_2(self):
         """Case 13: 29 entries → exit 2."""
         n = 29
-        bundles = _make_valid_bundles(n, docs_root=self.root)
+        bundles = _make_valid_bundles(n, docs_root=self.root / "docs")
         entries = _make_valid_entries(n)
         bundles_file = self._write_bundles_file(bundles)
         args = _make_args_set(self.devforge, entries, bundles_file)
@@ -502,7 +503,7 @@ class SetGlossaryEntriesCountBoundsTests(unittest.TestCase):
     def test_151_entries_exit_2(self):
         """Case 14: 151 entries → exit 2."""
         n = 151
-        bundles = _make_valid_bundles(n, docs_root=self.root)
+        bundles = _make_valid_bundles(n, docs_root=self.root / "docs")
         entries = _make_valid_entries(n)
         bundles_file = self._write_bundles_file(bundles)
         args = _make_args_set(self.devforge, entries, bundles_file)
@@ -542,35 +543,35 @@ class PerEntryValidationTests(unittest.TestCase):
 
     def test_empty_definition_exit_2(self):
         """Case 15: definition empty post-strip → exit 2."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         entries = _make_valid_entries(self.n)
         entries[0]["definition"] = "   "  # strip → empty
         self.assertEqual(self._run(entries, bundles), 2)
 
     def test_definition_over_280_chars_exit_2(self):
         """Case 16: definition > 280 chars → exit 2."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         entries = _make_valid_entries(self.n)
         entries[0]["definition"] = "x" * 281
         self.assertEqual(self._run(entries, bundles), 2)
 
     def test_definition_with_newline_exit_2(self):
         """Case 17: definition contains newline → exit 2."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         entries = _make_valid_entries(self.n)
         entries[0]["definition"] = "First paragraph.\nSecond paragraph."
         self.assertEqual(self._run(entries, bundles), 2)
 
     def test_term_no_matching_bundle_exit_2(self):
         """Case 18: term has no matching bundle → exit 2."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         entries = _make_valid_entries(self.n)
         entries[0]["term"] = "NoMatchBundle"  # not in bundles
         self.assertEqual(self._run(entries, bundles), 2)
 
     def test_prose_only_less_than_2_cite_paths_exit_2(self):
         """Case 19: prose-only entry with only 1 cite_md_path → exit 2."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         # Override first bundle to have only 1 cite path.
         single_path = "docs/single.md"
         (self.root / single_path).parent.mkdir(parents=True, exist_ok=True)
@@ -581,7 +582,7 @@ class PerEntryValidationTests(unittest.TestCase):
 
     def test_dangling_related_terms_exit_2(self):
         """Case 20: related_terms contains a non-existent term → exit 2."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         entries = _make_valid_entries(self.n)
         entries[0]["related_terms"] = ["NonExistentTerm9999"]
         self.assertEqual(self._run(entries, bundles), 2)
@@ -617,7 +618,7 @@ class CrossEntryValidationTests(unittest.TestCase):
 
     def test_duplicate_terms_case_insensitive_exit_2(self):
         """Case 21: duplicate terms (case-insensitive) → exit 2."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         entries = _make_valid_entries(self.n)
         # Duplicate entries[0] as lowercase.
         dup = dict(entries[0])
@@ -630,7 +631,7 @@ class CrossEntryValidationTests(unittest.TestCase):
 
     def test_case_insensitive_related_terms_reference_passes(self):
         """Case 22: related_terms refer to existing term via different case → valid."""
-        bundles = _make_valid_bundles(self.n, docs_root=self.root)
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
         entries = _make_valid_entries(self.n)
         # Entry 0 refers to Entry 1 by lowercase.
         term1 = entries[1]["term"]
@@ -763,7 +764,7 @@ class AtomicWriteTests(unittest.TestCase):
 
     def _make_minimal_setup(self, n: int = 30) -> tuple:
         """Create valid prose-only bundles + entries for n terms, return (entries, bundles)."""
-        bundles = _make_valid_bundles(n, docs_root=self.root)
+        bundles = _make_valid_bundles(n, docs_root=self.root / "docs")
         entries = _make_valid_entries(n)
         return entries, bundles
 
@@ -825,7 +826,7 @@ class ValidateEntriesDirectTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def _make_bundles_dict(self, n: int) -> Dict[str, Dict]:
-        bundles = _make_valid_bundles(n, docs_root=self.root)
+        bundles = _make_valid_bundles(n, docs_root=self.root / "docs")
         return {b["term"].lower(): b for b in bundles}
 
     def test_too_few_entries_returns_error(self):
@@ -944,6 +945,60 @@ class RendererFuzzyAnchoredTests(unittest.TestCase):
         self.assertIn("`pkg.UseCaseBridge:5`", content)
 
 
+class RendererHtmlEscapeTests(unittest.TestCase):
+    """Regression: angle brackets in prose fields must HTML-encode so md
+    previewers don't interpret bare `<S>` as a strikethrough open tag (the
+    failure mode reported on testForge20: a definition containing `BLoC<S>`
+    caused WebStorm's preview to strikethrough every line that followed)."""
+
+    def test_definition_angle_brackets_escaped(self):
+        bundle = _make_bundle("BLoC", "prose-only", ["x.md", "y.md"])
+        entry = {
+            "term": "BLoC",
+            "definition": "Subclasses BLoC<S> base; <Concern>BLoC holds state.",
+            "related_terms": [],
+        }
+        content = _render_glossary([entry], {"bloc": bundle})
+        self.assertIn("BLoC&lt;S&gt;", content)
+        self.assertIn("&lt;Concern&gt;BLoC", content)
+        self.assertNotIn("BLoC<S>", content)
+        self.assertNotIn("<Concern>", content)
+
+    def test_term_heading_angle_brackets_escaped(self):
+        term = "Either<L,R>"
+        bundle = _make_bundle(term, "prose-only", ["x.md", "y.md"])
+        entry = {"term": term, "definition": "A sum type.", "related_terms": []}
+        content = _render_glossary([entry], {term.lower(): bundle})
+        self.assertIn("## Either&lt;L,R&gt;", content)
+        self.assertNotIn("## Either<L,R>", content)
+
+    def test_related_terms_angle_brackets_escaped(self):
+        bundle = _make_bundle("Foo", "prose-only", ["x.md", "y.md"])
+        entry = {
+            "term": "Foo",
+            "definition": "A thing.",
+            "related_terms": ["Bar<T>", "Baz"],
+        }
+        content = _render_glossary([entry], {"foo": bundle})
+        self.assertIn("Bar&lt;T&gt;", content)
+        self.assertNotIn("Bar<T>", content)
+
+    def test_ampersand_escaped_first(self):
+        # Order check: an existing `&` in input must not double-encode the
+        # entities we just emitted.
+        bundle = _make_bundle("AT&T", "prose-only", ["x.md", "y.md"])
+        entry = {
+            "term": "AT&T",
+            "definition": "A & B.",
+            "related_terms": [],
+        }
+        content = _render_glossary([entry], {"at&t": bundle})
+        self.assertIn("AT&amp;T", content)
+        self.assertIn("A &amp; B.", content)
+        # Must NOT see double-encoded artifacts:
+        self.assertNotIn("&amp;amp;", content)
+
+
 # ---------------------------------------------------------------------------
 # Finding 4 + Finding 2: cmd-level code-anchored tests
 # ---------------------------------------------------------------------------
@@ -997,13 +1052,13 @@ class CodeAnchoredCmdTests(unittest.TestCase):
         """
         # Prose-only entries: Term1 .. Term(n-1)
         prose_entries = _make_valid_entries(n - 1, prefix="ProseTerm")
-        prose_bundles = _make_valid_bundles(n - 1, prefix="ProseTerm", docs_root=self.root)
+        prose_bundles = _make_valid_bundles(n - 1, prefix="ProseTerm", docs_root=self.root / "docs")
 
         # Code-anchored entry: CodeAnchoredTerm
         ca_term = "CodeAnchoredTerm"
-        cite_paths = ["docs/ca_a.md", "docs/ca_b.md"]
+        cite_paths = ["ca_a.md", "ca_b.md"]
         for cp in cite_paths:
-            fp = self.root / cp
+            fp = self.root / "docs" / cp
             fp.parent.mkdir(parents=True, exist_ok=True)
             fp.write_text("# {0}".format(ca_term), encoding="utf-8")
         ca_bundle = _make_code_anchored_bundle(ca_term, cite_paths, qn="pkg.CodeAnchoredTerm")
