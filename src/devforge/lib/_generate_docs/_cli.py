@@ -96,6 +96,12 @@ from ._package_input import _build_package_input, cmd_package_input
 from ._preflight import _build_preflight, cmd_preflight
 from ._project_input import _build_project_input, cmd_project_input
 from ._validate_doc import _build_validate_doc, cmd_validate_doc
+from ._glossary import (
+    _build_build_glossary_bundles,
+    cmd_build_glossary_bundles,
+    _build_set_glossary_entries,
+    cmd_set_glossary_entries,
+)
 from ._render import (
     cmd_render_concern_skeleton,
     cmd_render_package_skeleton,
@@ -543,6 +549,17 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
         cmd_set_architecture_dependency_overview_mermaid,
     ),
     ("render-doc", _build_render_doc, cmd_render_doc),
+    # Track B.1 — glossary helper (build-glossary-bundles + set-glossary-entries).
+    (
+        "build-glossary-bundles",
+        _build_build_glossary_bundles,
+        cmd_build_glossary_bundles,
+    ),
+    (
+        "set-glossary-entries",
+        _build_set_glossary_entries,
+        cmd_set_glossary_entries,
+    ),
 )
 
 
