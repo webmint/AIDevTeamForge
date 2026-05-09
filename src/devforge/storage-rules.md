@@ -44,6 +44,15 @@ NOT pre-rendered into docs/ — query the codebase-memory-mcp graph live via
 `query_graph`. Md files carry the narrative + judgment layer; CBM carries
 the structural-query layer.
 
+`docs/overview.md` includes a `## Suggested Research Starts` section produced
+by `/generate-docs` — 3-6 LLM-curated research questions with scope hints
+and cite_paths. Purpose: cold-start scenario seeds for fresh sessions reading
+docs/ before diving into code. Validator-enforced shape (count 3..6, question
+≤140 ending `?`, scope_hint ≤140 no newlines, cite_paths ≥2 with each path
+existing on disk). Section is owned by `/generate-docs`; user-authored
+additions to overview.md outside owned anchors are preserved verbatim across
+re-runs.
+
 ## Naming Rules
 
 ### Feature Directories
