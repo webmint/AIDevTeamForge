@@ -270,7 +270,6 @@ docs/
 - docs/ files are LLM context source first, dev-greppable second (LLM-first density format; see `.devforge/storage-rules.md`)
 - Structural queries (exports, types, callers, deps, dead code) are NOT in docs/ — query the codebase-memory-mcp graph live via MCP tools (`search_graph`, `trace_path`, `get_code_snippet`, `search_code`, `query_graph`)
 - Md files are auto-indexed by codebase-memory-mcp; `search_graph(query="<fuzzy topic>")` plus `search_code(pattern)` together surface md narrative + code structure
-- `docs/overview.md` carries a `## Suggested Research Starts` section — 3-6 LLM-curated research questions with scope hints and cite_paths to seed cold-start orientation for fresh sessions
 - `docs/glossary.md` is the project-tier consolidated glossary produced by Phase B — 30-150 CBM-classified terms (code-anchored / fuzzy-anchored / prose-only) with 1-2 sentence definitions and cite-back paths; concern-tier Purpose paragraphs still carry inline disambiguation
 - See `.devforge/storage-rules.md` for full conventions including density rules + cite-back validation
 - **Wrapper mode**: All artifacts (`specs/`, `docs/`, `constitution.md`) live in the wrapper root, NOT inside `{{PROJECT_ROOT}}`

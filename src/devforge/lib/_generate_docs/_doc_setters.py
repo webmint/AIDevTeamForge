@@ -50,7 +50,6 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ._doc_corpus import validate_cite_paths
 from ._md_frontmatter import FrontmatterParseError, parse_frontmatter, render_frontmatter
 
 _PURPOSE_PLACEHOLDER = "<!-- TODO: purpose -->"
@@ -70,8 +69,6 @@ _CROSS_MODULE_DEPS_PLACEHOLDER = "<!-- TODO: cross-module-dependencies -->"
 # Track 4 Phase 2 — mixed mechanical+LLM sections (helper renders structure;
 # LLM provides purpose/description/role text inside JSON input).
 _ENTRY_POINTS_PLACEHOLDER = "<!-- TODO: entry-points -->"
-# Track A — judgment-layer section (Suggested Research Starts).
-_SUGGESTED_RESEARCH_STARTS_PLACEHOLDER = "<!-- TODO: suggested-research-starts -->"
 _MODULE_MAP_PLACEHOLDER = "<!-- TODO: module-map -->"
 _APPLICATION_ROUTES_PLACEHOLDER = "<!-- TODO: application-routes -->"
 _NAVIGATION_GUARDS_PLACEHOLDER = "<!-- TODO: navigation-guards -->"
@@ -222,7 +219,6 @@ _PROJECT_OVERVIEW_OWNED_ANCHORS: Tuple[Tuple[str, str], ...] = (
     ("Tech Stack", _TECH_STACK_PLACEHOLDER),
     ("Project Structure", _PROJECT_STRUCTURE_PLACEHOLDER),
     ("Entry Points", _ENTRY_POINTS_PLACEHOLDER),
-    ("Suggested Research Starts", _SUGGESTED_RESEARCH_STARTS_PLACEHOLDER),
     ("Key Commands", _KEY_COMMANDS_PLACEHOLDER),
     ("Module Map", _MODULE_MAP_PLACEHOLDER),
     ("Cross-Module Dependencies", _CROSS_MODULE_DEPS_PLACEHOLDER),
@@ -367,8 +363,6 @@ def _build_project_overview_skeleton(frontmatter: Dict[str, Any], target: str) -
         f"{_PROJECT_STRUCTURE_PLACEHOLDER}\n\n"
         f"## Entry Points\n\n"
         f"{_ENTRY_POINTS_PLACEHOLDER}\n\n"
-        f"## Suggested Research Starts\n\n"
-        f"{_SUGGESTED_RESEARCH_STARTS_PLACEHOLDER}\n\n"
         f"## Key Commands\n\n"
         f"{_KEY_COMMANDS_PLACEHOLDER}\n\n"
         f"## Module Map\n\n"
@@ -496,12 +490,6 @@ def _replace_cross_module_deps_block(content: str, fenced_text: str) -> str:
 def _replace_entry_points_block(content: str, table_text: str) -> str:
     return _replace_or_substitute(
         content, _ENTRY_POINTS_PLACEHOLDER, "Entry Points", table_text
-    )
-
-
-def _replace_suggested_research_starts_block(content: str, table_text: str) -> str:
-    return _replace_or_substitute(
-        content, _SUGGESTED_RESEARCH_STARTS_PLACEHOLDER, "Suggested Research Starts", table_text
     )
 
 
@@ -1138,86 +1126,6 @@ def _decode_entry_list(arg_value: str, name: str) -> Optional[List[Dict[str, str
     return out
 
 
-def _decode_research_starts(arg_value: str) -> Optional[List[Dict[str, Any]]]:
-    """Decode --suggested-research-starts JSON. Each entry:
-    {"question": "...", "scope_hint": "...", "cite_paths": ["...", "..."]}.
-
-    Returns None and prints to stderr on JSON error or shape mismatch.
-    cite_paths is list of str (file paths only — no line ranges).
-    Runs from project root (cwd); validate_cite_paths checks existence.
-    """
-    try:
-        decoded = json.loads(arg_value)
-    except json.JSONDecodeError as exc:
-        print(f"--suggested-research-starts must be valid JSON: {exc}", file=sys.stderr)
-        return None
-    if not isinstance(decoded, list):
-        print("--suggested-research-starts must decode to a JSON array", file=sys.stderr)
-        return None
-    out: List[Dict[str, Any]] = []
-    for i, entry in enumerate(decoded):
-        if not isinstance(entry, dict):
-            print(
-                f"--suggested-research-starts: entry[{i}] must be a JSON object",
-                file=sys.stderr,
-            )
-            return None
-        question = entry.get("question")
-        scope_hint = entry.get("scope_hint")
-        cite_paths = entry.get("cite_paths")
-        if not isinstance(question, str):
-            print(
-                f"--suggested-research-starts: entry[{i}].question must be a string",
-                file=sys.stderr,
-            )
-            return None
-        if not isinstance(scope_hint, str):
-            print(
-                f"--suggested-research-starts: entry[{i}].scope_hint must be a string",
-                file=sys.stderr,
-            )
-            return None
-        if not isinstance(cite_paths, list):
-            print(
-                f"--suggested-research-starts: entry[{i}].cite_paths must be a JSON array",
-                file=sys.stderr,
-            )
-            return None
-        for j, p in enumerate(cite_paths):
-            if not isinstance(p, str):
-                print(
-                    f"--suggested-research-starts: entry[{i}].cite_paths[{j}] must be a string",
-                    file=sys.stderr,
-                )
-                return None
-        out.append({
-            "question": str(question),
-            "scope_hint": str(scope_hint),
-            "cite_paths": list(cite_paths),
-        })
-    return out
-
-
-def _render_suggested_research_starts_table(entries: List[Dict[str, Any]]) -> str:
-    """Render entries as a 3-column markdown table.
-
-    Columns: Question | Scope hint | Start here
-    Each cite_path wrapped in backticks, joined by ", ".
-    Rows missing question, scope_hint, or with empty cite_paths are skipped
-    (defensive; validator already rejects these).
-    """
-    lines = ["| Question | Scope hint | Start here |", "|---|---|---|"]
-    for e in entries:
-        question = (e.get("question") or "").strip()
-        scope_hint = (e.get("scope_hint") or "").strip()
-        cite_paths = e.get("cite_paths") or []
-        if not question or not scope_hint or not cite_paths:
-            continue
-        paths_cell = ", ".join(f"`{p}`" for p in cite_paths)
-        lines.append(f"| {question} | {scope_hint} | {paths_cell} |")
-    return "\n".join(lines)
-
-
 def cmd_set_doc_concerns(args: argparse.Namespace) -> int:
     if args.tier != "package-overview":
         print(
@@ -1507,132 +1415,6 @@ def cmd_set_overview_entry_points(args: argparse.Namespace) -> int:
         print(f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first", file=sys.stderr)
         return 2
     path.write_text(_replace_entry_points_block(content, table_text), encoding="utf-8")
-    print(str(path))
-    return 0
-
-
-def cmd_set_overview_suggested_research_starts(args: argparse.Namespace) -> int:
-    """Track A.1 — write project-overview's `## Suggested Research Starts` table.
-
-    Validates: 3 <= len(entries) <= 6; per-entry question / scope_hint / cite_paths
-    constraints; cite_paths existence (resolved relative to cwd, which is expected
-    to be project root — standard usage pattern for this helper); no duplicate
-    questions (case-insensitive).
-    I/O failures → exit 1. Validation failures → exit 2.
-    """
-    if args.tier != "project-overview":
-        print(
-            f"set-overview-suggested-research-starts supports tier=project-overview only; "
-            f"got {args.tier!r}",
-            file=sys.stderr,
-        )
-        return 2
-    entries = _decode_research_starts(args.suggested_research_starts)
-    if entries is None:
-        return 2
-
-    # Count bounds: 3 <= N <= 6.
-    n = len(entries)
-    if n < 3:
-        print(
-            f"--suggested-research-starts: expected at least 3 entries, got {n}",
-            file=sys.stderr,
-        )
-        return 2
-    if n > 6:
-        print(
-            f"--suggested-research-starts: expected at most 6 entries, got {n}",
-            file=sys.stderr,
-        )
-        return 2
-
-    # Per-entry validation.
-    project_root = Path.cwd()
-    for i, entry in enumerate(entries):
-        question = entry.get("question", "").strip()
-        raw_scope_hint = entry.get("scope_hint", "")
-        if isinstance(raw_scope_hint, str) and ("\n" in raw_scope_hint or "\r" in raw_scope_hint):
-            print(
-                f"--suggested-research-starts: entry[{i}].scope_hint contains newline",
-                file=sys.stderr,
-            )
-            return 2
-        scope_hint = (raw_scope_hint if isinstance(raw_scope_hint, str) else "").strip()
-        cite_paths = entry.get("cite_paths", [])
-
-        if not question:
-            print(
-                f"--suggested-research-starts: entry[{i}].question is empty",
-                file=sys.stderr,
-            )
-            return 2
-        if not question.endswith("?"):
-            print(
-                f"--suggested-research-starts: entry[{i}].question must end with '?': {question!r}",
-                file=sys.stderr,
-            )
-            return 2
-        if len(question) > 140:
-            print(
-                f"--suggested-research-starts: entry[{i}].question exceeds 140 chars "
-                f"(got {len(question)})",
-                file=sys.stderr,
-            )
-            return 2
-
-        if not scope_hint:
-            print(
-                f"--suggested-research-starts: entry[{i}].scope_hint is empty",
-                file=sys.stderr,
-            )
-            return 2
-        if len(scope_hint) > 140:
-            print(
-                f"--suggested-research-starts: entry[{i}].scope_hint exceeds 140 chars "
-                f"(got {len(scope_hint)})",
-                file=sys.stderr,
-            )
-            return 2
-
-        if len(cite_paths) < 2:
-            print(
-                f"--suggested-research-starts: entry[{i}].cite_paths must have at least 2 paths "
-                f"(got {len(cite_paths)})",
-                file=sys.stderr,
-            )
-            return 2
-        ok, missing = validate_cite_paths(cite_paths, project_root)
-        if not ok:
-            print(
-                f"--suggested-research-starts: entry[{i}].cite_paths — "
-                f"paths not found: {missing}",
-                file=sys.stderr,
-            )
-            return 2
-
-    # Cross-entry: no duplicate questions (case-insensitive).
-    seen_questions: List[str] = []
-    for i, entry in enumerate(entries):
-        q_lower = entry["question"].strip().lower()
-        if q_lower in seen_questions:
-            print(
-                f"--suggested-research-starts: duplicate question at entry[{i}]: "
-                f"{entry['question']!r}",
-                file=sys.stderr,
-            )
-            return 2
-        seen_questions.append(q_lower)
-
-    table_text = _render_suggested_research_starts_table(entries)
-    doc_path = _doc_path_for(args)
-    path, content = _load_active(doc_path)
-    if path is None:
-        print(
-            f"no skeleton at {_skeleton_path(doc_path)} — run init-doc first",
-            file=sys.stderr,
-        )
-        return 2
-    path.write_text(_replace_suggested_research_starts_block(content, table_text), encoding="utf-8")
     print(str(path))
     return 0
 
@@ -2141,19 +1923,6 @@ def _build_set_overview_entry_points(p: argparse.ArgumentParser) -> None:
         dest="entry_points",
         required=True,
         help='JSON array [{"label": "App entry", "path": "src/main.ts", "purpose": "..."}]',
-    )
-
-
-def _build_set_overview_suggested_research_starts(p: argparse.ArgumentParser) -> None:
-    _common_target_args(p, ("project-overview",))
-    p.add_argument(
-        "--suggested-research-starts",
-        dest="suggested_research_starts",
-        required=True,
-        help=(
-            'JSON array [{"question": "How does X flow?", "scope_hint": "Y BLoC + Z pipeline", '
-            '"cite_paths": ["src/foo.ts", "src/bar.ts"]}]'
-        ),
     )
 
 

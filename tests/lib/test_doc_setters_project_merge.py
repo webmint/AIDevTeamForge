@@ -297,8 +297,9 @@ class CmdInitDocProjectMergeTests(unittest.TestCase):
 
 
 # A controlled 4-anchor tuple for isolation — independent of the production
-# tuple so that future Track A additions (inserting "Suggested Research Starts"
-# between "Entry Points" and "Key Commands") do not break these tests.
+# tuple — declared-order insertion is required so that any new owned-anchor
+# additions land in their declared position relative to anchors already in
+# the body, not appended at end. The fix is anchor-agnostic.
 _TEST_ANCHORS: Tuple[Tuple[str, str], ...] = (
     ("A", "<!-- A -->"),
     ("B", "<!-- B -->"),

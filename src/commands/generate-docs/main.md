@@ -354,7 +354,7 @@ Frontmatter:
     --frontmatter "$FM"
 ```
 
-The skeleton emits twelve sections — five Phase 1 mechanical (verbatim from `project-input`), four Phase 2 mixed (helper renders structure; LLM provides purpose/description/role text), three LLM-synthesized:
+The skeleton emits eleven sections — five Phase 1 mechanical (verbatim from `project-input`), four Phase 2 mixed (helper renders structure; LLM provides purpose/description/role text), two LLM-synthesized:
 
 | Section | Source | Setter |
 |---|---|---|
@@ -362,7 +362,6 @@ The skeleton emits twelve sections — five Phase 1 mechanical (verbatim from `p
 | Tech Stack | `project-input.tech_stack_candidates` (verbatim) | `set-overview-tech-stack` |
 | Project Structure | `project-input.project_structure_tree` (verbatim tree) | `set-overview-project-structure-tree` |
 | Entry Points | `project-input.entry_point_candidates` + LLM `purpose` per row | `set-overview-entry-points` |
-| Suggested Research Starts | LLM judgment seeded by Module Map + Entry Points + concern docs context | `set-overview-suggested-research-starts` |
 | Key Commands | `project-input.key_commands` (verbatim) | `set-overview-key-commands` |
 | Module Map | `project-input.package_classification_hints` + LLM `purpose` per package; LLM may regroup | `set-overview-module-map` |
 | Cross-Module Dependencies | `project-input.cross_module_deps_tree` (verbatim) | `set-overview-cross-module-deps` |
@@ -393,8 +392,6 @@ Compose order:
     --key-commands '<from project-input.key_commands>'
 ./.devforge/lib/generate_docs_helper set-overview-module-map --tier project-overview --target "<project-label>" \
     --modules '<{infrastructure, core, domain} with LLM purpose per package>'
-./.devforge/lib/generate_docs_helper set-overview-suggested-research-starts --tier project-overview --target "<project-label>" \
-    --suggested-research-starts '<LLM-composed [{question, scope_hint, cite_paths}] — see Suggested Research Starts step below>'
 ./.devforge/lib/generate_docs_helper set-overview-cross-module-deps --tier project-overview --target "<project-label>" \
     --text "<from project-input.cross_module_deps_tree>"
 ./.devforge/lib/generate_docs_helper set-overview-application-routes --tier project-overview --target "<project-label>" \
@@ -409,29 +406,7 @@ Compose order:
 ./.devforge/lib/generate_docs_helper validate-doc --tier project-overview --target "<project-label>"
 ```
 
-### Suggested Research Starts step
-
-`set-overview-suggested-research-starts` writes the `## Suggested Research Starts` table — a 3-column table (`Question | Scope hint | Start here`) of 3–6 entries that give a fresh session reading `docs/overview.md` concrete scenario seeds to trace. `## Entry Points` lists files; this section lists what to investigate. The compose call sits after `set-overview-module-map` so the orchestrator has the Module Map's package roles + LLM-supplied per-package purpose text loaded as context when composing scope hints; the rendered position (between Entry Points + Key Commands) is owned by the helper's anchor order, independent of compose-call order.
-
-The orchestrator composes `--suggested-research-starts` as a JSON array; each entry is `{"question": "...", "scope_hint": "...", "cite_paths": ["src/...", "src/..."]}`. Source the entries from:
-
-- Major flows visible in Module Map (e.g., entry-point → core service → side-effect chains)
-- Cross-cutting concerns visible across multiple packages (auth, persistence, routing)
-- Anything that already appeared as a non-trivial concern in Phase 2 concern docs
-
-The helper validates each entry on these exact rules (exit 2 + stderr on any failure):
-
-- count: `3 <= len(entries) <= 6`
-- `question`: non-empty (post-strip), ends with `?` (post-strip), ≤140 chars (post-strip)
-- `scope_hint`: non-empty (post-strip), ≤140 chars (post-strip); no newlines (`\n` or `\r`) — checked on raw value pre-strip
-- `cite_paths`: ≥2 entries; each path must exist on disk (resolved relative to project root)
-- no duplicate `question` values across entries (case-insensitive)
-
-The 3-entry floor is a hard minimum — the empty-input `'[]'` pattern for mechanical-candidate setters does not apply here. If the project is genuinely too small to yield 3 distinct research questions, surface the limitation to the user and re-run `/generate-docs` after the project grows; the validator will not accept fewer than 3 entries.
-
-On exit 2, capture stderr and re-compose the array with the rejection reason as feedback, then re-invoke. Re-running the setter after a successful prior call replaces the prior table in place; no init-doc re-run is required for this section alone. Helper stdout on success is the doc path (same as other project-overview setters); no verbatim echo to the user is needed.
-
-Phase 1 mechanical setters pass `project-input` output through verbatim — no orchestrator interpretation. Phase 2 mixed setters need LLM-supplied prose for purpose/description/role cells, but helper still owns table/list structure. Purpose, Packages, and Suggested Research Starts stay orchestrator-direct LLM compose. When `project-input` returns empty for a mechanical/candidate field (e.g., no `package.json` → empty `tech_stack_candidates`; no `router/` dir → empty `router_route_files`), call the setter with empty input (`'[]'` / `'{}'`) — `validate-doc` enforces section presence, not content depth.
+Phase 1 mechanical setters pass `project-input` output through verbatim — no orchestrator interpretation. Phase 2 mixed setters need LLM-supplied prose for purpose/description/role cells, but helper still owns table/list structure. Purpose + Packages stay orchestrator-direct LLM compose. When `project-input` returns empty for a mechanical/candidate field (e.g., no `package.json` → empty `tech_stack_candidates`; no `router/` dir → empty `router_route_files`), call the setter with empty input (`'[]'` / `'{}'`) — `validate-doc` enforces section presence, not content depth.
 
 For `set-overview-application-routes` and `set-overview-navigation-guards`: orchestrator MUST Read each file from `router_route_files` / `nav_guard_files` to extract `path:`, `component:`, guard chain order from `router.beforeEach()` calls. project-input emits paths only (mechanical); content parsing is LLM judgment.
 

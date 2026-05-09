@@ -2,7 +2,9 @@
 
 ## Status
 
-**This is the final feature enhancement plan for `/generate-docs`.** After both tracks below ship + cross-file refs land, `/generate-docs` is closed for further feature work. Only bug-fixes, validator tightenings, and CBM-API-evolution adjustments accepted thereafter. Future LLM-judgment retrieval surfaces (e.g., topic-index, reverse-index, pattern-catalog) are explicitly rejected per the docs+CBM split argument below — closing the door now prevents future sessions from re-litigating.
+> **2026-05-10 UPDATE — Track A ROLLED BACK.** Empirical run on testForge20 + diagnostic ticket exercise revealed Track A (Suggested Research Starts) had structural coverage limits (5-6 entries cap on a 22-package codebase = ~23% coverage upper-bound) and zero unique signal vs Entry Points table + concern docs + CBM `search_graph`. The hypothetical consumer (`/research` command) doesn't exist; building for speculative consumers violates YAGNI. Track A removed in a single follow-up commit — Track B (glossary) STAYS, Step 0 substrate STAYS. Existing testForge20 `docs/overview.md` keeps the rendered SRS section as orphan user-authored content (passive M1 migration; safe — merge logic preserves any non-owned anchor verbatim). See `feedback_track_a_yagni_rollback` memory for the lesson.
+
+**This is the final feature enhancement plan for `/generate-docs`.** After Track B + cross-file refs land, `/generate-docs` is closed for further feature work. Only bug-fixes, validator tightenings, and CBM-API-evolution adjustments accepted thereafter. Future LLM-judgment retrieval surfaces (e.g., topic-index, reverse-index, pattern-catalog) are explicitly rejected per the docs+CBM split argument below — closing the door now prevents future sessions from re-litigating.
 
 Two judgment-layer artifacts ship together via this plan:
 
@@ -111,7 +113,9 @@ Refresh on code change:
   Track B re-runs always (full rebuild v1; term-cache deferred to v2)
 ```
 
-## Track A — Suggested Research Starts
+## Track A — Suggested Research Starts (ROLLED BACK 2026-05-10)
+
+> **Track A is no longer in the framework.** Shipped in commits `a35be1f` / `cd56713` / `e26c472`, then reverted after empirical evaluation. Reason: structural coverage limit (5-6 SRS entries on a 22-package monorepo cannot cover all major flows); zero unique retrieval signal beyond Entry Points + concern docs + CBM BM25; no real consumer (`/research` command speculative). Section below preserved for historical context.
 
 ### Output shape
 
