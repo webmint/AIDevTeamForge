@@ -165,7 +165,7 @@ def _claude_tier_model(tier: str) -> str:
     return CLAUDE_AGENT_DEFAULTS_BY_TIER[tier]
 
 
-def emit_claude(name: str, description: str, model_tier: str, body: str, tools: str = "") -> str:
+def emit_claude(name: str, description: str, model_tier: str, body: str, tools: str = "", applies_to: str = "") -> str:
     """Build a Claude-native agent file from scratch (YAML + markdown).
 
     `tools` is the optional Claude Code subagent tool allowlist. When non-empty
@@ -175,16 +175,23 @@ def emit_claude(name: str, description: str, model_tier: str, body: str, tools: 
     is propagated as-is — Claude Code's own parser handles both comma-separated
     (`Read, Bash`) and YAML-list (`[Read, Bash]`) forms; this emitter does NOT
     canonicalize. Coupling to Claude's tool enumeration would rot.
+
+    `applies_to` is the project-natures allowlist consumed by configure_helper
+    prune-agents. When non-empty, emitted verbatim as an `applies_to: <value>`
+    frontmatter line — Claude Code ignores unknown keys; configure_helper
+    parses it. Empty/absent omits the line.
     """
     body = body.lstrip("\n")
     tools_line = f"tools: {tools.strip()}\n" if tools.strip() else ""
+    applies_to_line = f"applies_to: {applies_to.strip()}\n" if applies_to.strip() else ""
     return (
         "---\n"
         f"name: {name}\n"
         f'description: "{_yaml_escape_double(description)}"\n'
         + tools_line
         + f"model: {_claude_tier_model(model_tier)}\n"
-        "---\n"
+        + applies_to_line
+        + "---\n"
         "\n"
         + body
     )
@@ -203,6 +210,7 @@ def _render_one(src_file: Path, target: Path) -> str:
     description = meta.get("description", "").strip()
     model_tier = meta.get("model_tier", "").strip().lower()
     tools = meta.get("tools", "")
+    applies_to = meta.get("applies_to", "")
 
     if not description:
         raise ValueError(f"{src_file}: missing required 'description'")
@@ -220,6 +228,7 @@ def _render_one(src_file: Path, target: Path) -> str:
         model_tier=model_tier,
         body=body,
         tools=tools,
+        applies_to=applies_to,
     )
 
     out_dir = target / TARGET_SUBDIR

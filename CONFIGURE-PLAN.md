@@ -22,18 +22,18 @@ Before drafting this plan, the docs/ output, manifest extraction surface, and te
 - `docs/architecture.md` exposes 8 sections: Architecture Overview, Module/Package Structure, Patterns (with code samples), Conventions, Layers, Cross-Cuts, Dependency Direction Rules, Dependency Overview.
 - `docs/glossary.md` is alphabetical term entries with code anchors.
 - `.devforge/index.json` carries per-package `manifest_scripts` (npm scripts block) + `manifest_dependencies` + `files[]` (capped at 500). Sufficient to derive `BUILD_COMMANDS` / `TYPE_CHECK_COMMANDS` / `LINT_COMMANDS` per package without re-parsing manifests.
-- `.devforge/project-config.json` (legacy shape) has 35 keys. 5 are filled by /init-forge already; 22 are detection-derivable from docs + manifest + config files; 5 are user-only preferences (Q9-Q12).
+- `.devforge/project-config.json` (legacy shape) has 36 keys. 5 are filled by /init-forge already; 22 are detection-derivable from docs + manifest + config files; 5 are user-only preferences (Q9-Q12).
 
 The detection-derivable set is bigger than the original plan assumed — Plan F's tech-stack table + architecture overview together cover what the old onboard free-form docs left to ecosystem-defaults. The Q5 testForge20 benchmark case (`error_handling_pattern: Either monad`) now resolves directly off the architecture.md Patterns section, not off a 5-file grep.
 
 ### Test bed
 
 - `/Users/mykolakudlyk/Projects/testForge20/` — wrapper mode, `project_root = db-cse-ui-strata`, 26 packages, fully populated `.devforge/{init.yaml,index.json}` + `docs/{overview,architecture,glossary,structure}.md` + per-package + per-concern docs.
-- `.devforge/project-config.json` exists with all 35 keys NULL — confirms /configure is the missing piece.
+- `.devforge/project-config.json` exists with all 36 keys NULL — confirms /configure is the missing piece.
 
 ## Goal
 
-Ship `/configure` as the third command in the 4-command sequence. Verify on testForge20: re-running `/configure` after `/init-forge` + `/generate-docs` produces a fully-populated `.devforge/configure.yaml` (27 fields filled) + a fully-substituted `CLAUDE.md` (no `{{...}}` markers remain) + a fully-substituted set of agent files in `.claude/agents/`. Q11 + Q12 captured cleanly. End-to-end runs in under 5 minutes wall-clock with one bulk-confirmation prompt + four sequential prompts.
+Ship `/configure` as the third command in the 4-command sequence. Verify on testForge20: re-running `/configure` after `/init-forge` + `/generate-docs` produces a fully-populated `.devforge/configure.yaml` (28 fields filled) + a fully-substituted `CLAUDE.md` (no `{{...}}` markers remain) + a fully-substituted set of agent files in `.claude/agents/`. Q11 + Q12 captured cleanly. End-to-end runs in under 5 minutes wall-clock with one bulk-confirmation prompt + four sequential prompts.
 
 ## Architecture
 
@@ -94,7 +94,7 @@ Phase 2 — Compose detection-derived values (orchestrator-direct, NO subagent)
     Runtime:  AC_RUNTIME_URL, AC_RUNTIME_API_BASE, AC_RUNTIME_CLI_COMMAND
 
 Phase 3 — Bulk-confirmation prompt (plain prose, NOT AskUserQuestion)
-  Orchestrator echoes all 22 detection-derived fields in a fenced block.
+  Orchestrator echoes all 23 detection-derived fields in a fenced block.
   User: 'yes' (apply all) OR 'cancel' OR line-per-override.
   Each accepted/overridden value applied via configure_helper set-<field>.
 
@@ -116,7 +116,7 @@ Phase 5 — Render + substitute
                                          # replaces {{KEY}} from configure.yaml
 
 Phase 6 — Verify + report
-  configure_helper verify       # cross-checks all 27 fields populated,
+  configure_helper verify       # cross-checks all 28 fields populated,
                                 # no remaining {{KEY}} in templates,
                                 # project-config.json round-trips
   configure_helper summary      # verbatim-echo report (mirrors init_helper)
@@ -351,7 +351,7 @@ Implement:
 
 Tests: render-config produces valid JSON; verify catches missing fields; summary output stable across re-runs.
 
-**Verify**: ~20 tests pass. testForge20 hand-populated fixture renders project-config.json with all 35 keys non-null.
+**Verify**: ~20 tests pass. testForge20 hand-populated fixture renders project-config.json with all 36 keys non-null.
 
 ### Step 4 — substitute-templates
 
@@ -390,8 +390,8 @@ Run `instruction-author` to write the spec; verify via `instruction-reviewer` + 
 ### Step 6 — End-to-end empirical run
 
 Run `/configure` against testForge20 (with `/init-forge` + `/generate-docs` already complete). Confirm:
-- All 27 fields land in `.devforge/configure.yaml`
-- `.devforge/project-config.json` has all 35 keys non-null
+- All 28 fields land in `.devforge/configure.yaml`
+- `.devforge/project-config.json` has all 36 keys non-null
 - `CLAUDE.md` has zero remaining `{{...}}` markers
 - `.claude/agents/*.md` have zero remaining `{{...}}` markers
 - Bulk prompt fits one screen + parses 'yes' / overrides correctly

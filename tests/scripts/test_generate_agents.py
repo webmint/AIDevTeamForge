@@ -281,9 +281,10 @@ class ExistingAgentRegressionTests(unittest.TestCase):
 
     def test_existing_agents_render_unchanged(self):
         # tech-writer has no `tools` line in its source meta as of the time
-        # this test was written — pick it as the canary. If a future change
-        # adds `tools:` to tech-writer.md's source, update this test (the
-        # canary moves to whichever existing agent still has no tools).
+        # this test was written — pick it as the canary against accidental
+        # `tools:` line injection. If a future change adds `tools:` to
+        # tech-writer.md's source, update this test (the canary moves to
+        # whichever existing agent still has no tools).
         src_file = _AGENTS_SRC / "tech-writer.md"
         self.assertTrue(src_file.exists(), f"missing canary source: {src_file}")
         # Sanity-check the canary: its source meta must NOT have a tools line.
@@ -302,10 +303,18 @@ class ExistingAgentRegressionTests(unittest.TestCase):
         for line in fm.splitlines():
             if ":" in line and not line.startswith(" "):
                 keys.append(line.split(":", 1)[0])
-        self.assertEqual(
-            keys, ["name", "description", "model"],
-            f"tech-writer frontmatter keys drifted: got {keys!r}",
+        # Expected keys: name + description + model + applies_to (added 2026-05-10
+        # for configure_helper prune-agents). The regression guard is on the
+        # ABSENCE of `tools` (canary's whole point) — not on the exact key set,
+        # which legitimately grows as new emit-time fields ship.
+        self.assertNotIn(
+            "tools", keys,
+            f"tools: line spuriously injected into tech-writer frontmatter: {keys!r}",
         )
+        # Required-keys subset check: name + description + model must always
+        # appear; applies_to may or may not (depends on whether source has it).
+        for required in ("name", "description", "model"):
+            self.assertIn(required, keys, f"required key {required!r} missing: {keys!r}")
 
 
 if __name__ == "__main__":

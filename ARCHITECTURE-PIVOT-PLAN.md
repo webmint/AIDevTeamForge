@@ -235,9 +235,9 @@ Updated framing (per CONFIGURE-PLAN.md):
 - Single source-of-truth state file: `.devforge/configure.yaml`; `project-config.json` becomes a render artifact.
 - Inputs: `init.yaml` + `index.json` + `docs/{overview,architecture}.md` + config files (basename-matched against `index.json` file list, no fresh scan).
 - Helper-owns-shape extends to template substitution (`substitute-templates` subcmd; LLM does not edit CLAUDE.md / agents directly).
-- Bulk-confirmation for ~22 detection-derived fields + 4-6 sequential AskUserQuestion calls for user-only preferences (Q9-Q12 inc. NEW Q11 + Q12).
+- Bulk-confirmation for ~23 detection-derived fields + 4-6 sequential AskUserQuestion calls for user-only preferences (Q9-Q12 inc. NEW Q11 + Q12).
 
-**Verify**: running `/configure` on a project where `/init-forge` + `/generate-docs` have completed produces a fully-populated `.devforge/configure.yaml` (27 fields) + a regenerated `project-config.json` + substituted `CLAUDE.md` and agent files. All Q9-Q12 user choices captured. Templates have no remaining `{{...}}` markers.
+**Verify**: running `/configure` on a project where `/init-forge` + `/generate-docs` have completed produces a fully-populated `.devforge/configure.yaml` (28 fields) + a regenerated `project-config.json` + substituted `CLAUDE.md` and agent files. All Q9-Q12 user choices captured. Templates have no remaining `{{...}}` markers.
 
 ### Step 5: Migrate Q1–Q12 INTENT (not implementation) from current questions.md to /configure
 

@@ -6,14 +6,14 @@ disable-model-invocation: true
 
 # /configure — Project Configuration
 
-`/configure` is the third command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes the structural fields persisted by `/init-forge` and the docs corpus produced by `/generate-docs`, fills 27 configuration fields via `.devforge/lib/configure_helper` setters, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
+`/configure` is the third command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes the structural fields persisted by `/init-forge` and the docs corpus produced by `/generate-docs`, fills 28 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
 
 ## Outputs of this phase
 
-- `.devforge/configure.yaml` — canonical state (27 fields). Owned + shaped by the helper; mutated only via setter subcommands.
-- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (35 keys: 27 from configure.yaml + 5 from init.yaml + 3 derived).
+- `.devforge/configure.yaml` — canonical state (28 fields). Owned + shaped by the helper; mutated only via setter subcommands.
+- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (36 keys: 28 from configure.yaml + 5 from init.yaml + 3 derived).
+- `.claude/agents/*.md` — pruned to those whose `applies_to` frontmatter overlaps `project_natures` (Phase 5.2); each remaining file is substituted in place; no `{{KEY}}` markers remain.
 - `CLAUDE.md` — substituted in place; no `{{KEY}}` markers remain.
-- `.claude/agents/*.md` — every file substituted in place; no `{{KEY}}` markers remain.
 
 ## Phase 0 — Pre-flight gate
 
@@ -91,7 +91,7 @@ If any read subcommand exits non-zero, surface its stderr verbatim and ABORT —
 
 ## Phase 2 — Compose detection-derived values
 
-Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes 22 detection-derived values in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written. Composition rules per field:
+Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes 23 detection-derived values in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written. Composition rules per field:
 
 **Identity**
 
@@ -105,6 +105,15 @@ Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same conv
 - `LANGUAGES` — comma-separated list across all detected packages, derived per-package from `MANIFESTS_JSON.packages[].manifest` (e.g., `package.json` → JavaScript/TypeScript inferred from `.ts` files in the package, `pyproject.toml` → Python).
 - `FRAMEWORKS` — Tech Stack `Framework` row from `DOCS_JSON.overview`, comma-separated.
 - `ARCHITECTURES` — comma-separated; extract from `DOCS_JSON.architecture.architecture_overview` (e.g., "Clean Architecture", "Turborepo monorepo").
+- `PROJECT_NATURES` — comma-separated atomic nature labels derived from `PROJECT_TYPE` + `FRAMEWORKS`. Closed vocabulary: `web`, `backend`, `mobile`, `desktop`, `cli`, `library`, `plugin`, `data`, `ml`, `game`, `infra`, `docs`. Phase 5.2 (`prune-agents`) consumes this field to decide which `.claude/agents/*.md` to delete; empty value blocks Phase 5.2 with helper exit 2 and is flagged by Phase 6 `verify`. Composition rules (apply LLM judgment when input doesn't fit cleanly):
+  - `PROJECT_TYPE == "web app"` + frontend frameworks (Vue/React/Angular/Svelte/etc.) → `web`
+  - `PROJECT_TYPE == "web service"` + backend frameworks (Express/FastAPI/Django/Rails/etc.) → `backend`
+  - `PROJECT_TYPE == "fullstack"` OR (frontend AND backend frameworks present in the same project) → `web, backend`
+  - `PROJECT_TYPE == "mobile app"` + mobile frameworks (React Native/Flutter/SwiftUI/Jetpack/etc.) → `mobile`
+  - `PROJECT_TYPE == "desktop app"` → `desktop`
+  - `PROJECT_TYPE == "library/SDK"` → `library`; `"browser extension"` → `plugin`; `"CLI tool"` → `cli`
+  - `PROJECT_TYPE == "data pipeline"` → `data`; `"ML model"` → `data, ml`; `"game"` → `game`; `"static site"` / `"framework"` / `"monorepo platform"` → choose the closest match (`docs` / `library` / `infra`) based on detected `FRAMEWORKS`
+  - For monorepos exposing multiple natures (e.g., `apps/web` + `apps/api` from `MANIFESTS_JSON.packages[]`), include each detected nature as a separate atomic value (e.g., `web, backend`).
 - `ERROR_HANDLINGS` — comma-separated; extract from `DOCS_JSON.architecture.patterns` + `DOCS_JSON.architecture.conventions` (e.g., "Either monad", "thrown exceptions with global handler").
 - `API_LAYERS` — Tech Stack `API Layer` row from `DOCS_JSON.overview`, comma-separated.
 - `TESTINGS` — Tech Stack `Testing` row from `DOCS_JSON.overview`, comma-separated.
@@ -131,7 +140,7 @@ Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same conv
 
 ## Phase 3 — Bulk-confirmation prompt
 
-Plain prose echo, NOT AskUserQuestion (multi-line content cannot fit AskUserQuestion's single-line question text constraint). Display all 22 detection-derived values from Phase 2 in a fenced block, grouped by category, then ask the user to confirm or override.
+Plain prose echo, NOT AskUserQuestion (multi-line content cannot fit AskUserQuestion's single-line question text constraint). Display all 23 detection-derived values from Phase 2 in a fenced block, grouped by category, then ask the user to confirm or override.
 
 **Stop discipline (mandatory).** After emitting the echo block below, this phase MUST end the assistant turn and wait for the user's reply. Do NOT advance to Phase 4 setters in the same turn. Do NOT call any `set-*` subcommand in the same turn. Do NOT call any tool after the echo — the echo is the final output of the turn. The user replies organically; the next turn begins with their reply, which is parsed per the rules below. Plain-prose prompts have no harness-level "wait for user" affordance, so the LLM-level stop is the only mechanism preventing accidental auto-advance through the bulk confirmation.
 
@@ -150,6 +159,7 @@ Stack:
 - languages: <LANGUAGES>
 - frameworks: <FRAMEWORKS>
 - architectures: <ARCHITECTURES>
+- project_natures: <PROJECT_NATURES>
 - error_handlings: <ERROR_HANDLINGS>
 - api_layers: <API_LAYERS>
 - testings: <TESTINGS>
@@ -178,7 +188,7 @@ For the three verbatim fields (`project_structure`, `dev_commands`, `architectur
 
 ### Parsing the user reply
 
-- Reply equals `yes` (case-insensitive, exact after strip) → apply all 22 Phase 2 values via setters.
+- Reply equals `yes` (case-insensitive, exact after strip) → apply all 23 Phase 2 values via setters.
 - Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/configure` again when you're ready to review the detected values." Leave `configure.yaml` in its post-`reset` defaults state. Do not advance to Phase 4.
 - Otherwise → parse line-by-line as `<field>: <value>`. Field names are case-insensitive; tolerate either dashed (`project-name`) or underscore-separated (`project_name`) keys. Apply the user's override for matched lines; apply the Phase 2 composed value for every other field.
 - Reply not parsable as any of the above (no `yes`, no `cancel`, no `field: value` lines) → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm all, 'cancel' to abort, or list overrides one per line in 'field_name: value' format." Allow up to 2 retries (3 total attempts). After the third invalid reply, fall back to applying all Phase 2 values as confirmed and warn the user: "Proceeding with detected values; re-run `/configure` to revise."
@@ -196,6 +206,7 @@ Apply each accepted/overridden value via the matching setter. Setter argument sh
 | `languages` | `set-languages <comma-sep-list>` |
 | `frameworks` | `set-frameworks <comma-sep-list>` |
 | `architectures` | `set-architectures <comma-sep-list>` |
+| `project_natures` | `set-project-natures <comma-sep-list>` |
 | `error_handlings` | `set-error-handlings <comma-sep-list>` |
 | `api_layers` | `set-api-layers <comma-sep-list>` |
 | `testings` | `set-testings <comma-sep-list>` |
@@ -252,9 +263,11 @@ Three sequential AskUserQuestion calls — Q11.1 (think), Q11.2 (do), Q11.3 (ver
 
 Use AskUserQuestion to pick the mode, then conditionally ask the runtime triple. See `references/q12-ac.md` for the full prompt text, the four mode options, and the conditional Q12.1 / Q12.2 / Q12.3 follow-up logic that runs only when the user selects `runtime-assisted`.
 
-## Phase 5 — Render + substitute
+## Phase 5 — Render + prune + substitute
 
-Once `configure.yaml` is fully populated (27 fields set), render the consolidated JSON config and substitute the templates.
+Once `configure.yaml` is fully populated (28 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
+
+### Phase 5.1 — Render config
 
 ```bash
 .devforge/lib/configure_helper render-config
@@ -265,11 +278,85 @@ Once `configure.yaml` is fully populated (27 fields set), render the consolidate
 - Exit 0 → success.
 - Exit 1 → `.devforge/init.yaml` missing or unreadable, OR `.devforge/configure.yaml` unreadable, OR write to `project-config.json` failed. Surface stderr verbatim and ABORT.
 
+### Phase 5.2 — Prune agents
+
+Run `prune-agents` in dry-run first to surface keep/drop decisions, then ask the user to confirm + bulk-override before applying.
+
+```bash
+.devforge/lib/configure_helper prune-agents
+```
+
+The dry-run subcommand reads `project_natures` from `.devforge/configure.yaml`, walks `<install_root>/.claude/agents/*.md`, parses each file's `applies_to` frontmatter, and emits a JSON report to stdout with shape `{kept: [...], dropped: [...], decisions: [...]}`. Each `decisions[]` entry is `{name, applies_to, status}` where `status` is `keep` or `drop`. The decision rules (in order, mirroring `_decide_agent` in the helper):
+
+1. `applies_to` missing or unparseable → KEEP (conservative; helper writes a `keep-warning` line to stderr).
+2. `"all"` in `applies_to` → KEEP (universal-fit agent).
+3. `applies_to ∩ project_natures` non-empty → KEEP.
+4. Otherwise → DROP.
+
+Capture the JSON as `PRUNE_REPORT`. If stderr contains any `keep-warning` lines (e.g., agent files with malformed `applies_to`), surface those warnings to the user inline alongside the bulk-confirmation echo below; do NOT auto-drop those agents — they were already classified KEEP by rule 1.
+
+Exit-code interpretation:
+
+- Exit 0 + non-empty `dropped[]` → proceed to the bulk-confirmation echo.
+- Exit 0 + empty `dropped[]` → no agents to prune (every agent's `applies_to` already matches `project_natures` or contains `"all"`). Skip the bulk-confirmation prompt entirely; advance to Phase 5.3 silently.
+- Exit 1 → I/O failure (cannot load `configure.yaml`, cannot list `.claude/agents/`, cannot read an agent file in apply mode). Surface stderr verbatim and ABORT.
+- Exit 2 → `project_natures` unset in `configure.yaml`. Surface stderr verbatim and ABORT — Phase 2 should have populated this field via `set-project-natures` and Phase 3 should have applied it; this exit means the setter didn't fire. Treat as a workflow bug.
+
+Echo template (plain prose; substitute `<...>` with values from `PRUNE_REPORT` and `state["project_natures"]`):
+
+````
+Pruning .claude/agents/ for project natures: <project_natures>.
+
+Will KEEP (<N> agents):
+  - <agent-name-1> — applies_to: <applies_to-1>
+  - <agent-name-2> — applies_to: <applies_to-2>
+  ...
+
+Will DROP (<M> agents):
+  - <agent-name-1> — applies_to: <applies_to-1>
+  - <agent-name-2> — applies_to: <applies_to-2>
+
+Reply 'yes' to apply, 'cancel' to skip pruning, or list overrides one per line as 'keep <name>' or 'drop <name>'.
+````
+
+For each `decisions[]` entry, render `applies_to` as a comma-separated list (or the literal token `<missing>` when the helper reported `applies_to: null`).
+
+**Stop discipline (mandatory).** After emitting the echo block, this sub-step MUST end the assistant turn and wait for the user's reply. Do NOT call `prune-agents --apply` in the same turn. Do NOT call any setter or any other tool. Same rule as Phase 3's bulk-confirmation echo: plain-prose prompts have no harness-level "wait for user" affordance, so the LLM-level stop is the only mechanism preventing accidental auto-advance.
+
+#### Parsing the user reply
+
+- Reply equals `yes` (case-insensitive, exact after strip) → invoke `prune-agents --apply` to apply the helper's decisions exactly:
+
+  ```bash
+  .devforge/lib/configure_helper prune-agents --apply
+  ```
+
+  Surface its stdout JSON for transparency, then advance to Phase 5.3.
+
+- Reply equals `cancel` (case-insensitive, exact after strip) → SKIP pruning entirely; no agents deleted; advance to Phase 5.3. This is a valid choice — the user retains every agent regardless of `project_natures` overlap.
+
+- Reply contains override lines of the form `keep <agent-name>` or `drop <agent-name>` (one per line; case-insensitive verb; agent name matches a `decisions[].name` value) → adjust the kept/dropped sets accordingly:
+  - `keep <name>` → move `<name>` from `dropped[]` to `kept[]` (no-op if already in `kept[]`).
+  - `drop <name>` → move `<name>` from `kept[]` to `dropped[]` (no-op if already in `dropped[]`).
+  - Override lines may be interleaved with a `yes`/`cancel` token; if neither is present, treat the reply as an implicit `yes` after the override pass.
+
+  After resolving the final `dropped[]` set, the orchestrator deletes those files directly (the helper has no per-agent flag — `--apply` deletes exactly the helper's decisions, not the override-adjusted set):
+
+  ```bash
+  rm <install_root>/.claude/agents/<name>.md   # one call per name in the final dropped[]
+  ```
+
+  Use absolute paths; do not rely on prior `cd` state. Then advance to Phase 5.3.
+
+- Reply unparseable (no `yes`, no `cancel`, no recognizable override lines, or override lines reference unknown agent names) → re-prompt once with the parsing rules clarified. On the second invalid reply, fall back to applying the helper's exact decisions (`prune-agents --apply`) and warn the user: "Proceeding with helper's pruning decisions; re-run `/configure` to revise."
+
+### Phase 5.3 — Substitute templates
+
 ```bash
 .devforge/lib/configure_helper substitute-templates
 ```
 
-`substitute-templates` reads `.devforge/project-config.json` + `.devforge/init.yaml`, walks `CLAUDE.md` + every `.claude/agents/*.md` file, and replaces every `{{KEY}}` placeholder atomically per file. Exit codes:
+`substitute-templates` reads `.devforge/project-config.json` + `.devforge/init.yaml`, walks `CLAUDE.md` + every `.claude/agents/*.md` file remaining after Phase 5.2, and replaces every `{{KEY}}` placeholder atomically per file. Exit codes:
 
 - Exit 0 → every template substituted; no `{{KEY}}` markers remain.
 - Exit 1 → `project-config.json` missing or malformed, OR `CLAUDE.md` missing, OR a per-file write failed. Surface stderr verbatim and ABORT. (Note: `.devforge/init.yaml` missing is NOT an exit-1 condition for this subcommand — substitute-templates falls back to empty `packages_detected` when init.yaml is absent. The init.yaml dependency is enforced earlier by Phase 0's pre-flight gate and by `render-config` exit 1.)
@@ -283,6 +370,8 @@ Once `configure.yaml` is fully populated (27 fields set), render the consolidate
 
 `verify` cross-checks `.devforge/configure.yaml` + `.devforge/project-config.json`: every required field populated; AC runtime fields exempt unless `ac_verification_mode == runtime-assisted`; round-trip identity between the two files. Exit 0 = pass; exit 2 = at least one violation (each enumerated on stderr). On exit 2, surface stderr verbatim and ABORT — the user must address the violations before `/constitute`.
 
+`project_natures` is one of the required fields: an empty value is flagged as a violation (no AC-mode exemption applies). Phase 2's composition rule and Phase 3's `set-project-natures` setter are jointly responsible for populating it; if `verify` reports `PROJECT_NATURES is empty`, Phase 5.2's `prune-agents` would have already aborted with exit 2 before reaching Phase 6, so this violation only appears when `verify` is invoked standalone after a partial earlier run.
+
 Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for remaining `{{KEY}}` markers. Template-substitution completeness is enforced by Phase 5's `substitute-templates` exit 0; if Phase 5 succeeded, the templates are clean. If you re-run only `verify` standalone after a partial Phase 5 (e.g., aborted mid-substitution), it will not re-detect template markers — re-run `substitute-templates` to re-establish that guarantee.
 
 ```bash
@@ -293,4 +382,4 @@ Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for r
 
 ## Closing
 
-`/configure` is complete. The 27 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 35 keys; `CLAUDE.md` and every file under `.claude/agents/` is fully substituted. Tell the user: "Run `/constitute` next."
+`/configure` is complete. The 28 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 36 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted. Tell the user: "Run `/constitute` next."
