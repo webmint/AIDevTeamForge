@@ -7,19 +7,20 @@ rejection + fence-aware section extractor), reset subcommand, read-init
 read-manifests, read-configs.
 
 Step 2 coverage: _load / _dump / _state_transaction (write-on-exit, abort-
-on-exception, lock-file creation), five _validate_* helpers, all 27 setter
-subcommands (3 identity + 1 primary-language + 7 stack arrays + 3 per-pkg
-arrays + add-package-stack + 3 verbatim + 6 enums + 3 ac-runtime), round-
-trip integration (all-27-fields set + reload + compare; replace-not-append
+on-exception, lock-file creation), five _validate_* helpers, all 28 setter
+subcommands (3 identity + 1 primary-language + 8 stack arrays incl.
+project_natures + 3 per-pkg arrays + add-package-stack + 3 verbatim +
+6 enums + 3 ac-runtime), round-trip integration (all-28-fields set +
+reload + compare; replace-not-append
 for string_arrays; accumulate for add-package-stack), cross-process safety
 (5 concurrent add-package-stack via Popen — no lost writes; mixed scalar+
 append concurrency — no corruption).
 
 Step 3 coverage: _write_json (atomic write, idempotency, no temp files left),
-_build_project_config (35-key output, WRAPPER_MODE_SECTION variants,
+_build_project_config (36-key output, WRAPPER_MODE_SECTION variants,
 COMMIT_ATTRIBUTION variants, field mapping, package_stacks pass-through),
 _read_agent_list (absent dir, empty dir, sorted alphabetically, non-md excluded),
-render-config subprocess (init.yaml missing, 35-key output, configure fields,
+render-config subprocess (init.yaml missing, 36-key output, configure fields,
 init fields, wrapper section, commit attribution, agent list, idempotency,
 overwrite semantics, package_stacks), verify subprocess (all-populated pass,
 null scalar fail, empty array fail, ac-runtime optional when not runtime-
@@ -28,7 +29,7 @@ malformed, round-trip drift), summary subprocess (unset shows label, populated
 values, long string truncation, package_stacks rows, stability, empty array,
 section headers).
 
-Step 4 coverage: _build_substitution_map (all 35 project-config keys present,
+Step 4 coverage: _build_substitution_map (all 36 project-config keys present,
 10 singular aliases derive from plural arrays, PROJECT_PATHS from
 packages_detected, PACKAGE_STACKS_SECTION empty → empty string, populated →
 4-column markdown table, UPPERCASE identity, STATE_MANAGEMENT + STYLING NOT
@@ -140,12 +141,12 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_27_fields(self):
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 27)
+    def test_field_schema_has_28_fields(self):
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 28)
 
-    def test_default_state_has_27_keys(self):
+    def test_default_state_has_28_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 27)
+        self.assertEqual(len(state), 28)
 
     def test_default_state_scalars_are_none(self):
         state = configure_helper.default_state()
@@ -177,6 +178,7 @@ class SchemaTests(unittest.TestCase):
             "languages",
             "frameworks",
             "architectures",
+            "project_natures",
             "error_handlings",
             "api_layers",
             "testings",
@@ -429,7 +431,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIn("lint_command", str(ctx.exception))
 
     def test_all_fields_set_round_trip(self):
-        """All 27 fields populated — comprehensive round-trip."""
+        """All 28 fields populated — comprehensive round-trip."""
         state = {
             "project_name": "db-cse-ui-strata",
             "project_description": "A complex monorepo project",
@@ -438,6 +440,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "languages": ["TypeScript", "Python"],
             "frameworks": ["Vue", "FastAPI"],
             "architectures": ["Clean Architecture", "Turborepo monorepo"],
+            "project_natures": ["web", "backend"],
             "error_handlings": ["Either monad"],
             "api_layers": ["REST", "tRPC"],
             "testings": ["Vitest", "Playwright"],
@@ -2215,8 +2218,8 @@ class SetAcVerificationModeTests(_EnvIsolationMixin, unittest.TestCase):
 
 class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
 
-    def test_all_27_fields_set_reload_match(self):
-        """Set all 27 fields via setters then reload and compare full state."""
+    def test_all_28_fields_set_reload_match(self):
+        """Set all 28 fields via setters then reload and compare full state."""
         # Identity scalars
         _run_configure(self.devforge_dir, "set-project-name", "full-roundtrip")
         _run_configure(self.devforge_dir, "set-project-description", "Full round-trip test")
@@ -2227,6 +2230,7 @@ class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-languages", "TypeScript,Python")
         _run_configure(self.devforge_dir, "set-frameworks", "Vue,FastAPI")
         _run_configure(self.devforge_dir, "set-architectures", "Clean Architecture")
+        _run_configure(self.devforge_dir, "set-project-natures", "web,backend")
         _run_configure(self.devforge_dir, "set-error-handlings", "Either monad")
         _run_configure(self.devforge_dir, "set-api-layers", "REST,tRPC")
         _run_configure(self.devforge_dir, "set-testings", "Vitest,Playwright")
@@ -2261,6 +2265,7 @@ class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(state["project_name"], "full-roundtrip")
         self.assertEqual(state["languages"], ["TypeScript", "Python"])
         self.assertEqual(state["frameworks"], ["Vue", "FastAPI"])
+        self.assertEqual(state["project_natures"], ["web", "backend"])
         self.assertEqual(state["package_stacks"][0]["path"], "apps/web")
         self.assertEqual(state["project_structure"], "apps/\npackages/")
         self.assertEqual(state["workflow_enforcement"], "Strict")
@@ -2444,11 +2449,11 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_35_keys_present(self):
+    def test_all_36_keys_present(self):
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 35)
+        self.assertEqual(len(result), 36)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -2600,13 +2605,13 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_35_keys_with_defaults(self):
+    def test_renders_36_keys_with_defaults(self):
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 35)
+        self.assertEqual(len(data), 36)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 
@@ -2746,7 +2751,7 @@ class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
         _run_init(self.devforge_dir, "set-default-branch", "main")
 
     def _populate_all_configure_fields(self):
-        """Set all 27 configure.yaml fields to valid values."""
+        """Set all 28 configure.yaml fields to valid values."""
         _run_configure(self.devforge_dir, "reset")
         _run_configure(self.devforge_dir, "set-project-name", "test-project")
         _run_configure(self.devforge_dir, "set-project-description", "A test project")
@@ -2755,6 +2760,7 @@ class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-languages", "TypeScript")
         _run_configure(self.devforge_dir, "set-frameworks", "React")
         _run_configure(self.devforge_dir, "set-architectures", "MVC")
+        _run_configure(self.devforge_dir, "set-project-natures", "web")
         _run_configure(self.devforge_dir, "set-error-handlings", "try-catch")
         _run_configure(self.devforge_dir, "set-api-layers", "REST")
         _run_configure(self.devforge_dir, "set-testings", "Jest")
@@ -2955,10 +2961,10 @@ class SubstitutionMapTests(unittest.TestCase):
         base = {k: None for k in configure_helper._PROJECT_CONFIG_KEY_ORDER}
         # Set array keys to empty list.
         for k in (
-            "LANGUAGES", "FRAMEWORKS", "ARCHITECTURES", "ERROR_HANDLINGS",
-            "API_LAYERS", "TESTINGS", "BUILD_TOOLS", "BUILD_COMMANDS",
-            "TYPE_CHECK_COMMANDS", "LINT_COMMANDS", "PACKAGE_STACKS",
-            "PACKAGES_DETECTED",
+            "LANGUAGES", "FRAMEWORKS", "ARCHITECTURES", "PROJECT_NATURES",
+            "ERROR_HANDLINGS", "API_LAYERS", "TESTINGS", "BUILD_TOOLS",
+            "BUILD_COMMANDS", "TYPE_CHECK_COMMANDS", "LINT_COMMANDS",
+            "PACKAGE_STACKS", "PACKAGES_DETECTED",
         ):
             base[k] = []
         # Derived strings default to "".
@@ -2967,8 +2973,8 @@ class SubstitutionMapTests(unittest.TestCase):
         base.update(overrides)
         return base
 
-    def test_all_35_project_config_keys_present_in_map(self):
-        """All 35 keys from _PROJECT_CONFIG_KEY_ORDER appear as entries in the map."""
+    def test_all_36_project_config_keys_present_in_map(self):
+        """All 36 keys from _PROJECT_CONFIG_KEY_ORDER appear as entries in the map."""
         config = self._make_config()
         sub_map = configure_helper._build_substitution_map(config, [])
         for key in configure_helper._PROJECT_CONFIG_KEY_ORDER:
@@ -3348,6 +3354,278 @@ class SubstituteTemplatesTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         result = self._read_claude_md()
         self.assertEqual(result, "See {{UPPERCASE}} convention for details.")
+
+
+# ---------------------------------------------------------------------------
+# Step 5a: SchemaProjectNaturesTests (~3)
+# ---------------------------------------------------------------------------
+
+
+class SchemaProjectNaturesTests(unittest.TestCase):
+
+    def test_project_natures_in_field_schema(self):
+        """FIELD_SCHEMA contains project_natures as string_array."""
+        found = None
+        for name, kind in configure_helper.FIELD_SCHEMA:
+            if name == "project_natures":
+                found = kind
+                break
+        self.assertEqual(found, "string_array")
+
+    def test_project_natures_position_after_architectures(self):
+        """project_natures immediately follows architectures in FIELD_SCHEMA.
+
+        These two 'shape of project' arrays cluster together; position is
+        part of the diff-stability contract.
+        """
+        names = [name for name, _ in configure_helper.FIELD_SCHEMA]
+        arch_idx = names.index("architectures")
+        natures_idx = names.index("project_natures")
+        self.assertEqual(natures_idx, arch_idx + 1)
+
+    def test_default_state_project_natures_is_empty_list(self):
+        """default_state() returns project_natures: [] (not None)."""
+        state = configure_helper.default_state()
+        self.assertIn("project_natures", state)
+        self.assertEqual(state["project_natures"], [])
+
+    def test_emit_parse_round_trip_with_project_natures(self):
+        """emit_yaml / parse_yaml round-trip preserves project_natures values."""
+        state = configure_helper.default_state()
+        state["project_natures"] = ["web", "backend"]
+        text = configure_helper.emit_yaml(state)
+        state2 = configure_helper.parse_yaml(text)
+        self.assertEqual(state2["project_natures"], ["web", "backend"])
+
+
+# ---------------------------------------------------------------------------
+# Step 5a: SetProjectNaturesTests (~3)
+# ---------------------------------------------------------------------------
+
+
+class SetProjectNaturesTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_happy_path_sets_values(self):
+        """set-project-natures 'web,backend' writes ['web', 'backend'] to state."""
+        proc = _run_configure(self.devforge_dir, "set-project-natures", "web,backend")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_natures"], ["web", "backend"])
+
+    def test_empty_string_rejected_exit_2(self):
+        """set-project-natures '' exits 2 (validation failure)."""
+        proc = _run_configure(self.devforge_dir, "set-project-natures", "")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_second_call_replaces_not_appends(self):
+        """Calling set-project-natures twice: second value replaces first."""
+        _run_configure(self.devforge_dir, "set-project-natures", "mobile")
+        _run_configure(self.devforge_dir, "set-project-natures", "web,backend")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_natures"], ["web", "backend"])
+
+    def test_single_value_accepted(self):
+        """Single nature (no comma) is accepted and stored as one-element list."""
+        proc = _run_configure(self.devforge_dir, "set-project-natures", "cli")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_natures"], ["cli"])
+
+    def test_custom_nature_accepted_no_enum_check(self):
+        """Non-vocabulary nature string is accepted (no enum restriction)."""
+        proc = _run_configure(self.devforge_dir, "set-project-natures", "custom-platform")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_natures"], ["custom-platform"])
+
+
+# ---------------------------------------------------------------------------
+# Step 5a: PruneAgentsTests (~6)
+# ---------------------------------------------------------------------------
+
+
+class PruneAgentsTests(_EnvIsolationMixin, unittest.TestCase):
+    """Tests for the prune-agents subcommand.
+
+    Agent files are hand-authored in self.agents_dir (not round-tripped
+    from the real agent generator — the frontmatter parser is the unit
+    under test, not the generator). The parser itself is verified by
+    _parse_agent_frontmatter unit tests below.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.agents_dir = self.install_root / ".claude" / "agents"
+        self.agents_dir.mkdir(parents=True, exist_ok=True)
+
+    def _write_agent(self, name, applies_to_str):
+        """Write a minimal agent .md file with given applies_to value."""
+        content = (
+            "```yaml\n"
+            "name: {0}\n"
+            "description: \"Agent {0}\"\n"
+            "model_tier: do\n"
+            "applies_to: {1}\n"
+            "```\n\n"
+            "Agent body.\n"
+        ).format(name, applies_to_str)
+        (self.agents_dir / "{0}.md".format(name)).write_text(content, encoding="utf-8")
+
+    def _set_project_natures(self, natures_csv):
+        _run_configure(self.devforge_dir, "set-project-natures", natures_csv)
+
+    def _run_prune(self, apply=False):
+        extra = ["--install-root", str(self.install_root)]
+        args = ["prune-agents"]
+        if apply:
+            args.append("--apply")
+        return _run_configure_extra(self.devforge_dir, extra, *args)
+
+    def test_empty_project_natures_exits_2(self):
+        """prune-agents exits 2 when project_natures is empty."""
+        # Do NOT set project_natures (default is []).
+        proc = self._run_prune()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project_natures unset", proc.stderr)
+
+    def test_applies_to_all_always_kept(self):
+        """Agent with applies_to: ['all'] is always kept regardless of natures."""
+        self._set_project_natures("web")
+        self._write_agent("universal-agent", '["all"]')
+        proc = self._run_prune()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        report = json.loads(proc.stdout.decode())
+        self.assertIn("universal-agent", report["kept"])
+        self.assertNotIn("universal-agent", report["dropped"])
+
+    def test_non_matching_applies_to_dropped(self):
+        """Agent with applies_to: ['mobile'] dropped when project_natures=['web']."""
+        self._set_project_natures("web")
+        self._write_agent("mobile-only", '["mobile"]')
+        proc = self._run_prune()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        report = json.loads(proc.stdout.decode())
+        self.assertIn("mobile-only", report["dropped"])
+        self.assertNotIn("mobile-only", report["kept"])
+
+    def test_partial_overlap_kept(self):
+        """Agent with applies_to: ['web', 'backend'] kept when project_natures includes 'web'."""
+        self._set_project_natures("web")
+        self._write_agent("web-or-backend", '["web", "backend"]')
+        proc = self._run_prune()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        report = json.loads(proc.stdout.decode())
+        self.assertIn("web-or-backend", report["kept"])
+        self.assertNotIn("web-or-backend", report["dropped"])
+
+    def test_dry_run_does_not_delete_files(self):
+        """Without --apply, dropped agents remain on disk."""
+        self._set_project_natures("web")
+        self._write_agent("mobile-only", '["mobile"]')
+        proc = self._run_prune(apply=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        report = json.loads(proc.stdout.decode())
+        self.assertIn("mobile-only", report["dropped"])
+        # File must still exist (dry-run).
+        self.assertTrue((self.agents_dir / "mobile-only.md").exists())
+
+    def test_apply_deletes_dropped_files(self):
+        """With --apply, dropped agents are deleted from disk."""
+        self._set_project_natures("web")
+        self._write_agent("mobile-only", '["mobile"]')
+        self._write_agent("universal-agent", '["all"]')
+        proc = self._run_prune(apply=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertFalse((self.agents_dir / "mobile-only.md").exists())
+        # Kept agent still present.
+        self.assertTrue((self.agents_dir / "universal-agent.md").exists())
+
+    def test_missing_applies_to_frontmatter_keeps_file(self):
+        """Agent without applies_to frontmatter is kept with a stderr warning."""
+        self._set_project_natures("web")
+        # Write agent without applies_to field.
+        content = (
+            "```yaml\n"
+            "name: no-applies-to\n"
+            "description: \"Agent\"\n"
+            "```\n\n"
+            "Body.\n"
+        )
+        (self.agents_dir / "no-applies-to.md").write_text(content, encoding="utf-8")
+        proc = self._run_prune()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        report = json.loads(proc.stdout.decode())
+        self.assertIn("no-applies-to", report["kept"])
+        # Warning emitted to stderr.
+        self.assertIn(b"warning", proc.stderr.lower())
+
+    def test_report_contains_decisions_list(self):
+        """JSON output includes decisions list with name, applies_to, status per agent."""
+        self._set_project_natures("web")
+        self._write_agent("web-agent", '["web"]')
+        self._write_agent("mobile-agent", '["mobile"]')
+        proc = self._run_prune()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        report = json.loads(proc.stdout.decode())
+        self.assertIn("decisions", report)
+        names = [d["name"] for d in report["decisions"]]
+        self.assertIn("web-agent", names)
+        self.assertIn("mobile-agent", names)
+        # Verify status fields.
+        status_map = {d["name"]: d["status"] for d in report["decisions"]}
+        self.assertEqual(status_map["web-agent"], "keep")
+        self.assertEqual(status_map["mobile-agent"], "drop")
+
+
+# ---------------------------------------------------------------------------
+# Step 5a: ParseAgentFrontmatterTests (unit tests, ~4)
+# ---------------------------------------------------------------------------
+
+
+class ParseAgentFrontmatterTests(unittest.TestCase):
+    """Unit tests for _parse_agent_frontmatter (internal helper)."""
+
+    def _make_agent_text(self, frontmatter_fields):
+        """Build agent file text with given fields inside the yaml fence."""
+        inner = "\n".join("{0}: {1}".format(k, v) for k, v in frontmatter_fields)
+        return "```yaml\n{0}\n```\n\nBody text.\n".format(inner)
+
+    def test_standard_applies_to_list(self):
+        text = self._make_agent_text([
+            ("name", "my-agent"),
+            ('applies_to', '["web", "backend"]'),
+        ])
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertEqual(result, ["web", "backend"])
+
+    def test_applies_to_all(self):
+        text = self._make_agent_text([
+            ("name", "universal"),
+            ('applies_to', '["all"]'),
+        ])
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertEqual(result, ["all"])
+
+    def test_missing_applies_to_returns_none(self):
+        """Frontmatter without applies_to field → None (caller keeps file)."""
+        text = self._make_agent_text([
+            ("name", "no-natures"),
+            ("model_tier", "do"),
+        ])
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertIsNone(result)
+
+    def test_no_frontmatter_returns_none(self):
+        """Plain markdown without yaml fence → None."""
+        text = "# My Agent\n\nJust plain markdown.\n"
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertIsNone(result)
+
+    def test_blank_lines_before_fence_allowed(self):
+        """Blank lines before the opening fence are tolerated."""
+        text = "\n\n```yaml\nname: agent\napplies_to: [\"web\"]\n```\nBody.\n"
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertEqual(result, ["web"])
 
 
 if __name__ == "__main__":
