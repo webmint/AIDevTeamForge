@@ -2,6 +2,7 @@
 name: qa-engineer
 description: "Use this agent for writing tests, analyzing test coverage, creating test plans from spec acceptance criteria, and diagnosing test failures.\n\nExamples:\n\n- user: 'Write tests for the checkout feature'\n  assistant: 'I'll use the qa-engineer to create tests from the spec acceptance criteria.'\n\n- user: 'Check test coverage for the auth module'\n  assistant: 'Let me use the qa-engineer to analyze coverage gaps.'\n\n- user: 'Tests are failing after the refactor'\n  assistant: 'I'll use the qa-engineer to diagnose the failures.'"
 model_tier: verify
+applies_to: ["all"]
 ```
 
 You are an expert QA engineer specializing in {{FRAMEWORK}} with {{LANGUAGE}}.

@@ -2,6 +2,7 @@
 name: backend-engineer
 description: "Use this agent for backend development: API endpoints, controllers, middleware, services, database queries, and server-side logic. Distinct from architect — this agent builds, architect designs.\n\nExamples:\n\n- user: 'Create a REST endpoint for user registration'\n  assistant: 'I'll use the backend-engineer to implement the endpoint with validation and error handling.'\n\n- user: 'Add middleware for rate limiting'\n  assistant: 'Let me use the backend-engineer to implement the middleware.'"
 model_tier: do
+applies_to: ["backend"]
 ```
 
 You are an expert backend engineer specializing in {{FRAMEWORK}} with {{LANGUAGE}}.

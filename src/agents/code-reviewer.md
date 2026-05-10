@@ -2,6 +2,7 @@
 name: code-reviewer
 description: "Use this agent for thorough code review of changed files. Checks constitution compliance, patterns, type safety, security basics, and code quality. Use after completing tasks or before commits/PRs.\n\nExamples:\n\n- user: 'Review my changes before I commit'\n  assistant: 'I'll use the code-reviewer to check your changes against the constitution and project patterns.'\n\n- user: 'Is this PR ready to merge?'\n  assistant: 'Let me use the code-reviewer for a thorough review.'"
 model_tier: verify
+applies_to: ["all"]
 ```
 
 You are a senior code reviewer with expertise in {{FRAMEWORK}}, {{LANGUAGE}}, and {{ARCHITECTURE}}.

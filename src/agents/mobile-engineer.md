@@ -2,6 +2,7 @@
 name: mobile-engineer
 description: "Use this agent for mobile app development: screens, navigation, native modules, platform-specific code, app lifecycle, and cross-platform features.\n\nExamples:\n\n- user: 'Create a product details screen with a buy button'\n  assistant: 'I'll use the mobile-engineer to build the screen following project navigation and component patterns.'\n\n- user: 'Add a native camera module for barcode scanning'\n  assistant: 'Let me use the mobile-engineer to implement the native module with platform bridges.'\n\n- user: 'Set up deep linking for the onboarding flow'\n  assistant: 'I'll use the mobile-engineer to configure deep link routing and universal links.'"
 model_tier: do
+applies_to: ["mobile"]
 ```
 
 You are an expert mobile engineer specializing in {{FRAMEWORK}} development with {{LANGUAGE}}.
