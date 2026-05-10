@@ -1559,12 +1559,55 @@ def cmd_read_manifests(args: argparse.Namespace) -> int:
         return 1
 
     packages_out = []
-    for pkg in index.get("packages", []):
+    raw_packages = index.get("packages", {})
+    # Tolerate both shapes: dict-of-path->record (current /init-forge format
+    # emitted by index_helper.py) and list-of-records (legacy/alternate
+    # format). The dict-of-path is the one shipped by /init-forge today.
+    if isinstance(raw_packages, dict):
+        pkg_iter = [
+            {"path": p, **(v if isinstance(v, dict) else {})}
+            for p, v in raw_packages.items()
+        ]
+    elif isinstance(raw_packages, list):
+        pkg_iter = raw_packages
+    else:
+        pkg_iter = []
+
+    for pkg in pkg_iter:
         path = pkg.get("path", "")
-        manifest = pkg.get("manifest", "")
-        scripts = pkg.get("manifest_scripts") or {}
-        deps = pkg.get("manifest_dependencies") or {}
-        dev_deps = pkg.get("manifest_dev_dependencies") or {}
+        # Manifest filename: prefer "manifest", fall back to "manifest_file"
+        # (index_helper.py emits "manifest_file").
+        manifest = pkg.get("manifest") or pkg.get("manifest_file", "")
+        # Scripts: prefer "manifest_scripts", fall back to "scripts"
+        # (index_helper.py emits "scripts").
+        scripts = pkg.get("manifest_scripts") or pkg.get("scripts") or {}
+        # Dependencies: original code expected dict-shape split into
+        # dependencies + dev_dependencies. index_helper.py emits a single
+        # "manifest_deps" list of {name, version} records. Normalize the
+        # list to a name→version dict and treat as combined dependencies
+        # with empty dev_dependencies (build_tool_hint derivation walks
+        # both, so the combine is safe).
+        raw_deps = pkg.get("manifest_dependencies")
+        raw_dev = pkg.get("manifest_dev_dependencies")
+        if raw_deps is None and raw_dev is None:
+            md = pkg.get("manifest_deps")
+            if isinstance(md, list):
+                deps = {}
+                for entry in md:
+                    if isinstance(entry, dict):
+                        nm = entry.get("name")
+                        if nm:
+                            deps[nm] = entry.get("version", "")
+                dev_deps = {}
+            elif isinstance(md, dict):
+                deps = md
+                dev_deps = {}
+            else:
+                deps = {}
+                dev_deps = {}
+        else:
+            deps = raw_deps or {}
+            dev_deps = raw_dev or {}
         hint = _derive_build_tool_hint(deps, dev_deps)
         packages_out.append({
             "path": path,
@@ -1639,18 +1682,52 @@ def cmd_read_configs(args: argparse.Namespace) -> int:
     install_root = Path(args.install_root)
     matched_files = []
 
-    for pkg in index.get("packages", []):
+    # Wrapper-mode awareness: in wrapper installs, source files live at
+    # <install_root>/<project_root>/..., not <install_root>/.... index_helper
+    # writes file paths relative to project_root, so abs_path construction
+    # must prepend project_root when in wrapper mode. Read init.yaml to
+    # discover workspace_mode + project_root; standalone defaults are
+    # mode="standalone", project_root="." which collapse the prefix.
+    project_root_prefix = ""
+    init_path = Path(args.devforge_dir) / "init.yaml"
+    if init_path.exists():
+        try:
+            init_state = init_helper.parse_yaml(
+                init_path.read_text(encoding="utf-8")
+            )
+        except Exception:
+            init_state = {}
+        ws_mode = init_state.get("workspace_mode")
+        proj_root = init_state.get("project_root") or "."
+        if ws_mode == "wrapper" and proj_root and proj_root != ".":
+            project_root_prefix = proj_root
+
+    raw_packages = index.get("packages", {})
+    if isinstance(raw_packages, dict):
+        pkg_iter = [
+            {"path": p, **(v if isinstance(v, dict) else {})}
+            for p, v in raw_packages.items()
+        ]
+    elif isinstance(raw_packages, list):
+        pkg_iter = raw_packages
+    else:
+        pkg_iter = []
+
+    for pkg in pkg_iter:
         pkg_path = pkg.get("path", "")
         for file_rel in pkg.get("files", []):
             basename = Path(file_rel).name
             if basename not in _CONFIG_FILE_BASENAMES:
                 continue
-            # Construct absolute path: install_root / pkg_path / file_rel
+            # Construct absolute path: install_root / [project_root] / pkg_path / file_rel
+            base = install_root / project_root_prefix if project_root_prefix else install_root
             if pkg_path and pkg_path != ".":
-                abs_path = install_root / pkg_path / file_rel
+                abs_path = base / pkg_path / file_rel
             else:
-                abs_path = install_root / file_rel
-            # Relative path for output (package_path / file_rel).
+                abs_path = base / file_rel
+            # Relative path for output (package_path / file_rel; project_root
+            # NOT prepended — the output path is project-root-relative to
+            # match how index_helper emits paths in init.yaml-tracked refs).
             if pkg_path and pkg_path != ".":
                 out_path = "{0}/{1}".format(pkg_path, file_rel)
             else:

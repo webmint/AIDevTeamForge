@@ -1104,6 +1104,72 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"index.json not found", proc.stderr)
 
+    def test_dict_shape_packages_normalized(self):
+        """index.json with dict-of-path packages (current /init-forge format) parses.
+
+        Regression: index_helper.py emits packages as a dict keyed by
+        path; original read-manifests assumed list-of-records and
+        returned empty.
+        """
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        index = {
+            "version": 1,
+            "packages": {
+                "apps/app-web": {
+                    "manifest_file": "package.json",
+                    "scripts": {"build": "vite build"},
+                    "manifest_deps": [
+                        {"name": "vue", "version": "^3.0.0"},
+                        {"name": "vite", "version": "^5.0.0"},
+                    ],
+                    "files": [],
+                },
+            },
+        }
+        (self.devforge_dir / "index.json").write_text(
+            json.dumps(index), encoding="utf-8"
+        )
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(len(data["packages"]), 1)
+        self.assertEqual(data["packages"][0]["path"], "apps/app-web")
+        self.assertEqual(data["packages"][0]["scripts"]["build"], "vite build")
+
+    def test_manifest_deps_list_normalized_to_dict(self):
+        """index_helper.py emits manifest_deps: [{name, version}, ...].
+
+        Regression: original read-manifests expected manifest_dependencies
+        as a name→version dict and returned empty deps when the list-shape
+        was the only signal. build_tool_hint also derives from the
+        normalized dict.
+        """
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        index = {
+            "version": 1,
+            "packages": {
+                "apps/app-web": {
+                    "manifest_file": "package.json",
+                    "scripts": {},
+                    "manifest_deps": [
+                        {"name": "vite", "version": "^5.0.0"},
+                        {"name": "vue", "version": "^3.0.0"},
+                    ],
+                    "files": [],
+                },
+            },
+        }
+        (self.devforge_dir / "index.json").write_text(
+            json.dumps(index), encoding="utf-8"
+        )
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        data = json.loads(proc.stdout.decode())
+        # manifest_deps list normalized to dict
+        self.assertEqual(data["packages"][0]["dependencies"]["vite"], "^5.0.0")
+        self.assertEqual(data["packages"][0]["dependencies"]["vue"], "^3.0.0")
+        # build_tool_hint derives correctly from the normalized list
+        self.assertEqual(data["packages"][0]["build_tool_hint"], "vite")
+
 
 # ---------------------------------------------------------------------------
 # 7. read-configs tests (~4)
@@ -1200,6 +1266,116 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(proc.stdout.decode())
         self.assertEqual(data["matched_files"], [])
+
+    def test_dict_shape_packages_walked(self):
+        """index.json with dict-of-path packages (current /init-forge format).
+
+        Regression: original read-configs assumed list-of-records and
+        returned empty when index_helper.py emitted dict-of-path.
+        """
+        self.devforge_dir.mkdir(parents=True, exist_ok=True)
+        index = {
+            "version": 1,
+            "packages": {
+                "apps/app-web": {
+                    "manifest_file": "package.json",
+                    "files": ["vite.config.ts", "src/main.ts"],
+                },
+            },
+        }
+        (self.devforge_dir / "index.json").write_text(
+            json.dumps(index), encoding="utf-8"
+        )
+        self._write_config_file(
+            "apps/app-web/vite.config.ts",
+            "export default { server: { port: 3000 } }",
+        )
+        proc = _run_configure(
+            self.devforge_dir,
+            "--install-root", str(self.install_root),
+            "read-configs",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(len(data["matched_files"]), 1)
+        self.assertEqual(data["matched_files"][0]["basename"], "vite.config.ts")
+
+    def test_wrapper_mode_prepends_project_root(self):
+        """Wrapper-mode: source files at <install_root>/<project_root>/...
+
+        Regression: read-configs constructed install_root/file_rel and
+        skipped the project_root segment. On testForge20 (wrapper) all
+        88 config files were silently OSError-skipped, returning empty.
+        """
+        # Write init.yaml signaling wrapper mode + project_root="src-tree".
+        (self.devforge_dir / "init.yaml").write_text(
+            'workspace_mode: "wrapper"\n'
+            'project_root: "src-tree"\n'
+            'project_state: "brownfield"\n'
+            'default_branch: "main"\n'
+            'packages_detected: []\n',
+            encoding="utf-8",
+        )
+        # Write index.json with file paths relative to project_root.
+        index = {
+            "version": 1,
+            "packages": {
+                "apps/app-web": {
+                    "manifest_file": "package.json",
+                    "files": ["vite.config.ts"],
+                },
+            },
+        }
+        (self.devforge_dir / "index.json").write_text(
+            json.dumps(index), encoding="utf-8"
+        )
+        # File lives at install_root/src-tree/apps/app-web/vite.config.ts.
+        self._write_config_file(
+            "src-tree/apps/app-web/vite.config.ts",
+            "// wrapper-mode config",
+        )
+        proc = _run_configure(
+            self.devforge_dir,
+            "--install-root", str(self.install_root),
+            "read-configs",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(proc.stdout.decode())
+        # File should be matched + read despite wrapper-mode prefix.
+        self.assertEqual(len(data["matched_files"]), 1)
+        self.assertIn("wrapper-mode config", data["matched_files"][0]["contents"])
+
+    def test_standalone_mode_no_prefix(self):
+        """Standalone mode: source files at <install_root>/... (no prefix)."""
+        (self.devforge_dir / "init.yaml").write_text(
+            'workspace_mode: "standalone"\n'
+            'project_root: "."\n'
+            'project_state: "brownfield"\n'
+            'default_branch: "main"\n'
+            'packages_detected: []\n',
+            encoding="utf-8",
+        )
+        index = {
+            "version": 1,
+            "packages": {
+                ".": {
+                    "manifest_file": "package.json",
+                    "files": ["vite.config.ts"],
+                },
+            },
+        }
+        (self.devforge_dir / "index.json").write_text(
+            json.dumps(index), encoding="utf-8"
+        )
+        self._write_config_file("vite.config.ts", "// standalone")
+        proc = _run_configure(
+            self.devforge_dir,
+            "--install-root", str(self.install_root),
+            "read-configs",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(len(data["matched_files"]), 1)
 
     def test_missing_index_exits_1(self):
         proc = _run_configure(
