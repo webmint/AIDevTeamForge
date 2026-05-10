@@ -1,24 +1,26 @@
-# Forge 2.0 — Architecture of `/init-forge` and `/generate-docs`
+# Forge 2.0 — Architecture of `/init-forge`, `/generate-docs`, `/configure`
 
 Contributor / future-me reference. Architecture-only: helper layout, schemas, data flow, state shape, hook integration. Command UX (steps, prompts, retry budgets) lives in the authoritative specs:
 
 - `src/commands/init-forge/main.md` — `/init-forge` step contract
 - `src/commands/generate-docs/main.md` — `/generate-docs` phase contract
+- `src/commands/configure/main.md` — `/configure` phase contract
 
 This file does not duplicate those. It explains what sits **behind** the commands: the Python helpers, the on-disk artifacts, the inter-helper data flow, and the runtime hooks that police LLM behavior. When the spec and this file disagree about user-facing behavior, the spec wins; when they disagree about helper internals, this file wins.
 
-Version: develop-2.0-init branch, post-`f75d45f` (2026-05-10).
+Version: develop-2.0-init branch, post-2026-05-10. Three of the four pivot commands shipped (`/init-forge` + `/generate-docs` + `/configure`); `/constitute` schema-anchor work is the next major scope.
 
 ---
 
 ## 1. Conceptual model
 
-The two commands sit at the head of the 4-command pivot (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`; only the first two are implemented). They share four design principles:
+The three shipped commands sit at the head of the 4-command pivot (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). They share five design principles:
 
-1. **Helper-owns-shape, LLM-owns-values.** Every artifact (`init.yaml`, `index.json`, `docs/<...>/index.md`, `docs/glossary.md`) is rendered by a Python helper. The orchestrator (the LLM thread executing the slash command) never writes structural content directly via the `Write` tool to those paths. It composes values, passes them to setters, and the helper produces the canonical bytes. This is the only way to make idempotent re-runs and downstream parsers reliable.
-2. **State IS the on-disk file.** Each setter does a read-modify-write cycle with `tempfile.mkstemp` + `os.replace` for atomicity. There is no in-memory "current state" object held across invocations; the file is the source of truth. For `/generate-docs`'s skeleton-fill flow, the skeleton file (`*.md.skeleton`) IS the state — no sidecar JSON. `_state.py` does maintain a JSON state file (`.devforge/.generate-docs-state.json`) for the legacy package/concern setters, with a POSIX file lock around the read-modify-write window to prevent concurrent-setter loss.
-3. **Mechanical first, LLM second.** Anything that can be derived without judgment (file walks, manifest parsing, dep extraction, source-stamp hashing, ASCII tree rendering) is helper work. The LLM is invoked only for prose synthesis (`Purpose` paragraphs, leaf annotations, glossary definitions, cross-cut rationale). The helper layer pre-extracts mechanical fields via `*-input` subcommands so the LLM never reads raw source if a helper can extract first.
+1. **Helper-owns-shape, LLM-owns-values.** Every artifact (`init.yaml`, `index.json`, `docs/<...>/index.md`, `docs/glossary.md`, `configure.yaml`, `project-config.json`, substituted `CLAUDE.md` + `.claude/agents/*.md`) is rendered by a Python helper. The orchestrator (the LLM thread executing the slash command) never writes structural content directly via the `Write` tool to those paths. It composes values, passes them to setters, and the helper produces the canonical bytes. This includes template substitution (`/configure substitute-templates`) and agent pruning (`/configure prune-agents`) — neither is done via the `Edit` tool against `.claude/agents/*.md`. This is the only way to make idempotent re-runs and downstream parsers reliable.
+2. **State IS the on-disk file.** Each setter does a read-modify-write cycle with `tempfile.mkstemp` + `os.replace` for atomicity. There is no in-memory "current state" object held across invocations; the file is the source of truth. For `/generate-docs`'s skeleton-fill flow, the skeleton file (`*.md.skeleton`) IS the state — no sidecar JSON. `/configure`'s `_state.py`-style transaction (`_state_transaction` context manager around `fcntl.LOCK_EX` on `configure.yaml.lock`) serializes concurrent setters; without it, two parallel `add-package-stack` calls could lose array-append entries (lock pattern lifted from `_generate_docs/_state.py`'s prior fix).
+3. **Mechanical first, LLM second.** Anything that can be derived without judgment (file walks, manifest parsing, dep extraction, source-stamp hashing, ASCII tree rendering, build-tool / framework detection) is helper work. The LLM is invoked only for prose synthesis (`Purpose` paragraphs, leaf annotations, glossary definitions, cross-cut rationale, classification calls like PROJECT_TYPE). The helper layer pre-extracts mechanical fields via `*-input` / `read-*` subcommands so the LLM never reads raw source if a helper can extract first. `/configure` extends this with `_derive_build_tool_hint` + `_derive_framework_hint` (per-package, dependency-name match against locked tables).
 4. **Bottom-up tier walk.** `/generate-docs` always proceeds concern → package → project, so each upper tier has rendered child docs to synthesize from. The pipeline gates on per-tier `source_stamp`: if upstream input hashes are unchanged, the tier skips dispatch. Stamps are SHA-256 prefixes (16 chars) over canonicalized input.
+5. **Atomic taxonomy + helper-side enforcement.** `/configure` uses atomic project-nature labels (`web` / `backend` / `mobile` / etc.) — no synthetic meta-labels like "fullstack". A monorepo with both web and backend packages declares `project_natures: ["web", "backend"]`; the agent-pruning gate matches via set intersection (`agent.applies_to ∩ project.natures`), keeping agents that fit either nature. Project rules (state-management / styling conventions) live in `constitution.md` (per `/constitute` pipeline), NOT in template-substitution placeholders — keeps the substitution layer free of concerns it can't own.
 
 ---
 
@@ -252,7 +254,162 @@ The `*.md.skeleton` files are transient — `init-doc` writes them, setters edit
 
 ---
 
-## 4. CBM-first protocol enforcement
+## 4. `/configure` — populate config + substitute templates + prune agents
+
+`/configure` consumes the artifacts emitted by `/init-forge` + `/generate-docs`, fills 28 configuration fields, renders `.devforge/project-config.json` (36-key substitution map), prunes non-applicable agent files based on the project's natures, and substitutes `{{KEY}}` placeholders across `CLAUDE.md` + the surviving `.claude/agents/*.md` files. Single helper module + single command spec.
+
+### 4.1 Helper architecture
+
+One file: `src/devforge/lib/configure_helper.py` (no submodule split — fits in a single module). Single shell launcher at `src/devforge/lib/configure_helper`. Stdlib only, Python 3.8+.
+
+Subcommand surface (~32 subcommands grouped by role):
+
+| Group | Subcommands | Role |
+|---|---|---|
+| State plumbing | `reset` | Write fresh defaults yaml |
+| Read-* inputs | `read-init` / `read-docs` / `read-manifests` / `read-configs` | Capture Phase 1 inputs as JSON |
+| Identity setters (3) | `set-project-name` / `set-project-description` / `set-project-type` | Scalar fields |
+| Stack setters (8) | `set-primary-language` / `set-languages` / `set-frameworks` / `set-architectures` / `set-project-natures` / `set-error-handlings` / `set-api-layers` / `set-testings` | Scalar + string-array |
+| Per-pkg arrays (4) | `set-build-tools` / `set-build-commands` / `set-type-check-commands` / `set-lint-commands` | string-array |
+| Per-pkg record (1) | `add-package-stack` | record-append (7-subfield) |
+| Verbatim docs (3) | `set-project-structure --text` / `set-dev-commands --text` / `set-architecture-details --text` | Multi-line scalar |
+| User prefs (5) | `set-workflow-enforcement` / `set-ai-attribution` / `set-claude-tier-think` / `-do` / `-verify` | Scalar (Q11 tiers are non-enum to allow custom model aliases) |
+| AC verification (4) | `set-ac-verification-mode` / `set-ac-runtime-url` / `set-ac-runtime-api-base` / `set-ac-runtime-cli-command` | Scalar |
+| Render | `render-config` | Atomic JSON write of project-config.json (36 keys) |
+| Prune | `prune-agents [--apply]` | Walk agents/, delete mismatches (or dry-run JSON) |
+| Substitute | `substitute-templates` | `{{KEY}}` replacement across CLAUDE.md + agents |
+| Verify | `verify` | Required-field + round-trip identity check |
+| Summary | `summary` | Verbatim-echo report (mirrors `init_helper summary`) |
+
+Schema: `FIELD_SCHEMA` carries 28 fields (locked order; emit walks list for diff stability). Three field kinds: `scalar`, `string_array`, `package_stack_array` (the only record kind; 7 fixed subfields). `ENUM_FIELDS` carries 3 entries (`workflow_enforcement` / `ai_attribution` / `ac_verification_mode`); `claude_tier_*` deliberately NOT in ENUM_FIELDS — accepts free-text scalars so users can name custom Claude routes via the Q11 `Other` branch.
+
+Validation helpers (private):
+- `_validate_scalar` — non-empty after strip
+- `_validate_enum` — case-insensitive match → returns canonical (lowercase `strict` → `Strict`)
+- `_validate_string_array` — accepts JSON-array form `["a", "b,c"]` (decoded via `json.loads` when input strips to start with `[` and end with `]`) OR comma-separated form `"a, b"` (legacy default; backward compatible)
+- `_validate_path_value` — non-empty, no newlines
+- `_validate_verbatim` — non-empty, no inner stripping (preserves multi-line content for verbatim doc fields)
+
+Setters route through `_state_transaction(devforge_dir)` — context manager that acquires `fcntl.LOCK_EX` on `<configure.yaml>.lock`, loads state, yields to mutation, dumps state, releases lock. Single read-modify-write codepath; no setter calls `_load`/`_dump` directly. `_HAVE_FCNTL` flag exists for non-POSIX import-time graceful fallback but no-op locking on Windows is NOT a supported configuration (Forge is POSIX-only per CLAUDE.md).
+
+### 4.2 Phase shape
+
+```
+Phase 0 — Pre-flight gate         (test -f init.yaml, index.json, docs/overview.md, docs/architecture.md)
+Phase 1 — Reset + pull inputs     (reset → read-init → read-docs → read-manifests → read-configs;
+                                   each captures JSON to a named variable: INIT_JSON / DOCS_JSON /
+                                   MANIFESTS_JSON / CONFIGS_JSON)
+Phase 2 — Compose detection-derived values (orchestrator-direct, NO subagent — 23 fields composed
+                                   in memory from the 4 Phase-1 JSON outputs; NOT yet persisted)
+Phase 3 — Bulk-confirmation prompt (plain prose echo, NOT AskUserQuestion; explicit stop-discipline
+                                   directive ends assistant turn after echo; user replies
+                                   yes / cancel / line-per-override; JSON-array form documented
+                                   for values with internal commas)
+Phase 4 — Sequential user-only prompts (Q9 workflow_enforcement + Q10 ai_attribution +
+                                   Q11.1/.2/.3 claude tier triple + Q12 ac_verification_mode +
+                                   conditional Q12.1/.2/.3 runtime triple when mode == runtime-assisted)
+Phase 5.1 — render-config         (configure.yaml + init.yaml → project-config.json atomic write)
+Phase 5.2 — prune-agents          (dry-run → bulk-confirm with keep/drop list →
+                                   prune-agents --apply on yes; os.unlink per dropped file)
+Phase 5.3 — substitute-templates  (regex-based {{KEY}} replacement across CLAUDE.md +
+                                   .claude/agents/*.md; per-file atomic write)
+Phase 6 — Verify + summary        (verify cross-checks 28-field configure.yaml + 36-key
+                                   project-config.json + round-trip identity; summary echoes
+                                   field-by-field report verbatim)
+```
+
+Retry budgets: 3 per setter on validation failure; 3 per bulk-prompt parse failure; on 4th surface-failure-and-continue. Stop discipline: Phase 3 + Phase 5.2 echoes MUST end assistant turn (plain prose has no harness wait-for-user affordance; explicit "do not advance" directive in spec).
+
+### 4.3 Field-source map (28 configure.yaml + 5 init.yaml + 3 derived = 36 project-config.json keys)
+
+Detection-derived (23 fields composed in Phase 2):
+- Identity (3): PROJECT_NAME / PROJECT_DESCRIPTION / PROJECT_TYPE
+- Stack (9): PRIMARY_LANGUAGE / LANGUAGES / FRAMEWORKS / ARCHITECTURES / **PROJECT_NATURES** / ERROR_HANDLINGS / API_LAYERS / TESTINGS / BUILD_TOOLS
+- Per-package (4): BUILD_COMMANDS / TYPE_CHECK_COMMANDS / LINT_COMMANDS / PACKAGE_STACKS
+- Verbatim docs (3): PROJECT_STRUCTURE / DEV_COMMANDS / ARCHITECTURE_DETAILS
+- AC runtime (3): AC_RUNTIME_URL / AC_RUNTIME_API_BASE / AC_RUNTIME_CLI_COMMAND
+
+User-only (5 fields via Phase 4 sequential prompts): WORKFLOW_ENFORCEMENT / AI_ATTRIBUTION / CLAUDE_TIER_THINK / CLAUDE_TIER_DO / CLAUDE_TIER_VERIFY / AC_VERIFICATION_MODE. (Total 6 user-only fields including AC mode; AC runtime triple is conditional follow-up to Q12 only when mode == runtime-assisted.)
+
+From `init.yaml` (5 keys, read-through): WORKSPACE_MODE / PROJECT_ROOT / PROJECT_STATE / DEFAULT_BRANCH / PACKAGES_DETECTED.
+
+Derived at render time (3): WRAPPER_MODE_SECTION (preset block; populated only when workspace_mode=wrapper) / COMMIT_ATTRIBUTION (preset block; populated only when ai_attribution=Yes) / AGENT_LIST (alphabetical bullet list of `.claude/agents/*.md` basenames at render time).
+
+PACKAGE_STACKS record's `framework` field is derived from `_derive_framework_hint` per package (locked table of 24 framework→canonical-name mappings; meta-frameworks like Next.js / Nuxt / Remix / SvelteKit / Expo listed before underlying React / Vue / Svelte so meta wins; returns null when no recognized framework dep is present — prevents mis-attributing project-level top framework to every workspace package).
+
+### 4.4 Agent pruning system
+
+Source agent files at `src/agents/*.md` carry `applies_to: [...]` frontmatter — atomic project-nature values matching the same vocabulary as `project_natures`. The "all" sentinel marks universal-fit agents (architect / code-reviewer / qa-engineer / etc.). Specific atomic values (`web` / `backend` / `mobile`) restrict to those natures.
+
+`scripts/generate-agents.py` propagates `applies_to` through to the installed Claude-Code-native frontmatter (`---` delimited). `_parse_agent_frontmatter` accepts BOTH source ```yaml fence form AND installed `---` form; without the dual-form parser, `prune-agents` would fail on every installed agent (frontmatter format mismatch was an empirical bug surfaced + fixed during testForge20 run).
+
+`_decide_agent` rules:
+- `applies_to` missing/unparseable → KEEP (conservative default; emits stderr warning so the user sees there's a frontmatter issue)
+- `"all" in applies_to` → KEEP (universal-fit)
+- `applies_to ∩ project_natures` non-empty → KEEP
+- otherwise → DROP
+
+`prune-agents [--apply]`: dry-run emits `{kept, dropped, decisions}` JSON to stdout (no file mutation); `--apply` deletes files in `dropped[]` via `os.unlink`. Phase 5.2's bulk-confirm pattern: dry-run first → echo decisions → wait for user yes/cancel/override → on yes invoke `--apply`. Override lines (`keep <name>` / `drop <name>`) processed by orchestrator since helper has no per-agent flag.
+
+### 4.5 Template substitution
+
+25 unique placeholders inventoried across `src/CLAUDE.md` + `src/agents/*.md` (no `{{STATE_MANAGEMENT}}` / `{{STYLING}}` — those rules live in `constitution.md` per the constitution-pipeline routing decision). Substitution map covers 4 categories:
+
+| Category | Count | Source |
+|---|---|---|
+| (A) Direct project-config.json keys | 12 | Verbatim from the 36-key map |
+| (B) Singular aliases of plural arrays | 10 | `{{FRAMEWORK}}` → comma-join `FRAMEWORKS`, etc. (10 fields: FRAMEWORK / LANGUAGE / BUILD_TOOL / BUILD_COMMAND / TYPE_CHECK_COMMAND / LINT_COMMAND / ERROR_HANDLING / API_LAYER / TESTING / ARCHITECTURE) |
+| (C) Composed | 2 | `{{PACKAGE_STACKS_SECTION}}` markdown table (4 cols: Package \| Language \| Framework \| Build Tool); `{{PROJECT_PATHS}}` comma-join `path` from `packages_detected[]` |
+| (D) Identity passthrough | 1 | `{{UPPERCASE}}` substitutes to literal `{{UPPERCASE}}` (preserves prose explanation of placeholder syntax in CLAUDE.md's "Placeholder Convention" section) |
+
+Engine: `_PLACEHOLDER_RE = re.compile(r"\{\{([A-Z_]+)\}\}")`. Per-file atomic write via `_write_file_atomic` (mkstemp + fsync + os.replace + unlink-on-exception). Unknown placeholder → exit 2 + stderr enumerates per-file; original file NOT modified (atomic-per-file fail-safe).
+
+Known limitation (cosmetic): substitute engine matches all `{{[A-Z_]+}}` markers including those used as DOCS examples in CLAUDE.md prose ("Any `{{UPPERCASE}}` marker (e.g., `{{PROJECT_NAME}}`)..."). The `{{PROJECT_NAME}}` example gets substituted to the actual project name on install, making the prose example slightly less didactic. Future fix: escape mechanism or fenced-code-block exclusion in the engine.
+
+### 4.6 Wrapper-mode awareness
+
+`read-configs` walks `index.json.packages[].files[]` for matched config-file basenames (vite.config.* / next.config.* / vitest.config.* / .env / etc.). When `init.yaml.workspace_mode == wrapper` AND `project_root != "."`, helper prepends `project_root` to abs-path construction so `<install_root>/<project_root>/<file>` resolves correctly. Without the prefix, all 88 matched files would `OSError`-skip silently and `read-configs` would emit empty `matched_files[]` (empirical bug fixed during testForge20 run).
+
+`render-config`'s WRAPPER_MODE_SECTION + AGENT_LIST derivation also reads init.yaml. Substitute-templates does NOT use init.yaml directly — it reads project-config.json which already carries the resolved values.
+
+### 4.7 State + outputs
+
+```
+.devforge/
+  configure.yaml            # canonical 28-field state — single source of truth
+  configure.yaml.lock       # fcntl LOCK_EX sidecar
+  project-config.json       # 36-key render artifact (regenerated each run)
+.claude/agents/             # pruned by Phase 5.2 (16 → 12 in testForge20 web case);
+                            # surviving agents substituted in place by Phase 5.3
+CLAUDE.md                   # substituted in place
+```
+
+`configure.yaml` is the authoritative state. `project-config.json` is regenerated each `render-config` call (not edited directly — never modified between renders). Template files are mutated in place by `substitute-templates`.
+
+### 4.8 Locked design decisions
+
+- **Atomic project-nature taxonomy (no "fullstack" meta-label).** A fullstack monorepo declares `project_natures: ["web", "backend"]` as a SET. Pruner uses set intersection. Cleaner than synthetic meta-values + matches monorepo reality.
+- **state_management + styling routed through constitution.md.** Project conventions (rules) live in constitution; CLAUDE.md / agent template substitution doesn't carry them. Frontend-engineer + mobile-engineer agents reference `constitution.md §Conventions` instead of embedding `{{STATE_MANAGEMENT}}` / `{{STYLING}}` placeholders. Drops 2 placeholders from substitution map; tightens layering between `/configure` and `/constitute`.
+- **claude_tier_* fields are non-enum scalars.** ENUM_FIELDS deliberately excludes them so users may name custom Claude routes (Bedrock, self-hosted, future model aliases) via Q11 `Other` branch. Recommended defaults: think=Opus, do=Sonnet, verify=Haiku.
+- **Phase 3 plain-prose echo with explicit stop-discipline directive.** AskUserQuestion is single-line only (memory `feedback_askuserquestion_single_line_only.md`); multi-line bulk content can't fit. Plain prose has no harness-level wait-for-user affordance, so the LLM must self-impose the stop. Spec includes a "STOP and wait" directive at top of Phase 3 + Phase 5.2.
+- **Helper-side framework derivation.** `_derive_framework_hint` reads manifest deps + emits canonical name from a locked priority table. NOT LLM judgment — mechanical fact extraction. Same pattern as `_derive_build_tool_hint`. Prevents Phase 2 LLM from inheriting the project-level top framework into every workspace package's record.
+- **install.sh stray-state-file guard.** Empirical bug: stray `init.yaml` in `src/devforge/` (artifact from running helpers at repo root with DEVFORGE_DIR unset) got copied over the target's real init.yaml, silently wiping wrapper-mode + packages_detected. Fix: install.sh now exits 1 with a named-stray error if any user-state file (`init.yaml` / `configure.yaml` / etc.) is present in `src/devforge/` at install time. Forces cleanup at framework dev time, not user install time. `.gitignore` complements with framework-side prevention.
+
+### 4.9 Step 6 follow-ups (post-empirical, all shipped)
+
+The empirical /configure run on testForge20 (wrapper + 26-pkg monorepo) surfaced 5 bugs all fixed before feature-close:
+
+1. Phase 3 stop discipline directive (LLM kept advancing past plain-prose echo without waiting)
+2. JSON-array setter form (TypeScript generic syntax `Either<DataError, T>` with internal commas broke comma-split → setter now accepts JSON-array form for values with literal commas)
+3. Case-insensitive enum validator (LLM passed `strict` instead of `Strict` → validator normalizes to canonical exact-case member)
+4. Dash-delimited frontmatter parser (installed agents use Claude Code native `---` form, not source ```yaml fence → parser tolerates both)
+5. Per-package framework_hint helper-side enforcement (LLM mis-attributed project-level top framework to every workspace package → `_derive_framework_hint` mechanical extraction; LLM uses helper output as authoritative)
+
+Plus install.sh stray-state-file guard (Step 6 surfaced the bug; fix shipped under same banner).
+
+---
+
+## 5. CBM-first protocol enforcement
 
 Four hooks ship at `src/hooks/` and are wired into `.claude/settings.json` by `install.sh`. They steer code exploration toward `codebase-memory-mcp` (`search_graph`, `trace_path`, `get_code_snippet`, `search_code`, `query_graph`) instead of raw `Read`/`Grep`/`Glob` or `grep`/`find`/`cat` over source files.
 
@@ -269,9 +426,11 @@ The hook scripts reference codebase-memory-mcp tools exclusively. They do NOT re
 
 ---
 
-## 5. Known limitations + drift hazards
+## 6. Known limitations + drift hazards
 
-Live as-of `f75d45f` (2026-05-10). These are deferred bugs surfaced during empirical validation on `testForge20`:
+Live as-of 2026-05-10. Most are deferred bugs surfaced during empirical validation on `testForge20`. /configure-specific bugs surfaced during the empirical run were all fixed before feature-close (see §4.9).
+
+**`/generate-docs` (deferred):**
 
 1. **Stamp gate anchor-schema drift.** When the helper's section anchor schema changes (e.g., adding a new project-overview section), prior rendered docs' frontmatter still says "stamp matches" but their on-disk shape no longer matches the new validator. The stamp gate skips dispatch, validate-doc passes (because old shape was valid for the old schema), and the doc never re-renders against the new shape. Workaround: force re-render via `init-doc` on the affected target. Fix pending.
 2. **CBM watcher async-miss.** `_preflight.py` invokes `index_repository` synchronously, but CBM's filesystem watcher runs async — large repos can return from `index_repository` before the watcher has absorbed every recent write, causing `search_graph` queries in Phase B (glossary) to miss nodes that were just rendered. Workaround: re-run Phase B. Fix pending.
@@ -280,16 +439,24 @@ Live as-of `f75d45f` (2026-05-10). These are deferred bugs surfaced during empir
 5. **Vue cite-back through-sourcemap not validated.** `_validate_doc.py` checks cite-path existence + line-range only. Vue components compile through a sourcemap; validating that a `<file>.vue:line` cite resolves to the right line in the original `.vue` (not the compiled output) is deferred. `_sourcemap.py` exists but is not yet wired into validation.
 6. **Per-concern dispatch cost.** ~$0.20 Haiku + ~10s wall-clock per concern. Spec surfaces the breakdown via the cost gate before Phase 2 starts; for runs over $5 / 5 min, recommend confirming with the user. Stamp-gate skips are free.
 
+**`/configure` (cosmetic, non-blocking):**
+
+7. **PACKAGE_STACKS framework column reads stray manifest deps.** `_derive_framework_hint` honestly reports what's in `dependencies` / `dev_dependencies`. If a package's `package.json` has a stray dep (e.g., `pkg-cse-common` with `react: ^18.2.0` in the testForge20 codebase, despite the package being pure-TS BLoC base), helper attributes that framework. Fix path: codebase-side `package.json` cleanup (not helper logic). LLM Phase 2 can also override at bulk-confirm time, but the spec's parser only handles top-level field overrides, not record-array subfield overrides — `package_stacks.<pkg>.framework: null` syntax is NOT supported. Future spec extension could add dot-path override parsing.
+8. **Substitute engine matches DOCS-example placeholders.** CLAUDE.md's "Placeholder Convention" section uses `{{PROJECT_NAME}}` as a literal example for readers; substitute engine substitutes it to the real project name. Reads slightly less didactic post-substitution. Fix path: escape mechanism (`\{\{PROJECT_NAME\}\}`) or fenced-code-block exclusion in the engine. Cosmetic; no functional impact.
+9. **Phase 2 LLM compose drift across re-runs.** Re-running /configure on the same project yields slightly different field compositions — not a bug, but Phase 2's LLM-judgment fields aren't deterministic. Bulk-confirm covers it (user can override). For exact reproducibility, supply explicit overrides via Phase 3 reply.
+
 ---
 
-## 6. Reading order for new contributors
+## 7. Reading order for new contributors
 
-1. **Specs first** — `src/commands/init-forge/main.md` then `src/commands/generate-docs/main.md`. They are the authoritative user-facing contract.
+1. **Specs first** — `src/commands/init-forge/main.md`, then `src/commands/generate-docs/main.md`, then `src/commands/configure/main.md`. They are the authoritative user-facing contract.
 2. **This file** — for the helper-layer mental model.
 3. **`init_helper.py` + `index_helper.py` module docstrings** — `/init-forge`'s entire helper surface is two files.
-4. **`_generate_docs/_cli.py`'s `_SUBCOMMANDS` registry** — the catalog of every helper subcommand.
+4. **`_generate_docs/_cli.py`'s `_SUBCOMMANDS` registry** — the catalog of every `/generate-docs` helper subcommand.
 5. **`_doc_setters.py`** — the skeleton-fill primitive everyone uses.
-6. **`_preflight.py`** + **`_concern_input.py`** + **`_glossary.py`** — the three input/output modules that drive the pipeline.
-7. **Active plans** at repo root — `ARCHITECTURE-PIVOT-PLAN.md` for the 4-command sequencing context, `SESSION-SUMMARY-2026-05-10.md` for the latest shipped state.
+6. **`_preflight.py`** + **`_concern_input.py`** + **`_glossary.py`** — the three input/output modules that drive the `/generate-docs` pipeline.
+7. **`configure_helper.py` module docstring + `build_parser`** — `/configure`'s helper surface is one file with ~32 subcommands. Read FIELD_SCHEMA + ENUM_FIELDS first, then `_state_transaction`, then the read-* / setters / render-config / prune-agents / substitute-templates handlers.
+8. **`scripts/generate-agents.py`'s `emit_claude` + `_render_one`** — agent emitter; understands how `applies_to` propagates from `src/agents/*.md` source frontmatter (```yaml fence) to installed `.claude/agents/*.md` (--- delimited).
+9. **Active plans** at repo root — `ARCHITECTURE-PIVOT-PLAN.md` for the 4-command sequencing context (Step 4 + Step 6 DONE 2026-05-10; Step 8 `/constitute` schema-anchor next); `CONFIGURE-PLAN.md` retained as historical reference + template for `/constitute` work.
 
 When the helper layout in this file disagrees with what's in `src/devforge/lib/_generate_docs/`, the code wins. Update this file as part of the same change that moves the boundary.
