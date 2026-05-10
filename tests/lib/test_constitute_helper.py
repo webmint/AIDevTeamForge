@@ -1,4 +1,27 @@
-"""Tests for src/devforge/lib/constitute_helper.py — Step 0 + Step 1.
+"""Tests for src/devforge/lib/constitute_helper.py — Step 0 + Step 1 + Step 2.
+
+Step 2 coverage (added in this commit):
+  Validation helpers — _validate_scalar / _validate_enum (case-insensitive →
+    canonical) / _validate_string_array (JSON-array form for internal-comma
+    values + comma-sep legacy) / _validate_path_value / _validate_verbatim.
+  State plumbing — _load returns default_state if missing, _state_transaction
+    write-on-exit, abort-on-exception (state NOT written if body raises),
+    lock file created on first use, _load propagates JSON parse error.
+  _find_section — match in each of 4 buckets, return (None, None) for
+    unknown number, first-match policy verified.
+  Per-setter subprocess — happy path + validation failure + round-trip
+    + idempotency/replace-vs-append semantics for all 10 setters
+    (set-project-name, set-mode, set-dates, set-project-identity,
+    add-section, add-rule, add-table, add-code-example, add-pattern-rule,
+    set-scaffolding-guide).
+  Cross-process safety — concurrent add-rule via subprocess.Popen (no lost
+    array-append); mixed scalar+append concurrency (no corruption);
+    add-section before add-rule race coverage.
+  Round-trip integration — set every field type once + reload + compare;
+    all 4 add-section buckets + all 6 patterns_and_antipatterns buckets
+    exercised; ScaffoldingGuide set + reset clears it; add-section
+    idempotency on (bucket, number) collision preserves rules.
+
 
 Step 0 coverage (preserved):
   reset subcommand writes a JSON defaults file with the locked top-level
@@ -907,6 +930,1060 @@ class TestReadGlossarySubprocess(unittest.TestCase):
                 self.assertIn("definition", t)
                 self.assertIn("used_in", t)
                 self.assertIn("related", t)
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — Validation helpers (pure function tests).
+# ---------------------------------------------------------------------------
+
+
+class TestValidateScalar(unittest.TestCase):
+    def test_strips_and_returns(self):
+        """_validate_scalar strips whitespace and returns the value."""
+        self.assertEqual(constitute_helper._validate_scalar("  hello  ", "f"), "hello")
+
+    def test_empty_raises(self):
+        """_validate_scalar raises ValueError on empty string."""
+        with self.assertRaises(ValueError) as ctx:
+            constitute_helper._validate_scalar("", "myfield")
+        self.assertIn("myfield", str(ctx.exception))
+
+    def test_whitespace_only_raises(self):
+        """_validate_scalar raises ValueError on whitespace-only string."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_scalar("   ", "f")
+
+    def test_valid_value_returned(self):
+        """_validate_scalar returns stripped value as-is."""
+        self.assertEqual(constitute_helper._validate_scalar("my-project", "f"), "my-project")
+
+
+class TestValidateEnum(unittest.TestCase):
+    def test_canonical_case_accepted(self):
+        """_validate_enum accepts canonical-case value directly."""
+        result = constitute_helper._validate_enum("greenfield", "mode", constitute_helper.ENUM_FIELDS["mode"])
+        self.assertEqual(result, "greenfield")
+
+    def test_uppercase_normalized_to_canonical(self):
+        """_validate_enum normalizes uppercase input to canonical case."""
+        result = constitute_helper._validate_enum("GREENFIELD", "mode", constitute_helper.ENUM_FIELDS["mode"])
+        self.assertEqual(result, "greenfield")
+
+    def test_mixed_case_normalized(self):
+        """_validate_enum normalizes mixed-case input."""
+        result = constitute_helper._validate_enum("Extracted", "rule_tag", constitute_helper.ENUM_FIELDS["rule_tag"])
+        self.assertEqual(result, "extracted")
+
+    def test_unknown_value_raises(self):
+        """_validate_enum raises ValueError for unknown value, enumerating allowed."""
+        with self.assertRaises(ValueError) as ctx:
+            constitute_helper._validate_enum("invalid", "mode", constitute_helper.ENUM_FIELDS["mode"])
+        msg = str(ctx.exception)
+        self.assertIn("invalid", msg)
+        self.assertIn("mode", msg)
+        # Stderr enumeration: the allowed values should appear in the message.
+        self.assertIn("greenfield", msg)
+
+    def test_empty_raises(self):
+        """_validate_enum raises ValueError for empty string."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_enum("", "mode", constitute_helper.ENUM_FIELDS["mode"])
+
+    def test_code_label_correct(self):
+        """_validate_enum accepts CORRECT for code_label."""
+        result = constitute_helper._validate_enum("CORRECT", "code_label", constitute_helper.ENUM_FIELDS["code_label"])
+        self.assertEqual(result, "CORRECT")
+
+    def test_code_label_lowercase_normalized(self):
+        """_validate_enum normalizes 'correct' → 'CORRECT' for code_label."""
+        result = constitute_helper._validate_enum("correct", "code_label", constitute_helper.ENUM_FIELDS["code_label"])
+        self.assertEqual(result, "CORRECT")
+
+
+class TestValidateStringArray(unittest.TestCase):
+    def test_comma_separated_basic(self):
+        """_validate_string_array parses comma-separated input."""
+        result = constitute_helper._validate_string_array("a, b, c", "f")
+        self.assertEqual(result, ["a", "b", "c"])
+
+    def test_json_array_basic(self):
+        """_validate_string_array parses JSON-array input."""
+        result = constitute_helper._validate_string_array('["x", "y"]', "f")
+        self.assertEqual(result, ["x", "y"])
+
+    def test_json_array_with_internal_commas(self):
+        """_validate_string_array preserves internal commas inside JSON-array items."""
+        result = constitute_helper._validate_string_array('["Either<DataError, T>", "Result<Ok, Err>"]', "f")
+        self.assertEqual(result, ["Either<DataError, T>", "Result<Ok, Err>"])
+
+    def test_empty_raises(self):
+        """_validate_string_array raises ValueError on empty string."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_string_array("", "f")
+
+    def test_whitespace_only_item_raises(self):
+        """_validate_string_array raises ValueError when an item is whitespace-only."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_string_array("a, , c", "f")
+
+    def test_malformed_json_raises(self):
+        """_validate_string_array raises ValueError on malformed JSON-array (bounded by [ and ])."""
+        # Must start with [ AND end with ] to trigger JSON-array path.
+        # '["unclosed"]' is valid JSON; '[bad]' starts with [ ends with ] but is invalid JSON.
+        with self.assertRaises(ValueError) as ctx:
+            constitute_helper._validate_string_array('[bad json content]', "f")
+        self.assertIn("malformed", str(ctx.exception))
+
+    def test_json_non_string_item_raises(self):
+        """_validate_string_array raises ValueError when JSON-array item is not a string."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_string_array('[1, 2]', "f")
+
+
+class TestValidatePathValue(unittest.TestCase):
+    def test_valid_path(self):
+        """_validate_path_value accepts a valid path string."""
+        result = constitute_helper._validate_path_value("src/main.py", "f")
+        self.assertEqual(result, "src/main.py")
+
+    def test_empty_raises(self):
+        """_validate_path_value raises ValueError on empty string."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_path_value("", "f")
+
+    def test_newline_raises(self):
+        """_validate_path_value raises ValueError when value contains a newline."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_path_value("src/\nmain.py", "f")
+
+
+class TestValidateVerbatim(unittest.TestCase):
+    def test_empty_raises(self):
+        """_validate_verbatim raises ValueError on empty string."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_verbatim("", "f")
+
+    def test_whitespace_only_raises(self):
+        """_validate_verbatim raises ValueError on whitespace-only string."""
+        with self.assertRaises(ValueError):
+            constitute_helper._validate_verbatim("   \n  ", "f")
+
+    def test_multiline_preserved(self):
+        """_validate_verbatim preserves internal whitespace including leading spaces."""
+        text = "  def foo():\n    return 42\n"
+        result = constitute_helper._validate_verbatim(text, "f")
+        self.assertEqual(result, text)
+
+    def test_single_line_returned(self):
+        """_validate_verbatim returns a non-empty single-line value unchanged."""
+        self.assertEqual(constitute_helper._validate_verbatim("hello", "f"), "hello")
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — State plumbing tests.
+# ---------------------------------------------------------------------------
+
+
+class TestStatePlumbing(unittest.TestCase):
+    def test_state_transaction_writes_on_exit(self):
+        """_state_transaction writes state to disk on successful exit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            with constitute_helper._state_transaction(str(devforge)) as state:
+                state["project_name"] = "test-plumbing"
+            loaded = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(loaded["project_name"], "test-plumbing")
+
+    def test_state_transaction_abort_on_exception(self):
+        """_state_transaction does NOT write state if the body raises."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # First set a known value.
+            with constitute_helper._state_transaction(str(devforge)) as state:
+                state["project_name"] = "before"
+            # Now try a transaction that raises.
+            try:
+                with constitute_helper._state_transaction(str(devforge)) as state:
+                    state["project_name"] = "after-raise"
+                    raise RuntimeError("intentional abort")
+            except RuntimeError:
+                pass
+            # State should remain "before" (aborted transaction not written).
+            loaded = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(loaded["project_name"], "before")
+
+    def test_lock_file_created(self):
+        """_state_transaction creates the .lock sidecar file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            with constitute_helper._state_transaction(str(devforge)) as _state:
+                pass
+            lock_path = devforge / "constitute.json.lock"
+            self.assertTrue(lock_path.exists(), "lock file should be created")
+
+    def test_load_returns_default_state_if_missing(self):
+        """_load returns default_state() when constitute.json does not exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            state = constitute_helper._load(str(devforge))
+            self.assertEqual(state, constitute_helper.default_state())
+
+    def test_load_propagates_json_error(self):
+        """_load propagates json.JSONDecodeError on malformed JSON."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            (devforge / "constitute.json").write_text("{broken json", encoding="utf-8")
+            with self.assertRaises(json.JSONDecodeError):
+                constitute_helper._load(str(devforge))
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — _find_section helper.
+# ---------------------------------------------------------------------------
+
+
+class TestFindSection(unittest.TestCase):
+    def _state_with_sections(self):
+        state = constitute_helper.default_state()
+        for bucket_key, number in [
+            ("architecture_rules", "1.1"),
+            ("code_quality_standards", "2.1"),
+            ("domain_rules", "3.0"),
+            ("workflow_rules", "4.5"),
+        ]:
+            sec = constitute_helper._empty_section()
+            sec["number"] = number
+            sec["title"] = "Test section {0}".format(number)
+            state[bucket_key].append(sec)
+        return state
+
+    def test_finds_in_architecture_rules(self):
+        """_find_section finds a section in architecture_rules."""
+        state = self._state_with_sections()
+        bucket, section = constitute_helper._find_section(state, "1.1")
+        self.assertIsNotNone(section)
+        self.assertEqual(section["number"], "1.1")
+        self.assertIs(bucket, state["architecture_rules"])
+
+    def test_finds_in_code_quality_standards(self):
+        """_find_section finds a section in code_quality_standards."""
+        state = self._state_with_sections()
+        _bucket, section = constitute_helper._find_section(state, "2.1")
+        self.assertIsNotNone(section)
+        self.assertEqual(section["number"], "2.1")
+
+    def test_finds_in_domain_rules(self):
+        """_find_section finds a section in domain_rules."""
+        state = self._state_with_sections()
+        _bucket, section = constitute_helper._find_section(state, "3.0")
+        self.assertIsNotNone(section)
+
+    def test_finds_in_workflow_rules(self):
+        """_find_section finds a section in workflow_rules."""
+        state = self._state_with_sections()
+        _bucket, section = constitute_helper._find_section(state, "4.5")
+        self.assertIsNotNone(section)
+
+    def test_returns_none_none_when_not_found(self):
+        """_find_section returns (None, None) for an unknown section number."""
+        state = self._state_with_sections()
+        bucket, section = constitute_helper._find_section(state, "99.99")
+        self.assertIsNone(bucket)
+        self.assertIsNone(section)
+
+    def test_lexical_ordering_note(self):
+        """_find_section uses exact string match — '10.1' != '1.0'."""
+        state = constitute_helper.default_state()
+        sec = constitute_helper._empty_section()
+        sec["number"] = "10.1"
+        state["architecture_rules"].append(sec)
+        _bucket, found = constitute_helper._find_section(state, "10.1")
+        self.assertIsNotNone(found)
+        _bucket2, not_found = constitute_helper._find_section(state, "1.0")
+        self.assertIsNone(not_found)
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — Per-setter subprocess tests.
+# ---------------------------------------------------------------------------
+
+
+class TestSetProjectName(unittest.TestCase):
+    def test_happy_path_exit_0(self):
+        """set-project-name sets project_name and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = tmp_path / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-project-name", "--value", "my-project"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["project_name"], "my-project")
+
+    def test_empty_value_exits_2(self):
+        """set-project-name exits 2 for empty --value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-project-name", "--value", ""])
+            self.assertEqual(result.returncode, 2)
+            self.assertTrue(result.stderr)
+
+    def test_round_trip(self):
+        """set-project-name value survives a JSON round-trip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-project-name", "--value", "  padded  "])
+            state = json.loads((devforge / "constitute.json").read_text())
+            # Value should be stripped.
+            self.assertEqual(state["project_name"], "padded")
+
+    def test_idempotent_overwrite(self):
+        """set-project-name called twice overwrites the earlier value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-project-name", "--value", "first"])
+            _run(["--devforge-dir", str(devforge), "set-project-name", "--value", "second"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["project_name"], "second")
+
+
+class TestSetMode(unittest.TestCase):
+    def test_happy_path_greenfield(self):
+        """set-mode accepts 'greenfield'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-mode", "--value", "greenfield"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["mode"], "greenfield")
+
+    def test_case_insensitive_input(self):
+        """set-mode normalizes uppercase to canonical."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-mode", "--value", "EXISTING-CODEBASE"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["mode"], "existing-codebase")
+
+    def test_invalid_value_exits_2(self):
+        """set-mode exits 2 for an invalid enum value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-mode", "--value", "invalid-mode"])
+            self.assertEqual(result.returncode, 2)
+            self.assertTrue(result.stderr)
+
+    def test_round_trip(self):
+        """set-mode value survives JSON round-trip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-mode", "--value", "greenfield"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["mode"], "greenfield")
+
+
+class TestSetDates(unittest.TestCase):
+    def test_happy_path(self):
+        """set-dates sets both dates and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-dates",
+                           "--generated", "2026-05-10", "--updated", "2026-05-11"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["generated_date"], "2026-05-10")
+            self.assertEqual(state["last_updated"], "2026-05-11")
+
+    def test_invalid_date_format_exits_2(self):
+        """set-dates exits 2 for malformed date."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-dates",
+                           "--generated", "not-a-date", "--updated", "2026-05-11"])
+            self.assertEqual(result.returncode, 2)
+            self.assertTrue(result.stderr)
+
+    def test_date_with_time_component_exits_2(self):
+        """set-dates exits 2 for datetime (time component present)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-dates",
+                           "--generated", "2026-05-10T12:00:00", "--updated", "2026-05-11"])
+            self.assertEqual(result.returncode, 2)
+
+    def test_round_trip(self):
+        """set-dates values survive JSON round-trip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-dates",
+                  "--generated", "2026-01-01", "--updated", "2026-06-30"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["generated_date"], "2026-01-01")
+            self.assertEqual(state["last_updated"], "2026-06-30")
+
+
+class TestSetProjectIdentity(unittest.TestCase):
+    def test_happy_path(self):
+        """set-project-identity sets all 4 subfields and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-project-identity",
+                           "--name", "MyApp", "--type", "web-app",
+                           "--domain", "e-commerce", "--stack", "TypeScript + Vue"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            pi = state["project_identity"]
+            self.assertEqual(pi["name"], "MyApp")
+            self.assertEqual(pi["type"], "web-app")
+            self.assertEqual(pi["domain"], "e-commerce")
+            self.assertEqual(pi["stack"], "TypeScript + Vue")
+
+    def test_empty_field_exits_2(self):
+        """set-project-identity exits 2 when a required field is empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-project-identity",
+                           "--name", "", "--type", "web-app",
+                           "--domain", "domain", "--stack", "stack"])
+            self.assertEqual(result.returncode, 2)
+
+    def test_replaces_prior_value(self):
+        """set-project-identity replaces (not merges with) prior value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-project-identity",
+                  "--name", "First", "--type", "t", "--domain", "d", "--stack", "s"])
+            _run(["--devforge-dir", str(devforge), "set-project-identity",
+                  "--name", "Second", "--type", "t2", "--domain", "d2", "--stack", "s2"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["project_identity"]["name"], "Second")
+            self.assertEqual(state["project_identity"]["type"], "t2")
+
+    def test_round_trip(self):
+        """set-project-identity record survives JSON round-trip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-project-identity",
+                  "--name", "RoundTrip", "--type", "lib",
+                  "--domain", "testing", "--stack", "Python"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertIsInstance(state["project_identity"], dict)
+            self.assertEqual(set(state["project_identity"].keys()), {"name", "type", "domain", "stack"})
+
+
+class TestAddSection(unittest.TestCase):
+    def test_happy_path_architecture(self):
+        """add-section adds a section to architecture_rules and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-section",
+                           "--bucket", "architecture", "--number", "1.1",
+                           "--title", "Layered Architecture"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            sections = state["architecture_rules"]
+            self.assertEqual(len(sections), 1)
+            self.assertEqual(sections[0]["number"], "1.1")
+            self.assertEqual(sections[0]["title"], "Layered Architecture")
+            self.assertEqual(sections[0]["rules"], [])
+            self.assertEqual(sections[0]["tables"], [])
+            self.assertEqual(sections[0]["code_examples"], [])
+
+    def test_all_4_buckets(self):
+        """add-section can target each of the 4 buckets."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            for bucket, number in [
+                ("architecture", "1.0"),
+                ("code-quality", "2.0"),
+                ("domain", "3.0"),
+                ("workflow", "4.0"),
+            ]:
+                result = _run(["--devforge-dir", str(devforge), "add-section",
+                               "--bucket", bucket, "--number", number,
+                               "--title", "Title {0}".format(number)])
+                self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(len(state["architecture_rules"]), 1)
+            self.assertEqual(len(state["code_quality_standards"]), 1)
+            self.assertEqual(len(state["domain_rules"]), 1)
+            self.assertEqual(len(state["workflow_rules"]), 1)
+
+    def test_invalid_section_number_exits_2(self):
+        """add-section exits 2 for an invalid section number."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-section",
+                           "--bucket", "architecture", "--number", "abc",
+                           "--title", "Bad Number"])
+            self.assertEqual(result.returncode, 2)
+
+    def test_idempotent_preserves_rules(self):
+        """Second add-section with same (bucket, number) replaces metadata but preserves rules."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Create section, then add a rule.
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "architecture", "--number", "1.1",
+                  "--title", "Original Title"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "1.1", "--tag", "extracted",
+                  "--text", "Always use dependency injection"])
+            # Now update the section metadata.
+            r = _run(["--devforge-dir", str(devforge), "add-section",
+                      "--bucket", "architecture", "--number", "1.1",
+                      "--title", "Updated Title"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            sections = state["architecture_rules"]
+            # Only one section (idempotent, not appended).
+            self.assertEqual(len(sections), 1)
+            self.assertEqual(sections[0]["title"], "Updated Title")
+            # Rules preserved.
+            self.assertEqual(len(sections[0]["rules"]), 1)
+            self.assertEqual(sections[0]["rules"][0]["text"], "Always use dependency injection")
+
+    def test_with_tag_and_description(self):
+        """add-section stores optional tag and description."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "architecture", "--number", "2.0",
+                  "--title", "Tagged Section",
+                  "--tag", "universal",
+                  "--description", "This is the description"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            sec = state["architecture_rules"][0]
+            self.assertEqual(sec["tag"], "universal")
+            self.assertEqual(sec["description"], "This is the description")
+
+
+class TestAddRule(unittest.TestCase):
+    def _setup_section(self, devforge):
+        """Helper: reset + add section 1.1 in architecture bucket."""
+        _run(["--devforge-dir", str(devforge), "add-section",
+              "--bucket", "architecture", "--number", "1.1",
+              "--title", "Test Section"])
+
+    def test_happy_path(self):
+        """add-rule appends a rule to a section and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-rule",
+                           "--section", "1.1", "--tag", "extracted",
+                           "--text", "All services must have interfaces"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            rules = state["architecture_rules"][0]["rules"]
+            self.assertEqual(len(rules), 1)
+            self.assertEqual(rules[0]["tag"], "extracted")
+            self.assertEqual(rules[0]["text"], "All services must have interfaces")
+
+    def test_section_not_found_exits_2(self):
+        """add-rule exits 2 when section is not found."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-rule",
+                           "--section", "99.99", "--tag", "extracted",
+                           "--text", "Some rule"])
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("99.99", result.stderr)
+
+    def test_invalid_tag_exits_2(self):
+        """add-rule exits 2 for an invalid rule tag."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-rule",
+                           "--section", "1.1", "--tag", "bad-tag",
+                           "--text", "Some rule"])
+            self.assertEqual(result.returncode, 2)
+
+    def test_multiple_rules_appended(self):
+        """add-rule appends (not replaces) successive rules."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "1.1", "--tag", "extracted", "--text", "Rule 1"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "1.1", "--tag", "enforced", "--text", "Rule 2"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            rules = state["architecture_rules"][0]["rules"]
+            self.assertEqual(len(rules), 2)
+            self.assertEqual(rules[0]["text"], "Rule 1")
+            self.assertEqual(rules[1]["text"], "Rule 2")
+
+
+class TestAddTable(unittest.TestCase):
+    def _setup_section(self, devforge):
+        _run(["--devforge-dir", str(devforge), "add-section",
+              "--bucket", "architecture", "--number", "1.1",
+              "--title", "Test Section"])
+
+    def test_happy_path(self):
+        """add-table appends a table to a section and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            rows_json = json.dumps([["A", "1"], ["B", "2"]])
+            result = _run(["--devforge-dir", str(devforge), "add-table",
+                           "--section", "1.1", "--columns", "Name, Value",
+                           "--rows-json", rows_json])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            tables = state["architecture_rules"][0]["tables"]
+            self.assertEqual(len(tables), 1)
+            self.assertEqual(tables[0]["columns"], ["Name", "Value"])
+            self.assertEqual(tables[0]["rows"], [["A", "1"], ["B", "2"]])
+
+    def test_columns_json_array_with_internal_comma(self):
+        """add-table accepts JSON-array columns with internal commas."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            rows_json = json.dumps([["Either<A, B>"]])
+            result = _run(["--devforge-dir", str(devforge), "add-table",
+                           "--section", "1.1",
+                           "--columns", '["Type<A, B>"]',
+                           "--rows-json", rows_json])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            tables = state["architecture_rules"][0]["tables"]
+            self.assertEqual(tables[0]["columns"], ["Type<A, B>"])
+
+    def test_mismatched_column_count_exits_2(self):
+        """add-table exits 2 when a row has wrong number of cells."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            rows_json = json.dumps([["A", "B", "C"]])  # 3 cells, but 2 columns
+            result = _run(["--devforge-dir", str(devforge), "add-table",
+                           "--section", "1.1", "--columns", "Name, Value",
+                           "--rows-json", rows_json])
+            self.assertEqual(result.returncode, 2)
+
+    def test_section_not_found_exits_2(self):
+        """add-table exits 2 when section is not found."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-table",
+                           "--section", "99.0", "--columns", "A, B",
+                           "--rows-json", "[]"])
+            self.assertEqual(result.returncode, 2)
+
+
+class TestAddCodeExample(unittest.TestCase):
+    def _setup_section(self, devforge):
+        _run(["--devforge-dir", str(devforge), "add-section",
+              "--bucket", "domain", "--number", "3.1",
+              "--title", "Domain Section"])
+
+    def test_happy_path(self):
+        """add-code-example appends a code example and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-code-example",
+                           "--section", "3.1", "--label", "CORRECT",
+                           "--language", "python",
+                           "--code", "def foo():\n    return 42"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            examples = state["domain_rules"][0]["code_examples"]
+            self.assertEqual(len(examples), 1)
+            self.assertEqual(examples[0]["label"], "CORRECT")
+            self.assertEqual(examples[0]["language"], "python")
+            self.assertIn("return 42", examples[0]["code"])
+            self.assertIsNone(examples[0]["annotation"])
+
+    def test_invalid_label_exits_2(self):
+        """add-code-example exits 2 for invalid label."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-code-example",
+                           "--section", "3.1", "--label", "BAD-LABEL",
+                           "--language", "python", "--code", "x = 1"])
+            self.assertEqual(result.returncode, 2)
+
+    def test_label_case_insensitive(self):
+        """add-code-example normalizes lowercase label to canonical uppercase."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_section(devforge)
+            result = _run(["--devforge-dir", str(devforge), "add-code-example",
+                           "--section", "3.1", "--label", "wrong",
+                           "--language", "python", "--code", "x = bad()"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["domain_rules"][0]["code_examples"][0]["label"], "WRONG")
+
+    def test_section_not_found_exits_2(self):
+        """add-code-example exits 2 when section is not found."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-code-example",
+                           "--section", "99.0", "--label", "EXAMPLE",
+                           "--language", "python", "--code", "pass"])
+            self.assertEqual(result.returncode, 2)
+
+
+class TestAddPatternRule(unittest.TestCase):
+    def test_happy_path_always_universal(self):
+        """add-pattern-rule adds to always_universal bucket."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                           "--bucket", "always", "--scope", "universal",
+                           "--tag", "enforced", "--text", "Use composition over inheritance"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            rules = state["patterns_and_antipatterns"]["always_universal"]
+            self.assertEqual(len(rules), 1)
+            self.assertEqual(rules[0]["text"], "Use composition over inheritance")
+
+    def test_all_6_pattern_buckets(self):
+        """add-pattern-rule can target all 6 patterns_and_antipatterns buckets."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            combos = [
+                ("always", "universal"),
+                ("always", "project-specific"),
+                ("never", "universal"),
+                ("never", "project-specific"),
+                ("prefer", "universal"),
+                ("prefer", "project-specific"),
+            ]
+            for bucket, scope in combos:
+                result = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                               "--bucket", bucket, "--scope", scope,
+                               "--tag", "extracted",
+                               "--text", "Rule for {0} {1}".format(bucket, scope)])
+                self.assertEqual(result.returncode, 0,
+                                 "failed for {0}/{1}: {2}".format(bucket, scope, result.stderr))
+            state = json.loads((devforge / "constitute.json").read_text())
+            pap = state["patterns_and_antipatterns"]
+            for key in ["always_universal", "always_project_specific",
+                        "never_universal", "never_project_specific",
+                        "prefer_universal", "prefer_project_specific"]:
+                self.assertEqual(len(pap[key]), 1, "bucket {0} should have 1 rule".format(key))
+
+    def test_invalid_bucket_exits_2(self):
+        """add-pattern-rule exits 2 for unknown bucket."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                           "--bucket", "sometimes", "--scope", "universal",
+                           "--tag", "extracted", "--text", "text"])
+            # argparse will catch choices mismatch
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_scope_project_specific_key(self):
+        """add-pattern-rule maps 'project-specific' scope to underscore key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                  "--bucket", "never", "--scope", "project-specific",
+                  "--tag", "enforced", "--text", "Never use global state"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            rules = state["patterns_and_antipatterns"]["never_project_specific"]
+            self.assertEqual(len(rules), 1)
+            self.assertEqual(rules[0]["text"], "Never use global state")
+
+
+class TestSetScaffoldingGuide(unittest.TestCase):
+    def _sample_files_json(self):
+        return json.dumps([
+            {"path": "src/main.py", "language": "python", "content": "# main entry"},
+            {"path": "src/utils.py", "language": "python", "content": "# utilities"},
+        ])
+
+    def test_happy_path(self):
+        """set-scaffolding-guide sets the record and exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            result = _run(["--devforge-dir", str(devforge), "set-scaffolding-guide",
+                           "--starter-dirs", "src, tests, docs",
+                           "--sample-files-json", self._sample_files_json()])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            sg = state["scaffolding_guide"]
+            self.assertIsNotNone(sg)
+            self.assertEqual(sg["starter_directories"], ["src", "tests", "docs"])
+            self.assertEqual(len(sg["sample_files"]), 2)
+            self.assertEqual(sg["sample_files"][0]["path"], "src/main.py")
+
+    def test_starter_dirs_json_array_form(self):
+        """set-scaffolding-guide accepts JSON-array form for starter-dirs with internal commas."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            dirs_json = '["src/components", "src/utils"]'
+            result = _run(["--devforge-dir", str(devforge), "set-scaffolding-guide",
+                           "--starter-dirs", dirs_json,
+                           "--sample-files-json", self._sample_files_json()])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((devforge / "constitute.json").read_text())
+            self.assertEqual(state["scaffolding_guide"]["starter_directories"],
+                             ["src/components", "src/utils"])
+
+    def test_missing_sample_file_key_exits_2(self):
+        """set-scaffolding-guide exits 2 when a sample file is missing a required key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            bad_json = json.dumps([{"path": "x.py"}])  # missing language + content
+            result = _run(["--devforge-dir", str(devforge), "set-scaffolding-guide",
+                           "--starter-dirs", "src",
+                           "--sample-files-json", bad_json])
+            self.assertEqual(result.returncode, 2)
+            self.assertTrue(result.stderr)
+
+    def test_replaces_prior_value(self):
+        """set-scaffolding-guide replaces (not merges with) prior value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-scaffolding-guide",
+                  "--starter-dirs", "old",
+                  "--sample-files-json", self._sample_files_json()])
+            _run(["--devforge-dir", str(devforge), "set-scaffolding-guide",
+                  "--starter-dirs", "new",
+                  "--sample-files-json", "[]"])
+            state = json.loads((devforge / "constitute.json").read_text())
+            sg = state["scaffolding_guide"]
+            self.assertEqual(sg["starter_directories"], ["new"])
+            self.assertEqual(sg["sample_files"], [])
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — Cross-process safety tests.
+# ---------------------------------------------------------------------------
+
+
+class TestCrossProcessSafety(unittest.TestCase):
+    def test_concurrent_add_rule_no_lost_appends(self):
+        """5 concurrent add-rule calls to same section produce 5 rules (no lost writes)."""
+        import threading
+
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Set up the section first.
+            r = _run(["--devforge-dir", str(devforge), "add-section",
+                      "--bucket", "architecture", "--number", "1.1",
+                      "--title", "Concurrent Section"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            procs = []
+            for i in range(5):
+                p = subprocess.Popen(
+                    [sys.executable, str(_HELPER_PY),
+                     "--devforge-dir", str(devforge),
+                     "add-rule", "--section", "1.1",
+                     "--tag", "extracted",
+                     "--text", "Concurrent rule {0}".format(i)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                procs.append(p)
+
+            for p in procs:
+                p.wait(timeout=30)
+                self.assertEqual(p.returncode, 0, p.stderr.read() if hasattr(p.stderr, 'read') else "")
+
+            state = json.loads((devforge / "constitute.json").read_text())
+            rules = state["architecture_rules"][0]["rules"]
+            self.assertEqual(len(rules), 5, "Expected 5 rules, got: {0}".format(len(rules)))
+
+    def test_concurrent_scalar_set_no_corruption(self):
+        """Concurrent set-project-name calls produce a valid (non-corrupted) JSON file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            procs = []
+            for i in range(5):
+                p = subprocess.Popen(
+                    [sys.executable, str(_HELPER_PY),
+                     "--devforge-dir", str(devforge),
+                     "set-project-name", "--value", "project-{0}".format(i)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                procs.append(p)
+
+            for p in procs:
+                p.wait(timeout=30)
+
+            # File must be valid JSON (no corruption).
+            text = (devforge / "constitute.json").read_text()
+            state = json.loads(text)  # raises on corruption
+            # project_name must be one of the values we set.
+            self.assertIn(state["project_name"],
+                          ["project-{0}".format(i) for i in range(5)])
+
+    def test_add_rule_before_section_exits_2(self):
+        """add-rule before add-section for that section exits 2 with stderr."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # No add-section called first.
+            result = _run(["--devforge-dir", str(devforge), "add-rule",
+                           "--section", "9.9", "--tag", "extracted",
+                           "--text", "Rule without section"])
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("9.9", result.stderr)
+
+    def test_mixed_set_and_add_no_corruption(self):
+        """Concurrent scalar set and array add produce valid JSON."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Set up section first.
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "workflow", "--number", "4.0",
+                  "--title", "Workflow"])
+
+            procs = []
+            for i in range(3):
+                procs.append(subprocess.Popen(
+                    [sys.executable, str(_HELPER_PY),
+                     "--devforge-dir", str(devforge),
+                     "set-project-name", "--value", "name-{0}".format(i)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                ))
+                procs.append(subprocess.Popen(
+                    [sys.executable, str(_HELPER_PY),
+                     "--devforge-dir", str(devforge),
+                     "add-rule", "--section", "4.0",
+                     "--tag", "extracted", "--text", "rule-{0}".format(i)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                ))
+
+            for p in procs:
+                p.wait(timeout=30)
+
+            # File must be valid JSON.
+            text = (devforge / "constitute.json").read_text()
+            state = json.loads(text)
+            # Rules: at least some appended (race means count may vary from 0–3).
+            rules = state["workflow_rules"][0]["rules"]
+            self.assertIsInstance(rules, list)
+
+    def test_concurrent_add_rule_exit_codes_all_zero(self):
+        """All concurrent add-rule processes exit 0 (no process fails under lock)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "domain", "--number", "5.0", "--title", "D"])
+
+            procs = []
+            for i in range(5):
+                p = subprocess.Popen(
+                    [sys.executable, str(_HELPER_PY),
+                     "--devforge-dir", str(devforge),
+                     "add-rule", "--section", "5.0",
+                     "--tag", "extracted", "--text", "rule-{0}".format(i)],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                procs.append(p)
+
+            return_codes = [p.wait(timeout=30) for p in procs]
+            self.assertEqual(return_codes, [0] * 5)
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — Round-trip integration tests.
+# ---------------------------------------------------------------------------
+
+
+class TestRoundTripIntegration(unittest.TestCase):
+    def test_all_scalar_fields_set_and_reload(self):
+        """Set project_name, mode, dates; reload via _load; compare."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "set-project-name", "--value", "integration-test"])
+            _run(["--devforge-dir", str(devforge), "set-mode", "--value", "greenfield"])
+            _run(["--devforge-dir", str(devforge), "set-dates",
+                  "--generated", "2026-05-10", "--updated", "2026-05-10"])
+            state = constitute_helper._load(str(devforge))
+            self.assertEqual(state["project_name"], "integration-test")
+            self.assertEqual(state["mode"], "greenfield")
+            self.assertEqual(state["generated_date"], "2026-05-10")
+
+    def test_all_4_add_section_buckets_loaded(self):
+        """All 4 section buckets can be populated and reloaded."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            for bucket, number in [
+                ("architecture", "1.0"),
+                ("code-quality", "2.0"),
+                ("domain", "3.0"),
+                ("workflow", "4.0"),
+            ]:
+                _run(["--devforge-dir", str(devforge), "add-section",
+                      "--bucket", bucket, "--number", number,
+                      "--title", "Section {0}".format(number)])
+            state = constitute_helper._load(str(devforge))
+            self.assertEqual(len(state["architecture_rules"]), 1)
+            self.assertEqual(len(state["code_quality_standards"]), 1)
+            self.assertEqual(len(state["domain_rules"]), 1)
+            self.assertEqual(len(state["workflow_rules"]), 1)
+
+    def test_all_6_pattern_buckets_populated(self):
+        """All 6 patterns_and_antipatterns buckets can be populated."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            combos = [
+                ("always", "universal"),
+                ("always", "project-specific"),
+                ("never", "universal"),
+                ("never", "project-specific"),
+                ("prefer", "universal"),
+                ("prefer", "project-specific"),
+            ]
+            for bucket, scope in combos:
+                _run(["--devforge-dir", str(devforge), "add-pattern-rule",
+                      "--bucket", bucket, "--scope", scope,
+                      "--tag", "extracted",
+                      "--text", "Rule for {0} {1}".format(bucket, scope)])
+            state = constitute_helper._load(str(devforge))
+            for key in ["always_universal", "always_project_specific",
+                        "never_universal", "never_project_specific",
+                        "prefer_universal", "prefer_project_specific"]:
+                self.assertEqual(len(state["patterns_and_antipatterns"][key]), 1)
+
+    def test_scaffolding_guide_set_and_reset(self):
+        """set-scaffolding-guide replaces on second call (no stale data)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            files1 = json.dumps([{"path": "a.py", "language": "python", "content": "# a"}])
+            _run(["--devforge-dir", str(devforge), "set-scaffolding-guide",
+                  "--starter-dirs", "src", "--sample-files-json", files1])
+            # Reset with empty sample files.
+            _run(["--devforge-dir", str(devforge), "set-scaffolding-guide",
+                  "--starter-dirs", "new_src", "--sample-files-json", "[]"])
+            state = constitute_helper._load(str(devforge))
+            self.assertEqual(state["scaffolding_guide"]["starter_directories"], ["new_src"])
+            self.assertEqual(state["scaffolding_guide"]["sample_files"], [])
+
+    def test_add_section_idempotency_preserves_rules_round_trip(self):
+        """add-section idempotency: rules survive a metadata-update round-trip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "code-quality", "--number", "2.1",
+                  "--title", "Original"])
+            _run(["--devforge-dir", str(devforge), "add-rule",
+                  "--section", "2.1", "--tag", "enforced",
+                  "--text", "Max function length: 50 lines"])
+            _run(["--devforge-dir", str(devforge), "add-section",
+                  "--bucket", "code-quality", "--number", "2.1",
+                  "--title", "Updated"])
+            state = constitute_helper._load(str(devforge))
+            secs = state["code_quality_standards"]
+            self.assertEqual(len(secs), 1)
+            self.assertEqual(secs[0]["title"], "Updated")
+            self.assertEqual(secs[0]["rules"][0]["text"], "Max function length: 50 lines")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,16 @@ generate_docs_helper.
 `/constitute` is the fourth and last command in the 4-command pivot
 (init-forge → generate-docs → configure → constitute).
 
-Step 1 (this commit): FIELD_SCHEMA + ENUM_FIELDS populated; default_state()
+Step 2 (this commit): 5 validation helpers (_validate_scalar, _validate_enum
+case-insensitive → canonical, _validate_string_array JSON-array OR comma-sep,
+_validate_path_value, _validate_verbatim); _load / _dump / _lock_file_path /
+_state_transaction (fcntl.LOCK_EX on constitute.json.lock sidecar; mirrors
+configure_helper plumbing); _find_section helper (first-match across the 4
+section_array buckets); 10 setter subcommands (set-project-name, set-mode,
+set-dates, set-project-identity, add-section idempotent on (bucket, number),
+add-rule, add-table, add-code-example, add-pattern-rule, set-scaffolding-guide).
+
+Step 1 (prior): FIELD_SCHEMA + ENUM_FIELDS populated; default_state()
 expanded to full schema shape; four read-* subcommands added (read-init,
 read-configure, read-docs, read-glossary). The `reset` subcommand from
 Step 0 is preserved and verified unchanged.
@@ -52,13 +61,24 @@ Stdlib only. Python 3.8+.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Union
+
+try:
+    import fcntl  # POSIX-only.
+    _HAVE_FCNTL = True
+except ImportError:  # pragma: no cover - non-POSIX fallback path
+    # AIDevTeamForge targets POSIX (macOS, Linux, WSL) only. The graceful-
+    # degradation flag avoids an import crash on Windows native but no-op
+    # locking is NOT a supported configuration: concurrent add-rule
+    # invocations on Windows would silently lose writes.
+    _HAVE_FCNTL = False
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +244,245 @@ def cmd_reset(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# _load / _dump / _lock_file_path / _state_transaction helpers.
+# ---------------------------------------------------------------------------
+
+
+def _load(devforge_dir: Union[str, "os.PathLike[str]"]) -> dict:
+    """Load constitute.json into a state dict.
+
+    If the file is missing, returns default_state() — normal on first run.
+    Malformed JSON propagates json.JSONDecodeError so the caller can exit
+    non-zero with a clear message rather than silently resetting.
+    """
+    path = _output_file_path(devforge_dir)
+    if not path.exists():
+        return default_state()
+    text = path.read_text(encoding="utf-8")
+    return json.loads(text)
+
+
+def _dump(state: dict, devforge_dir: Union[str, "os.PathLike[str]"]) -> None:
+    """Write state dict to constitute.json atomically.
+
+    Thin wrapper around _write_state so setters can call paired
+    _load/_dump without depending on _write_state's signature directly.
+    """
+    _write_state(state, devforge_dir)
+
+
+def _lock_file_path(devforge_dir: Union[str, "os.PathLike[str]"]) -> Path:
+    """Return the sidecar lock path for constitute.json in devforge_dir.
+
+    The lock is purely metadata — the json is never opened in r+/w+ mode.
+    Created on first use; intentionally never deleted.
+    """
+    return _output_file_path(devforge_dir).parent / (OUTPUT_FILE_NAME + ".lock")
+
+
+@contextlib.contextmanager
+def _state_transaction(devforge_dir: Union[str, "os.PathLike[str]"]) -> Iterator[dict]:
+    """Read-modify-write constitute.json under an exclusive process lock.
+
+    Usage:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_name"] = "my-project"
+        # state written to disk on context exit; NOT written if body raises
+
+    Lock: fcntl.flock(LOCK_EX) on POSIX. On Windows (no fcntl) the
+    manager degrades to no-op locking — that platform is out of scope.
+
+    If the body raises ANY exception, the write is skipped and the lock
+    is released cleanly. The exception propagates to the caller.
+    """
+    devforge_path = Path(devforge_dir)
+    devforge_path.mkdir(parents=True, exist_ok=True)
+    lock_path = _lock_file_path(devforge_dir)
+    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        if _HAVE_FCNTL:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            state = _load(devforge_dir)
+            yield state
+            _dump(state, devforge_dir)
+        finally:
+            if _HAVE_FCNTL:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers (private).
+# ---------------------------------------------------------------------------
+
+
+def _validate_scalar(value: str, field_name: str) -> str:
+    """Strip and validate a scalar string value.
+
+    Returns the stripped string. Raises ValueError if empty after strip.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return stripped
+
+
+def _validate_enum(value: str, field_name: str, allowed_set: set) -> str:
+    """Validate an enum scalar against an explicit allowed_set.
+
+    Case-insensitive match; returns the canonical (exact-case) member from
+    allowed_set. Raises ValueError if empty or no case-insensitive match,
+    with an error message that enumerates the allowed values.
+    """
+    stripped = _validate_scalar(value, field_name)
+    # Exact match first (fast path; preserves canonical case).
+    if stripped in allowed_set:
+        return stripped
+    # Case-insensitive fallback: normalize to the canonical member.
+    lower_to_canonical = {member.lower(): member for member in allowed_set}
+    if stripped.lower() in lower_to_canonical:
+        return lower_to_canonical[stripped.lower()]
+    raise ValueError(
+        "{0}: invalid value {1!r}; allowed: {2}".format(
+            field_name, stripped, sorted(allowed_set)
+        )
+    )
+
+
+def _validate_string_array(value: str, field_name: str) -> List[str]:
+    """Parse a string-array value and validate each item.
+
+    Accepts two input forms:
+
+    1. Comma-separated string (default): ``"vue, vue-router, pinia"`` →
+       ``["vue", "vue-router", "pinia"]``.
+    2. JSON-array string (when input starts with ``[`` and ends with ``]``
+       after strip): ``'["Either<DataError, T>", "Result<Ok, Err>"]'``
+       → ``["Either<DataError, T>", "Result<Ok, Err>"]``. JSON form
+       allows individual items to contain literal commas without breaking
+       the comma split.
+
+    Returns a list of stripped, non-empty strings. Raises ValueError if
+    any item is empty after strip, the result list is empty, or the JSON
+    form is malformed.
+    """
+    stripped_value = value.strip()
+    items_raw = []  # type: List[str]
+    if stripped_value.startswith("[") and stripped_value.endswith("]"):
+        # JSON-array form. Decode + validate.
+        try:
+            decoded = json.loads(stripped_value)
+        except ValueError as err:
+            raise ValueError(
+                "{0}: JSON-array form is malformed: {1}".format(field_name, err)
+            )
+        if not isinstance(decoded, list):
+            raise ValueError(
+                "{0}: JSON-array form must decode to a list, got {1}".format(
+                    field_name, type(decoded).__name__
+                )
+            )
+        for item in decoded:
+            if not isinstance(item, str):
+                raise ValueError(
+                    "{0}: JSON-array items must be strings, got {1}".format(
+                        field_name, type(item).__name__
+                    )
+                )
+            items_raw.append(item)
+    else:
+        # Comma-separated form (default).
+        items_raw = stripped_value.split(",")
+
+    result = []
+    for raw in items_raw:
+        stripped = raw.strip()
+        if not stripped:
+            raise ValueError(
+                "{0}: each item must be non-empty (got an empty item in "
+                "{1!r}; for values with literal commas use JSON-array form)".format(
+                    field_name, value
+                )
+            )
+        result.append(stripped)
+    if not result:
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return result
+
+
+def _validate_path_value(value: str, field_name: str) -> str:
+    """Validate a path-shaped string: non-empty after strip, no newlines.
+
+    Paths should not contain newline or carriage-return characters.
+    Returns the stripped string. Raises ValueError on failure.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    if "\n" in stripped or "\r" in stripped:
+        raise ValueError(
+            "{0}: path value must not contain newline characters".format(field_name)
+        )
+    return stripped
+
+
+def _validate_verbatim(value: str, field_name: str) -> str:
+    """Validate a verbatim multi-line value: non-empty after outer strip only.
+
+    Internal whitespace is preserved — rule text and code examples are
+    multi-line. Returns the original value (NOT stripped). Raises
+    ValueError if the value is all whitespace.
+    """
+    if not value.strip():
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Section + pattern lookup helpers (private).
+# ---------------------------------------------------------------------------
+
+_SECTION_BUCKET_TO_KEY = {
+    "architecture":  "architecture_rules",
+    "code-quality":  "code_quality_standards",
+    "domain":        "domain_rules",
+    "workflow":      "workflow_rules",
+}
+
+_PATTERN_SCOPE_TO_SUFFIX = {
+    "universal":        "universal",
+    "project-specific": "project_specific",
+}
+
+
+def _find_section(state: dict, number: str):
+    """Return (bucket_list, section_dict) for the section with given number.
+
+    Searches in this order: architecture_rules, code_quality_standards,
+    domain_rules, workflow_rules. Numbers are strings ("2.1", "3.5", etc.).
+    Returns (None, None) if not found.
+
+    First-match policy: if the same number exists in two buckets (e.g.,
+    "1.1" in both architecture_rules and workflow_rules), the architecture
+    bucket wins — add-rule / add-table / add-code-example would always
+    route to the architecture copy and silently miss the workflow copy.
+    The Phase 5 spec convention numbers each bucket non-overlappingly
+    (2.x = architecture, 3.x = code-quality, 5.x = domain, 6.x = workflow,
+    matching cse-strata-ws-forge/constitution.md), so cross-bucket
+    duplicates are a caller bug to avoid, not a helper bug to enforce.
+    """
+    for bucket_key in ("architecture_rules", "code_quality_standards",
+                       "domain_rules", "workflow_rules"):
+        bucket = state.get(bucket_key, [])
+        for section in bucket:
+            if section.get("number") == number:
+                return bucket, section
+    return None, None
+
+
+# ---------------------------------------------------------------------------
 # Error helpers.
 # ---------------------------------------------------------------------------
 
@@ -232,6 +491,404 @@ def _die(message: str, code: int = 1) -> int:
     """Write an error message to stderr and return the given exit code."""
     sys.stderr.write("constitute_helper: {0}\n".format(message))
     return code
+
+
+# ---------------------------------------------------------------------------
+# Setter subcommands (10).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_project_name(args: argparse.Namespace) -> int:
+    """Set project_name scalar."""
+    try:
+        value = _validate_scalar(args.value, "project_name")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_name"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-project-name: {0}".format(err))
+    return 0
+
+
+def cmd_set_mode(args: argparse.Namespace) -> int:
+    """Set mode enum (existing-codebase | greenfield)."""
+    try:
+        value = _validate_enum(args.value, "mode", ENUM_FIELDS["mode"])
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["mode"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-mode: {0}".format(err))
+    return 0
+
+
+def cmd_set_dates(args: argparse.Namespace) -> int:
+    """Set generated_date and last_updated (both YYYY-MM-DD)."""
+    date_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    for date_value, field_name in (
+        (args.generated, "generated_date"),
+        (args.updated, "last_updated"),
+    ):
+        if not date_re.match(date_value):
+            return _die(
+                "{0}: invalid date format {1!r}; expected YYYY-MM-DD".format(
+                    field_name, date_value
+                ),
+                code=2,
+            )
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["generated_date"] = args.generated
+            state["last_updated"] = args.updated
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-dates: {0}".format(err))
+    return 0
+
+
+def cmd_set_project_identity(args: argparse.Namespace) -> int:
+    """Set project_identity record (name, type, domain, stack). Replaces prior value."""
+    try:
+        name = _validate_scalar(args.name, "project_identity.name")
+        ptype = _validate_scalar(args.type, "project_identity.type")
+        domain = _validate_scalar(args.domain, "project_identity.domain")
+        stack = _validate_scalar(args.stack, "project_identity.stack")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_identity"] = {
+                "name": name,
+                "type": ptype,
+                "domain": domain,
+                "stack": stack,
+            }
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-project-identity: {0}".format(err))
+    return 0
+
+
+def cmd_add_section(args: argparse.Namespace) -> int:
+    """Append (or replace-metadata-of) a Section in the given bucket.
+
+    Idempotent on (bucket, number): second call with same (bucket, number)
+    replaces the section's metadata while preserving its rules/tables/
+    code_examples. Idempotency is bucket-local — same number in a different
+    bucket creates a phantom duplicate that downstream add-rule will never
+    reach (per _find_section's first-match policy). Phase 5 spec convention
+    avoids this by numbering each bucket non-overlappingly.
+    """
+    bucket_arg = args.bucket
+    if bucket_arg not in _SECTION_BUCKET_TO_KEY:
+        return _die(
+            "add-section: unknown bucket {0!r}; allowed: {1}".format(
+                bucket_arg, sorted(_SECTION_BUCKET_TO_KEY.keys())
+            ),
+            code=2,
+        )
+    bucket_key = _SECTION_BUCKET_TO_KEY[bucket_arg]
+
+    number = args.number
+    if not re.match(r"^\d+(\.\d+)*$", number):
+        return _die(
+            "add-section: invalid section number {0!r}; expected format like '2', '2.1', '5.3.1'".format(number),
+            code=2,
+        )
+
+    try:
+        title = _validate_scalar(args.title, "section.title")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    tag = None
+    if args.tag is not None:
+        try:
+            tag = _validate_enum(args.tag, "section_tag", ENUM_FIELDS["section_tag"])
+        except ValueError as err:
+            return _die(str(err), code=2)
+
+    description = args.description  # Optional; no validation beyond presence.
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            bucket = state[bucket_key]
+            # Idempotency: look for existing section with same number.
+            for existing in bucket:
+                if existing.get("number") == number:
+                    # Replace metadata; preserve content arrays.
+                    existing["title"] = title
+                    existing["tag"] = tag
+                    existing["description"] = description
+                    break
+            else:
+                # New section.
+                section = _empty_section()
+                section["number"] = number
+                section["title"] = title
+                section["tag"] = tag
+                section["description"] = description
+                bucket.append(section)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("add-section: {0}".format(err))
+    return 0
+
+
+def cmd_add_rule(args: argparse.Namespace) -> int:
+    """Append a rule to the section identified by --section number."""
+    try:
+        tag = _validate_enum(args.tag, "rule_tag", ENUM_FIELDS["rule_tag"])
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        text = _validate_verbatim(args.text, "rule.text")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # Pre-check section exists (read-only — no lock). Avoids entering the
+    # _state_transaction on a guaranteed-fail path; `return` inside the
+    # with-block would still trigger _dump and silently re-write identical
+    # state, breaking the transaction's "NOT written if body raises" contract.
+    try:
+        prev_state = _load(args.devforge_dir)
+    except (OSError, ValueError) as err:
+        return _die("add-rule: {0}".format(err))
+    if _find_section(prev_state, args.section)[1] is None:
+        return _die(
+            "add-rule: section {0!r} not found; run add-section first".format(
+                args.section
+            ),
+            code=2,
+        )
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            _bucket, section = _find_section(state, args.section)
+            # Race window (concurrent delete) is impossible today — no
+            # delete-section subcmd exists. assert aborts the transaction
+            # cleanly via exception propagation if a future subcmd changes that.
+            assert section is not None, (
+                "add-rule: section {0!r} disappeared between check and lock".format(
+                    args.section
+                )
+            )
+            section["rules"].append({"tag": tag, "text": text})
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("add-rule: {0}".format(err))
+    return 0
+
+
+def cmd_add_table(args: argparse.Namespace) -> int:
+    """Append a table to the section identified by --section number."""
+    try:
+        columns = _validate_string_array(args.columns, "table.columns")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    try:
+        rows_raw = json.loads(args.rows_json)
+    except ValueError as err:
+        return _die(
+            "add-table: --rows-json is malformed JSON: {0}".format(err), code=2
+        )
+    if not isinstance(rows_raw, list):
+        return _die(
+            "add-table: --rows-json must be a JSON array of arrays, got {0}".format(
+                type(rows_raw).__name__
+            ),
+            code=2,
+        )
+    rows = []  # type: List[List[str]]
+    for i, row in enumerate(rows_raw):
+        if not isinstance(row, list):
+            return _die(
+                "add-table: row {0} must be a JSON array, got {1}".format(
+                    i, type(row).__name__
+                ),
+                code=2,
+            )
+        if len(row) != len(columns):
+            return _die(
+                "add-table: row {0} has {1} cells but table has {2} columns".format(
+                    i, len(row), len(columns)
+                ),
+                code=2,
+            )
+        row_strs = []
+        for j, cell in enumerate(row):
+            if not isinstance(cell, str):
+                return _die(
+                    "add-table: row {0} cell {1} must be a string, got {2}".format(
+                        i, j, type(cell).__name__
+                    ),
+                    code=2,
+                )
+            row_strs.append(cell)
+        rows.append(row_strs)
+
+    # Pre-check section exists outside the transaction; see cmd_add_rule.
+    try:
+        prev_state = _load(args.devforge_dir)
+    except (OSError, ValueError) as err:
+        return _die("add-table: {0}".format(err))
+    if _find_section(prev_state, args.section)[1] is None:
+        return _die(
+            "add-table: section {0!r} not found; run add-section first".format(
+                args.section
+            ),
+            code=2,
+        )
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            _bucket, section = _find_section(state, args.section)
+            assert section is not None, (
+                "add-table: section {0!r} disappeared between check and lock".format(
+                    args.section
+                )
+            )
+            section["tables"].append({"columns": columns, "rows": rows})
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("add-table: {0}".format(err))
+    return 0
+
+
+def cmd_add_code_example(args: argparse.Namespace) -> int:
+    """Append a code example to the section identified by --section number."""
+    try:
+        label = _validate_enum(args.label, "code_label", ENUM_FIELDS["code_label"])
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        language = _validate_scalar(args.language, "code_example.language")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        code = _validate_verbatim(args.code, "code_example.code")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    annotation = args.annotation  # Optional; no validation.
+
+    # Pre-check section exists outside the transaction; see cmd_add_rule.
+    try:
+        prev_state = _load(args.devforge_dir)
+    except (OSError, ValueError) as err:
+        return _die("add-code-example: {0}".format(err))
+    if _find_section(prev_state, args.section)[1] is None:
+        return _die(
+            "add-code-example: section {0!r} not found; run add-section first".format(
+                args.section
+            ),
+            code=2,
+        )
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            _bucket, section = _find_section(state, args.section)
+            assert section is not None, (
+                "add-code-example: section {0!r} disappeared between check and lock".format(
+                    args.section
+                )
+            )
+            section["code_examples"].append({
+                "label": label,
+                "language": language,
+                "code": code,
+                "annotation": annotation,
+            })
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("add-code-example: {0}".format(err))
+    return 0
+
+
+def cmd_add_pattern_rule(args: argparse.Namespace) -> int:
+    """Append a rule to a patterns_and_antipatterns bucket."""
+    allowed_buckets = {"always", "never", "prefer"}
+    if args.bucket not in allowed_buckets:
+        return _die(
+            "add-pattern-rule: unknown bucket {0!r}; allowed: {1}".format(
+                args.bucket, sorted(allowed_buckets)
+            ),
+            code=2,
+        )
+    if args.scope not in _PATTERN_SCOPE_TO_SUFFIX:
+        return _die(
+            "add-pattern-rule: unknown scope {0!r}; allowed: {1}".format(
+                args.scope, sorted(_PATTERN_SCOPE_TO_SUFFIX.keys())
+            ),
+            code=2,
+        )
+    pattern_key = "{0}_{1}".format(args.bucket, _PATTERN_SCOPE_TO_SUFFIX[args.scope])
+
+    try:
+        tag = _validate_enum(args.tag, "rule_tag", ENUM_FIELDS["rule_tag"])
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        text = _validate_verbatim(args.text, "pattern_rule.text")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["patterns_and_antipatterns"][pattern_key].append(
+                {"tag": tag, "text": text}
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("add-pattern-rule: {0}".format(err))
+    return 0
+
+
+def cmd_set_scaffolding_guide(args: argparse.Namespace) -> int:
+    """Set scaffolding_guide record (starter_directories + sample_files). Replaces prior value."""
+    try:
+        starter_dirs = _validate_string_array(args.starter_dirs, "scaffolding_guide.starter_directories")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    try:
+        sample_files_raw = json.loads(args.sample_files_json)
+    except ValueError as err:
+        return _die(
+            "set-scaffolding-guide: --sample-files-json is malformed JSON: {0}".format(err),
+            code=2,
+        )
+    if not isinstance(sample_files_raw, list):
+        return _die(
+            "set-scaffolding-guide: --sample-files-json must be a JSON array, got {0}".format(
+                type(sample_files_raw).__name__
+            ),
+            code=2,
+        )
+    required_keys = {"path", "language", "content"}
+    for i, item in enumerate(sample_files_raw):
+        if not isinstance(item, dict):
+            return _die(
+                "set-scaffolding-guide: sample file {0} must be a JSON object, got {1}".format(
+                    i, type(item).__name__
+                ),
+                code=2,
+            )
+        missing = required_keys - set(item.keys())
+        if missing:
+            return _die(
+                "set-scaffolding-guide: sample file {0} is missing keys: {1}".format(
+                    i, sorted(missing)
+                ),
+                code=2,
+            )
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["scaffolding_guide"] = {
+                "starter_directories": starter_dirs,
+                "sample_files": sample_files_raw,
+            }
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-scaffolding-guide: {0}".format(err))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -582,6 +1239,150 @@ def build_parser() -> argparse.ArgumentParser:
         help="Parse docs/glossary.md and emit JSON list of term records.",
     )
     sp.set_defaults(func=cmd_read_glossary)
+
+    # -----------------------------------------------------------------------
+    # Step 2 setters.
+    # -----------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "set-project-name",
+        help="Set project_name scalar.",
+    )
+    sp.add_argument("--value", required=True, help="Project name.")
+    sp.set_defaults(func=cmd_set_project_name)
+
+    sp = subparsers.add_parser(
+        "set-mode",
+        help="Set mode enum (existing-codebase | greenfield).",
+    )
+    sp.add_argument("--value", required=True, help="Mode value.")
+    sp.set_defaults(func=cmd_set_mode)
+
+    sp = subparsers.add_parser(
+        "set-dates",
+        help="Set generated_date and last_updated (both YYYY-MM-DD).",
+    )
+    sp.add_argument("--generated", required=True, help="Generated date (YYYY-MM-DD).")
+    sp.add_argument("--updated", required=True, help="Last updated date (YYYY-MM-DD).")
+    sp.set_defaults(func=cmd_set_dates)
+
+    sp = subparsers.add_parser(
+        "set-project-identity",
+        help="Set project_identity record (name, type, domain, stack). Replaces prior value.",
+    )
+    sp.add_argument("--name", required=True, help="Project identity name.")
+    sp.add_argument("--type", required=True, help="Project identity type.")
+    sp.add_argument("--domain", required=True, help="Project identity domain.")
+    sp.add_argument("--stack", required=True, help="Project identity stack.")
+    sp.set_defaults(func=cmd_set_project_identity)
+
+    sp = subparsers.add_parser(
+        "add-section",
+        help="Add (or update metadata of) a section in a bucket. Idempotent on (bucket, number).",
+    )
+    sp.add_argument(
+        "--bucket",
+        required=True,
+        choices=list(_SECTION_BUCKET_TO_KEY.keys()),
+        help="Section bucket (architecture | code-quality | domain | workflow).",
+    )
+    sp.add_argument("--number", required=True, help="Section number (e.g. '2', '2.1').")
+    sp.add_argument("--title", required=True, help="Section title.")
+    sp.add_argument(
+        "--tag",
+        default=None,
+        help="Section tag (universal | project-specific | greenfield-only). Optional.",
+    )
+    sp.add_argument("--description", default=None, help="Section description. Optional.")
+    sp.set_defaults(func=cmd_add_section)
+
+    sp = subparsers.add_parser(
+        "add-rule",
+        help="Append a rule to the section identified by --section number.",
+    )
+    sp.add_argument("--section", required=True, help="Section number to append rule to.")
+    sp.add_argument(
+        "--tag",
+        required=True,
+        help="Rule tag (extracted | enforced | universal | project-specific).",
+    )
+    sp.add_argument("--text", required=True, help="Rule text.")
+    sp.set_defaults(func=cmd_add_rule)
+
+    sp = subparsers.add_parser(
+        "add-table",
+        help="Append a table to the section identified by --section number.",
+    )
+    sp.add_argument("--section", required=True, help="Section number to append table to.")
+    sp.add_argument(
+        "--columns",
+        required=True,
+        help="Column names as comma-separated string or JSON array.",
+    )
+    sp.add_argument(
+        "--rows-json",
+        required=True,
+        dest="rows_json",
+        help="Rows as JSON array of arrays of strings.",
+    )
+    sp.set_defaults(func=cmd_add_table)
+
+    sp = subparsers.add_parser(
+        "add-code-example",
+        help="Append a code example to the section identified by --section number.",
+    )
+    sp.add_argument("--section", required=True, help="Section number to append code example to.")
+    sp.add_argument(
+        "--label",
+        required=True,
+        help="Code example label (CORRECT | WRONG | EXAMPLE).",
+    )
+    sp.add_argument("--language", required=True, help="Programming language.")
+    sp.add_argument("--code", required=True, help="Code content (multi-line OK).")
+    sp.add_argument("--annotation", default=None, help="Optional annotation text.")
+    sp.set_defaults(func=cmd_add_code_example)
+
+    sp = subparsers.add_parser(
+        "add-pattern-rule",
+        help="Append a rule to a patterns_and_antipatterns bucket.",
+    )
+    sp.add_argument(
+        "--bucket",
+        required=True,
+        choices=["always", "never", "prefer"],
+        help="Pattern bucket (always | never | prefer).",
+    )
+    sp.add_argument(
+        "--scope",
+        required=True,
+        choices=list(_PATTERN_SCOPE_TO_SUFFIX.keys()),
+        help="Scope (universal | project-specific).",
+    )
+    sp.add_argument(
+        "--tag",
+        required=True,
+        help="Rule tag (extracted | enforced | universal | project-specific).",
+    )
+    sp.add_argument("--text", required=True, help="Pattern rule text.")
+    sp.set_defaults(func=cmd_add_pattern_rule)
+
+    sp = subparsers.add_parser(
+        "set-scaffolding-guide",
+        help="Set scaffolding_guide record (starter_directories + sample_files). Replaces prior value.",
+    )
+    sp.add_argument(
+        "--starter-dirs",
+        required=True,
+        dest="starter_dirs",
+        help="Starter directories as comma-separated string or JSON array.",
+    )
+    sp.add_argument(
+        "--sample-files-json",
+        required=True,
+        dest="sample_files_json",
+        help='Sample files as JSON array of {path, language, content} objects.',
+    )
+    sp.set_defaults(func=cmd_set_scaffolding_guide)
 
     return parser
 
