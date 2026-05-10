@@ -18,7 +18,7 @@ The 2026-04-30 pivot plan described `/configure` as "consume legacy onboard docs
 
 Before drafting this plan, the docs/ output, manifest extraction surface, and template placeholder list were inventoried against testForge20 (the wrapper-mode + 26-package-monorepo test bed):
 
-- `docs/overview.md` exposes 12 sections: Purpose, Tech Stack (Layer | Technology table), Project Structure (annotated tree), Entry Points, Key Commands (Command | Description table), Module Map (Infrastructure / Core / Domain bucket tables), Cross-Module Dependencies (text tree), Application Routes, Navigation Guards, Test Files, Packages.
+- `docs/overview.md` exposes 11 sections: Purpose, Tech Stack (Layer | Technology table), Project Structure (annotated tree), Entry Points, Key Commands (Command | Description table), Module Map (Infrastructure / Core / Domain bucket tables), Cross-Module Dependencies (text tree), Application Routes, Navigation Guards, Test Files, Packages.
 - `docs/architecture.md` exposes 8 sections: Architecture Overview, Module/Package Structure, Patterns (with code samples), Conventions, Layers, Cross-Cuts, Dependency Direction Rules, Dependency Overview.
 - `docs/glossary.md` is alphabetical term entries with code anchors.
 - `.devforge/index.json` carries per-package `manifest_scripts` (npm scripts block) + `manifest_dependencies` + `files[]` (capped at 500). Sufficient to derive `BUILD_COMMANDS` / `TYPE_CHECK_COMMANDS` / `LINT_COMMANDS` per package without re-parsing manifests.
