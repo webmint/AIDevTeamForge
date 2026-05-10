@@ -1,6 +1,6 @@
 # Architecture Pivot — 4-command sequence
 
-**Status**: Step 1 complete. Step 2 next. Branch `develop-2.0-init` at commit `bd544ff`.
+**Status**: COMPLETE 2026-05-11. All 8 Steps DONE. 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) shipped end-to-end. Branch `develop-2.0-init`. This plan retired — no further work scheduled. See `CONSTITUTE-PLAN.md` for the final pivot scope; future work tracked in new plans.
 
 User-approved pivot from current `/setup-wizard` + `/onboard` + `/constitute` trio to a four-command sequence: `/init-forge` → `/generate-docs` → `/configure` → `/constitute`. Detection moves from Phase 1 light-scan (in current setup-wizard) to onboard's deep scan (renamed `/generate-docs`).
 
@@ -274,20 +274,22 @@ Once `/init-forge` + `/configure` cover the same ground:
 
 **Verify**: no references to `/setup-wizard` remain in active code paths. Existing test data (testForge20, cse-strata-ws-forge) still produces correct outputs through the new sequence.
 
-### Step 8: Schema-anchor /constitute
+### Step 8: Schema-anchor /constitute ✓ DONE 2026-05-11
 
-Apply the same helper-owns-shape pattern to `/constitute`'s `constitution.md` output. Schema validated against cse-strata-ws-forge constitution.md (451 lines). 7 top-level sections, closed rule-tag enum (`extracted`/`enforced`/`universal`/`project-specific`), structured tables + code examples.
+Helper-owns-shape pattern applied to `/constitute`'s `constitution.md` output. Schema validated against cse-strata-ws-forge constitution.md (451 lines). 7 top-level sections, closed rule-tag enum (`extracted`/`enforced`/`universal`/`project-specific`), structured tables + code examples.
 
-Sub-steps:
-- 8a. Implement `constitute_helper.py` setters (parallels `onboard_helper.py` pattern from Step 1)
-- 8b. Implement render function (manual concatenation per the same approach as generate-docs)
-- 8c. Implement `validate` subcommand (same 4-dimension quality framework: slot-fill, citation validity, code-example syntax check, rule-tag validity)
-- 8d. Update `/constitute` spec to instruct LLM via the helper API instead of free-form markdown
-- 8e. Tests parallel `constitute_helper`'s shape (target ~50-80 tests)
+Final delivery state (see `CONSTITUTE-PLAN.md` for full work order):
+- `constitute_helper.py` (~2710 lines) with 15 subcommands: reset / 4 read-* (read-init / read-configure / read-docs / read-glossary) / 10 setters (set-project-name / set-mode / set-dates / set-project-identity / add-section / add-rule / add-table / add-code-example / add-pattern-rule / set-scaffolding-guide) / render / verify / validate / summary.
+- State format: JSON (`.devforge/constitute.json`) — deviates from the single-yaml convention because constitute data is 2-3 levels deep (Section → rules + tables + code_examples per bucket per scope); JSON's native nesting fits cleaner.
+- 5 validation helpers mirror configure_helper exactly (case-insensitive enum returning canonical; JSON-array OR comma-sep string_array).
+- `_state_transaction` with fcntl.LOCK_EX on `constitute.json.lock` sidecar.
+- `validate` 4-dim quality framework: slot_fill (0.30 weight) + citation (0.25) + code_syntax (0.25) + rule_tag (0.20). Composite ≥0.95 = pass. Per-dim threshold map (rule_tag = 1.0; others = 0.95).
+- Spec at `src/commands/constitute/main.md` (~446 lines) + 2 reference docs (section-shapes.md, empirical-bugs.md). Phase 0-6 contract mirrors /configure pattern.
+- Empirical bug preempts shipped from day one: Phase 3 stop-discipline, JSON-array setter form, case-insensitive enum, install.sh stray-state-file guard, wrapper-mode path resolution.
+- 201/201 helper tests pass; full suite no regressions.
+- testForge20 helper smoke test passes end-to-end (4 read-* clean, sample setters + render + verify + validate composite=1.0).
 
-**Verify**: re-running `/constitute` against testForge20 produces a constitution.md structurally identical to current cse-strata-ws-forge/constitution.md (or improved); `constitute_helper validate` reports composite quality ≥0.95; rule tags all from the closed enum; tables and code examples correctly rendered.
-
-**Cost estimate**: 1-2 sessions on top of the rest of the pivot. The helper is smaller than `onboard_helper` but the schema includes patterns/anti-patterns (6 buckets) and tables, so render logic is non-trivial.
+**Verify**: helper smoke test on testForge20 (commit `<step-6-smoke-test>`) — render + verify + validate all clean, composite 1.0; spec passes instruction-reviewer + claude-code-guide audits.
 
 Schema details + helper API in memory `project_schema_anchored_constitute.md`.
 

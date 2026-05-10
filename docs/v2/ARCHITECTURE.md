@@ -1,14 +1,15 @@
-# Forge 2.0 — Architecture of `/init-forge`, `/generate-docs`, `/configure`
+# Forge 2.0 — Architecture of `/init-forge`, `/generate-docs`, `/configure`, `/constitute`
 
 Contributor / future-me reference. Architecture-only: helper layout, schemas, data flow, state shape, hook integration. Command UX (steps, prompts, retry budgets) lives in the authoritative specs:
 
 - `src/commands/init-forge/main.md` — `/init-forge` step contract
 - `src/commands/generate-docs/main.md` — `/generate-docs` phase contract
 - `src/commands/configure/main.md` — `/configure` phase contract
+- `src/commands/constitute/main.md` — `/constitute` phase contract
 
 This file does not duplicate those. It explains what sits **behind** the commands: the Python helpers, the on-disk artifacts, the inter-helper data flow, and the runtime hooks that police LLM behavior. When the spec and this file disagree about user-facing behavior, the spec wins; when they disagree about helper internals, this file wins.
 
-Version: develop-2.0-init branch, post-2026-05-10. Three of the four pivot commands shipped (`/init-forge` + `/generate-docs` + `/configure`); `/constitute` schema-anchor work is the next major scope.
+Version: develop-2.0-init branch, post-2026-05-11. All four pivot commands shipped (`/init-forge` + `/generate-docs` + `/configure` + `/constitute`); ARCHITECTURE-PIVOT-PLAN.md retired.
 
 ---
 
@@ -409,7 +410,109 @@ Plus install.sh stray-state-file guard (Step 6 surfaced the bug; fix shipped und
 
 ---
 
-## 5. CBM-first protocol enforcement
+## 5. `/constitute` — synthesize constitution.md
+
+`/constitute` consumes the artifacts emitted by `/init-forge` + `/generate-docs` + `/configure` and synthesizes `constitution.md` at the install root. Schema-anchored: helper owns the 7-section markdown structure; LLM provides values via setters; manual concatenation render. Mirrors the helper-owns-shape pattern from `/configure` + `/generate-docs`.
+
+### 5.1 Helper architecture
+
+One file: `src/devforge/lib/constitute_helper.py` (~2710 lines, no submodule split). Single shell launcher at `src/devforge/lib/constitute_helper`. Stdlib only, Python 3.8+.
+
+15 subcommands grouped by role:
+
+| Group | Subcommands | Role |
+|---|---|---|
+| State plumbing | `reset` | Write fresh defaults JSON |
+| Read-* inputs | `read-init` / `read-configure` / `read-docs` / `read-glossary` | Capture Phase 1 inputs as JSON |
+| Identity setters | `set-project-name` / `set-mode` / `set-dates` / `set-project-identity` | Top-level scalars + identity record |
+| Section builders | `add-section` / `add-rule` / `add-table` / `add-code-example` | Build Sections 2/3/5/6 sub-sections + content |
+| Pattern builder | `add-pattern-rule` | Build Section 4's 6 buckets |
+| Scaffolding | `set-scaffolding-guide` | Section 7 (greenfield only) |
+| Render | `render` | Atomic write `<install_root>/constitution.md` |
+| Verify | `verify` | Required-section + closed-enum + round-trip identity |
+| Validate | `validate` | 4-dim quality framework (composite ≥0.95) |
+| Summary | `summary` | Verbatim-echo report (mirrors init/configure summary) |
+
+Schema: `FIELD_SCHEMA` carries 11 top-level keys (locked order; emit walks list for diff stability). Top-level kinds: scalar / date_scalar / enum_scalar / nullable_record / section_array / patterns_section. State format is **JSON** (not YAML) — constitute data is 2-3 levels deep (Section → rules + tables + code_examples per bucket per scope) and JSON's native nesting fits cleaner than extending the configure-style YAML emitter.
+
+`ENUM_FIELDS`: 4 closed enums — `mode` (existing-codebase | greenfield), `rule_tag` (extracted | enforced | universal | project-specific), `section_tag` (universal | project-specific | greenfield-only), `code_label` (CORRECT | WRONG | EXAMPLE).
+
+5 validation helpers mirror `configure_helper`: `_validate_scalar` / `_validate_enum` (case-insensitive → canonical) / `_validate_string_array` (JSON-array form for internal-comma values OR comma-sep) / `_validate_path_value` / `_validate_verbatim`. Setters route through `_state_transaction(devforge_dir)` — `fcntl.LOCK_EX` on `constitute.json.lock` sidecar; mirrors configure plumbing line-for-line.
+
+`_find_section` first-match across 4 section_array buckets. Cross-bucket section number duplicates are a caller bug (Phase 5 spec convention numbers each bucket non-overlappingly: 2.x = architecture, 3.x = code-quality, 5.x = domain, 6.x = workflow).
+
+### 5.2 Phase shape
+
+```
+Phase 0 — Pre-flight gate (5 file checks: init.yaml + configure.yaml + docs/{overview,architecture,glossary}.md)
+Phase 1 — reset + 4 read-* into INIT_JSON / CONFIGURE_JSON / DOCS_JSON / GLOSSARY_JSON
+Phase 2 — Compose section content (orchestrator-direct, NO subagent dispatch).
+          Section 1 from configure.yaml + glossary; Sections 2/3 from
+          architecture.patterns + conventions + universal defaults; Section 4
+          6-bucket patterns; Section 5 from glossary entity terms; Section 6
+          from workflow_enforcement + universal defaults; Section 7 conditional
+          on greenfield + scaffolding_guide.
+Phase 3 — Per-section bulk-confirmation (plain prose echo, NOT AskUserQuestion;
+          STOP discipline directive at top — non-negotiable per /configure
+          empirical bug; Section 4 has its own echo template — bucket-based,
+          no sub-section numbers; JSON-array setter form documented for
+          internal-comma values).
+Phase 4 — Sequential AskUserQuestion (Q-mode auto-resolved from project_state
+          when unambiguous, runtime-resolved as Phase 1.5; conditional
+          Q-domain greenfield-only when glossary < 3 records).
+Phase 5 — render constitution.md atomically at install_root.
+Phase 6 — verify + validate + summary. Sub-0.95 validate composite prompts
+          user ship/cancel/fix decision (novel pattern — /configure verify is
+          binary, /constitute validate is graded; different ergonomics warranted).
+```
+
+Retry budget: 3 per setter on validation failure; 4th surface + abort.
+
+### 5.3 4-dim validate framework
+
+| Dim | Weight | Pass threshold | Check |
+|---|---|---|---|
+| `slot_fill` | 0.30 | 0.95 | Required sections + identity subfields populated. 9 slots (existing-codebase) or 10 slots (greenfield + Section 7). |
+| `citation` | 0.25 | 0.95 | Path-like tokens in rule text + table cells + code annotations resolve under `<install_root>/`. Package-name lookup via init.yaml.packages_detected[]. URL filter strips http(s):// remnants. |
+| `code_syntax` | 0.25 | 0.95 | python → `ast.parse`; json → `json.loads`; ts/tsx/js/jsx → balanced-brace ±1 tolerance + non-empty; other → non-empty heuristic. Zero examples → N/A (1.0). |
+| `rule_tag` | 0.20 | **1.0** | Every rule.tag ∈ `ENUM_FIELDS["rule_tag"]`. Mechanical — invalid tag = helper bug. |
+
+Composite ≥ 0.95 = exit 0; below = exit 2. stdout = JSON `{composite, dimensions, failed_items}`. stderr = per-dim scores + failed items. Per-dim `pass` field uses `_DIM_PASS_THRESHOLDS` (rule_tag = 1.0; others = 0.95) — the JSON output reflects per-dim semantics, not just the composite threshold.
+
+### 5.4 Render
+
+Manual concatenation per section. No template engine. Mirrors `_doc_setters.py` skeleton-fill pattern from `/generate-docs`. Tables render as GFM (`| col | col |` with separator row). Code examples as labelled fenced blocks (`**LABEL** — annotation` then ```` ```lang ```` block). Empty buckets render the H2 heading + `_(no rules defined)_` marker (no dropped sections). Section 7 renders only when `mode == greenfield` AND `scaffolding_guide` is non-null. `mode-pretty` mapping: `existing-codebase` → `Existing Codebase`; `greenfield` → `Greenfield`.
+
+Required-field check pre-render: `project_name` + `generated_date` + `last_updated` + `mode` + `project_identity` (4 subfields). Missing → exit 2 with stderr enumerating fields. State unreadable → exit 1.
+
+### 5.5 State + outputs
+
+```
+.devforge/
+  constitute.json           # canonical 11-key state
+  constitute.json.lock      # fcntl LOCK_EX sidecar
+constitution.md             # render artifact at install root
+```
+
+Wrapper-mode placement: `constitution.md` lives at `<install_root>/constitution.md` regardless of wrapper/standalone mode (parallels `docs/`); never inside `project_root`.
+
+### 5.6 Locked design decisions
+
+- **State = JSON, not YAML.** Deviates from the single-yaml convention used by /init-forge + /configure. Justified by data depth: rules + tables + code_examples per Section per bucket per scope is 2-3 levels deep; JSON's native nesting fits cleaner than extending the configure YAML emitter.
+- **Cross-bucket section numbering convention.** `_find_section` is first-match across 4 buckets. Phase 5 spec convention assigns non-overlapping number ranges per bucket (2.x = architecture, 3.x = code-quality, 5.x = domain, 6.x = workflow) so the LLM never produces a cross-bucket duplicate. Helper-side enforcement deferred — caller bug to avoid.
+- **Sub-0.95 validate composite prompts user ship/cancel/fix.** Novel pattern — /configure verify is binary (yes/no); /constitute validate is graded. The user-confirmation prompt on borderline composite is the right ergonomic for graded quality. /configure-style abort would waste work on fixable issues.
+- **Section 4 has no numbered sub-sections.** Six fixed buckets (always/never/prefer × universal/project-specific) addressed via `add-pattern-rule --bucket × --scope`. Section 4's Phase 3 echo template is separate from Sections 2/3/5/6 because override syntax differs (bucket:scope, not number:index).
+- **Empirical bug preempts (5 items).** All shipped from day one per CONFIGURE-PLAN lessons: Phase 3 stop-discipline directive; JSON-array setter form for internal-comma values; case-insensitive enum returning canonical; install.sh stray-state-file guard for `constitute.json` + `.lock`; wrapper-mode path resolution (constitution.md at install_root).
+
+### 5.7 Step 5 follow-ups (post-empirical)
+
+The testForge20 helper smoke test surfaced one cosmetic finding (no functional bugs):
+
+1. **Render produces table → bullet-list with no blank line between** (markdown style preference). Standard markdown allows the rendering but reads less cleanly. Fix path: `_render_section_body` inserts a blank line between block elements. Cosmetic; deferred.
+
+---
+
+## 6. CBM-first protocol enforcement
 
 Four hooks ship at `src/hooks/` and are wired into `.claude/settings.json` by `install.sh`. They steer code exploration toward `codebase-memory-mcp` (`search_graph`, `trace_path`, `get_code_snippet`, `search_code`, `query_graph`) instead of raw `Read`/`Grep`/`Glob` or `grep`/`find`/`cat` over source files.
 
@@ -426,7 +529,7 @@ The hook scripts reference codebase-memory-mcp tools exclusively. They do NOT re
 
 ---
 
-## 6. Known limitations + drift hazards
+## 7. Known limitations + drift hazards
 
 Live as-of 2026-05-10. Most are deferred bugs surfaced during empirical validation on `testForge20`. /configure-specific bugs surfaced during the empirical run were all fixed before feature-close (see §4.9).
 
@@ -447,16 +550,17 @@ Live as-of 2026-05-10. Most are deferred bugs surfaced during empirical validati
 
 ---
 
-## 7. Reading order for new contributors
+## 8. Reading order for new contributors
 
-1. **Specs first** — `src/commands/init-forge/main.md`, then `src/commands/generate-docs/main.md`, then `src/commands/configure/main.md`. They are the authoritative user-facing contract.
+1. **Specs first** — `src/commands/init-forge/main.md`, then `src/commands/generate-docs/main.md`, then `src/commands/configure/main.md`, then `src/commands/constitute/main.md`. They are the authoritative user-facing contract.
 2. **This file** — for the helper-layer mental model.
 3. **`init_helper.py` + `index_helper.py` module docstrings** — `/init-forge`'s entire helper surface is two files.
 4. **`_generate_docs/_cli.py`'s `_SUBCOMMANDS` registry** — the catalog of every `/generate-docs` helper subcommand.
 5. **`_doc_setters.py`** — the skeleton-fill primitive everyone uses.
 6. **`_preflight.py`** + **`_concern_input.py`** + **`_glossary.py`** — the three input/output modules that drive the `/generate-docs` pipeline.
 7. **`configure_helper.py` module docstring + `build_parser`** — `/configure`'s helper surface is one file with ~32 subcommands. Read FIELD_SCHEMA + ENUM_FIELDS first, then `_state_transaction`, then the read-* / setters / render-config / prune-agents / substitute-templates handlers.
-8. **`scripts/generate-agents.py`'s `emit_claude` + `_render_one`** — agent emitter; understands how `applies_to` propagates from `src/agents/*.md` source frontmatter (```yaml fence) to installed `.claude/agents/*.md` (--- delimited).
-9. **Active plans** at repo root — `ARCHITECTURE-PIVOT-PLAN.md` for the 4-command sequencing context (Step 4 + Step 6 DONE 2026-05-10; Step 8 `/constitute` schema-anchor next); `CONFIGURE-PLAN.md` retained as historical reference + template for `/constitute` work.
+8. **`constitute_helper.py` module docstring + `build_parser`** — `/constitute`'s helper surface is one file with 15 subcommands. Read FIELD_SCHEMA + ENUM_FIELDS first, then `_state_transaction`, then the read-* / setters / render / verify / validate handlers. State format is JSON (not YAML — see §5.1).
+9. **`scripts/generate-agents.py`'s `emit_claude` + `_render_one`** — agent emitter; understands how `applies_to` propagates from `src/agents/*.md` source frontmatter (```yaml fence) to installed `.claude/agents/*.md` (--- delimited).
+10. **Plans at repo root (all DONE; retained for historical reference)** — `ARCHITECTURE-PIVOT-PLAN.md` for the 4-command sequencing context (all 8 Steps DONE 2026-05-11); `CONFIGURE-PLAN.md` and `CONSTITUTE-PLAN.md` for per-command work-order detail. None active; future work tracked in new plans.
 
 When the helper layout in this file disagrees with what's in `src/devforge/lib/_generate_docs/`, the code wins. Update this file as part of the same change that moves the boundary.

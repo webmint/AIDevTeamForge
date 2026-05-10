@@ -1,6 +1,6 @@
 # /constitute — implementation plan
 
-**Status**: IN PROGRESS 2026-05-10. Plan locked (this file). No code shipped. Branch `develop-2.0-init` clean apart from auto-generated `__pycache__` files. This is Step 8 of `ARCHITECTURE-PIVOT-PLAN.md` — the final pivot scope. Predecessor work: `/init-forge` (Step 1, DONE) + `/generate-docs` (Step 2, FEATURE-CLOSED) + `/configure` (Step 4, FEATURE-CLOSED 2026-05-10).
+**Status**: DONE + FEATURE-CLOSED 2026-05-11. /constitute shipped end-to-end on `develop-2.0-init`. All 8 Steps complete. 2710-line `constitute_helper.py` (15 subcmds, 201 tests passing); 446-line spec at `src/commands/constitute/main.md` + 2 reference docs; testForge20 helper smoke test clean (Phase 1 read-* all parse real production data; Phase 5 render produces structurally-correct constitution.md; validate composite = 1.0). 4-command pivot complete (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). This plan retained for historical reference + as a template if future schema-anchor work needs precedent.
 
 `/constitute` is the fourth and last command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes `.devforge/init.yaml`, `.devforge/configure.yaml`, `docs/overview.md`, `docs/architecture.md`, and `docs/glossary.md`; populates `.devforge/constitute.json`; renders `constitution.md` at the install root with 7 schema-anchored sections + closed rule-tag enum.
 
