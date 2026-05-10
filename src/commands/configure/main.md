@@ -133,6 +133,8 @@ Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same conv
 
 Plain prose echo, NOT AskUserQuestion (multi-line content cannot fit AskUserQuestion's single-line question text constraint). Display all 22 detection-derived values from Phase 2 in a fenced block, grouped by category, then ask the user to confirm or override.
 
+**Stop discipline (mandatory).** After emitting the echo block below, this phase MUST end the assistant turn and wait for the user's reply. Do NOT advance to Phase 4 setters in the same turn. Do NOT call any `set-*` subcommand in the same turn. Do NOT call any tool after the echo — the echo is the final output of the turn. The user replies organically; the next turn begins with their reply, which is parsed per the rules below. Plain-prose prompts have no harness-level "wait for user" affordance, so the LLM-level stop is the only mechanism preventing accidental auto-advance through the bulk confirmation.
+
 Echo template (substitute `<...>` with the Phase 2 composed values):
 
 ````
