@@ -1490,7 +1490,7 @@ def _parse_architecture_md(md_text: str) -> dict:
     Extracts all Plan F sections. Missing sections emit empty values.
     """
     architecture_overview = _extract_section(md_text, "Architecture Overview")
-    module_structure = _extract_section(md_text, "Module/Package Structure")
+    module_structure = _extract_section(md_text, "Module / Package Structure")
     if not module_structure:
         module_structure = _extract_section(md_text, "Module Structure")
     patterns_body = _extract_section(md_text, "Patterns")

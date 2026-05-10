@@ -754,7 +754,7 @@ _ARCHITECTURE_MD_FIXTURE = """\
 
 The project follows Clean Architecture with domain isolation.
 
-## Module/Package Structure
+## Module / Package Structure
 
 ```
 src/
