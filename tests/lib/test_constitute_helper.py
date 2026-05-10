@@ -1,4 +1,21 @@
-"""Tests for src/devforge/lib/constitute_helper.py — Step 0 + Step 1 + Step 2.
+"""Tests for src/devforge/lib/constitute_helper.py — Step 0..3.
+
+Step 3 coverage (added in this commit):
+  render — fully-populated state produces 7 (greenfield) or 6 (existing-
+    codebase) H2 sections; empty bucket → empty-state marker; tables +
+    code examples + descriptions; missing required field → exit 2;
+    atomic write leaves no .tmp files; idempotent byte-identical;
+    rule text with internal commas (TS generic syntax) preserved;
+    multi-line code example whitespace preserved.
+  verify — fully-populated → exit 0; bad rule tag / missing title /
+    table column-row mismatch / malformed scaffolding sample → exit 2;
+    null scaffolding in existing-codebase ok; null in greenfield → exit 2;
+    minimal round-trip identity (project_name + section count).
+  summary — all-unset shows "(unset)" markers; populated values shown;
+    section + per-section counts; all 6 pattern buckets; stable across
+    reruns; scaffolding set vs unset; output to stdout not stderr;
+    corrupted JSON → exit 1 (matches init/configure precedent).
+
 
 Step 2 coverage (added in this commit):
   Validation helpers — _validate_scalar / _validate_enum (case-insensitive →
@@ -1984,6 +2001,628 @@ class TestRoundTripIntegration(unittest.TestCase):
             self.assertEqual(len(secs), 1)
             self.assertEqual(secs[0]["title"], "Updated")
             self.assertEqual(secs[0]["rules"][0]["text"], "Max function length: 50 lines")
+
+
+# ---------------------------------------------------------------------------
+# Step 3 helpers.
+# ---------------------------------------------------------------------------
+
+
+def _fully_populated_state():
+    """Return a state dict with all required fields populated.
+
+    Includes one architecture section with a rule, table, and code example;
+    one code-quality section with a tag; patterns in all 6 buckets;
+    domain + workflow sections.
+    """
+    state = constitute_helper.default_state()
+    state["project_name"] = "acme-api"
+    state["generated_date"] = "2026-05-10"
+    state["last_updated"] = "2026-05-10"
+    state["mode"] = "existing-codebase"
+    state["project_identity"] = {
+        "name": "acme-api",
+        "type": "Backend API",
+        "domain": "E-commerce",
+        "stack": "Python + FastAPI",
+    }
+    state["architecture_rules"] = [
+        {
+            "number": "2.1",
+            "title": "Layer Boundaries",
+            "tag": None,
+            "description": "Clean architecture layers.",
+            "rules": [
+                {"tag": "extracted", "text": "Domain layer has zero deps."},
+                {"tag": "enforced", "text": "No circular imports."},
+            ],
+            "tables": [
+                {
+                    "columns": ["Layer", "Path"],
+                    "rows": [["domain", "src/domain"], ["data", "src/data"]],
+                }
+            ],
+            "code_examples": [
+                {
+                    "label": "CORRECT",
+                    "language": "python",
+                    "code": "from domain import Entity\n",
+                    "annotation": "Correct import direction",
+                },
+                {
+                    "label": "WRONG",
+                    "language": "python",
+                    "code": "from data import Repo  # FORBIDDEN\n",
+                    "annotation": None,
+                },
+            ],
+        }
+    ]
+    state["code_quality_standards"] = [
+        {
+            "number": "3.1",
+            "title": "Type Safety",
+            "tag": "project-specific",
+            "description": None,
+            "rules": [{"tag": "enforced", "text": "strict: true in tsconfig"}],
+            "tables": [],
+            "code_examples": [],
+        }
+    ]
+    pat = state["patterns_and_antipatterns"]
+    pat["always_universal"] = [{"tag": "universal", "text": "Read before write."}]
+    pat["always_project_specific"] = [{"tag": "extracted", "text": "Use Either for errors."}]
+    pat["never_universal"] = [{"tag": "universal", "text": "Never commit secrets."}]
+    pat["never_project_specific"] = [{"tag": "project-specific", "text": "No raw any types."}]
+    pat["prefer_universal"] = [{"tag": "universal", "text": "Prefer explicit over implicit."}]
+    pat["prefer_project_specific"] = [{"tag": "extracted", "text": "Prefer purify-ts Either."}]
+    state["domain_rules"] = [
+        {
+            "number": "5.1",
+            "title": "Entity Rules",
+            "tag": None,
+            "description": None,
+            "rules": [{"tag": "extracted", "text": "Entities are immutable."}],
+            "tables": [],
+            "code_examples": [],
+        }
+    ]
+    state["workflow_rules"] = [
+        {
+            "number": "6.1",
+            "title": "PR Rules",
+            "tag": None,
+            "description": None,
+            "rules": [{"tag": "enforced", "text": "No PRs without tests."}],
+            "tables": [],
+            "code_examples": [],
+        }
+    ]
+    return state
+
+
+def _run_render(devforge_dir, install_root):
+    return _run([
+        "--devforge-dir", str(devforge_dir),
+        "--install-root", str(install_root),
+        "render",
+    ])
+
+
+def _run_verify(devforge_dir, install_root=None):
+    argv = ["--devforge-dir", str(devforge_dir)]
+    if install_root:
+        argv += ["--install-root", str(install_root)]
+    argv.append("verify")
+    return _run(argv)
+
+
+def _run_summary(devforge_dir):
+    return _run(["--devforge-dir", str(devforge_dir), "summary"])
+
+
+def _write_state_for_test(devforge_dir, state):
+    """Write state dict directly as constitute.json for test setup."""
+    devforge_dir = Path(devforge_dir)
+    devforge_dir.mkdir(parents=True, exist_ok=True)
+    target = devforge_dir / "constitute.json"
+    target.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Step 3 — render tests.
+# ---------------------------------------------------------------------------
+
+
+class TestStep3Render(unittest.TestCase):
+    def test_render_fully_populated_contains_all_headers(self):
+        """Fully populated state → constitution.md contains H2 sections 1-6."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            constitution = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("## 1. Project Identity", constitution)
+            self.assertIn("## 2. Architecture Rules (NON-NEGOTIABLE)", constitution)
+            self.assertIn("## 3. Code Quality Standards", constitution)
+            self.assertIn("## 4. Patterns & Anti-Patterns", constitution)
+            self.assertIn("## 5. Domain Rules", constitution)
+            self.assertIn("## 6. Workflow Rules", constitution)
+
+    def test_render_greenfield_with_scaffolding_includes_section_7(self):
+        """Greenfield mode + scaffolding_guide → Section 7 present."""
+        state = _fully_populated_state()
+        state["mode"] = "greenfield"
+        state["scaffolding_guide"] = {
+            "starter_directories": ["src", "tests"],
+            "sample_files": [
+                {"path": "src/main.py", "language": "python", "content": "# main\n"}
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            constitution = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("## 7. Scaffolding Guide [greenfield-only]", constitution)
+            self.assertIn("src/main.py", constitution)
+            self.assertIn("```python", constitution)
+
+    def test_render_existing_codebase_no_section_7(self):
+        """existing-codebase mode → Section 7 absent."""
+        state = _fully_populated_state()
+        state["mode"] = "existing-codebase"
+        state["scaffolding_guide"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            constitution = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertNotIn("## 7.", constitution)
+
+    def test_render_empty_section_bucket_shows_empty_marker(self):
+        """Empty section bucket → _(no rules defined)_ marker."""
+        state = _fully_populated_state()
+        state["domain_rules"] = []
+        state["workflow_rules"] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            constitution = (install_root / "constitution.md").read_text(encoding="utf-8")
+            # Both domain and workflow should show empty marker
+            self.assertIn("_(no rules defined)_", constitution)
+
+    def test_render_section_with_description_rules_table_code_example(self):
+        """Section with all sub-elements → each rendered correctly."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("### 2.1 Layer Boundaries", text)
+            self.assertIn("Clean architecture layers.", text)
+            self.assertIn("- [extracted] Domain layer has zero deps.", text)
+            self.assertIn("- [enforced] No circular imports.", text)
+            # Table rendered
+            self.assertIn("| Layer | Path |", text)
+            self.assertIn("| domain | src/domain |", text)
+            # Code example with annotation
+            self.assertIn("**CORRECT** — Correct import direction", text)
+            self.assertIn("```python", text)
+            self.assertIn("from domain import Entity", text)
+            # Code example without annotation
+            self.assertIn("**WRONG**\n", text)
+            self.assertIn("from data import Repo  # FORBIDDEN", text)
+
+    def test_render_table_2col_and_3col(self):
+        """Tables with 2 and 3 columns render GFM correctly."""
+        state = _fully_populated_state()
+        state["architecture_rules"][0]["tables"] = [
+            {
+                "columns": ["Col1", "Col2", "Col3"],
+                "rows": [["a", "b, with comma", "c"]],
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("| Col1 | Col2 | Col3 |", text)
+            # Internal comma in cell preserved
+            self.assertIn("| a | b, with comma | c |", text)
+
+    def test_render_code_example_without_annotation(self):
+        """Code example with annotation=None → no dash-annotation in output."""
+        state = _fully_populated_state()
+        state["architecture_rules"][0]["code_examples"] = [
+            {"label": "EXAMPLE", "language": "python", "code": "x = 1\n", "annotation": None}
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("**EXAMPLE**\n", text)
+            self.assertNotIn("**EXAMPLE** —", text)
+
+    def test_render_all_6_pattern_buckets(self):
+        """All 6 pattern buckets appear in Section 4."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("### Always Do (Universal)", text)
+            self.assertIn("### Always Do (Project-Specific)", text)
+            self.assertIn("### Never Do (Universal)", text)
+            self.assertIn("### Never Do (Project-Specific)", text)
+            self.assertIn("### Prefer (Universal)", text)
+            self.assertIn("### Prefer (Project-Specific)", text)
+
+    def test_render_missing_required_field_exits_2(self):
+        """Missing required field → exit 2 with stderr listing it."""
+        state = _fully_populated_state()
+        state["project_name"] = None  # Remove required field
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("project_name", result.stderr)
+
+    def test_render_missing_state_file_exits_2(self):
+        """State file missing (default state has no required fields set) → exits 2 (missing fields)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            # Don't write any state — _load returns default_state with all nulls
+            result = _run_render(devforge, install_root)
+            # Missing required fields → exit 2
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("project_name", result.stderr)
+
+    def test_render_atomic_write_no_temp_file_left(self):
+        """After successful render, no .tmp files remain in install_root."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            tmp_files = list(Path(install_root).glob("*.tmp"))
+            self.assertEqual(tmp_files, [], "Temp files not cleaned up: {0}".format(tmp_files))
+
+    def test_render_idempotent_byte_identical(self):
+        """Two consecutive renders produce byte-identical output."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            r1 = _run_render(devforge, install_root)
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            first_bytes = (install_root / "constitution.md").read_bytes()
+            r2 = _run_render(devforge, install_root)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            second_bytes = (install_root / "constitution.md").read_bytes()
+            self.assertEqual(first_bytes, second_bytes)
+
+    def test_render_rule_text_with_internal_comma_preserved(self):
+        """Rule text containing TS generic syntax (internal commas) renders verbatim."""
+        state = _fully_populated_state()
+        rule_text = "Use Either<DataError, T> for fallible operations, never throw."
+        state["architecture_rules"][0]["rules"] = [{"tag": "extracted", "text": rule_text}]
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("Either<DataError, T>", text)
+            self.assertIn("operations, never throw", text)
+
+    def test_render_code_example_multiline_whitespace_preserved(self):
+        """Multi-line code example preserves internal indentation verbatim."""
+        state = _fully_populated_state()
+        code = "def foo():\n    if x:\n        return 42\n    return 0\n"
+        state["architecture_rules"][0]["code_examples"] = [{
+            "label": "CORRECT",
+            "language": "python",
+            "code": code,
+            "annotation": None,
+        }]
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+            self.assertIn("    if x:\n        return 42", text)
+
+    def test_render_code_quality_section_includes_tag_suffix(self):
+        """Code Quality section title includes [tag] suffix when tag is set."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            install_root = Path(tmp)
+            _write_state_for_test(devforge, state)
+            result = _run_render(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = (install_root / "constitution.md").read_text(encoding="utf-8")
+            # code_quality_standards section 3.1 has tag=project-specific
+            self.assertIn("### 3.1 Type Safety [project-specific]", text)
+
+
+# ---------------------------------------------------------------------------
+# Step 3 — verify tests.
+# ---------------------------------------------------------------------------
+
+
+class TestStep3Verify(unittest.TestCase):
+    def test_verify_fully_populated_exits_0(self):
+        """Fully populated state → verify exits 0 with 'verify: ok' on stderr."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("verify: ok", result.stderr)
+
+    def test_verify_missing_required_scalar_exits_2(self):
+        """Missing required scalar → exit 2, stderr names the field."""
+        state = _fully_populated_state()
+        state["generated_date"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("generated_date", result.stderr)
+
+    def test_verify_bad_rule_tag_exits_2(self):
+        """Section rule with bad tag → exit 2 with description."""
+        state = _fully_populated_state()
+        state["architecture_rules"][0]["rules"][0]["tag"] = "INVALID_TAG"
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("INVALID_TAG", result.stderr)
+
+    def test_verify_section_missing_title_exits_2(self):
+        """Section missing title → exit 2."""
+        state = _fully_populated_state()
+        state["architecture_rules"][0]["title"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("title", result.stderr)
+
+    def test_verify_pattern_bucket_bad_tag_exits_2(self):
+        """Pattern bucket rule with bad tag → exit 2."""
+        state = _fully_populated_state()
+        state["patterns_and_antipatterns"]["always_universal"][0]["tag"] = "bad-tag"
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("bad-tag", result.stderr)
+
+    def test_verify_table_mismatched_row_col_count_exits_2(self):
+        """Table row with wrong cell count → exit 2."""
+        state = _fully_populated_state()
+        state["architecture_rules"][0]["tables"][0]["rows"] = [
+            ["only_one_cell"]  # columns has 2 entries: Layer, Path
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("cells", result.stderr)
+
+    def test_verify_scaffolding_malformed_sample_file_exits_2(self):
+        """ScaffoldingGuide with missing required key → exit 2."""
+        state = _fully_populated_state()
+        state["mode"] = "greenfield"
+        state["scaffolding_guide"] = {
+            "starter_directories": ["src"],
+            "sample_files": [{"path": "main.py"}],  # missing language + content
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("missing keys", result.stderr)
+
+    def test_verify_scaffolding_null_in_existing_codebase_ok(self):
+        """scaffolding_guide null in existing-codebase mode → exit 0 (acceptable)."""
+        state = _fully_populated_state()
+        state["mode"] = "existing-codebase"
+        state["scaffolding_guide"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_verify_scaffolding_null_in_greenfield_exits_2(self):
+        """scaffolding_guide null in greenfield mode → exit 2 (required)."""
+        state = _fully_populated_state()
+        state["mode"] = "greenfield"
+        state["scaffolding_guide"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("greenfield", result.stderr)
+
+    def test_verify_round_trip_identity(self):
+        """Verify performs round-trip: project_name and section count match."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("verify: ok", result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Step 3 — summary tests.
+# ---------------------------------------------------------------------------
+
+
+class TestStep3Summary(unittest.TestCase):
+    def test_summary_all_unset_shows_unset_markers(self):
+        """All-unset state → '(unset)' in every relevant line."""
+        state = constitute_helper.default_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("(unset)", result.stdout)
+            self.assertIn("Project Name:        (unset)", result.stdout)
+            self.assertIn("Generated:           (unset)", result.stdout)
+            self.assertIn("Last Updated:        (unset)", result.stdout)
+            self.assertIn("Mode:                (unset)", result.stdout)
+
+    def test_summary_fully_populated_shows_values(self):
+        """Fully populated state → values shown."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("acme-api", result.stdout)
+            self.assertIn("2026-05-10", result.stdout)
+            self.assertIn("existing-codebase", result.stdout)
+
+    def test_summary_section_count_and_per_section_line(self):
+        """Section count and per-section detail line appear in output."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Architecture Rules:  1 sections", result.stdout)
+            self.assertIn("2.1 Layer Boundaries: 2 rules, 1 tables, 2 code examples", result.stdout)
+
+    def test_summary_all_6_pattern_buckets_shown(self):
+        """All 6 pattern bucket counts appear in summary."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Always (Universal):         1 rules", result.stdout)
+            self.assertIn("Always (Project-Specific):  1 rules", result.stdout)
+            self.assertIn("Never (Universal):          1 rules", result.stdout)
+            self.assertIn("Never (Project-Specific):   1 rules", result.stdout)
+            self.assertIn("Prefer (Universal):         1 rules", result.stdout)
+            self.assertIn("Prefer (Project-Specific):  1 rules", result.stdout)
+
+    def test_summary_stable_across_reruns(self):
+        """Running summary twice produces identical output."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            r1 = _run_summary(devforge)
+            r2 = _run_summary(devforge)
+            self.assertEqual(r1.stdout, r2.stdout)
+
+    def test_summary_scaffolding_unset(self):
+        """Scaffolding guide unset → 'unset' in summary."""
+        state = _fully_populated_state()
+        state["scaffolding_guide"] = None
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Scaffolding Guide:   unset", result.stdout)
+
+    def test_summary_scaffolding_set(self):
+        """Scaffolding guide set → 'set' with counts in summary."""
+        state = _fully_populated_state()
+        state["scaffolding_guide"] = {
+            "starter_directories": ["src", "tests"],
+            "sample_files": [{"path": "main.py", "language": "python", "content": "# hi"}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Scaffolding Guide:   set", result.stdout)
+            self.assertIn("Starter Dirs:      2", result.stdout)
+            self.assertIn("Sample Files:      1", result.stdout)
+
+    def test_summary_returns_exit_0(self):
+        """Summary always exits 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # No state file — uses defaults
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 0)
+
+    def test_summary_output_to_stdout_not_stderr(self):
+        """Summary output goes to stdout; stderr is empty on success."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_summary(devforge)
+            self.assertNotEqual(result.stdout, "", "Expected stdout output")
+            self.assertIn("## Constitute Helper Summary", result.stdout)
+            self.assertEqual(result.stderr, "")
+
+    def test_summary_corrupted_json_exits_1(self):
+        """Corrupted constitute.json exits 1 with stderr message (matches init/configure)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir(parents=True, exist_ok=True)
+            (devforge / "constitute.json").write_text("{not valid json", encoding="utf-8")
+            result = _run_summary(devforge)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("cannot load constitute.json", result.stderr)
 
 
 if __name__ == "__main__":
