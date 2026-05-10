@@ -38,7 +38,15 @@ in CONFIGURE-PLAN.md Step 3 verify criteria. The actual breakdown is:
 The CONFIGURE-PLAN.md "32 keys" figure is incorrect. This implementation
 renders all 35 keys as the correct contract.
 
-Step 4 (substitute-templates) remains future work.
+Step 4 is fully implemented: substitute-templates walks CLAUDE.md +
+.claude/agents/*.md (at --install-root), builds a full 25-key substitution
+map from project-config.json + init.yaml, substitutes every {{KEY}}
+placeholder, and writes files atomically (mkstemp + fsync + os.replace).
+Substitution categories: (A) direct project-config.json keys, (B) 10
+singular aliases of plural arrays (FRAMEWORK→FRAMEWORKS, etc.), (C) 2
+composed values (PACKAGE_STACKS_SECTION markdown table, PROJECT_PATHS
+comma-join), (D) UPPERCASE identity passthrough, (E) STATE_MANAGEMENT +
+STYLING deprecated (empty string + WARNING). Unknown placeholders → exit 2.
 
 Architecture notes:
 
@@ -2184,6 +2192,338 @@ def cmd_summary(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Step 4: substitute-templates implementation.
+# ---------------------------------------------------------------------------
+
+# Matches every {{UPPERCASE_KEY}} placeholder in a template file.
+# Only UPPERCASE letters and underscores are matched so that lower-case
+# or mixed-case text inside {{ }} is left untouched.
+_PLACEHOLDER_RE = re.compile(r"\{\{([A-Z_]+)\}\}")
+
+# Deprecated placeholders: substituted to empty string + WARNING once per run.
+_DEPRECATED_PLACEHOLDERS = frozenset({"STATE_MANAGEMENT", "STYLING"})
+
+# Process-local dedup set for deprecated placeholder warnings.
+# Cleared implicitly at process start (module load). Shared across all
+# calls within a single process run so WARNING fires at most once per key.
+_DEPRECATED_WARNED: set = set()
+
+# Category B: singular alias → plural key in project_config.
+# Each alias renders the corresponding plural array as a comma-joined string.
+_SINGULAR_ALIASES = {
+    "FRAMEWORK":          "FRAMEWORKS",
+    "LANGUAGE":           "LANGUAGES",
+    "BUILD_TOOL":         "BUILD_TOOLS",
+    "BUILD_COMMAND":      "BUILD_COMMANDS",
+    "TYPE_CHECK_COMMAND": "TYPE_CHECK_COMMANDS",
+    "LINT_COMMAND":       "LINT_COMMANDS",
+    "ERROR_HANDLING":     "ERROR_HANDLINGS",
+    "API_LAYER":          "API_LAYERS",
+    "TESTING":            "TESTINGS",
+    "ARCHITECTURE":       "ARCHITECTURES",
+}
+
+
+def _comma_join(arr: object) -> str:
+    """Render a list of strings as a comma-separated string.
+
+    None or empty list → empty string. Non-list scalars passed through
+    via str() as a safety fallback (should not occur for known array keys).
+    """
+    if arr is None:
+        return ""
+    if isinstance(arr, list):
+        if not arr:
+            return ""
+        return ", ".join(str(item) for item in arr)
+    return str(arr)
+
+
+def _build_package_stacks_table(stacks: object) -> str:
+    """Render package_stacks[] as a 4-column markdown table.
+
+    Columns: Package (path), Language, Framework, Build Tool.
+    Empty list or None → empty string "".
+    None cells in individual fields → empty cell.
+
+    Table format:
+        | Package | Language | Framework | Build Tool |
+        |---------|----------|-----------|------------|
+        | path    | lang     | fw        | bt         |
+    """
+    if not stacks:
+        return ""
+    header = "| Package | Language | Framework | Build Tool |"
+    align  = "|---------|----------|-----------|------------|"
+    rows = [header, align]
+    for rec in stacks:
+        path = rec.get("path") or ""
+        lang = rec.get("language") or ""
+        fw   = rec.get("framework") or ""
+        bt   = rec.get("build_tool") or ""
+        rows.append("| {0} | {1} | {2} | {3} |".format(path, lang, fw, bt))
+    return "\n".join(rows)
+
+
+def _build_substitution_map(project_config: dict, packages_detected: object) -> dict:
+    """Build the full substitution map from project-config.json + init.yaml.
+
+    Returns dict: placeholder_key → string value covering all 5 categories:
+
+    (A) Direct pass-through from project_config (all keys in
+        _PROJECT_CONFIG_KEY_ORDER whose values are non-array scalars; array
+        values are comma-joined). WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION,
+        AGENT_LIST are already derived strings in project_config — used as-is.
+
+    (B) Singular aliases: FRAMEWORK, LANGUAGE, BUILD_TOOL, BUILD_COMMAND,
+        TYPE_CHECK_COMMAND, LINT_COMMAND, ERROR_HANDLING, API_LAYER,
+        TESTING, ARCHITECTURE — each comma-joins its plural array from
+        project_config.
+
+    (C) Composed:
+        PACKAGE_STACKS_SECTION — markdown table from PACKAGE_STACKS.
+        PROJECT_PATHS — comma-joined path field from packages_detected[].
+
+    (D) Identity passthrough:
+        UPPERCASE → literal "{{UPPERCASE}}".
+
+    (E) Deprecated (substituted to empty string, WARNING emitted once):
+        STATE_MANAGEMENT, STYLING.
+
+    project_config is the dict loaded from project-config.json (uppercase
+    keys). packages_detected is the list from init.yaml's packages_detected
+    field (list of dicts with at least a "path" key), or None/[] if absent.
+    """
+    sub_map = {}
+
+    # --- Category A: pass-through from project_config ---
+    for key in _PROJECT_CONFIG_KEY_ORDER:
+        val = project_config.get(key)
+        if isinstance(val, list):
+            # Array fields: comma-join for the template placeholder.
+            sub_map[key] = _comma_join(val)
+        elif val is None:
+            sub_map[key] = ""
+        else:
+            sub_map[key] = str(val)
+
+    # --- Category B: singular aliases of plural arrays ---
+    for singular, plural in _SINGULAR_ALIASES.items():
+        arr = project_config.get(plural)
+        sub_map[singular] = _comma_join(arr)
+
+    # --- Category C: composed values ---
+    # PACKAGE_STACKS_SECTION — markdown table; source is the package_stacks
+    # list stored under PACKAGE_STACKS key in project_config.
+    stacks = project_config.get("PACKAGE_STACKS")
+    sub_map["PACKAGE_STACKS_SECTION"] = _build_package_stacks_table(stacks)
+
+    # PROJECT_PATHS — comma-join path field from packages_detected[].
+    if packages_detected and isinstance(packages_detected, list):
+        paths = [rec.get("path", "") for rec in packages_detected if rec.get("path")]
+        sub_map["PROJECT_PATHS"] = ", ".join(paths) if paths else ""
+    else:
+        sub_map["PROJECT_PATHS"] = ""
+
+    # --- Category D: identity passthrough ---
+    sub_map["UPPERCASE"] = "{{UPPERCASE}}"
+
+    # --- Category E: deprecated → empty string (WARNING in engine) ---
+    for dep_key in _DEPRECATED_PLACEHOLDERS:
+        sub_map[dep_key] = ""
+
+    return sub_map
+
+
+def _substitute_placeholders(text: str, sub_map: dict) -> "Tuple[str, List[str]]":
+    """Substitute every {{KEY}} in text from sub_map.
+
+    Returns (new_text, missing_keys) where missing_keys is a sorted unique
+    list of keys found in text but absent from sub_map (excluding deprecated
+    placeholders, which are handled by emitting a WARNING and substituting
+    to empty string).
+
+    Deprecated placeholder warnings go to stderr once per key per process
+    run (deduped via _DEPRECATED_WARNED). The warning fires inside the regex
+    callback so it only triggers when the deprecated key actually appears in
+    a template being processed.
+    """
+    missing = set()
+
+    def _replacer(m: "re.Match") -> str:
+        key = m.group(1)
+        if key in _DEPRECATED_PLACEHOLDERS:
+            if key not in _DEPRECATED_WARNED:
+                sys.stderr.write(
+                    "configure_helper substitute-templates: WARNING: deprecated "
+                    "placeholder {{{{{0}}}}} substituted to empty string\n".format(key)
+                )
+                _DEPRECATED_WARNED.add(key)
+            return ""
+        if key in sub_map:
+            return sub_map[key]
+        missing.add(key)
+        # Leave placeholder unchanged so the caller can detect and report it.
+        return m.group(0)
+
+    new_text = _PLACEHOLDER_RE.sub(_replacer, text)
+    return new_text, sorted(missing)
+
+
+def _write_file_atomic(path: Path, content: str) -> None:
+    """Atomically overwrite path with content (UTF-8).
+
+    Uses tempfile.mkstemp in the same directory as path for POSIX atomic
+    rename semantics (cross-directory rename is not atomic on most kernels).
+    flush + fsync before os.replace. On failure, unlinks the temp file and
+    re-raises so the original file is never corrupted.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".substitute-",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def cmd_substitute_templates(args: argparse.Namespace) -> int:
+    """Substitute {{KEY}} placeholders across CLAUDE.md + .claude/agents/*.md.
+
+    Reads project-config.json from <devforge_dir>; reads init.yaml for
+    packages_detected; builds substitution map; walks template list;
+    substitutes per-file; writes atomically.
+
+    Exit 0 = all templates substituted; no {{KEY}} markers remain.
+    Exit 1 = project-config.json missing or malformed; init.yaml missing.
+    Exit 2 = at least one template has unknown placeholder; stderr lists
+            them per file. Failed files are NOT modified (atomic per-file).
+    """
+    devforge_dir = Path(args.devforge_dir)
+    install_root = Path(args.install_root)
+
+    # --- Load project-config.json ---
+    config_path = devforge_dir / "project-config.json"
+    if not config_path.exists():
+        sys.stderr.write(
+            "configure_helper substitute-templates: project-config.json not found at "
+            "{0}\n".format(config_path)
+        )
+        return 1
+    try:
+        config_text = config_path.read_text(encoding="utf-8")
+    except OSError as err:
+        sys.stderr.write(
+            "configure_helper substitute-templates: cannot read {0}: {1}\n".format(
+                config_path, err
+            )
+        )
+        return 1
+    try:
+        project_config = json.loads(config_text)
+    except (json.JSONDecodeError, ValueError) as err:
+        sys.stderr.write(
+            "configure_helper substitute-templates: malformed project-config.json: "
+            "{0}\n".format(err)
+        )
+        return 1
+
+    # --- Load packages_detected from init.yaml ---
+    init_yaml_path = devforge_dir / init_helper.OUTPUT_FILE_NAME
+    packages_detected = []  # type: List[dict]
+    if init_yaml_path.exists():
+        try:
+            init_text = init_yaml_path.read_text(encoding="utf-8")
+            init_state = init_helper.parse_yaml(init_text)
+            packages_detected = init_state.get("packages_detected") or []
+        except (OSError, init_helper.YamlParseError):
+            # init.yaml unreadable: PROJECT_PATHS falls back to empty.
+            packages_detected = []
+
+    # --- Build substitution map ---
+    sub_map = _build_substitution_map(project_config, packages_detected)
+
+    # --- Discover template list ---
+    claude_md = install_root / "CLAUDE.md"
+    if not claude_md.exists():
+        sys.stderr.write(
+            "configure_helper substitute-templates: CLAUDE.md not found at "
+            "{0}\n".format(claude_md)
+        )
+        return 1
+
+    agents_dir = install_root / ".claude" / "agents"
+    agent_templates = []  # type: List[Path]
+    if agents_dir.is_dir():
+        try:
+            agent_templates = sorted(
+                p for p in agents_dir.iterdir()
+                if p.is_file() and p.suffix == ".md"
+            )
+        except OSError:
+            agent_templates = []
+    else:
+        sys.stderr.write(
+            "configure_helper substitute-templates: .claude/agents/ not found at "
+            "{0} — no agent templates to substitute\n".format(agents_dir)
+        )
+
+    templates = [claude_md] + agent_templates
+
+    # --- Substitute per-file ---
+    all_missing = {}  # type: Dict[str, List[str]]  # path → missing keys
+    for tmpl in templates:
+        try:
+            original = tmpl.read_text(encoding="utf-8")
+        except OSError as err:
+            sys.stderr.write(
+                "configure_helper substitute-templates: cannot read {0}: {1}\n".format(
+                    tmpl, err
+                )
+            )
+            return 1
+
+        new_text, missing = _substitute_placeholders(original, sub_map)
+
+        if missing:
+            all_missing[str(tmpl)] = missing
+            # Leave the file unchanged (atomic write skipped for this file).
+            continue
+
+        # Write atomically only when there are no unknown placeholders.
+        try:
+            _write_file_atomic(tmpl, new_text)
+        except OSError as err:
+            sys.stderr.write(
+                "configure_helper substitute-templates: cannot write {0}: {1}\n".format(
+                    tmpl, err
+                )
+            )
+            return 1
+
+    if all_missing:
+        for path_str, keys in sorted(all_missing.items()):
+            sys.stderr.write(
+                "configure_helper substitute-templates: unknown placeholders in "
+                "{0}: {1}\n".format(path_str, ", ".join(keys))
+            )
+        return 2
+
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
 
@@ -2438,6 +2778,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Render the configure report to stdout. Read-only.",
     )
     sp.set_defaults(func=cmd_summary)
+
+    # ------------------------------------------------------------------
+    # Step 4: substitute-templates.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "substitute-templates",
+        help=(
+            "Substitute {{KEY}} placeholders in CLAUDE.md + .claude/agents/*.md. "
+            "Reads project-config.json; writes files atomically. "
+            "Exit 0 = all substituted; exit 1 = config missing; exit 2 = unknown placeholder."
+        ),
+    )
+    sp.set_defaults(func=cmd_substitute_templates)
 
     return parser
 

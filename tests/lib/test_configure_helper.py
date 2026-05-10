@@ -1,4 +1,4 @@
-"""Tests for src/devforge/lib/configure_helper.py — Step 1 + Step 2 + Step 3.
+"""Tests for src/devforge/lib/configure_helper.py — Step 1 + Step 2 + Step 3 + Step 4.
 
 Step 1 coverage: FIELD_SCHEMA, ENUM_FIELDS, default_state, emit_yaml/
 parse_yaml round-trips (incl. multi-line scalars + missing-subfield
@@ -27,6 +27,19 @@ assisted, ac-runtime required when runtime-assisted, json missing, json
 malformed, round-trip drift), summary subprocess (unset shows label, populated
 values, long string truncation, package_stacks rows, stability, empty array,
 section headers).
+
+Step 4 coverage: _build_substitution_map (all 35 project-config keys present,
+10 singular aliases derive from plural arrays, PROJECT_PATHS from
+packages_detected, PACKAGE_STACKS_SECTION empty → empty string, populated →
+4-column markdown table, UPPERCASE identity, deprecated keys → empty string),
+_substitute_placeholders engine (single placeholder, multiple placeholders,
+unknown key → missing list, deprecated placeholder → empty + WARNING once per
+run, UPPERCASE round-trip, no bleed-over on lowercase/mixed patterns),
+substitute-templates subprocess (defaults exit 0 no leftover placeholders,
+populated project_name substituted, single language, multi-language comma-join,
+PACKAGE_STACKS_SECTION table, unknown placeholder exit 2, deprecated warning,
+idempotent re-run, project-config.json missing exit 1, agent .md substituted,
+unknown placeholder leaves original file unchanged, UPPERCASE round-trip).
 
 Each subprocess test runs in its own `tempfile.TemporaryDirectory` via
 _EnvIsolationMixin. Pure-function tests import the module directly.
@@ -2742,6 +2755,417 @@ class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
         for header in ("Identity", "Stack", "Per-package", "Verbatim docs",
                        "Preferences", "AC verification"):
             self.assertIn(header, out, "section header '{0}' missing".format(header))
+
+
+# ---------------------------------------------------------------------------
+# Step 4: _build_substitution_map tests (~6)
+# ---------------------------------------------------------------------------
+
+
+class SubstitutionMapTests(unittest.TestCase):
+    """Unit tests for _build_substitution_map — no subprocess, pure function."""
+
+    def _make_config(self, **overrides) -> dict:
+        """Return a minimal project_config dict (all keys from _PROJECT_CONFIG_KEY_ORDER)."""
+        base = {k: None for k in configure_helper._PROJECT_CONFIG_KEY_ORDER}
+        # Set array keys to empty list.
+        for k in (
+            "LANGUAGES", "FRAMEWORKS", "ARCHITECTURES", "ERROR_HANDLINGS",
+            "API_LAYERS", "TESTINGS", "BUILD_TOOLS", "BUILD_COMMANDS",
+            "TYPE_CHECK_COMMANDS", "LINT_COMMANDS", "PACKAGE_STACKS",
+            "PACKAGES_DETECTED",
+        ):
+            base[k] = []
+        # Derived strings default to "".
+        for k in ("WRAPPER_MODE_SECTION", "COMMIT_ATTRIBUTION", "AGENT_LIST"):
+            base[k] = ""
+        base.update(overrides)
+        return base
+
+    def test_all_35_project_config_keys_present_in_map(self):
+        """All 35 keys from _PROJECT_CONFIG_KEY_ORDER appear as entries in the map."""
+        config = self._make_config()
+        sub_map = configure_helper._build_substitution_map(config, [])
+        for key in configure_helper._PROJECT_CONFIG_KEY_ORDER:
+            self.assertIn(
+                key, sub_map,
+                "key {0} missing from substitution map".format(key),
+            )
+
+    def test_10_singular_aliases_derive_from_plural_arrays(self):
+        """10 singular aliases are present in the map and derive from their plural array."""
+        config = self._make_config(
+            FRAMEWORKS=["Vue", "React"],
+            LANGUAGES=["TypeScript", "Python"],
+            BUILD_TOOLS=["Vite"],
+            BUILD_COMMANDS=["npm run build"],
+            TYPE_CHECK_COMMANDS=["npx tsc"],
+            LINT_COMMANDS=["npm run lint"],
+            ERROR_HANDLINGS=["try-catch"],
+            API_LAYERS=["REST"],
+            TESTINGS=["Jest"],
+            ARCHITECTURES=["MVC", "MVVM"],
+        )
+        sub_map = configure_helper._build_substitution_map(config, [])
+        self.assertEqual(sub_map["FRAMEWORK"], "Vue, React")
+        self.assertEqual(sub_map["LANGUAGE"], "TypeScript, Python")
+        self.assertEqual(sub_map["BUILD_TOOL"], "Vite")
+        self.assertEqual(sub_map["BUILD_COMMAND"], "npm run build")
+        self.assertEqual(sub_map["TYPE_CHECK_COMMAND"], "npx tsc")
+        self.assertEqual(sub_map["LINT_COMMAND"], "npm run lint")
+        self.assertEqual(sub_map["ERROR_HANDLING"], "try-catch")
+        self.assertEqual(sub_map["API_LAYER"], "REST")
+        self.assertEqual(sub_map["TESTING"], "Jest")
+        self.assertEqual(sub_map["ARCHITECTURE"], "MVC, MVVM")
+
+    def test_project_paths_derives_from_packages_detected(self):
+        """PROJECT_PATHS is comma-joined path field from packages_detected[]."""
+        config = self._make_config()
+        packages_detected = [
+            {"path": "apps/web", "language": "TypeScript"},
+            {"path": "packages/core", "language": "TypeScript"},
+        ]
+        sub_map = configure_helper._build_substitution_map(config, packages_detected)
+        self.assertEqual(sub_map["PROJECT_PATHS"], "apps/web, packages/core")
+
+    def test_package_stacks_section_empty_array_gives_empty_string(self):
+        """PACKAGE_STACKS_SECTION is empty string when PACKAGE_STACKS is []."""
+        config = self._make_config(PACKAGE_STACKS=[])
+        sub_map = configure_helper._build_substitution_map(config, [])
+        self.assertEqual(sub_map["PACKAGE_STACKS_SECTION"], "")
+
+    def test_package_stacks_section_populated_gives_markdown_table(self):
+        """PACKAGE_STACKS_SECTION renders a 4-column markdown table."""
+        stacks = [
+            {
+                "path": "apps/app-web",
+                "language": "TypeScript",
+                "framework": "Vue",
+                "build_tool": "Vite",
+                "build_command": "npm run build",
+                "type_check_command": "npx tsc",
+                "lint_command": "npm run lint",
+            },
+            {
+                "path": "packages/pkg-core",
+                "language": "TypeScript",
+                "framework": None,
+                "build_tool": "Vite",
+                "build_command": "npm run build",
+                "type_check_command": "npx tsc",
+                "lint_command": "npm run lint",
+            },
+        ]
+        config = self._make_config(PACKAGE_STACKS=stacks)
+        sub_map = configure_helper._build_substitution_map(config, [])
+        table = sub_map["PACKAGE_STACKS_SECTION"]
+        self.assertIn("| Package | Language | Framework | Build Tool |", table)
+        self.assertIn("|---------|----------|-----------|------------|", table)
+        self.assertIn("| apps/app-web | TypeScript | Vue | Vite |", table)
+        # None framework → empty cell (not the word "None").
+        self.assertIn("| packages/pkg-core | TypeScript |  | Vite |", table)
+        self.assertNotIn("None", table)
+
+    def test_uppercase_key_produces_identity_passthrough(self):
+        """UPPERCASE key in sub_map renders as the literal {{UPPERCASE}} string."""
+        config = self._make_config()
+        sub_map = configure_helper._build_substitution_map(config, [])
+        self.assertEqual(sub_map["UPPERCASE"], "{{UPPERCASE}}")
+
+    def test_deprecated_keys_produce_empty_string(self):
+        """STATE_MANAGEMENT and STYLING map to empty string."""
+        config = self._make_config()
+        sub_map = configure_helper._build_substitution_map(config, [])
+        self.assertEqual(sub_map["STATE_MANAGEMENT"], "")
+        self.assertEqual(sub_map["STYLING"], "")
+
+
+# ---------------------------------------------------------------------------
+# Step 4: _substitute_placeholders engine tests (~6)
+# ---------------------------------------------------------------------------
+
+
+class SubstitutePlaceholdersTests(unittest.TestCase):
+    """Unit tests for _substitute_placeholders — pure function."""
+
+    def setUp(self):
+        # Clear the process-level dedup set so each test is independent.
+        configure_helper._DEPRECATED_WARNED.clear()
+
+    def test_single_placeholder_substituted(self):
+        text, missing = configure_helper._substitute_placeholders(
+            "Project: {{PROJECT_NAME}}",
+            {"PROJECT_NAME": "MyApp"},
+        )
+        self.assertEqual(text, "Project: MyApp")
+        self.assertEqual(missing, [])
+
+    def test_multiple_placeholders_substituted(self):
+        text, missing = configure_helper._substitute_placeholders(
+            "{{PROJECT_NAME}} — {{LANGUAGE}} — {{FRAMEWORK}}",
+            {"PROJECT_NAME": "App", "LANGUAGE": "TypeScript", "FRAMEWORK": "Vue"},
+        )
+        self.assertEqual(text, "App — TypeScript — Vue")
+        self.assertEqual(missing, [])
+
+    def test_unknown_placeholder_collected_into_missing(self):
+        text, missing = configure_helper._substitute_placeholders(
+            "Hello {{FOO}} and {{BAR}}",
+            {"PROJECT_NAME": "X"},
+        )
+        # Unknown keys are left as-is in the output.
+        self.assertIn("{{FOO}}", text)
+        self.assertIn("{{BAR}}", text)
+        self.assertEqual(missing, ["BAR", "FOO"])  # sorted
+
+    def test_deprecated_placeholder_substitutes_to_empty_and_warns_stderr(self):
+        import io
+        old_stderr = configure_helper.sys.stderr
+        buf = io.StringIO()
+        configure_helper.sys.stderr = buf
+        try:
+            text, missing = configure_helper._substitute_placeholders(
+                "Style: {{STATE_MANAGEMENT}} end",
+                {},
+            )
+        finally:
+            configure_helper.sys.stderr = old_stderr
+        self.assertEqual(text, "Style:  end")
+        self.assertEqual(missing, [])
+        warning = buf.getvalue()
+        self.assertIn("WARNING", warning)
+        self.assertIn("STATE_MANAGEMENT", warning)
+
+    def test_deprecated_placeholder_warns_only_once_per_run(self):
+        """Second call for the same deprecated key does NOT emit a second WARNING."""
+        import io
+        configure_helper._DEPRECATED_WARNED.clear()
+        old_stderr = configure_helper.sys.stderr
+        buf = io.StringIO()
+        configure_helper.sys.stderr = buf
+        try:
+            configure_helper._substitute_placeholders("{{STYLING}}", {})
+            configure_helper._substitute_placeholders("{{STYLING}}", {})
+        finally:
+            configure_helper.sys.stderr = old_stderr
+        warnings = buf.getvalue().count("STYLING")
+        self.assertEqual(warnings, 1, "WARNING should appear exactly once, got: {0!r}".format(buf.getvalue()))
+
+    def test_uppercase_round_trips_unchanged(self):
+        """{{UPPERCASE}} substituted to {{UPPERCASE}} leaves prose explanation intact."""
+        sub_map = {"UPPERCASE": "{{UPPERCASE}}"}
+        original = "Use {{UPPERCASE}} placeholders for substitution."
+        text, missing = configure_helper._substitute_placeholders(original, sub_map)
+        self.assertEqual(text, original)
+        self.assertEqual(missing, [])
+
+    def test_no_regex_bleed_over_on_non_uppercase_content(self):
+        """Patterns like {{lowercase}} or {{Mixed}} are NOT matched."""
+        sub_map = {"PROJECT_NAME": "App"}
+        text, missing = configure_helper._substitute_placeholders(
+            "{{PROJECT_NAME}} and {{lowercase}} and {{Mixed}}",
+            sub_map,
+        )
+        self.assertEqual(text, "App and {{lowercase}} and {{Mixed}}")
+        self.assertEqual(missing, [])
+
+
+# ---------------------------------------------------------------------------
+# Step 4: substitute-templates subprocess tests (~10)
+# ---------------------------------------------------------------------------
+
+
+class SubstituteTemplatesTests(_EnvIsolationMixin, unittest.TestCase):
+    """End-to-end subprocess tests for the substitute-templates subcommand."""
+
+    def _write_init_yaml(self, workspace_mode: str = "standalone", project_root: str = ".") -> None:
+        """Write a minimal init.yaml to devforge_dir via init_helper."""
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-project-name", "test-project")
+        _run_init(self.devforge_dir, "set-workspace-mode", workspace_mode)
+
+    def _write_project_config_json(self) -> None:
+        """Run render-config to produce project-config.json."""
+        _run_configure_extra(
+            self.devforge_dir,
+            ["--install-root", str(self.install_root)],
+            "render-config",
+        )
+
+    def _run_substitute(self) -> "subprocess.CompletedProcess":
+        return _run_configure_extra(
+            self.devforge_dir,
+            ["--install-root", str(self.install_root)],
+            "substitute-templates",
+        )
+
+    def _write_claude_md(self, content: str) -> None:
+        """Write content to <install_root>/CLAUDE.md."""
+        (self.install_root / "CLAUDE.md").write_text(content, encoding="utf-8")
+
+    def _write_agent_md(self, name: str, content: str) -> None:
+        """Write an agent template to <install_root>/.claude/agents/<name>.md."""
+        agents_dir = self.install_root / ".claude" / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        (agents_dir / "{0}.md".format(name)).write_text(content, encoding="utf-8")
+
+    def _read_claude_md(self) -> str:
+        return (self.install_root / "CLAUDE.md").read_text(encoding="utf-8")
+
+    def _read_agent_md(self, name: str) -> str:
+        return (self.install_root / ".claude" / "agents" / "{0}.md".format(name)).read_text(encoding="utf-8")
+
+    def test_defaults_template_exits_0_no_placeholders_remain(self):
+        """Defaults configure.yaml + minimal template → exit 0, no {{...}} markers."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        self._write_project_config_json()
+        self._write_claude_md("Name: {{PROJECT_NAME}}\nLang: {{LANGUAGE}}\n")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_claude_md()
+        import re
+        leftover = re.findall(r"\{\{[A-Z_]+\}\}", result)
+        self.assertEqual(leftover, [], "leftover placeholders: {0}".format(leftover))
+
+    def test_populated_project_name_substituted(self):
+        """configure.yaml.project_name → substituted into {{PROJECT_NAME}}."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "demo-forge")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn("demo-forge", self._read_claude_md())
+
+    def test_single_language_substituted(self):
+        """languages=['TypeScript'] → {{LANGUAGE}} = 'TypeScript'."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript")
+        self._write_project_config_json()
+        self._write_claude_md("Lang: {{LANGUAGE}}")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn("TypeScript", self._read_claude_md())
+
+    def test_multi_language_comma_joined(self):
+        """languages=['TypeScript','Python'] → {{LANGUAGE}} = 'TypeScript, Python'."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript,Python")
+        self._write_project_config_json()
+        self._write_claude_md("Lang: {{LANGUAGE}}")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn("TypeScript, Python", self._read_claude_md())
+
+    def test_package_stacks_section_markdown_table(self):
+        """populate package_stacks → {{PACKAGE_STACKS_SECTION}} renders as table."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "apps/web",
+            "--language", "TypeScript",
+            "--framework", "Vue",
+            "--build-tool", "Vite",
+        )
+        self._write_project_config_json()
+        self._write_claude_md("## Packages\n\n{{PACKAGE_STACKS_SECTION}}\n")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_claude_md()
+        self.assertIn("| Package | Language | Framework | Build Tool |", result)
+        self.assertIn("| apps/web | TypeScript | Vue | Vite |", result)
+
+    def test_unknown_placeholder_exits_2_and_lists_key(self):
+        """Template with {{FOO}} → exit 2 + stderr names FOO."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        self._write_project_config_json()
+        self._write_claude_md("Hello {{FOO}} world")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"FOO", proc.stderr)
+
+    def test_deprecated_placeholder_exits_0_warning_stderr(self):
+        """{{STATE_MANAGEMENT}} → exit 0 + empty substitution + WARNING on stderr."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        self._write_project_config_json()
+        self._write_claude_md("State: {{STATE_MANAGEMENT}} end")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_claude_md()
+        # Deprecated placeholder replaced with empty string.
+        self.assertNotIn("{{STATE_MANAGEMENT}}", result)
+        self.assertIn(b"WARNING", proc.stderr)
+        self.assertIn(b"STATE_MANAGEMENT", proc.stderr)
+
+    def test_idempotent_no_placeholders_in_already_substituted_file(self):
+        """Re-running substitute-templates on an already-substituted file exits 0."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "idempotent-project")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        # First run — substitutes.
+        proc1 = self._run_substitute()
+        self.assertEqual(proc1.returncode, 0, proc1.stderr.decode())
+        content_after_first = self._read_claude_md()
+        self.assertIn("idempotent-project", content_after_first)
+        # Second run — no {{...}} left; exits 0, file unchanged.
+        proc2 = self._run_substitute()
+        self.assertEqual(proc2.returncode, 0, proc2.stderr.decode())
+        self.assertEqual(self._read_claude_md(), content_after_first)
+
+    def test_project_config_missing_exits_1(self):
+        """project-config.json absent → exit 1."""
+        self._write_init_yaml()
+        # Do NOT run render-config → project-config.json does not exist.
+        self._write_claude_md("{{PROJECT_NAME}}")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(b"project-config.json not found", proc.stderr)
+
+    def test_agent_template_substituted(self):
+        """Agent .md files under .claude/agents/ are also substituted."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "forge-test")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        self._write_agent_md("code-reviewer", "Agent for {{PROJECT_NAME}} review")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        agent_content = self._read_agent_md("code-reviewer")
+        self.assertIn("forge-test", agent_content)
+        self.assertNotIn("{{PROJECT_NAME}}", agent_content)
+
+    def test_unknown_placeholder_leaves_original_file_unchanged(self):
+        """File with unknown placeholder is NOT modified (atomic write skipped)."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        self._write_project_config_json()
+        original_content = "Has {{UNKNOWN_KEY}} in it"
+        self._write_claude_md(original_content)
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 2)
+        # Original file must be unchanged.
+        self.assertEqual(self._read_claude_md(), original_content)
+
+    def test_uppercase_identity_placeholder_round_trips(self):
+        """{{UPPERCASE}} in a template round-trips as {{UPPERCASE}} after substitution."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        self._write_project_config_json()
+        self._write_claude_md("See {{UPPERCASE}} convention for details.")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_claude_md()
+        self.assertEqual(result, "See {{UPPERCASE}} convention for details.")
 
 
 if __name__ == "__main__":
