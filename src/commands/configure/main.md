@@ -79,7 +79,7 @@ Capture as `DOCS_JSON`. The exact per-field shape is owned by the helper's `_par
 .devforge/lib/configure_helper read-manifests
 ```
 
-Stdout JSON has one top-level key `packages[]`. Each entry is `{path, manifest, scripts, dependencies, dev_dependencies, build_tool_hint}`, sourced from `.devforge/index.json` (no fresh disk scan). `build_tool_hint` is `vite` / `webpack` / `rollup` / `next` / `tsc` / `null`, derived from dep names. Capture as `MANIFESTS_JSON`.
+Stdout JSON has one top-level key `packages[]`. Each entry is `{path, manifest, scripts, dependencies, dev_dependencies, build_tool_hint, framework_hint}`, sourced from `.devforge/index.json` (no fresh disk scan). `build_tool_hint` is `vite` / `webpack` / `rollup` / `next` / `tsc` / `null`, derived from dep names. `framework_hint` is the per-package framework derived from dep names (e.g., `Vue` / `React` / `Next.js` / `Express` / `FastAPI` / `null`); meta-frameworks (Next.js, Nuxt, Remix, SvelteKit, Expo) win over their underlying frameworks. Capture as `MANIFESTS_JSON`.
 
 ```bash
 .devforge/lib/configure_helper read-configs
@@ -124,7 +124,12 @@ Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same conv
 - `BUILD_COMMANDS` — comma-separated list aligned per-package; each entry is the package's `scripts.build` from `MANIFESTS_JSON.packages[]`. When a package lacks a `build` script, emit the ecosystem default (`npm run build` for `package.json`, `cargo build` for `Cargo.toml`, etc.).
 - `TYPE_CHECK_COMMANDS` — comma-separated; per-package `scripts.typecheck` or `scripts.tsc` from `MANIFESTS_JSON`. When absent, emit `tsc --noEmit` for TypeScript packages, `mypy .` for Python packages, or `N/A` when no type checker applies.
 - `LINT_COMMANDS` — comma-separated; per-package `scripts.lint`. When absent, emit `N/A`.
-- `PACKAGE_STACKS` — composite per-package record list. Each record is `{path, language, framework, build_tool, build_command, type_check_command, lint_command}`, composed from the same `MANIFESTS_JSON.packages[]` entry plus the framework signal from `DOCS_JSON.overview` Tech Stack. Path values are project-relative (matching `INIT_JSON.packages_detected[].path`).
+- `PACKAGE_STACKS` — composite per-package record list. Each record is `{path, language, framework, build_tool, build_command, type_check_command, lint_command}`. Per-record fields:
+  - `path` — project-relative path matching `INIT_JSON.packages_detected[].path`.
+  - `language` — derived per-package from manifest extension (`package.json` → TypeScript when `*.ts` files in package, else JavaScript; `pyproject.toml` → Python; `Cargo.toml` → Rust; etc.).
+  - `framework` — `MANIFESTS_JSON.packages[<path>].framework_hint` VERBATIM. Do NOT inherit the project-level top framework. A package that does not import a recognized framework gets `null` (helper returns null when no framework dep is present). This prevents mis-attributing e.g. `Vue` to a pure-TS domain package whose only deps are workspace siblings + utility libs.
+  - `build_tool` — `MANIFESTS_JSON.packages[<path>].build_tool_hint` verbatim.
+  - `build_command` / `type_check_command` / `lint_command` — same per-package values used by the flat string-arrays above.
 
 **Verbatim from docs/**
 

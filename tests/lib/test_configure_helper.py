@@ -1107,6 +1107,93 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"index.json not found", proc.stderr)
 
+    def test_framework_hint_vue(self):
+        self._write_index([
+            {
+                "path": "apps/app-web",
+                "manifest": "package.json",
+                "manifest_scripts": {},
+                "manifest_dependencies": {"vue": "^3.0.0"},
+                "manifest_dev_dependencies": {},
+                "files": [],
+            },
+        ])
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(data["packages"][0]["framework_hint"], "Vue")
+
+    def test_framework_hint_meta_framework_wins(self):
+        """Next.js wins over its underlying React.
+
+        Regression check on the order of _FRAMEWORK_HINTS — meta-frameworks
+        must appear in the table BEFORE their underlying frameworks so the
+        first-match-wins walk emits the more specific name.
+        """
+        self._write_index([
+            {
+                "path": "apps/web",
+                "manifest": "package.json",
+                "manifest_scripts": {},
+                "manifest_dependencies": {"next": "^14.0.0", "react": "^18.0.0"},
+                "manifest_dev_dependencies": {},
+                "files": [],
+            },
+        ])
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(data["packages"][0]["framework_hint"], "Next.js")
+
+    def test_framework_hint_null_when_no_framework_dep(self):
+        """Pure TS domain package with no framework dep → framework_hint=null.
+
+        Regression on testForge20: pkg-cse-core has only workspace deps +
+        purify-ts; previous LLM compose mis-attributed Vue. Helper now
+        returns null so the spec's PACKAGE_STACKS rule emits null verbatim.
+        """
+        self._write_index([
+            {
+                "path": "packages/pkg-cse-core",
+                "manifest": "package.json",
+                "manifest_scripts": {},
+                "manifest_dependencies": {"purify-ts": "^2.0.0"},
+                "manifest_dev_dependencies": {"typescript": "^5.0.0"},
+                "files": [],
+            },
+        ])
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        data = json.loads(proc.stdout.decode())
+        self.assertIsNone(data["packages"][0]["framework_hint"])
+
+    def test_framework_hint_express_for_backend(self):
+        self._write_index([
+            {
+                "path": "services/api",
+                "manifest": "package.json",
+                "manifest_scripts": {},
+                "manifest_dependencies": {"express": "^4.0.0"},
+                "manifest_dev_dependencies": {},
+                "files": [],
+            },
+        ])
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(data["packages"][0]["framework_hint"], "Express")
+
+    def test_framework_hint_fastapi_python(self):
+        self._write_index([
+            {
+                "path": "services/api",
+                "manifest": "pyproject.toml",
+                "manifest_scripts": {},
+                "manifest_dependencies": {"fastapi": "^0.100.0"},
+                "manifest_dev_dependencies": {},
+                "files": [],
+            },
+        ])
+        proc = _run_configure(self.devforge_dir, "read-manifests")
+        data = json.loads(proc.stdout.decode())
+        self.assertEqual(data["packages"][0]["framework_hint"], "FastAPI")
+
     def test_dict_shape_packages_normalized(self):
         """index.json with dict-of-path packages (current /init-forge format) parses.
 
