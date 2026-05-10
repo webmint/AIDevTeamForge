@@ -1,5 +1,7 @@
 ---
+name: generate-docs
 description: Generate the docs/ knowledge base — bottom-up bottom-tier (concern → package → project), incremental skip via source_stamp, helper-owned shape, orchestrator-direct compose.
+disable-model-invocation: true
 ---
 
 # /generate-docs

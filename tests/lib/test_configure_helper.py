@@ -31,13 +31,15 @@ section headers).
 Step 4 coverage: _build_substitution_map (all 35 project-config keys present,
 10 singular aliases derive from plural arrays, PROJECT_PATHS from
 packages_detected, PACKAGE_STACKS_SECTION empty → empty string, populated →
-4-column markdown table, UPPERCASE identity, deprecated keys → empty string),
+4-column markdown table, UPPERCASE identity, STATE_MANAGEMENT + STYLING NOT
+in map — those rules live in constitution.md per /constitute pipeline),
 _substitute_placeholders engine (single placeholder, multiple placeholders,
-unknown key → missing list, deprecated placeholder → empty + WARNING once per
+unknown key → missing list, STATE_MANAGEMENT + STYLING reported as unknown (no
+deprecated empty-string fallback — those rules live in constitution.md), once-per
 run, UPPERCASE round-trip, no bleed-over on lowercase/mixed patterns),
 substitute-templates subprocess (defaults exit 0 no leftover placeholders,
 populated project_name substituted, single language, multi-language comma-join,
-PACKAGE_STACKS_SECTION table, unknown placeholder exit 2, deprecated warning,
+PACKAGE_STACKS_SECTION table, unknown placeholder exit 2,
 idempotent re-run, project-config.json missing exit 1, agent .md substituted,
 unknown placeholder leaves original file unchanged, UPPERCASE round-trip).
 
@@ -2879,12 +2881,19 @@ class SubstitutionMapTests(unittest.TestCase):
         sub_map = configure_helper._build_substitution_map(config, [])
         self.assertEqual(sub_map["UPPERCASE"], "{{UPPERCASE}}")
 
-    def test_deprecated_keys_produce_empty_string(self):
-        """STATE_MANAGEMENT and STYLING map to empty string."""
+    def test_state_management_and_styling_not_in_substitution_map(self):
+        """STATE_MANAGEMENT + STYLING are NOT in the map.
+
+        These rules belong in constitution.md (project conventions), not in
+        the CLAUDE.md / agent-file template substitution layer. Agent files
+        reference constitution.md §Conventions for these rules; if a stray
+        {{STATE_MANAGEMENT}} or {{STYLING}} appears in a template, it gets
+        reported as an unknown placeholder (exit 2).
+        """
         config = self._make_config()
         sub_map = configure_helper._build_substitution_map(config, [])
-        self.assertEqual(sub_map["STATE_MANAGEMENT"], "")
-        self.assertEqual(sub_map["STYLING"], "")
+        self.assertNotIn("STATE_MANAGEMENT", sub_map)
+        self.assertNotIn("STYLING", sub_map)
 
 
 # ---------------------------------------------------------------------------
@@ -2894,10 +2903,6 @@ class SubstitutionMapTests(unittest.TestCase):
 
 class SubstitutePlaceholdersTests(unittest.TestCase):
     """Unit tests for _substitute_placeholders — pure function."""
-
-    def setUp(self):
-        # Clear the process-level dedup set so each test is independent.
-        configure_helper._DEPRECATED_WARNED.clear()
 
     def test_single_placeholder_substituted(self):
         text, missing = configure_helper._substitute_placeholders(
@@ -2925,38 +2930,28 @@ class SubstitutePlaceholdersTests(unittest.TestCase):
         self.assertIn("{{BAR}}", text)
         self.assertEqual(missing, ["BAR", "FOO"])  # sorted
 
-    def test_deprecated_placeholder_substitutes_to_empty_and_warns_stderr(self):
-        import io
-        old_stderr = configure_helper.sys.stderr
-        buf = io.StringIO()
-        configure_helper.sys.stderr = buf
-        try:
-            text, missing = configure_helper._substitute_placeholders(
-                "Style: {{STATE_MANAGEMENT}} end",
-                {},
-            )
-        finally:
-            configure_helper.sys.stderr = old_stderr
-        self.assertEqual(text, "Style:  end")
-        self.assertEqual(missing, [])
-        warning = buf.getvalue()
-        self.assertIn("WARNING", warning)
-        self.assertIn("STATE_MANAGEMENT", warning)
+    def test_state_management_treated_as_unknown_placeholder(self):
+        """STATE_MANAGEMENT in a template is reported as missing (exit-2 path).
 
-    def test_deprecated_placeholder_warns_only_once_per_run(self):
-        """Second call for the same deprecated key does NOT emit a second WARNING."""
-        import io
-        configure_helper._DEPRECATED_WARNED.clear()
-        old_stderr = configure_helper.sys.stderr
-        buf = io.StringIO()
-        configure_helper.sys.stderr = buf
-        try:
-            configure_helper._substitute_placeholders("{{STYLING}}", {})
-            configure_helper._substitute_placeholders("{{STYLING}}", {})
-        finally:
-            configure_helper.sys.stderr = old_stderr
-        warnings = buf.getvalue().count("STYLING")
-        self.assertEqual(warnings, 1, "WARNING should appear exactly once, got: {0!r}".format(buf.getvalue()))
+        State-management rules live in constitution.md, not in the
+        substitution layer. A stray {{STATE_MANAGEMENT}} marker in a
+        template is a template bug — engine flags it for the caller.
+        """
+        text, missing = configure_helper._substitute_placeholders(
+            "Style: {{STATE_MANAGEMENT}} end",
+            {"PROJECT_NAME": "X"},
+        )
+        self.assertIn("{{STATE_MANAGEMENT}}", text)
+        self.assertEqual(missing, ["STATE_MANAGEMENT"])
+
+    def test_styling_treated_as_unknown_placeholder(self):
+        """STYLING placeholder is unknown — same rationale as STATE_MANAGEMENT."""
+        text, missing = configure_helper._substitute_placeholders(
+            "Use {{STYLING}}",
+            {},
+        )
+        self.assertIn("{{STYLING}}", text)
+        self.assertEqual(missing, ["STYLING"])
 
     def test_uppercase_round_trips_unchanged(self):
         """{{UPPERCASE}} substituted to {{UPPERCASE}} leaves prose explanation intact."""
@@ -3097,18 +3092,22 @@ class SubstituteTemplatesTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn(b"FOO", proc.stderr)
 
-    def test_deprecated_placeholder_exits_0_warning_stderr(self):
-        """{{STATE_MANAGEMENT}} → exit 0 + empty substitution + WARNING on stderr."""
+    def test_state_management_placeholder_in_template_exits_2(self):
+        """{{STATE_MANAGEMENT}} in a template is an unknown placeholder.
+
+        State-management rules live in constitution.md per /constitute
+        pipeline; the substitution layer does NOT define a value. A stray
+        {{STATE_MANAGEMENT}} marker in CLAUDE.md or an agent file is a
+        template bug — exit 2 with the unknown placeholder enumerated.
+        """
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         self._write_project_config_json()
         self._write_claude_md("State: {{STATE_MANAGEMENT}} end")
         proc = self._run_substitute()
-        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
-        result = self._read_claude_md()
-        # Deprecated placeholder replaced with empty string.
-        self.assertNotIn("{{STATE_MANAGEMENT}}", result)
-        self.assertIn(b"WARNING", proc.stderr)
+        self.assertEqual(proc.returncode, 2, proc.stderr.decode())
+        # Original file unchanged because the substitution failed.
+        self.assertIn("{{STATE_MANAGEMENT}}", self._read_claude_md())
         self.assertIn(b"STATE_MANAGEMENT", proc.stderr)
 
     def test_idempotent_no_placeholders_in_already_substituted_file(self):
