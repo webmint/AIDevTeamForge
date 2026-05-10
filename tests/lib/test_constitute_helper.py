@@ -1,4 +1,20 @@
-"""Tests for src/devforge/lib/constitute_helper.py — Step 0..3.
+"""Tests for src/devforge/lib/constitute_helper.py — Step 0..4.
+
+Step 4 coverage (added in this commit):
+  validate — 4-dimension content quality framework.
+  Slot-fill: fully-populated (1.0) / missing identity subfield (8/9) / empty
+    domain rules (8/9) / greenfield+scaffolding (10/10) / greenfield+no-scaffolding
+    (9/10) / existing-codebase ignores Section 7.
+  Citation: real file resolves (1.0) / non-existent path (0.0) / no tokens (N/A)
+    / mix resolved+unresolved (0.5) / package-name lookup via init.yaml
+    / annotation INCLUDED in scan.
+  Code-example syntax: valid Python / invalid Python / valid JSON / invalid JSON
+    / TS balanced / TS unbalanced / exotic language non-empty / exotic empty;
+    _count_code_syntax all-pass / one-fail / zero-examples.
+  Rule-tag: all valid (1.0) / one bad tag (fractional) / zero rules (N/A).
+  Composite + exit: all-pass exits 0 / one-dim-fail exits 2 / stdout JSON
+    structure / stderr enumerates failures / corrupted state exits 1 /
+    composite formula verification.
 
 Step 3 coverage (added in this commit):
   render — fully-populated state produces 7 (greenfield) or 6 (existing-
@@ -2623,6 +2639,470 @@ class TestStep3Summary(unittest.TestCase):
             result = _run_summary(devforge)
             self.assertEqual(result.returncode, 1)
             self.assertIn("cannot load constitute.json", result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Step 4 — validate tests (4-dimension quality framework).
+# ---------------------------------------------------------------------------
+
+
+def _run_validate(devforge_dir, install_root=None):
+    """Run constitute_helper validate; install_root defaults to parent of devforge_dir."""
+    argv = ["--devforge-dir", str(devforge_dir)]
+    if install_root is not None:
+        argv += ["--install-root", str(install_root)]
+    argv.append("validate")
+    return _run(argv)
+
+
+class TestStep4SlotFill(unittest.TestCase):
+    """Slot-fill rate (dim 1) — 6 tests."""
+
+    def test_slot_fill_fully_populated_existing_codebase(self):
+        """Fully-populated existing-codebase state → slot_fill score == 1.0 (9/9)."""
+        state = _fully_populated_state()
+        filled, total, failed = constitute_helper._count_slot_fill(state)
+        self.assertEqual(total, 9)
+        self.assertEqual(filled, 9)
+        self.assertAlmostEqual(filled / total, 1.0)
+        self.assertEqual(failed, [])
+
+    def test_slot_fill_missing_project_identity_subfield(self):
+        """Missing 1 of 4 project_identity subfields → 8/9 = 0.888."""
+        state = _fully_populated_state()
+        # Remove one subfield (domain).
+        state["project_identity"]["domain"] = None
+        filled, total, failed = constitute_helper._count_slot_fill(state)
+        self.assertEqual(total, 9)
+        self.assertEqual(filled, 8)
+        self.assertAlmostEqual(filled / total, 8 / 9)
+        self.assertTrue(any("domain" in f for f in failed))
+
+    def test_slot_fill_empty_section_5_domain_rules(self):
+        """Empty domain_rules → 8/9 = 0.888."""
+        state = _fully_populated_state()
+        state["domain_rules"] = []
+        filled, total, failed = constitute_helper._count_slot_fill(state)
+        self.assertEqual(total, 9)
+        self.assertEqual(filled, 8)
+        self.assertTrue(any("domain_rules" in f for f in failed))
+
+    def test_slot_fill_greenfield_with_scaffolding_present(self):
+        """Greenfield mode + scaffolding present → 10/10 = 1.0."""
+        state = _fully_populated_state()
+        state["mode"] = "greenfield"
+        state["scaffolding_guide"] = {
+            "starter_directories": ["src"],
+            "sample_files": [],
+        }
+        filled, total, failed = constitute_helper._count_slot_fill(state)
+        self.assertEqual(total, 10)
+        self.assertEqual(filled, 10)
+        self.assertEqual(failed, [])
+
+    def test_slot_fill_greenfield_without_scaffolding(self):
+        """Greenfield mode + no scaffolding content → 9/10 = 0.9."""
+        state = _fully_populated_state()
+        state["mode"] = "greenfield"
+        state["scaffolding_guide"] = {
+            "starter_directories": [],
+            "sample_files": [],
+        }
+        filled, total, failed = constitute_helper._count_slot_fill(state)
+        self.assertEqual(total, 10)
+        self.assertEqual(filled, 9)
+        self.assertTrue(any("scaffolding_guide" in f for f in failed))
+
+    def test_slot_fill_existing_codebase_ignores_section_7(self):
+        """Existing-codebase mode → section 7 slot NOT counted (total=9)."""
+        state = _fully_populated_state()
+        state["mode"] = "existing-codebase"
+        state["scaffolding_guide"] = None
+        filled, total, failed = constitute_helper._count_slot_fill(state)
+        # Section 7 not counted, so total is 9 and 9/9 filled.
+        self.assertEqual(total, 9)
+        self.assertEqual(filled, 9)
+
+
+class TestStep4CitationValidity(unittest.TestCase):
+    """Citation validity (dim 2) — 6 tests."""
+
+    def test_citation_rule_refs_real_file_resolves(self):
+        """Rule referencing a real file (created in tmpdir) → score 1.0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            # Create the referenced file.
+            ref_file = install_root / "src" / "domain" / "entity.py"
+            ref_file.parent.mkdir(parents=True, exist_ok=True)
+            ref_file.write_text("# entity\n", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See src/domain/entity.py for entities."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertAlmostEqual(score, 1.0)
+            self.assertEqual(unresolved, 0)
+
+    def test_citation_rule_refs_nonexistent_path(self):
+        """Rule referencing a non-existent path → score 0.0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See missing/file.py always."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertAlmostEqual(score, 0.0)
+            self.assertEqual(resolved, 0)
+            self.assertTrue(len(failed) > 0)
+
+    def test_citation_no_path_tokens_is_na(self):
+        """Rule with no path-like tokens → N/A (score 1.0, zero extracted)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "Always read before write."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertAlmostEqual(score, 1.0)
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 0)
+
+    def test_citation_mix_resolved_and_unresolved(self):
+        """Mix of resolved + unresolved paths → fractional score."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            # Create one real file.
+            real_file = install_root / "real.py"
+            real_file.write_text("# real\n", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [
+                    {"tag": "extracted", "text": "See real.py for pattern."},
+                    {"tag": "extracted", "text": "See missing.py for antipattern."},
+                ],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 1)
+            self.assertAlmostEqual(score, 0.5)
+
+    def test_citation_package_name_lookup_via_init_yaml(self):
+        """Package directory resolved via pkg_map from init.yaml.
+
+        Asserts the package-name lookup mechanism end-to-end:
+        1) _build_package_name_map populates the map from init.yaml.
+        2) A rule citing a path inside the package dir resolves
+           (direct existence check; no pkg_map lookup needed).
+        3) Score is exactly 1.0 (resolved == 1, unresolved == 0).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            pkg_dir = install_root / "packages" / "my-lib"
+            pkg_dir.mkdir(parents=True)
+            devforge = install_root / ".devforge"
+            devforge.mkdir()
+            # Hand-write minimal init.yaml matching init_helper's emit shape.
+            (devforge / "init.yaml").write_text(
+                "workspace_mode: standalone\n"
+                "project_root: \".\"\n"
+                "project_state: brownfield\n"
+                "default_branch: main\n"
+                "packages_detected:\n"
+                "  - path: packages/my-lib\n"
+                "    manifest: package.json\n",
+                encoding="utf-8",
+            )
+            # Verify pkg_map mechanism directly.
+            pkg_map = constitute_helper._build_package_name_map(
+                devforge / "init.yaml"
+            )
+            self.assertIn("my-lib", pkg_map)
+            self.assertEqual(pkg_map["my-lib"], "packages/my-lib")
+
+            # Cite a real file inside the package — direct resolution.
+            (pkg_dir / "index.ts").write_text("export {};\n", encoding="utf-8")
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See packages/my-lib/index.ts for setup."}],
+                "tables": [], "code_examples": [],
+            }]
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertAlmostEqual(score, 1.0)
+
+    def test_citation_annotation_included_in_scan(self):
+        """code_example.annotation IS scanned for path tokens (INCLUDE behavior)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            # Create a real file referenced in annotation.
+            ref = install_root / "src" / "helpers.py"
+            ref.parent.mkdir(parents=True)
+            ref.write_text("# helpers\n", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [],
+                "tables": [],
+                "code_examples": [{
+                    "label": "EXAMPLE", "language": "python",
+                    "code": "pass",
+                    "annotation": "Pattern from src/helpers.py",
+                }],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            # src/helpers.py exists → resolved.
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertAlmostEqual(score, 1.0)
+
+
+class TestStep4CodeExampleSyntax(unittest.TestCase):
+    """Code-example syntax (dim 3) — 7 tests."""
+
+    def test_syntax_valid_python(self):
+        """Valid Python code → syntax check passes."""
+        self.assertTrue(constitute_helper._check_python_syntax("x = 1\n"))
+        self.assertTrue(constitute_helper._check_python_syntax("def foo():\n    return 42\n"))
+
+    def test_syntax_invalid_python(self):
+        """Invalid Python (def with no body in one context) → fails."""
+        # A def statement alone without a body is a SyntaxError in older Pythons
+        # but ast.parse handles "def foo(): pass" fine. Use truly invalid syntax.
+        invalid = "def foo(:\n    pass\n"
+        self.assertFalse(constitute_helper._check_python_syntax(invalid))
+
+    def test_syntax_valid_json(self):
+        """Valid JSON → syntax check passes."""
+        self.assertTrue(constitute_helper._check_json_syntax('{"key": "value"}'))
+        self.assertTrue(constitute_helper._check_json_syntax('["a", "b"]'))
+
+    def test_syntax_invalid_json_unclosed_brace(self):
+        """Invalid JSON (unclosed brace) → fails."""
+        self.assertFalse(constitute_helper._check_json_syntax('{"key": "value"'))
+
+    def test_syntax_ts_balanced_braces_pass(self):
+        """TypeScript with balanced braces → passes."""
+        code = "const fn = (x: string): string => { return x; }"
+        self.assertTrue(constitute_helper._check_balanced_braces(code))
+        self.assertTrue(constitute_helper._check_code_example_syntax("ts", code))
+
+    def test_syntax_ts_unbalanced_braces_fail(self):
+        """TypeScript with unbalanced braces (off by 2+) → fails."""
+        code = "const fn = (x: string) => {{ return x;"
+        self.assertFalse(constitute_helper._check_code_example_syntax("ts", code))
+
+    def test_syntax_ts_off_by_one_brace_passes(self):
+        """TypeScript with 1-brace imbalance (e.g., string-literal `{`) → tolerance allows it."""
+        code = "if (x) { console.log('open: {'); }"  # 2 open, 1 close → diff = 1
+        self.assertTrue(constitute_helper._check_balanced_braces(code))
+        self.assertTrue(constitute_helper._check_code_example_syntax("ts", code))
+
+    def test_syntax_non_empty_exotic_language_passes(self):
+        """Non-empty exotic language (dockerfile) → non-empty heuristic → pass."""
+        code = "FROM python:3.11\nRUN pip install -r requirements.txt\n"
+        self.assertTrue(constitute_helper._check_code_example_syntax("dockerfile", code))
+
+    def test_syntax_empty_exotic_language_fails(self):
+        """Empty code for any language → fails."""
+        self.assertFalse(constitute_helper._check_code_example_syntax("dockerfile", ""))
+        self.assertFalse(constitute_helper._check_code_example_syntax("bash", "   "))
+
+    def test_syntax_count_all_pass(self):
+        """_count_code_syntax on state with valid examples → score 1.0."""
+        state = constitute_helper.default_state()
+        state["architecture_rules"] = [{
+            "number": "2.1", "title": "T", "tag": None, "description": None,
+            "rules": [],
+            "tables": [],
+            "code_examples": [
+                {"label": "CORRECT", "language": "python", "code": "x = 1\n", "annotation": None},
+                {"label": "CORRECT", "language": "json", "code": '{"a": 1}', "annotation": None},
+            ],
+        }]
+        score, parsed, total, failed = constitute_helper._count_code_syntax(state)
+        self.assertEqual(total, 2)
+        self.assertEqual(parsed, 2)
+        self.assertAlmostEqual(score, 1.0)
+        self.assertEqual(failed, [])
+
+    def test_syntax_count_one_failure(self):
+        """_count_code_syntax with one failure → fractional score."""
+        state = constitute_helper.default_state()
+        state["architecture_rules"] = [{
+            "number": "2.1", "title": "T", "tag": None, "description": None,
+            "rules": [],
+            "tables": [],
+            "code_examples": [
+                {"label": "CORRECT", "language": "python", "code": "x = 1\n", "annotation": None},
+                {"label": "WRONG", "language": "python", "code": "def foo(:\n    pass", "annotation": None},
+            ],
+        }]
+        score, parsed, total, failed = constitute_helper._count_code_syntax(state)
+        self.assertEqual(total, 2)
+        self.assertEqual(parsed, 1)
+        self.assertAlmostEqual(score, 0.5)
+        self.assertEqual(len(failed), 1)
+
+    def test_syntax_zero_examples_is_na(self):
+        """Zero code examples → N/A → score 1.0."""
+        state = constitute_helper.default_state()
+        score, parsed, total, failed = constitute_helper._count_code_syntax(state)
+        self.assertEqual(total, 0)
+        self.assertAlmostEqual(score, 1.0)
+
+
+class TestStep4RuleTagValidity(unittest.TestCase):
+    """Rule-tag validity (dim 4) — 3 tests."""
+
+    def test_rule_tag_all_valid(self):
+        """All tags from enum → score 1.0."""
+        state = _fully_populated_state()
+        score, valid, total, failed = constitute_helper._count_rule_tags(state)
+        self.assertAlmostEqual(score, 1.0)
+        self.assertEqual(failed, [])
+        self.assertEqual(valid, total)
+
+    def test_rule_tag_one_bad_tag(self):
+        """One invalid tag → fractional score."""
+        state = _fully_populated_state()
+        # Insert a rule with invalid tag.
+        state["architecture_rules"][0]["rules"].append({"tag": "INVALID-TAG", "text": "something"})
+        score, valid, total, failed = constitute_helper._count_rule_tags(state)
+        self.assertLess(score, 1.0)
+        self.assertEqual(len(failed), 1)
+        self.assertIn("INVALID-TAG", failed[0])
+
+    def test_rule_tag_zero_rules_is_na(self):
+        """Zero rules → N/A → score 1.0."""
+        state = constitute_helper.default_state()
+        score, valid, total, failed = constitute_helper._count_rule_tags(state)
+        self.assertEqual(total, 0)
+        self.assertAlmostEqual(score, 1.0)
+        self.assertEqual(failed, [])
+
+
+class TestStep4CompositeAndExitCode(unittest.TestCase):
+    """Composite score + exit code — 5 tests."""
+
+    def test_composite_all_pass_exits_0(self):
+        """All dimensions pass → composite >= 0.95 → exit 0."""
+        state = _fully_populated_state()
+        # Ensure valid Python code examples.
+        state["architecture_rules"][0]["code_examples"] = [
+            {"label": "CORRECT", "language": "python", "code": "x = 1\n", "annotation": None},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_validate(devforge, install_root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = json.loads(result.stdout)
+            self.assertGreaterEqual(data["composite"], 0.95)
+
+    def test_composite_one_dimension_fails_exits_2(self):
+        """One dimension failing → composite < 0.95 → exit 2."""
+        state = constitute_helper.default_state()
+        # Deliberately leave most slots empty → slot_fill very low.
+        # All other dims are N/A (1.0) but slot_fill near 0.
+        # The composite = 0.3 * 0 + 0.25 * 1.0 + 0.25 * 1.0 + 0.2 * 1.0 = 0.70 < 0.95.
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_validate(devforge, install_root)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            data = json.loads(result.stdout)
+            self.assertLess(data["composite"], 0.95)
+
+    def test_composite_stdout_json_structure(self):
+        """stdout always contains valid JSON with composite + dimensions + failed_items."""
+        state = _fully_populated_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_validate(devforge, install_root)
+            # Should not raise.
+            data = json.loads(result.stdout)
+            self.assertIn("composite", data)
+            self.assertIn("dimensions", data)
+            self.assertIn("failed_items", data)
+            self.assertIsInstance(data["composite"], float)
+            for dim in ("slot_fill", "citation", "code_syntax", "rule_tag"):
+                self.assertIn(dim, data["dimensions"])
+                self.assertIn("score", data["dimensions"][dim])
+                self.assertIn("pass", data["dimensions"][dim])
+            self.assertIsInstance(data["failed_items"], list)
+
+    def test_composite_stderr_enumerates_failed_items(self):
+        """When failing, stderr enumerates per-dimension scores and failed items."""
+        state = constitute_helper.default_state()
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_validate(devforge, install_root)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("FAIL", result.stderr)
+            # At least one slot_fill failure item expected.
+            self.assertIn("slot_fill", result.stderr)
+
+    def test_composite_state_file_unreadable_exits_1(self):
+        """Corrupted constitute.json → exit 1."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            devforge.mkdir(parents=True, exist_ok=True)
+            (devforge / "constitute.json").write_text("{not valid json", encoding="utf-8")
+            result = _run_validate(devforge, install_root)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("cannot load constitute.json", result.stderr)
+
+    def test_composite_formula_verification(self):
+        """Verify composite = sum(weight * score for each dim)."""
+        scores = {
+            "slot_fill":   1.0,
+            "citation":    0.8,
+            "code_syntax": 0.9,
+            "rule_tag":    1.0,
+        }
+        expected = 0.30 * 1.0 + 0.25 * 0.8 + 0.25 * 0.9 + 0.20 * 1.0
+        result = constitute_helper._compute_composite(scores)
+        self.assertAlmostEqual(result, expected, places=6)
 
 
 if __name__ == "__main__":
