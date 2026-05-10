@@ -66,7 +66,7 @@ Stdout JSON has two top-level keys: `overview` and `architecture`. Field types v
 - `overview.packages` — list of bullet strings
 - `architecture.architecture_overview` — raw section text (string)
 - `architecture.module_structure` — raw section text (string)
-- `architecture.patterns` — list of pattern record dicts (`{name, applies_in, rule, snippet_lang, snippet}`)
+- `architecture.patterns` — list of pattern record dicts (`{name, applies_in, snippet_lang, snippet}`)
 - `architecture.conventions` — raw section text (string)
 - `architecture.layers` — list of bullet strings
 - `architecture.cross_cuts` — list of bullet strings
