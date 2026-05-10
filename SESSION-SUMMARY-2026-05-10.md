@@ -1,138 +1,133 @@
-# Session summary 2026-05-09 → 2026-05-10
+# Session summary 2026-05-10 — `/configure` shipped, `/constitute` next
 
-Hand-off to next session. Two goals for next session encoded below: (1) cleanup obsolete plan files; (2) keep this doc + active plans only.
+Branch: `develop-2.0-init`. Last commits: docs/v2/ARCHITECTURE.md /configure section + Step 7+8 status flips.
 
-## What shipped this session (commits on `develop-2.0-init`)
+## What shipped this session
 
-Branch is **12 commits ahead** of last checkpoint. Suite green at **1358 passed, 11 skipped, 0 failures**.
+`/configure` feature-closed end-to-end. Verified empirically on testForge20 (wrapper + 26-pkg monorepo).
 
-| # | SHA | Type | Summary |
-|---|---|---|---|
-| 1 | `551ab69` | plan | JUDGMENT-LAYER-PLAN — final feature plan committed as plan-of-record |
-| 2 | `543a1c2` | plan | Pre-req commit dropped — `_preflight.py:326-410` already shells out to CBM `index_repository`; /init-forge spec change unnecessary |
-| 3 | `a6a303f` | feat | Step 0 substrate — `_doc_corpus.py` (5 helper functions: walk / extract terms / validate cite paths / get section span / noise filter) + `_merge_project_skeleton` declared-order insertion fix (HIGH-severity anchor-prefix bug prevented) |
-| 4 | `a35be1f` | feat | ~~Track A.1 helper — `set-overview-suggested-research-starts`~~ (rolled back below) |
-| 5 | `cd56713` | docs | ~~Track A.2 spec — `Suggested Research Starts` compose step~~ (rolled back below) |
-| 6 | `e26c472` | docs | ~~Track A.3 cross-refs — CLAUDE.md / storage-rules~~ (rolled back below) |
-| 7 | `432135a` | feat | **Track B.1 helper — `_glossary.py` (440 LOC) + `build-glossary-bundles` + `set-glossary-entries` SUBCMDS** — produces `docs/glossary.md` from CBM-augmented term bundles + LLM definitions; validator enforces 30..150 entries, definition shape, cite-back, related-terms closure |
-| 8 | `d673bf6` | docs | **Track B.2 spec — Phase B section in `/generate-docs`** + flipped line 247 contradiction (inline-Purpose disambiguation + project-tier `docs/glossary.md` co-exist truthfully) |
-| 9 | `48af692` | docs | **Track B.3 cross-refs — CLAUDE.md / storage-rules / tech-writer.md (corrected stale references)** |
-| 10 | `5d89924` | plan | **Step Z — annotated GENERATE-DOCS-PLAN.md Steps 6.2/6.3/6.4/6.5/6.6/6.7/6.8 as REJECTED or SUPERSEDED; declared `/generate-docs` FEATURE-CLOSED** |
-| 11 | `b3563d0` | fix | Empirical fixes: `_validate_entries` cite-path bug (was `project_root`, now `project_root / "docs"`) + `_render_glossary` HTML escape (`<` `>` `&` → entities; prevents `BLoC<S>` triggering strikethrough in WebStorm md preview) |
-| 12 | `f019968` | revert | **Track A rollback** — 540 LOC removed; YAGNI lesson logged in `feedback_track_a_yagni_rollback`. Coverage upper-bound mathematically too low (5-6 entries on 22-package monorepo); zero unique signal vs Entry Points + concern docs + CBM BM25; speculative consumer (`/research`) doesn't exist |
+**Commit ledger (~20 commits this session):**
 
-**Net feature delivered**:
-- `_doc_corpus.py` substrate (5 reusable helpers; validate_cite_paths used by Track B)
-- `_merge_project_skeleton` declared-order insertion fix (anchor-prefix bug prevention — HIGH-severity)
-- `_glossary.py` Track B helper (`docs/glossary.md` rendering with CBM-augmented classification)
-- `/generate-docs` Phase B (glossary) compose step in spec
-- Cross-file refs propagated to CLAUDE.md template + storage-rules
-- `/generate-docs` formally FEATURE-CLOSED (only bug-fix + CBM-API-evolution accepted thereafter)
+| Step | What |
+|---|---|
+| 0 | Scaffolding + emitter wiring |
+| 1 | FIELD_SCHEMA (28 fields) + emit/parse + 4 read-* subcmds |
+| 2 | 27 setters + atomic `_state_transaction` + flock |
+| 3 | render-config + verify + summary |
+| 4 | substitute-templates engine (25 placeholders, 4 categories) |
+| 5 | Spec authoring (main.md + q11-tiers.md + q12-ac.md) |
+| — | tree-annotator delete (concern 3 of agent-pruning trio) |
+| — | applies_to frontmatter on 16 agents |
+| — | Pruning system (project_natures field + prune-agents subcmd + tests) |
+| — | Phase 5.2 spec + emitter passthrough + plan count sync |
+| 6 | index.json shape drift + wrapper-mode read-configs |
+| 6 | Phase 3 stop-discipline directive |
+| 6 | JSON-array setter + case-insensitive enum + Phase 3 echo cancel |
+| 6 | per-package framework_hint helper-side enforcement |
+| 6 | dash-delimited frontmatter parser (installed agents) |
+| — | install.sh stray-state-file guard + .gitignore |
+| 7+8 | install.sh chain message + ARCHITECTURE-PIVOT status flip + memory |
+| — | docs/v2/ARCHITECTURE.md /configure section |
 
-**Empirical run on testForge20 (2026-05-10)** confirmed:
-- Concern + package tiers stamp-gate correctly skip unchanged content
-- Project tier rebuild required manual stamp bust (anchor-schema-drift detection deferred — known-bug logged)
-- Glossary: 80 candidates → 22 noise-filtered → 58 final entries; 0 [TODO: human-define]; all classified prose-only (CBM `query_graph WHERE n.name=<term>` exact-match misses TS PascalCase qualified names; classification quality depends on a name-normalization tweak — deferred)
-- Validator path bug + renderer escape bug surfaced + fixed in `b3563d0`
+## Final empirical state on testForge20
 
-## What was tested empirically — 2 real diagnosis tickets
+- 28 fields persisted in `.devforge/configure.yaml`
+- 36 keys rendered in `.devforge/project-config.json`
+- Agent pruning live: 4 dropped (backend-engineer, db-engineer, migration-engineer, mobile-engineer), 12 kept
+- `CLAUDE.md` + 12 surviving `.claude/agents/*.md` substituted clean (only deliberate `{{UPPERCASE}}` identity passthrough remains)
+- `ac_runtime_url: https://okta.local.dev.dice-tools.com:8080` (wrapper-mode fix verified)
 
-| Ticket | Diagnosis path | Pipeline contribution | Net verdict |
-|---|---|---|---|
-| **Alert content not sorted in Quote & Order** (testForge20) | docs+CBM only first → CBM identified `AlertResolverChoices.vue:203` `.sort((a,b) => choicesOrderStatus[a.status] - choicesOrderStatus[b.status])` — sorts by status field not display name; status-collision causes apparent randomness | CBM 95%, concern docs 5%, SRS 0%, glossary 0% | docs+CBM sufficient; SRS+glossary contributed nothing |
-| **`[Vue warn]: injection "notificationsBLoC" not found`** | docs+CBM identified provide-vs-inject mismatch (App.vue:62 component-level provide; vendor `@doosanica/db-widgets-ui` injects from Pinia store factory context) | CBM 70%, concern docs 25%, SRS 0%, glossary 0% — **but** main-branch `/research` flow produced a structurally better report (4 hypothesis emitter categories enumerated, diagnose-first via `app.config.warnHandler` recommended); this session's flow stopped at first plausible theory | Main-branch `/research` won — process scaffolding (Approaches A/B/C section in /research spec) forced fix-breadth that this session's free-form output missed. Cause-side hypothesis-enumeration NOT in /research either; came from model judgment |
+Suite: 1678 tests OK, skipped=3.
 
-**Lesson logged** in `REDESIGN-RESEARCH-PLAN.md` Findings §2: hypothesis-enumeration + diagnose-first discipline as new mandatory output schema for /research redesign.
+## What's next — `/constitute` schema-anchor
 
-## Current state of /generate-docs
+Per `ARCHITECTURE-PIVOT-PLAN.md` §Step 8. Existing memory: `project_schema_anchored_constitute.md` (schema design — 7 sections, closed rule-tag enum, validated against `cse-strata-ws-forge/constitution.md`). Read that memory + ARCHITECTURE-PIVOT §Step 8 first.
 
-**FEATURE-CLOSED** as of `5d89924`. Bug fixes + CBM-API-evolution adjustments only.
+### Patterns to inherit from `/configure` (mirror exactly)
 
-Active surfaces:
-- Phase 0 — pre-flight gate (devforge dir + CBM binary check)
-- Phase 1 — preflight (vue-extract + index_repository + concern stamp diff)
-- Phase 2 — concern tier (concern docs with Purpose paragraph + structure tree)
-- Phase 3 — package tier (overview + architecture per package, 8-section validator)
-- Phase 4 — project tier (overview.md + architecture.md, 11-section overview, 8-section architecture)
-- **Phase B — glossary (`docs/glossary.md` via build-glossary-bundles + set-glossary-entries)**
-- Phase 5 — verify (defensive validate-doc on rendered files)
-- Phase 6 — report (counts + glossary line item)
+1. **Single-file helper.** `src/devforge/lib/constitute_helper.py` — no submodule split (configure_helper is the size template, ~3.5k lines).
+2. **State + render shape.**
+   - State: `.devforge/constitute.yaml` (canonical, atomic write)
+   - Render artifact: `constitution.md` at install root (regenerated each `render` call; never edited between renders)
+3. **`_state_transaction` with `fcntl.LOCK_EX`** on `<constitute.yaml>.lock` sidecar. All setters route through it.
+4. **Validation helpers.** Reuse the 5 patterns:
+   - `_validate_scalar` — non-empty after strip
+   - `_validate_enum` — case-insensitive, normalize to canonical (rule-tag input `extracted` / `EXTRACTED` / `Extracted` → canonical case)
+   - `_validate_string_array` — accept BOTH JSON-array form (`'["a", "b,c"]'`) AND comma-sep (TS generic syntax `Either<DataError, T>` requires JSON form)
+   - `_validate_path_value` — non-empty, no newlines
+   - `_validate_verbatim` — non-empty, preserve internal whitespace
+5. **Subcommand surface.** Mirror `/configure`'s grouping: reset / read-* (capture inputs as JSON) / setters / render / verify / summary.
+6. **Phase shape.** Mirror `/configure`:
+   - Phase 0: pre-flight gate (init.yaml + configure.yaml + docs/overview.md + docs/architecture.md + docs/glossary.md present)
+   - Phase 1: reset + read-* (capture JSON variables)
+   - Phase 2: orchestrator-direct compose (NO subagent dispatch)
+   - Phase 3: plain-prose bulk-confirm with explicit STOP discipline directive (NOT AskUserQuestion — multi-line content)
+   - Phase 4: sequential AskUserQuestion for any user-only fields (if needed)
+   - Phase 5: render
+   - Phase 6: verify + summary
 
-Helper code lives at `src/devforge/lib/_generate_docs/` and is invoked via `.devforge/lib/generate_docs_helper <subcmd>`.
+### Empirical bugs to PREEMPT (all surfaced + fixed during /configure; bake fixes in from day one)
 
-## Deferred / known bugs (not blocking)
+7. **Phase 3 stop discipline.** Plain-prose echo has no harness wait. Spec MUST explicitly say "end assistant turn after echo; do NOT call any tool / subcommand in same turn." Otherwise LLM auto-advances past confirmation.
+8. **Internal-comma values break comma-sep split.** TypeScript generics, parenthetical clauses with internal commas. JSON-array form support is non-negotiable from day one.
+9. **LLM lowercases enum values.** Case-insensitive `_validate_enum` is non-negotiable.
+10. **install.sh stray-state-file guard.** Already includes `constitute.yaml` + `constitute.yaml.lock`. `.gitignore` complements. Forward-compat shipped 2026-05-10.
+11. **Wrapper-mode path resolution.** Helpers reading source files MUST consult init.yaml's `workspace_mode` + `project_root`. Read-* subcmds prepend `project_root` when wrapper. Pure-`docs/`-reading subcmds don't need this (docs/ lives at install root in wrapper mode).
+12. **Re-install propagation.** When iterating, re-run install.sh to propagate framework src changes into target's `.devforge/lib/`. LLM session running the slash command may have cached the older spec — fresh session start ensures latest spec read.
+13. **Frontmatter parsing dual-form.** N/A for /constitute body markdown. Pattern exists in `_parse_agent_frontmatter` if future agent-touching work needs it.
 
-1. **Stamp gate doesn't detect owned-anchor schema drift** — when `_PROJECT_OVERVIEW_OWNED_ANCHORS` gains a new entry, existing project's `source_stamp` may still match → phase skipped → new anchor never lands. Workaround: bust source_stamp manually or delete `docs/overview.md`. Real fix: detect anchor-schema drift in stamp comparison.
-2. **CBM watcher async-miss on freshly-written files** — `docs/glossary.md` did not appear via watcher; required explicit `index_repository mode=full` to surface as File + Section nodes. Pre-existing CBM behavior; flag if it bites.
-3. **Glossary classification name-normalization** — `query_graph WHERE n.name='<term>'` exact-match misses TS PascalCase qualified names; testForge20 run produced 58 entries all prose-only (zero code-anchored / fuzzy-anchored). Classification works in code but doesn't fire on real CBM data without name normalization (try short-name + qualified-suffix lookups in `_classify_term`).
+### Schema specifics for /constitute
 
-## Memory updates this session
+Per `project_schema_anchored_constitute.md` memory:
 
-- `feedback_command_spec_single_responsibility.md` (NEW) — command spec steps run + verify only; no downstream speculation
-- `project_judgment_layer_empirical_validated.md` (NEW) — testForge20 empirical run details, deferred bugs
-- `feedback_track_a_yagni_rollback.md` (NEW) — coverage-check + unique-signal-check + real-consumer-check before authoring curated-content surfaces
-- `project_judgment_layer_plan.md` (UPDATED) — Track A rolled back; Track B + Step 0 retained; /generate-docs FEATURE-CLOSED
+- 7 top-level constitution.md sections
+- Closed rule-tag enum: `extracted` / `enforced` / `universal` / `project-specific`
+- Code examples + rule tables per section
+- Validated against cse-strata-ws-forge constitution.md (451 lines)
 
-## CLEANUP CHECKLIST FOR NEXT SESSION
+Render pattern: manual concatenation per section + per rule, mirroring `/generate-docs`'s render approach (no template engine; helper owns markdown shape).
 
-Files at repo root with status. Next session should review + delete obsolete plan files. Don't delete CLAUDE.md / README.md / CHANGELOG.md / DEVELOPMENT-STATUS.md / this file.
+### Test bed
 
-| File | Status | Action |
-|---|---|---|
-| `ARCHITECTURE-PIVOT-PLAN.md` | active (Steps 2-8 still pending) | KEEP |
-| `CBM-INTEGRATION-PLAN.md` | F.11 shipped earlier this session (commits 65b0a24/e0ca9bb/cdddf76) | DELETE — superseded by shipped state + `project_track1_f11_hooks_shipped.md` memory |
-| `CHANGELOG.md` | git-history aggregate | KEEP |
-| `claude-r3-interview.md` | interview transcript, historical | DELETE — preserve in Obsidian if user wants the artifact |
-| `CLAUDE.md` | repo conventions | KEEP |
-| `CODEGRAPH-INTEGRATION-PLAN.md` | codegraph deferred per memory `project_codegraph_state_2026_05_06` (LLM-mode broken, abandoned) | DELETE — fully superseded |
-| `CODEX-REMOVAL-PLAN.md` | active on `feature/codex-remove` branch | KEEP (or DELETE if codex-removal merged + branch closed) |
-| `DEVELOPMENT-STATUS.md` | aggregate framework status | KEEP |
-| `GENERATE-DOCS-EXECUTION-LOG.md` | per-session execution log, historical | DELETE — preserve in Obsidian if needed; git history covers commits |
-| `GENERATE-DOCS-PLAN.md` | feature-closed per Step Z (5d89924) | KEEP for historical record (annotated SUPERSEDED/REJECTED inline) OR DELETE if user wants clean tree — RECOMMEND DELETE since /generate-docs is closed and the annotated steps are pure historical context |
-| `JUDGMENT-LAYER-PLAN.md` | feature-closed; Track A rolled back; Track B shipped | DELETE — fully shipped + closed; memory `project_judgment_layer_plan.md` carries the summary |
-| `NEXT-SESSION-DUMP.md` | prior session hand-off | DELETE — superseded by THIS file |
-| `PENDING-CHANGES.md` | prior pending state | DELETE — current state in this file |
-| `QUALITY-AUDIT.md` | old audit | DELETE — preserve in Obsidian if needed |
-| `README.md` | public-facing | KEEP |
-| `REDESIGN-RESEARCH-PLAN.md` | active; Findings §1 + §2 locked; work order TBD | KEEP |
-| `run3-observations.md` | old run observations | DELETE |
-| `SESSION-HANDOFF.md` | prior handoff | DELETE — superseded by THIS file |
-| `SESSION-SUMMARY-2026-05-10.md` | THIS file | KEEP (until next session writes its own summary, then delete or rename to dated archive) |
-| `structural-integration-check-plan.md` | historical | DELETE |
-| `VALIDATOR-LOOP-A5-LAUNCH.md` | old launch doc | DELETE |
-| `VALIDATOR-LOOP-B-PLAN.md` | per memory `project_validator_loop_part_b`, status was Part B planned (validator-loop pivot from annotations to per-file md docs); check current status before delete | REVIEW — if shipped or abandoned, delete; if active, keep |
-| `VALIDATOR-LOOP-PLAN.md` | superseded by Part B | DELETE |
+testForge20 has `/init-forge` + `/generate-docs` + `/configure` all run end-to-end. State preserved:
+- `.devforge/init.yaml` (wrapper, db-cse-ui-strata, 26 packages)
+- `.devforge/configure.yaml` (28 fields populated)
+- `docs/{overview,architecture,glossary}.md` rendered
+- `CLAUDE.md` substituted
 
-Estimated cleanup: **~12 files deleted** (~150KB freed), ~8 retained.
+Fresh `/constitute` invocation will read these + synthesize `constitution.md`.
 
-## ACTIVE PLAN-OF-RECORD AFTER CLEANUP
+`cse-strata-ws-forge/constitution.md` is the empirical reference shape (451 lines; read during schema validation).
 
-After cleanup, remaining plans at root:
-- `ARCHITECTURE-PIVOT-PLAN.md` — pivot Steps 2-8 (Steps 1+ partially done)
-- `CODEX-REMOVAL-PLAN.md` — if branch still open
-- `REDESIGN-RESEARCH-PLAN.md` — /research command redesign with locked Findings §1 (CBM discovery chain) + §2 (hypothesis-enumeration + diagnose-first)
-- `VALIDATOR-LOOP-B-PLAN.md` — IF still active
-
-Plus:
-- `CLAUDE.md` — conventions
-- `README.md` — public
-- `DEVELOPMENT-STATUS.md` — framework status
-- `CHANGELOG.md` — history
-
-## Recommended next session priorities
-
-1. **Cleanup** per checklist above (single bulk commit `chore: cleanup superseded plan files`)
-2. **/research redesign** — highest-leverage next move per this session's empirical finding that diagnosis-quality bottleneck is process-scaffolding, not docs/. Findings §1 + §2 are locked; need spec body + dispatch. See `REDESIGN-RESEARCH-PLAN.md` Work order steps 1-6.
-3. **(Optional) Glossary classification name-normalization** — small `_glossary.py` patch in `_classify_term` to try short-name + qualified-name lookup variants. Unblocks code-anchored / fuzzy-anchored classification on real CBM data.
-4. **(Optional) Stamp gate anchor-schema drift detector** — small fix to project-tier rebuild trigger when owned-anchors change. Workaround acceptable for now.
-
-## How to resume
+### Resume protocol
 
 1. Read this file in full.
-2. Read `CLAUDE.md` for repo conventions (especially audit format + working process).
-3. Read auto-loaded memory index (focus: `project_judgment_layer_plan.md`, `project_judgment_layer_empirical_validated.md`, `feedback_track_a_yagni_rollback.md`).
-4. Check branch state: `git status && git log --oneline -15`.
-5. Run cleanup commit per checklist.
-6. Pick next priority + start.
+2. Read `ARCHITECTURE-PIVOT-PLAN.md` (§Step 8 specifically).
+3. Read memory `project_schema_anchored_constitute.md` for schema design.
+4. Read `docs/v2/ARCHITECTURE.md` §4 (`/configure`) — mirror its patterns for `/constitute`.
+5. Read `CONFIGURE-PLAN.md` as template for writing new `CONSTITUTE-PLAN.md`.
+6. Read `src/devforge/lib/configure_helper.py` for helper pattern detail (single-file, ~3.5k lines, 32 subcmds).
+7. Confirm test baseline: `python3 -m unittest discover tests/lib` — 0 failures.
+8. Write `CONSTITUTE-PLAN.md` mirroring CONFIGURE-PLAN's structure (Status / Goal / Architecture / Helper subcommand registry / Phase shape / Step work order with verify criteria).
+9. Execute Steps 0-N per new plan, using iterative apply-verify loop:
+   - python-engineer writes function + tests in same turn
+   - python-reviewer audits; loop until clean
+   - instruction-author writes spec; instruction-reviewer + claude-code-guide audit; loop until clean
+10. Empirical run on testForge20 after Step 5 (spec authoring) — expect 3-6 follow-up commits to settle Step 6 bugs.
 
-Branch: `develop-2.0-init`. Suite: 1358 passed, 11 skipped.
+### Open follow-ups (not blocking /constitute)
+
+- Pivot Step 7: full delete of `setup-wizard/` source + `detect_report.py` + `wizard_render.py`. Emitter already drops them; src retained as historical reference. Schedule during /constitute work or after.
+- /configure cosmetic: PACKAGE_STACKS framework column reads stray manifest deps honestly (codebase hygiene issue surfaces, e.g., pkg-cse-common stray React dep). Substitute engine matches DOCS-example placeholders. Phase 2 LLM compose drift across re-runs.
+- Per-record subfield override syntax in Phase 3 parser (e.g., `package_stacks.<pkg>.framework: null`) — currently NOT supported; minor cleanup.
+
+### Cleanup checklist post-/constitute
+
+When `/constitute` ships + verified end-to-end:
+- ARCHITECTURE-PIVOT-PLAN.md §Step 8 → DONE
+- CLAUDE.md "Active work" → strike through CONSTITUTE-PLAN.md
+- docs/v2/ARCHITECTURE.md → add §5 `/constitute` section, renumber CBM hooks + later sections
+- Memory: project_4command_architecture_pivot.md → all 4 commands DONE
+- New session-summary doc replacing this one
+
+Pivot status post-/constitute: full 4-command sequence shipped. Pivot plan retired.

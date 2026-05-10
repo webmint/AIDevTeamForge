@@ -19,6 +19,8 @@ src/devforge/.generate-docs-trace.log
 src/devforge/init.yaml
 src/devforge/configure.yaml
 src/devforge/configure.yaml.lock
+src/devforge/constitute.yaml
+src/devforge/constitute.yaml.lock
 src/devforge/.preflight-stamp
 src/devforge/cbm-usage.log
 
