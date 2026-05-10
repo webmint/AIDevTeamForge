@@ -2,10 +2,18 @@
 # install.sh — Install AIDevTeamForge template into a target project directory.
 #
 # Responsibility: copy files and create directory structure. Nothing more.
-# All project detection and configuration happens in /setup-wizard (run later,
-# inside the target, by Claude Code). The wizard handles all mode-specific
-# concerns — including wrapper-mode detection and any user-confirmed
-# `.gitignore` updates for an inner project folder. install.sh stays dumb.
+# All project detection and configuration happens in the 4-command sequence
+# (run later, inside the target, by Claude Code, in this order):
+#
+#   /init-forge      — bootstrap: 5 structural fields + index.json
+#   /generate-docs   — deep codebase scan → docs/ knowledge base
+#   /configure       — populate config + substitute templates + prune agents
+#   /constitute      — synthesize constitution.md
+#
+# Each command can be re-run independently. install.sh just lays the
+# framework files down — wrapper-mode detection, packages_detected,
+# .gitignore updates, agent pruning, etc. all happen during the
+# command sequence.
 #
 # Usage:
 #   install.sh <target-directory>
@@ -162,4 +170,8 @@ chmod +x "$TARGET_DIR/.claude/hooks/"*
 
 echo ""
 echo "Done. AIDevTeamForge installed."
-echo "Next — open the project and run /init-forge in Claude Code."
+echo "Next — open the project in Claude Code and run, in order:"
+echo "  /init-forge      — bootstrap structural fields"
+echo "  /generate-docs   — deep codebase scan"
+echo "  /configure       — populate config + substitute templates"
+echo "  /constitute      — synthesize constitution.md"

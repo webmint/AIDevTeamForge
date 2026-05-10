@@ -165,7 +165,7 @@ migrate_project_config() {
 
   if [ ! -f "$claude_md" ]; then
     warn "No CLAUDE.md found — cannot extract project config."
-    warn "Run /setup-wizard in your project to generate .claude/project-config.json"
+    warn "Run /configure in your project to populate .devforge/configure.yaml + project-config.json"
     return 1
   fi
 
@@ -352,7 +352,7 @@ else
     HAS_CONFIG=true
   else
     warn "Skipping placeholder substitution for agents and CLAUDE.md."
-    warn "Re-run /setup-wizard to generate .claude/project-config.json"
+    warn "Re-run /configure to populate .devforge/configure.yaml + project-config.json"
   fi
 fi
 
@@ -374,7 +374,7 @@ if [ "$HAS_CONFIG" = true ]; then
   bad_keys="$(jq -r 'to_entries[] | select(.value | test("\\{\\{[A-Z_]+\\}\\}")) | .key' "$PROJECT_CONFIG" 2>/dev/null || true)"
   if [ -n "$bad_keys" ]; then
     warn "project-config.json has unresolved placeholders in: $bad_keys"
-    warn "These values will not substitute correctly. Fix them or re-run /setup-wizard"
+    warn "These values will not substitute correctly. Fix them or re-run /configure"
   fi
 fi
 

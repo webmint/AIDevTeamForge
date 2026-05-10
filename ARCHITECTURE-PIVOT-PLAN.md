@@ -220,7 +220,9 @@ Commits: `a55d923`, `052cf2a`, `bd544ff` on `develop-2.0-init`. See "Step 1 outc
 
 **Verify** (passed): running `/init-forge` on testForge20 produces all 5 fields in `.devforge/init.yaml` (workspace_mode=wrapper, project_root=db-cse-ui-strata, project_state=brownfield, default_branch=dev, packages_detected=26 records). Render Summary step displays the values verbatim before `/generate-docs` handoff.
 
-### Step 4: Write `/configure` spec
+### Step 4: Write `/configure` spec ✓ DONE 2026-05-10
+
+Full feature delivered end-to-end on testForge20 (wrapper + 26-pkg monorepo). See `CONFIGURE-PLAN.md` for the full work order; final delivery state matches that plan plus several Step 6 follow-ups (JSON-array setter form, case-insensitive enum, dash-delimited frontmatter parser, framework_hint helper-side enforcement, install.sh stray-state-file guard). Step 7 (install.sh chain orchestration) shipped 2026-05-10. Step 8 (this status flip) closes the feature.
 
 **Detailed plan: `CONFIGURE-PLAN.md`** (design locked 2026-05-10; empirical pass against testForge20 + locked decisions on helper foundation, state shape, and bulk-confirmation flow). The original "consume legacy onboard docs + reuse `detect_report` / `wizard_render`" framing below is superseded by the plan file — read CONFIGURE-PLAN.md before starting Step 4.
 
@@ -248,7 +250,9 @@ The Q1-Q12 work on `develop-2.0-setup-wizard` branch transfers in INTENT (which 
 
 **Verify**: /configure on testForge20 produces correct yaml + project-config.json with one bulk confirmation interaction + 4 sequential user-only prompts. The Q5 testForge20 case (purify-ts + Either monad) appears in the bulk prompt with correct values, no override needed if docs-driven detection produced them correctly.
 
-### Step 6: Update install.sh to orchestrate the chain
+### Step 6: Update install.sh to orchestrate the chain ✓ DONE 2026-05-10
+
+install.sh's header comment + final-message string updated to reference the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). update.sh's three /setup-wizard warnings (lines 168, 355, 377) redirected to /configure. install.sh also gained a stray-user-state-file guard (rejects accidental `init.yaml` / `configure.yaml` left in `src/devforge/` from helper runs at repo root). The actual chain auto-execution is NOT shipped — slash commands run inside Claude Code, not from a shell script; install.sh just lays files + tells the user the order.
 
 `install.sh` chains `/init-forge` → `/generate-docs` → `/configure` → `/constitute` for first-time installs. Each step can be re-run independently.
 

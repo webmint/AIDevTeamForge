@@ -1,6 +1,8 @@
 # /configure — implementation plan
 
-**Status**: design locked 2026-05-10. Ship pending. Branch `develop-2.0-init`. Predecessor work: `/init-forge` (Step 1, DONE) + `/generate-docs` (Step 2, FEATURE-CLOSED). This is Step 4 of `ARCHITECTURE-PIVOT-PLAN.md`.
+**Status**: DONE 2026-05-10 — FEATURE-CLOSED. /configure shipped end-to-end on testForge20 (wrapper-mode + 26-pkg monorepo). 28 fields persisted, 36-key project-config.json rendered, agent pruning live (4 dropped, 12 kept), template substitution clean. Steps 0-8 all complete. Step 6 follow-ups also shipped: JSON-array setter form (handles internal commas), case-insensitive enum validator, dash-delimited frontmatter parser (matches Claude Code native form), per-package framework_hint helper-side enforcement, install.sh stray-state-file guard. This plan is retained for historical reference and as a template for Step 8 of ARCHITECTURE-PIVOT-PLAN (`/constitute` schema-anchor work).
+
+Branch `develop-2.0-init`. This is Step 4 of `ARCHITECTURE-PIVOT-PLAN.md`. Predecessor work: `/init-forge` (Step 1, DONE) + `/generate-docs` (Step 2, FEATURE-CLOSED).
 
 `/configure` is the third command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes `.devforge/init.yaml`, `.devforge/index.json`, `docs/overview.md`, `docs/architecture.md`, and a focused subset of repo config files; populates `.devforge/configure.yaml`; renders `.devforge/project-config.json`; and substitutes `{{...}}` placeholders in `CLAUDE.md` + `.claude/agents/*.md` to materialize the project's runtime configuration.
 
