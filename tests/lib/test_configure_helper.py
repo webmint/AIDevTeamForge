@@ -1588,10 +1588,25 @@ class ValidateEnumTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             configure_helper._validate_enum("", "ai_attribution")
 
-    def test_case_sensitive_rejection(self):
-        # "strict" is not in the set {"Strict", "Moderate", "Light"}
+    def test_case_insensitive_match_returns_canonical(self):
+        """Lower/upper-cased input normalizes to the canonical exact-case member.
+
+        LLM running /configure may lowercase AskUserQuestion option labels
+        (saw 'Strict' → 'strict' in real run); validator now accepts and
+        normalizes to the canonical 'Strict'.
+        """
+        for raw in ("strict", "STRICT", "Strict", "sTrIcT"):
+            result = configure_helper._validate_enum(raw, "workflow_enforcement")
+            self.assertEqual(
+                result,
+                "Strict",
+                "input {0!r} must normalize to 'Strict'".format(raw),
+            )
+
+    def test_case_insensitive_no_match_still_raises(self):
+        # 'Mostly' is not in workflow_enforcement enum at any case.
         with self.assertRaises(ValueError):
-            configure_helper._validate_enum("strict", "workflow_enforcement")
+            configure_helper._validate_enum("Mostly", "workflow_enforcement")
 
 
 class ValidateStringArrayTests(unittest.TestCase):
@@ -1621,6 +1636,49 @@ class ValidateStringArrayTests(unittest.TestCase):
     def test_whitespace_only_item_raises(self):
         with self.assertRaises(ValueError):
             configure_helper._validate_string_array("a, ,b", "languages")
+
+    def test_json_array_form_accepted(self):
+        """JSON-array input form: starts with `[`, ends with `]`."""
+        result = configure_helper._validate_string_array(
+            '["TypeScript", "Python", "Go"]', "languages"
+        )
+        self.assertEqual(result, ["TypeScript", "Python", "Go"])
+
+    def test_json_array_preserves_internal_commas(self):
+        """JSON-array form lets items contain literal commas.
+
+        Regression: comma-sep split breaks on TypeScript generic syntax
+        like `Either<DataError, T>`. JSON-array form bypasses the split.
+        """
+        result = configure_helper._validate_string_array(
+            '["Either<DataError, T> via fp-ts", "BLoC notifications"]',
+            "error_handlings",
+        )
+        self.assertEqual(
+            result,
+            ["Either<DataError, T> via fp-ts", "BLoC notifications"],
+        )
+
+    def test_json_array_single_item(self):
+        result = configure_helper._validate_string_array('["one"]', "languages")
+        self.assertEqual(result, ["one"])
+
+    def test_malformed_json_array_raises(self):
+        # Starts and ends with brackets (so JSON-detection fires) but the
+        # body is not valid JSON: unquoted identifiers.
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_string_array("[a, b]", "languages")
+        self.assertIn("languages", str(ctx.exception))
+
+    def test_json_array_with_non_string_items_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_string_array('["a", 42]', "languages")
+        self.assertIn("languages", str(ctx.exception))
+
+    def test_json_array_empty_item_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_string_array('["a", "", "b"]', "languages")
+        self.assertIn("non-empty", str(ctx.exception))
 
 
 class ValidatePathValueTests(unittest.TestCase):
