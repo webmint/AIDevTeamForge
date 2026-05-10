@@ -257,6 +257,9 @@ set-error-handlings <comma-sep-list>
 set-api-layers <comma-sep-list>
 set-testings <comma-sep-list>
 set-build-tools <comma-sep-list>
+set-build-commands <comma-sep-list>
+set-type-check-commands <comma-sep-list>
+set-lint-commands <comma-sep-list>
 add-package-stack --path <p> --language <l> [--framework <f>] ...
 set-project-structure --text <verbatim>
 set-dev-commands --text <verbatim>

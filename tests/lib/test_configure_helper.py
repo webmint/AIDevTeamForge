@@ -1,8 +1,19 @@
-"""Tests for src/devforge/lib/configure_helper.py — Step 1.
+"""Tests for src/devforge/lib/configure_helper.py — Step 1 + Step 2.
 
-Covers: FIELD_SCHEMA, ENUM_FIELDS, default_state, emit_yaml/parse_yaml
-round-trips, reset subcommand, read-init (real-producer round-trip),
-read-docs (hand-authored Plan F fixtures), read-manifests, read-configs.
+Step 1 coverage: FIELD_SCHEMA, ENUM_FIELDS, default_state, emit_yaml/
+parse_yaml round-trips (incl. multi-line scalars + missing-subfield
+rejection + fence-aware section extractor), reset subcommand, read-init
+(real-producer round-trip), read-docs (hand-authored Plan F fixtures),
+read-manifests, read-configs.
+
+Step 2 coverage: _load / _dump / _state_transaction (write-on-exit, abort-
+on-exception, lock-file creation), five _validate_* helpers, all 27 setter
+subcommands (3 identity + 1 primary-language + 7 stack arrays + 3 per-pkg
+arrays + add-package-stack + 3 verbatim + 6 enums + 3 ac-runtime), round-
+trip integration (all-27-fields set + reload + compare; replace-not-append
+for string_arrays; accumulate for add-package-stack), cross-process safety
+(5 concurrent add-package-stack via Popen — no lost writes; mixed scalar+
+append concurrency — no corruption).
 
 Each subprocess test runs in its own `tempfile.TemporaryDirectory` via
 _EnvIsolationMixin. Pure-function tests import the module directly.
@@ -1246,6 +1257,931 @@ class BuildToolHintTests(unittest.TestCase):
     def test_empty_deps_returns_none(self):
         hint = configure_helper._derive_build_tool_hint({}, {})
         self.assertIsNone(hint)
+
+
+# ===========================================================================
+# STEP 2 TESTS — setters, _load/_dump/_state_transaction, validation helpers
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# 9. _load / _dump helper tests (~5)
+# ---------------------------------------------------------------------------
+
+
+class LoadDumpTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_load_missing_returns_defaults(self):
+        """_load on a missing file returns default_state() (not an error)."""
+        state = configure_helper._load(self.devforge_dir)
+        self.assertEqual(state, configure_helper.default_state())
+
+    def test_dump_then_load_round_trip(self):
+        """_dump writes yaml; _load reads it back identically."""
+        state = configure_helper.default_state()
+        state["project_name"] = "round-trip-test"
+        state["languages"] = ["TypeScript", "Python"]
+        configure_helper._dump(state, self.devforge_dir)
+        state2 = configure_helper._load(self.devforge_dir)
+        self.assertEqual(state, state2)
+
+    def test_dump_creates_directory_if_absent(self):
+        nested = self.install_root / "nested" / ".devforge"
+        self.assertFalse(nested.exists())
+        state = configure_helper.default_state()
+        configure_helper._dump(state, nested)
+        self.assertTrue((nested / configure_helper.OUTPUT_FILE_NAME).exists())
+
+    def test_load_malformed_raises_yaml_parse_error(self):
+        self.output_file.write_text("bogus: [unclosed\n", encoding="utf-8")
+        with self.assertRaises(configure_helper.YamlParseError):
+            configure_helper._load(self.devforge_dir)
+
+    def test_dump_overwrites_existing(self):
+        state1 = configure_helper.default_state()
+        state1["project_name"] = "first"
+        configure_helper._dump(state1, self.devforge_dir)
+        state2 = configure_helper.default_state()
+        state2["project_name"] = "second"
+        configure_helper._dump(state2, self.devforge_dir)
+        loaded = configure_helper._load(self.devforge_dir)
+        self.assertEqual(loaded["project_name"], "second")
+
+
+# ---------------------------------------------------------------------------
+# 10. _state_transaction tests (~3)
+# ---------------------------------------------------------------------------
+
+
+class StateTransactionTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_transaction_writes_on_clean_exit(self):
+        with configure_helper._state_transaction(self.devforge_dir) as state:
+            state["project_name"] = "written"
+        loaded = configure_helper._load(self.devforge_dir)
+        self.assertEqual(loaded["project_name"], "written")
+
+    def test_transaction_does_not_write_on_exception(self):
+        # Write a known initial state.
+        initial = configure_helper.default_state()
+        initial["project_name"] = "initial"
+        configure_helper._dump(initial, self.devforge_dir)
+        try:
+            with configure_helper._state_transaction(self.devforge_dir) as state:
+                state["project_name"] = "mutated"
+                raise RuntimeError("abort")
+        except RuntimeError:
+            pass
+        loaded = configure_helper._load(self.devforge_dir)
+        # Must remain "initial" since the transaction was aborted.
+        self.assertEqual(loaded["project_name"], "initial")
+
+    def test_transaction_creates_lock_file(self):
+        with configure_helper._state_transaction(self.devforge_dir) as state:
+            state["project_name"] = "x"
+        lock_path = configure_helper._lock_file_path(self.devforge_dir)
+        self.assertTrue(lock_path.exists())
+
+
+# ---------------------------------------------------------------------------
+# 11. Validation helper unit tests (~20)
+# ---------------------------------------------------------------------------
+
+
+class ValidateScalarTests(unittest.TestCase):
+
+    def test_valid_string_returned_stripped(self):
+        result = configure_helper._validate_scalar("  hello  ", "field")
+        self.assertEqual(result, "hello")
+
+    def test_empty_string_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_scalar("", "myfield")
+        self.assertIn("myfield", str(ctx.exception))
+        self.assertIn("cannot be empty", str(ctx.exception))
+
+    def test_whitespace_only_raises(self):
+        with self.assertRaises(ValueError):
+            configure_helper._validate_scalar("   ", "myfield")
+
+    def test_nonempty_string_no_strip_internal(self):
+        result = configure_helper._validate_scalar("hello world", "field")
+        self.assertEqual(result, "hello world")
+
+
+class ValidateEnumTests(unittest.TestCase):
+
+    def test_valid_enum_value_returned(self):
+        result = configure_helper._validate_enum("Strict", "workflow_enforcement")
+        self.assertEqual(result, "Strict")
+
+    def test_invalid_enum_value_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_enum("InvalidValue", "workflow_enforcement")
+        self.assertIn("workflow_enforcement", str(ctx.exception))
+        self.assertIn("invalid value", str(ctx.exception))
+        self.assertIn("InvalidValue", str(ctx.exception))
+
+    def test_empty_value_raises(self):
+        with self.assertRaises(ValueError):
+            configure_helper._validate_enum("", "ai_attribution")
+
+    def test_case_sensitive_rejection(self):
+        # "strict" is not in the set {"Strict", "Moderate", "Light"}
+        with self.assertRaises(ValueError):
+            configure_helper._validate_enum("strict", "workflow_enforcement")
+
+
+class ValidateStringArrayTests(unittest.TestCase):
+
+    def test_single_item(self):
+        result = configure_helper._validate_string_array("TypeScript", "languages")
+        self.assertEqual(result, ["TypeScript"])
+
+    def test_multiple_items_comma_sep(self):
+        result = configure_helper._validate_string_array("TypeScript,Python,Go", "languages")
+        self.assertEqual(result, ["TypeScript", "Python", "Go"])
+
+    def test_whitespace_trimmed_per_item(self):
+        result = configure_helper._validate_string_array(" A , B , C ", "languages")
+        self.assertEqual(result, ["A", "B", "C"])
+
+    def test_empty_string_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_string_array("", "languages")
+        self.assertIn("languages", str(ctx.exception))
+
+    def test_empty_item_in_middle_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_string_array("a,,b", "languages")
+        self.assertIn("non-empty", str(ctx.exception))
+
+    def test_whitespace_only_item_raises(self):
+        with self.assertRaises(ValueError):
+            configure_helper._validate_string_array("a, ,b", "languages")
+
+
+class ValidatePathValueTests(unittest.TestCase):
+
+    def test_valid_path_returned(self):
+        result = configure_helper._validate_path_value("apps/web", "path")
+        self.assertEqual(result, "apps/web")
+
+    def test_empty_raises(self):
+        with self.assertRaises(ValueError):
+            configure_helper._validate_path_value("", "path")
+
+    def test_newline_in_path_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            configure_helper._validate_path_value("apps\nweb", "path")
+        self.assertIn("newline", str(ctx.exception))
+
+    def test_carriage_return_in_path_raises(self):
+        with self.assertRaises(ValueError):
+            configure_helper._validate_path_value("apps\rweb", "path")
+
+
+class ValidateVerbatimTests(unittest.TestCase):
+
+    def test_single_line_accepted(self):
+        result = configure_helper._validate_verbatim("single line", "project_structure")
+        self.assertEqual(result, "single line")
+
+    def test_multiline_content_preserved(self):
+        text = "apps/\n  web/\npackages/"
+        result = configure_helper._validate_verbatim(text, "project_structure")
+        self.assertEqual(result, text)
+
+    def test_leading_trailing_whitespace_preserved(self):
+        # _validate_verbatim does NOT strip — it preserves exactly what's passed.
+        text = "  indented content  "
+        result = configure_helper._validate_verbatim(text, "project_structure")
+        self.assertEqual(result, text)
+
+    def test_whitespace_only_raises(self):
+        with self.assertRaises(ValueError):
+            configure_helper._validate_verbatim("   \n\t  ", "project_structure")
+
+    def test_empty_raises(self):
+        with self.assertRaises(ValueError):
+            configure_helper._validate_verbatim("", "project_structure")
+
+
+# ---------------------------------------------------------------------------
+# 12. Scalar setter subprocess tests (~18: 3 identity + 1 stack + 3 AC)
+# ---------------------------------------------------------------------------
+
+
+class SetProjectNameTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_happy_path_exit_0_and_yaml_updated(self):
+        proc = _run_configure(self.devforge_dir, "set-project-name", "my-app")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_name"], "my-app")
+
+    def test_empty_value_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-project-name", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project_name", proc.stderr)
+        self.assertIn(b"cannot be empty", proc.stderr)
+
+    def test_whitespace_only_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-project-name", "   ")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_round_trip(self):
+        _run_configure(self.devforge_dir, "set-project-name", "round-trip")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_name"], "round-trip")
+
+    def test_overwrite_prior_value(self):
+        _run_configure(self.devforge_dir, "set-project-name", "first")
+        _run_configure(self.devforge_dir, "set-project-name", "second")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_name"], "second")
+
+    def test_strips_leading_trailing_whitespace(self):
+        _run_configure(self.devforge_dir, "set-project-name", "  my-app  ")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_name"], "my-app")
+
+
+class SetProjectDescriptionTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_happy_path(self):
+        proc = _run_configure(self.devforge_dir, "set-project-description", "A test project")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_description"], "A test project")
+
+    def test_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-project-description", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project_description", proc.stderr)
+
+    def test_round_trip(self):
+        _run_configure(self.devforge_dir, "set-project-description", "My Description")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_description"], "My Description")
+
+
+class SetProjectTypeTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_happy_path(self):
+        proc = _run_configure(self.devforge_dir, "set-project-type", "Web Application")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_type"], "Web Application")
+
+    def test_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-project-type", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project_type", proc.stderr)
+
+    def test_round_trip(self):
+        _run_configure(self.devforge_dir, "set-project-type", "CLI Tool")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_type"], "CLI Tool")
+
+
+class SetPrimaryLanguageTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_happy_path(self):
+        proc = _run_configure(self.devforge_dir, "set-primary-language", "TypeScript")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["primary_language"], "TypeScript")
+
+    def test_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-primary-language", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"primary_language", proc.stderr)
+
+    def test_round_trip(self):
+        _run_configure(self.devforge_dir, "set-primary-language", "Python")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["primary_language"], "Python")
+
+
+class SetAcRuntimeScalarTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_set_ac_runtime_url_happy(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-runtime-url", "http://localhost:3000")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["ac_runtime_url"], "http://localhost:3000")
+
+    def test_set_ac_runtime_url_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-runtime-url", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ac_runtime_url", proc.stderr)
+
+    def test_set_ac_runtime_api_base_happy(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-runtime-api-base", "http://localhost:4000")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["ac_runtime_api_base"], "http://localhost:4000")
+
+    def test_set_ac_runtime_api_base_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-runtime-api-base", "")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_set_ac_runtime_cli_command_happy(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-runtime-cli-command", "npm run start")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["ac_runtime_cli_command"], "npm run start")
+
+    def test_set_ac_runtime_cli_command_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-runtime-cli-command", "")
+        self.assertEqual(proc.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# 13. String array setter tests (~18)
+# ---------------------------------------------------------------------------
+
+
+class SetLanguagesTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_single_item(self):
+        proc = _run_configure(self.devforge_dir, "set-languages", "TypeScript")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["languages"], ["TypeScript"])
+
+    def test_multiple_comma_sep(self):
+        proc = _run_configure(self.devforge_dir, "set-languages", "TypeScript,Python,Go")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["languages"], ["TypeScript", "Python", "Go"])
+
+    def test_whitespace_trimmed_per_item(self):
+        proc = _run_configure(self.devforge_dir, "set-languages", " TypeScript , Python ")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["languages"], ["TypeScript", "Python"])
+
+    def test_empty_item_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-languages", "a,,b")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"non-empty", proc.stderr)
+
+    def test_second_set_replaces_first(self):
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript")
+        _run_configure(self.devforge_dir, "set-languages", "Python,Go")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["languages"], ["Python", "Go"])
+
+    def test_empty_string_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-languages", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"languages", proc.stderr)
+
+
+class SetStringArrayVariousFieldsTests(_EnvIsolationMixin, unittest.TestCase):
+    """Test a representative sample of the remaining 6 string_array setters."""
+
+    def _set_and_reload(self, subcommand, value):
+        proc = _run_configure(self.devforge_dir, subcommand, value)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        return configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+
+    def test_frameworks(self):
+        state = self._set_and_reload("set-frameworks", "Vue,React")
+        self.assertEqual(state["frameworks"], ["Vue", "React"])
+
+    def test_architectures(self):
+        state = self._set_and_reload("set-architectures", "Clean Architecture")
+        self.assertEqual(state["architectures"], ["Clean Architecture"])
+
+    def test_error_handlings(self):
+        state = self._set_and_reload("set-error-handlings", "Either monad,exceptions")
+        self.assertEqual(state["error_handlings"], ["Either monad", "exceptions"])
+
+    def test_api_layers(self):
+        state = self._set_and_reload("set-api-layers", "REST,tRPC")
+        self.assertEqual(state["api_layers"], ["REST", "tRPC"])
+
+    def test_testings(self):
+        state = self._set_and_reload("set-testings", "Vitest,Playwright")
+        self.assertEqual(state["testings"], ["Vitest", "Playwright"])
+
+    def test_build_tools(self):
+        state = self._set_and_reload("set-build-tools", "Vite,tsc")
+        self.assertEqual(state["build_tools"], ["Vite", "tsc"])
+
+    def test_build_commands(self):
+        state = self._set_and_reload("set-build-commands", "npm run build")
+        self.assertEqual(state["build_commands"], ["npm run build"])
+
+    def test_type_check_commands(self):
+        state = self._set_and_reload("set-type-check-commands", "npm run typecheck")
+        self.assertEqual(state["type_check_commands"], ["npm run typecheck"])
+
+    def test_lint_commands(self):
+        state = self._set_and_reload("set-lint-commands", "npm run lint,eslint .")
+        self.assertEqual(state["lint_commands"], ["npm run lint", "eslint ."])
+
+    def test_empty_value_exits_2_for_frameworks(self):
+        proc = _run_configure(self.devforge_dir, "set-frameworks", "")
+        self.assertEqual(proc.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# 14. add-package-stack tests (~12)
+# ---------------------------------------------------------------------------
+
+
+class AddPackageStackTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_required_path_and_language_happy(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps/web",
+            "--language", "TypeScript",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(len(state["package_stacks"]), 1)
+        self.assertEqual(state["package_stacks"][0]["path"], "apps/web")
+        self.assertEqual(state["package_stacks"][0]["language"], "TypeScript")
+
+    def test_optional_fields_default_to_null(self):
+        _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps/web",
+            "--language", "TypeScript",
+        )
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        record = state["package_stacks"][0]
+        self.assertIsNone(record["framework"])
+        self.assertIsNone(record["build_tool"])
+        self.assertIsNone(record["build_command"])
+        self.assertIsNone(record["type_check_command"])
+        self.assertIsNone(record["lint_command"])
+
+    def test_all_optional_fields_provided(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps/web",
+            "--language", "TypeScript",
+            "--framework", "Vue",
+            "--build-tool", "Vite",
+            "--build-command", "npm run build",
+            "--type-check-command", "npm run typecheck",
+            "--lint-command", "npm run lint",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        record = state["package_stacks"][0]
+        self.assertEqual(record["framework"], "Vue")
+        self.assertEqual(record["build_tool"], "Vite")
+        self.assertEqual(record["build_command"], "npm run build")
+        self.assertEqual(record["type_check_command"], "npm run typecheck")
+        self.assertEqual(record["lint_command"], "npm run lint")
+
+    def test_missing_path_exits_2(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--language", "TypeScript",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_missing_language_exits_2(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps/web",
+        )
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_three_calls_accumulate_three_records(self):
+        for i in range(3):
+            proc = _run_configure(
+                self.devforge_dir,
+                "add-package-stack",
+                "--path", "pkg/pkg{0}".format(i),
+                "--language", "Python",
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(len(state["package_stacks"]), 3)
+        paths = [r["path"] for r in state["package_stacks"]]
+        self.assertEqual(paths, ["pkg/pkg0", "pkg/pkg1", "pkg/pkg2"])
+
+    def test_path_with_newline_rejected(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps\nweb",
+            "--language", "TypeScript",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"newline", proc.stderr)
+
+    def test_empty_language_rejected(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps/web",
+            "--language", "",
+        )
+        self.assertEqual(proc.returncode, 2)
+
+    def test_empty_path_rejected(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "",
+            "--language", "TypeScript",
+        )
+        self.assertEqual(proc.returncode, 2)
+
+    def test_empty_optional_field_rejected(self):
+        proc = _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps/web",
+            "--language", "TypeScript",
+            "--framework", "",
+        )
+        self.assertEqual(proc.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# 15. Verbatim setter tests (~9)
+# ---------------------------------------------------------------------------
+
+
+class SetProjectStructureTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_single_line_happy(self):
+        proc = _run_configure(
+            self.devforge_dir, "set-project-structure", "--text", "apps/ packages/"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_structure"], "apps/ packages/")
+
+    def test_multiline_content_preserved_via_subprocess(self):
+        """Multi-line content passed via --text round-trips through emit/parse."""
+        text = "apps/\n  web/\npackages/"
+        proc = _run_configure(
+            self.devforge_dir, "set-project-structure", "--text", text
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_structure"], text)
+
+    def test_empty_text_exits_2(self):
+        proc = _run_configure(
+            self.devforge_dir, "set-project-structure", "--text", ""
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project_structure", proc.stderr)
+
+    def test_whitespace_only_exits_2(self):
+        proc = _run_configure(
+            self.devforge_dir, "set-project-structure", "--text", "   "
+        )
+        self.assertEqual(proc.returncode, 2)
+
+
+class SetDevCommandsTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_happy_path(self):
+        proc = _run_configure(
+            self.devforge_dir, "set-dev-commands", "--text", "npm run dev"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["dev_commands"], "npm run dev")
+
+    def test_multiline_round_trip(self):
+        text = "npm run dev\nnpm run test\nnpm run lint"
+        _run_configure(self.devforge_dir, "set-dev-commands", "--text", text)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["dev_commands"], text)
+
+    def test_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-dev-commands", "--text", "")
+        self.assertEqual(proc.returncode, 2)
+
+
+class SetArchitectureDetailsTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_happy_path(self):
+        proc = _run_configure(
+            self.devforge_dir, "set-architecture-details", "--text", "Clean Architecture"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["architecture_details"], "Clean Architecture")
+
+    def test_multiline_round_trip(self):
+        text = "Layer 1: Domain\nLayer 2: Application\nLayer 3: Infrastructure"
+        _run_configure(self.devforge_dir, "set-architecture-details", "--text", text)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["architecture_details"], text)
+
+    def test_empty_exits_2(self):
+        proc = _run_configure(self.devforge_dir, "set-architecture-details", "--text", "")
+        self.assertEqual(proc.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# 16. Enum setter tests (~12)
+# ---------------------------------------------------------------------------
+
+
+class SetWorkflowEnforcementTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_strict_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-workflow-enforcement", "Strict")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["workflow_enforcement"], "Strict")
+
+    def test_moderate_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-workflow-enforcement", "Moderate")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_light_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-workflow-enforcement", "Light")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_invalid_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-workflow-enforcement", "None")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"workflow_enforcement", proc.stderr)
+        self.assertIn(b"invalid value", proc.stderr)
+
+    def test_empty_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-workflow-enforcement", "")
+        self.assertEqual(proc.returncode, 2)
+
+
+class SetAiAttributionTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_yes_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-ai-attribution", "Yes")
+        self.assertEqual(proc.returncode, 0)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["ai_attribution"], "Yes")
+
+    def test_no_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-ai-attribution", "No")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_invalid_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-ai-attribution", "Maybe")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ai_attribution", proc.stderr)
+
+
+class SetClaudeTierTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_opus_accepted_for_think(self):
+        proc = _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
+        self.assertEqual(proc.returncode, 0)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["claude_tier_think"], "Opus")
+
+    def test_sonnet_accepted_for_do(self):
+        proc = _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_haiku_accepted_for_verify(self):
+        proc = _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_other_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-claude-tier-think", "Other")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_invalid_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-claude-tier-do", "GPT-4")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"claude_tier_do", proc.stderr)
+
+
+class SetAcVerificationModeTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_code_only_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-verification-mode", "code-only")
+        self.assertEqual(proc.returncode, 0)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["ac_verification_mode"], "code-only")
+
+    def test_tests_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-verification-mode", "tests")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_runtime_assisted_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-verification-mode", "runtime-assisted")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_off_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-verification-mode", "off")
+        self.assertEqual(proc.returncode, 0)
+
+    def test_invalid_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-ac-verification-mode", "full")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"ac_verification_mode", proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# 17. Round-trip integration tests (~5)
+# ---------------------------------------------------------------------------
+
+
+class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_all_27_fields_set_reload_match(self):
+        """Set all 27 fields via setters then reload and compare full state."""
+        # Identity scalars
+        _run_configure(self.devforge_dir, "set-project-name", "full-roundtrip")
+        _run_configure(self.devforge_dir, "set-project-description", "Full round-trip test")
+        _run_configure(self.devforge_dir, "set-project-type", "Web Application")
+        # Stack scalar
+        _run_configure(self.devforge_dir, "set-primary-language", "TypeScript")
+        # Stack string_arrays
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript,Python")
+        _run_configure(self.devforge_dir, "set-frameworks", "Vue,FastAPI")
+        _run_configure(self.devforge_dir, "set-architectures", "Clean Architecture")
+        _run_configure(self.devforge_dir, "set-error-handlings", "Either monad")
+        _run_configure(self.devforge_dir, "set-api-layers", "REST,tRPC")
+        _run_configure(self.devforge_dir, "set-testings", "Vitest,Playwright")
+        _run_configure(self.devforge_dir, "set-build-tools", "Vite,tsc")
+        # Per-package string_arrays
+        _run_configure(self.devforge_dir, "set-build-commands", "npm run build")
+        _run_configure(self.devforge_dir, "set-type-check-commands", "npm run typecheck")
+        _run_configure(self.devforge_dir, "set-lint-commands", "npm run lint")
+        # Package stack record
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "apps/web", "--language", "TypeScript",
+            "--framework", "Vue", "--build-tool", "Vite",
+        )
+        # Verbatim docs
+        _run_configure(self.devforge_dir, "set-project-structure", "--text", "apps/\npackages/")
+        _run_configure(self.devforge_dir, "set-dev-commands", "--text", "npm run dev")
+        _run_configure(self.devforge_dir, "set-architecture-details", "--text", "Clean Architecture")
+        # Enums
+        _run_configure(self.devforge_dir, "set-workflow-enforcement", "Strict")
+        _run_configure(self.devforge_dir, "set-ai-attribution", "Yes")
+        _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
+        _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
+        _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        _run_configure(self.devforge_dir, "set-ac-verification-mode", "tests")
+        # AC runtime
+        _run_configure(self.devforge_dir, "set-ac-runtime-url", "http://localhost:3000")
+        _run_configure(self.devforge_dir, "set-ac-runtime-api-base", "http://localhost:4000")
+        _run_configure(self.devforge_dir, "set-ac-runtime-cli-command", "npm run start")
+
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_name"], "full-roundtrip")
+        self.assertEqual(state["languages"], ["TypeScript", "Python"])
+        self.assertEqual(state["frameworks"], ["Vue", "FastAPI"])
+        self.assertEqual(state["package_stacks"][0]["path"], "apps/web")
+        self.assertEqual(state["project_structure"], "apps/\npackages/")
+        self.assertEqual(state["workflow_enforcement"], "Strict")
+        self.assertEqual(state["ac_runtime_url"], "http://localhost:3000")
+
+    def test_scalar_setter_overwrite_prior(self):
+        _run_configure(self.devforge_dir, "set-project-name", "first")
+        _run_configure(self.devforge_dir, "set-project-name", "second")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_name"], "second")
+
+    def test_string_array_setter_replaces_not_appends(self):
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript")
+        _run_configure(self.devforge_dir, "set-languages", "Python,Go")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["languages"], ["Python", "Go"])
+
+    def test_add_package_stack_accumulates(self):
+        for i in range(3):
+            _run_configure(
+                self.devforge_dir, "add-package-stack",
+                "--path", "pkg/p{0}".format(i),
+                "--language", "Python",
+            )
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(len(state["package_stacks"]), 3)
+        paths = [r["path"] for r in state["package_stacks"]]
+        self.assertIn("pkg/p0", paths)
+        self.assertIn("pkg/p1", paths)
+        self.assertIn("pkg/p2", paths)
+
+    def test_setters_do_not_reset_other_fields(self):
+        """Setting one field does not clear other fields in the yaml."""
+        _run_configure(self.devforge_dir, "set-project-name", "my-project")
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript,Python")
+        # Now set a different field.
+        _run_configure(self.devforge_dir, "set-project-type", "Web Application")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        # Both earlier fields must still be intact.
+        self.assertEqual(state["project_name"], "my-project")
+        self.assertEqual(state["languages"], ["TypeScript", "Python"])
+        self.assertEqual(state["project_type"], "Web Application")
+
+
+# ---------------------------------------------------------------------------
+# 18. Cross-process safety tests (~2)
+# ---------------------------------------------------------------------------
+
+
+class CrossProcessSafetyTests(_EnvIsolationMixin, unittest.TestCase):
+    """Verify concurrent add-package-stack invocations do not lose writes."""
+
+    def _wait_all(self, procs):
+        """Wait for all Popen procs, close their pipes, return exit codes."""
+        codes = []
+        for p in procs:
+            p.wait()
+            codes.append(p.returncode)
+            if p.stdout:
+                p.stdout.close()
+            if p.stderr:
+                p.stderr.close()
+        return codes
+
+    def test_5_concurrent_add_package_stack_no_lost_writes(self):
+        """5 concurrent add-package-stack subprocesses → all 5 records present."""
+        procs = []
+        for i in range(5):
+            p = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(_HELPER_PY),
+                    "--devforge-dir", str(self.devforge_dir),
+                    "add-package-stack",
+                    "--path", "concurrent/pkg{0}".format(i),
+                    "--language", "Python",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            procs.append(p)
+        exit_codes = self._wait_all(procs)
+        self.assertEqual(exit_codes, [0, 0, 0, 0, 0], "not all processes exited 0")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        paths = {r["path"] for r in state["package_stacks"]}
+        expected = {"concurrent/pkg{0}".format(i) for i in range(5)}
+        self.assertEqual(paths, expected, "some records were lost in concurrent writes")
+
+    def test_concurrent_scalar_set_and_append_no_corruption(self):
+        """Concurrent set-project-name + add-package-stack don't corrupt the yaml."""
+        procs = []
+        # 3 scalar setters.
+        for i in range(3):
+            p = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(_HELPER_PY),
+                    "--devforge-dir", str(self.devforge_dir),
+                    "set-project-name", "project-{0}".format(i),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            procs.append(p)
+        # 3 appenders.
+        for i in range(3):
+            p = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(_HELPER_PY),
+                    "--devforge-dir", str(self.devforge_dir),
+                    "add-package-stack",
+                    "--path", "mixed/pkg{0}".format(i),
+                    "--language", "Go",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            procs.append(p)
+        exit_codes = self._wait_all(procs)
+        self.assertTrue(all(c == 0 for c in exit_codes), "some processes exited non-zero")
+        # The yaml must be parseable and have 3 package_stacks.
+        text = self.output_file.read_text(encoding="utf-8")
+        state = configure_helper.parse_yaml(text)
+        self.assertEqual(len(state["package_stacks"]), 3)
+        # Scalar side: project_name must be exactly one of the 3 launched
+        # values (race winner). Any other value indicates corruption.
+        self.assertIn(
+            state["project_name"],
+            {"project-0", "project-1", "project-2"},
+            "project_name corrupted by concurrent scalar set",
+        )
 
 
 if __name__ == "__main__":

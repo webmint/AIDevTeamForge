@@ -10,7 +10,20 @@ constitute).
 Step 1 is fully implemented: FIELD_SCHEMA + ENUM_FIELDS populated,
 emit_yaml/parse_yaml schema-driven, `reset` writes proper defaults,
 read-init / read-docs / read-manifests / read-configs subcommands implemented.
-Steps 2-4 (setters, render-config, substitute-templates) remain future work.
+
+Step 2 is fully implemented: _load / _dump / _state_transaction helpers,
+all 27 setter subcommands (set-project-name, set-project-description,
+set-project-type, set-primary-language, set-languages, set-frameworks,
+set-architectures, set-error-handlings, set-api-layers, set-testings,
+set-build-tools, set-build-commands, set-type-check-commands,
+set-lint-commands, add-package-stack, set-project-structure,
+set-dev-commands, set-architecture-details, set-workflow-enforcement,
+set-ai-attribution, set-claude-tier-think, set-claude-tier-do,
+set-claude-tier-verify, set-ac-verification-mode, set-ac-runtime-url,
+set-ac-runtime-api-base, set-ac-runtime-cli-command). Cross-process
+safety via POSIX file lock on <configure.yaml>.lock.
+
+Steps 3-4 (render-config, substitute-templates) remain future work.
 
 Architecture notes:
 
@@ -64,11 +77,18 @@ Architecture notes:
   Uses --install-root (default: parent of --devforge-dir). Caps individual
   files at 10 KB.
 
-- Setters, render-config, substitute-templates are not yet implemented
-  (Steps 2-4 per CONFIGURE-PLAN.md).
+- All 27 setters route through `_state_transaction(devforge_dir)` which
+  holds an exclusive POSIX file lock around the read-modify-write cycle.
+  Lock file: <configure.yaml>.lock. This prevents concurrent invocations
+  from silently losing writes (append races are the primary concern for
+  add-package-stack).
 
-- Validation is set-time per-field shape only. No cross-field invariants
-  in Step 1 (setters not yet implemented).
+- Validation is set-time per-field shape. Validation helpers:
+  _validate_scalar (non-empty string after strip),
+  _validate_enum (enum membership check),
+  _validate_string_array (comma-sep split + per-item validation),
+  _validate_path_value (no newlines, non-empty),
+  _validate_verbatim (non-empty after strip, preserves internal whitespace).
 
 - `--devforge-dir` CLI argument (default: DEVFORGE_DIR env var, falling
   back to `.devforge`) is threaded through args to all subcommand handlers.
@@ -77,13 +97,27 @@ Stdlib only. No third-party dependencies. Targets Python 3.8+.
 """
 
 import argparse
+import contextlib
 import json
 import os
 import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Union
+
+try:
+    import fcntl  # POSIX-only.
+    _HAVE_FCNTL = True
+except ImportError:  # pragma: no cover - non-POSIX fallback path
+    # AIDevTeamForge targets POSIX (macOS, Linux, WSL) only — see
+    # CLAUDE.md. The graceful-degradation flag exists to avoid an import
+    # crash if the helper is somehow invoked on Windows native, but the
+    # no-op locking path is NOT a supported configuration: concurrent
+    # add-package-stack invocations on Windows would silently lose
+    # writes. If Windows support ever lands, replace this with a real
+    # lock (msvcrt.locking) — DO NOT rely on the no-op fallback.
+    _HAVE_FCNTL = False
 
 # Resolve siblings as importable when invoked as `python3 configure_helper.py`.
 _LIB_DIR = str(Path(__file__).resolve().parent)
@@ -552,13 +586,515 @@ def _write_state(state: dict, devforge_dir: Union[str, "os.PathLike[str]"]) -> N
 
 
 # ---------------------------------------------------------------------------
+# _load / _dump / _state_transaction helpers.
+# ---------------------------------------------------------------------------
+
+
+def _load(devforge_dir: Union[str, "os.PathLike[str]"]) -> dict:
+    """Load configure.yaml into a state dict.
+
+    If the file is missing, returns default_state() — normal on first run.
+    Malformed file propagates YamlParseError so the caller can exit non-zero
+    with a clear message rather than silently resetting.
+    """
+    path = _output_file_path(devforge_dir)
+    if not path.exists():
+        return default_state()
+    text = path.read_text(encoding="utf-8")
+    return parse_yaml(text)
+
+
+def _dump(state: dict, devforge_dir: Union[str, "os.PathLike[str]"]) -> None:
+    """Write state dict to configure.yaml atomically.
+
+    Thin wrapper around _write_state so setters can call paired
+    _load/_dump without depending on _write_state's signature directly.
+    """
+    _write_state(state, devforge_dir)
+
+
+def _lock_file_path(devforge_dir: Union[str, "os.PathLike[str]"]) -> Path:
+    """Return the sidecar lock path for the configure.yaml in devforge_dir.
+
+    Kept distinct from the yaml itself so the yaml is never opened in r+/w+
+    mode — the lock is purely metadata. The file is created on first use and
+    intentionally never deleted.
+    """
+    return _output_file_path(devforge_dir).parent / (OUTPUT_FILE_NAME + ".lock")
+
+
+@contextlib.contextmanager
+def _state_transaction(devforge_dir: Union[str, "os.PathLike[str]"]) -> Iterator[dict]:
+    """Read-modify-write configure.yaml under an exclusive process lock.
+
+    Usage:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_name"] = "my-project"
+        # state written to disk on context exit; NOT written if body raises
+
+    The lock is held from before the read until after the write so two
+    concurrent processes cannot both load stale state and clobber each
+    other's mutation. Lock: fcntl.flock(LOCK_EX) on POSIX. On Windows
+    (no fcntl) the manager degrades to no-op locking — that platform is
+    out of scope for the helper.
+
+    If the body raises ANY exception, the write is skipped and the lock
+    released cleanly. The exception propagates to the caller (setter).
+    """
+    devforge_path = Path(devforge_dir)
+    devforge_path.mkdir(parents=True, exist_ok=True)
+    lock_path = _lock_file_path(devforge_dir)
+    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        if _HAVE_FCNTL:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            state = _load(devforge_dir)
+            yield state
+            _dump(state, devforge_dir)
+        finally:
+            if _HAVE_FCNTL:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers (private).
+# ---------------------------------------------------------------------------
+
+
+def _validate_scalar(value: str, field_name: str) -> str:
+    """Strip and validate a scalar string value.
+
+    Returns the stripped string. Raises ValueError if empty after strip.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return stripped
+
+
+def _validate_enum(value: str, field_name: str) -> str:
+    """Validate an enum scalar: must pass _validate_scalar AND be in allowed set.
+
+    Returns the stripped value. Raises ValueError if empty or not in enum.
+    """
+    stripped = _validate_scalar(value, field_name)
+    allowed = ENUM_FIELDS[field_name]
+    if stripped not in allowed:
+        raise ValueError(
+            "{0}: invalid value {1!r}; allowed: {2}".format(
+                field_name, stripped, sorted(allowed)
+            )
+        )
+    return stripped
+
+
+def _validate_string_array(value: str, field_name: str) -> List[str]:
+    """Split a comma-separated string and validate each item.
+
+    Returns a list of stripped, non-empty strings. Raises ValueError if
+    any item is empty after strip, or if the result list is empty.
+    """
+    items = value.split(",")
+    result = []
+    for raw in items:
+        stripped = raw.strip()
+        if not stripped:
+            raise ValueError(
+                "{0}: each comma-separated item must be non-empty "
+                "(got an empty item in {1!r})".format(field_name, value)
+            )
+        result.append(stripped)
+    if not result:
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return result
+
+
+def _validate_path_value(value: str, field_name: str) -> str:
+    """Validate a path-shaped string: non-empty after strip, no newlines.
+
+    Paths should not contain newline or carriage-return characters.
+    Returns the stripped string. Raises ValueError on failure.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    if "\n" in stripped or "\r" in stripped:
+        raise ValueError(
+            "{0}: path value must not contain newline characters".format(field_name)
+        )
+    return stripped
+
+
+def _validate_verbatim(value: str, field_name: str) -> str:
+    """Validate a verbatim multi-line value: non-empty after outer strip only.
+
+    Internal whitespace is preserved — these are verbatim docs sections.
+    Returns the original value (NOT stripped) so callers store exactly
+    what was passed. Raises ValueError if the value is all whitespace.
+    """
+    if not value.strip():
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return value
+
+
+# ---------------------------------------------------------------------------
 # Subcommand implementations.
 # ---------------------------------------------------------------------------
 
 
 def _die(message: str, code: int = 1) -> int:
+    # code=1 default for I/O errors (OSError, malformed yaml, missing
+    # input file). Validation errors pass code=2 explicitly so callers
+    # can distinguish "your input was invalid" from "the system is
+    # broken". Mirrors init_helper._die — NOT _generate_docs/_state.py
+    # which defaults code=2; the divergence is intentional because
+    # /configure surfaces validation errors more often than I/O errors,
+    # and the user-facing distinction matters at exit-code level.
     sys.stderr.write("configure_helper: {0}\n".format(message))
     return code
+
+
+# ---------------------------------------------------------------------------
+# Identity scalar setters (3).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_project_name(args: argparse.Namespace) -> int:
+    """Set project_name scalar."""
+    try:
+        value = _validate_scalar(args.value, "project_name")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_name"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-project-name: {0}".format(err))
+    return 0
+
+
+def cmd_set_project_description(args: argparse.Namespace) -> int:
+    """Set project_description scalar."""
+    try:
+        value = _validate_scalar(args.value, "project_description")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_description"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-project-description: {0}".format(err))
+    return 0
+
+
+def cmd_set_project_type(args: argparse.Namespace) -> int:
+    """Set project_type scalar."""
+    try:
+        value = _validate_scalar(args.value, "project_type")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_type"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-project-type: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Stack scalar setter (1).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_primary_language(args: argparse.Namespace) -> int:
+    """Set primary_language scalar."""
+    try:
+        value = _validate_scalar(args.value, "primary_language")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["primary_language"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-primary-language: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Stack string_array setters (7).
+# ---------------------------------------------------------------------------
+
+
+def _cmd_set_string_array(args: argparse.Namespace, field_name: str) -> int:
+    """Shared implementation for string_array setters (replace semantics)."""
+    try:
+        items = _validate_string_array(args.value, field_name)
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state[field_name] = items
+    except (OSError, YamlParseError) as err:
+        return _die("set-{0}: {1}".format(field_name.replace("_", "-"), err))
+    return 0
+
+
+def cmd_set_languages(args: argparse.Namespace) -> int:
+    """Set languages string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "languages")
+
+
+def cmd_set_frameworks(args: argparse.Namespace) -> int:
+    """Set frameworks string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "frameworks")
+
+
+def cmd_set_architectures(args: argparse.Namespace) -> int:
+    """Set architectures string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "architectures")
+
+
+def cmd_set_error_handlings(args: argparse.Namespace) -> int:
+    """Set error_handlings string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "error_handlings")
+
+
+def cmd_set_api_layers(args: argparse.Namespace) -> int:
+    """Set api_layers string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "api_layers")
+
+
+def cmd_set_testings(args: argparse.Namespace) -> int:
+    """Set testings string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "testings")
+
+
+def cmd_set_build_tools(args: argparse.Namespace) -> int:
+    """Set build_tools string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "build_tools")
+
+
+# ---------------------------------------------------------------------------
+# Per-package string_array setters (3).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_build_commands(args: argparse.Namespace) -> int:
+    """Set build_commands string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "build_commands")
+
+
+def cmd_set_type_check_commands(args: argparse.Namespace) -> int:
+    """Set type_check_commands string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "type_check_commands")
+
+
+def cmd_set_lint_commands(args: argparse.Namespace) -> int:
+    """Set lint_commands string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "lint_commands")
+
+
+# ---------------------------------------------------------------------------
+# Per-package record append setter (1).
+# ---------------------------------------------------------------------------
+
+
+def cmd_add_package_stack(args: argparse.Namespace) -> int:
+    """Append one package_stack record. --path and --language are required.
+
+    All other fields default to None when absent. Uses _state_transaction
+    for cross-process safety: concurrent invocations serialize via flock
+    so no append is silently lost.
+    """
+    try:
+        path_val = _validate_path_value(args.path, "path")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        lang_val = _validate_scalar(args.language, "language")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # Optional fields: validate only if provided.
+    optional = {}
+    for attr, field in (
+        ("framework", "framework"),
+        ("build_tool", "build_tool"),
+        ("build_command", "build_command"),
+        ("type_check_command", "type_check_command"),
+        ("lint_command", "lint_command"),
+    ):
+        raw = getattr(args, attr, None)
+        if raw is not None:
+            try:
+                optional[field] = _validate_scalar(raw, field)
+            except ValueError as err:
+                return _die(str(err), code=2)
+        else:
+            optional[field] = None
+
+    record = {
+        "path": path_val,
+        "language": lang_val,
+        "framework": optional["framework"],
+        "build_tool": optional["build_tool"],
+        "build_command": optional["build_command"],
+        "type_check_command": optional["type_check_command"],
+        "lint_command": optional["lint_command"],
+    }
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["package_stacks"].append(record)
+    except (OSError, YamlParseError) as err:
+        return _die("add-package-stack: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Verbatim docs scalar setters (3).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_project_structure(args: argparse.Namespace) -> int:
+    """Set project_structure verbatim scalar (multi-line via --text flag)."""
+    try:
+        value = _validate_verbatim(args.text, "project_structure")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["project_structure"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-project-structure: {0}".format(err))
+    return 0
+
+
+def cmd_set_dev_commands(args: argparse.Namespace) -> int:
+    """Set dev_commands verbatim scalar (multi-line via --text flag)."""
+    try:
+        value = _validate_verbatim(args.text, "dev_commands")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["dev_commands"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-dev-commands: {0}".format(err))
+    return 0
+
+
+def cmd_set_architecture_details(args: argparse.Namespace) -> int:
+    """Set architecture_details verbatim scalar (multi-line via --text flag)."""
+    try:
+        value = _validate_verbatim(args.text, "architecture_details")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["architecture_details"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-architecture-details: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Enum scalar setters (6).
+# ---------------------------------------------------------------------------
+
+
+def _cmd_set_enum(args: argparse.Namespace, field_name: str) -> int:
+    """Shared implementation for enum scalar setters."""
+    try:
+        value = _validate_enum(args.value, field_name)
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state[field_name] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-{0}: {1}".format(field_name.replace("_", "-"), err))
+    return 0
+
+
+def cmd_set_workflow_enforcement(args: argparse.Namespace) -> int:
+    """Set workflow_enforcement enum scalar (Strict | Moderate | Light)."""
+    return _cmd_set_enum(args, "workflow_enforcement")
+
+
+def cmd_set_ai_attribution(args: argparse.Namespace) -> int:
+    """Set ai_attribution enum scalar (Yes | No)."""
+    return _cmd_set_enum(args, "ai_attribution")
+
+
+def cmd_set_claude_tier_think(args: argparse.Namespace) -> int:
+    """Set claude_tier_think enum scalar (Opus | Sonnet | Haiku | Other)."""
+    return _cmd_set_enum(args, "claude_tier_think")
+
+
+def cmd_set_claude_tier_do(args: argparse.Namespace) -> int:
+    """Set claude_tier_do enum scalar (Opus | Sonnet | Haiku | Other)."""
+    return _cmd_set_enum(args, "claude_tier_do")
+
+
+def cmd_set_claude_tier_verify(args: argparse.Namespace) -> int:
+    """Set claude_tier_verify enum scalar (Opus | Sonnet | Haiku | Other)."""
+    return _cmd_set_enum(args, "claude_tier_verify")
+
+
+def cmd_set_ac_verification_mode(args: argparse.Namespace) -> int:
+    """Set ac_verification_mode enum scalar (code-only | tests | runtime-assisted | off)."""
+    return _cmd_set_enum(args, "ac_verification_mode")
+
+
+# ---------------------------------------------------------------------------
+# AC runtime scalar setters (3).
+# ---------------------------------------------------------------------------
+
+
+def cmd_set_ac_runtime_url(args: argparse.Namespace) -> int:
+    """Set ac_runtime_url scalar."""
+    try:
+        value = _validate_scalar(args.value, "ac_runtime_url")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["ac_runtime_url"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-ac-runtime-url: {0}".format(err))
+    return 0
+
+
+def cmd_set_ac_runtime_api_base(args: argparse.Namespace) -> int:
+    """Set ac_runtime_api_base scalar."""
+    try:
+        value = _validate_scalar(args.value, "ac_runtime_api_base")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["ac_runtime_api_base"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-ac-runtime-api-base: {0}".format(err))
+    return 0
+
+
+def cmd_set_ac_runtime_cli_command(args: argparse.Namespace) -> int:
+    """Set ac_runtime_cli_command scalar."""
+    try:
+        value = _validate_scalar(args.value, "ac_runtime_cli_command")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["ac_runtime_cli_command"] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-ac-runtime-cli-command: {0}".format(err))
+    return 0
 
 
 def cmd_reset(args: argparse.Namespace) -> int:
@@ -1156,6 +1692,175 @@ def build_parser() -> argparse.ArgumentParser:
         help="Basename-match config files from index.json and emit JSON.",
     )
     sp.set_defaults(func=cmd_read_configs)
+
+    # ------------------------------------------------------------------
+    # Identity scalar setters.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser("set-project-name", help="Set project_name scalar.")
+    sp.add_argument("value", help="Project name.")
+    sp.set_defaults(func=cmd_set_project_name)
+
+    sp = subparsers.add_parser("set-project-description", help="Set project_description scalar.")
+    sp.add_argument("value", help="Project description.")
+    sp.set_defaults(func=cmd_set_project_description)
+
+    sp = subparsers.add_parser("set-project-type", help="Set project_type scalar.")
+    sp.add_argument("value", help="Project type.")
+    sp.set_defaults(func=cmd_set_project_type)
+
+    # ------------------------------------------------------------------
+    # Stack scalar setter.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser("set-primary-language", help="Set primary_language scalar.")
+    sp.add_argument("value", help="Primary language.")
+    sp.set_defaults(func=cmd_set_primary_language)
+
+    # ------------------------------------------------------------------
+    # Stack string_array setters (comma-sep; replace semantics).
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser("set-languages", help="Set languages (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated language list.")
+    sp.set_defaults(func=cmd_set_languages)
+
+    sp = subparsers.add_parser("set-frameworks", help="Set frameworks (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated framework list.")
+    sp.set_defaults(func=cmd_set_frameworks)
+
+    sp = subparsers.add_parser("set-architectures", help="Set architectures (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated architecture list.")
+    sp.set_defaults(func=cmd_set_architectures)
+
+    sp = subparsers.add_parser("set-error-handlings", help="Set error_handlings (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated error-handling list.")
+    sp.set_defaults(func=cmd_set_error_handlings)
+
+    sp = subparsers.add_parser("set-api-layers", help="Set api_layers (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated API layer list.")
+    sp.set_defaults(func=cmd_set_api_layers)
+
+    sp = subparsers.add_parser("set-testings", help="Set testings (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated testing list.")
+    sp.set_defaults(func=cmd_set_testings)
+
+    sp = subparsers.add_parser("set-build-tools", help="Set build_tools (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated build-tool list.")
+    sp.set_defaults(func=cmd_set_build_tools)
+
+    # ------------------------------------------------------------------
+    # Per-package string_array setters.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser("set-build-commands", help="Set build_commands (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated build command list.")
+    sp.set_defaults(func=cmd_set_build_commands)
+
+    sp = subparsers.add_parser(
+        "set-type-check-commands", help="Set type_check_commands (comma-sep list)."
+    )
+    sp.add_argument("value", help="Comma-separated type-check command list.")
+    sp.set_defaults(func=cmd_set_type_check_commands)
+
+    sp = subparsers.add_parser("set-lint-commands", help="Set lint_commands (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated lint command list.")
+    sp.set_defaults(func=cmd_set_lint_commands)
+
+    # ------------------------------------------------------------------
+    # Per-package record append setter.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "add-package-stack",
+        help="Append a package_stack record. --path and --language required.",
+    )
+    sp.add_argument("--path", required=True, help="Package path.")
+    sp.add_argument("--language", required=True, help="Package primary language.")
+    sp.add_argument("--framework", default=None, help="Package framework (optional).")
+    sp.add_argument("--build-tool", dest="build_tool", default=None, help="Package build tool (optional).")
+    sp.add_argument("--build-command", dest="build_command", default=None, help="Package build command (optional).")
+    sp.add_argument("--type-check-command", dest="type_check_command", default=None, help="Package type-check command (optional).")
+    sp.add_argument("--lint-command", dest="lint_command", default=None, help="Package lint command (optional).")
+    sp.set_defaults(func=cmd_add_package_stack)
+
+    # ------------------------------------------------------------------
+    # Verbatim docs scalar setters (--text flag for multi-line content).
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser("set-project-structure", help="Set project_structure verbatim scalar.")
+    sp.add_argument("--text", required=True, help="Verbatim project structure text.")
+    sp.set_defaults(func=cmd_set_project_structure)
+
+    sp = subparsers.add_parser("set-dev-commands", help="Set dev_commands verbatim scalar.")
+    sp.add_argument("--text", required=True, help="Verbatim dev commands text.")
+    sp.set_defaults(func=cmd_set_dev_commands)
+
+    sp = subparsers.add_parser("set-architecture-details", help="Set architecture_details verbatim scalar.")
+    sp.add_argument("--text", required=True, help="Verbatim architecture details text.")
+    sp.set_defaults(func=cmd_set_architecture_details)
+
+    # ------------------------------------------------------------------
+    # Enum scalar setters.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "set-workflow-enforcement",
+        help="Set workflow_enforcement enum (Strict | Moderate | Light).",
+    )
+    sp.add_argument("value", help="Enforcement level.")
+    sp.set_defaults(func=cmd_set_workflow_enforcement)
+
+    sp = subparsers.add_parser(
+        "set-ai-attribution",
+        help="Set ai_attribution enum (Yes | No).",
+    )
+    sp.add_argument("value", help="AI attribution setting.")
+    sp.set_defaults(func=cmd_set_ai_attribution)
+
+    sp = subparsers.add_parser(
+        "set-claude-tier-think",
+        help="Set claude_tier_think enum (Opus | Sonnet | Haiku | Other).",
+    )
+    sp.add_argument("value", help="Thinking tier.")
+    sp.set_defaults(func=cmd_set_claude_tier_think)
+
+    sp = subparsers.add_parser(
+        "set-claude-tier-do",
+        help="Set claude_tier_do enum (Opus | Sonnet | Haiku | Other).",
+    )
+    sp.add_argument("value", help="Doing tier.")
+    sp.set_defaults(func=cmd_set_claude_tier_do)
+
+    sp = subparsers.add_parser(
+        "set-claude-tier-verify",
+        help="Set claude_tier_verify enum (Opus | Sonnet | Haiku | Other).",
+    )
+    sp.add_argument("value", help="Verifying tier.")
+    sp.set_defaults(func=cmd_set_claude_tier_verify)
+
+    sp = subparsers.add_parser(
+        "set-ac-verification-mode",
+        help="Set ac_verification_mode enum (code-only | tests | runtime-assisted | off).",
+    )
+    sp.add_argument("value", help="AC verification mode.")
+    sp.set_defaults(func=cmd_set_ac_verification_mode)
+
+    # ------------------------------------------------------------------
+    # AC runtime scalar setters.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser("set-ac-runtime-url", help="Set ac_runtime_url scalar.")
+    sp.add_argument("value", help="AC runtime URL.")
+    sp.set_defaults(func=cmd_set_ac_runtime_url)
+
+    sp = subparsers.add_parser("set-ac-runtime-api-base", help="Set ac_runtime_api_base scalar.")
+    sp.add_argument("value", help="AC runtime API base URL.")
+    sp.set_defaults(func=cmd_set_ac_runtime_api_base)
+
+    sp = subparsers.add_parser("set-ac-runtime-cli-command", help="Set ac_runtime_cli_command scalar.")
+    sp.add_argument("value", help="AC runtime CLI command.")
+    sp.set_defaults(func=cmd_set_ac_runtime_cli_command)
 
     return parser
 
