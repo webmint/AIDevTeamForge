@@ -198,16 +198,15 @@ class SchemaTests(unittest.TestCase):
         ]
         self.assertEqual(names, expected)
 
-    def test_enum_fields_has_6_entries(self):
-        self.assertEqual(len(configure_helper.ENUM_FIELDS), 6)
+    def test_enum_fields_has_3_entries(self):
+        # claude_tier_* deliberately omitted to allow custom model aliases
+        # via Q11 Other branch.
+        self.assertEqual(len(configure_helper.ENUM_FIELDS), 3)
 
     def test_enum_fields_correct_keys(self):
         expected_keys = {
             "workflow_enforcement",
             "ai_attribution",
-            "claude_tier_think",
-            "claude_tier_do",
-            "claude_tier_verify",
             "ac_verification_mode",
         }
         self.assertEqual(set(configure_helper.ENUM_FIELDS.keys()), expected_keys)
@@ -220,10 +219,6 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(
             configure_helper.ENUM_FIELDS["ai_attribution"],
             {"Yes", "No"},
-        )
-        self.assertEqual(
-            configure_helper.ENUM_FIELDS["claude_tier_think"],
-            {"Opus", "Sonnet", "Haiku", "Other"},
         )
         self.assertEqual(
             configure_helper.ENUM_FIELDS["ac_verification_mode"],
@@ -1988,13 +1983,25 @@ class SetClaudeTierTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 0)
 
     def test_other_accepted(self):
+        # claude_tier_* fields accept any non-empty scalar (no enum
+        # restriction) so users can name custom Claude routes via Q11
+        # `Other` branch.
         proc = _run_configure(self.devforge_dir, "set-claude-tier-think", "Other")
         self.assertEqual(proc.returncode, 0)
 
-    def test_invalid_rejected(self):
-        proc = _run_configure(self.devforge_dir, "set-claude-tier-do", "GPT-4")
+    def test_custom_model_name_accepted(self):
+        # Free-text model alias accepted (e.g., Bedrock route, self-hosted).
+        proc = _run_configure(
+            self.devforge_dir, "set-claude-tier-do", "claude-opus-4-7-bedrock"
+        )
+        self.assertEqual(proc.returncode, 0)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["claude_tier_do"], "claude-opus-4-7-bedrock")
+
+    def test_empty_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-claude-tier-verify", "")
         self.assertEqual(proc.returncode, 2)
-        self.assertIn(b"claude_tier_do", proc.stderr)
+        self.assertIn(b"claude_tier_verify", proc.stderr)
 
 
 class SetAcVerificationModeTests(_EnvIsolationMixin, unittest.TestCase):

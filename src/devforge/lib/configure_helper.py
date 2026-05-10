@@ -209,12 +209,14 @@ FIELD_SCHEMA = (
 # Enum-restricted scalars; key = field name, value = allowed set.
 # Enforced at set-time by setters (Step 2). Exposed here for documentation
 # and future validation; emit_yaml/parse_yaml do NOT enforce enum values.
+#
+# claude_tier_* fields are intentionally NOT enum-restricted: users may
+# pick the recommended Claude tiers (Opus/Sonnet/Haiku) OR a custom model
+# alias (Bedrock route, self-hosted, or future model name) via the Q11
+# `Other` branch. The setter validates these as plain non-empty scalars.
 ENUM_FIELDS = {
     "workflow_enforcement":  {"Strict", "Moderate", "Light"},
     "ai_attribution":        {"Yes", "No"},
-    "claude_tier_think":     {"Opus", "Sonnet", "Haiku", "Other"},
-    "claude_tier_do":        {"Opus", "Sonnet", "Haiku", "Other"},
-    "claude_tier_verify":    {"Opus", "Sonnet", "Haiku", "Other"},
     "ac_verification_mode":  {"code-only", "tests", "runtime-assisted", "off"},
 }
 
@@ -1053,19 +1055,38 @@ def cmd_set_ai_attribution(args: argparse.Namespace) -> int:
     return _cmd_set_enum(args, "ai_attribution")
 
 
+def _cmd_set_claude_tier(args: argparse.Namespace, field_name: str) -> int:
+    """Shared implementation for claude_tier_* setters.
+
+    These fields are NOT enum-restricted (see ENUM_FIELDS comment) — they
+    accept any non-empty scalar so users can name custom Claude routes
+    via Q11's `Other` branch.
+    """
+    try:
+        value = _validate_scalar(args.value, field_name)
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state[field_name] = value
+    except (OSError, YamlParseError) as err:
+        return _die("set-{0}: {1}".format(field_name.replace("_", "-"), err))
+    return 0
+
+
 def cmd_set_claude_tier_think(args: argparse.Namespace) -> int:
-    """Set claude_tier_think enum scalar (Opus | Sonnet | Haiku | Other)."""
-    return _cmd_set_enum(args, "claude_tier_think")
+    """Set claude_tier_think (free-text scalar; Opus/Sonnet/Haiku recommended)."""
+    return _cmd_set_claude_tier(args, "claude_tier_think")
 
 
 def cmd_set_claude_tier_do(args: argparse.Namespace) -> int:
-    """Set claude_tier_do enum scalar (Opus | Sonnet | Haiku | Other)."""
-    return _cmd_set_enum(args, "claude_tier_do")
+    """Set claude_tier_do (free-text scalar; Opus/Sonnet/Haiku recommended)."""
+    return _cmd_set_claude_tier(args, "claude_tier_do")
 
 
 def cmd_set_claude_tier_verify(args: argparse.Namespace) -> int:
-    """Set claude_tier_verify enum scalar (Opus | Sonnet | Haiku | Other)."""
-    return _cmd_set_enum(args, "claude_tier_verify")
+    """Set claude_tier_verify (free-text scalar; Opus/Sonnet/Haiku recommended)."""
+    return _cmd_set_claude_tier(args, "claude_tier_verify")
 
 
 def cmd_set_ac_verification_mode(args: argparse.Namespace) -> int:
