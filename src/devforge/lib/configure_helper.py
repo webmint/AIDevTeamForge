@@ -23,7 +23,22 @@ set-claude-tier-verify, set-ac-verification-mode, set-ac-runtime-url,
 set-ac-runtime-api-base, set-ac-runtime-cli-command). Cross-process
 safety via POSIX file lock on <configure.yaml>.lock.
 
-Steps 3-4 (render-config, substitute-templates) remain future work.
+Step 3 is fully implemented: render-config (writes .devforge/project-config.json
+with all 35 keys — 27 from configure.yaml + 5 from init.yaml + 3 derived),
+verify (cross-checks all required fields populated + round-trip identity),
+summary (human-readable field-by-field report to stdout). _write_json
+atomic write helper parallel to _write_state.
+
+Note on key count: project-config.json contains 35 keys, not 32 as stated
+in CONFIGURE-PLAN.md Step 3 verify criteria. The actual breakdown is:
+  27 from configure.yaml (FIELD_SCHEMA fields → UPPERCASE keys)
+   5 from init.yaml (WORKSPACE_MODE, PROJECT_ROOT, PROJECT_STATE,
+                     DEFAULT_BRANCH, PACKAGES_DETECTED)
+   3 derived (WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST)
+The CONFIGURE-PLAN.md "32 keys" figure is incorrect. This implementation
+renders all 35 keys as the correct contract.
+
+Step 4 (substitute-templates) remains future work.
 
 Architecture notes:
 
@@ -1635,6 +1650,540 @@ def cmd_read_configs(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Step 3: _write_json — atomic JSON write helper.
+# ---------------------------------------------------------------------------
+
+# Ordered list of keys in project-config.json.
+# 27 from configure.yaml (FIELD_SCHEMA, uppercased) +
+# 5 from init.yaml (WORKSPACE_MODE, PROJECT_ROOT, PROJECT_STATE,
+#                   DEFAULT_BRANCH, PACKAGES_DETECTED) +
+# 3 derived (WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST).
+# Total: 35 keys.
+_PROJECT_CONFIG_KEY_ORDER = (
+    # From configure.yaml (identity)
+    "PROJECT_NAME",
+    "PROJECT_DESCRIPTION",
+    "PROJECT_TYPE",
+    # From init.yaml
+    "PROJECT_ROOT",
+    "WORKSPACE_MODE",
+    "PROJECT_STATE",
+    "DEFAULT_BRANCH",
+    # From configure.yaml (stack) — order matches testForge20 reference
+    # (LANGUAGES + FRAMEWORKS before PRIMARY_LANGUAGE) for diff stability.
+    "LANGUAGES",
+    "FRAMEWORKS",
+    "PRIMARY_LANGUAGE",
+    "ARCHITECTURES",
+    "ERROR_HANDLINGS",
+    "API_LAYERS",
+    "TESTINGS",
+    "BUILD_TOOLS",
+    # From configure.yaml (per-package)
+    "BUILD_COMMANDS",
+    "TYPE_CHECK_COMMANDS",
+    "LINT_COMMANDS",
+    # From init.yaml
+    "PACKAGES_DETECTED",
+    # From configure.yaml (per-package stacks + verbatim docs)
+    "PACKAGE_STACKS",
+    "PROJECT_STRUCTURE",
+    "DEV_COMMANDS",
+    "ARCHITECTURE_DETAILS",
+    # Derived
+    "WRAPPER_MODE_SECTION",
+    "COMMIT_ATTRIBUTION",
+    "AGENT_LIST",
+    # From configure.yaml (user preferences)
+    "WORKFLOW_ENFORCEMENT",
+    "AI_ATTRIBUTION",
+    "CLAUDE_TIER_THINK",
+    "CLAUDE_TIER_DO",
+    "CLAUDE_TIER_VERIFY",
+    # From configure.yaml (AC verification)
+    "AC_VERIFICATION_MODE",
+    "AC_RUNTIME_URL",
+    "AC_RUNTIME_API_BASE",
+    "AC_RUNTIME_CLI_COMMAND",
+)
+
+# Template for WRAPPER_MODE_SECTION when workspace_mode == "wrapper".
+_WRAPPER_MODE_TEMPLATE = (
+    "## Wrapper Mode\n"
+    "\n"
+    "This project is configured as a wrapper workspace. Source code lives at\n"
+    "`{project_root}/`. All `.devforge/`, `.claude/`, `CLAUDE.md`, and `specs/`\n"
+    "artifacts live at the install root (alongside this folder)."
+)
+
+# COMMIT_ATTRIBUTION block when ai_attribution == "Yes".
+# Trailing newline acts as separator when appended to a commit body.
+_COMMIT_ATTRIBUTION_YES = (
+    "\n\n"
+    "Co-Authored-By: Claude <noreply@anthropic.com>"
+)
+
+
+def _write_json(data: dict, target_path: "os.PathLike[str]") -> None:
+    """Atomically write `data` as indent=2 JSON to target_path.
+
+    Uses tempfile.mkstemp in the same directory as the target (POSIX
+    atomic rename guarantee). flush + fsync before os.replace for
+    durability. On failure, unlinks the temp file and re-raises.
+    """
+    target = Path(target_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix="project-config-",
+        suffix=".json.tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, indent=2))
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, str(target))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _build_project_config(
+    cfg_state: dict,
+    init_state: dict,
+    agent_list_str: str,
+) -> dict:
+    """Build the project-config.json dict from configure + init state.
+
+    Applies the mapping (lowercase configure.yaml / init.yaml keys →
+    uppercase project-config.json keys). Computes the 3 derived fields.
+    Returns an ordered dict whose keys follow _PROJECT_CONFIG_KEY_ORDER.
+
+    configure.yaml fields: all 27 FIELD_SCHEMA entries.
+    init.yaml fields: workspace_mode, project_root, project_state,
+                      default_branch, packages_detected.
+    Derived: WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST.
+
+    package_stack_array and package_record_array values pass through
+    as-is (list of dicts with lowercase subkeys — the JSON consumer
+    reads them with lowercase keys, matching the setter API).
+    """
+    # --- Derived: WRAPPER_MODE_SECTION ---
+    workspace_mode = init_state.get("workspace_mode")
+    project_root = init_state.get("project_root")
+    if workspace_mode == "wrapper" and project_root:
+        wrapper_section = _WRAPPER_MODE_TEMPLATE.format(project_root=project_root)
+    else:
+        wrapper_section = ""
+
+    # --- Derived: COMMIT_ATTRIBUTION ---
+    ai_attribution = cfg_state.get("ai_attribution")
+    if ai_attribution == "Yes":
+        commit_attribution = _COMMIT_ATTRIBUTION_YES
+    else:
+        commit_attribution = ""
+
+    # --- Assemble ordered dict ---
+    result = {}
+    for key in _PROJECT_CONFIG_KEY_ORDER:
+        lc = key.lower()
+        if key == "WRAPPER_MODE_SECTION":
+            result[key] = wrapper_section
+        elif key == "COMMIT_ATTRIBUTION":
+            result[key] = commit_attribution
+        elif key == "AGENT_LIST":
+            result[key] = agent_list_str
+        elif lc in cfg_state:
+            result[key] = cfg_state[lc]
+        elif lc in init_state:
+            result[key] = init_state[lc]
+        else:
+            result[key] = None
+    return result
+
+
+def _read_agent_list(install_root: "os.PathLike[str]") -> str:
+    """Derive AGENT_LIST from .claude/agents/*.md filenames.
+
+    Returns a markdown bullet list of agent basenames (without .md),
+    sorted alphabetically. Returns empty string if the directory is
+    absent or contains no .md files.
+    """
+    agents_dir = Path(install_root) / ".claude" / "agents"
+    if not agents_dir.is_dir():
+        return ""
+    names = []
+    try:
+        for entry in agents_dir.iterdir():
+            if entry.is_file() and entry.suffix == ".md":
+                names.append(entry.stem)
+    except OSError:
+        return ""
+    if not names:
+        return ""
+    names.sort()
+    return "\n".join("- {0}".format(n) for n in names)
+
+
+def cmd_render_config(args: argparse.Namespace) -> int:
+    """Read configure.yaml + init.yaml; derive AGENT_LIST; write project-config.json.
+
+    Output: <devforge_dir>/project-config.json with 35 keys (27 from
+    configure.yaml + 5 from init.yaml + 3 derived). Atomic write via
+    _write_json (mkstemp + fsync + os.replace).
+
+    Exits 1 if init.yaml is missing or unreadable. Exits 1 if configure.yaml
+    is unreadable (missing configure.yaml is fine — uses defaults).
+    """
+    devforge_dir = Path(args.devforge_dir)
+
+    # Load init.yaml (required — it carries PROJECT_ROOT + WORKSPACE_MODE).
+    init_yaml_path = devforge_dir / init_helper.OUTPUT_FILE_NAME
+    if not init_yaml_path.exists():
+        sys.stderr.write(
+            "configure_helper render-config: init.yaml not found at {0}\n".format(
+                init_yaml_path
+            )
+        )
+        return 1
+    try:
+        init_text = init_yaml_path.read_text(encoding="utf-8")
+    except OSError as err:
+        sys.stderr.write(
+            "configure_helper render-config: cannot read {0}: {1}\n".format(
+                init_yaml_path, err
+            )
+        )
+        return 1
+    try:
+        init_state = init_helper.parse_yaml(init_text)
+    except init_helper.YamlParseError as err:
+        sys.stderr.write(
+            "configure_helper render-config: cannot parse {0}: {1}\n".format(
+                init_yaml_path, err
+            )
+        )
+        return 1
+
+    # Load configure.yaml (defaults if absent).
+    try:
+        cfg_state = _load(args.devforge_dir)
+    except (OSError, YamlParseError) as err:
+        sys.stderr.write(
+            "configure_helper render-config: cannot load configure.yaml: {0}\n".format(err)
+        )
+        return 1
+
+    # Derive AGENT_LIST from .claude/agents/*.md.
+    install_root = Path(args.install_root)
+    agent_list_str = _read_agent_list(install_root)
+
+    # Build the config dict and write atomically.
+    config = _build_project_config(cfg_state, init_state, agent_list_str)
+    target = devforge_dir / "project-config.json"
+    try:
+        _write_json(config, target)
+    except OSError as err:
+        sys.stderr.write(
+            "configure_helper render-config: cannot write {0}: {1}\n".format(target, err)
+        )
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Step 3: verify subcommand.
+# ---------------------------------------------------------------------------
+
+# AC runtime fields that are only required when ac_verification_mode ==
+# "runtime-assisted". When mode differs, these may be None.
+_AC_RUNTIME_FIELDS = {"ac_runtime_url", "ac_runtime_api_base", "ac_runtime_cli_command"}
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Cross-check configure.yaml + project-config.json for correctness.
+
+    Checks:
+    1. All 27 configure.yaml fields populated (non-null scalars, non-empty
+       arrays). AC runtime fields (3) are exempt when ac_verification_mode
+       != "runtime-assisted".
+    2. project-config.json exists and is valid JSON.
+    3. Round-trip identity: configure.yaml fields appear in project-config.json
+       with matching values; init.yaml fields appear with matching values.
+
+    Exit 0 = all checks pass ("verify: ok" on stderr).
+    Exit 2 = at least one violation (each violation enumerated on stderr).
+    """
+    devforge_dir = Path(args.devforge_dir)
+    violations = []
+
+    # Load configure.yaml.
+    try:
+        cfg_state = _load(args.devforge_dir)
+    except (OSError, YamlParseError) as err:
+        sys.stderr.write(
+            "configure_helper verify: cannot load configure.yaml: {0}\n".format(err)
+        )
+        return 2
+
+    # Determine if ac_verification_mode requires AC runtime fields.
+    ac_mode = cfg_state.get("ac_verification_mode")
+    ac_runtime_required = (ac_mode == "runtime-assisted")
+
+    # Check all 27 configure.yaml fields.
+    for name, kind in FIELD_SCHEMA:
+        value = cfg_state.get(name)
+        if name in _AC_RUNTIME_FIELDS and not ac_runtime_required:
+            # AC runtime fields are optional when mode != runtime-assisted.
+            continue
+        if kind == "scalar":
+            if value is None:
+                violations.append("required field {0} is null".format(name.upper()))
+        elif kind == "string_array":
+            if not value:
+                violations.append("required field {0} is empty".format(name.upper()))
+        elif kind == "package_stack_array":
+            if not value:
+                violations.append("required field {0} is empty".format(name.upper()))
+
+    # Load init.yaml.
+    init_yaml_path = devforge_dir / init_helper.OUTPUT_FILE_NAME
+    init_state = None  # type: Optional[dict]
+    if not init_yaml_path.exists():
+        violations.append("init.yaml missing")
+    else:
+        try:
+            init_text = init_yaml_path.read_text(encoding="utf-8")
+            init_state = init_helper.parse_yaml(init_text)
+        except (OSError, init_helper.YamlParseError) as err:
+            violations.append("init.yaml unreadable: {0}".format(err))
+
+    # Load project-config.json.
+    config_path = devforge_dir / "project-config.json"
+    pconfig = None  # type: Optional[dict]
+    if not config_path.exists():
+        violations.append("project-config.json missing")
+    else:
+        try:
+            pconfig_text = config_path.read_text(encoding="utf-8")
+        except OSError as err:
+            violations.append("project-config.json unreadable: {0}".format(err))
+        else:
+            try:
+                pconfig = json.loads(pconfig_text)
+            except (json.JSONDecodeError, ValueError):
+                violations.append("project-config.json malformed")
+
+    # Round-trip check: configure.yaml fields vs project-config.json.
+    if pconfig is not None:
+        for name, kind in FIELD_SCHEMA:
+            upper = name.upper()
+            if upper not in pconfig:
+                violations.append(
+                    "project-config.json missing key {0}".format(upper)
+                )
+                continue
+            cfg_val = cfg_state.get(name)
+            pc_val = pconfig[upper]
+            if cfg_val != pc_val:
+                violations.append(
+                    "round-trip mismatch: configure.yaml.{0}={1!r} but "
+                    "project-config.json.{2}={3!r}".format(
+                        name, cfg_val, upper, pc_val
+                    )
+                )
+
+        # Round-trip check: init.yaml fields vs project-config.json.
+        if init_state is not None:
+            _INIT_KEYS = {
+                "workspace_mode": "WORKSPACE_MODE",
+                "project_root": "PROJECT_ROOT",
+                "project_state": "PROJECT_STATE",
+                "default_branch": "DEFAULT_BRANCH",
+                "packages_detected": "PACKAGES_DETECTED",
+            }
+            for init_name, upper in _INIT_KEYS.items():
+                if upper not in pconfig:
+                    violations.append(
+                        "project-config.json missing key {0}".format(upper)
+                    )
+                    continue
+                init_val = init_state.get(init_name)
+                pc_val = pconfig[upper]
+                if init_val != pc_val:
+                    violations.append(
+                        "round-trip mismatch: init.yaml.{0}={1!r} but "
+                        "project-config.json.{2}={3!r}".format(
+                            init_name, init_val, upper, pc_val
+                        )
+                    )
+
+        # Derived fields: present and type-correct (may be empty string).
+        for derived_key in ("WRAPPER_MODE_SECTION", "COMMIT_ATTRIBUTION", "AGENT_LIST"):
+            if derived_key not in pconfig:
+                violations.append(
+                    "project-config.json missing derived key {0}".format(derived_key)
+                )
+            elif pconfig[derived_key] is None:
+                violations.append(
+                    "project-config.json derived key {0} is null".format(derived_key)
+                )
+
+    if violations:
+        for v in violations:
+            sys.stderr.write("verify: {0}\n".format(v))
+        return 2
+
+    sys.stderr.write("verify: ok\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Step 3: summary subcommand.
+# ---------------------------------------------------------------------------
+
+# Field groupings for summary output (locked order).
+_SUMMARY_GROUPS = (
+    ("Identity", ("project_name", "project_description", "project_type")),
+    (
+        "Stack",
+        (
+            "primary_language",
+            "languages",
+            "frameworks",
+            "architectures",
+            "error_handlings",
+            "api_layers",
+            "testings",
+            "build_tools",
+        ),
+    ),
+    (
+        "Per-package",
+        (
+            "build_commands",
+            "type_check_commands",
+            "lint_commands",
+            "package_stacks",
+        ),
+    ),
+    (
+        "Verbatim docs",
+        ("project_structure", "dev_commands", "architecture_details"),
+    ),
+    (
+        "Preferences",
+        (
+            "workflow_enforcement",
+            "ai_attribution",
+            "claude_tier_think",
+            "claude_tier_do",
+            "claude_tier_verify",
+        ),
+    ),
+    (
+        "AC verification",
+        (
+            "ac_verification_mode",
+            "ac_runtime_url",
+            "ac_runtime_api_base",
+            "ac_runtime_cli_command",
+        ),
+    ),
+)
+
+# Maximum rendered value width before truncation (chars).
+_SUMMARY_MAX_WIDTH = 80
+
+
+def _truncate_str(s: str, max_width: int = _SUMMARY_MAX_WIDTH) -> str:
+    """Truncate string to max_width chars, appending '...' if longer."""
+    if len(s) <= max_width:
+        return s
+    return s[: max_width - 3] + "..."
+
+
+def _render_field_for_summary(name: str, kind: str, value: object) -> str:
+    """Render one field's summary line(s).
+
+    Scalars render as a single indented line. Arrays render as either a
+    comma-joined single line (string_array) or one 'path | language |
+    framework' row per record (package_stack_array).
+
+    Returns a string ending in a newline.
+    """
+    pad_name = "  {0:<26}".format(name)
+
+    if kind == "scalar":
+        if value is None:
+            return "{0}  (unset)\n".format(pad_name)
+        rendered = _truncate_str(str(value))
+        return "{0}  {1}\n".format(pad_name, rendered)
+
+    if kind == "string_array":
+        if not value:
+            return "{0}  (empty)\n".format(pad_name)
+        joined = ", ".join(str(v) for v in value)
+        return "{0}  {1}\n".format(pad_name, _truncate_str(joined))
+
+    if kind == "package_stack_array":
+        if not value:
+            return "{0}  (empty)\n".format(pad_name)
+        lines = ["{0}\n".format(pad_name)]
+        for rec in value:
+            path = rec.get("path", "")
+            lang = rec.get("language", "")
+            fw = rec.get("framework") or ""
+            lines.append("    {0} | {1} | {2}\n".format(path, lang, fw))
+        return "".join(lines)
+
+    # Unknown kind — should not occur since we walk FIELD_SCHEMA.
+    return "{0}  ?\n".format(pad_name)
+
+
+def _render_configure_summary(state: dict) -> str:
+    """Build the deterministic configure-report summary string from `state`.
+
+    Groups fields by _SUMMARY_GROUPS. Output ends with exactly one
+    trailing newline. Stable across re-runs (deterministic).
+    """
+    field_kinds = dict(FIELD_SCHEMA)
+    lines = []
+    lines.append("## Configure Report\n")
+
+    for group_name, field_names in _SUMMARY_GROUPS:
+        lines.append("\n### {0}\n".format(group_name))
+        for name in field_names:
+            kind = field_kinds.get(name, "scalar")
+            value = state.get(name)
+            lines.append(_render_field_for_summary(name, kind, value))
+
+    return "".join(lines)
+
+
+def cmd_summary(args: argparse.Namespace) -> int:
+    """Render the configure report summary to stdout. Read-only, exit 0 always.
+
+    Reads configure.yaml (defaults if missing). Output is deterministic
+    across re-runs — suitable for piping and diffing.
+    """
+    try:
+        state = _load(args.devforge_dir)
+    except (OSError, YamlParseError) as err:
+        sys.stderr.write(
+            "configure_helper summary: cannot load configure.yaml: {0}\n".format(err)
+        )
+        return 1
+    sys.stdout.write(_render_configure_summary(state))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
 
@@ -1861,6 +2410,34 @@ def build_parser() -> argparse.ArgumentParser:
     sp = subparsers.add_parser("set-ac-runtime-cli-command", help="Set ac_runtime_cli_command scalar.")
     sp.add_argument("value", help="AC runtime CLI command.")
     sp.set_defaults(func=cmd_set_ac_runtime_cli_command)
+
+    # ------------------------------------------------------------------
+    # Step 3: render-config / verify / summary.
+    # ------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "render-config",
+        help=(
+            "Read configure.yaml + init.yaml; derive AGENT_LIST from "
+            ".claude/agents/*.md; write .devforge/project-config.json."
+        ),
+    )
+    sp.set_defaults(func=cmd_render_config)
+
+    sp = subparsers.add_parser(
+        "verify",
+        help=(
+            "Cross-check configure.yaml + project-config.json. "
+            "Exit 0 = ok; exit 2 = violations."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify)
+
+    sp = subparsers.add_parser(
+        "summary",
+        help="Render the configure report to stdout. Read-only.",
+    )
+    sp.set_defaults(func=cmd_summary)
 
     return parser
 

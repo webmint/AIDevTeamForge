@@ -1,4 +1,4 @@
-"""Tests for src/devforge/lib/configure_helper.py — Step 1 + Step 2.
+"""Tests for src/devforge/lib/configure_helper.py — Step 1 + Step 2 + Step 3.
 
 Step 1 coverage: FIELD_SCHEMA, ENUM_FIELDS, default_state, emit_yaml/
 parse_yaml round-trips (incl. multi-line scalars + missing-subfield
@@ -14,6 +14,19 @@ trip integration (all-27-fields set + reload + compare; replace-not-append
 for string_arrays; accumulate for add-package-stack), cross-process safety
 (5 concurrent add-package-stack via Popen — no lost writes; mixed scalar+
 append concurrency — no corruption).
+
+Step 3 coverage: _write_json (atomic write, idempotency, no temp files left),
+_build_project_config (35-key output, WRAPPER_MODE_SECTION variants,
+COMMIT_ATTRIBUTION variants, field mapping, package_stacks pass-through),
+_read_agent_list (absent dir, empty dir, sorted alphabetically, non-md excluded),
+render-config subprocess (init.yaml missing, 35-key output, configure fields,
+init fields, wrapper section, commit attribution, agent list, idempotency,
+overwrite semantics, package_stacks), verify subprocess (all-populated pass,
+null scalar fail, empty array fail, ac-runtime optional when not runtime-
+assisted, ac-runtime required when runtime-assisted, json missing, json
+malformed, round-trip drift), summary subprocess (unset shows label, populated
+values, long string truncation, package_stacks rows, stability, empty array,
+section headers).
 
 Each subprocess test runs in its own `tempfile.TemporaryDirectory` via
 _EnvIsolationMixin. Pure-function tests import the module directly.
@@ -2182,6 +2195,553 @@ class CrossProcessSafetyTests(_EnvIsolationMixin, unittest.TestCase):
             {"project-0", "project-1", "project-2"},
             "project_name corrupted by concurrent scalar set",
         )
+
+
+# ---------------------------------------------------------------------------
+# Step 3: _write_json tests (~3)
+# ---------------------------------------------------------------------------
+
+
+class WriteJsonTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_writes_valid_json(self):
+        target = self.devforge_dir / "test.json"
+        configure_helper._write_json({"foo": "bar", "n": 42}, target)
+        data = json.loads(target.read_text(encoding="utf-8"))
+        self.assertEqual(data["foo"], "bar")
+        self.assertEqual(data["n"], 42)
+
+    def test_atomic_write_idempotent(self):
+        """Two writes produce byte-identical output for the same data."""
+        target = self.devforge_dir / "idempotent.json"
+        payload = {"x": 1, "y": [1, 2, 3]}
+        configure_helper._write_json(payload, target)
+        first = target.read_bytes()
+        configure_helper._write_json(payload, target)
+        second = target.read_bytes()
+        self.assertEqual(first, second)
+
+    def test_no_temp_files_left_on_success(self):
+        """No .json.tmp files linger after a successful write."""
+        target = self.devforge_dir / "clean.json"
+        configure_helper._write_json({"a": 1}, target)
+        tmp_files = list(self.devforge_dir.glob("*.json.tmp"))
+        self.assertEqual(tmp_files, [], "orphaned temp files: {0}".format(tmp_files))
+
+
+# ---------------------------------------------------------------------------
+# Step 3: _build_project_config tests (~4)
+# ---------------------------------------------------------------------------
+
+
+class BuildProjectConfigTests(unittest.TestCase):
+
+    def _make_cfg(self, **kwargs):
+        state = configure_helper.default_state()
+        state.update(kwargs)
+        return state
+
+    def _make_init(self, **kwargs):
+        init_state = init_helper.default_state()
+        init_state.update(kwargs)
+        return init_state
+
+    def test_all_35_keys_present(self):
+        cfg = self._make_cfg()
+        init = self._make_init()
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertEqual(len(result), 35)
+        for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
+            self.assertIn(k, result, "missing key {0}".format(k))
+
+    def test_key_order_matches_testforge20_reference(self):
+        """Regression: positions 7-9 are LANGUAGES, FRAMEWORKS, PRIMARY_LANGUAGE.
+
+        testForge20's existing project-config.json is the reference shape;
+        diff stability across renders requires the exact same ordering.
+        """
+        keys = list(configure_helper._PROJECT_CONFIG_KEY_ORDER)
+        self.assertEqual(keys[7:10], ["LANGUAGES", "FRAMEWORKS", "PRIMARY_LANGUAGE"])
+
+    def test_wrapper_mode_section_standalone(self):
+        cfg = self._make_cfg()
+        init = self._make_init(workspace_mode="standalone", project_root="myapp")
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertEqual(result["WRAPPER_MODE_SECTION"], "")
+
+    def test_wrapper_mode_section_wrapper_contains_project_root(self):
+        cfg = self._make_cfg()
+        init = self._make_init(workspace_mode="wrapper", project_root="db-cse-ui-strata")
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertIn("db-cse-ui-strata", result["WRAPPER_MODE_SECTION"])
+        self.assertIn("## Wrapper Mode", result["WRAPPER_MODE_SECTION"])
+
+    def test_commit_attribution_no(self):
+        cfg = self._make_cfg(ai_attribution="No")
+        init = self._make_init()
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertEqual(result["COMMIT_ATTRIBUTION"], "")
+
+    def test_commit_attribution_yes(self):
+        cfg = self._make_cfg(ai_attribution="Yes")
+        init = self._make_init()
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertIn("Co-Authored-By", result["COMMIT_ATTRIBUTION"])
+
+    def test_configure_fields_uppercased(self):
+        cfg = self._make_cfg(project_name="my-project", languages=["TypeScript", "Python"])
+        init = self._make_init()
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertEqual(result["PROJECT_NAME"], "my-project")
+        self.assertEqual(result["LANGUAGES"], ["TypeScript", "Python"])
+
+    def test_init_fields_mapped(self):
+        cfg = self._make_cfg()
+        init = self._make_init(
+            workspace_mode="standalone",
+            project_root=".",
+            project_state="brownfield",
+            default_branch="main",
+        )
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertEqual(result["WORKSPACE_MODE"], "standalone")
+        self.assertEqual(result["PROJECT_ROOT"], ".")
+        self.assertEqual(result["PROJECT_STATE"], "brownfield")
+        self.assertEqual(result["DEFAULT_BRANCH"], "main")
+
+    def test_agent_list_passed_through(self):
+        cfg = self._make_cfg()
+        init = self._make_init()
+        agent_list = "- ac-verifier\n- architect"
+        result = configure_helper._build_project_config(cfg, init, agent_list)
+        self.assertEqual(result["AGENT_LIST"], agent_list)
+
+    def test_package_stacks_lowercase_subkeys(self):
+        """package_stack records pass through with lowercase subkeys."""
+        stack = [{"path": "api", "language": "Python", "framework": "FastAPI",
+                  "build_tool": None, "build_command": None,
+                  "type_check_command": None, "lint_command": None}]
+        cfg = self._make_cfg(package_stacks=stack)
+        init = self._make_init()
+        result = configure_helper._build_project_config(cfg, init, "")
+        self.assertEqual(result["PACKAGE_STACKS"][0]["path"], "api")
+        self.assertEqual(result["PACKAGE_STACKS"][0]["language"], "Python")
+
+
+# ---------------------------------------------------------------------------
+# Step 3: _read_agent_list tests (~3)
+# ---------------------------------------------------------------------------
+
+
+class ReadAgentListTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def _agents_dir(self):
+        d = self.install_root / ".claude" / "agents"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def test_no_agents_dir_returns_empty(self):
+        # .claude/agents/ does not exist.
+        result = configure_helper._read_agent_list(self.install_root)
+        self.assertEqual(result, "")
+
+    def test_empty_agents_dir_returns_empty(self):
+        self._agents_dir()  # create but add no .md files
+        result = configure_helper._read_agent_list(self.install_root)
+        self.assertEqual(result, "")
+
+    def test_agents_sorted_alphabetically(self):
+        agents_dir = self._agents_dir()
+        for name in ("zebra-agent", "alpha-agent", "beta-agent"):
+            (agents_dir / "{0}.md".format(name)).write_text("# {0}\n".format(name), encoding="utf-8")
+        result = configure_helper._read_agent_list(self.install_root)
+        lines = result.splitlines()
+        self.assertEqual(lines, ["- alpha-agent", "- beta-agent", "- zebra-agent"])
+
+    def test_non_md_files_excluded(self):
+        agents_dir = self._agents_dir()
+        (agents_dir / "my-agent.md").write_text("# Agent\n", encoding="utf-8")
+        (agents_dir / "README.txt").write_text("readme\n", encoding="utf-8")
+        result = configure_helper._read_agent_list(self.install_root)
+        self.assertEqual(result, "- my-agent")
+
+
+# ---------------------------------------------------------------------------
+# Step 3: render-config subprocess tests (~12)
+# ---------------------------------------------------------------------------
+
+
+class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def _write_init_yaml(self, **kwargs):
+        """Write init.yaml via init_helper setters (real producer)."""
+        defaults = {
+            "workspace_mode": "standalone",
+            "project_root": ".",
+            "project_state": "brownfield",
+            "default_branch": "main",
+        }
+        defaults.update(kwargs)
+        _run_init(self.devforge_dir, "reset")
+        if defaults.get("workspace_mode"):
+            _run_init(self.devforge_dir, "set-workspace-mode", defaults["workspace_mode"])
+        if defaults.get("project_root"):
+            _run_init(self.devforge_dir, "set-project-root", defaults["project_root"])
+        if defaults.get("project_state"):
+            _run_init(self.devforge_dir, "set-project-state", defaults["project_state"])
+        if defaults.get("default_branch"):
+            _run_init(self.devforge_dir, "set-default-branch", defaults["default_branch"])
+
+    def _config_path(self):
+        return self.devforge_dir / "project-config.json"
+
+    def test_init_yaml_missing_exits_1(self):
+        # configure.yaml reset but init.yaml absent.
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn(b"init.yaml", proc.stderr)
+
+    def test_renders_35_keys_with_defaults(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(len(data), 35)
+        for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
+            self.assertIn(k, data, "missing key {0}".format(k))
+
+    def test_configure_yaml_values_appear_in_json(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "acme-app")
+        _run_configure(self.devforge_dir, "set-primary-language", "TypeScript")
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript,Python")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(data["PROJECT_NAME"], "acme-app")
+        self.assertEqual(data["PRIMARY_LANGUAGE"], "TypeScript")
+        self.assertEqual(data["LANGUAGES"], ["TypeScript", "Python"])
+
+    def test_init_yaml_values_appear_in_json(self):
+        self._write_init_yaml(workspace_mode="wrapper", project_root="my-src")
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(data["WORKSPACE_MODE"], "wrapper")
+        self.assertEqual(data["PROJECT_ROOT"], "my-src")
+
+    def test_wrapper_mode_section_standalone(self):
+        self._write_init_yaml(workspace_mode="standalone", project_root=".")
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(data["WRAPPER_MODE_SECTION"], "")
+
+    def test_wrapper_mode_section_wrapper_contains_project_root(self):
+        self._write_init_yaml(workspace_mode="wrapper", project_root="db-cse-ui-strata")
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertIn("db-cse-ui-strata", data["WRAPPER_MODE_SECTION"])
+        self.assertIn("## Wrapper Mode", data["WRAPPER_MODE_SECTION"])
+
+    def test_commit_attribution_no_is_empty(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-ai-attribution", "No")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(data["COMMIT_ATTRIBUTION"], "")
+
+    def test_commit_attribution_yes_contains_co_authored_by(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-ai-attribution", "Yes")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertIn("Co-Authored-By", data["COMMIT_ATTRIBUTION"])
+
+    def test_agent_list_absent_dir_is_empty(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(data["AGENT_LIST"], "")
+
+    def test_agent_list_3_agents_sorted(self):
+        agents_dir = self.install_root / ".claude" / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("zebra", "alpha", "beta"):
+            (agents_dir / "{0}.md".format(name)).write_text("# {0}\n".format(name), encoding="utf-8")
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(data["AGENT_LIST"], "- alpha\n- beta\n- zebra")
+
+    def test_idempotent_byte_identical_output(self):
+        """Re-running render-config produces byte-identical project-config.json."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "stable-app")
+        _run_configure(self.devforge_dir, "render-config")
+        first = self._config_path().read_bytes()
+        _run_configure(self.devforge_dir, "render-config")
+        second = self._config_path().read_bytes()
+        self.assertEqual(first, second)
+
+    def test_overwrite_prior_json(self):
+        """Re-running render-config overwrites (not appends to) prior JSON."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "first-run")
+        _run_configure(self.devforge_dir, "render-config")
+        data1 = json.loads(self._config_path().read_text(encoding="utf-8"))
+        # Now update the name and re-render.
+        _run_configure(self.devforge_dir, "set-project-name", "second-run")
+        _run_configure(self.devforge_dir, "render-config")
+        data2 = json.loads(self._config_path().read_text(encoding="utf-8"))
+        self.assertEqual(data1["PROJECT_NAME"], "first-run")
+        self.assertEqual(data2["PROJECT_NAME"], "second-run")
+
+    def test_package_stacks_render_with_lowercase_subkeys(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "services/api",
+            "--language", "Python",
+            "--framework", "FastAPI",
+        )
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        data = json.loads(self._config_path().read_text(encoding="utf-8"))
+        stacks = data["PACKAGE_STACKS"]
+        self.assertEqual(len(stacks), 1)
+        self.assertEqual(stacks[0]["path"], "services/api")
+        self.assertEqual(stacks[0]["language"], "Python")
+        self.assertEqual(stacks[0]["framework"], "FastAPI")
+
+
+# ---------------------------------------------------------------------------
+# Step 3: verify subprocess tests (~8)
+# ---------------------------------------------------------------------------
+
+
+class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def _write_init_yaml(self):
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+    def _populate_all_configure_fields(self):
+        """Set all 27 configure.yaml fields to valid values."""
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "test-project")
+        _run_configure(self.devforge_dir, "set-project-description", "A test project")
+        _run_configure(self.devforge_dir, "set-project-type", "Web App")
+        _run_configure(self.devforge_dir, "set-primary-language", "TypeScript")
+        _run_configure(self.devforge_dir, "set-languages", "TypeScript")
+        _run_configure(self.devforge_dir, "set-frameworks", "React")
+        _run_configure(self.devforge_dir, "set-architectures", "MVC")
+        _run_configure(self.devforge_dir, "set-error-handlings", "try-catch")
+        _run_configure(self.devforge_dir, "set-api-layers", "REST")
+        _run_configure(self.devforge_dir, "set-testings", "Jest")
+        _run_configure(self.devforge_dir, "set-build-tools", "vite")
+        _run_configure(self.devforge_dir, "set-build-commands", "npm run build")
+        _run_configure(self.devforge_dir, "set-type-check-commands", "npx tsc")
+        _run_configure(self.devforge_dir, "set-lint-commands", "npm run lint")
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "src", "--language", "TypeScript",
+        )
+        _run_configure(self.devforge_dir, "set-project-structure", "--text", "src/\n  index.ts")
+        _run_configure(self.devforge_dir, "set-dev-commands", "--text", "npm start")
+        _run_configure(self.devforge_dir, "set-architecture-details", "--text", "MVC pattern")
+        _run_configure(self.devforge_dir, "set-workflow-enforcement", "Strict")
+        _run_configure(self.devforge_dir, "set-ai-attribution", "No")
+        _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
+        _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
+        _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        _run_configure(self.devforge_dir, "set-ac-verification-mode", "code-only")
+        # ac_runtime_* left null — allowed when mode != runtime-assisted
+
+    def test_all_fields_populated_exits_0(self):
+        self._write_init_yaml()
+        self._populate_all_configure_fields()
+        _run_configure(self.devforge_dir, "render-config")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        self.assertIn(b"verify: ok", proc.stderr)
+
+    def test_null_scalar_exits_2(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        # project_name is null — all others also null.
+        _run_configure(self.devforge_dir, "render-config")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"PROJECT_NAME", proc.stderr)
+
+    def test_empty_string_array_exits_2(self):
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        # All scalars populated but arrays empty.
+        _run_configure(self.devforge_dir, "set-project-name", "test")
+        _run_configure(self.devforge_dir, "set-project-description", "desc")
+        _run_configure(self.devforge_dir, "set-project-type", "Web App")
+        _run_configure(self.devforge_dir, "set-primary-language", "TypeScript")
+        _run_configure(self.devforge_dir, "set-workflow-enforcement", "Strict")
+        _run_configure(self.devforge_dir, "set-ai-attribution", "No")
+        _run_configure(self.devforge_dir, "set-claude-tier-think", "Opus")
+        _run_configure(self.devforge_dir, "set-claude-tier-do", "Sonnet")
+        _run_configure(self.devforge_dir, "set-claude-tier-verify", "Haiku")
+        _run_configure(self.devforge_dir, "set-ac-verification-mode", "off")
+        _run_configure(self.devforge_dir, "set-project-structure", "--text", "src/")
+        _run_configure(self.devforge_dir, "set-dev-commands", "--text", "npm start")
+        _run_configure(self.devforge_dir, "set-architecture-details", "--text", "MVC")
+        _run_configure(self.devforge_dir, "render-config")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        # At minimum, languages array is empty.
+        self.assertIn(b"LANGUAGES", proc.stderr)
+
+    def test_ac_runtime_fields_optional_when_mode_is_code_only(self):
+        """ac_runtime_url/api_base/cli_command may be null when mode != runtime-assisted."""
+        self._write_init_yaml()
+        self._populate_all_configure_fields()  # mode=code-only, ac_runtime_* null
+        _run_configure(self.devforge_dir, "render-config")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+    def test_ac_runtime_fields_required_when_runtime_assisted(self):
+        self._write_init_yaml()
+        self._populate_all_configure_fields()
+        # Switch mode to runtime-assisted; leave ac_runtime_url null.
+        _run_configure(self.devforge_dir, "set-ac-verification-mode", "runtime-assisted")
+        _run_configure(self.devforge_dir, "render-config")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"AC_RUNTIME_URL", proc.stderr)
+
+    def test_project_config_json_missing_exits_2(self):
+        self._write_init_yaml()
+        self._populate_all_configure_fields()
+        # Do NOT run render-config — project-config.json is absent.
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project-config.json missing", proc.stderr)
+
+    def test_project_config_json_malformed_exits_2(self):
+        self._write_init_yaml()
+        self._populate_all_configure_fields()
+        _run_configure(self.devforge_dir, "render-config")
+        # Corrupt the JSON file.
+        config_path = self.devforge_dir / "project-config.json"
+        config_path.write_text("{not valid json", encoding="utf-8")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"malformed", proc.stderr)
+
+    def test_round_trip_drift_detected(self):
+        """Editing configure.yaml after render causes round-trip mismatch."""
+        self._write_init_yaml()
+        self._populate_all_configure_fields()
+        _run_configure(self.devforge_dir, "render-config")
+        # Now change project_name without re-rendering.
+        _run_configure(self.devforge_dir, "set-project-name", "changed-name")
+        proc = _run_configure(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"round-trip mismatch", proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Step 3: summary subprocess tests (~5)
+# ---------------------------------------------------------------------------
+
+
+class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_empty_configure_yaml_shows_unset(self):
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        out = proc.stdout.decode()
+        self.assertIn("(unset)", out)
+        self.assertIn("## Configure Report", out)
+
+    def test_populated_values_appear(self):
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "demo-project")
+        _run_configure(self.devforge_dir, "set-primary-language", "Rust")
+        proc = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        out = proc.stdout.decode()
+        self.assertIn("demo-project", out)
+        self.assertIn("Rust", out)
+
+    def test_long_string_truncated_with_ellipsis(self):
+        long_val = "A" * 100
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-description", long_val)
+        proc = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        out = proc.stdout.decode()
+        self.assertIn("...", out)
+        # The rendered value should be ≤80 chars (name + padding excluded).
+        # The raw 100-char string should NOT appear verbatim.
+        self.assertNotIn(long_val, out)
+
+    def test_package_stack_array_renders_one_row_per_record(self):
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "frontend", "--language", "TypeScript", "--framework", "React",
+        )
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "backend", "--language", "Python", "--framework", "Django",
+        )
+        proc = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        out = proc.stdout.decode()
+        self.assertIn("frontend | TypeScript | React", out)
+        self.assertIn("backend | Python | Django", out)
+
+    def test_output_stable_across_reruns(self):
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "stable")
+        proc1 = _run_configure(self.devforge_dir, "summary")
+        proc2 = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc1.stdout, proc2.stdout)
+
+    def test_empty_array_shows_empty_label(self):
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "summary")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        out = proc.stdout.decode()
+        self.assertIn("(empty)", out)
+
+    def test_section_headers_present(self):
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "summary")
+        out = proc.stdout.decode()
+        for header in ("Identity", "Stack", "Per-package", "Verbatim docs",
+                       "Preferences", "AC verification"):
+            self.assertIn(header, out, "section header '{0}' missing".format(header))
 
 
 if __name__ == "__main__":
