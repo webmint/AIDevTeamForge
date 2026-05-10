@@ -2746,13 +2746,27 @@ def cmd_substitute_templates(args: argparse.Namespace) -> int:
 def _parse_agent_frontmatter(text: str) -> Optional[List[str]]:
     """Parse the applies_to field from an agent file's YAML frontmatter.
 
-    Agent files use a fenced YAML block at the top (allowing blank lines
-    before it):
+    Two frontmatter forms are tolerated (parser tries both):
 
-        ```yaml
-        name: foo
-        applies_to: ["web", "backend"]
-        ```
+    1. SOURCE form (`src/agents/*.md`) — fenced YAML block:
+
+           ```yaml
+           name: foo
+           applies_to: ["web", "backend"]
+           ```
+
+    2. INSTALLED form (`<install_root>/.claude/agents/*.md`) — Claude
+       Code native triple-dash delimited:
+
+           ---
+           name: foo
+           applies_to: ["web", "backend"]
+           ---
+
+    The installed form is what prune-agents actually walks at runtime
+    (helper consumes the deployed agent files, not the source). Both
+    forms must parse identically; a future refactor that moves source
+    to triple-dash form would not require a parser change.
 
     Returns the list of applies_to strings, or None if frontmatter is
     absent or applies_to cannot be parsed. Caller interprets None as
@@ -2764,14 +2778,21 @@ def _parse_agent_frontmatter(text: str) -> Optional[List[str]]:
     """
     lines = text.splitlines()
 
-    # Find opening ```yaml or ```yml fence (allow blank lines before it).
+    # Find opening fence — either ```yaml/```yml OR --- (Claude native form).
+    # Allow blank lines before the opener.
     fence_start = None
+    fence_kind = None  # "yaml" → close on ```; "dash" → close on ---
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped == "":
             continue
         if stripped in ("```yaml", "```yml"):
             fence_start = i
+            fence_kind = "yaml"
+            break
+        if stripped == "---":
+            fence_start = i
+            fence_kind = "dash"
             break
         # First non-blank line that is NOT an opening fence → no frontmatter.
         break
@@ -2779,10 +2800,11 @@ def _parse_agent_frontmatter(text: str) -> Optional[List[str]]:
     if fence_start is None:
         return None
 
-    # Collect lines until closing ``` fence.
+    # Collect lines until closing fence.
+    closer = "```" if fence_kind == "yaml" else "---"
     fence_end = None
     for i in range(fence_start + 1, len(lines)):
-        if lines[i].strip() == "```":
+        if lines[i].strip() == closer:
             fence_end = i
             break
 

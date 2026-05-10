@@ -3772,6 +3772,43 @@ class ParseAgentFrontmatterTests(unittest.TestCase):
         result = configure_helper._parse_agent_frontmatter(text)
         self.assertEqual(result, ["web"])
 
+    def test_dash_delimited_frontmatter_parsed(self):
+        """Claude Code native triple-dash form parses identically to fenced form.
+
+        Regression: prune-agents walks <install_root>/.claude/agents/*.md
+        which use the dash-delimited form (emitted by generate-agents.py).
+        Pre-fix, parser only matched ```yaml fence — all installed agents
+        reported missing frontmatter and KEEP-warning'd.
+        """
+        text = (
+            "---\n"
+            "name: frontend-engineer\n"
+            "description: \"...\"\n"
+            "model: sonnet\n"
+            "applies_to: [\"web\"]\n"
+            "---\n"
+            "\nBody starts here.\n"
+        )
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertEqual(result, ["web"])
+
+    def test_dash_delimited_multiple_natures(self):
+        text = (
+            "---\n"
+            "name: api-designer\n"
+            "applies_to: [\"web\", \"backend\"]\n"
+            "---\n"
+            "Body.\n"
+        )
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertEqual(result, ["web", "backend"])
+
+    def test_dash_delimited_unclosed_returns_none(self):
+        """Dash form with no closing --- returns None (missing frontmatter)."""
+        text = "---\nname: foo\napplies_to: [\"web\"]\nBody without closing fence.\n"
+        result = configure_helper._parse_agent_frontmatter(text)
+        self.assertIsNone(result)
+
 
 if __name__ == "__main__":
     unittest.main()
