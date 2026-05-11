@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /research — Codebase Research
 
-`/research` is invoked after the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It clarifies a vague bug or enhancement input into a structured symptom memo, dispatches a framework-owned investigation subagent that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and saves the rendered report to `research/YYYY-MM-DD-<topic-slug>.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands.
+`/research` is invoked after the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It clarifies a vague bug or enhancement input into a structured symptom memo, then runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and saves the rendered report to `research/YYYY-MM-DD-<topic-slug>.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread.
 
 Usage: `/research "<topic>"` (e.g. `/research "items not sorted in admin products view"` or `/research "make export faster on large datasets"`).
 
@@ -126,7 +126,7 @@ For each of the 6 dimensions, in highest-uncertainty-first order:
    .devforge/lib/research_helper record-conflict-resolution \
        --index <0-based index from check-conflicts output> \
        --resolution "user-chose-<new|prior>" \
-       --rewrite-dimension <name of loser dimension>
+       --rewrite-dimension <dimension_name>  # underscore form, e.g. affected_area
    ```
 
    `--rewrite-dimension` clears the loser's value so the user must re-answer it on the next pass.
@@ -190,61 +190,63 @@ Stdout JSON: `{"mode": "bug" | "enhancement" | null, "source": "auto" | "overrid
 
 After emitting any AskUserQuestion or free-text prompt in Phase 1, end the assistant turn. Do NOT advance to the next dimension, the next protocol step, or any helper setter call in the same turn. The user's reply opens the next turn; the next turn parses it and continues. Plain-prose prompts have no harness-level "wait for user" affordance — the LLM-level stop is the only mechanism preventing accidental auto-advance.
 
-## Phase 2 — Investigation (dispatch research-investigator subagent)
+## Phase 2 — Investigation (orchestrator-inline)
 
-### Cost gate
+Phase 2 runs in the main thread — NO subagent dispatch. Orchestrator-inline keeps the full session context intact, which is what the parallel-pattern sweep in Phase 2.4 needs to find sibling bug sites in the same file.
 
-Before dispatching, surface the estimated CBM call count + token cost based on `affected_area`. Rough rule of thumb: one-package scope ≈ 20-40 CBM calls + $0.10-$0.30; feature-wide ≈ 40-80 calls + $0.30-$0.80; cross-cutting ≈ 80-160 calls + $0.80-$2.00.
+### Phase 2.1 — Cost gate
 
-Ask via AskUserQuestion `"Investigation will cost roughly <N> CBM calls (~$<X>). Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled; .devforge/research-state.json preserved — re-run /research to resume.") into the user-facing message and end the turn. On `proceed`: continue.
+Before any CBM call, surface the estimated CBM call count + token cost based on `affected_area`. Rough rule of thumb: one-package scope ≈ 15-30 CBM calls; feature-wide ≈ 30-60 calls; cross-cutting ≈ 60-120 calls. Token cost is bounded — orchestrator-inline reuses the existing session context, no fresh subagent boot.
 
-### Dispatch brief
+Ask via AskUserQuestion `"Investigation will scan roughly <N> CBM calls. Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled; .devforge/research-state.json preserved — re-run /research to resume.") into the user-facing message and end the turn. On `proceed`: continue.
 
-Dispatch the `research-investigator` subagent via the Task tool. The agent is framework-owned and installed by the framework at `.claude/agents/research-investigator.md` — it is NOT defined in this spec.
+### Phase 2.2 — Read docs layer first
 
-Read the current memo state first so the brief carries every dimension's value:
+Read these via the CBM graph (md files are indexed; use `search_graph` with `label="File"` + `name_pattern=<regex on file_path>`, NOT `file_pattern`) before any source-code discovery:
 
-```bash
-.devforge/lib/research_helper read-memo
+- `docs/architecture.md`
+- `docs/<affected_package>/architecture.md` (substitute `<affected_package>` from `memo.dimensions.affected_area.value`)
+- `docs/<affected_package>/<closest_concern>/index.md` (closest concern derived from the affected-area phrase)
+- `docs/glossary.md`
+
+Docs ground the symptom in package + concern boundaries before code-level discovery fires.
+
+### Phase 2.3 — CBM discovery chain (MANDATORY order)
+
+Raw `Read` / `Grep` / `Glob` / `grep` / `find` / `cat` over source-file extensions are forbidden and will be blocked by runtime hooks. Chain:
+
+1. **`search_graph`** — query for named symbols matching symptom tokens. Use `qn_pattern` for qualified-name regex; `name_pattern` for short-name regex; `label="File"` queries use `name_pattern` (regex on file_path), NOT `file_pattern`.
+2. If `search_graph` returns 0 hits for an expected behavior → **`search_code`** — text or regex search with a literal token (e.g. `.sort(`, `.filter(`, `.localeCompare(`) over the affected package. This catches inline expressions buried inside framework reactive blocks (Vue `<script setup>`, React hooks, Svelte reactive blocks) that the graph indexer does not promote to named symbols.
+3. **`trace_path`** — impact analysis on confirmed surfaces. Pick a `mode` from `calls` / `data_flow` / `cross_service`.
+4. **`get_code_snippet`** — read source on the highest-confidence candidates. This is the only sanctioned source-read path; do not use raw `Read`.
+
+Confidence calibration: 0 hits at `search_graph` alone means "no NAMED implementation"; 0 hits at `search_code` means "truly absent". Do not conflate these.
+
+### Phase 2.4 — Parallel-pattern sweep (MANDATORY)
+
+After the primary surface is located, run a parallel-pattern sweep over the SAME file before recording findings:
+
+```
+search_code(pattern="<bug-pattern literal>")
 ```
 
-The brief sent to the subagent MUST contain:
+The supported `search_code` argument is `pattern` only. Scope the sweep to the primary file by filtering the returned hits in the orchestrator — keep only rows whose `file_path` equals `<primary_file_path>`. Discard every hit outside that file. If `pattern` returns dozens of hits across the package, narrow it (add a containing identifier, include the file's base name as an OR-token in the regex) so the in-file rows surface near the top.
 
-1. **SymptomMemo (verbatim).** Paste the full `read-memo` JSON output into the brief as a fenced code block so the agent sees every dimension's value + state.
+Example: primary surface is a `.sort()` at `ProductListView.vue:114` with status-only comparator. Sweep the same file for any other `.sort(` / `.filter(` / `.map(` calls that touch the same data shape — there is often a parallel block (e.g. a sibling block at line 252-279) with the same bug. Missing the parallel block lets it ship as a regression. Record every parallel surface as its own `Finding` row.
 
-2. **Pre-read docs paths.** Tell the agent to read these via the CBM graph (md files are indexed; use `search_graph` File-label queries with `name_pattern=<regex>`) before any source-code discovery:
-   - `docs/architecture.md`
-   - `docs/<affected_package>/architecture.md` (substitute `<affected_package>` from `memo.dimensions.affected_area.value`)
-   - `docs/<affected_package>/<closest_concern>/index.md` (closest concern derived from the affected-area phrase)
-   - `docs/glossary.md`
+This step is MANDATORY when `mode == "bug"` and the primary surface is an inline expression (sort / filter / comparator / validator). For enhancement mode, sweep is OPTIONAL.
 
-3. **CBM discovery chain (MANDATORY order).** State the literal protocol with the fixed order; raw `Read` / `Grep` / `Glob` / `grep` / `find` / `cat` over source-file extensions are forbidden and will be blocked by runtime hooks. Chain:
+### Phase 2.5 — Hypothesis enumeration (MANDATORY ≥2)
 
-   1. `search_graph` — query for named symbols matching symptom tokens. Use `qn_pattern` for qualified-name regex; `name_pattern` for short-name regex; `label="File"` queries use `name_pattern` (regex on file_path), NOT `file_pattern`.
-   2. If `search_graph` returns 0 hits for an expected behavior → `search_code` — text or regex search with a literal token (e.g. `.sort(`, `.filter(`, `.localeCompare(`) over the affected package. This catches inline expressions buried inside framework reactive blocks (Vue `<script setup>`, React hooks, Svelte reactive blocks) that the graph indexer does not promote to named symbols.
-   3. `trace_path` — impact analysis on confirmed surfaces. Pick a `mode` from `calls` / `data_flow` / `cross_service`.
-   4. `get_code_snippet` — read source on the highest-confidence candidates. This is the only sanctioned source-read path; do not use raw `Read`.
+Enumerate at least 2 candidate root causes for the symptom. For each, write a one-line falsifier (the observation that would disprove it) and mark whether falsification needs runtime data. Single-hypothesis output is rejected by the helper's `verify` gate.
 
-   Confidence calibration: 0 hits at `search_graph` alone means "no NAMED implementation"; 0 hits at `search_code` means "truly absent". Do not conflate these.
+For any hypothesis whose falsifier needs runtime data (lifecycle race, framework lifecycle gap, vendor side-effect, network-shaped issue, timing-shaped issue), prepare a specific probe — a `console.log` probe, an `app.config.warnHandler` capture, a network-tab inspection, a breakpoint dump, etc.
 
-4. **Hypothesis enumeration (MANDATORY ≥2).** Tell the agent: enumerate at least 2 candidate root causes for the symptom. For each, write a one-line falsifier (the observation that would disprove it) and mark whether falsification needs runtime data. Single-hypothesis output will be rejected by the helper's `verify` gate.
+### Phase 2.6 — Wire findings into helper
 
-5. **Verify-step recommendation.** For any hypothesis whose falsifier needs runtime data (lifecycle race, framework lifecycle gap, vendor side-effect, network-shaped issue, timing-shaped issue), recommend a specific probe — a console.log probe, an `app.config.warnHandler` capture, a network-tab inspection, a breakpoint dump, etc.
+After the CBM chain + parallel-pattern sweep + hypothesis enumeration complete, call helper setters in this order. Compose values from the in-context findings; do not re-shape.
 
-6. **Expected output shape.** The subagent must return:
-   - A table of findings: `{surface, file_line, relevance}` rows. One per code surface that bears on the symptom.
-   - A list of hypotheses: `{cause, falsifier, runtime_probe_needed: yes|no}` entries (≥2).
-   - A primary `root_cause_hypothesis` text + `confidence` ∈ `{Confirmed, Hypothesis, Speculative}`.
-   - For bug-mode + `confidence ∈ {Confirmed, Hypothesis}`: structured root cause fields `trigger` (immediate event) + `root_cause_systemic` (underlying flaw) + up to 3 `contributing_factors`.
-   - For any hypothesis with `runtime_probe_needed=yes`: a verify-step block with 3 sub-fields `probe` + `reproduction` + `discriminator` (the discriminator names which hypothesis each observation supports).
-
-7. **Out of scope for the agent.** Do not use AskUserQuestion inside the subagent (briefs go stale fast across agent types). Do not write or edit any file. Do not call helper setters — the orchestrator wires the agent's output into setters after the agent returns.
-
-### Wire agent output into helper
-
-After the subagent returns, transcribe its structured output into helper setter calls in this order. Do not re-shape the agent's content; pass values through verbatim.
-
-For each finding the agent returned:
+For each finding (one per code surface that bears on the symptom — including every parallel surface from Phase 2.4):
 
 ```bash
 .devforge/lib/research_helper record-finding \
@@ -435,7 +437,7 @@ Resume flow on re-invocation:
 
    If any dimension has state != `Clear` AND `memo.override_recorded` is not true → resume Phase 1 at the first such dimension.
 
-   If memo is finalized (all `Clear` or `override_recorded=true`) AND any required Phase 2 setter is missing → resume Phase 2. Inspect `report` JSON for the first unset section (findings empty → start at dispatch; findings present but no recommended approach → start at Phase 3 compose).
+   If memo is finalized (all `Clear` or `override_recorded=true`) AND any required Phase 2 setter is missing → resume Phase 2. Inspect `report` JSON for the first unset section: findings empty → start at Phase 2.1 cost gate; findings present but `hypotheses` empty or `root_cause_hypothesis`/`confidence` unset → resume Phase 2.6 at the first missing setter; hypotheses and root-cause set but recommended approach missing → start at Phase 3 compose.
 
    If memo + report are both populated → run `verify`; on pass, proceed directly to Phase 3's `render` + Phase 4 save. On non-zero `verify`, repair the cited violation per Phase 3's verify-failure handling.
 

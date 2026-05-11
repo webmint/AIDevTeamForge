@@ -26,9 +26,9 @@ Greenfield needs a different lens:
 1. Greenfield only — no existing-code investigation surface. If `/discover` detects related code mid-flow, recommend follow-up `/research` rather than handle both.
 2. Pre-`/specify` slot, parallel to `/research`.
 3. Output: structured report (rendered to console + ask-to-save like `/research`).
-4. Hybrid agent dispatch (see Agent ownership below).
+4. Single web-research subagent + orchestrator-inline fit-check (see Agent ownership below — fit-checker subagent dropped 2026-05-11 per /research empirical evidence).
 5. Helper-owns-shape (per `feedback_helper_owns_shape_principle`). Report schema owned by Python helper; LLM composes values via setters.
-6. **Phase 0 scoping dialogue** before investigation. Vague-idea input (e.g., "auth in NestJS") gets narrowed via rubric-driven Q&A before any subagent dispatch — otherwise web-research drowns in 50 generic results, integration-surface scan has no focus target.
+6. **Phase 0 scoping dialogue** before investigation. Vague-idea input (e.g., "auth in NestJS") gets narrowed via rubric-driven Q&A before web-research dispatch or fit-check — otherwise web-research drowns in 50 generic results, fit-check scan has no focus target.
 
 ## Prerequisites (hard gate)
 
@@ -55,7 +55,7 @@ Exit code 2. No graceful skip, no fallback path. Setup is a prerequisite, not a 
 
 ```
 PHASE 0: Scoping dialogue          ← rubric-driven Q&A, orchestrator-only
-PHASE 1: Investigation             ← parallel dispatch (web-research || integration-surface)
+PHASE 1: Investigation             ← web-research subagent dispatched, fit-check runs orchestrator-inline in parallel
 PHASE 2: Report drafting           ← orchestrator composes report from Phase 0 memo + Phase 1 findings
 PHASE 3: Save + recommend          ← ask-to-save, next-step recommendation
 ```
@@ -66,7 +66,7 @@ PHASE 3: Save + recommend          ← ask-to-save, next-step recommendation
 
 ### Layer 1: docs/ narrative context
 
-Read by orchestrator (Phase 0 pre-rubric step) and integration-surface subagent (Phase 1):
+Read by orchestrator (Phase 0 pre-rubric step + Phase 1 fit-check):
 
 - `docs/architecture.md` — project-tier architecture (per Track 4, shipped 2026-05-09)
 - `docs/<package>/architecture.md` — package-tier architecture
@@ -77,7 +77,7 @@ Use docs/ for **narrative orientation** (what the project is, package responsibi
 
 ### Layer 2: CBM/MCP structural queries
 
-CBM (codebase-memory-mcp) tools called by Phase 1 integration-surface subagent + orchestrator:
+CBM (codebase-memory-mcp) tools called by orchestrator inline (Phase 1 fit-check):
 
 - `search_graph(name_pattern=..., label=..., qn_pattern=...)` — find named functions/classes/routes (File-label queries use `name_pattern`, not `file_pattern` — per memory `feedback_cbm_search_graph_pattern_keys`)
 - `search_code(pattern=...)` — text-fallback for inline framework expressions invisible to graph (per memory `feedback_cbm_discovery_chain_search_graph_then_code` — mandatory chain: `search_graph` → `search_code` → declare absent only if BOTH return nothing)
@@ -95,11 +95,11 @@ Four hooks at `src/hooks/` (propagated to target dir via install.sh; shipped 202
 - `bash-ban-raw-tools` (PreToolUse Bash) — once-per-session block on raw `grep`/`find`/`cat` over source-file extensions
 - `cbm-mcp-marker` (PostToolUse Bash|mcp__codebase-memory-mcp__.*) — telemetry to `.devforge/cbm-usage.log`
 
-Hooks fire once per session as reminder. `/discover` spec MUST explicitly instruct orchestrator + subagents to use CBM tools by name in briefs — hooks are reminder layer, not strict enforcement after first block.
+Hooks fire once per session as reminder. `/discover` spec MUST explicitly instruct orchestrator (Phase 1 fit-check) + `discover-web-researcher` subagent brief to use CBM tools by name — hooks are reminder layer, not strict enforcement after first block.
 
 ### Preflight gate
 
-Before Phase 1 dispatches, orchestrator runs preflight (mirror /research):
+Before Phase 1 work begins (web-research dispatch + orchestrator-inline fit-check), orchestrator runs preflight (mirror /research):
 
 ```
 ./.devforge/lib/generate_docs_helper preflight
@@ -109,7 +109,7 @@ Skip if `.devforge/.preflight-stamp` is fresher than 60s. Ensures CBM index is c
 
 ## Phase 0: Scoping dialogue
 
-**Goal**: convert vague-idea input into a structured scoping memo before any investigation fires. Without Phase 0, Phase 1 subagents have no narrowed query and produce noisy output.
+**Goal**: convert vague-idea input into a structured scoping memo before any investigation fires. Without Phase 0, Phase 1 web-research subagent + orchestrator-inline fit-check have no narrowed query and produce noisy output.
 
 **Shape**: rubric-driven Q&A. Helper owns the rubric (closed list of dimensions); LLM detects unfilled dimensions, asks one question at a time targeting the highest-uncertainty dimension; helper records user-confirmed values via setters.
 
@@ -130,7 +130,7 @@ Skip if `.devforge/.preflight-stamp` is fresher than 60s. Ensures CBM index is c
 
 Before rubric Q&A begins, helper asks one-shot supplementary prompts (free-text, no state machine, doesn't gate exit):
 
-- `references` — "Any similar existing code, libraries, or product references to pattern after?" Stored as `ScopingMemo.references: list[str]`. When non-empty, Phase 1 subagents receive reference names as additional search anchors — dramatically narrows web-research and codebase-fit scans. Skip cleanly if user has no reference; proceed to rubric without penalty.
+- `references` — "Any similar existing code, libraries, or product references to pattern after?" Stored as `ScopingMemo.references: list[str]`. When non-empty, web-research subagent brief + orchestrator-inline fit-check both receive reference names as additional search anchors — dramatically narrows web-research and codebase-fit scans. Skip cleanly if user has no reference; proceed to rubric without penalty.
 
 Adopted from Agent OS `/shape-spec` pattern (compresses many future questions into one when user already has an anchor). Source: <https://buildermethods.com/agent-os/shape-spec>.
 
@@ -193,7 +193,7 @@ After every set-scope-<dimension>:
 **What Phase 0 feeds**:
 
 - Phase 1 web-research subagent: narrowed query built from `functional_scope + constraints + non_goals + edge_cases` (e.g., "NestJS Passport JWT multi-tenant RBAC patterns + token-replay mitigation" instead of "NestJS auth"). When `references` is non-empty, include reference names as additional search anchors.
-- Phase 1 integration-surface + fit-check subagent: scoped scan target from `integration_points` (e.g., "scan API route definitions + user/auth-adjacent modules" instead of "scan entire codebase"). The user's `integration_points` answer is **the user's belief** about what the new feature touches — Phase 1 produces the **reality check** (what actually exists, what would be touched, what would need refactor first). Mismatch between belief and reality is a Phase 2 report finding, not an error.
+- Phase 1 orchestrator-inline fit-check: scoped scan target from `integration_points` (e.g., "scan API route definitions + user/auth-adjacent modules" instead of "scan entire codebase"). The user's `integration_points` answer is **the user's belief** about what the new feature touches — Phase 1 produces the **reality check** (what actually exists, what would be touched, what would need refactor first). Mismatch between belief and reality is a Phase 2 report finding, not an error.
 - Phase 2 report: every section is informed by memo (Prior Art relevance scored against `functional_scope` + `references`; Design Options framed against `constraints` + `non_goals` + `edge_cases`; Derisk Plan derived from highest-uncertainty `success_criteria` + flagged `edge_cases`; **Fit Assessment** reconciles user's `integration_points` belief against Phase 1 reality check; gap markers from `ScopingMemo.gaps` rendered in a dedicated "Open uncertainties" section).
 
 ## Phase 2 report shape (target)
@@ -298,27 +298,31 @@ Helper enforces the following escalation:
 - If `Effort estimate` = `Major refactor required` → same rule: Verdict flips to `Reconsider` with rationale tying back to the specific Fit Assessment row that triggered it.
 - Helper exit code from `verify` is non-zero if Verdict + Fit Assessment combination violates the rule without recorded override.
 
-## Agent ownership — hybrid dispatch
+## Agent ownership — single-subagent dispatch
 
 **Phase 0 (Scoping dialogue)**: orchestrator-only. Dialogue cannot be dispatched — AskUserQuestion + free-text turns + setter calls must stay on the main thread for interaction fidelity. Per `feedback_avoid_subagents_for_sequential_identical_workflows`, dialogue has no parallelism, no tool isolation gain, and dispatch would stale-brief the agent between turns.
 
-**Phase 1 (Investigation)**: parallel subagent dispatch — real parallelism + real context-budget benefit. Both subagents are **framework-owned** at `src/agents/` (NOT external plugins). Each is emitted via `scripts/emitters/claude.py` to `.claude/agents/` in target project. Pattern may be adapted from `cavecrew-investigator` as a reference but lives in framework — no runtime external dependency.
+**Phase 1 (Investigation)**: single web-research subagent dispatched; fit-check runs orchestrator-inline in parallel (orchestrator kicks subagent, then performs CBM-driven fit-check while subagent runs). The subagent is **framework-owned** at `src/agents/` (NOT an external plugin). Emitted via `scripts/emitters/claude.py` to `.claude/agents/` in target project. Pattern may be adapted from `cavecrew-investigator` as a reference but lives in framework — no runtime external dependency.
 
-1. **`discover-web-researcher` subagent** (at `src/agents/discover-web-researcher.md`) — prior-art survey via Context7 + WebSearch using narrowed query from Phase 0 memo. Returns compressed reference list. Tools allowed: WebFetch, WebSearch, Context7 MCP. Web survey content is long + noisy; subagent dispatch keeps main context clean.
-2. **`discover-fit-checker` subagent** (at `src/agents/discover-fit-checker.md`) — uses the **two-layer awareness** (docs + CBM/MCP, see "Existing-code awareness layer" above) to scan for module structure scoped to Phase 0 `integration_points`. Tools allowed: Read (for docs/ only), Grep, Glob, Bash + all `mcp__codebase-memory-mcp__*` tools. NO write/edit tools. Discovery chain:
-   - **Layer 1 (docs/)**: read `docs/architecture.md`, `docs/<package>/architecture.md` for the suspected packages, `docs/<package>/<concern>/index.md` for relevant concerns, `docs/glossary.md` for term grounding.
-   - **Layer 2 (CBM)**: `agentic_context "<integration_points value>"` for synthesized bundle → `search_graph(name_pattern=...)` for named symbols → `search_code(pattern=...)` fallback for inline expressions (mandatory chain per `feedback_cbm_discovery_chain_search_graph_then_code`) → `trace_path` for impact chains on fit-check candidates → `get_code_snippet` to read source.
-   - **Raw Read/Grep/Glob over source files is forbidden** — hooks (`bash-ban-raw-tools` + `cbm-code-discovery-gate`) will block first attempt per session; spec instructs subagent to never even try.
+**`discover-web-researcher` subagent** (at `src/agents/discover-web-researcher.md`) — prior-art survey via Context7 + WebSearch using narrowed query from Phase 0 memo. Returns compressed reference list. Tools allowed: WebFetch, WebSearch, Context7 MCP. Justification for keeping this as a subagent (per `feedback_avoid_subagents_for_sequential_identical_workflows` 3-benefit test):
+- **Parallelism**: web survey can take minutes; orchestrator-inline fit-check runs concurrently — real wall-clock win.
+- **Context-budget**: web survey output is long + noisy (Context7 doc dumps, WebSearch result snippets); subagent returns compressed reference list, keeping main context clean.
+- **Tool isolation**: distinct surface (WebFetch / WebSearch / Context7) separate from CBM/MCP code-discovery surface — no tool overlap with orchestrator's fit-check work.
 
-Two outputs: (a) compressed touchpoint list (what exists + where), (b) **fit-check** per touchpoint — does the user's belief match reality? What's the integration effort? Are there blockers (incompatible schemas, conflicting patterns, missing infrastructure)? Returns reconciled view: user-expected vs reality, effort estimate per touchpoint, blockers list.
+**Phase 1 fit-check — orchestrator-inline (no subagent)**. Uses the **two-layer awareness** (docs + CBM/MCP, see "Existing-code awareness layer" above) to scan for module structure scoped to Phase 0 `integration_points`. Discovery chain:
+- **Layer 1 (docs/)**: read `docs/architecture.md`, `docs/<package>/architecture.md` for the suspected packages, `docs/<package>/<concern>/index.md` for relevant concerns, `docs/glossary.md` for term grounding.
+- **Layer 2 (CBM)**: `agentic_context "<integration_points value>"` for synthesized bundle → `search_graph(name_pattern=...)` for named symbols → `search_code(pattern=...)` fallback for inline expressions (mandatory chain per `feedback_cbm_discovery_chain_search_graph_then_code`) → `trace_path` for impact chains on fit-check candidates → `get_code_snippet` to read source.
+- **Raw Read/Grep/Glob over source files**: orchestrator obeys the same CBM-first discipline; hooks (`bash-ban-raw-tools` + `cbm-code-discovery-gate`) enforce.
 
-Both dispatch in parallel. Orchestrator consumes both compressed reports.
+Two outputs: (a) compressed touchpoint list (what exists + where), (b) **fit-check** per touchpoint — does the user's belief match reality? What's the integration effort? Are there blockers (incompatible schemas, conflicting patterns, missing infrastructure)? Reconciled view recorded via helper setters (`record-integration-touchpoint`, `record-fit-assessment`, `set-overall-fit`, `set-effort-estimate`).
 
-**Phase 2 (Report drafting)**: orchestrator-only. Composes report from Phase 0 memo + Phase 1 findings.
+**Rationale for dropping `discover-fit-checker` subagent (2026-05-11)**: /research empirical run (`src/commands/research/main.md` Phase 2 note) showed dispatched investigator subagent cost 5-7× total tokens vs orchestrator-inline AND tunneled onto the first matched surface (missed parallel bug sites in the same file). Fit-check uses the identical CBM discovery chain — the same tunneling failure mode applies. Web-researcher does not share that failure mode (different tool surface, single-pass reference list rather than file-level depth).
+
+**Phase 2 (Report drafting)**: orchestrator-only. Composes report from Phase 0 memo + Phase 1 findings (web-researcher output + orchestrator-inline fit-check state).
 
 **Phase 3 (Save + recommend)**: orchestrator-only. AskUserQuestion for save decision.
 
-Same hybrid pattern adopted for `/research` (orchestrator owns dialogue + report; dispatch expensive investigation only). Not full agent-owned.
+`/research` went fully orchestrator-only after the 2026-05-11 empirical finding; `/discover` keeps the web-researcher subagent because (a) tool surface is distinct from CBM and (b) wall-clock parallelism on the multi-minute web survey is a real win the inline-only design can't replicate.
 
 ## Constraints
 
@@ -341,25 +345,22 @@ Same hybrid pattern adopted for `/research` (orchestrator owns dialogue + report
   - Phase 2 `DiscoveryReport` schema — sections per "Phase 2 report shape" above + next-step text section at bottom. Closed enums for Verdict, Recommendation, Complexity. State persisted to `.devforge/discover-report.json` while in-flight (mirrors /constitute's per-section state); rendered to `discover/YYYY-MM-DD-<topic-slug>.md` on Phase 3 save.
 - **Step 3**: implement helper subcommands. Test-first per `feedback_test_first_python_helpers`. Subcommands:
   - Phase 0: `read-scope`, `set-scope-<dimension>` (×8 — includes `set-scope-edge-cases`), `record-references` (pre-rubric, optional one-shot), `record-gap` (when user accepts a dimension as `Partial`/`Missing` — appends NEEDS CLARIFICATION marker to `gaps`), `check-conflicts` (runs token-overlap rules after each setter; returns list of detected direct contradictions; orchestrator wraps with LLM-side drift check), `record-conflict-resolution` (logs user's resolution choice, rewrites loser dimension on direct contradiction), `scope-coverage` (returns `Clear`/`Partial`/`Missing` per dimension + coverage table + conflicts log summary), `scope-finalize` (emits coverage summary block + serialized gap markers + conflicts log; exit non-zero if `Partial`/`Missing` without `override_recorded` OR if any `conflicts.resolution == "blocked-pending-user"`).
-  - Phase 1: `record-prior-art`, `record-integration-touchpoint`, `record-fit-assessment` (per-touchpoint: user-expected vs reality + effort + blockers), `set-overall-fit`, `set-effort-estimate` (consumed by subagents).
+  - Phase 1: `record-prior-art`, `record-integration-touchpoint`, `record-fit-assessment` (per-touchpoint: user-expected vs reality + effort + blockers), `set-overall-fit`, `set-effort-estimate`. `record-prior-art` consumed by web-researcher subagent output (orchestrator transcribes subagent's compressed reference list into setter calls); fit-check setters consumed by orchestrator inline.
   - Phase 2: `set-design-option`, `set-build-vs-buy`, `set-derisk-plan`, `set-verdict`, `set-recommendation`, `set-next-step-text` (composes the copy-pasteable `/specify` prompt section from ScopingMemo + DiscoveryReport state; only emits when Verdict ≠ Reconsider; pure text generation, no automation), `render` (concatenates all sections including next-step text at the bottom). `verify` enforces Verdict flip rule (Strained/Misfit/Major-refactor → Reconsider unless override recorded).
   - Prerequisites: `preflight` (hard-gate check for `.devforge/manifest.json` + `docs/architecture.md` + `constitution.md`; non-zero exit + message on missing).
   - Cross-phase: `summary`, `verify` (mirrors `/constitute` pattern).
   - **Test fixture**: author `tests/lib/fixtures/discover-sample-report.md` covering one happy-path greenfield-feasible scenario (generic placeholders per `feedback_no_real_project_names` — e.g., "auth in a TypeScript backend framework"). Round-trip discipline (per `feedback_test_first_python_helpers`): build via real helper setter calls → `render` → diff against fixture. Fixture maintained as the canonical expected-shape artifact for `render()` regression tests. Skeleton lives in helper code (inline render, mirrors /constitute); fixture is a complete example, not a skeleton.
 - **Step 4a**: author spec at `src/commands/discover/main.md` + reference docs (if any). Spec body covers all 4 phases with explicit transition gates (Phase 0 → Phase 1 requires `scope-finalize` exit code 0).
-- **Step 4b**: author framework-owned subagents at `src/agents/`:
-  - `src/agents/discover-web-researcher.md` — Context7 + WebSearch + WebFetch tools only. Prior-art survey discipline.
-  - `src/agents/discover-fit-checker.md` — Read (docs/ only) + Grep + Glob + Bash + CBM/MCP tools. CBM chain discipline (per memory `feedback_cbm_discovery_chain_search_graph_then_code`). NO write/edit tools.
-  Pattern may be adapted from `cavecrew-investigator` plugin agent as a reference, but files ship inside framework — no external plugin dependency.
+- **Step 4b**: author framework-owned subagent at `src/agents/discover-web-researcher.md` — Context7 + WebSearch + WebFetch tools only. Prior-art survey discipline. Pattern may be adapted from `cavecrew-investigator` plugin agent as a reference, but file ships inside framework — no external plugin dependency. (No `discover-fit-checker` — fit-check is orchestrator-inline per Agent ownership section.)
 - **Step 5**: triple-agent verify in iterative apply-verify loop (per `feedback_iterative_review_loop_preferred`):
   1. `instruction-author` drafts/edits spec.
   2. `instruction-reviewer` + `claude-code-guide` review in parallel (single message, two Agent tool calls).
   3. If either reviewer returns findings → loop back to step 1 with fixes briefed to author. Repeat until both reviewers clean.
   4. Present clean draft to user for approval.
   5. User approves → proceed to Step 6. User redirects → loop back to step 1 with new direction.
-- **Step 6**: update emitter `scripts/emitters/claude.py` `_PROMOTED` list for `discover` command AND ensure both subagents (`discover-web-researcher`, `discover-fit-checker`) are in the emitter's agents list (per `feedback_emitter_promoted_cross_check`).
+- **Step 6**: update emitter `scripts/emitters/claude.py` `_PROMOTED` list for `discover` command AND ensure the `discover-web-researcher` subagent is in the emitter's agents list (per `feedback_emitter_promoted_cross_check`).
 - **Step 7**: cross-update README, DEVELOPMENT-STATUS, CLAUDE.template, storage-rules (per `feedback_release_docs`).
-- **Step 8**: empirical test on testForge20 with a genuinely greenfield topic. Validate Phase 0 dialogue converges within bounded turns; validate Phase 1 subagents receive narrowed query (not raw user input); validate docs/ + CBM consultation paths fire correctly + hooks log to `.devforge/cbm-usage.log`.
+- **Step 8**: empirical test on testForge20 with a genuinely greenfield topic. Validate Phase 0 dialogue converges within bounded turns; validate web-researcher subagent + orchestrator-inline fit-check both receive narrowed query (not raw user input); validate docs/ + CBM consultation paths fire correctly + hooks log to `.devforge/cbm-usage.log`.
 - **Step 9**: ship to develop-2.0-init / main with CHANGELOG entry. Cross-update README + DEVELOPMENT-STATUS + CLAUDE.template (per `feedback_release_docs`) confirmed at this step.
 
 ## Verify criteria
@@ -369,19 +370,19 @@ Same hybrid pattern adopted for `/research` (orchestrator owns dialogue + report
   - Bounded-turn cap (3 follow-ups/dimension) enforced; over-cap returns "partial" state, no crash.
   - `scope-finalize` exit code 0 only when all dimensions are `confirmed` OR user explicitly accepted gaps (helper records the override).
 - **Step 4a**: spec passes intra-file consistency check (instruction-author). Phase transitions documented with helper gate references.
-- **Step 4b**: both subagent files ship in framework (not external plugins); each passes triple-agent verify; emit to target `.claude/agents/` via install.sh; tool lists are read-only (no Write/Edit/NotebookEdit).
+- **Step 4b**: `discover-web-researcher.md` ships in framework (not external plugin); passes triple-agent verify; emits to target `.claude/agents/` via install.sh; tool list is read-only (WebFetch / WebSearch / Context7 only — no Write/Edit/NotebookEdit).
 - **Step 5**: both verifier agents return clean.
 - **Step 6**: `./install.sh` on fresh testForge20 promotes `/discover` into `.claude/commands/`.
 - **Step 8**: empirical run produces report with all sections populated; user confirms output is actionable + matches the design-exploration lens (not feasibility-check repurposed). Validate:
   - Phase 0 dialogue converges within bounded turns on a vague-idea input (e.g., "auth in NestJS").
-  - Phase 1 subagents receive narrowed query derived from scoping memo (inspect dispatch brief; raw user input must NOT appear as the subagent query).
+  - Web-researcher subagent receives narrowed query derived from scoping memo (inspect dispatch brief; raw user input must NOT appear as the subagent query). Orchestrator-inline fit-check uses the same narrowed scope from `integration_points`.
   - Kill-and-resume: kill `/discover` mid-Phase-0, restart, confirm dialogue resumes from saved state without re-asking confirmed dimensions.
   - **Fit Assessment populated with at least one user-belief-vs-reality mismatch row OR explicit "all match" rationale; never empty.**
   - **Verdict flip rule fires correctly**: induce a Strained/Misfit Fit Assessment, confirm Verdict auto-flips to Reconsider; record an override, confirm verify exits 0.
   - **`edge_cases` dimension populated** on greenfield input; not silently skipped or merged into `constraints`.
   - **Coverage summary table emitted** at Phase 0 exit (8 dimensions with `Clear`/`Partial`/`Missing` state); renders at top of scoping memo.
   - **`[NEEDS CLARIFICATION]` gap markers serialized** in `ScopingMemo.gaps` when user accepts partial exit; downstream `/specify` can read them. Markers also surface in Phase 2 report "Open uncertainties" section.
-  - **`references` field captured** when user provides anchors; empty list (no fabrication) when user has none. Phase 1 subagent briefs include references as search anchors when present.
+  - **`references` field captured** when user provides anchors; empty list (no fabrication) when user has none. Web-researcher subagent brief + orchestrator-inline fit-check both include references as search anchors when present.
   - **Hard-gate prerequisites enforced**: induce missing `docs/architecture.md`, confirm `preflight` exits non-zero with the required setup-chain message; restore and confirm exits clean.
   - **Next-step text section rendered** at bottom of saved md when Verdict ≠ Reconsider; section contains copy-pasteable `/specify "..."` prompt + key facts (functional_scope, users, success_criteria, recommended option, open-uncertainty count) + link back to saved discovery doc. Section omitted on Reconsider verdict. No orchestrator-driven automation — text is for user manual copy.
   - **Misalignment detection fires**:
@@ -389,15 +390,15 @@ Same hybrid pattern adopted for `/research` (orchestrator owns dialogue + report
     - **Drift**: induce scope expansion (e.g., set `users` to "end users", later set to "end users + admins"); confirm LLM-side check classifies as `drift`; confirm logged to `conflicts` without blocking; confirm user prompted at next natural pause.
     - **Refinement**: induce subset-to-superset update on same dimension; confirm quiet rewrite without surfacing; confirm logged with `type=refinement` and `resolution=logged-no-action`.
   - **No silent overwrites**: any later answer that affects a confirmed dimension is logged in `conflicts` regardless of classification.
-  - **Phase 1 integration-surface subagent uses CBM tools by name** (`search_graph`, `search_code`, `trace_path`, `get_code_snippet`) — never Read/Grep/Glob over source. Confirm by inspecting subagent dispatch transcript.
-  - **Preflight gate fires** before Phase 1 dispatch; skipped only when `.devforge/.preflight-stamp` is fresher than 60s.
+  - **Phase 1 fit-check (orchestrator-inline) uses CBM tools by name** (`search_graph`, `search_code`, `trace_path`, `get_code_snippet`) — never Read/Grep/Glob over source. Confirm by inspecting orchestrator turn transcript.
+  - **Preflight gate fires** before Phase 1 work begins (web-research dispatch + orchestrator-inline fit-check); skipped only when `.devforge/.preflight-stamp` is fresher than 60s.
   - **`.devforge/cbm-usage.log` records** Phase 1 CBM invocations (telemetry from `cbm-mcp-marker` hook). Confirm log file grows during test run.
 
 ## Open questions
 
 1. Should `/discover` output be savable to `discover/YYYY-MM-DD-topic.md` (mirroring `/research`'s `research/`)? Default yes for symmetry.
 2. Cost gate: web-research subagent uses Context7 + WebSearch. Surface estimated token cost before kicking off, parallel to `/generate-docs` Phase 1 cost gate?
-3. ~~Hybrid input (mostly greenfield but touches some existing code)~~ **Closed 2026-05-11** — see "Decisions added 2026-05-11" below. `/discover` always runs codebase fit-check in Phase 1; output may flip Verdict to Reconsider on high-effort fit.
+3. ~~Hybrid input (mostly greenfield but touches some existing code)~~ **Closed 2026-05-11.** `/discover` always runs codebase fit-check in Phase 1; output may flip Verdict to Reconsider on high-effort fit (see Phase 2 report shape § Verdict flip rule + Agent ownership § Phase 1).
 4. Helper signature: does helper need `read-*` subcommands (per `/constitute` pattern) or just setters + render + verify? Decide once schema is drafted.
 5. Should `/discover` consult `constitution.md` proactively? Same conditional + non-blocking pattern as `/research` (per REDESIGN-RESEARCH-PLAN.md open question §2).
 6. Phase 0 rubric extensibility per topic domain (auth vs data-pipeline vs UI feature). **Updated 2026-05-11**: universal 8th dimension `edge_cases` added based on SDD framework survey (Spec Kit + Kiro EARS + Tessl all treat failure-handling as first-class). Default still: strictly generic in v1, no topic-specific sub-dimensions. Revisit only if empirical use shows specific topics still under-specified after the 8-dimension rubric + supplementary `references` prompt.
@@ -408,5 +409,5 @@ Same hybrid pattern adopted for `/research` (orchestrator owns dialogue + report
 1. Read this file in full.
 2. Read REDESIGN-RESEARCH-PLAN.md for the existing-code counterpart (boundary check — confirm split still holds).
 3. Read `/constitute` as the reference shape: `src/devforge/lib/constitute_helper.py` + `src/commands/constitute/main.md`.
-4. Read framework-owned `src/agents/discover-web-researcher.md` + `src/agents/discover-fit-checker.md` once authored. If not yet authored, reference `cavecrew-investigator` plugin agent as a pattern source for one-time read; the framework versions are the authoritative copies thereafter. No external plugin dependency at runtime.
+4. Read framework-owned `src/agents/discover-web-researcher.md` once authored. If not yet authored, reference `cavecrew-investigator` plugin agent as a pattern source for one-time read; the framework version is the authoritative copy thereafter. No external plugin dependency at runtime. (No `discover-fit-checker` subagent — fit-check is orchestrator-inline; see Agent ownership section.)
 5. Pick up at the next unaddressed Work order step.
