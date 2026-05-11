@@ -54,12 +54,12 @@ Standalone (no spec required):
 - `/refactor path "goal"` — Behavior-preserving restructuring (1-5 files)
 - `/security [target]` — On-demand security review
 - `/audit` — Adversarial whole-codebase quality review
-- `/research "topic"` — Feasibility check before specifying
+- `/research "topic"` — Investigate a bug or enhancement against the existing codebase
 
 ### Command Details
 
-#### `/research "topic or idea"` (optional)
-Quick feasibility check for vague ideas. Investigates the codebase for related patterns, optionally researches external approaches (signal-based), and displays the full report in the console. You're then asked whether to save — if yes, saves to `research/YYYY-MM-DD-[topic-slug].md`. Does NOT create specs or modify code. Use before `/specify` when you're unsure whether an idea is viable or how it fits.
+#### `/research "<topic>"` (optional)
+Investigate a bug or enhancement against the existing codebase. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) — refuses to run when any artefact is missing. Phase 0 clarifies the symptom across 6 rubric dimensions (`symptom`, `affected_area`, `repro_or_current`, `desired`, `scope`, `unchanged_behavior`) and auto-detects bug vs enhancement mode. Phase 1 dispatches the framework-owned `research-investigator` subagent which walks the codebase-memory-mcp graph + `docs/` corpus with a mandatory `search_graph` → `search_code` fallback chain and enumerates ≥2 falsifiable hypotheses (each with a one-line falsifier + runtime-probe flag). Phase 2 composes a structured report (mode-aware verdict; optional structured root cause for bugs; optional verify-step block with probe + reproduction + discriminator; approaches with hypothesis citation; complexity; constitution constraints). Phase 3 renders to console and optionally saves to `research/YYYY-MM-DD-<topic-slug>.md`. When the verdict allows proceeding, the saved doc includes a copy-pasteable `/specify "..."` block — handoff is manual, no automation. Does NOT modify code.
 
 #### `/specify "feature description"`
 Creates a structured specification with acceptance criteria. Asks clarifying questions as needed (no artificial limit — the AI judges how many based on input clarity). Analyzes affected code, saves spec to `specs/[feature]/spec.md`. **Requires approval before proceeding.** Auto-creates a `spec/NNN-short-desc` branch when on the default branch.
@@ -172,6 +172,7 @@ Four hook scripts ship at `.claude/hooks/` and are wired in `.claude/settings.js
 | `bash-ban-raw-tools` | `PreToolUse` | `Bash` | First call per session whose `command` contains `grep`/`find`/`cat` over a source-extension file (`.py`, `.ts`, `.tsx`, `.vue`, `.go`, …) blocks (exit 2); other Bash calls and subsequent same-session matches pass through. Gate file: `/tmp/bash-ban-raw-tools-$PPID`. |
 | `cbm-mcp-marker` | `PostToolUse` | `Bash\|mcp__codebase-memory-mcp__.*` | Appends `<UTC timestamp> <tool_name>` to `.devforge/cbm-usage.log` for every matched call (Bash + every CBM MCP tool); filter the log on the `mcp__` prefix to isolate the CBM-adoption signal. Always exit 0; never blocks. |
 | `cbm-session-reminder` | `SessionStart` | `startup\|resume\|clear\|compact` | Stdout is injected as session context; re-states the CBM-first protocol after compaction / resume / clear. |
+| `cbm-sync-session-start` | `SessionStart` | `startup\|resume\|clear\|compact` | Calls `.devforge/lib/cbm_sync_helper check`; emits stdout context block instructing Claude to run `mcp__codebase-memory-mcp__detect_changes` (drift) or `mcp__codebase-memory-mcp__index_repository` (missing) plus `cbm_sync_helper write` to refresh the stamp. Silent on `current` / `not-a-git-repo`. Stamp file: `.devforge/cbm-last-indexed-sha`. |
 
 ### Disabling individual hooks
 

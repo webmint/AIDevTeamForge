@@ -5,6 +5,19 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **`/research` redesigned** — replaces the prior "quick feasibility check" with a structured bug + enhancement investigation flow grounded in the 4-command setup chain. Hard-gated on `.devforge/init.yaml` + `docs/architecture.md` + `.devforge/configure.yaml` + `constitution.md` (refuses to run when any artefact is missing). 4-phase orchestrator:
+  - **Phase 0 — Preflight + topic.** Helper-side artefact check + CBM index-stamp refresh.
+  - **Phase 1 — Symptom clarification.** 6-dimension rubric (`symptom`, `affected_area`, `repro_or_current`, `desired`, `scope`, `unchanged_behavior`) with bounded turns (2 follow-ups per dimension), bug-vs-enhancement mode auto-detection from symptom tokens, helper-side direct-contradiction detection + LLM-side drift/refinement/mode-flip classification, accepted-gap exit via `[NEEDS CLARIFICATION]` markers.
+  - **Phase 2 — Investigation.** Cost gate + dispatch the framework-owned `research-investigator` subagent (read-only, allowlist tools: Read, Grep, Glob, Bash + 6 `mcp__codebase-memory-mcp__*` tools; no Write/Edit/Task). Mandatory CBM discovery chain: `search_graph` → if 0 hits `search_code` (catches inline Vue `<script setup>` / React hooks / Svelte reactive expressions invisible to graph) → `trace_path` → `get_code_snippet`. Mandatory hypothesis enumeration ≥2 (each with one-line falsifier + runtime-probe flag). Optional bug-mode structured root cause (`trigger` + `root_cause_systemic` + ≤3 `contributing_factors`, Google SRE postmortem shape) when confidence ≥ Hypothesis. Optional verify-step block (`probe` + `reproduction` + `discriminator`, Cursor Debug Mode shape) when any hypothesis needs a runtime probe.
+  - **Phase 3 — Report compose + render.** Orchestrator-direct setters: summary + approaches (each cites which hypotheses it addresses + does-not-cover) + recommended approach (helper enforces `unchanged_behavior` respect) + constitution constraints + complexity + mode-aware verdict + next-step text. Helper `verify` cross-checks all invariants before `render`.
+  - **Phase 4 — Save + recommend.** Saves to `research/YYYY-MM-DD-<topic-slug>.md` on user confirm. When verdict allows proceeding (`Root cause confirmed` / `Root cause hypothesis (needs repro)` for bug; `Feasible` / `Feasible with caveats` for enhancement), the rendered doc includes a copy-pasteable `/specify "..."` handoff block — manual copy, no automation.
+- New framework helper: `.devforge/lib/research_helper` (POSIX shell wrapper around `research_helper.py`) — owns shape via 36 subcommands; state persisted to `.devforge/research-state.json` (SymptomMemo) + `.devforge/research-report.json` (ResearchReport).
+- New framework subagent: `.claude/agents/research-investigator.md` — emitted from `src/agents/research-investigator.md` via `scripts/generate-agents.py`.
+- Emitter `scripts/emitters/claude.py` `_PROMOTED` tuple now includes `research`; `update.sh` re-emit message lists the full promoted set.
+
 ## [1.28.0] - 2026-04-10
 
 ### Added

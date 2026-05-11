@@ -73,7 +73,7 @@ Read by orchestrator (Phase 0 pre-rubric step) and integration-surface subagent 
 - `docs/<package>/<concern>/index.md` — concern md (per /generate-docs Phase 2)
 - `docs/glossary.md` — term grounding (per JUDGMENT-LAYER-PLAN Track B)
 
-Use docs/ for **narrative orientation** (what the project is, package responsibilities, domain vocabulary). Mirrors /research preflight pattern (`src/_pending/commands/research.md` PHASE 1).
+Use docs/ for **narrative orientation** (what the project is, package responsibilities, domain vocabulary). Mirrors /research preflight pattern (`src/commands/research/main.md` Phase 0).
 
 ### Layer 2: CBM/MCP structural queries
 

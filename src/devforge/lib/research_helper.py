@@ -1,0 +1,2011 @@
+"""research_helper — state + render helper for /research.
+
+Owns the shape of two state files under .devforge/ and the rendered
+research report md. Mirrors the helper-owns-shape pattern from
+init_helper / configure_helper / constitute_helper.
+
+State files
+-----------
+
+  .devforge/research-state.json   — Phase 0 SymptomMemo (rubric Q&A).
+  .devforge/research-report.json  — Phase 1 + 2 ResearchReport (findings,
+                                    hypotheses, approaches, verdict, etc).
+
+Each has its own state-transaction context so memo and report progress
+independently. Phase 0 finalizes (symptom-finalize → exit 0) before
+Phase 1 dispatch; Phase 1+2 build on a frozen memo snapshot.
+
+Phases (target order per REDESIGN-RESEARCH-PLAN.md)
+---------------------------------------------------
+
+  PHASE 0  Symptom clarification     — 6 rubric dimensions, mode detection,
+                                       conflict detection, gaps recording.
+  PHASE 1  Investigation             — findings, hypotheses (≥2 enforced),
+                                       structured root cause (bug-mode),
+                                       verify-step (3 sub-fields).
+  PHASE 2  Report drafting           — approaches, recommended approach,
+                                       constitution constraints, complexity,
+                                       verdict (mode-aware enum), summary,
+                                       next-step text.
+  PHASE 3  Save + recommend          — render artifact + ask-to-save handled
+                                       by orchestrator; helper renders + verifies.
+
+Subcommand summary (33)
+-----------------------
+
+  Plumbing       reset-memo, reset-report, read-memo, read-report,
+                 preflight, summary
+  Phase 0  (12)  set-symptom, set-affected-area, set-repro-or-current,
+                 set-desired, set-scope, set-unchanged-behavior,
+                 detect-mode, record-gap, check-conflicts,
+                 record-conflict-resolution, symptom-coverage,
+                 symptom-finalize
+  Phase 1  (8)   record-finding, record-hypothesis,
+                 set-root-cause-hypothesis, set-confidence,
+                 set-trigger, set-root-cause-systemic,
+                 record-contributing-factor, set-verify-step
+  Phase 2  (9)   set-approach, set-recommended-approach,
+                 set-constitution-constraints, set-complexity,
+                 set-verdict, set-summary, set-next-step-text,
+                 render, verify
+
+Stdlib only. Python 3.8+.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import os
+import re
+import sys
+import tempfile
+from pathlib import Path
+from typing import Dict, Iterator, List, Optional, Tuple, Union
+
+try:
+    import fcntl
+    _HAVE_FCNTL = True
+except ImportError:  # pragma: no cover - non-POSIX fallback
+    _HAVE_FCNTL = False
+
+
+# ---------------------------------------------------------------------------
+# Schema constants — single source of truth.
+# ---------------------------------------------------------------------------
+
+MEMO_FILE_NAME = "research-state.json"
+REPORT_FILE_NAME = "research-report.json"
+
+# Phase 0 rubric — 6 dimensions, neutral over bug vs enhancement. Locked
+# order: this is the order symptom-coverage emits, render uses, and tests
+# verify.
+RUBRIC_DIMENSIONS = (
+    "symptom",
+    "affected_area",
+    "repro_or_current",
+    "desired",
+    "scope",
+    "unchanged_behavior",
+)
+
+# Per-dimension state machine. Helper transitions Missing→Partial→Clear
+# as setters fire; "Partial" is reached when a dimension has a value but
+# the bounded-turn cap (TURN_CAP) has been hit without explicit Clear.
+RUBRIC_STATE_ENUM = ("Clear", "Partial", "Missing")
+RUBRIC_STATE_DEFAULT = "Missing"
+
+# Bounded follow-ups per dimension. Plan §"Bounded turns": 2 follow-ups
+# per dimension (lighter than /discover's 3). After cap, dimension logs
+# as Partial.
+TURN_CAP = 2
+
+# Mode enum (auto-detected from symptom tokens or user-set via override).
+MODE_ENUM = ("bug", "enhancement")
+
+# Confidence enum (Phase 1).
+CONFIDENCE_ENUM = ("Confirmed", "Hypothesis", "Speculative")
+
+# Verdict enum, mode-aware. Helper `set-verdict` enforces value ∈
+# verdicts-allowed-for-current-mode; non-zero exit on mismatch.
+VERDICT_ENUM = {
+    "bug": (
+        "Root cause confirmed",
+        "Root cause hypothesis (needs repro)",
+        "Multiple plausible causes",
+    ),
+    "enhancement": (
+        "Feasible",
+        "Feasible with caveats",
+        "Not Recommended",
+    ),
+}
+
+# Verdict subset that allows proceeding to /specify — next-step text emits
+# only on these values.
+VERDICT_PROCEEDING = {
+    "bug": {"Root cause confirmed", "Root cause hypothesis (needs repro)"},
+    "enhancement": {"Feasible", "Feasible with caveats"},
+}
+
+# Complexity rating enum (used in 3 sub-fields: codebase_changes, risk,
+# verify_cost).
+COMPLEXITY_ENUM = ("Low", "Med", "High")
+
+# Conflict type enum (Phase 0 misalignment detection).
+CONFLICT_TYPE_ENUM = ("direct", "drift", "refinement", "mode-flip")
+
+# Hard-gate prerequisites checked by `preflight` subcommand. Tuple of
+# (relative-path-from-install-root, label). Order matters for stderr
+# enumeration. constitution.md lives at install-root; the rest under
+# .devforge/ + docs/.
+PREFLIGHT_PREREQS = (
+    (".devforge/init.yaml", "/init-forge"),
+    ("docs/architecture.md", "/generate-docs"),
+    (".devforge/configure.yaml", "/configure"),
+    ("constitution.md", "/constitute"),
+)
+
+# Mode detection tokens. Case-insensitive substring match against the
+# symptom field. Mixed-signal (both sets hit) → returns None and
+# orchestrator asks user to disambiguate.
+_BUG_TOKENS = (
+    "fail", "broken", "wrong", "missing", "error",
+    "crash", "bug", "regress", "doesn't work", "not working",
+    "freezes", "hangs", "stuck",
+)
+_ENHANCEMENT_TOKENS = (
+    "slow", "faster", "optimize", "support", "add",
+    "integrate", "should", "enhance", "improve", "expand",
+    "extend",
+)
+
+
+# ---------------------------------------------------------------------------
+# Default-state builders.
+# ---------------------------------------------------------------------------
+
+
+def _empty_dimension() -> dict:
+    """Return a fresh rubric-dimension record."""
+    return {"value": None, "state": RUBRIC_STATE_DEFAULT, "turns": 0}
+
+
+def default_memo_state() -> dict:
+    """Return a fresh SymptomMemo state matching schema."""
+    return {
+        "mode": None,
+        "topic_slug": None,
+        "dimensions": {d: _empty_dimension() for d in RUBRIC_DIMENSIONS},
+        "gaps": [],
+        "override_recorded": False,
+        "conflicts": [],
+    }
+
+
+def default_report_state() -> dict:
+    """Return a fresh ResearchReport state matching schema.
+
+    Mirrors SymptomMemo by copying mode + symptom snapshot at Phase 1
+    dispatch time; orchestrator is responsible for snapshotting.
+    """
+    return {
+        "topic": None,
+        "date": None,
+        "mode": None,
+        "symptom_snapshot": {d: None for d in RUBRIC_DIMENSIONS},
+        "summary": None,
+        "findings": [],
+        "hypotheses": [],
+        "root_cause_hypothesis": None,
+        "confidence": None,
+        "structured_root_cause": None,
+        "verify_step": None,
+        "approaches": [],
+        "recommended_approach": None,
+        "constitution_constraints": [],
+        "complexity": None,
+        "open_uncertainties": [],
+        "verdict": None,
+        "next_step_text": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# State-file plumbing (load / dump / transaction).
+# ---------------------------------------------------------------------------
+
+
+def _memo_path(devforge_dir: Union[str, "os.PathLike[str]"]) -> Path:
+    return Path(devforge_dir) / MEMO_FILE_NAME
+
+
+def _report_path(devforge_dir: Union[str, "os.PathLike[str]"]) -> Path:
+    return Path(devforge_dir) / REPORT_FILE_NAME
+
+
+def _atomic_write_json(state: dict, target: Path) -> None:
+    """Atomically write state as JSON to target.
+
+    Uses tempfile.mkstemp in the same directory + os.replace.
+    flush + fsync precede os.replace for durability.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix="research-",
+        suffix=".json.tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2, sort_keys=False)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, str(target))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _load_memo(devforge_dir: Union[str, "os.PathLike[str]"]) -> dict:
+    """Load research-state.json. Missing → default_memo_state()."""
+    path = _memo_path(devforge_dir)
+    if not path.exists():
+        return default_memo_state()
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_report(devforge_dir: Union[str, "os.PathLike[str]"]) -> dict:
+    """Load research-report.json. Missing → default_report_state()."""
+    path = _report_path(devforge_dir)
+    if not path.exists():
+        return default_report_state()
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _lock_path(state_path: Path) -> Path:
+    return state_path.parent / (state_path.name + ".lock")
+
+
+@contextlib.contextmanager
+def _state_transaction(
+    devforge_dir: Union[str, "os.PathLike[str]"],
+    which: str,
+) -> Iterator[dict]:
+    """Read-modify-write either memo or report under fcntl lock.
+
+    `which` ∈ {"memo", "report"}. On POSIX, fcntl.flock(LOCK_EX) on the
+    sidecar lock file. On Windows (no fcntl), no-op locking — out of
+    scope for AIDevTeamForge. Body raise → write skipped, exception
+    propagates.
+    """
+    if which == "memo":
+        state_path = _memo_path(devforge_dir)
+        loader = _load_memo
+    elif which == "report":
+        state_path = _report_path(devforge_dir)
+        loader = _load_report
+    else:
+        raise ValueError("unknown state {0!r}".format(which))
+
+    devforge_path = Path(devforge_dir)
+    devforge_path.mkdir(parents=True, exist_ok=True)
+    lock = _lock_path(state_path)
+    fd = os.open(str(lock), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        if _HAVE_FCNTL:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            state = loader(devforge_dir)
+            yield state
+            _atomic_write_json(state, state_path)
+        finally:
+            if _HAVE_FCNTL:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+# ---------------------------------------------------------------------------
+# Error helpers.
+# ---------------------------------------------------------------------------
+
+
+def _die(message: str, code: int = 1) -> int:
+    """Write error to stderr and return code (caller propagates as exit)."""
+    sys.stderr.write("research_helper: {0}\n".format(message))
+    return code
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers.
+# ---------------------------------------------------------------------------
+
+
+def _validate_scalar(value: str, field_name: str) -> str:
+    """Strip + reject empty. Returns stripped string."""
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return stripped
+
+
+def _validate_enum(value: str, field_name: str, allowed: tuple) -> str:
+    """Case-insensitive match → canonical-cased member of allowed.
+
+    Raises ValueError if empty or no match (enumerates allowed in message).
+    """
+    stripped = _validate_scalar(value, field_name)
+    if stripped in allowed:
+        return stripped
+    lower_to_canonical = {member.lower(): member for member in allowed}
+    if stripped.lower() in lower_to_canonical:
+        return lower_to_canonical[stripped.lower()]
+    raise ValueError(
+        "{0}: invalid value {1!r}; allowed: {2}".format(
+            field_name, stripped, list(allowed)
+        )
+    )
+
+
+def _validate_string_array_json(value: str, field_name: str) -> List[str]:
+    """Parse value as JSON array of strings. Reject empty array / non-string items.
+
+    Used for fields where items may contain commas (rule text, hypothesis
+    falsifier). Caller passes a JSON-array string like '["a", "b"]'.
+    """
+    try:
+        decoded = json.loads(value)
+    except ValueError as err:
+        raise ValueError(
+            "{0}: JSON-array form is malformed: {1}".format(field_name, err)
+        )
+    if not isinstance(decoded, list):
+        raise ValueError(
+            "{0}: must decode to a list, got {1}".format(
+                field_name, type(decoded).__name__
+            )
+        )
+    out = []
+    for item in decoded:
+        if not isinstance(item, str):
+            raise ValueError(
+                "{0}: items must be strings, got {1}".format(
+                    field_name, type(item).__name__
+                )
+            )
+        stripped = item.strip()
+        if not stripped:
+            raise ValueError("{0}: item cannot be empty".format(field_name))
+        out.append(stripped)
+    return out
+
+
+def _validate_verbatim(value: str, field_name: str) -> str:
+    """Reject all-whitespace; preserve internal whitespace verbatim.
+
+    Used for multi-line fields (summary, root-cause-hypothesis, code blocks)
+    where leading/trailing newlines matter for round-trip.
+    """
+    if not value.strip():
+        raise ValueError("{0}: value cannot be empty".format(field_name))
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Topic slug derivation (used for filename + state record).
+# ---------------------------------------------------------------------------
+
+
+_SLUG_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+
+def derive_topic_slug(topic: str, max_words: int = 4) -> str:
+    """Lowercase + kebab-case + truncate to N words.
+
+    Empty input or no-alnum-chars → "topic" as fallback. Used for
+    research/YYYY-MM-DD-<slug>.md filename + memo.topic_slug field.
+    """
+    lowered = topic.lower().strip()
+    cleaned = _SLUG_NON_ALNUM.sub("-", lowered).strip("-")
+    if not cleaned:
+        return "topic"
+    parts = [p for p in cleaned.split("-") if p]
+    if not parts:
+        return "topic"
+    return "-".join(parts[:max_words])
+
+
+# ---------------------------------------------------------------------------
+# Mode detection (token-overlap; deterministic, no LLM).
+# ---------------------------------------------------------------------------
+
+
+def detect_mode_from_symptom(symptom_text: str) -> Optional[str]:
+    """Return "bug" / "enhancement" / None based on token presence.
+
+    "bug" if at least one bug token and no enhancement tokens.
+    "enhancement" if at least one enhancement token and no bug tokens.
+    None if both sets hit (mixed-signal — orchestrator asks user) OR
+    neither set hits (no signal — orchestrator asks user).
+    """
+    if not symptom_text:
+        return None
+    lower = symptom_text.lower()
+    bug_hit = any(tok in lower for tok in _BUG_TOKENS)
+    enh_hit = any(tok in lower for tok in _ENHANCEMENT_TOKENS)
+    if bug_hit and not enh_hit:
+        return "bug"
+    if enh_hit and not bug_hit:
+        return "enhancement"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Conflict detection (token-overlap rules; deterministic).
+# ---------------------------------------------------------------------------
+
+# Antagonist regex pairs. Each entry: (dim_a, regex_a, dim_b, regex_b,
+# description). Detector reports a conflict when BOTH regexes match
+# their respective dimensions' values. Patterns are case-insensitive.
+# Intentionally short list — covers the most common contradictions for
+# UI/data symptoms. Extend as empirical data surfaces new pairs.
+_CONFLICT_PATTERNS: Tuple[Tuple[str, str, str, str, str], ...] = (
+    # alphabetical sort vs numeric/insertion order regression scope
+    (
+        "desired", r"\b(alphabetical|alpha\s*sort|name[- ]?sort|a[-→ ]+z)\b",
+        "unchanged_behavior", r"\b(numeric|insert(ion)?|current|original)\s+order\b",
+        "alphabetical sort would replace numeric/insertion order listed as unchanged",
+    ),
+    # ascending vs descending
+    (
+        "desired", r"\bascending\b",
+        "unchanged_behavior", r"\bdescending\b",
+        "ascending sort contradicts descending order required in unchanged behavior",
+    ),
+    (
+        "desired", r"\bdescending\b",
+        "unchanged_behavior", r"\bascending\b",
+        "descending sort contradicts ascending order required in unchanged behavior",
+    ),
+    # async migration vs sync requirement
+    (
+        "desired", r"\basync(hronous)?\b",
+        "unchanged_behavior", r"\bsync(hronous)?\b",
+        "async transition contradicts synchronous requirement in unchanged behavior",
+    ),
+    # speed increase vs latency budget
+    (
+        "desired", r"\b(under|less than|<)\s*\d+\s*(ms|s|sec|second)",
+        "unchanged_behavior", r"\b(under|less than|<)\s*\d+\s*(ms|s|sec|second)",
+        "two conflicting latency budgets between desired and unchanged",
+    ),
+)
+
+
+def detect_direct_conflicts(memo: dict) -> List[dict]:
+    """Scan memo dimensions for direct contradictions; return conflict records.
+
+    Each returned dict matches Conflict schema (type=direct). Used by
+    `check-conflicts` setter to surface hard-block items to the
+    orchestrator. Refinement / drift / mode-flip live in LLM-side logic;
+    the helper only catches deterministic value-on-value contradictions.
+    """
+    conflicts = []  # type: List[dict]
+    dims = memo.get("dimensions", {})
+
+    def _val(name: str) -> str:
+        rec = dims.get(name, {})
+        if not isinstance(rec, dict):
+            return ""
+        v = rec.get("value")
+        return v if isinstance(v, str) else ""
+
+    for dim_a, rx_a, dim_b, rx_b, desc in _CONFLICT_PATTERNS:
+        val_a = _val(dim_a)
+        val_b = _val(dim_b)
+        if not val_a or not val_b:
+            continue
+        if re.search(rx_a, val_a, re.IGNORECASE) and re.search(rx_b, val_b, re.IGNORECASE):
+            conflicts.append(
+                {
+                    "type": "direct",
+                    "dimensions": [dim_a, dim_b],
+                    "description": desc,
+                    "resolution": "blocked-pending-user",
+                }
+            )
+    return conflicts
+
+
+# ---------------------------------------------------------------------------
+# Coverage helper (used by symptom-coverage + symptom-finalize).
+# ---------------------------------------------------------------------------
+
+
+def _compute_coverage(memo: dict) -> Tuple[Dict[str, str], int, int, int]:
+    """Return (per-dim state map, clear_count, partial_count, missing_count).
+
+    State per dim: derived from the stored {state, turns, value} record.
+    Missing → no value yet. Partial → has value but turns >= cap with no
+    explicit Clear marker, OR explicitly set to Partial. Clear → set to Clear.
+    """
+    dims = memo.get("dimensions", {})
+    state_map = {}
+    clear = partial = missing = 0
+    for d in RUBRIC_DIMENSIONS:
+        rec = dims.get(d, _empty_dimension())
+        st = rec.get("state", RUBRIC_STATE_DEFAULT)
+        state_map[d] = st
+        if st == "Clear":
+            clear += 1
+        elif st == "Partial":
+            partial += 1
+        else:
+            missing += 1
+    return state_map, clear, partial, missing
+
+
+# ---------------------------------------------------------------------------
+# Argparse + main — populated after subcommand handlers.
+# ---------------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="research_helper",
+        description="State + render helper for /research. Owns research artifact shape.",
+    )
+    parser.add_argument(
+        "--devforge-dir",
+        default=".devforge",
+        help="Path to the .devforge directory (default: .devforge in CWD).",
+    )
+    parser.add_argument(
+        "--install-root",
+        default=None,
+        help=(
+            "Path to the install root (project root for standalone, wrapper "
+            "root for wrapper mode). Default: parent of --devforge-dir."
+        ),
+    )
+
+    subparsers = parser.add_subparsers(dest="subcommand")
+    _register_subcommands(subparsers)
+    return parser
+
+
+def _register_subcommands(subparsers) -> None:
+    """All cmd_* handlers attached here. Implemented below."""
+    # Plumbing
+    sp = subparsers.add_parser("reset-memo", help="Write a fresh defaults memo state.")
+    sp.set_defaults(func=cmd_reset_memo)
+
+    sp = subparsers.add_parser("reset-report", help="Write a fresh defaults report state.")
+    sp.set_defaults(func=cmd_reset_report)
+
+    sp = subparsers.add_parser("read-memo", help="Print research-state.json (or defaults) as JSON.")
+    sp.set_defaults(func=cmd_read_memo)
+
+    sp = subparsers.add_parser("read-report", help="Print research-report.json (or defaults) as JSON.")
+    sp.set_defaults(func=cmd_read_report)
+
+    sp = subparsers.add_parser(
+        "preflight",
+        help="Hard-gate check: 4 setup-chain artefacts present + non-empty.",
+    )
+    sp.set_defaults(func=cmd_preflight)
+
+    sp = subparsers.add_parser(
+        "set-topic",
+        help="Set report.topic + auto-derive memo.topic_slug.",
+    )
+    sp.add_argument("--value", required=True, help="Topic text (user's original input).")
+    sp.set_defaults(func=cmd_set_topic)
+
+    sp = subparsers.add_parser(
+        "set-date",
+        help="Set report.date (YYYY-MM-DD).",
+    )
+    sp.add_argument("--value", required=True, help="Date in YYYY-MM-DD format.")
+    sp.set_defaults(func=cmd_set_date)
+
+    sp = subparsers.add_parser(
+        "summary",
+        help="Render combined memo + report summary to stdout. Read-only.",
+    )
+    sp.set_defaults(func=cmd_summary)
+
+    # Phase 0 setters
+    for dim in RUBRIC_DIMENSIONS:
+        sp_name = "set-" + dim.replace("_", "-")
+        sp = subparsers.add_parser(sp_name, help="Set {0} dimension.".format(dim))
+        sp.add_argument("--value", required=True, help="Value text (verbatim).")
+        sp.add_argument(
+            "--state",
+            default="Clear",
+            choices=list(RUBRIC_STATE_ENUM),
+            help="State after this set (default: Clear).",
+        )
+        sp.add_argument(
+            "--increment-turn",
+            action="store_true",
+            help="Increment turn counter (use for follow-ups that didn't fully clear).",
+        )
+        sp.set_defaults(func=_make_dim_setter(dim))
+
+    sp = subparsers.add_parser(
+        "detect-mode",
+        help="Detect bug vs enhancement from symptom tokens, optionally with --override.",
+    )
+    sp.add_argument("--override", default=None, choices=list(MODE_ENUM), help="Force a mode.")
+    sp.set_defaults(func=cmd_detect_mode)
+
+    sp = subparsers.add_parser(
+        "record-gap",
+        help="Record a [NEEDS CLARIFICATION] gap for a dimension and accept exit.",
+    )
+    sp.add_argument("--dimension", required=True, choices=list(RUBRIC_DIMENSIONS))
+    sp.add_argument("--description", required=True, help="Gap description.")
+    sp.set_defaults(func=cmd_record_gap)
+
+    sp = subparsers.add_parser(
+        "check-conflicts",
+        help="Scan dimensions for direct contradictions; emit JSON list.",
+    )
+    sp.set_defaults(func=cmd_check_conflicts)
+
+    sp = subparsers.add_parser(
+        "record-conflict-resolution",
+        help="Log user resolution for a previously detected conflict.",
+    )
+    sp.add_argument("--index", required=True, type=int, help="0-based index into conflicts list.")
+    sp.add_argument("--resolution", required=True, help="Resolution label.")
+    sp.add_argument(
+        "--rewrite-dimension",
+        default=None,
+        choices=list(RUBRIC_DIMENSIONS),
+        help="Optional dimension whose value to clear (loser of direct conflict).",
+    )
+    sp.set_defaults(func=cmd_record_conflict_resolution)
+
+    sp = subparsers.add_parser(
+        "symptom-coverage",
+        help="Emit JSON coverage map per dimension + counts.",
+    )
+    sp.set_defaults(func=cmd_symptom_coverage)
+
+    sp = subparsers.add_parser(
+        "symptom-finalize",
+        help=(
+            "Validate memo: all Clear OR override_recorded; no blocked conflicts. "
+            "Exit 0 = ready for Phase 1; non-zero otherwise."
+        ),
+    )
+    sp.add_argument(
+        "--accept-gaps",
+        action="store_true",
+        help="User explicitly accepted Partial/Missing dimensions; record override.",
+    )
+    sp.set_defaults(func=cmd_symptom_finalize)
+
+    # Phase 1 setters
+    sp = subparsers.add_parser(
+        "record-finding",
+        help="Append a {surface, file_line, relevance} Finding to report.findings.",
+    )
+    sp.add_argument("--surface", required=True)
+    sp.add_argument("--file-line", required=True, dest="file_line")
+    sp.add_argument("--relevance", required=True)
+    sp.set_defaults(func=cmd_record_finding)
+
+    sp = subparsers.add_parser(
+        "record-hypothesis",
+        help="Append a {cause, falsifier, runtime_probe_needed} Hypothesis to report.hypotheses.",
+    )
+    sp.add_argument("--cause", required=True)
+    sp.add_argument("--falsifier", required=True)
+    sp.add_argument(
+        "--runtime-probe-needed",
+        choices=("yes", "no"),
+        required=True,
+        dest="runtime_probe_needed",
+    )
+    sp.set_defaults(func=cmd_record_hypothesis)
+
+    sp = subparsers.add_parser(
+        "set-root-cause-hypothesis",
+        help="Set primary root-cause-hypothesis text on report.",
+    )
+    sp.add_argument("--value", required=True)
+    sp.set_defaults(func=cmd_set_root_cause_hypothesis)
+
+    sp = subparsers.add_parser(
+        "set-confidence",
+        help="Set confidence enum (Confirmed | Hypothesis | Speculative).",
+    )
+    sp.add_argument("--value", required=True)
+    sp.set_defaults(func=cmd_set_confidence)
+
+    sp = subparsers.add_parser(
+        "set-trigger",
+        help="Set structured-root-cause trigger (bug-mode + confidence ≥ Hypothesis only).",
+    )
+    sp.add_argument("--value", required=True)
+    sp.set_defaults(func=cmd_set_trigger)
+
+    sp = subparsers.add_parser(
+        "set-root-cause-systemic",
+        help="Set structured-root-cause systemic flaw (bug-mode + confidence ≥ Hypothesis only).",
+    )
+    sp.add_argument("--value", required=True)
+    sp.set_defaults(func=cmd_set_root_cause_systemic)
+
+    sp = subparsers.add_parser(
+        "record-contributing-factor",
+        help="Append a contributing factor (bug-mode + confidence ≥ Hypothesis; max 3).",
+    )
+    sp.add_argument("--value", required=True)
+    sp.set_defaults(func=cmd_record_contributing_factor)
+
+    sp = subparsers.add_parser(
+        "set-verify-step",
+        help="Set verify-step 3 sub-fields (probe + reproduction + discriminator).",
+    )
+    sp.add_argument("--probe", required=True)
+    sp.add_argument("--reproduction", required=True)
+    sp.add_argument("--discriminator", required=True)
+    sp.set_defaults(func=cmd_set_verify_step)
+
+    # Phase 2 setters
+    sp = subparsers.add_parser(
+        "set-approach",
+        help="Append an Approach to report.approaches.",
+    )
+    sp.add_argument("--name", required=True)
+    sp.add_argument("--description", required=True)
+    sp.add_argument(
+        "--addresses-hypotheses",
+        required=True,
+        dest="addresses",
+        help='JSON array of hypothesis-index strings (e.g. ["A","B"]).',
+    )
+    sp.add_argument(
+        "--does-not-cover",
+        required=True,
+        dest="does_not_cover",
+        help='JSON array of hypothesis-index strings.',
+    )
+    sp.add_argument("--pros", required=True, help='JSON array of pros strings.')
+    sp.add_argument("--cons", required=True, help='JSON array of cons strings.')
+    sp.add_argument("--complexity", required=True, choices=list(COMPLEXITY_ENUM))
+    sp.set_defaults(func=cmd_set_approach)
+
+    sp = subparsers.add_parser(
+        "set-recommended-approach",
+        help="Set recommended approach. Must cite hypotheses + respect unchanged_behavior.",
+    )
+    sp.add_argument("--name", required=True, help="Must match an existing approach.name.")
+    sp.add_argument("--rationale", required=True)
+    sp.add_argument(
+        "--hypotheses-addressed",
+        required=True,
+        dest="hypotheses_addressed",
+        help="JSON array of hypothesis-index strings.",
+    )
+    sp.add_argument(
+        "--hypotheses-not-covered",
+        required=True,
+        dest="hypotheses_not_covered",
+        help="JSON array of hypothesis-index strings.",
+    )
+    sp.set_defaults(func=cmd_set_recommended_approach)
+
+    sp = subparsers.add_parser(
+        "set-constitution-constraints",
+        help="Append (rule, impact) record to constitution_constraints.",
+    )
+    sp.add_argument("--rule", required=True)
+    sp.add_argument("--impact", required=True)
+    sp.set_defaults(func=cmd_set_constitution_constraints)
+
+    sp = subparsers.add_parser(
+        "set-complexity",
+        help="Set complexity sub-fields (codebase_changes + risk + verify_cost).",
+    )
+    sp.add_argument("--codebase-changes", required=True, dest="codebase_changes",
+                    choices=list(COMPLEXITY_ENUM))
+    sp.add_argument("--codebase-notes", required=True, dest="codebase_notes")
+    sp.add_argument("--risk", required=True, choices=list(COMPLEXITY_ENUM))
+    sp.add_argument("--risk-notes", required=True, dest="risk_notes")
+    sp.add_argument("--verify-cost", required=True, dest="verify_cost",
+                    choices=list(COMPLEXITY_ENUM))
+    sp.add_argument("--verify-notes", required=True, dest="verify_notes")
+    sp.set_defaults(func=cmd_set_complexity)
+
+    sp = subparsers.add_parser(
+        "set-verdict",
+        help="Set verdict (mode-aware enum). Rejects values outside mode's allowed set.",
+    )
+    sp.add_argument("--value", required=True)
+    sp.set_defaults(func=cmd_set_verdict)
+
+    sp = subparsers.add_parser(
+        "set-summary",
+        help="Set summary (3-5 sentence opener).",
+    )
+    sp.add_argument("--value", required=True)
+    sp.set_defaults(func=cmd_set_summary)
+
+    sp = subparsers.add_parser(
+        "set-next-step-text",
+        help="Compose next-step text from memo + report; only when verdict proceeds.",
+    )
+    sp.set_defaults(func=cmd_set_next_step_text)
+
+    sp = subparsers.add_parser(
+        "render",
+        help="Walk schema + state; emit research report md to stdout.",
+    )
+    sp.set_defaults(func=cmd_render)
+
+    sp = subparsers.add_parser(
+        "verify",
+        help="Cross-check report state for required invariants. Exit 0 pass / 2 violations.",
+    )
+    sp.set_defaults(func=cmd_verify)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if getattr(args, "func", None) is None:
+        parser.print_help(sys.stderr)
+        return 2
+    if args.install_root is None:
+        args.install_root = str(Path(args.devforge_dir).resolve().parent)
+    return args.func(args)
+
+
+# ---------------------------------------------------------------------------
+# Handler implementations.
+# ---------------------------------------------------------------------------
+
+
+def cmd_reset_memo(args: argparse.Namespace) -> int:
+    """Write fresh defaults memo state. Idempotent."""
+    try:
+        _atomic_write_json(default_memo_state(), _memo_path(args.devforge_dir))
+    except OSError as err:
+        return _die("reset-memo: {0}".format(err))
+    return 0
+
+
+def cmd_reset_report(args: argparse.Namespace) -> int:
+    """Write fresh defaults report state. Idempotent."""
+    try:
+        _atomic_write_json(default_report_state(), _report_path(args.devforge_dir))
+    except OSError as err:
+        return _die("reset-report: {0}".format(err))
+    return 0
+
+
+def cmd_read_memo(args: argparse.Namespace) -> int:
+    """Print research-state.json as JSON to stdout (defaults if missing)."""
+    try:
+        state = _load_memo(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("read-memo: {0}".format(err))
+    json.dump(state, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_read_report(args: argparse.Namespace) -> int:
+    """Print research-report.json as JSON to stdout (defaults if missing)."""
+    try:
+        state = _load_report(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("read-report: {0}".format(err))
+    json.dump(state, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """4-artefact hard gate. Non-zero exit 2 + BLOCKED message on missing.
+
+    Checks each PREFLIGHT_PREREQS path relative to --install-root for
+    existence + non-empty (size > 0). On any failure, emits a single
+    BLOCKED message naming the missing artefact + the producer command
+    and exits 2.
+
+    Distinct from generate_docs_helper preflight (which refreshes the
+    CBM index stamp). This gate enforces that the 4-command setup chain
+    is complete before /research runs.
+    """
+    install_root = Path(args.install_root)
+    missing = []  # type: List[Tuple[str, str]]
+    for rel_path, producer in PREFLIGHT_PREREQS:
+        p = install_root / rel_path
+        try:
+            if not p.exists():
+                missing.append((rel_path, producer))
+                continue
+            if p.stat().st_size == 0:
+                missing.append((rel_path, producer))
+        except OSError as err:
+            return _die("preflight: stat failed on {0}: {1}".format(p, err))
+
+    if missing:
+        sys.stderr.write(
+            "BLOCKED: /research requires the full 4-command setup chain.\n"
+        )
+        for rel, producer in missing:
+            sys.stderr.write("Missing: {0} (produced by {1})\n".format(rel, producer))
+        sys.stderr.write(
+            "Run: /init-forge → /generate-docs → /configure → /constitute, "
+            "then retry /research.\n"
+        )
+        return 2
+    return 0
+
+
+# --- Phase 0 setter factory --------------------------------------------------
+
+
+def _make_dim_setter(dim_name: str):
+    """Build a setter handler for one rubric dimension.
+
+    Each setter validates value (verbatim non-empty) + state enum +
+    optionally increments turn counter, then writes back into
+    memo.dimensions[dim_name]. As a side-effect, setting the `symptom`
+    dimension auto-derives memo.topic_slug if not already set.
+    """
+    def handler(args: argparse.Namespace) -> int:
+        try:
+            value = _validate_verbatim(args.value, dim_name)
+            state = _validate_enum(args.state, dim_name + ".state", RUBRIC_STATE_ENUM)
+        except ValueError as err:
+            return _die(str(err), code=2)
+        try:
+            with _state_transaction(args.devforge_dir, "memo") as memo:
+                rec = memo["dimensions"].get(dim_name) or _empty_dimension()
+                rec["value"] = value
+                # Bounded-turn cap: once turns >= TURN_CAP and the caller
+                # didn't explicitly mark Clear, dimension stays Partial.
+                if args.increment_turn:
+                    rec["turns"] = int(rec.get("turns", 0)) + 1
+                if state == "Clear":
+                    rec["state"] = "Clear"
+                elif rec["turns"] >= TURN_CAP and state != "Clear":
+                    rec["state"] = "Partial"
+                else:
+                    rec["state"] = state
+                memo["dimensions"][dim_name] = rec
+                if dim_name == "symptom" and not memo.get("topic_slug"):
+                    memo["topic_slug"] = derive_topic_slug(value)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("set-{0}: {1}".format(dim_name, err))
+        return 0
+    handler.__name__ = "cmd_set_" + dim_name
+    return handler
+
+
+def cmd_set_topic(args: argparse.Namespace) -> int:
+    """Set report.topic + auto-derive memo.topic_slug from topic.
+
+    Topic comes from the user's original /research argument. Auto-deriving
+    slug at this layer means the orchestrator only owns one input string;
+    helper renders both topic text and filename slug.
+    """
+    try:
+        value = _validate_scalar(args.value, "topic")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["topic"] = value
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            memo["topic_slug"] = derive_topic_slug(value)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-topic: {0}".format(err))
+    return 0
+
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def cmd_set_date(args: argparse.Namespace) -> int:
+    """Set report.date. Format YYYY-MM-DD enforced."""
+    if not _DATE_RE.match(args.value):
+        return _die(
+            "set-date: invalid date {0!r}; expected YYYY-MM-DD".format(args.value),
+            code=2,
+        )
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["date"] = args.value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-date: {0}".format(err))
+    return 0
+
+
+def cmd_detect_mode(args: argparse.Namespace) -> int:
+    """Detect mode from symptom dimension OR apply --override.
+
+    Stdout: JSON {"mode": "bug" | "enhancement" | null, "source": "auto" |
+    "override" | "ambiguous"}. Exits 0 always (caller decides how to
+    handle ambiguous result). Persists mode into memo.mode on a clear
+    detection.
+    """
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            if args.override:
+                mode = args.override
+                source = "override"
+            else:
+                symptom_val = memo.get("dimensions", {}).get("symptom", {}).get("value") or ""
+                mode = detect_mode_from_symptom(symptom_val)
+                source = "auto" if mode else "ambiguous"
+            memo["mode"] = mode
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("detect-mode: {0}".format(err))
+    json.dump({"mode": mode, "source": source}, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_record_gap(args: argparse.Namespace) -> int:
+    """Append a {dimension, description} gap; set dimension state to Partial."""
+    try:
+        desc = _validate_scalar(args.description, "gap.description")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            memo.setdefault("gaps", []).append(
+                {"dimension": args.dimension, "description": desc}
+            )
+            rec = memo["dimensions"].get(args.dimension) or _empty_dimension()
+            if rec.get("state") != "Clear":
+                rec["state"] = "Partial"
+            memo["dimensions"][args.dimension] = rec
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-gap: {0}".format(err))
+    return 0
+
+
+def cmd_check_conflicts(args: argparse.Namespace) -> int:
+    """Scan memo for direct contradictions; emit JSON list to stdout.
+
+    Detected conflicts are appended to memo.conflicts (idempotent on
+    description text) and emitted as JSON. Caller uses the list to drive
+    AskUserQuestion for direct contradictions.
+    """
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            detected = detect_direct_conflicts(memo)
+            existing_descs = {c.get("description") for c in memo.get("conflicts", [])}
+            for c in detected:
+                if c["description"] not in existing_descs:
+                    memo.setdefault("conflicts", []).append(c)
+                    existing_descs.add(c["description"])
+            current_open = [
+                c for c in memo.get("conflicts", [])
+                if c.get("resolution") == "blocked-pending-user"
+            ]
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("check-conflicts: {0}".format(err))
+    json.dump(current_open, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_record_conflict_resolution(args: argparse.Namespace) -> int:
+    """Mark a conflict as resolved; optionally clear a loser dimension."""
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            conflicts = memo.get("conflicts", [])
+            if args.index < 0 or args.index >= len(conflicts):
+                return _die(
+                    "record-conflict-resolution: index {0} out of range "
+                    "(have {1})".format(args.index, len(conflicts)),
+                    code=2,
+                )
+            conflicts[args.index]["resolution"] = args.resolution
+            if args.rewrite_dimension:
+                rec = memo["dimensions"].get(args.rewrite_dimension) or _empty_dimension()
+                rec["value"] = None
+                rec["state"] = RUBRIC_STATE_DEFAULT
+                rec["turns"] = 0
+                memo["dimensions"][args.rewrite_dimension] = rec
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-conflict-resolution: {0}".format(err))
+    return 0
+
+
+def cmd_symptom_coverage(args: argparse.Namespace) -> int:
+    """Emit JSON coverage map + counts to stdout."""
+    try:
+        memo = _load_memo(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("symptom-coverage: {0}".format(err))
+    state_map, clear, partial, missing = _compute_coverage(memo)
+    out = {
+        "per_dimension": state_map,
+        "counts": {"Clear": clear, "Partial": partial, "Missing": missing},
+        "mode": memo.get("mode"),
+        "conflicts_open": sum(
+            1 for c in memo.get("conflicts", [])
+            if c.get("resolution") == "blocked-pending-user"
+        ),
+    }
+    json.dump(out, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_symptom_finalize(args: argparse.Namespace) -> int:
+    """Validate memo is finalize-ready.
+
+    Exit 0 when:
+      - all 6 dimensions are Clear, AND
+      - no conflicts with resolution == "blocked-pending-user".
+
+    OR exit 0 with override_recorded=true persisted when:
+      - --accept-gaps passed AND no blocked conflicts.
+
+    Exit 2 otherwise. stderr enumerates each blocker.
+    """
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            state_map, clear, partial, missing = _compute_coverage(memo)
+            blocked = [
+                c for c in memo.get("conflicts", [])
+                if c.get("resolution") == "blocked-pending-user"
+            ]
+            violations = []  # type: List[str]
+            if blocked:
+                for c in blocked:
+                    violations.append(
+                        "blocked conflict ({0}): {1}".format(
+                            "+".join(c.get("dimensions", [])),
+                            c.get("description", ""),
+                        )
+                    )
+            if (partial or missing) and not args.accept_gaps:
+                for d, st in state_map.items():
+                    if st != "Clear":
+                        violations.append("{0}: {1}".format(d, st))
+
+            if violations:
+                for v in violations:
+                    sys.stderr.write("symptom-finalize: {0}\n".format(v))
+                return 2
+
+            if (partial or missing) and args.accept_gaps:
+                memo["override_recorded"] = True
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("symptom-finalize: {0}".format(err))
+    return 0
+
+
+# --- Phase 1 setters ---------------------------------------------------------
+
+
+def cmd_record_finding(args: argparse.Namespace) -> int:
+    """Append a {surface, file_line, relevance} Finding."""
+    try:
+        surface = _validate_scalar(args.surface, "finding.surface")
+        file_line = _validate_scalar(args.file_line, "finding.file_line")
+        relevance = _validate_scalar(args.relevance, "finding.relevance")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report.setdefault("findings", []).append(
+                {"surface": surface, "file_line": file_line, "relevance": relevance}
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-finding: {0}".format(err))
+    return 0
+
+
+def cmd_record_hypothesis(args: argparse.Namespace) -> int:
+    """Append a {cause, falsifier, runtime_probe_needed} Hypothesis."""
+    try:
+        cause = _validate_scalar(args.cause, "hypothesis.cause")
+        falsifier = _validate_scalar(args.falsifier, "hypothesis.falsifier")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    runtime = args.runtime_probe_needed == "yes"
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report.setdefault("hypotheses", []).append(
+                {"cause": cause, "falsifier": falsifier, "runtime_probe_needed": runtime}
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-hypothesis: {0}".format(err))
+    return 0
+
+
+def cmd_set_root_cause_hypothesis(args: argparse.Namespace) -> int:
+    """Set root_cause_hypothesis free text."""
+    try:
+        value = _validate_verbatim(args.value, "root_cause_hypothesis")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["root_cause_hypothesis"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-root-cause-hypothesis: {0}".format(err))
+    return 0
+
+
+def cmd_set_confidence(args: argparse.Namespace) -> int:
+    """Set confidence enum."""
+    try:
+        value = _validate_enum(args.value, "confidence", CONFIDENCE_ENUM)
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["confidence"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-confidence: {0}".format(err))
+    return 0
+
+
+def _ensure_structured_root_cause(report: dict) -> dict:
+    """Lazily create the structured_root_cause record on the report."""
+    rec = report.get("structured_root_cause")
+    if rec is None:
+        rec = {"trigger": None, "root_cause_systemic": None, "contributing_factors": []}
+        report["structured_root_cause"] = rec
+    return rec
+
+
+def cmd_set_trigger(args: argparse.Namespace) -> int:
+    """Set structured_root_cause.trigger (caller is responsible for mode gate)."""
+    try:
+        value = _validate_verbatim(args.value, "trigger")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            rec = _ensure_structured_root_cause(report)
+            rec["trigger"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-trigger: {0}".format(err))
+    return 0
+
+
+def cmd_set_root_cause_systemic(args: argparse.Namespace) -> int:
+    """Set structured_root_cause.root_cause_systemic."""
+    try:
+        value = _validate_verbatim(args.value, "root_cause_systemic")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            rec = _ensure_structured_root_cause(report)
+            rec["root_cause_systemic"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-root-cause-systemic: {0}".format(err))
+    return 0
+
+
+def cmd_record_contributing_factor(args: argparse.Namespace) -> int:
+    """Append a contributing factor (max 3)."""
+    try:
+        value = _validate_scalar(args.value, "contributing_factor")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            rec = _ensure_structured_root_cause(report)
+            factors = rec.setdefault("contributing_factors", [])
+            if len(factors) >= 3:
+                return _die(
+                    "record-contributing-factor: max 3 entries; already have {0}".format(
+                        len(factors)
+                    ),
+                    code=2,
+                )
+            factors.append(value)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-contributing-factor: {0}".format(err))
+    return 0
+
+
+def cmd_set_verify_step(args: argparse.Namespace) -> int:
+    """Set verify_step record. 3 sub-fields all required."""
+    try:
+        probe = _validate_verbatim(args.probe, "verify_step.probe")
+        reproduction = _validate_verbatim(args.reproduction, "verify_step.reproduction")
+        discriminator = _validate_verbatim(args.discriminator, "verify_step.discriminator")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["verify_step"] = {
+                "probe": probe,
+                "reproduction": reproduction,
+                "discriminator": discriminator,
+            }
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-verify-step: {0}".format(err))
+    return 0
+
+
+# --- Phase 2 setters ---------------------------------------------------------
+
+
+def cmd_set_approach(args: argparse.Namespace) -> int:
+    """Append an Approach record."""
+    try:
+        name = _validate_scalar(args.name, "approach.name")
+        desc = _validate_verbatim(args.description, "approach.description")
+        addresses = _validate_string_array_json(args.addresses, "approach.addresses_hypotheses")
+        not_covered = _validate_string_array_json(
+            args.does_not_cover, "approach.does_not_cover"
+        )
+        pros = _validate_string_array_json(args.pros, "approach.pros")
+        cons = _validate_string_array_json(args.cons, "approach.cons")
+        complexity = _validate_enum(args.complexity, "approach.complexity", COMPLEXITY_ENUM)
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report.setdefault("approaches", []).append(
+                {
+                    "name": name,
+                    "description": desc,
+                    "addresses_hypotheses": addresses,
+                    "does_not_cover": not_covered,
+                    "pros": pros,
+                    "cons": cons,
+                    "complexity": complexity,
+                }
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-approach: {0}".format(err))
+    return 0
+
+
+def cmd_set_recommended_approach(args: argparse.Namespace) -> int:
+    """Set recommended approach. Name must match an existing approach.name.
+
+    Validates: name resolves to an existing approach, hypotheses lists are
+    JSON arrays of strings, rationale non-empty. Does not run the
+    unchanged_behavior cross-check at set time — that runs in `verify`.
+    """
+    try:
+        name = _validate_scalar(args.name, "recommended_approach.name")
+        rationale = _validate_verbatim(args.rationale, "recommended_approach.rationale")
+        addressed = _validate_string_array_json(
+            args.hypotheses_addressed, "recommended_approach.hypotheses_addressed"
+        )
+        not_covered = _validate_string_array_json(
+            args.hypotheses_not_covered, "recommended_approach.hypotheses_not_covered"
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            names = {a.get("name") for a in report.get("approaches", [])}
+            if name not in names:
+                return _die(
+                    "set-recommended-approach: name {0!r} does not match an existing approach; "
+                    "have {1}".format(name, sorted(names)),
+                    code=2,
+                )
+            report["recommended_approach"] = {
+                "name": name,
+                "rationale": rationale,
+                "hypotheses_addressed": addressed,
+                "hypotheses_not_covered": not_covered,
+            }
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-recommended-approach: {0}".format(err))
+    return 0
+
+
+def cmd_set_constitution_constraints(args: argparse.Namespace) -> int:
+    """Append a {rule, impact} record."""
+    try:
+        rule = _validate_scalar(args.rule, "constitution.rule")
+        impact = _validate_scalar(args.impact, "constitution.impact")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report.setdefault("constitution_constraints", []).append(
+                {"rule": rule, "impact": impact}
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-constitution-constraints: {0}".format(err))
+    return 0
+
+
+def cmd_set_complexity(args: argparse.Namespace) -> int:
+    """Set complexity record (3 ratings + 3 notes)."""
+    try:
+        cc = _validate_enum(args.codebase_changes, "complexity.codebase_changes", COMPLEXITY_ENUM)
+        cn = _validate_scalar(args.codebase_notes, "complexity.codebase_notes")
+        rk = _validate_enum(args.risk, "complexity.risk", COMPLEXITY_ENUM)
+        rn = _validate_scalar(args.risk_notes, "complexity.risk_notes")
+        vc = _validate_enum(args.verify_cost, "complexity.verify_cost", COMPLEXITY_ENUM)
+        vn = _validate_scalar(args.verify_notes, "complexity.verify_notes")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["complexity"] = {
+                "codebase_changes": cc,
+                "codebase_notes": cn,
+                "risk": rk,
+                "risk_notes": rn,
+                "verify_cost": vc,
+                "verify_notes": vn,
+            }
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-complexity: {0}".format(err))
+    return 0
+
+
+def cmd_set_verdict(args: argparse.Namespace) -> int:
+    """Set verdict. Mode-aware: must be in VERDICT_ENUM[memo.mode]."""
+    try:
+        memo = _load_memo(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-verdict: cannot load memo: {0}".format(err))
+    mode = memo.get("mode")
+    if mode not in VERDICT_ENUM:
+        return _die(
+            "set-verdict: mode must be set before verdict (run detect-mode first); have {0!r}".format(mode),
+            code=2,
+        )
+    try:
+        value = _validate_enum(args.value, "verdict", VERDICT_ENUM[mode])
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["mode"] = mode
+            report["verdict"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-verdict: {0}".format(err))
+    return 0
+
+
+def cmd_set_summary(args: argparse.Namespace) -> int:
+    """Set summary (3-5 sentence opener)."""
+    try:
+        value = _validate_verbatim(args.value, "summary")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["summary"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-summary: {0}".format(err))
+    return 0
+
+
+def cmd_set_next_step_text(args: argparse.Namespace) -> int:
+    """Compose next-step text from memo + report.
+
+    Renders the copy-pasteable /specify prompt + key facts block. Only
+    emits when verdict ∈ VERDICT_PROCEEDING[mode]. Otherwise sets
+    next_step_text = None and exits 0 (no error).
+    """
+    try:
+        memo = _load_memo(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-next-step-text: cannot load memo: {0}".format(err))
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            mode = report.get("mode") or memo.get("mode")
+            verdict = report.get("verdict")
+            if not mode or not verdict:
+                return _die(
+                    "set-next-step-text: mode + verdict must be set first",
+                    code=2,
+                )
+            if verdict not in VERDICT_PROCEEDING.get(mode, set()):
+                report["next_step_text"] = None
+                return 0
+
+            symptom = memo.get("dimensions", {}).get("symptom", {}).get("value") or ""
+            desired = memo.get("dimensions", {}).get("desired", {}).get("value") or ""
+            rec_approach = report.get("recommended_approach") or {}
+            approach_name = rec_approach.get("name") or "(approach name)"
+            addressed = rec_approach.get("hypotheses_addressed") or []
+            not_covered = rec_approach.get("hypotheses_not_covered") or []
+            slug = memo.get("topic_slug") or derive_topic_slug(symptom or report.get("topic") or "")
+            date = report.get("date") or "YYYY-MM-DD"
+
+            refined = (symptom + " — " + desired).strip(" —")
+            refined_short = refined if refined else "topic"
+            text = (
+                "## Next step\n\n"
+                "Copy the block below into a new `/specify` session manually. "
+                "No automation — user controls when (or if) `/specify` runs.\n\n"
+                "~~~\n"
+                "/specify \"{refined}\"\n\n"
+                "Research reference: research/{date}-{slug}.md\n"
+                "Key facts:\n"
+                "- Mode: {mode}\n"
+                "- Symptom: {sym}\n"
+                "- Desired: {des}\n"
+                "- Recommended approach: {appr}\n"
+                "- Hypothesis addressed: {addr}\n"
+                "- Hypotheses NOT covered: {nc}\n"
+                "- Open uncertainties: {gaps} (see research doc §Open Uncertainties)\n"
+                "~~~\n"
+            ).format(
+                refined=refined_short,
+                date=date,
+                slug=slug,
+                mode="Bug" if mode == "bug" else "Enhancement",
+                sym=symptom or "(unset)",
+                des=desired or "(unset)",
+                appr=approach_name,
+                addr=", ".join(addressed) if addressed else "(none)",
+                nc=", ".join(not_covered) if not_covered else "(none)",
+                gaps=len(memo.get("gaps", [])),
+            )
+            report["next_step_text"] = text
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-next-step-text: {0}".format(err))
+    return 0
+
+
+# --- Render + verify + summary ----------------------------------------------
+
+
+def _render_report_md(memo: dict, report: dict) -> str:
+    """Compose the research report markdown.
+
+    Section order (locked):
+      1. Title + frontmatter (Date, Topic, Mode, Verdict)
+      2. Summary
+      3. Symptom (5-dim table)
+      4. Codebase Findings
+      5. Root Cause Hypothesis
+      6. Structured root cause (bug-mode + confidence ≥ Hypothesis)
+      7. Hypothesis Enumeration
+      8. Recommended Verify Step (when present)
+      9. Approaches
+      10. Constitution Constraints
+      11. Complexity Assessment
+      12. Open Uncertainties (when gaps present)
+      13. Next step (when verdict proceeds)
+    """
+    out = []  # type: List[str]
+    topic = report.get("topic") or _derive_topic_for_render(memo, report)
+    date = report.get("date") or "YYYY-MM-DD"
+    mode = report.get("mode") or memo.get("mode") or "(unset)"
+    mode_label = "Bug" if mode == "bug" else ("Enhancement" if mode == "enhancement" else "(unset)")
+    verdict = report.get("verdict") or "(unset)"
+
+    out.append("# Research: {0}\n".format(topic))
+    out.append("")
+    out.append("**Date**: {0}".format(date))
+    out.append("**Topic**: {0}".format(topic))
+    out.append("**Mode**: {0}".format(mode_label))
+    out.append("**Verdict**: {0}".format(verdict))
+    out.append("")
+
+    out.append("## Summary")
+    out.append("")
+    out.append(report.get("summary") or "(summary unset)")
+    out.append("")
+
+    # Symptom table — 5 dims (drop unchanged_behavior from render per Plan;
+    # it's used for verify cross-check, not user-facing report).
+    out.append("## Symptom")
+    out.append("")
+    out.append("| Dimension | Value |")
+    out.append("|---|---|")
+    dim_map = memo.get("dimensions", {})
+    for d, label in (
+        ("symptom", "Symptom"),
+        ("affected_area", "Affected area"),
+        ("repro_or_current", "Repro / Current"),
+        ("desired", "Desired"),
+        ("scope", "Scope"),
+    ):
+        v = dim_map.get(d, {}).get("value") or "(unset)"
+        out.append("| {0} | {1} |".format(label, _md_escape_cell(v)))
+    out.append("")
+
+    out.append("## Codebase Findings (WHERE)")
+    out.append("")
+    findings = report.get("findings", []) or []
+    if findings:
+        out.append("| Surface | File:line | Relevance |")
+        out.append("|---|---|---|")
+        for f in findings:
+            out.append("| {0} | {1} | {2} |".format(
+                _md_escape_cell(f.get("surface", "")),
+                _md_escape_cell(f.get("file_line", "")),
+                _md_escape_cell(f.get("relevance", "")),
+            ))
+    else:
+        out.append("(no findings recorded)")
+    out.append("")
+
+    out.append("## Root Cause Hypothesis (WHY)")
+    out.append("")
+    rch = report.get("root_cause_hypothesis") or "(unset)"
+    out.append("**Primary hypothesis**: {0}".format(rch))
+    out.append("")
+    confidence = report.get("confidence") or "(unset)"
+    out.append("**Confidence**: {0}".format(confidence))
+    out.append("")
+
+    src = report.get("structured_root_cause")
+    if (
+        mode == "bug"
+        and confidence in ("Confirmed", "Hypothesis")
+        and src is not None
+    ):
+        out.append("### Structured root cause")
+        out.append("")
+        out.append("| Field | Value |")
+        out.append("|---|---|")
+        out.append("| trigger | {0} |".format(_md_escape_cell(src.get("trigger") or "(unset)")))
+        out.append("| root_cause | {0} |".format(_md_escape_cell(src.get("root_cause_systemic") or "(unset)")))
+        factors = src.get("contributing_factors") or []
+        if factors:
+            joined = " ".join("{0}. {1}".format(i + 1, f) for i, f in enumerate(factors))
+        else:
+            joined = "(none)"
+        out.append("| contributing_factors | {0} |".format(_md_escape_cell(joined)))
+        out.append("")
+
+    out.append("## Hypothesis Enumeration")
+    out.append("")
+    hypotheses = report.get("hypotheses", []) or []
+    if hypotheses:
+        out.append("| Hypothesis | Falsifier (what would disprove it) | Runtime probe needed? |")
+        out.append("|---|---|---|")
+        for h in hypotheses:
+            out.append("| {0} | {1} | {2} |".format(
+                _md_escape_cell(h.get("cause", "")),
+                _md_escape_cell(h.get("falsifier", "")),
+                "yes" if h.get("runtime_probe_needed") else "no",
+            ))
+    else:
+        out.append("(no hypotheses recorded — verify will fail)")
+    out.append("")
+
+    vstep = report.get("verify_step")
+    if vstep is not None:
+        out.append("## Recommended Verify Step")
+        out.append("")
+        out.append("| Sub-field | Value |")
+        out.append("|---|---|")
+        out.append("| probe | {0} |".format(_md_escape_cell(vstep.get("probe") or "(unset)")))
+        out.append("| reproduction | {0} |".format(_md_escape_cell(vstep.get("reproduction") or "(unset)")))
+        out.append("| discriminator | {0} |".format(_md_escape_cell(vstep.get("discriminator") or "(unset)")))
+        out.append("")
+
+    out.append("## Approaches (HOW to change)")
+    out.append("")
+    approaches = report.get("approaches", []) or []
+    rec = report.get("recommended_approach") or {}
+    rec_name = rec.get("name")
+    if approaches:
+        for ap in approaches:
+            out.append("### {0}".format(ap.get("name") or "(unnamed)"))
+            out.append("- **Description**: {0}".format(ap.get("description") or "(unset)"))
+            out.append("- **Addresses hypothesis**: {0}".format(
+                ", ".join(ap.get("addresses_hypotheses") or []) or "(none)"
+            ))
+            out.append("- **Does NOT cover**: {0}".format(
+                ", ".join(ap.get("does_not_cover") or []) or "(none)"
+            ))
+            pros = ap.get("pros") or []
+            cons = ap.get("cons") or []
+            out.append("- **Pros**: {0}".format("; ".join(pros) or "(none)"))
+            out.append("- **Cons**: {0}".format("; ".join(cons) or "(none)"))
+            out.append("- **Complexity**: {0}".format(ap.get("complexity") or "(unset)"))
+            out.append("")
+        if rec_name:
+            out.append("**Recommended approach**: {0} — {1}".format(
+                rec_name, rec.get("rationale") or "(no rationale)"
+            ))
+            out.append("")
+    else:
+        out.append("(no approaches recorded)")
+        out.append("")
+
+    out.append("## Constitution Constraints")
+    out.append("")
+    cc = report.get("constitution_constraints", []) or []
+    if cc:
+        out.append("| Rule | Impact on this change |")
+        out.append("|---|---|")
+        for c in cc:
+            out.append("| {0} | {1} |".format(
+                _md_escape_cell(c.get("rule", "")),
+                _md_escape_cell(c.get("impact", "")),
+            ))
+    else:
+        out.append("(no constitution constraints recorded)")
+    out.append("")
+
+    out.append("## Complexity Assessment")
+    out.append("")
+    cx = report.get("complexity")
+    if cx:
+        out.append("| Dimension | Rating | Notes |")
+        out.append("|---|---|---|")
+        out.append("| Codebase changes | {0} | {1} |".format(
+            cx.get("codebase_changes") or "(unset)",
+            _md_escape_cell(cx.get("codebase_notes") or ""),
+        ))
+        out.append("| Risk | {0} | {1} |".format(
+            cx.get("risk") or "(unset)",
+            _md_escape_cell(cx.get("risk_notes") or ""),
+        ))
+        out.append("| Verify cost | {0} | {1} |".format(
+            cx.get("verify_cost") or "(unset)",
+            _md_escape_cell(cx.get("verify_notes") or ""),
+        ))
+    else:
+        out.append("(complexity unset)")
+    out.append("")
+
+    gaps = memo.get("gaps") or []
+    if gaps:
+        out.append("## Open Uncertainties")
+        out.append("")
+        for g in gaps:
+            out.append("- [NEEDS CLARIFICATION: {0} — {1}]".format(
+                g.get("dimension", ""), g.get("description", "")
+            ))
+        out.append("")
+
+    next_step = report.get("next_step_text")
+    if next_step:
+        out.append(next_step.rstrip("\n"))
+        out.append("")
+
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _md_escape_cell(text: str) -> str:
+    """Escape pipe + newline so the value survives a markdown table cell."""
+    if text is None:
+        return ""
+    return text.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
+def _derive_topic_for_render(memo: dict, report: dict) -> str:
+    """Best-effort topic for the rendered title.
+
+    Prefers report.topic; falls back to memo.dimensions.symptom.value;
+    final fallback is "(untitled)".
+    """
+    t = report.get("topic")
+    if t:
+        return t
+    sym = memo.get("dimensions", {}).get("symptom", {}).get("value")
+    if sym:
+        return sym
+    return "(untitled)"
+
+
+def cmd_render(args: argparse.Namespace) -> int:
+    """Render report md to stdout. Caller decides where to save (Phase 3)."""
+    try:
+        memo = _load_memo(args.devforge_dir)
+        report = _load_report(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("render: {0}".format(err))
+    try:
+        text = _render_report_md(memo, report)
+    except ValueError as err:
+        return _die("render: {0}".format(err), code=2)
+    sys.stdout.write(text)
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Cross-check report state against required invariants.
+
+    Checks (each violation → stderr line):
+      1. Hypotheses: minimum 2 entries.
+      2. Recommended approach: name resolves; hypotheses_addressed +
+         hypotheses_not_covered non-empty arrays.
+      3. Recommended approach respects memo.dimensions.unchanged_behavior:
+         if unchanged_behavior contains a token also in approach
+         description AND that token is associated with a value-flip
+         pattern, flag a violation. Lightweight check — re-uses the
+         antagonist patterns from detect_direct_conflicts against
+         unchanged_behavior vs. recommended approach rationale.
+      4. Verdict ∈ VERDICT_ENUM[mode].
+      5. Structured root cause populated when mode==bug AND
+         confidence ∈ {Confirmed, Hypothesis}: trigger +
+         root_cause_systemic present; contributing_factors ≤ 3.
+      6. Verify-step 3 sub-fields populated when any hypothesis has
+         runtime_probe_needed=true.
+      7. Summary, complexity, ≥1 approach present.
+
+    Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
+    files unreadable.
+    """
+    try:
+        memo = _load_memo(args.devforge_dir)
+        report = _load_report(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        sys.stderr.write("research_helper verify: cannot load state: {0}\n".format(err))
+        return 1
+
+    violations = []  # type: List[str]
+
+    # Check 1: ≥2 hypotheses.
+    hyps = report.get("hypotheses") or []
+    if len(hyps) < 2:
+        violations.append(
+            "hypothesis enumeration: have {0}, need at least 2".format(len(hyps))
+        )
+
+    # Check 2 + 3: recommended approach.
+    rec = report.get("recommended_approach")
+    approaches = report.get("approaches") or []
+    if rec is None:
+        violations.append("recommended_approach: unset")
+    else:
+        names = {a.get("name") for a in approaches}
+        if rec.get("name") not in names:
+            violations.append(
+                "recommended_approach.name {0!r} does not match any approach".format(
+                    rec.get("name")
+                )
+            )
+        if not rec.get("hypotheses_addressed"):
+            violations.append("recommended_approach.hypotheses_addressed: empty")
+        # Check 3: unchanged_behavior cross-check.
+        unchanged = memo.get("dimensions", {}).get("unchanged_behavior", {}).get("value") or ""
+        # Build a temporary memo-like structure for the antagonist scan:
+        # plug rationale into 'desired' slot so the existing
+        # _CONFLICT_PATTERNS catch the same antagonisms vs unchanged.
+        rationale = rec.get("rationale") or ""
+        if unchanged and rationale:
+            shadow = {
+                "dimensions": {
+                    "desired": {"value": rationale},
+                    "unchanged_behavior": {"value": unchanged},
+                }
+            }
+            for c in detect_direct_conflicts(shadow):
+                violations.append(
+                    "recommended_approach violates unchanged_behavior: {0}".format(
+                        c.get("description")
+                    )
+                )
+
+    # Check 4: verdict ∈ allowed.
+    mode = report.get("mode") or memo.get("mode")
+    verdict = report.get("verdict")
+    if not mode:
+        violations.append("mode: unset (run detect-mode)")
+    elif verdict is None:
+        violations.append("verdict: unset")
+    elif verdict not in VERDICT_ENUM[mode]:
+        violations.append(
+            "verdict {0!r} not allowed for mode {1!r} (allowed: {2})".format(
+                verdict, mode, list(VERDICT_ENUM[mode])
+            )
+        )
+
+    # Check 5: structured root cause for bug-mode + confidence ≥ Hypothesis.
+    confidence = report.get("confidence")
+    src = report.get("structured_root_cause")
+    if mode == "bug" and confidence in ("Confirmed", "Hypothesis"):
+        if src is None:
+            violations.append(
+                "structured_root_cause required for mode==bug + confidence in "
+                "{Confirmed, Hypothesis} but is null"
+            )
+        else:
+            if not src.get("trigger"):
+                violations.append("structured_root_cause.trigger: unset")
+            if not src.get("root_cause_systemic"):
+                violations.append("structured_root_cause.root_cause_systemic: unset")
+            if len(src.get("contributing_factors") or []) > 3:
+                violations.append(
+                    "structured_root_cause.contributing_factors: max 3 (have {0})".format(
+                        len(src.get("contributing_factors") or [])
+                    )
+                )
+
+    # Check 6: verify-step when any hypothesis needs runtime probe.
+    needs_probe = any(h.get("runtime_probe_needed") for h in hyps)
+    vstep = report.get("verify_step")
+    if needs_probe:
+        if vstep is None:
+            violations.append("verify_step required (a hypothesis needs runtime probe) but unset")
+        else:
+            for sub in ("probe", "reproduction", "discriminator"):
+                if not vstep.get(sub):
+                    violations.append("verify_step.{0}: unset".format(sub))
+
+    # Check 7: minimum scaffolding present.
+    if not report.get("summary"):
+        violations.append("summary: unset")
+    if report.get("complexity") is None:
+        violations.append("complexity: unset")
+    if not approaches:
+        violations.append("approaches: empty")
+
+    if violations:
+        for v in violations:
+            sys.stderr.write("research_helper verify: {0}\n".format(v))
+        return 2
+    return 0
+
+
+def cmd_summary(args: argparse.Namespace) -> int:
+    """Read-only stdout summary across both state files."""
+    try:
+        memo = _load_memo(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("summary: cannot load memo: {0}".format(err), code=1)
+    try:
+        report = _load_report(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("summary: cannot load report: {0}".format(err), code=1)
+
+    state_map, clear, partial, missing = _compute_coverage(memo)
+    lines = []  # type: List[str]
+    lines.append("Phase 0 (memo):")
+    lines.append("  mode: {0}".format(memo.get("mode") or "(unset)"))
+    lines.append("  topic_slug: {0}".format(memo.get("topic_slug") or "(unset)"))
+    for d in RUBRIC_DIMENSIONS:
+        rec = memo.get("dimensions", {}).get(d, {})
+        val = rec.get("value") or "(unset)"
+        st = rec.get("state") or RUBRIC_STATE_DEFAULT
+        turns = rec.get("turns", 0)
+        lines.append("  {0}: state={1} turns={2} value={3!r}".format(d, st, turns, val[:80]))
+    lines.append("  coverage: Clear={0} Partial={1} Missing={2}".format(clear, partial, missing))
+    lines.append("  gaps: {0}".format(len(memo.get("gaps", []))))
+    lines.append("  conflicts: {0}".format(len(memo.get("conflicts", []))))
+    lines.append("  override_recorded: {0}".format(memo.get("override_recorded", False)))
+
+    lines.append("")
+    lines.append("Phase 1+2 (report):")
+    lines.append("  mode: {0}".format(report.get("mode") or "(unset)"))
+    lines.append("  verdict: {0}".format(report.get("verdict") or "(unset)"))
+    lines.append("  confidence: {0}".format(report.get("confidence") or "(unset)"))
+    lines.append("  findings: {0}".format(len(report.get("findings", []))))
+    lines.append("  hypotheses: {0}".format(len(report.get("hypotheses", []))))
+    lines.append("  approaches: {0}".format(len(report.get("approaches", []))))
+    lines.append("  recommended_approach: {0}".format(
+        (report.get("recommended_approach") or {}).get("name") or "(unset)"
+    ))
+    lines.append("  structured_root_cause: {0}".format(
+        "set" if report.get("structured_root_cause") else "(unset)"
+    ))
+    lines.append("  verify_step: {0}".format("set" if report.get("verify_step") else "(unset)"))
+    lines.append("  next_step_text: {0}".format("set" if report.get("next_step_text") else "(unset)"))
+
+    sys.stdout.write("\n".join(lines) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

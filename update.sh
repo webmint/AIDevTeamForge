@@ -805,7 +805,8 @@ done
 # ── Execute: re-emit promoted dir-shaped commands ──────────────────────────
 # manifest.json's mergeFiles + templateOwned cover flat command files only.
 # Promoted dir-shaped commands (init-forge, onboard, generate-docs,
-# constitute) live at src/commands/<name>/main.md + references/ and are
+# configure, constitute, research) live at src/commands/<name>/main.md +
+# (optional) references/ and are
 # emitted to .claude/commands/<name>.md by scripts/emitters/claude.py.
 # Without re-running the emitter, edits to dir-shaped command sources never
 # propagate to existing targets — install.sh emits them once, update.sh
@@ -819,7 +820,7 @@ if [ -n "$PYTHON3_CMD" ]; then
   if $PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" \
        --src "$TEMPLATE_DIR/src" \
        --target "$TARGET_DIR" >/dev/null 2>&1; then
-    added "Re-emitted promoted commands (init-forge, onboard, generate-docs, constitute)"
+    added "Re-emitted promoted commands (init-forge, onboard, generate-docs, configure, constitute, research)"
   else
     warn "Promoted-command re-emit failed — dir-shaped commands may be stale"
   fi
@@ -835,6 +836,7 @@ added "Version marker updated: $TEMPLATE_VERSION"
 header "Update complete"
 info "Updated from ${BOLD}$TARGET_VERSION${NC} → ${BOLD}$TEMPLATE_VERSION${NC}"
 info "Run 'git diff' in your project to review all changes."
+info "CBM sync: SessionStart hook (cbm-sync-session-start) compares .devforge/cbm-last-indexed-sha to parent HEAD on every session boot and prompts Claude to call detect_changes / index_repository when stale."
 
 # Check for major version bump and suggest migration guide
 if [ "$TARGET_VERSION" != "(unknown)" ]; then
