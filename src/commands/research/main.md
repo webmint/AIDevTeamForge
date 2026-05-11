@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /research — Codebase Research
 
-`/research` is invoked after the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It clarifies a vague bug or enhancement input into a structured symptom memo, then runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and saves the rendered report to `research/YYYY-MM-DD-<topic-slug>.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread.
+`/research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and saves the rendered report to `research/YYYY-MM-DD-<topic-slug>.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any investigation fires.
 
 Usage: `/research "<topic>"` (e.g. `/research "items not sorted in admin products view"` or `/research "make export faster on large datasets"`).
 
