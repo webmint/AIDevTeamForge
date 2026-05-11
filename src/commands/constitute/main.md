@@ -272,10 +272,14 @@ For every section in Sections 2, 3, 5, 6 (the rule-bearing sections with numbere
     --number <N.M> --title "<title>" \
     [--tag <universal|project-specific|greenfield-only>] \
     [--description "<one-sentence opener>"]
+# add-section --tag is section_tag enum (3 values); does NOT accept
+# 'extracted' or 'enforced' — those belong to add-rule's rule_tag.
+# A section extracted from this codebase carries --tag project-specific.
 
 .devforge/lib/constitute_helper add-rule \
     --section <N.M> --tag <extracted|enforced|universal|project-specific> \
     --text "<rule text>"
+# add-rule --tag is rule_tag enum (4 values; required).
 # repeat per rule
 
 .devforge/lib/constitute_helper add-table \

@@ -17,6 +17,13 @@ The helper's `_find_section` does first-match across the four section_array buck
 
 ## Tag distribution
 
+**Two distinct enums — DO NOT confuse:**
+
+- **`section_tag`** (used by `add-section --tag`): `{universal, project-specific, greenfield-only}`. Optional. Describes the section's audience scope — universal sections apply to every project; project-specific sections describe THIS project's customisations; greenfield-only is reserved for Section 7. **Does NOT include `extracted` or `enforced`.** A section extracted from this codebase carries `--tag project-specific` (because it describes THIS project), NOT `--tag extracted`.
+- **`rule_tag`** (used by `add-rule --tag` + `add-pattern-rule --tag`): `{extracted, enforced, universal, project-specific}`. REQUIRED. Describes the rule's provenance / authority. The 4-value enum below is the rule_tag rubric.
+
+Common LLM confusion: passing a rule_tag value to `add-section --tag`. The helper rejects with `section_tag: invalid value 'extracted'` — re-emit with `project-specific` (the section_tag analog of the rule_tag `extracted`).
+
 The `rule.tag` enum is `{extracted, enforced, universal, project-specific}`. Decision rubric:
 
 - **`extracted`** — rule is directly cited from the project's documentation (`docs/architecture.md`, `docs/glossary.md`, etc.). Use this when the rule reads as a paraphrase of source documentation. Default for most Section 2 + Section 5 rules.
