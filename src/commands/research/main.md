@@ -63,7 +63,7 @@ If `$ARGUMENTS` is non-empty, treat it as the topic. If empty, ask the user via 
 
 `reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`.
 
-Idempotency note: `reset-memo` + `reset-report` run only here at Phase 0 start. On resume (kill-and-restart), do NOT re-reset — see `## Resume` at the end of this spec.
+Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/research-state.json` + `.devforge/research-report.json` are overwritten with fresh defaults. `/research` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
 
 ## Phase 1 — Symptom clarification (rubric Q&A)
 
@@ -138,7 +138,7 @@ For each of the 6 dimensions, in highest-uncertainty-first order:
    - `mode-flip` — symptom signaled bug-shape, the new answer signals enhancement-shape (or vice versa). Ask via AskUserQuestion `"Treat this as a bug or an enhancement?"` with options `["bug", "enhancement"]`, then call `detect-mode --override <choice>`.
    - `none` — no drift; advance to the next dimension.
 
-   Direct contradictions are persisted by the helper in `memo.conflicts` (step 3 above). Drift, refinement, and mode-flip classifications live in the orchestrator's working memory only — they are not written to `memo.conflicts` by the helper, and the orchestrator must carry them across turns by reading the prior assistant message on resume.
+   Direct contradictions are persisted by the helper in `memo.conflicts` (step 3 above). Drift, refinement, and mode-flip classifications live in the orchestrator's working memory only — they are not written to `memo.conflicts` by the helper, and the orchestrator must carry them across turns within the same `/research` run by reading prior assistant messages in the conversation.
 
 5. **Advance.** Pick the next highest-uncertainty dimension and return to step 1.
 
@@ -198,7 +198,7 @@ Phase 2 runs in the main thread — NO subagent dispatch. Orchestrator-inline ke
 
 Before any CBM call, surface the estimated CBM call count + token cost based on `affected_area`. Rough rule of thumb: one-package scope ≈ 15-30 CBM calls; feature-wide ≈ 30-60 calls; cross-cutting ≈ 60-120 calls. Token cost is bounded — orchestrator-inline reuses the existing session context, no fresh subagent boot.
 
-Ask via AskUserQuestion `"Investigation will scan roughly <N> CBM calls. Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled; .devforge/research-state.json preserved — re-run /research to resume.") into the user-facing message and end the turn. On `proceed`: continue.
+Ask via AskUserQuestion `"Investigation will scan roughly <N> CBM calls. Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled. Re-run /research from scratch when ready — prior state will be overwritten.") into the user-facing message and end the turn. On `proceed`: continue.
 
 ### Phase 2.2 — Read docs layer first
 
@@ -289,7 +289,7 @@ If any hypothesis carries `runtime_probe_needed=yes`, set the verify step (all t
     --discriminator "<if X → H_n confirmed; if Y → H_m confirmed>"
 ```
 
-Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string), retry up to 3 times. On the 4th failure, copy stderr VERBATIM to the user and end the turn; user must re-run `/research` to retry from the saved memo state.
+Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string), retry up to 3 times. On the 4th failure, copy stderr VERBATIM to the user and end the turn; user must re-run `/research` from scratch — prior partial state will be overwritten.
 
 ## Phase 3 — Report drafting + render
 
@@ -373,7 +373,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 
 Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
 
-On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` to repair from saved state.
+On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` from scratch (all prior state will be overwritten).
 
 ### Render
 
@@ -403,7 +403,7 @@ Write the rendered text captured in Phase 3 (the same bytes printed there) to th
 
 ### On skip
 
-The rendered report stays in the assistant message only. No file is written. `.devforge/research-state.json` and `.devforge/research-report.json` are preserved on disk — the user can re-run `/research` to resume from saved state.
+The rendered report stays in the assistant message only. No file is written. `.devforge/research-state.json` and `.devforge/research-report.json` remain on disk until the next `/research` invocation overwrites them.
 
 ### Closing message
 
@@ -411,34 +411,4 @@ If a save happened AND the verdict is in the proceeding-set, the rendered report
 
 If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/research is done. Open <path> to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix."`
 
-If the user chose `skip`, tell the user: `"/research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state — re-run /research to resume."`
-
-## Resume
-
-`/research` supports kill-and-resume. If the user invokes `/research` again before completing a prior run, the prior state lives in `.devforge/research-state.json` + `.devforge/research-report.json`.
-
-Resume flow on re-invocation:
-
-1. Run Phase 0.1 + 0.2 preflight (always — predecessor artefacts may have changed).
-2. Read prior state:
-
-   ```bash
-   .devforge/lib/research_helper read-memo
-   .devforge/lib/research_helper read-report
-   ```
-
-3. Inspect `report.topic` (the canonical topic field; helper auto-derives `memo.topic_slug` from it): if it matches the new `$ARGUMENTS` (or no argument given), resume. If it differs, ask via AskUserQuestion `"Prior research on '<prior topic>' is in progress. Resume it or start fresh?"` with options `["resume", "start-fresh"]`. On `start-fresh`: run Phase 0.3 reset; on `resume`: skip Phase 0.3.
-
-4. Check coverage to find resume point:
-
-   ```bash
-   .devforge/lib/research_helper symptom-coverage
-   ```
-
-   If any dimension has state != `Clear` AND `memo.override_recorded` is not true → resume Phase 1 at the first such dimension.
-
-   If memo is finalized (all `Clear` or `override_recorded=true`) AND any required Phase 2 setter is missing → resume Phase 2. Inspect `report` JSON for the first unset section: findings empty → start at Phase 2.1 cost gate; findings present but `hypotheses` empty or `root_cause_hypothesis`/`confidence` unset → resume Phase 2.6 at the first missing setter; hypotheses and root-cause set but recommended approach missing → start at Phase 3 compose.
-
-   If memo + report are both populated → run `verify`; on pass, proceed directly to Phase 3's `render` + Phase 4 save. On non-zero `verify`, repair the cited violation per Phase 3's verify-failure handling.
-
-Resume never re-runs `reset-memo` / `reset-report` — those are Phase 0.3 only.
+If the user chose `skip`, tell the user: `"/research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /research invocation."`
