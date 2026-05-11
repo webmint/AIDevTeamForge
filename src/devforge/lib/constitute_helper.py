@@ -2118,6 +2118,38 @@ def _collect_citation_texts(state: dict) -> "List[str]":
     return texts
 
 
+def _resolve_effective_root(
+    install_root: "Union[str, os.PathLike[str]]",
+    init_yaml_path: "Optional[Path]",
+) -> "Optional[Path]":
+    """Return wrapper-mode effective root, or None for standalone.
+
+    Reads init.yaml; if workspace_mode == "wrapper" AND project_root is set
+    (and != "."), return install_root / project_root. Otherwise return None
+    (standalone — citation resolution uses install_root directly).
+
+    Wrapper-mode quirk: docs/architecture.md citations are paths inside the
+    inner project (e.g., "BLoC.ts"), but `_count_citations` resolves against
+    install_root (the wrapper). Without the project_root prefix every
+    inner-project citation fails the existence check. This fn surfaces the
+    wrapper effective root so the caller can try BOTH install_root AND
+    effective_root before counting an unresolved.
+    """
+    if init_yaml_path is None or not Path(init_yaml_path).exists():
+        return None
+    try:
+        text = Path(init_yaml_path).read_text(encoding="utf-8")
+        state = init_helper.parse_yaml(text)
+    except Exception:
+        return None
+    if state.get("workspace_mode") != "wrapper":
+        return None
+    project_root = state.get("project_root") or ""
+    if not project_root or project_root == ".":
+        return None
+    return Path(install_root) / project_root
+
+
 def _build_package_name_map(init_yaml_path: "Optional[Path]") -> "Dict[str, str]":
     """Build {package_name: path} from init.yaml packages_detected list.
 
@@ -2154,6 +2186,10 @@ def _count_citations(
     install_root_path = Path(install_root)
     init_yaml_path = Path(devforge_dir) / init_helper.OUTPUT_FILE_NAME
     pkg_map = _build_package_name_map(init_yaml_path)
+    # Wrapper-mode effective root (None in standalone). When non-None, citation
+    # tokens citing inner-project paths (e.g., "BLoC.ts" extracted from
+    # docs/architecture.md) resolve relative to this root, not the wrapper.
+    effective_root = _resolve_effective_root(install_root, init_yaml_path)
 
     texts = _collect_citation_texts(state)
     all_tokens = []  # type: List[str]
@@ -2174,23 +2210,59 @@ def _count_citations(
     unresolved = 0
     failed_items = []  # type: List[str]
 
+    def _try_resolve(token):
+        # Try install_root first (works for standalone + for files at wrapper
+        # root like docs/architecture.md). Fall through to effective_root
+        # (wrapper-mode inner-project paths).
+        if (install_root_path / token).exists():
+            return True
+        if effective_root is not None and (effective_root / token).exists():
+            return True
+        # Package-name lookup against pkg_map. Try both roots for the package
+        # path (pkg_map values are relative to install_root in standalone but
+        # relative to the wrapper-root context in wrapper mode).
+        token_name = Path(token).name
+        if token_name in pkg_map:
+            if (install_root_path / pkg_map[token_name]).exists():
+                return True
+            if effective_root is not None and (effective_root / pkg_map[token_name]).exists():
+                return True
+        # Recursive find within effective_root (wrapper) — the citation
+        # `BLoC.ts` may be at packages/pkg-cse-common/src/classes/BLoC.ts,
+        # `routes/index.ts` at apps/app-web/src/router/routes/index.ts, etc.
+        # Neither install_root nor effective_root resolves bare basenames or
+        # partial sub-paths without the full dirname. Walk the tree and accept
+        # any match. rglob handles both single-segment and multi-segment
+        # patterns ("routes/index.ts" matches via `**/routes/index.ts`).
+        if effective_root is not None:
+            try:
+                for found in effective_root.rglob(token):
+                    if found.exists():
+                        return True
+            except (OSError, ValueError):
+                pass
+            # Wildcard suffix fallback for bare basenames. `Repository.ts` may
+            # be a pattern reference that matches concrete files like
+            # `CoreCatalogRepository.ts`. Only try this for single-segment
+            # tokens (no `/`) to avoid over-resolving multi-segment paths
+            # (e.g., `tasks/README.md` should not match `*tasks/README.md`).
+            if "/" not in token:
+                try:
+                    for found in effective_root.rglob("*" + token):
+                        if found.exists():
+                            return True
+                except (OSError, ValueError):
+                    pass
+        return False
+
     seen = set()  # type: set
     for token in all_tokens:
         if token in seen:
             continue
         seen.add(token)
-        # Check direct path relative to install_root.
-        candidate = install_root_path / token
-        if candidate.exists():
+        if _try_resolve(token):
             resolved += 1
             continue
-        # Check package-name lookup.
-        token_name = Path(token).name
-        if token_name in pkg_map:
-            pkg_path = install_root_path / pkg_map[token_name]
-            if pkg_path.exists():
-                resolved += 1
-                continue
         unresolved += 1
         failed_items.append("citation unresolved: {0!r}".format(token))
 

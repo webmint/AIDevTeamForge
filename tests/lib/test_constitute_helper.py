@@ -2859,6 +2859,43 @@ class TestStep4CitationValidity(unittest.TestCase):
             self.assertEqual(unresolved, 0)
             self.assertAlmostEqual(score, 1.0)
 
+    def test_citation_wrapper_mode_inner_project_paths_resolve(self):
+        """Wrapper-mode: citations resolve relative to install_root/project_root, not install_root."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            # Wrapper layout: install_root/db-cse-ui-strata/packages/.../BLoC.ts
+            inner_project = install_root / "db-cse-ui-strata"
+            pkg_dir = inner_project / "packages" / "pkg-cse-common" / "src" / "classes"
+            pkg_dir.mkdir(parents=True)
+            (pkg_dir / "BLoC.ts").write_text("export class BLoC {}", encoding="utf-8")
+
+            devforge = install_root / ".devforge"
+            devforge.mkdir()
+            # init.yaml declares wrapper mode + project_root.
+            (devforge / "init.yaml").write_text(
+                "workspace_mode: wrapper\n"
+                "project_root: db-cse-ui-strata\n"
+                "project_state: brownfield\n"
+                "default_branch: main\n"
+                "packages_detected: []\n",
+                encoding="utf-8",
+            )
+            # Rule cites BLoC.ts as a bare basename (typical of architecture.md prose).
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "Every BLoC extends base BLoC.ts pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge,
+            )
+            # Without wrapper-aware resolution, BLoC.ts would be unresolved
+            # (install_root/BLoC.ts doesn't exist). With it, rglob inside
+            # install_root/db-cse-ui-strata finds the file.
+            self.assertEqual(resolved, 1, "expected wrapper-mode rglob to resolve BLoC.ts; failed={0}".format(failed))
+            self.assertEqual(unresolved, 0)
+
     def test_citation_annotation_included_in_scan(self):
         """code_example.annotation IS scanned for path tokens (INCLUDE behavior)."""
         with tempfile.TemporaryDirectory() as tmp:
