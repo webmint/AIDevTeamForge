@@ -73,6 +73,8 @@ A rule may legitimately fit more than one tag (an extracted rule that is also en
 
 **Tag distribution typical for Section 3**: mix of `enforced` (tsconfig strict, ESLint strictness rules), `extracted` (project naming conventions documented in architecture.md), and `universal` (function length defaults).
 
+**CBM-first protocol rule (Section 3 Documentation sub-section)**: when `.claude/settings.json` exists with the AIDevTeamForge CBM hooks (`cbm-code-discovery-gate`, `bash-ban-raw-tools`, `cbm-mcp-marker`, `cbm-session-reminder`), Phase 2 MUST add an `[enforced]` rule to the Documentation sub-section: structural code queries route through `codebase-memory-mcp` tools (`search_graph` / `trace_path` / `get_code_snippet` / `search_code` / `query_graph`) — NOT raw `Read` / `Grep` / `Glob` over source files. The hooks block raw discovery at `PreToolUse` on the first match per session. Optional companion `[universal]` rule: `docs/` is LLM-context-source first, dev-greppable second; concern prose lives in `docs/<pkg>/<concern>/index.md`; structural metadata stays in CBM (queried live), never embedded in `docs/`. Phase 2 detects CBM-hook presence via `test -f .claude/settings.json` + grep for the hook script names; absence → skip both rules.
+
 ## Section 4 — Patterns & Anti-Patterns
 
 **Shape**: 6 fixed buckets via `add-pattern-rule`. No sub-section numbering, no tables, no code examples.
