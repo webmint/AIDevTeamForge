@@ -491,7 +491,7 @@ Defaults `--top-n 80` and `--bm25-threshold -25` match the helper's argparse def
 
 Before composing: count entries in the bundles JSON from Step B.1. If `len(bundles) < 30`, surface the limitation to the user (suggested message: "Project glossary requires ≥30 candidate terms; only N found after noise filter — project may be too small for a project-tier glossary") and stop Phase B. Do NOT compose entries or call `set-glossary-entries` — retries cannot fix a below-floor bundle pool.
 
-For each bundle, draft a `{term, definition, related_terms}` object. The orchestrator (this thread) reads each bundle inline and emits the array; no Task-tool dispatch.
+For each bundle, draft a `{term, definition, related_terms, aliases_to_avoid?}` object. `aliases_to_avoid` is optional (default `[]`). The orchestrator (this thread) reads each bundle inline and emits the array; no Task-tool dispatch.
 
 **Definition drafting** — seed the prose from the bundle's `doc_context` and `code_anchor.snippet` (when present); aim for 1–2 sentences. The helper's `_validate_entries` enforces the following hard rules (exit 2 + stderr on any failure):
 
@@ -505,6 +505,14 @@ For each bundle, draft a `{term, definition, related_terms}` object. The orchest
 - Each `related_terms` value MUST appear as a `term` in some other entry in the same array — dangling references are rejected
 - No self-reference (the entry's own term must not appear in its own `related_terms`)
 
+**`aliases_to_avoid` rules** (optional, default `[]`):
+
+- Banned synonyms — alternative names downstream agents must NOT invent for this canonical concept. Seed from variants spotted in the bundle's `doc_context` or from orchestrator judgement about plausible misnamings (e.g., `OrderManager` / `OrderHandler` when the canonical term is `Order`).
+- Each value MUST NOT equal the entry's own `term` (case-insensitive) — self-reference is rejected
+- Each value MUST NOT equal the canonical `term` of any other entry — a banned synonym in entry A cannot be the canonical name of entry B
+- Case-insensitive duplicates within the list are rejected
+- Omit the field or pass `[]` when no synonyms apply
+
 **Thin-context guard:** if a bundle's `doc_context` totals fewer than 2 sentences, the orchestrator must NOT fabricate a definition (regardless of whether `code_anchor.snippet` is present). Emit the entry with `"definition": "[TODO: human-define]"` instead. The literal `[TODO: human-define]` string passes the validator (non-empty, ≤280 chars, single paragraph) — surface these terms in Phase 6's report so a human can fill them post-run.
 
 **Hard floor / ceiling:** the helper enforces `30 ≤ N ≤ 150` entries. Above 150, drop the lowest-ranked candidates from the bundles list before composing; the bundles are pre-sorted by combined rank.
@@ -515,10 +523,10 @@ For each bundle, draft a `{term, definition, related_terms}` object. The orchest
 ./.devforge/lib/generate_docs_helper set-glossary-entries \
     --devforge-dir .devforge \
     --bundles-file /tmp/glossary-bundles.json \
-    --entries '<orchestrator-composed [{term, definition, related_terms}] JSON array>'
+    --entries '<orchestrator-composed [{term, definition, related_terms, aliases_to_avoid?}] JSON array>'
 ```
 
-The helper validates the entries (count, definition shape, term-uniqueness case-insensitive, bundle match per term, cite-path existence, prose-only ≥2 cite_md_paths, code-anchored / fuzzy-anchored requires non-empty `qn` + live `get_code_snippet` resolution, `related_terms` reference closure) and on success renders `docs/glossary.md` atomically.
+The helper validates the entries (count, definition shape, term-uniqueness case-insensitive, bundle match per term, cite-path existence, prose-only ≥2 cite_md_paths, code-anchored / fuzzy-anchored requires non-empty `qn` + live `get_code_snippet` resolution, `related_terms` reference closure, `aliases_to_avoid` element shape + self-reference guard + in-list uniqueness + cross-entry collision guard) and on success renders `docs/glossary.md` atomically.
 
 **Output shape** (helper-owned):
 
@@ -530,6 +538,7 @@ The helper validates the entries (count, definition shape, term-uniqueness case-
   - `- **Defined**: \`qn:line\`` line — omitted for prose-only; gets `(fuzzy)` suffix for fuzzy-anchored
   - `- **Used in**: \`path1\`, \`path2\`, \`path3\`` line — capped at 3 inline; if more, append ` (and N others)` with the overflow count
   - `- **Related**: term1, term2` line — omitted if `related_terms` is empty
+  - `- **Aliases to AVOID**: synonym1, synonym2` line — omitted if `aliases_to_avoid` is empty/absent
 
 Helper stdout on success is the rendered path (`docs/glossary.md`).
 

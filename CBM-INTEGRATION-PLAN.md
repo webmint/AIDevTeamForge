@@ -1,9 +1,13 @@
 # Plan F — Multi-tier docs/ + CBM as structural-query layer
 
-**Status (2026-05-08)**: Pipeline shipped + smoke-validated. NOT COMPLETE. F.0 / F.1 / F.2 / F.3 / F.4 / F.5 / F.7 / F.8 / F.9 / F.10 + 3a (split-dispatch v0) all shipped + V7 split-dispatch smoke + full-scale testForge20 run produced 148 docs across all 3 tiers with 0 unrecovered failures. Open work remaining:
-- **Project-tier shape gap** — current `docs/overview.md` + `docs/architecture.md` produce 2 sections each (Purpose+Packages / Layers+Cross-Cuts). cse-strata-ws-forge's curated equivalents are 9-10 sections each (Tech Stack, Project Structure, Entry Points, Key Commands, Module Map, Cross-Module Deps, Routes, Navigation Guards, Test Files for overview; Patterns, Conventions, Cross-Cuts with snippets, Dependency Direction Rules, Dependency Overview mermaid for architecture). Coverage ~5-10 % of bar. Schema-anchored expansion locked in memory `project_schema_anchored_generate_docs` (2026-04-30 ProjectIndexDoc + ArchitectureDoc + PackageDoc schemas). See `NEXT-SESSION-DUMP.md` Track 4 for full scope.
-- **F.11** — CBM-first enforcement hooks (4 sgaabdu4-style hooks, placeholder only).
-- **Incremental smoke** — single-file edit → 1 sub_concern + 1 parent regen — not exercised on testForge20 yet.
+**Status (2026-05-09)**: COMPLETE. All open work from 2026-05-08 closed:
+- **Project-tier shape gap** — closed via Track 4 (commits `9577705` / `36076a2` / `70b547e`); shipped 11-section `docs/overview.md` + 8-section `docs/architecture.md` matching cse-strata-ws-forge bar.
+- **F.11** — closed via 4 enforcement hooks (commits `65b0a24` / `e0ca9bb` / `cdddf76`) at `src/hooks/`; install.sh wires them into target `.claude/hooks/`.
+- **Incremental smoke** — accepted as deferred; not blocking COMPLETE marker.
+
+Plan retired. Body below preserved verbatim for design rationale (docs+CBM split, bottom-up phase order, helper-owns-shape integration).
+
+**Status (2026-05-08, historical)**: Pipeline shipped + smoke-validated. NOT COMPLETE. F.0 / F.1 / F.2 / F.3 / F.4 / F.5 / F.7 / F.8 / F.9 / F.10 + 3a (split-dispatch v0) all shipped + V7 split-dispatch smoke + full-scale testForge20 run produced 148 docs across all 3 tiers with 0 unrecovered failures.
 
 Concern + package tiers ARE production-ready at current shape; project-tier needs the Track 4 expansion before Plan F can be marked COMPLETE.
 

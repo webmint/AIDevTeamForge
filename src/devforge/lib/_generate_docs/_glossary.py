@@ -673,6 +673,48 @@ def _validate_entries(
                     2,
                 )
 
+        # aliases_to_avoid: optional; default = [].
+        aliases_raw = entry.get("aliases_to_avoid")
+        if aliases_raw is None:
+            aliases_raw = []
+        if not isinstance(aliases_raw, list):
+            return (
+                "set-glossary-entries: entry[{0}] ({1}): aliases_to_avoid must be a list".format(
+                    i, term
+                ),
+                2,
+            )
+        alias_keys_seen: List[str] = []
+        for alias in aliases_raw:
+            if not isinstance(alias, str) or not alias.strip():
+                return (
+                    "set-glossary-entries: entry[{0}] ({1}): aliases_to_avoid element "
+                    "must be a non-empty string, got {2!r}".format(i, term, alias),
+                    2,
+                )
+            alias_lower = alias.strip().lower()
+            if alias_lower == term_lower:
+                return (
+                    "set-glossary-entries: entry[{0}] ({1}): aliases_to_avoid must not "
+                    "include the term itself".format(i, term),
+                    2,
+                )
+            if alias_lower in alias_keys_seen:
+                return (
+                    "set-glossary-entries: entry[{0}] ({1}): aliases_to_avoid contains "
+                    "duplicate (case-insensitive): '{2}'".format(i, term, alias.strip()),
+                    2,
+                )
+            alias_keys_seen.append(alias_lower)
+            if alias_lower in all_term_keys and alias_lower != term_lower:
+                return (
+                    "set-glossary-entries: entry[{0}] ({1}): aliases_to_avoid entry "
+                    "'{2}' is the canonical term of another entry".format(
+                        i, term, alias.strip()
+                    ),
+                    2,
+                )
+
     return None, 0
 
 
@@ -768,6 +810,14 @@ def _render_glossary(
             escaped_related = [_escape_md_inline(rt) for rt in related_terms]
             lines.append(
                 "- **Related**: {0}".format(", ".join(escaped_related))
+            )
+
+        # "Aliases to AVOID" line (omit if empty/absent).
+        aliases_to_avoid: List[str] = entry.get("aliases_to_avoid") or []
+        if aliases_to_avoid:
+            escaped_aliases = [_escape_md_inline(a) for a in aliases_to_avoid]
+            lines.append(
+                "- **Aliases to AVOID**: {0}".format(", ".join(escaped_aliases))
             )
 
         lines.append("")

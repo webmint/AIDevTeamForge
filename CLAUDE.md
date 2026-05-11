@@ -8,10 +8,7 @@ When picking up work mid-stream, check the repo root for active plan files. **Re
 
 Currently active:
 
-- ~~**`ARCHITECTURE-PIVOT-PLAN.md`**~~ — COMPLETE 2026-05-11. All 8 Steps DONE; 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) shipped. Plan retired; retained for historical reference.
-- ~~**`CONFIGURE-PLAN.md`**~~ — DONE 2026-05-10. /configure shipped end-to-end: 28 fields persisted, 36-key project-config.json rendered, agent pruning live, template substitution clean. Plan retained for historical reference. Steps 1-8 all complete; Step 6 follow-ups (JSON-array setter, case-insensitive enum, dash frontmatter parser, framework_hint helper, install.sh stray guard) shipped as the feature settled. Re-read only if maintaining /configure or comparing /constitute design (which mirrors the same helper-owns-shape pattern).
-- ~~**`CONSTITUTE-PLAN.md`**~~ — DONE 2026-05-11. /constitute shipped end-to-end: 2710-line `constitute_helper.py` with 15 subcmds (4 read-* + 10 setters + render + verify + validate + summary); 201 tests; 446-line spec at `src/commands/constitute/main.md` + 2 reference docs. State = JSON (`.devforge/constitute.json`); 4-dim validate framework (slot_fill + citation + code_syntax + rule_tag, composite ≥0.95). testForge20 helper smoke test clean (composite 1.0). Re-read only if maintaining /constitute. Empirical bugs preempted from day one per CONFIGURE-PLAN lessons.
-- **`CODEX-REMOVAL-PLAN.md`** — iterative removal of Codex runtime support (in progress on `feature/codex-remove`). Read it first if working on that branch, if the user mentions codex-removal / Codex drop / Claude-native cleanup, or if `git tag -l 'codex-remove/*'` shows in-progress checkpoints.
+- ~~`ARCHITECTURE-PIVOT-PLAN.md`, `CONFIGURE-PLAN.md`, `CONSTITUTE-PLAN.md`~~ — all DONE 2026-05-10/11. 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) shipped. Re-read only if maintaining the named feature.
 
 ## Conventions for ongoing work
 
@@ -23,11 +20,8 @@ Currently active:
 
 ## Branch state
 
-- `main` — current trunk (will be archived when develop-2.0 lands)
-- `feature/onboard-hybrid` — R7 7-gate hybrid + R8 Claude reference state (frozen)
-- `feature/codex-remove` — current work, removing Codex runtime support
-- `archive/r11-investigation` — tag on `feature/onboard-memo-first`, preserves R9+R10 Codex hardening as historical artifact (do NOT cherry-pick from this; it was Codex-specific)
-- R-run evidence preserved in `testParity` and `testParity-codex` linked-worktree branches (`claude-parity-run4/run5`, `codex-parity-run4/run5`)
+- `main` — trunk.
+- `develop-2.0-init` — current work branch (4-command sequence + all post-pivot work).
 
 ## Where to find what
 
@@ -36,7 +30,7 @@ Currently active:
 | Forge architecture decisions | `DEVELOPMENT-STATUS.md`, `CHANGELOG.md` |
 | Spec sources | `src/commands/`, `src/agents/`, `src/files/` |
 | Generators / emitters | `scripts/emitters/`, `scripts/generate*.py`, `scripts/generate.sh` |
-| Runtime helpers (wizard + onboard) | `src/devforge/lib/{detect_report,wizard_render,onboard_helper}.py` |
+| Runtime helpers (4-command sequence) | `src/devforge/lib/{init_helper,configure_helper,constitute_helper}.py` + `src/devforge/lib/_generate_docs/` |
 | Helper review-and-fix pipeline | `/review-helper <path>` — see `.claude/commands/review-helper.md` |
 | Install / update logic | `install.sh`, `update.sh` |
 | Investigation rationale | Obsidian: `20 Projects/AIDevTeamForge/` |
@@ -130,7 +124,7 @@ These rules apply to all framework work — not just audits. Audit findings are 
 
 ### Test-immediately-after-write for python helpers
 
-Every python function in `scripts/lib/*.py` (or any helper script) must have a test written + actually run in the same turn as the function. No exceptions for size, complexity, "trivial" functions, or "covered by caller test" — every function gets its own test that runs. "I think this passes" is not verification. Tests must use input shapes matching what the function will receive in production — for parsers reading another tool's output, round-trip via the real producer (e.g., `detect_report compose` → file → `wizard_render` parser), not hand-authored fixtures.
+Every python function in `scripts/lib/*.py` (or any helper script) must have a test written + actually run in the same turn as the function. No exceptions for size, complexity, "trivial" functions, or "covered by caller test" — every function gets its own test that runs. "I think this passes" is not verification. Tests must use input shapes matching what the function will receive in production — for parsers reading another tool's output, round-trip via the real producer (e.g., `configure_helper render-config` → file → `constitute_helper read-configure` parser), not hand-authored fixtures.
 
 ### Sentence-level hallucination check for spec docs
 
@@ -150,4 +144,4 @@ For files that ship into a target project's `.claude/` directory or describe Cla
 
 **Why agent-only, not "agent OR docs":** an OR clause creates an escape hatch — I can claim "I checked the docs" without an observable verification step. Agent invocation is a real tool call that leaves a trace; claimed-but-unperformed doc checks don't. Routing through the agent makes the verification observable and harder to skip silently.
 
-Framework-internal conventions (per-project `.devforge/`, `wizard_render` API, etc.) live in this CLAUDE.md + spec files — those are framework-authoritative and don't need the agent. Claude-Code-integration conventions are external and require the agent per edit.
+Framework-internal conventions (per-project `.devforge/`, helper APIs like `configure_helper` / `constitute_helper`, etc.) live in this CLAUDE.md + spec files — those are framework-authoritative and don't need the agent. Claude-Code-integration conventions are external and require the agent per edit.

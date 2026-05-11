@@ -52,7 +52,9 @@ only: no graph match) with 1-2 sentence definitions and cite-back paths.
 Validator-enforced shape (term unique case-insensitive, definition ≤280 chars
 single paragraph, cite_md_paths ≥1 each on disk, code/fuzzy-anchored
 snippet must resolve via CBM, prose-only ≥2 cite_md_paths, related_terms
-must reference other entries, count 30..150). Concern-tier Purpose paragraphs
+must reference other entries, aliases_to_avoid optional list of banned
+synonyms guarded against self-reference / in-list dup / cross-entry
+collision with another entry's canonical term, count 30..150). Concern-tier Purpose paragraphs
 still carry inline term disambiguation; this file is the project-tier
 consolidation, not a replacement.
 

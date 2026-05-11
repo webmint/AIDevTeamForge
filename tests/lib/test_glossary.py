@@ -1115,5 +1115,173 @@ class CodeAnchoredCmdTests(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
+# ---------------------------------------------------------------------------
+# Group 10: aliases_to_avoid validation + render (13 cases)
+# ---------------------------------------------------------------------------
+
+
+class AliasesToAvoidValidationTests(unittest.TestCase):
+    """Validation and render tests for the optional aliases_to_avoid field."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        self.devforge.mkdir(parents=True)
+        self.n = 30
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write_bundles_file(self, bundles: List[Dict]) -> Path:
+        p = self.devforge / "bundles.json"
+        p.write_text(json.dumps(bundles, indent=2), encoding="utf-8")
+        return p
+
+    def _run(self, entries: List[Dict], bundles: List[Dict]) -> int:
+        bundles_file = self._write_bundles_file(bundles)
+        args = _make_args_set(self.devforge, entries, bundles_file)
+        with patch("_generate_docs._glossary._fetch_snippet", return_value=""):
+            return cmd_set_glossary_entries(args)
+
+    def _read_glossary(self) -> str:
+        return (self.root / "docs" / "glossary.md").read_text(encoding="utf-8")
+
+    # ---- Validation passes ----
+
+    def test_field_absent_validates_and_no_aliases_line(self):
+        """Case 31: aliases_to_avoid absent → validates + no Aliases line (backward compat)."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        # Entries have no aliases_to_avoid key at all.
+        for e in entries:
+            self.assertNotIn("aliases_to_avoid", e)
+        code = self._run(entries, bundles)
+        self.assertEqual(code, 0)
+        content = self._read_glossary()
+        self.assertNotIn("Aliases to AVOID", content)
+
+    def test_field_empty_list_validates_and_no_aliases_line(self):
+        """Case 32: aliases_to_avoid=[] → validates + no Aliases line."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = []
+        code = self._run(entries, bundles)
+        self.assertEqual(code, 0)
+        content = self._read_glossary()
+        self.assertNotIn("Aliases to AVOID", content)
+
+    def test_field_present_nonempty_validates_and_aliases_line_appears(self):
+        """Case 33: aliases_to_avoid=["OldName"] → validates + Aliases line in output."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = ["OldName"]
+        code = self._run(entries, bundles)
+        self.assertEqual(code, 0)
+        content = self._read_glossary()
+        self.assertIn("Aliases to AVOID", content)
+        self.assertIn("OldName", content)
+
+    # ---- Validation fails (exit 2) ----
+
+    def test_aliases_not_list_exit_2(self):
+        """Case 34: aliases_to_avoid is a string → exit 2."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = "OldName"
+        self.assertEqual(self._run(entries, bundles), 2)
+
+    def test_aliases_element_not_string_exit_2(self):
+        """Case 35: aliases_to_avoid element is int → exit 2."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = [42]
+        self.assertEqual(self._run(entries, bundles), 2)
+
+    def test_aliases_element_empty_after_strip_exit_2(self):
+        """Case 36: aliases_to_avoid element is "   " (blank) → exit 2."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = ["   "]
+        self.assertEqual(self._run(entries, bundles), 2)
+
+    def test_aliases_case_insensitive_duplicate_exit_2(self):
+        """Case 37: aliases_to_avoid has case-insensitive duplicate → exit 2."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = ["Foo", "FOO"]
+        self.assertEqual(self._run(entries, bundles), 2)
+
+    def test_aliases_contains_own_term_exit_2(self):
+        """Case 38: aliases_to_avoid contains the entry's own term (case-insensitive) → exit 2."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        own_term = entries[0]["term"]
+        entries[0]["aliases_to_avoid"] = [own_term.lower()]
+        self.assertEqual(self._run(entries, bundles), 2)
+
+    def test_aliases_contains_canonical_term_of_another_entry_exit_2(self):
+        """Case 39: alias in entry A matches canonical term of entry B → exit 2."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        # entry[1]'s term is a canonical term; put it as an alias of entry[0].
+        other_term = entries[1]["term"]
+        entries[0]["aliases_to_avoid"] = [other_term]
+        self.assertEqual(self._run(entries, bundles), 2)
+
+    # ---- Render output ----
+
+    def test_aliases_bullet_appears_after_related_when_both_present(self):
+        """Case 40: Both related + aliases populated → Aliases line follows Related line."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        # entries[0] refers to entries[1]; entries[1] has an alias.
+        term1 = entries[1]["term"]
+        entries[0]["related_terms"] = [term1]
+        entries[0]["aliases_to_avoid"] = ["OldAlias"]
+        code = self._run(entries, bundles)
+        self.assertEqual(code, 0)
+        content = self._read_glossary()
+        pos_related = content.index("**Related**")
+        pos_aliases = content.index("**Aliases to AVOID**")
+        self.assertLess(pos_related, pos_aliases)
+
+    def test_aliases_bullet_appears_after_used_in_when_related_absent(self):
+        """Case 41: Aliases populated, no related_terms → Aliases line follows Used-in line."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = ["SomeAlias"]
+        # related_terms is empty (default from _make_valid_entries).
+        code = self._run(entries, bundles)
+        self.assertEqual(code, 0)
+        content = self._read_glossary()
+        # Find the section for Term0 specifically.
+        pos_used_in = content.index("**Used in**")
+        pos_aliases = content.index("**Aliases to AVOID**")
+        self.assertLess(pos_used_in, pos_aliases)
+        self.assertNotIn("**Related**", content)
+
+    def test_aliases_html_escaped(self):
+        """Case 42: alias containing '<' + '>' is HTML-escaped in output."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = ["BLoC<S>"]
+        code = self._run(entries, bundles)
+        self.assertEqual(code, 0)
+        content = self._read_glossary()
+        self.assertIn("BLoC&lt;S&gt;", content)
+        self.assertNotIn("BLoC<S>", content)
+
+    def test_aliases_comma_separated_formatting(self):
+        """Case 43: multiple aliases → comma-separated in output matching Related convention."""
+        bundles = _make_valid_bundles(self.n, docs_root=self.root / "docs")
+        entries = _make_valid_entries(self.n)
+        entries[0]["aliases_to_avoid"] = ["AlphaOld", "BetaOld"]
+        code = self._run(entries, bundles)
+        self.assertEqual(code, 0)
+        content = self._read_glossary()
+        self.assertIn("AlphaOld, BetaOld", content)
+
+
 if __name__ == "__main__":
     unittest.main()
