@@ -12,7 +12,7 @@ Usage: `/research "<topic>"` (e.g. `/research "items not sorted in admin product
 
 ## Outputs of this phase
 
-- `.devforge/research-state.json` — SymptomMemo (Phase 1 state). Owned + shaped by the helper; mutated only via Phase-1 setter subcommands.
+- `.devforge/research-state.json` — SymptomMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/research-report.json` — ResearchReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
 - `<install_root>/research/YYYY-MM-DD-<topic-slug>.md` — rendered report. Helper's `render` writes to stdout; orchestrator saves it via the Phase 4 save prompt. Filename slug is auto-derived by the helper from the topic.
 
@@ -242,6 +242,31 @@ Example: primary surface is a `.sort()` at `ProductListView.vue:114` with status
 
 This step is MANDATORY when `mode == "bug"` and the primary surface is an inline expression (sort / filter / comparator / validator). For enhancement mode, sweep is OPTIONAL.
 
+### Phase 2.4b — Canonical-pattern search (MANDATORY)
+
+Before composing approaches in Phase 3, search the codebase for **existing implementations of the DESIRED behavior** — not the bug. Phase 2.3/2.4 chain finds where the bug LIVES; this step finds how the codebase ALREADY SOLVES the same problem class. Reuse beats reinvention; "Search before building" is a constitution constraint in every project.
+
+Run a project-wide `search_code` for the literal token that characterizes the fix pattern:
+
+```
+search_code(pattern="<solution-pattern literal>")
+```
+
+Example (matching the Phase 2.4 example): if the bug is "sort comparator with no alphabetical tie-breaker", the solution-pattern literal is `localeCompare` (or `sortBy`, or whatever the project's canonical secondary-sort idiom is). Result rows = candidate canonical implementations elsewhere in the codebase. For each, judge whether it really solves the same problem class (look at the surrounding comparator structure via `get_code_snippet`).
+
+Record every confirmed canonical implementation as its own `Finding` row with:
+- `--surface` = a label naming the helper / file role (e.g. "canonical sort helper", "existing localeCompare site")
+- `--file-line` = exact `file_path:line` from the `search_code` result row (per Phase 2.3 grounding rule)
+- `--relevance` = the literal phrase "canonical pattern — reusable" followed by a one-line note on what it does
+
+These findings feed Phase 3:
+- The recommended approach MUST cite the canonical pattern by exact file:line if one was found, and MUST recommend reusing it over writing a new helper. Fresh helper extraction is only justified when Phase 2.4b recorded `file_line = "(none)"` (no canonical found); in that case the `--rationale` must say so explicitly.
+- When a canonical pattern was found, the Constitution Constraints section MUST include the "Search before building" rule with the canonical helper's file:line in the impact column. When no canonical was found, omit this entry — its absence is information.
+
+If 0 canonical implementations are found (the codebase has no existing solution for this problem class): record one `Finding` with `--surface="canonical-pattern search"`, `--file-line="(none)"`, `--relevance="no canonical pattern found project-wide for <solution-pattern>; new helper extraction is justified"`. This makes the negative result explicit so a reviewer can spot a miss. Note: `"(none)"` is the only sanctioned exception to the Phase 2.3 `file:line` grounding rule — it is a sentinel for an explicitly absent result, not a missing verification.
+
+This step is MANDATORY for both bug and enhancement modes. Skipping it silently re-invents what already exists.
+
 ### Phase 2.5 — Hypothesis enumeration (MANDATORY ≥2)
 
 Enumerate at least 2 candidate root causes for the symptom. For each, write a one-line falsifier (the observation that would disprove it) and mark whether falsification needs runtime data. Single-hypothesis output is rejected by the helper's `verify` gate.
@@ -250,9 +275,9 @@ For any hypothesis whose falsifier needs runtime data (lifecycle race, framework
 
 ### Phase 2.6 — Wire findings into helper
 
-After the CBM chain + parallel-pattern sweep + hypothesis enumeration complete, call helper setters in this order. Compose values from the in-context findings; do not re-shape.
+After the CBM chain + parallel-pattern sweep + canonical-pattern search + hypothesis enumeration complete, call helper setters in this order. Compose values from the in-context findings; do not re-shape.
 
-For each finding (one per code surface that bears on the symptom — including every parallel surface from Phase 2.4):
+For each finding — one per code surface that bears on the symptom, including every parallel surface from Phase 2.4 AND every canonical-pattern row from Phase 2.4b. Apply the same `search_code` pre-verification loop to canonical rows. The `--file-line="(none)"` negative-result row from Phase 2.4b is exempt from `search_code` verification — `(none)` is the sentinel value, not a path to verify.
 
 ```bash
 .devforge/lib/research_helper record-finding \
@@ -339,6 +364,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
        --hypotheses-not-covered '["C"]'
    ```
 
+   **MANDATORY canonical-pattern citation.** If Phase 2.4b recorded any `Finding` row with `relevance` starting "canonical pattern — reusable", the `--rationale` MUST cite that pattern's `file:line` and state the recommended approach REUSES it (not reinvents). Only justify a fresh helper extraction when the canonical pattern's `file_line` was recorded as `(none)` in Phase 2.4b (no canonical found), and the `--rationale` must say so explicitly: "no canonical pattern exists project-wide; new helper justified".
+
 4. **Constitution constraints** — read `constitution.md` for rules that bear on the affected area + recommended approach. For each rule that constrains or enables the change:
 
    ```bash
@@ -346,6 +373,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
        --rule "<rule reference, e.g. '§3.2 Error Handling'>" \
        --impact "<how it constrains or enables the approach>"
    ```
+
+   **MANDATORY "Search before building" entry.** When Phase 2.4b found a canonical pattern, this section MUST include a `set-constitution-constraints` call with `--rule="Search before building"` (or the project's equivalent rule reference per `constitution.md`) and `--impact` containing the canonical pattern's `file:line` plus a one-line note that reuse beats reinvention. When no canonical was found, omit this entry — its absence is information.
 
 5. **Complexity** (3 sub-fields in a single call):
 
