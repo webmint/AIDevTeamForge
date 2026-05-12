@@ -69,6 +69,10 @@ Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, uncondit
 
 Convert the vague topic into a structured symptom memo across 6 dimensions. The helper owns the rubric; the orchestrator drives one dimension at a time, picking the highest-uncertainty dimension to ask next.
 
+**MANDATORY: never skip the rubric.** Even when `$ARGUMENTS` contains a pre-filled ticket that appears to address all 6 dimensions, ask each dimension question separately and wait for the user's answer in its own turn. Pre-filled input is a STARTING POINT for the `symptom` dimension only — never a license to auto-fill the remaining 5 in one pass. User commitment is per-dimension; that is the forcing function this phase exists for. The rubric is not optional, not advisory, not skippable based on input completeness.
+
+**MANDATORY: never fabricate a user mode.** Do not write — in any user-facing message, internal narration, or tool-call rationale — phrases like "user requested no-questions mode", "user wants free-form", "user said skip the rubric", "no-prompt mode", or any equivalent. No such mode exists. No such request is in scope. If you find yourself about to justify a shortcut by attributing intent to the user, STOP — you are rationalizing a fabrication. Run the rubric.
+
 ### Rubric dimensions
 
 | Dimension | Captures | Bug-mode example | Enhancement-mode example |
