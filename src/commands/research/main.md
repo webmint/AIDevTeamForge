@@ -222,6 +222,8 @@ Raw `Read` / `Grep` / `Glob` / `grep` / `find` / `cat` over source-file extensio
 
 Confidence calibration: 0 hits at `search_graph` alone means "no NAMED implementation"; 0 hits at `search_code` means "truly absent". Do not conflate these.
 
+**`file:line` grounding (MANDATORY).** Every `file_path:line` you will later pass to `record-finding` MUST be copied verbatim from a `search_graph` or `search_code` result row's `file_path` + `line` fields. Never derive a line number from `get_code_snippet` output — `get_code_snippet` returns a code slice whose internal lines do NOT correspond to absolute file line numbers, and the LLM will drift by ±1 to ±N. Never reconstruct a line number from prose context. If you only have a snippet and need the line, re-run `search_code` for a literal token from the snippet to recover the authoritative `file:line` row. If that re-run returns 0 hits, widen the token (try a longer substring or a different literal from the same snippet) and retry once. If still 0 hits, fall back to the original result-row `file:line` you held before calling `get_code_snippet`, and note in `--relevance` that the line could not be re-confirmed.
+
 ### Phase 2.4 — Parallel-pattern sweep (MANDATORY)
 
 After the primary surface is located, run a parallel-pattern sweep over the SAME file before recording findings:
@@ -254,6 +256,8 @@ For each finding (one per code surface that bears on the symptom — including e
     --file-line "<path:line>" \
     --relevance "<one-line how-it-relates>"
 ```
+
+`<path:line>` MUST be the exact `file_path:line` from a `search_graph` or `search_code` result row (per Phase 2.3 grounding rule). BEFORE every `record-finding` call, run a one-line verification: `search_code(pattern="<expected literal at that line>")` and confirm the result row's `file_path:line` matches the value you are about to pass. On mismatch, take the result row's line as authoritative and pass THAT to `--file-line`; the LLM's recollection is wrong (off-by-one drift is the failure this catches). Only after the verification matches: call `record-finding`. If the verification `search_code` returns 0 hits: widen the pattern (try an adjacent literal) and retry once. If still 0 hits, pass the original result-row `file:line` you already hold (from the Phase 2.3 chain) and note the unconfirmed status in `--relevance`. Do not skip the finding.
 
 For each hypothesis (≥2):
 
