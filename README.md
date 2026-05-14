@@ -116,7 +116,8 @@ Run these once when you first install the template:
 /audit                         ← adversarial whole-codebase audit (periodic, after several specs)
 /report-bug "description"     ← log a bug for later
 /refresh-docs                  ← update stale documentation
-/research "topic or idea"      ← quick feasibility check
+/research "topic or idea"      ← codebase investigation (bug or enhancement)
+/discover "feature idea"        ← greenfield-feature discovery (pre-/specify)
 ```
 
 - **`/fix`** — Diagnose → delegate to agent → verify → code review → test assessment → doc update. Accepts enriched bug files with AC/expected/actual behavior context. Self-contained (own squash, own docs). Escalates to `/specify` if scope > 5 files.
@@ -126,12 +127,16 @@ Run these once when you first install the template:
 - **`/report-bug`** — Creates structured bug file in `bugs/` with status lifecycle (Open → In Progress → Fixed).
 - **`/refresh-docs`** — Lightweight doc update using git delta. Tech-writer in Refresh Mode.
 - **`/research`** — Investigate a bug or enhancement against the codebase. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Phase 0 clarifies the symptom across 6 rubric dimensions (auto-detects bug vs enhancement). Phase 1 walks the codebase-memory-mcp graph + `docs/` corpus in the main thread (no subagent dispatch) with a mandatory `search_graph` → `search_code` fallback chain, a parallel-pattern sweep over the primary file (catches sibling buggy blocks), and ≥2 falsifiable hypotheses. Phase 2 composes a structured report (mode-aware verdict, root-cause hypothesis, runtime-probe recommendation, approaches, complexity). Phase 3 saves to `research/YYYY-MM-DD-<topic-slug>.md` with a copy-pasteable `/specify` handoff block.
+- **`/discover`** — Greenfield-feature discovery (parallel to `/research`, but for features with no existing related code yet). Same 4-command hard gate. Phase 0 pre-flight + CBM index refresh. Phase 1 scopes the idea across 8 rubric dimensions (`functional_scope`, `users`, `inputs_outputs`, `integration_points`, `constraints`, `non_goals`, `success_criteria`, `edge_cases`) with bounded turns (3 follow-ups/dim), pre-rubric `references` capture, helper-side direct-conflict detection + LLM-side drift classification, and `[NEEDS CLARIFICATION]` gap markers on accepted partial exit. Phase 2 runs three sequential orchestrator-inline steps: **Step 2.0** project-wide internal canonical-pattern search (mandatory — scans `search_graph` + `search_code` for `functional_scope` capability verbs and records `internal:<path>` prior-art entries BEFORE any web call); **Step 2.1** web survey (WebSearch + Context7 + WebFetch) narrowed to GAP capabilities only; **Step 2.2** fit-check via docs layer + CBM structural chain reconciling user-belief vs codebase-reality, with mandatory `--module-path` grounding from CBM result rows. Phase 3 composes the report (prior art, integration surface, fit assessment, 2-3 design options, build-vs-buy, derisk plan, constitution constraints) with verdict-flip rule (Strained/Misfit fit OR Major-refactor effort → `Reconsider` unless override recorded) AND invariant G cite-rule (when `internal:` prior-art exists, `recommended_option.rationale` must cite at least one internal path — forces "extend existing" framing). Saves to `discover/YYYY-MM-DD-<topic-slug>.md` with a copy-pasteable `/specify` handoff block when verdict allows proceeding.
 
 ## Artifact Storage
 
 ```
 research/
-  YYYY-MM-DD-topic-slug.md         # Research reports (/research) — exploratory, pre-spec
+  YYYY-MM-DD-topic-slug.md         # Research reports (/research) — bug/enhancement against existing code
+
+discover/
+  YYYY-MM-DD-topic-slug.md         # Discovery reports (/discover) — greenfield feature, pre-/specify
 
 specs/
   001-user-auth/                 # Numbered feature directories

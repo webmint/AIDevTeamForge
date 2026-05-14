@@ -55,11 +55,15 @@ Standalone (no spec required):
 - `/security [target]` — On-demand security review
 - `/audit` — Adversarial whole-codebase quality review
 - `/research "topic"` — Investigate a bug or enhancement against the existing codebase
+- `/discover "feature idea"` — Greenfield-feature discovery (pre-`/specify`)
 
 ### Command Details
 
 #### `/research "<topic>"` (optional)
 Investigate a bug or enhancement against the existing codebase. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) — refuses to run when any artefact is missing. Phase 0 clarifies the symptom across 6 rubric dimensions (`symptom`, `affected_area`, `repro_or_current`, `desired`, `scope`, `unchanged_behavior`) and auto-detects bug vs enhancement mode. Phase 1 walks the codebase-memory-mcp graph + `docs/` corpus in the main thread (no subagent dispatch) with a mandatory `search_graph` → `search_code` fallback chain, a parallel-pattern sweep over the primary file (catches sibling buggy blocks the first match would tunnel past), and enumerates ≥2 falsifiable hypotheses (each with a one-line falsifier + runtime-probe flag). Phase 2 composes a structured report (mode-aware verdict; optional structured root cause for bugs; optional verify-step block with probe + reproduction + discriminator; approaches with hypothesis citation; complexity; constitution constraints). Phase 3 renders to console and optionally saves to `research/YYYY-MM-DD-<topic-slug>.md`. When the verdict allows proceeding, the saved doc includes a copy-pasteable `/specify "..."` block — handoff is manual, no automation. Does NOT modify code.
+
+#### `/discover "<feature idea>"` (optional)
+Greenfield-feature discovery — parallel to `/research`, but for features with no existing related code yet. Same 4-command setup-chain hard gate. Phase 0 pre-flight + CBM index refresh. Phase 1 scopes the idea across 8 rubric dimensions (`functional_scope`, `users`, `inputs_outputs`, `integration_points`, `constraints`, `non_goals`, `success_criteria`, `edge_cases`) with bounded turns (3 follow-ups/dim), pre-rubric `references` capture, helper-side direct-conflict detection + LLM-side drift classification, and `[NEEDS CLARIFICATION]` gap markers on accepted partial exit. Phase 2 runs three sequential orchestrator-inline steps: **Step 2.0** project-wide internal canonical-pattern search (mandatory — extracts 1-5 capability verbs from `functional_scope` and scans via `search_graph` + `search_code` to record `internal:<path>` prior-art entries BEFORE any web call, so the recommendation never accidentally recommends "build new" when the project already implements the capability); **Step 2.1** web survey (WebSearch + Context7 + WebFetch) narrowed to the GAP capabilities not covered by Step 2.0; **Step 2.2** fit-check via the docs layer + CBM structural chain (`search_graph` → `search_code` → `trace_path` → `get_code_snippet`) reconciling user-belief vs codebase-reality, with mandatory `--module-path` grounding (every recorded path must be copied verbatim from a CBM result row's `file_path`). Phase 3 composes the report (summary, prior art, integration surface, fit assessment, 2-3 design options, build-vs-buy, derisk plan, constitution constraints) with verdict-flip rule (Strained/Misfit fit OR Major-refactor effort → `Reconsider` unless override recorded) AND invariant G cite-rule (when any `internal:` prior-art exists, `recommended_option.rationale` MUST cite at least one of those internal paths — forces "extend existing" framing). Phase 4 renders to console and optionally saves to `discover/YYYY-MM-DD-<topic-slug>.md`. When the verdict allows proceeding, the saved doc includes a copy-pasteable `/specify "..."` block — handoff is manual, no automation. Does NOT modify code.
 
 #### `/specify "feature description"`
 Creates a structured specification with acceptance criteria. Asks clarifying questions as needed (no artificial limit — the AI judges how many based on input clarity). Analyzes affected code, saves spec to `specs/[feature]/spec.md`. **Requires approval before proceeding.** Auto-creates a `spec/NNN-short-desc` branch when on the default branch.
@@ -238,7 +242,10 @@ Authors of template files — constitution, agent files, docs, this CLAUDE.md �
 
 ```
 research/
-  YYYY-MM-DD-topic-slug.md        # Research reports (/research) — exploratory, pre-spec
+  YYYY-MM-DD-topic-slug.md        # Research reports (/research) — bug/enhancement against existing code
+
+discover/
+  YYYY-MM-DD-topic-slug.md        # Discovery reports (/discover) — greenfield feature, pre-/specify
 
 specs/
   001-feature-name/            # Numbered feature directories
