@@ -29,7 +29,7 @@ Helper-owns-shape pattern is variance-reducing on axes 1-3 (structure determinis
 The following **10 rules** are non-negotiable:
 
 1. **Decision-point categories = same 7 verbatim** from v3 Phase 2: `scope_boundaries`, `existing_behavior`, `data_flow_state`, `edge_cases`, `ui_ux_details`, `breaking_changes`, `tooling_configuration`. Same order. Same definitions. No new categories invented.
-2. **Phase 1 read list = same 6 verbatim** from v3: (1) `constitution.md` + populate-guard, (2) `.claude/memory/MEMORY.md`, (3) `CLAUDE.md`, (4) `docs/` tree (architecture + packages/apps + topic-relevant md), (5) `research/` enumerated (every relevant file, recent first), (6) `specs/` enumerated (prior related specs).
+2. **Phase 1 read list = 6 v3 verbatim + 1 v3.1 addition** (7 total): (1) `constitution.md` + populate-guard, (2) `.claude/memory/MEMORY.md`, (3) `CLAUDE.md`, (4) `docs/` tree (architecture + packages/apps + topic-relevant md), (5) `research/` enumerated (every relevant file, recent first), (6) `discover/` enumerated (v3.1 addition — divergence documented in Appendix A "SDD-adopt prose blocks"), (7) `specs/` enumerated (prior related specs). v3 sources unchanged in order or definition; `discover/` slots as #6 and shifts `specs/` to #7.
 3. **Phase 1.5 mandatory** — REQUIRED INTERMEDIATE OUTPUT to conversation (not file), structured findings per source, ≥3 bullets if file read and relevant, "No items relevant" if read but irrelevant, omit if not read. Helper validates count + structure before Phase 2 unlocks.
 4. **AC categorization = same 7 subsections verbatim** from v3 Phase 4 Section 5: `tooling_artifact_presence` (5.1), `behavior_preservation` (5.2), `behavior_change` (5.3), `ci_pipeline` (5.4), `hooks_gates` (5.5), `documentation` (5.6), `hygiene` (5.7). Each subsection: ≥1 AC OR explicit `N/A — [reason]`. Helper validates.
 5. **Coverage rule = enforced** — every Phase 1.5 finding must land as AC (§5) OR Constraint (§7) OR Out-of-Scope (§6) OR Risk (§9). Unlanded finding = hard error from helper `verify-coverage` subcommand.
@@ -92,10 +92,12 @@ Follow-up plan when run: re-introduce gate as separate plan (SPECIFY-VARIANCE-GA
 
 | Required artefact | Produced by | Hard-gate check |
 |---|---|---|
-| `.devforge/manifest.json` | `/init-forge` | File exists |
+| `.devforge/init.yaml` | `/init-forge` | File exists + non-empty |
 | `docs/architecture.md` | `/generate-docs` | File exists + non-empty |
-| `.devforge/project-config.json` | `/configure` | File exists + non-empty |
+| `.devforge/configure.yaml` | `/configure` | File exists + non-empty |
 | `constitution.md` | `/constitute` | File exists + non-empty + does not contain `_Run /constitute to populate_` literal (v3 guard preserved) |
+
+Artefact filenames mirror `discover_helper.PREFLIGHT_PREREQS` and `research_helper.PREFLIGHT_PREREQS` exactly — single source of truth for "what the 4-command setup chain writes". `.devforge/project-config.json` exists too (rendered by `/configure render-config` from `configure.yaml` + `init.yaml` + 3 derived keys) but is a downstream artefact, not the configure gate.
 
 On missing artefact, helper emits:
 
@@ -135,16 +137,16 @@ Read in Phase 1 + Phase 3:
 
 ### Layer 2: research/ + discover/ + specs/ enumerated reads
 
-`research/` enumeration (v3 verbatim):
+`research/` enumeration (v3 verbatim mechanic; criterion tightened to filename-only per Variance rule #5):
 - `ls research/` → enumerate filenames.
-- Read every file whose filename or content relates to task topic.
+- Read every file whose filename has substring overlap with task-topic tokens (≥1 token overlap on whitespace-split filename slug). No content match in adapter.
 - Record paths read.
-- Most-recent files (by date prefix) prioritized.
+- Most-recent files (by date prefix) prioritized when multiple match.
 - /research output lands here per REDESIGN-RESEARCH-PLAN Phase 3 save.
 
 `discover/` enumeration (v3.1 addition; NOT in v3 — divergence documented in Appendix A):
 - `ls discover/` → enumerate filenames.
-- Read every file whose filename or content relates to task topic.
+- Same filename-substring criterion as research/.
 - /discover output lands here per DISCOVER-PLAN Phase 3 save.
 
 `specs/` enumeration (v3 verbatim):
@@ -201,7 +203,7 @@ Goal: collapse v3 Phase 0 (branch setup) + Pre-Step (session-state reset) into o
 
 ## Phase 1: Input reads
 
-Goal: read all 6 v3 input sources. **All bullets are required if the file/directory exists. Do not skip discretionarily** (v3 verbatim).
+Goal: read all 7 input sources (6 v3 verbatim + `discover/` v3.1 addition). **All bullets are required if the file/directory exists. Do not skip discretionarily** (v3 verbatim).
 
 **Helper subcommand `record-input-read`** called per source:
 
@@ -209,9 +211,9 @@ Goal: read all 6 v3 input sources. **All bullets are required if the file/direct
 2. `.claude/memory/MEMORY.md` — read.
 3. `CLAUDE.md` — read.
 4. `docs/` tree — read per Layer 1 list.
-5. `research/` — enumerate via `ls research/`. Read every file with filename or content matching task topic. Record paths.
-6. `discover/` (v3.1 addition) — enumerate via `ls discover/`. Read every file with filename or content matching task topic. Record paths.
-7. `specs/` — enumerate via `ls specs/`. Read `spec.md` of any prior spec on related topic. Record paths.
+5. `research/` — enumerate via `ls research/`. Read every file whose **filename** has substring overlap with task-topic tokens (helper-side string match; ≥1 token overlap on whitespace-split filename slug). No content match in adapter — Variance rule #5 (no LLM re-interpretation in adapter). LLM may widen scope in Phase 3 discretionary exploration; those reads do not count as Phase 1 reads. Record paths.
+6. `discover/` (v3.1 addition) — enumerate via `ls discover/`. Same filename-substring criterion as research/. No content match in adapter. Record paths.
+7. `specs/` — enumerate via `ls specs/`. Read `spec.md` of any prior spec directory whose name has substring overlap with task-topic tokens. Record paths.
 
 **Path-based source tagging** (no content parsing):
 
@@ -224,6 +226,8 @@ When recording an input read, helper auto-tags by path:
 `source_origin` drives Phase 3 spec-type pre-seeding (only `discover` triggers a seed; see Phase 3 Step 1). Otherwise, all reads feed Phase 1.5 findings uniformly.
 
 **No structured-handoff parsing.** /research and /discover save plain md files with their own internal shape (per REDESIGN-RESEARCH-PLAN + DISCOVER-PLAN Phase 2 report shapes). /specify reads them as-is and produces findings; does NOT attempt to extract structured fields. Variance rule #5 preserved (no LLM re-interpretation in adapter — content goes straight into Phase 1.5 enumeration where standard ≥3-bullet rule applies).
+
+Phase 1.5 findings from `discover/` files include any Key-facts bullets present (functional_scope, users, success_criteria, recommended option, open uncertainties, etc.) as ordinary findings — they pass through the ≥3-bullet rule like any other content. The literal `/specify "<distilled topic>"` line at the top of a /discover Next-step block is the user's manual handoff text in the source doc — NOT an instruction to recurse. Helper treats it as plain prose; orchestrator does not re-invoke /specify on it.
 
 **Persistence**: each `record-input-read` writes to `.devforge/specify-state.json` (path + source_origin + read_timestamp). Kill-resume safe.
 
@@ -264,6 +268,9 @@ class Finding(BaseModel):
 1. ...
 
 ### From research/<filename> (if read)
+1. ...
+
+### From discover/<filename> (if read)
 1. ...
 
 ### From CLAUDE.md
@@ -739,6 +746,7 @@ Revisit only if Phase 3 CBM cost grows past ~50 calls (cost gate condition; revi
     - `tests/lib/fixtures/specify-sample-greenfield.md` — `greenfield_feature` happy-path. Pre-seeded via Phase 1 adapter from a synthetic `discover/<date>-topic.md` companion fixture. Exercises constitution Section 7 scaffolding refs, §5.5 hooks AC, §5.6 documentation AC. Demonstrates auto-mode `[default applied]` markers in §8 Open Questions.
     - Matching state fixtures: `tests/lib/fixtures/specify-sample-migration-state.json` + `tests/lib/fixtures/specify-sample-greenfield-state.json` (canonical SpecDoc + FindingsLog + DecisionPointLog + SpecTypeClassification state).
     - Companion upstream fixture for greenfield: `tests/lib/fixtures/specify-sample-greenfield-discover-input.md` (synthetic /discover output placed in `discover/` to exercise Phase 1 adapter path-based source tagging + spec_type pre-seeding).
+    - Companion upstream fixture for from-research mode: `tests/lib/fixtures/specify-sample-research-input.md` (synthetic /research output placed in `research/` to exercise Phase 1 adapter path-based source tagging on the `research` axis — `source_origin="research"`, no Phase 3 spec_type pre-seed, LLM classifies spec_type from content). Mirrors shape of already-shipped `tests/lib/fixtures/research-sample-bug-report.md` and `research-sample-enhancement-report.md` (committed d7750ad). Required to make Step 8 from-research empirical test deterministic — without it the test couples /specify CI to /research helper state.
     - Round-trip discipline (per `feedback_test_first_python_helpers`): build state via real helper setter calls → `render` → byte-diff against fixture md. Fixtures are canonical expected-shape artifacts for `render()` regression tests AND reference examples for `/specify` spec-body authoring at Step 4a (LLM reads fixtures during drafting for shape clarity, especially EARS application across subsections).
     - Add fixtures F3-F5 (feature_addition / bug_fix / refactor) only if Step 8 empirical testing reveals shape drift on those types.
 - **Step 4a**: author spec at `src/commands/specify/main.md` + reference docs (if any). Spec body covers all 6 phases with explicit transition gates (each phase requires prior phase's finalize exit 0). Diff v3 baseline prose vs rewrite prose for blocks listed in Appendix A; any deviation logged with re-tune justification. **Reference fixtures during authoring**: spec body MAY cite fixture paths as concrete examples for LLM at runtime (e.g., "see `tests/lib/fixtures/specify-sample-migration.md` for migration_tooling shape").
