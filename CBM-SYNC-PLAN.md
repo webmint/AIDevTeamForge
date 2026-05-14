@@ -1,5 +1,7 @@
 # CBM-SYNC-PLAN
 
+**Status: DELIVERED 2026-05-11** (develop-2.0-init). MVP Phases 0–4 shipped + verified end-to-end via install into testForge20 (helper + hook + 2 SessionStart entries confirmed; helper smoke `not-a-git-repo` correctly silent because testForge20 has no `.git`). Phase 5 (manual `/cbm-sync` slash command) remains YAGNI-deferred. Drift-context empirical observation in a real fresh Claude session against a git-tracked target still pending — not blocking; spec + smoke prove the wiring.
+
 Goal: keep each developer's local CBM (codebase-memory-mcp) index aligned with the parent repo's current HEAD in both wrapper and solo modes, without installing anything into the parent repo's `.git/` directory.
 
 ## Context for next session
@@ -36,6 +38,8 @@ Before writing any code, confirm one fact the plan still depends on.
 **0.1** Verify the SessionStart hook stdin shape. The hook script reads JSON event payload from stdin. Confirm via `code.claude.com/docs/en/hooks.md` the exact stdin schema for SessionStart events — specifically the `source` field name and possible values. Do not guess. (The current MVP doesn't branch on `source`, but the verification protects against future additions.)
 
 **Verify**: one short note captured here, citing the docs URL.
+
+> Verified 2026-05-11 via claude-code-guide agent (source: https://code.claude.com/docs/en/hooks.md). SessionStart stdin payload fields: `session_id` (str), `transcript_path` (str), `cwd` (str), `hook_event_name` (always `"SessionStart"`), `source` (enum: exactly `"startup"` | `"resume"` | `"clear"` | `"compact"`), `model` (str), and an optional `agent_type` (str, present only when started with `--agent <name>`). MVP hook does not branch on `source` — drains stdin and discards.
 
 ## Phase 1 — stamp helper
 

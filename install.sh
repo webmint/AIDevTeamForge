@@ -170,6 +170,7 @@ chmod +x "$TARGET_DIR/.claude/hooks/"*
 
 echo ""
 echo "Done. AIDevTeamForge installed."
+echo "CBM sync: SessionStart hook (cbm-sync-session-start) compares .devforge/cbm-last-indexed-sha to parent HEAD on every session boot and prompts Claude to call detect_changes / index_repository when stale."
 echo "Next — open the project in Claude Code and run, in order:"
 echo "  /init-forge      — bootstrap structural fields"
 echo "  /generate-docs   — deep codebase scan"

@@ -9,6 +9,7 @@ When picking up work mid-stream, check the repo root for active plan files. **Re
 Currently active:
 
 - ~~`ARCHITECTURE-PIVOT-PLAN.md`, `CONFIGURE-PLAN.md`, `CONSTITUTE-PLAN.md`~~ — all DONE 2026-05-10/11. 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) shipped. Re-read only if maintaining the named feature.
+- ~~`CBM-SYNC-PLAN.md`~~ — DELIVERED 2026-05-11. CBM stamp helper (`.devforge/lib/cbm_sync_helper`) + SessionStart hook (`cbm-sync-session-start`) + `/generate-docs` preamble shipped on `develop-2.0-init`. Phase 5 manual `/cbm-sync` slash command YAGNI-deferred.
 
 ## Conventions for ongoing work
 

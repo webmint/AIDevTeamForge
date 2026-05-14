@@ -38,6 +38,14 @@ The helper chain is the ONLY canonical path. Any divergence emits the wrong shap
 
 ---
 
+## CBM-sync preamble (run first)
+
+Before executing any step below, run `.devforge/lib/cbm_sync_helper check`. If output is `drift ...`, call `mcp__codebase-memory-mcp__detect_changes` then `.devforge/lib/cbm_sync_helper write` before continuing. If output is `missing`, call `mcp__codebase-memory-mcp__index_repository` then `.devforge/lib/cbm_sync_helper write` before continuing. If output is `current` or `not-a-git-repo`, proceed.
+
+This catches mid-session `git pull` / `git checkout` drift that the SessionStart hook (`cbm-sync-session-start`) cannot see — the SessionStart hook only fires at session boot. /generate-docs queries CBM heavily (Phase 4 Patterns + Cross-Cuts via `get_code_snippet`; Phase B glossary via `query_graph` + `search_graph` + `get_code_snippet`); a stale graph silently corrupts cite-back paths and snippet contents.
+
+---
+
 ## Phase 0 — Pre-flight gate
 
 1. `.devforge/index.json` exists:
