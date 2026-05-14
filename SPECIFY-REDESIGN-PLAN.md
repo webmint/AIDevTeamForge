@@ -42,7 +42,7 @@ The following **10 rules** are non-negotiable:
 
     User natural-language prose ignored — no LLM judgment in mode detection. User who wants auto must opt in via flag or env var. Pause-when-uncertain (Variance rule #8 v3 verbatim) preserved: helper defaults to interactive when no signal fires.
 
-    Interactive path: AskUserQuestion preferred, markdown fallback (numbered list with (a)(b)(c) alternatives + named default), bundling for ≥4 related questions. Helper owns mode detection + Phase 2 enforcement (rejects `default_applied` setter in interactive); orchestrator owns presentation logic (AskUserQuestion vs fallback). v3 prose preserved verbatim where it describes presentation + bundling discipline.
+    Interactive path: AskUserQuestion preferred (single-line questions only per `feedback_askuserquestion_single_line_only`), markdown fallback (numbered list with (a)(b)(c) alternatives + named default), bundling for ≥4 related questions. Helper owns mode detection + Phase 2 enforcement (rejects `default_applied` setter in interactive); orchestrator owns presentation logic (AskUserQuestion vs fallback). v3 prose preserved verbatim where it describes presentation + bundling discipline.
 9. **LLM-facing prose preserved verbatim** from v3 wherever it controls LLM behavior — Phase 1.5 enumeration framing, Phase 2 decision-point definition + stop rule + AskUserQuestion+fallback discipline, Phase 4 AC subsection examples, Phase 5 approval-summary 4-bullet block, Rules 1-10 verbatim. Diff with v3 baseline; any prose deviation requires explicit re-tune justification logged in plan. **Exception**: SDD-adopt prose blocks (EARS framing, constitution-recheck framing, test_anchor framing, resolve-open-question framing) are v3.1 additions — documented as divergence in Appendix A.
 10. **AC statement = EARS notation** (Kiro / IEEE 29148-2018 SDD convention). Every `AcceptanceCriterion.statement` field matches one of 5 EARS variants:
 
@@ -321,6 +321,23 @@ class DecisionPoint(BaseModel):
 - If yes → ≥1 DecisionPoint with `status != no_DP_in_category`.
 - If no → record one DecisionPoint with `status = no_DP_in_category` + reason ("Category X: no decision point — already determined by [Y]") — lands in §8 Open Questions of spec.
 
+**Per-category coverage state enum** (mirrors /discover + /research Clear/Partial/Missing taxonomy; aligned with GitHub Spec Kit clarify taxonomy per <https://github.com/github/spec-kit/blob/main/templates/commands/checklist.md>):
+
+| Category state | Meaning |
+|---|---|
+| `Clear` | ≥1 DecisionPoint with `status ∈ {answered, default_applied, deferred_OOS, deferred_open_question}` (rule applied: deferred entries count as Clear because user/auto made an explicit landing decision) |
+| `Partial` | ≥1 DecisionPoint with `status == pending` (asked but unresolved) AND no Clear DP in this category yet |
+| `Missing` | No DecisionPoints recorded for this category |
+| `NoDPInCategory` | Single `no_DP_in_category` DecisionPoint recorded with reason (terminal state — counts as Clear for coverage purposes) |
+
+Helper `rubric-coverage` returns `{category: state}` map. `rubric-finalize` exits 0 iff all 7 categories ∈ `{Clear, NoDPInCategory}`; non-zero on any `Partial` or `Missing`.
+
+**Per-DP turn cap** (mirrors /discover 3/dim):
+- Hard cap = 3 follow-ups per DecisionPoint.
+- After cap, helper auto-transitions DP to `status=deferred_open_question` with `deferral_reason="exceeded follow-up cap"`.
+- DP lands in §8 Open Questions with [exceeded cap] marker.
+- Prevents indefinite loops on stubborn DPs.
+
 **Mode-dependent execution path (Variance rule #8 — C-strict)**:
 
 Helper `detect-mode`. Auto mode iff ANY:
@@ -345,8 +362,8 @@ Interactive path:
 When uncertain about mode → prefer pausing (interactive default). Asking is reversible; proceeding without input is not (v3 verbatim).
 
 **Stop rule (v3 verbatim, Variance rule #7)**:
-- Helper `verify-decision-coverage` checks: every category has ≥1 DecisionPoint with `status != pending`.
-- Pending state in any category → exit 2.
+- Helper `verify-decision-coverage` checks: every category state ∈ `{Clear, NoDPInCategory}` (per per-category coverage state enum above).
+- Any category in `Partial` or `Missing` state → exit 2.
 - Coverage achieved → exit 0.
 
 **Question rounds**:
@@ -609,7 +626,7 @@ Goal: hard-gate user approval, branch creation if deferred, deterministic /plan 
 
 2. Orchestrator copies summary VERBATIM into user message (per `feedback_verbatim_echo_directive`) as fenced code block.
 
-3. AskUserQuestion approval: Approve / Request changes / Cancel.
+3. AskUserQuestion approval: Approve / Request changes / Cancel (single-line question per `feedback_askuserquestion_single_line_only`).
 
 4. If Approve → helper `set-status Approved` + render `/plan` handoff block.
 
@@ -710,7 +727,7 @@ Revisit only if Phase 3 CBM cost grows past ~50 calls (cost gate condition; revi
   - Phase 0: `preflight`.
   - Phase 1: `record-input-read` (auto-tags `source_origin` from file path), `phase1-finalize`.
   - Phase 1.5: `record-finding`, `verify-findings`, `render-findings`, `findings-finalize`.
-  - Phase 2: `detect-mode`, `record-decision-point`, `set-dp-answer`, `set-dp-default-applied`, `set-dp-deferral`, `dp-coverage`, `verify-decision-coverage`, `dp-finalize`.
+  - Phase 2: `detect-mode`, `record-decision-point`, `set-dp-answer`, `set-dp-default-applied`, `set-dp-deferral`, `dp-coverage` (DP-level statuses), `rubric-coverage` (per-category Clear/Partial/Missing/NoDPInCategory wrapping DP statuses), `verify-decision-coverage` (gate: all 7 categories ∈ {Clear, NoDPInCategory}), `rubric-finalize`, `dp-finalize`. Per-DP turn cap enforced inside `set-dp-deferral` (auto-fires at 3 follow-ups).
   - Phase 3: `classify-spec-type`, `record-mandatory-read`, `verify-mandatory-reads`, `phase3-finalize`.
   - Phase 4: `assign-spec-number`, `assign-feature-name`, `create-branch`, `record-affected-area`, `set-overview`, `set-current-state`, `set-desired-behavior`, `add-ac` (validates EARS variant), `record-out-of-scope`, `record-constraint`, `record-open-question`, `record-risk`, `verify-coverage` (Phase 1.5 finding landing), `verify-numerical-consistency`, `verify-ac-subsection-coverage`, `verify-ac-shape` (EARS regex), `check-constitution-compliance` (post-render constitution-recheck), `render`.
   - Phase 5: `render-summary`, `set-status`, `render-plan-handoff`, `check-constitution-compliance` (re-run as entry gate; warnings re-surfaced if state changed since Phase 4 invocation).
@@ -750,7 +767,7 @@ Revisit only if Phase 3 CBM cost grows past ~50 calls (cost gate condition; revi
 - **Step 3**: 100% helper subcommand tests pass; helper round-trips state via JSON; coverage check on real input shapes. Specifics:
   - Phase 1: `record-input-read` accepts each of 7 sources (constitution / MEMORY / CLAUDE / docs / research/ / discover/ / specs/) and auto-tags `source_origin` from path; phase1-finalize gates Phase 1.5.
   - Phase 1.5: `verify-findings` exits non-zero when any read source has fewer than 3 findings without "No items relevant" marker.
-  - Phase 2: `verify-decision-coverage` exits non-zero when any of 7 categories has zero DPs without `no_DP_in_category` reason; `detect-mode` correctly identifies auto vs interactive given env/flag/system-reminder signals; `record-decision-point` rejects `default_applied` status in interactive mode.
+  - Phase 2: `rubric-coverage` returns accurate `{category: state}` map (Clear / Partial / Missing / NoDPInCategory) after each setter; `verify-decision-coverage` exits non-zero when any category is `Partial` or `Missing`; `detect-mode` correctly identifies auto vs interactive given env/flag/system-reminder signals; `record-decision-point` rejects `default_applied` status in interactive mode; per-DP turn cap (3 follow-ups) auto-transitions DP to `deferred_open_question` on overage with `[exceeded cap]` marker visible in §8 render.
   - Phase 3: `verify-mandatory-reads` exits non-zero when any per-type mandatory entry has neither `read_path` nor `n_a_reason`.
   - Phase 4: `add-ac` rejects ACs without subsection AND without declared EARS variant; `verify-ac-subsection-coverage` exits non-zero when any subsection has zero ACs without N/A reason; `verify-ac-shape` exits non-zero when any AC `statement` fails the regex for its declared `ears_variant`; `verify-coverage` exits non-zero when any Phase 1.5 finding has `landed_in=unlanded`; `verify-numerical-consistency` detects digit inconsistencies across sections; `check-constitution-compliance` surfaces conflicts between rendered AC/Constraints/OOS and constitution.md MUST/SHALL lines as user-visible warnings (non-blocking).
   - Downstream subcommand: `resolve-open-question` accepts `{question_id, resolution_text, resolution_phase}`, writes audit entry, subsequent render strikes through resolved entries with note.
@@ -773,6 +790,8 @@ Revisit only if Phase 3 CBM cost grows past ~50 calls (cost gate condition; revi
 9. ~~EARS variant for §5.1 + §5.7 (presence/hygiene)~~ **Closed 2026-05-11 (D1)** — §5.1 + §5.7 = Ubiquitous variant only. Both `statement` (EARS Ubiquitous) AND `verification_command` (executable check) REQUIRED on these subsections. Other subsections accept any of 5 variants; verification_command optional. Subsection-EARS constraint table pinned in Phase 4 schema. IEEE 29148-2018 conformance preserved.
 10. **Constitution-recheck conflict surfacing** — `check-constitution-compliance` is non-blocking (warning, not error). Open: should user be able to acknowledge a conflict via `record-constitution-override` setter that suppresses subsequent re-checks within same session, or should warnings re-surface on every render? Default = re-surface every render (zero-escape-hatch). Revisit if empirical shows it's noisy.
 11. **`resolve-open-question` ownership ambiguity** — subcommand ships in `specify_helper` but is only callable by `/plan` + `/breakdown`. Open: should `/plan` + `/breakdown` plans (when authored) explicitly document this dependency, or should the subcommand emit a deprecation warning if called from `/specify` itself? Decide when `/plan` redesign plan starts.
+12. **Ambiguity-term lint as adjunct to EARS shape check** — sddforge cross-pollination 2026-05-14 (Appendix B). Open: do we add a 20-term ambiguity scanner alongside `verify-ac-shape` to reject AC statements containing weasel words (`reasonable`, `appropriate`, `intuitive`, …) the same way EARS regex rejects malformed statements? Default = defer to empirical signal. Build only if Step 8 testForge20 run produces an AC that passes EARS regex but is clearly untestable; until then the ambiguity-term list lives in Appendix B as a recoverable spec, not in code.
+13. **Durable gate-record schema for `set-status Approved`** — sddforge cross-pollination 2026-05-14 (Appendix B). Current Phase 5 design persists approval state only in `.devforge/specify-state.json` (single file, overwritten per run). Open: should approval emit a durable per-stage gate record (sddforge-shape: `version`, `gateId`, `stage`, `approvedArtifact`, `approvedScope`, `denied`, `nextAllowed`, `approvedBy`, `relatedArtifacts`) to enable cross-session resume + downstream `/plan` / `/breakdown` audit? Default = defer until /plan + /breakdown ship and the multi-stage approval chain creates a real "did I approve the spec last week" problem; the existing `set-status Approved` setter + state file cover single-session resume today.
 
 ## When resuming work
 
@@ -864,5 +883,99 @@ Adopted from popular SDD frameworks (Spec Kit, Kiro, Tessl); v3.1 designation ma
 - **Constitution recheck at Phase 4 + 5** (Spec Kit Constitution Check gate). Helper `check-constitution-compliance` greps constitution.md for MUST/MUST NOT/SHALL lines, cross-checks rendered spec against mandates, emits warnings (non-blocking; user decides amend-vs-proceed). Framing block: "After Phase 4 render and before Phase 5 approval, helper re-checks rendered spec against constitution.md mandates. Conflicts surface as warnings — user decides whether to amend or proceed with noted exception in §8."
 - **Optional `test_anchor` field on AC** (Tessl-lite). Schema field + render rule. Framing block: "When a brownfield AC corresponds to an existing test, populate `test_anchor` with path::test_name. /verify (downstream) reads + runs. Leave empty when no test exists yet — /breakdown will plan the test."
 - **`resolve-open-question` audit trail** (Spec Kit checklist.md parity). Subcommand only; /specify itself does not call. /plan + /breakdown invoke during their phases when §8 entries get resolved. Framing block: "§8 Open Questions are static at /specify write time. /plan + /breakdown call `specify_helper resolve-open-question` to mark resolved with audit entry. Re-rendered spec.md strikes through resolved entries with resolution note + phase + timestamp."
+
+---
+
+## Appendix B: SDDForge cross-pollination (2026-05-14)
+
+Reference: external Codex-built scratch project at `/Users/mykolakudlyk/Projects/private/sddforge` (TypeScript CLI for SDD wrapper workspace). Reviewed 2026-05-14 — two design patterns from sddforge are worth recording for `/specify`. Both are **deferred, not adopted**, per the YAGNI discipline in `feedback_track_a_yagni_rollback`. This appendix is the recoverable spec — code lands only when a real consumer surfaces.
+
+Source files reviewed:
+
+- `private/sddforge/src/core/requirements.ts` — deterministic EARS normalizer + ambiguity-term scanner.
+- `private/sddforge/src/schemas/spec.ts` — zod `requirementSchema` with `superRefine` for EARS shape per type (mirrors what `verify-ac-shape` already encodes).
+- `private/sddforge/docs/ROADMAP.md` §"Canonical Artifact Model" + §"Epic 5 — Approval Gates" — versioned-artifact + gate-record schema described in roadmap (no code yet in sddforge; `gate` command is vapor as of 2026-05-14).
+
+### B.1 Ambiguity-term lint
+
+**Spec (if built)**:
+
+- Add `src/devforge/lib/_ambiguous_terms.py` as sibling to existing `src/devforge/lib/_banned_phrases.py`. Same shape: `AMBIGUOUS_TERMS: Tuple[str, ...]` with case-insensitive whole-word `\b` match, hyphens as boundaries.
+- v0 seed list (from sddforge `requirements.ts` lines ~111-134, deduplicated): `as needed`, `appropriate`, `better`, `easy`, `efficient`, `etc`, `fast`, `friendly`, `improve`, `intuitive`, `maybe`, `nice`, `optimize`, `probably`, `quick`, `reasonable`, `robust`, `seamless`, `simple`, `some`, `soon`, `user-friendly`. 22 entries.
+- New helper subcommand: `specify_helper verify-ac-ambiguity` — scans every AC `statement` for any term in the list; emits `LintIssue { code: "ambiguous", severity: "warning", featureId, requirementId, message: "AC statement contains ambiguous term '{term}'" }`.
+- Default severity = warning (non-blocking, surfaces in Phase 5 approval summary). Zero-escape-hatch: `--strict` flag promotes to error and blocks `set-status Approved` only when explicitly invoked.
+
+**Relationship to existing `verify-ac-shape`**:
+
+- `verify-ac-shape` checks structural EARS conformance (Ubiquitous starts with "the", Event-driven starts with "when", contains "shall", etc.) — already specified in Work order Step 3 Phase 4.
+- `verify-ac-ambiguity` checks semantic vagueness — orthogonal, runs after `verify-ac-shape`. An AC like "The system shall respond fast" passes the EARS Ubiquitous regex but fails the ambiguity scan.
+- Both share `LintIssue` shape if introduced.
+
+**YAGNI verdict**: build only if Step 8 testForge20 empirical run produces at least one AC that passes EARS regex but is clearly untestable due to a weasel word. Until then the list lives in this appendix as recoverable spec. Open Question #12 carries the empirical trigger.
+
+### B.2 Durable gate-record schema
+
+**Spec (if built)**:
+
+- Add `src/devforge/lib/_schemas/gate.py` (new directory — first pydantic schema package in `lib/`). Schema:
+
+  ```python
+  from datetime import datetime
+  from typing import Literal
+  from pydantic import BaseModel, Field
+
+  GateStage = Literal["context", "spec", "impact", "plan", "breakdown", "verification", "acceptance"]
+  GateStatus = Literal["approved", "denied", "deferred"]
+
+  class GateScope(BaseModel):
+      paths: list[str] = Field(default_factory=list)
+      files: list[str] = Field(default_factory=list)
+
+  class GateRecord(BaseModel):
+      version: Literal[1] = 1
+      gateId: str
+      stage: GateStage
+      createdAt: datetime
+      status: GateStatus
+      approvedArtifact: str
+      approvedScope: GateScope = Field(default_factory=GateScope)
+      denied: GateScope = Field(default_factory=GateScope)
+      nextAllowed: GateStage | None = None
+      approvedBy: Literal["user"] = "user"
+      relatedArtifacts: dict[str, str] = Field(default_factory=dict)
+  ```
+
+- Target-side artifact location: `<target>/.devforge/gates/<stage>-<runId>.json`. One file per approval. Append-only; never overwrite.
+- New `specify_helper` subcommands (extend Work order Step 3 Phase 5):
+  - `record-gate --stage spec --artifact specs/NNN-feature-name/spec.md --scope-paths <…> --denied-paths <…> --next-allowed plan` — writes the gate file. Called by Phase 5 on `set-status Approved`.
+  - `list-gates --stage spec` — enumerates all spec gates across sessions.
+  - `show-gate <gateId>` — dumps full record.
+  - `latest-gate --stage spec` — returns the most recent approved gate for resume.
+
+**Relationship to existing `set-status Approved`**:
+
+- Current Phase 5 design (line 631 of this plan) writes `status: Approved` into `.devforge/specify-state.json`. This file is overwritten on every `/specify` run — it answers "what's the status NOW" but not "what was approved last week, by whom, with what scope". Gate records add the durable history.
+- Downstream `/plan` preflight could query `latest-gate --stage spec` to confirm the spec it's planning was actually approved (today this is implicit — `/plan` reads `specs/NNN/spec.md` and trusts the embedded `Status: Approved` marker).
+
+**YAGNI verdict**: build only when /plan + /breakdown ship AND the multi-stage approval chain creates a "did I approve this last session" problem in practice. Until then, `specify-state.json` covers single-session resume. Open Question #13 carries the trigger. If built, the same schema should generalize to other stages (`/plan`, `/breakdown`) — design the helper to live in `src/devforge/lib/gate_helper.py` rather than embedded in `specify_helper.py`, so downstream commands can write their own gate records without depending on `/specify`'s helper.
+
+### B.3 Patterns observed but NOT borrowed
+
+For completeness, the sddforge patterns reviewed and rejected for `/specify`:
+
+- **Hardcoded normalization branch** (sddforge `requirements.ts` `if (lower.includes("rate limit") && lower.includes("login"))`) — demo-driven, would fail `feedback_sentence_level_hallucination_check_specs`. Skip.
+- **TypeScript + pnpm + zod stack** — wrong stack for ADTF (vendored Python helpers + Claude Code markdown specs). Migration cost ≫ marginal static-check value. Skip.
+- **Single-file artifact store (sddforge `artifacts/specs/specs.json`)** — `/specify` writes per-spec directories under `specs/NNN-feature-name/` already; single-file collapse is a regression. Skip.
+- **`status: draft | approved | implemented | verified | rejected` requirement enum** — overlaps with existing `Status: Approved` spec-level marker. Per-requirement status enum is a downstream `/plan` / `/verify` concern, not `/specify`. Skip at /specify; revisit when /verify plan opens.
+
+### B.4 Recovery path
+
+If this appendix needs to be acted on:
+
+1. Re-read `private/sddforge/src/core/requirements.ts` for the ambiguity-term list + linter contract.
+2. Re-read `private/sddforge/docs/ROADMAP.md` §"Canonical Artifact Model" + §"Epic 5 — Approval Gates" for the gate-record metadata field list.
+3. Cross-check against `src/devforge/lib/_banned_phrases.py` (existing pattern sibling) before adding `_ambiguous_terms.py`.
+4. Cross-check against `src/devforge/lib/cbm_sync_helper.py` + `src/devforge/lib/init_helper.py` `.devforge/state.json` writes (existing artifact-emission patterns) before adding `gate_helper.py`.
+5. Update Work order Steps 2 + 3 inline rather than re-introducing this appendix as a separate plan file.
 
 All four blocks are **additive** — they extend v3 mechanics, do not replace v3 prose. Variance impact: EARS ↓ axis 4; constitution-recheck neutral; test_anchor neutral; resolve-open-question neutral on /specify (writes happen at downstream phases). Net prediction: equal-or-better than v3 baseline.
