@@ -9,7 +9,10 @@ bugs/
   NNN-short-description.md           # Bug reports (report-bug or verify triage)
 
 research/
-  YYYY-MM-DD-[topic-slug].md          # Research reports (research) — exploratory, pre-spec
+  YYYY-MM-DD-[topic-slug].md          # Research reports (research) — bug/enhancement against existing code
+
+discover/
+  YYYY-MM-DD-[topic-slug].md          # Discovery reports (discover) — greenfield feature, pre-/specify
 
 audits/
   YYYY-MM-DD-audit.md                  # Adversarial codebase audits (audit) — periodic, dated, not auto-committed
@@ -140,6 +143,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 
 ```
 research     → displays report in console, optionally saves to research/YYYY-MM-DD-[topic-slug].md
+discover     → displays report in console, optionally saves to discover/YYYY-MM-DD-[topic-slug].md
 specify      → creates specs/NNN-name/spec.md
 plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
 breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
