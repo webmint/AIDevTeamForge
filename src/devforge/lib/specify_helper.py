@@ -2457,9 +2457,12 @@ def _plan_handoff_block(state: Dict[str, Any]) -> str:
                     packages.append(pkg)
     pkg_list = ", ".join(packages) if packages else "(none)"
     return (
-        "## Next step: /plan handoff\n"
+        "## Manual next step — run /plan\n"
         "\n"
-        "Run:\n"
+        "No automated handoff. Restart Claude Code (exit and relaunch the "
+        "CLI/app so the newly installed command is picked up), then run "
+        "the command below in this repo. The spec path is explicit so "
+        "/plan does not need most-recent-spec discovery:\n"
         "\n"
         "~~~\n"
         "/plan specs/{n}-{f}/spec.md\n"
