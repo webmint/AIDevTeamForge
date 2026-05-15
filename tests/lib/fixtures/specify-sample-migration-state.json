@@ -1,0 +1,394 @@
+{
+  "topic": null,
+  "topic_slug": null,
+  "date": "2026-05-15",
+  "spec_number": "001",
+  "feature_name": "monorepo-pnpm-migration",
+  "feature_slug": "monorepo-pnpm-migration",
+  "spec_type": "migration_tooling",
+  "spec_type_rationale": "swap lerna+yarn for pnpm workspaces",
+  "spec_type_seeded_by_upstream": false,
+  "status": "Draft",
+  "current_branch": "main",
+  "default_branch": "main",
+  "branch_decision": "create",
+  "branch_created": true,
+  "input_reads": [
+    {
+      "path": "constitution.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:37Z"
+    },
+    {
+      "path": ".claude/memory/MEMORY.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:37Z"
+    },
+    {
+      "path": "CLAUDE.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:37Z"
+    },
+    {
+      "path": "docs/architecture.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:37Z"
+    }
+  ],
+  "phase1_finalized": true,
+  "findings": [
+    {
+      "finding_id": "F-constitution-1",
+      "source_path": "constitution.md",
+      "source_section": "",
+      "content": "Workspace forbids `lerna`",
+      "landed_in": "Constraint",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-constitution-2",
+      "source_path": "constitution.md",
+      "source_section": "",
+      "content": "Every package must declare engines field",
+      "landed_in": "Constraint",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-constitution-3",
+      "source_path": "constitution.md",
+      "source_section": "",
+      "content": "Single root install required",
+      "landed_in": "Constraint",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-architecture-1",
+      "source_path": "docs/architecture.md",
+      "source_section": "",
+      "content": "Workspace deps via workspace-protocol",
+      "landed_in": "AC",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-architecture-2",
+      "source_path": "docs/architecture.md",
+      "source_section": "",
+      "content": "CI runs install before build",
+      "landed_in": "AC",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-architecture-3",
+      "source_path": "docs/architecture.md",
+      "source_section": "",
+      "content": "Build writes artifacts to dist/",
+      "landed_in": "AC",
+      "landed_ref": ""
+    }
+  ],
+  "source_no_items_relevant": {
+    ".claude/memory/MEMORY.md": true,
+    "CLAUDE.md": true
+  },
+  "findings_finalized": true,
+  "decision_points": [
+    {
+      "dp_id": "DP-scope_boundaries-1",
+      "category": "scope_boundaries",
+      "description": "Which packages migrate to pnpm",
+      "valid_implementations": [
+        "all packages",
+        "core packages only"
+      ],
+      "status": "answered",
+      "user_answer": "all packages",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-breaking_changes-1",
+      "category": "breaking_changes",
+      "description": "Behavior on lockfile conflict",
+      "valid_implementations": [
+        "fail builds on conflict",
+        "warn only"
+      ],
+      "status": "answered",
+      "user_answer": "fail builds on conflict",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-tooling_configuration-1",
+      "category": "tooling_configuration",
+      "description": "How pnpm gets installed in CI",
+      "valid_implementations": [
+        "corepack",
+        "global install"
+      ],
+      "status": "answered",
+      "user_answer": "corepack",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-existing_behavior-1",
+      "category": "existing_behavior",
+      "description": "no relevant decision point for existing_behavior",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-data_flow_state-1",
+      "category": "data_flow_state",
+      "description": "no relevant decision point for data_flow_state",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-edge_cases-1",
+      "category": "edge_cases",
+      "description": "no relevant decision point for edge_cases",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-ui_ux_details-1",
+      "category": "ui_ux_details",
+      "description": "no relevant decision point for ui_ux_details",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    }
+  ],
+  "dp_finalized": true,
+  "mode": "interactive",
+  "mandatory_reads": [
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "package.json",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": ".github/workflows/*",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "**/package.json",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": ".husky/*",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": ".pre-commit-config.yaml",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": ".lefthook.yml",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "lerna.json",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "turbo.json",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "nx.json",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "pnpm-workspace.yaml",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "rush.json",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": "*lock*",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": ".npmrc",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": ".yarnrc",
+      "n_a_reason": "covered in subsequent investigation"
+    },
+    {
+      "spec_type": "migration_tooling",
+      "read_path": "",
+      "slot_pattern": ".pnpmrc",
+      "n_a_reason": "covered in subsequent investigation"
+    }
+  ],
+  "discretionary_reads": [],
+  "phase3_finalized": true,
+  "overview": "Migrate the monorepo from lerna with yarn to pnpm workspaces using corepack.",
+  "current_state": "Workspace uses lerna for orchestration and yarn for package install. Lockfiles are yarn.lock files.",
+  "desired_behavior": "Workspace uses pnpm workspaces for orchestration. Lockfile is pnpm-lock.yaml. Corepack pins pnpm version.",
+  "affected_areas": [
+    {
+      "area": "Root tooling",
+      "files": [
+        "package.json",
+        "pnpm-workspace.yaml"
+      ],
+      "impact": "switch package manager and workspace layout"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-1",
+      "subsection": "tooling_artifact_presence",
+      "ears_variant": "ubiquitous",
+      "statement": "The repository shall contain no occurrences of `lerna`.",
+      "verification_command": "grep -rE 'lerna' . returns no matches",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-2",
+      "subsection": "behavior_preservation",
+      "ears_variant": "ubiquitous",
+      "statement": "The build system shall produce the same dist artifacts as before.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-3",
+      "subsection": "behavior_change",
+      "ears_variant": "event_driven",
+      "statement": "WHEN the developer runs install, the workspace shall use the pnpm lockfile.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-4",
+      "subsection": "ci_pipeline",
+      "ears_variant": "ubiquitous",
+      "statement": "The CI pipeline shall install dependencies via pnpm.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-5",
+      "subsection": "hooks_gates",
+      "ears_variant": "unwanted",
+      "statement": "IF a yarn lockfile is committed, THEN the pre-commit hook shall reject the commit.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-6",
+      "subsection": "documentation",
+      "ears_variant": "ubiquitous",
+      "statement": "The README shall describe pnpm install steps.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-7",
+      "subsection": "hygiene",
+      "ears_variant": "ubiquitous",
+      "statement": "The repository shall contain no leftover yarn lockfiles.",
+      "verification_command": "find . -name 'yarn-lock' returns no matches",
+      "test_anchor": "",
+      "n_a_reason": ""
+    }
+  ],
+  "ac_subsection_na": {},
+  "out_of_scope": [
+    {
+      "content": "Migrating CI runner base image",
+      "finding_ref": ""
+    },
+    {
+      "content": "Migrating off TypeScript",
+      "finding_ref": ""
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "follow",
+      "content": "Use pnpm workspace-protocol for intra-repo dependencies"
+    },
+    {
+      "kind": "not_break",
+      "content": "Existing dist output paths"
+    },
+    {
+      "kind": "use",
+      "content": "Corepack to pin pnpm version"
+    }
+  ],
+  "open_questions": [],
+  "risks": [
+    {
+      "risk": "Phantom dependency surfacing after install switch",
+      "likelihood": "Med",
+      "impact": "Med",
+      "mitigation": "Run typecheck and tests on each package before merge"
+    }
+  ],
+  "approval_summary": null,
+  "plan_handoff_block": null,
+  "open_question_resolutions": [],
+  "conflicts": []
+}

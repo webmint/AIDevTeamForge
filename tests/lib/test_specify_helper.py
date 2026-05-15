@@ -2243,5 +2243,1691 @@ class TestSummarySubcommand(unittest.TestCase):
             self.assertEqual(data["mode"], "interactive")
 
 
+# ---------------------------------------------------------------------------
+# Phase 4 — header / branch setters.
+# ---------------------------------------------------------------------------
+
+
+def _phase4_seed(dev: Path) -> None:
+    """Common seed for Phase 4 tests: state, date, feature_name."""
+    _run(["--devforge-dir", str(dev), "reset-state"])
+
+
+class TestPhase4AssignSpecNumber(unittest.TestCase):
+    def test_emits_001_when_specs_dir_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-spec-number",
+                "--specs-root", str(Path(td) / "specs"),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "001")
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["spec_number"], "001")
+
+    def test_emits_next_after_existing_dirs(self):
+        with tempfile.TemporaryDirectory() as td:
+            specs = Path(td) / "specs"
+            specs.mkdir()
+            (specs / "001-old-spec").mkdir()
+            (specs / "003-jumpy").mkdir()
+            (specs / "not-a-spec-dir").mkdir()
+            (specs / "010-bigger").mkdir()
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-spec-number",
+                "--specs-root", str(specs),
+            ])
+            self.assertEqual(r.stdout.strip(), "011")
+
+
+class TestPhase4AssignFeatureName(unittest.TestCase):
+    def test_accepts_2_word_kebab(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-feature-name",
+                "--feature-name", "add-feature",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["feature_name"], "add-feature")
+            self.assertEqual(state["feature_slug"], "add-feature")
+
+    def test_accepts_4_word_kebab(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-feature-name",
+                "--feature-name", "migrate-monorepo-to-pnpm",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_rejects_single_word(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-feature-name",
+                "--feature-name", "feature",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_rejects_5_word_kebab(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-feature-name",
+                "--feature-name", "a-b-c-d-e",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_rejects_uppercase(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-feature-name",
+                "--feature-name", "Add-Feature",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_rejects_snake_case(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "assign-feature-name",
+                "--feature-name", "add_feature",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+
+class TestPhase4SetDate(unittest.TestCase):
+    def test_accepts_iso_date(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-date",
+                "--date", "2026-05-15",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["date"], "2026-05-15")
+
+    def test_rejects_garbled_date(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-date",
+                "--date", "May 15",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+
+class TestPhase4CreateBranch(unittest.TestCase):
+    def test_emits_checkout_on_default_branch(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run([
+                "--devforge-dir", str(dev), "assign-spec-number",
+                "--specs-root", str(Path(td) / "specs"),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "assign-feature-name",
+                "--feature-name", "add-darkmode",
+            ])
+            r = _run([
+                "--devforge-dir", str(dev), "create-branch",
+                "--current-branch", "main", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(
+                "git checkout -b spec/001-add-darkmode", r.stdout,
+            )
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["branch_decision"], "create")
+            self.assertTrue(state["branch_created"])
+
+    def test_keep_on_non_default_branch(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "create-branch",
+                "--current-branch", "spec/000-other",
+                "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["branch_decision"], "keep")
+            self.assertFalse(state["branch_created"])
+
+    def test_rejects_missing_spec_number_when_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "create-branch",
+                "--current-branch", "main", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("spec_number", r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — section setters.
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4SectionSetters(unittest.TestCase):
+    def _dev(self, td: str) -> Path:
+        dev = Path(td) / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        return dev
+
+    def test_set_overview_persists(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "set-overview",
+                "--content", "Migrate to pnpm.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["overview"], "Migrate to pnpm.")
+
+    def test_set_overview_rejects_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "set-overview",
+                "--content", "  ",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_set_current_state_persists(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            _run([
+                "--devforge-dir", str(dev), "set-current-state",
+                "--content", "Yarn workspaces today.",
+            ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["current_state"], "Yarn workspaces today.")
+
+    def test_set_desired_behavior_persists(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            _run([
+                "--devforge-dir", str(dev), "set-desired-behavior",
+                "--content", "Pnpm workspaces.",
+            ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["desired_behavior"], "Pnpm workspaces.")
+
+    def test_record_affected_area_appends(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            _run([
+                "--devforge-dir", str(dev), "record-affected-area",
+                "--area", "Tooling",
+                "--files", json.dumps(["pkg.json", "tsconfig.json"]),
+                "--impact", "rewrite",
+            ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(len(state["affected_areas"]), 1)
+            self.assertEqual(state["affected_areas"][0]["area"], "Tooling")
+            self.assertEqual(
+                state["affected_areas"][0]["files"],
+                ["pkg.json", "tsconfig.json"],
+            )
+
+    def test_record_affected_area_rejects_non_array(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-affected-area",
+                "--area", "X",
+                "--files", json.dumps({"oops": "bad"}),
+                "--impact", "Y",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_record_out_of_scope_with_finding_ref(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content", "Migrate CI runner",
+                "--finding-ref", "F-constitution-1",
+            ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["out_of_scope"][0]["content"], "Migrate CI runner")
+            self.assertEqual(state["out_of_scope"][0]["finding_ref"], "F-constitution-1")
+
+    def test_record_constraint_enforces_kind_enum(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "bogus", "--content", "x",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_record_constraint_accepts_each_kind(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            for kind in specify_helper.CONSTRAINT_KIND_ENUM:
+                r = _run([
+                    "--devforge-dir", str(dev), "record-constraint",
+                    "--kind", kind, "--content", "c-{0}".format(kind),
+                ])
+                self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(
+                [c["kind"] for c in state["constraints"]],
+                list(specify_helper.CONSTRAINT_KIND_ENUM),
+            )
+
+    def test_record_open_question_with_no_dp_reason(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            _run([
+                "--devforge-dir", str(dev), "record-open-question",
+                "--question-id", "Q1",
+                "--content", "Pin runtime version?",
+                "--category-no-dp-reason", "no UI surfaces touched",
+            ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            entry = state["open_questions"][0]
+            self.assertEqual(entry["question_id"], "Q1")
+            self.assertEqual(
+                entry["category_no_dp_reason"], "no UI surfaces touched",
+            )
+
+    def test_record_risk_enforces_likelihood_impact_enums(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-risk",
+                "--risk", "x", "--likelihood", "Yuge",
+                "--impact", "Med", "--mitigation", "y",
+            ])
+            self.assertEqual(r.returncode, 2)
+            r2 = _run([
+                "--devforge-dir", str(dev), "record-risk",
+                "--risk", "x", "--likelihood", "Med",
+                "--impact", "Med", "--mitigation", "y",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — add-ac (EARS + subsection constraints).
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4AddAc(unittest.TestCase):
+    def _dev(self, td: str) -> Path:
+        dev = Path(td) / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        return dev
+
+    def test_happy_path_each_ears_variant(self):
+        canon = {
+            "ubiquitous":
+                "The system shall log every request.",
+            "event_driven":
+                "WHEN the build finishes, the CI shall publish artifacts.",
+            "state_driven":
+                "WHILE the user is admin, the dashboard shall show debug info.",
+            "optional":
+                "WHERE the dark-mode flag is enabled, the UI shall use a dark palette.",
+            "unwanted":
+                "IF the token is expired, THEN the system shall reject the request.",
+        }
+        # Use a subsection that allows any variant — behavior_change accepts all.
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            for variant, stmt in canon.items():
+                r = _run([
+                    "--devforge-dir", str(dev), "add-ac",
+                    "--subsection", "behavior_change",
+                    "--ears-variant", variant,
+                    "--statement", stmt,
+                ])
+                self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(len(state["acceptance_criteria"]), 5)
+            self.assertEqual(
+                {a["ears_variant"] for a in state["acceptance_criteria"]},
+                set(canon.keys()),
+            )
+
+    def test_auto_assigns_ac_ids(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            for i in range(3):
+                r = _run([
+                    "--devforge-dir", str(dev), "add-ac",
+                    "--subsection", "behavior_change",
+                    "--ears-variant", "ubiquitous",
+                    "--statement",
+                    "The system shall do thing {0}.".format(i),
+                ])
+                self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(
+                [a["ac_id"] for a in state["acceptance_criteria"]],
+                ["AC-1", "AC-2", "AC-3"],
+            )
+
+    def test_accepts_explicit_ac_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--ac-id", "AC-X",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The system shall do thing X.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "AC-X")
+
+    def test_rejects_freeform_statement(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "System should sometimes do stuff",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("EARS", r.stderr)
+
+    def test_511_requires_ubiquitous(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "tooling_artifact_presence",
+                "--ears-variant", "event_driven",
+                "--statement",
+                "WHEN x, the system shall y.",
+                "--verification-command", "grep x",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("ubiquitous", r.stderr)
+
+    def test_511_requires_verification_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "tooling_artifact_presence",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The repo shall contain no `lerna`.",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("verification-command", r.stderr)
+
+    def test_511_happy(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "tooling_artifact_presence",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The repository shall contain no occurrences of `lerna`.",
+                "--verification-command", "grep -r lerna . returns 0 matches",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_57_hygiene_requires_ubiquitous_and_verification(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "hygiene",
+                "--ears-variant", "event_driven",
+                "--statement",
+                "WHEN x, the repo shall be clean.",
+                "--verification-command", "grep nothing",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_mark_subsection_na(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "ci_pipeline",
+                "--mark-na",
+                "--n-a-reason", "no CI in scope",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(
+                state["ac_subsection_na"]["ci_pipeline"], "no CI in scope",
+            )
+            self.assertEqual(state["acceptance_criteria"], [])
+
+    def test_mark_na_rejects_empty_reason(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "ci_pipeline",
+                "--mark-na", "--n-a-reason", "  ",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — verify subcommands.
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4VerifyCoverage(unittest.TestCase):
+    def test_passes_when_all_findings_landed(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run([
+                "--devforge-dir", str(dev), "record-input-read",
+                "--path", "constitution.md",
+            ])
+            for i in range(2):
+                _run([
+                    "--devforge-dir", str(dev), "record-finding",
+                    "--source-path", "constitution.md",
+                    "--content", "x{0}".format(i),
+                    "--landed-in", "AC",
+                ])
+            r = _run(["--devforge-dir", str(dev), "verify-coverage"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_fails_on_any_unlanded(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run([
+                "--devforge-dir", str(dev), "record-input-read",
+                "--path", "constitution.md",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "record-finding",
+                "--source-path", "constitution.md", "--content", "x",
+            ])  # default landed_in="unlanded"
+            r = _run(["--devforge-dir", str(dev), "verify-coverage"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("Variance rule #5", r.stderr)
+
+
+class TestPhase4VerifyAcSubsectionCoverage(unittest.TestCase):
+    def test_fails_on_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-ac-subsection-coverage",
+            ])
+            self.assertEqual(r.returncode, 2)
+            for sub in specify_helper.AC_SUBSECTION_ENUM:
+                self.assertIn(sub, r.stderr)
+
+    def test_passes_when_all_marked_na(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            for sub in specify_helper.AC_SUBSECTION_ENUM:
+                _run([
+                    "--devforge-dir", str(dev), "add-ac",
+                    "--subsection", sub,
+                    "--mark-na", "--n-a-reason", "n/a",
+                ])
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-ac-subsection-coverage",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_passes_with_mix_of_ac_and_na(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "tooling_artifact_presence",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The repo shall contain no `lerna`.",
+                "--verification-command", "grep -r lerna",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "hygiene",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The repo shall contain no stray lockfiles.",
+                "--verification-command", "find lockfiles",
+            ])
+            for sub in (
+                "behavior_preservation", "behavior_change",
+                "ci_pipeline", "hooks_gates", "documentation",
+            ):
+                _run([
+                    "--devforge-dir", str(dev), "add-ac",
+                    "--subsection", sub,
+                    "--mark-na", "--n-a-reason", "out of scope",
+                ])
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-ac-subsection-coverage",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestPhase4VerifyAcShape(unittest.TestCase):
+    def test_fails_when_state_corrupted(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            sp = dev / "specify-state.json"
+            state = json.loads(sp.read_text())
+            state["acceptance_criteria"].append({
+                "ac_id": "AC-bad",
+                "subsection": "behavior_change",
+                "ears_variant": "ubiquitous",
+                "statement": "Bad statement no shall here.",
+                "verification_command": "",
+                "test_anchor": "",
+                "n_a_reason": "",
+            })
+            sp.write_text(json.dumps(state))
+            r = _run(["--devforge-dir", str(dev), "verify-ac-shape"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("AC-bad", r.stderr)
+
+    def test_passes_on_clean_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "event_driven",
+                "--statement",
+                "WHEN the build finishes, the CI shall publish artifacts.",
+            ])
+            r = _run(["--devforge-dir", str(dev), "verify-ac-shape"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestPhase4VerifyNumericalConsistency(unittest.TestCase):
+    def test_passes_on_consistent_render(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run([
+                "--devforge-dir", str(dev), "set-overview",
+                "--content", "Migrate across 3 packages of the workspace.",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-current-state",
+                "--content", "All 3 packages share the same lockfile.",
+            ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-numerical-consistency",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_fails_on_inconsistent_render(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run([
+                "--devforge-dir", str(dev), "set-overview",
+                "--content", "Migrate 3 packages of the monorepo.",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-current-state",
+                "--content", "Today 5 packages live in the monorepo.",
+            ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-numerical-consistency",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("packages", r.stderr)
+
+    def test_ignores_section_heading_numbers(self):
+        """5.1 / 5.2 in headings must not flag false inconsistency."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            # No body numbers; heading text "1 Tooling" etc would be a
+            # false positive without skip-heading logic.
+            r = _run([
+                "--devforge-dir", str(dev), "verify-numerical-consistency",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestPhase4CheckConstitutionCompliance(unittest.TestCase):
+    def test_skips_silently_when_constitution_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev),
+                "check-constitution-compliance",
+                "--constitution-path", str(Path(td) / "nope.md"),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("not found", r.stderr)
+
+    def test_emits_warnings_on_overlap(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            cpath = Path(td) / "constitution.md"
+            cpath.write_text(
+                "# Constitution\n\n"
+                "Rule 1: The pipeline MUST NOT publish broken artifacts.\n",
+                encoding="utf-8",
+            )
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The pipeline shall publish artifacts after every build.",
+            ])
+            r = _run([
+                "--devforge-dir", str(dev),
+                "check-constitution-compliance",
+                "--constitution-path", str(cpath),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("overlap", r.stderr.lower())
+            self.assertIn("publish", r.stderr)
+
+    def test_clean_state_emits_no_warnings(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            cpath = Path(td) / "constitution.md"
+            cpath.write_text(
+                "# Constitution\n\nRule 1: The pipeline MUST NOT publish "
+                "broken artifacts.\n",
+                encoding="utf-8",
+            )
+            # No AC / Constraint / OOS to overlap with.
+            r = _run([
+                "--devforge-dir", str(dev),
+                "check-constitution-compliance",
+                "--constitution-path", str(cpath),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("review", r.stderr.lower())
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — render (deterministic 9-section markdown).
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4Render(unittest.TestCase):
+    def _seed(self, td: str) -> Path:
+        dev = Path(td) / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        _run(["--devforge-dir", str(dev), "set-date",
+              "--date", "2026-05-15"])
+        _run(["--devforge-dir", str(dev), "assign-feature-name",
+              "--feature-name", "test-spec"])
+        return dev
+
+    def test_emits_9_sections(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            r = _run(["--devforge-dir", str(dev), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for heading in (
+                "# Spec: test-spec",
+                "**Date**: 2026-05-15",
+                "**Status**: Draft",
+                "**Author**: Claude + User",
+                "## 1. Overview",
+                "## 2. Current State",
+                "## 3. Desired Behavior",
+                "## 4. Affected Areas",
+                "## 5. Acceptance Criteria",
+                "## 6. Out of Scope",
+                "## 7. Technical Constraints",
+                "## 8. Open Questions",
+                "## 9. Risks",
+            ):
+                self.assertIn(heading, r.stdout, "missing: " + heading)
+
+    def test_emits_7_ac_subsections_in_locked_order(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            r = _run(["--devforge-dir", str(dev), "render"])
+            for sub_num, sub_label in (
+                ("5.1", "Tooling / artifact presence and absence"),
+                ("5.2", "Behavior preservation"),
+                ("5.3", "Behavior change"),
+                ("5.4", "CI / pipeline"),
+                ("5.5", "Hooks / gates"),
+                ("5.6", "Documentation"),
+                ("5.7", "Hygiene"),
+            ):
+                heading = "### {0} {1}".format(sub_num, sub_label)
+                self.assertIn(heading, r.stdout)
+            # Locked order check
+            positions = [
+                r.stdout.index("### {0} ".format(n))
+                for n in ("5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7")
+            ]
+            self.assertEqual(positions, sorted(positions))
+
+    def test_emits_coverage_rule_banner_verbatim(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            r = _run(["--devforge-dir", str(dev), "render"])
+            self.assertIn(specify_helper.COVERAGE_RULE_BANNER, r.stdout)
+
+    def test_emits_ac_framing_line_verbatim(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            r = _run(["--devforge-dir", str(dev), "render"])
+            self.assertIn(specify_helper.AC_FRAMING_LINE, r.stdout)
+
+    def test_render_is_byte_deterministic(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            _run(["--devforge-dir", str(dev), "set-overview",
+                  "--content", "x"])
+            _run(["--devforge-dir", str(dev), "add-ac",
+                  "--subsection", "behavior_change",
+                  "--ears-variant", "ubiquitous",
+                  "--statement", "The system shall x."])
+            r1 = _run(["--devforge-dir", str(dev), "render"])
+            r2 = _run(["--devforge-dir", str(dev), "render"])
+            self.assertEqual(r1.stdout, r2.stdout)
+
+    def test_renders_ac_verification_and_test_anchor(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "tooling_artifact_presence",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The repo shall contain no `lerna`.",
+                "--verification-command", "grep -r lerna . returns 0 matches",
+                "--test-anchor", "tests/repo.test.ts::no_lerna",
+            ])
+            r = _run(["--devforge-dir", str(dev), "render"])
+            self.assertIn(
+                "> Verification: grep -r lerna . returns 0 matches",
+                r.stdout,
+            )
+            self.assertIn(
+                "> Test: tests/repo.test.ts::no_lerna", r.stdout,
+            )
+
+    def test_renders_subsection_na_marker(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "ci_pipeline",
+                "--mark-na",
+                "--n-a-reason", "no CI in scope",
+            ])
+            r = _run(["--devforge-dir", str(dev), "render"])
+            self.assertIn("N/A — no CI in scope", r.stdout)
+
+    def test_renders_constraints_in_kind_order(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "use", "--content", "use thing",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "follow", "--content", "follow thing",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "not_break", "--content", "not break thing",
+            ])
+            r = _run(["--devforge-dir", str(dev), "render"])
+            pf = r.stdout.index("Must follow")
+            pn = r.stdout.index("Must not break")
+            pu = r.stdout.index("Must use")
+            self.assertLess(pf, pn)
+            self.assertLess(pn, pu)
+
+    def test_renders_dp_default_applied_in_open_questions(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            env = os.environ.copy()
+            env[specify_helper.AUTO_MODE_ENV_VAR] = "1"
+            _run(["--devforge-dir", str(dev), "detect-mode"], env=env)
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "tooling_configuration",
+                "--description", "package manager",
+                "--valid-implementations", json.dumps(["pnpm", "yarn"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-default-applied",
+                "--dp-id", "DP-tooling_configuration-1",
+                "--default-applied", "pnpm",
+            ])
+            r = _run(["--devforge-dir", str(dev), "render"])
+            self.assertIn("[default applied]", r.stdout)
+            self.assertIn("pnpm", r.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — approval + handoff.
+# ---------------------------------------------------------------------------
+
+
+class TestPhase5RenderSummary(unittest.TestCase):
+    def test_emits_4_bullets_and_persists(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "assign-feature-name",
+                  "--feature-name", "test-spec"])
+            _run([
+                "--devforge-dir", str(dev), "assign-spec-number",
+                "--specs-root", str(Path(td) / "specs"),
+            ])
+            _run(["--devforge-dir", str(dev), "set-overview",
+                  "--content", "Migrate the thing."])
+            _run([
+                "--devforge-dir", str(dev), "record-affected-area",
+                "--area", "Tooling",
+                "--files", json.dumps(["a.json", "b.json"]),
+                "--impact", "rewrite",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The thing shall change.",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content", "Unrelated stuff",
+            ])
+            r = _run(["--devforge-dir", str(dev), "render-summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for needle in (
+                "specs/001-test-spec/spec.md",
+                "**What changes**:",
+                "**Files affected**:",
+                "**Acceptance criteria**:",
+                "**Out of scope**:",
+                "Please review and either approve or request changes.",
+                "run `/plan`",
+            ):
+                self.assertIn(needle, r.stdout)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["approval_summary"], r.stdout.rstrip("\n"))
+
+
+class TestPhase5SetStatus(unittest.TestCase):
+    def test_accepts_each_status(self):
+        for status in specify_helper.SPEC_STATUS_ENUM:
+            with tempfile.TemporaryDirectory() as td:
+                dev = Path(td) / ".devforge"
+                _run(["--devforge-dir", str(dev), "reset-state"])
+                r = _run([
+                    "--devforge-dir", str(dev), "set-status",
+                    "--status", status,
+                ])
+                self.assertEqual(r.returncode, 0, r.stderr)
+                state = json.loads((dev / "specify-state.json").read_text())
+                self.assertEqual(state["status"], status)
+
+    def test_rejects_bogus_status(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-status",
+                "--status", "Bogus",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+
+class TestPhase5RenderPlanHandoff(unittest.TestCase):
+    def test_emits_handoff_block(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "assign-feature-name",
+                  "--feature-name", "test-spec"])
+            _run([
+                "--devforge-dir", str(dev), "assign-spec-number",
+                "--specs-root", str(Path(td) / "specs"),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--rationale", "new feature",
+            ])
+            _run(["--devforge-dir", str(dev), "set-status",
+                  "--status", "Approved"])
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement", "The thing shall change.",
+            ])
+            r = _run([
+                "--devforge-dir", str(dev), "render-plan-handoff",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for needle in (
+                "## Next step: /plan handoff",
+                "/plan specs/001-test-spec/spec.md",
+                "Spec status: Approved",
+                "Spec type: feature_addition",
+                "AC count: 1",
+                "Phase 1.5 finding coverage: 100% (all findings landed)",
+                "Reference: specs/001-test-spec/spec.md",
+            ):
+                self.assertIn(needle, r.stdout)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(
+                state["plan_handoff_block"], r.stdout.rstrip("\n"),
+            )
+
+    def test_handoff_deterministic(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "assign-feature-name",
+                  "--feature-name", "test-spec"])
+            r1 = _run(["--devforge-dir", str(dev), "render-plan-handoff"])
+            r2 = _run(["--devforge-dir", str(dev), "render-plan-handoff"])
+            self.assertEqual(r1.stdout, r2.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Downstream — resolve-open-question.
+# ---------------------------------------------------------------------------
+
+
+class TestDownstreamResolveOpenQuestion(unittest.TestCase):
+    def test_appends_audit_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "resolve-open-question",
+                "--question-id", "Q1",
+                "--resolution-text", "answered by /plan",
+                "--resolution-phase", "plan",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(len(state["open_question_resolutions"]), 1)
+            entry = state["open_question_resolutions"][0]
+            self.assertEqual(entry["question_id"], "Q1")
+            self.assertEqual(entry["resolution_phase"], "plan")
+            self.assertTrue(entry["resolution_timestamp"].endswith("Z"))
+
+    def test_rejects_bogus_phase(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "resolve-open-question",
+                "--question-id", "Q1",
+                "--resolution-text", "x",
+                "--resolution-phase", "verify",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_render_strikes_through_resolved_question(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "assign-feature-name",
+                  "--feature-name", "test-spec"])
+            _run([
+                "--devforge-dir", str(dev), "record-open-question",
+                "--question-id", "Q1",
+                "--content", "Should X happen?",
+            ])
+            r1 = _run(["--devforge-dir", str(dev), "render"])
+            self.assertIn("**Q1**: Should X happen?", r1.stdout)
+            self.assertNotIn("~~", r1.stdout)
+            _run([
+                "--devforge-dir", str(dev), "resolve-open-question",
+                "--question-id", "Q1",
+                "--resolution-text", "yes, in plan",
+                "--resolution-phase", "plan",
+            ])
+            r2 = _run(["--devforge-dir", str(dev), "render"])
+            self.assertIn("~~", r2.stdout)
+            self.assertIn("resolved in plan", r2.stdout)
+            self.assertIn("yes, in plan", r2.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Fixture round-trip — migration_tooling + greenfield_feature.
+# ---------------------------------------------------------------------------
+
+FIXTURE_DIR = ROOT / "tests" / "lib" / "fixtures"
+
+
+def _build_migration_fixture_state(td_path: Path) -> Path:
+    """Compose the migration_tooling fixture state via real helper calls."""
+    dev = td_path / ".devforge"
+    specs_root = td_path / "specs"
+    specs_root.mkdir(exist_ok=True)
+    _run(["--devforge-dir", str(dev), "reset-state"])
+    _run(["--devforge-dir", str(dev), "set-date",
+          "--date", "2026-05-15"])
+    _run([
+        "--devforge-dir", str(dev), "assign-feature-name",
+        "--feature-name", "monorepo-pnpm-migration",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "assign-spec-number",
+        "--specs-root", str(specs_root),
+    ])
+    _run([
+        "--devforge-dir", str(dev), "create-branch",
+        "--current-branch", "main", "--default-branch", "main",
+    ])
+
+    # Phase 1
+    for path in (
+        "constitution.md", ".claude/memory/MEMORY.md",
+        "CLAUDE.md", "docs/architecture.md",
+    ):
+        _run([
+            "--devforge-dir", str(dev), "record-input-read",
+            "--path", path,
+        ])
+    _run(["--devforge-dir", str(dev), "phase1-finalize"])
+
+    # Phase 1.5 — every finding lands somewhere.
+    findings = [
+        ("constitution.md", "Workspace forbids `lerna`",       "Constraint"),
+        ("constitution.md", "Every package must declare engines field", "Constraint"),
+        ("constitution.md", "Single root install required",    "Constraint"),
+        ("docs/architecture.md", "Workspace deps via workspace-protocol", "AC"),
+        ("docs/architecture.md", "CI runs install before build",         "AC"),
+        ("docs/architecture.md", "Build writes artifacts to dist/",      "AC"),
+    ]
+    for path, content, landed in findings:
+        _run([
+            "--devforge-dir", str(dev), "record-finding",
+            "--source-path", path, "--content", content,
+            "--landed-in", landed,
+        ])
+    for path in (".claude/memory/MEMORY.md", "CLAUDE.md"):
+        _run([
+            "--devforge-dir", str(dev),
+            "mark-source-no-items-relevant",
+            "--source-path", path,
+        ])
+    _run(["--devforge-dir", str(dev), "findings-finalize"])
+
+    # Phase 2
+    _run(["--devforge-dir", str(dev), "detect-mode"])
+    _run([
+        "--devforge-dir", str(dev), "record-decision-point",
+        "--category", "scope_boundaries",
+        "--description", "Which packages migrate to pnpm",
+        "--valid-implementations",
+        json.dumps(["all packages", "core packages only"]),
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-dp-answer",
+        "--dp-id", "DP-scope_boundaries-1",
+        "--user-answer", "all packages",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-decision-point",
+        "--category", "breaking_changes",
+        "--description", "Behavior on lockfile conflict",
+        "--valid-implementations",
+        json.dumps(["fail builds on conflict", "warn only"]),
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-dp-answer",
+        "--dp-id", "DP-breaking_changes-1",
+        "--user-answer", "fail builds on conflict",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-decision-point",
+        "--category", "tooling_configuration",
+        "--description", "How pnpm gets installed in CI",
+        "--valid-implementations",
+        json.dumps(["corepack", "global install"]),
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-dp-answer",
+        "--dp-id", "DP-tooling_configuration-1",
+        "--user-answer", "corepack",
+    ])
+    for cat in (
+        "existing_behavior", "data_flow_state",
+        "edge_cases", "ui_ux_details",
+    ):
+        _run([
+            "--devforge-dir", str(dev), "record-decision-point",
+            "--category", cat,
+            "--description",
+            "no relevant decision point for {0}".format(cat),
+            "--no-dp-in-category",
+        ])
+    _run(["--devforge-dir", str(dev), "dp-finalize"])
+
+    # Phase 3
+    _run([
+        "--devforge-dir", str(dev), "classify-spec-type",
+        "--spec-type", "migration_tooling",
+        "--rationale", "swap lerna+yarn for pnpm workspaces",
+    ])
+    for slot, _desc in (
+        specify_helper.MANDATORY_READS_BY_TYPE["migration_tooling"]
+    ):
+        _run([
+            "--devforge-dir", str(dev), "record-mandatory-read",
+            "--slot-pattern", slot,
+            "--n-a-reason", "covered in subsequent investigation",
+        ])
+    _run(["--devforge-dir", str(dev), "phase3-finalize"])
+
+    # Phase 4 — narrative + AC + OOS + Constraints + Risks
+    _run([
+        "--devforge-dir", str(dev), "set-overview",
+        "--content",
+        "Migrate the monorepo from lerna with yarn to pnpm "
+        "workspaces using corepack.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-current-state",
+        "--content",
+        "Workspace uses lerna for orchestration and yarn for "
+        "package install. Lockfiles are yarn.lock files.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-desired-behavior",
+        "--content",
+        "Workspace uses pnpm workspaces for orchestration. "
+        "Lockfile is pnpm-lock.yaml. Corepack pins pnpm version.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-affected-area",
+        "--area", "Root tooling",
+        "--files", json.dumps([
+            "package.json", "pnpm-workspace.yaml",
+        ]),
+        "--impact", "switch package manager and workspace layout",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "tooling_artifact_presence",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The repository shall contain no occurrences of `lerna`.",
+        "--verification-command",
+        "grep -rE 'lerna' . returns no matches",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "behavior_preservation",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The build system shall produce the same dist artifacts as before.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "behavior_change",
+        "--ears-variant", "event_driven",
+        "--statement",
+        "WHEN the developer runs install, the workspace shall use the pnpm lockfile.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "ci_pipeline",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The CI pipeline shall install dependencies via pnpm.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "hooks_gates",
+        "--ears-variant", "unwanted",
+        "--statement",
+        "IF a yarn lockfile is committed, THEN the pre-commit hook shall reject the commit.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "documentation",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The README shall describe pnpm install steps.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "hygiene",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The repository shall contain no leftover yarn lockfiles.",
+        "--verification-command",
+        "find . -name 'yarn-lock' returns no matches",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-out-of-scope",
+        "--content", "Migrating CI runner base image",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-out-of-scope",
+        "--content", "Migrating off TypeScript",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-constraint",
+        "--kind", "follow",
+        "--content",
+        "Use pnpm workspace-protocol for intra-repo dependencies",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-constraint",
+        "--kind", "not_break",
+        "--content", "Existing dist output paths",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-constraint",
+        "--kind", "use",
+        "--content", "Corepack to pin pnpm version",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-risk",
+        "--risk",
+        "Phantom dependency surfacing after install switch",
+        "--likelihood", "Med", "--impact", "Med",
+        "--mitigation",
+        "Run typecheck and tests on each package before merge",
+    ])
+    return dev
+
+
+def _build_greenfield_fixture_state(td_path: Path) -> Path:
+    """Compose the greenfield_feature fixture state via real helper calls."""
+    dev = td_path / ".devforge"
+    specs_root = td_path / "specs"
+    specs_root.mkdir(exist_ok=True)
+    _run(["--devforge-dir", str(dev), "reset-state"])
+    _run(["--devforge-dir", str(dev), "set-date",
+          "--date", "2026-05-15"])
+    _run([
+        "--devforge-dir", str(dev), "assign-feature-name",
+        "--feature-name", "scheduled-export-jobs",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "assign-spec-number",
+        "--specs-root", str(specs_root),
+    ])
+    _run([
+        "--devforge-dir", str(dev), "create-branch",
+        "--current-branch", "main", "--default-branch", "main",
+    ])
+
+    # Phase 1 — include discover/ companion as auto-mode pre-seed source.
+    for path in (
+        "constitution.md", ".claude/memory/MEMORY.md",
+        "CLAUDE.md", "docs/architecture.md",
+        "discover/2026-05-14-scheduled-export-jobs.md",
+    ):
+        _run([
+            "--devforge-dir", str(dev), "record-input-read",
+            "--path", path,
+        ])
+    _run(["--devforge-dir", str(dev), "phase1-finalize"])
+
+    findings = [
+        ("constitution.md",
+         "Section 7 names scaffolding location for new jobs",
+         "Constraint"),
+        ("constitution.md",
+         "Background jobs must emit structured logs",
+         "Constraint"),
+        ("constitution.md",
+         "All new endpoints require auth middleware",
+         "Constraint"),
+        ("discover/2026-05-14-scheduled-export-jobs.md",
+         "Internal canonical: existing job runner under src/jobs/",
+         "AC"),
+        ("discover/2026-05-14-scheduled-export-jobs.md",
+         "Recommended option: extend existing job runner",
+         "AC"),
+        ("discover/2026-05-14-scheduled-export-jobs.md",
+         "Discovery report enumerates two design options",
+         "AC"),
+    ]
+    for path, content, landed in findings:
+        _run([
+            "--devforge-dir", str(dev), "record-finding",
+            "--source-path", path, "--content", content,
+            "--landed-in", landed,
+        ])
+    for path in (
+        ".claude/memory/MEMORY.md", "CLAUDE.md",
+        "docs/architecture.md",
+    ):
+        _run([
+            "--devforge-dir", str(dev),
+            "mark-source-no-items-relevant",
+            "--source-path", path,
+        ])
+    _run(["--devforge-dir", str(dev), "findings-finalize"])
+
+    # Phase 2 — auto-mode default-applied entries demo.
+    env = os.environ.copy()
+    env[specify_helper.AUTO_MODE_ENV_VAR] = "1"
+    _run(["--devforge-dir", str(dev), "detect-mode"], env=env)
+    _run([
+        "--devforge-dir", str(dev), "record-decision-point",
+        "--category", "scope_boundaries",
+        "--description", "Export targets supported",
+        "--valid-implementations",
+        json.dumps(["csv", "csv and json", "csv json parquet"]),
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-dp-default-applied",
+        "--dp-id", "DP-scope_boundaries-1",
+        "--default-applied", "csv and json",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-decision-point",
+        "--category", "tooling_configuration",
+        "--description", "Scheduler component to use",
+        "--valid-implementations",
+        json.dumps(["existing job runner", "new cron service"]),
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-dp-default-applied",
+        "--dp-id", "DP-tooling_configuration-1",
+        "--default-applied", "existing job runner",
+    ])
+    for cat in (
+        "existing_behavior", "data_flow_state",
+        "edge_cases", "ui_ux_details", "breaking_changes",
+    ):
+        _run([
+            "--devforge-dir", str(dev), "record-decision-point",
+            "--category", cat,
+            "--description",
+            "no relevant decision point for {0}".format(cat),
+            "--no-dp-in-category",
+        ])
+    _run(["--devforge-dir", str(dev), "dp-finalize"])
+
+    # Phase 3 — greenfield_feature.
+    _run([
+        "--devforge-dir", str(dev), "classify-spec-type",
+        "--spec-type", "greenfield_feature",
+        "--rationale", "new feature; pre-seeded by /discover handoff",
+        "--seeded-by-upstream",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-mandatory-read",
+        "--read-path", "constitution.md#scaffolding-guide",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-mandatory-read",
+        "--slot-pattern", "__framework_docs__",
+        "--n-a-reason", "no third-party framework involved",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-mandatory-read",
+        "--read-path", ".claude/memory/MEMORY.md",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-mandatory-read",
+        "--read-path", "discover/2026-05-14-scheduled-export-jobs.md",
+    ])
+    _run(["--devforge-dir", str(dev), "phase3-finalize"])
+
+    # Phase 4
+    _run([
+        "--devforge-dir", str(dev), "set-overview",
+        "--content",
+        "Introduce scheduled export jobs for tenant data via the "
+        "existing job runner.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-current-state",
+        "--content",
+        "Scaffolding for scheduled jobs lives under src/jobs/ per "
+        "constitution Section 7; no export jobs exist yet.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "set-desired-behavior",
+        "--content",
+        "Tenants can register a recurring export job and receive a "
+        "result file via the existing storage hook.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-affected-area",
+        "--area", "Jobs",
+        "--files", json.dumps([
+            "src/jobs/exports.ts", "src/jobs/registry.ts",
+        ]),
+        "--impact", "add new job registration and runner glue",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "tooling_artifact_presence",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The repository shall contain a new exports job module under src/jobs/.",
+        "--verification-command",
+        "ls src/jobs/exports.ts returns the file",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "behavior_preservation",
+        "--mark-na",
+        "--n-a-reason", "greenfield surface; nothing to preserve yet",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "behavior_change",
+        "--ears-variant", "event_driven",
+        "--statement",
+        "WHEN a tenant registers an export schedule, the runner shall enqueue the job.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "ci_pipeline",
+        "--mark-na",
+        "--n-a-reason", "no pipeline change required",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "hooks_gates",
+        "--ears-variant", "state_driven",
+        "--statement",
+        "WHILE the export job is running, the storage hook shall hold the partial file.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "documentation",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The exports README shall document the new registration flow.",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "add-ac",
+        "--subsection", "hygiene",
+        "--ears-variant", "ubiquitous",
+        "--statement",
+        "The repository shall contain no stray TODO markers in the new job module.",
+        "--verification-command",
+        "grep -E 'TODO' src/jobs/exports.ts returns no matches",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-out-of-scope",
+        "--content", "Ad-hoc on-demand exports outside scheduling",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-constraint",
+        "--kind", "follow",
+        "--content", "Constitution Section 7 scaffolding rules",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-constraint",
+        "--kind", "use",
+        "--content", "Existing job runner from src/jobs/registry.ts",
+    ])
+    _run([
+        "--devforge-dir", str(dev), "record-risk",
+        "--risk", "Storage hook contention under concurrent exports",
+        "--likelihood", "Low", "--impact", "Med",
+        "--mitigation",
+        "Add per-tenant queue to serialize exports",
+    ])
+    return dev
+
+
+def _read_fixture(name: str) -> str:
+    return (FIXTURE_DIR / name).read_text(encoding="utf-8")
+
+
+def _render_via_helper(devforge_dir: Path) -> str:
+    r = _run(["--devforge-dir", str(devforge_dir), "render"])
+    if r.returncode != 0:
+        raise AssertionError(
+            "render failed: rc={0}, stderr={1!r}".format(
+                r.returncode, r.stderr,
+            )
+        )
+    return r.stdout
+
+
+class TestMigrationFixtureRoundTrip(unittest.TestCase):
+    fixture_name = "specify-sample-migration.md"
+
+    def test_render_matches_committed_fixture(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = _build_migration_fixture_state(Path(td))
+            rendered = _render_via_helper(dev)
+            state_text = (dev / "specify-state.json").read_text()
+        fp = FIXTURE_DIR / self.fixture_name
+        if os.environ.get("UPDATE_SPECIFY_FIXTURES") == "1":
+            fp.write_text(rendered, encoding="utf-8")
+            state = json.loads(state_text)
+            (FIXTURE_DIR / "specify-sample-migration-state.json").write_text(
+                json.dumps(state, indent=2) + "\n", encoding="utf-8",
+            )
+        expected = _read_fixture(self.fixture_name)
+        self.assertEqual(rendered, expected)
+
+    def test_state_satisfies_phase_gates(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = _build_migration_fixture_state(Path(td))
+            for cmd in (
+                "verify-findings", "verify-decision-coverage",
+                "verify-mandatory-reads", "verify-coverage",
+                "verify-ac-subsection-coverage", "verify-ac-shape",
+                "verify-numerical-consistency",
+            ):
+                r = _run(["--devforge-dir", str(dev), cmd])
+                self.assertEqual(
+                    r.returncode, 0,
+                    "{0} failed for migration fixture: {1}".format(
+                        cmd, r.stderr,
+                    ),
+                )
+
+
+class TestGreenfieldFixtureRoundTrip(unittest.TestCase):
+    fixture_name = "specify-sample-greenfield.md"
+
+    def test_render_matches_committed_fixture(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = _build_greenfield_fixture_state(Path(td))
+            rendered = _render_via_helper(dev)
+            state_text = (dev / "specify-state.json").read_text()
+        fp = FIXTURE_DIR / self.fixture_name
+        if os.environ.get("UPDATE_SPECIFY_FIXTURES") == "1":
+            fp.write_text(rendered, encoding="utf-8")
+            state = json.loads(state_text)
+            (FIXTURE_DIR / "specify-sample-greenfield-state.json").write_text(
+                json.dumps(state, indent=2) + "\n", encoding="utf-8",
+            )
+        expected = _read_fixture(self.fixture_name)
+        self.assertEqual(rendered, expected)
+
+    def test_state_satisfies_phase_gates(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = _build_greenfield_fixture_state(Path(td))
+            for cmd in (
+                "verify-findings", "verify-decision-coverage",
+                "verify-mandatory-reads", "verify-coverage",
+                "verify-ac-subsection-coverage", "verify-ac-shape",
+                "verify-numerical-consistency",
+            ):
+                r = _run(["--devforge-dir", str(dev), cmd])
+                self.assertEqual(
+                    r.returncode, 0,
+                    "{0} failed for greenfield fixture: {1}".format(
+                        cmd, r.stderr,
+                    ),
+                )
+
+
+class TestUpstreamCompanionFixtures(unittest.TestCase):
+    def test_research_input_fixture_exists_and_has_handoff_block(self):
+        fp = FIXTURE_DIR / "specify-sample-research-input.md"
+        self.assertTrue(
+            fp.exists(),
+            "specify-sample-research-input.md not committed",
+        )
+        text = fp.read_text(encoding="utf-8")
+        # Must contain a /specify handoff block (single-tilde fence).
+        self.assertIn("/specify", text)
+
+    def test_greenfield_discover_input_fixture_exists(self):
+        fp = FIXTURE_DIR / "specify-sample-greenfield-discover-input.md"
+        self.assertTrue(
+            fp.exists(),
+            "specify-sample-greenfield-discover-input.md not committed",
+        )
+        text = fp.read_text(encoding="utf-8")
+        self.assertIn("/specify", text)
+
+
 if __name__ == "__main__":
     unittest.main()

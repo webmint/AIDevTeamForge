@@ -1,0 +1,309 @@
+{
+  "topic": null,
+  "topic_slug": null,
+  "date": "2026-05-15",
+  "spec_number": "001",
+  "feature_name": "scheduled-export-jobs",
+  "feature_slug": "scheduled-export-jobs",
+  "spec_type": "greenfield_feature",
+  "spec_type_rationale": "new feature; pre-seeded by /discover handoff",
+  "spec_type_seeded_by_upstream": true,
+  "status": "Draft",
+  "current_branch": "main",
+  "default_branch": "main",
+  "branch_decision": "create",
+  "branch_created": true,
+  "input_reads": [
+    {
+      "path": "constitution.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:42Z"
+    },
+    {
+      "path": ".claude/memory/MEMORY.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:42Z"
+    },
+    {
+      "path": "CLAUDE.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:42Z"
+    },
+    {
+      "path": "docs/architecture.md",
+      "source_origin": "context",
+      "read_timestamp": "2026-05-15T04:04:42Z"
+    },
+    {
+      "path": "discover/2026-05-14-scheduled-export-jobs.md",
+      "source_origin": "discover",
+      "read_timestamp": "2026-05-15T04:04:42Z"
+    }
+  ],
+  "phase1_finalized": true,
+  "findings": [
+    {
+      "finding_id": "F-constitution-1",
+      "source_path": "constitution.md",
+      "source_section": "",
+      "content": "Section 7 names scaffolding location for new jobs",
+      "landed_in": "Constraint",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-constitution-2",
+      "source_path": "constitution.md",
+      "source_section": "",
+      "content": "Background jobs must emit structured logs",
+      "landed_in": "Constraint",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-constitution-3",
+      "source_path": "constitution.md",
+      "source_section": "",
+      "content": "All new endpoints require auth middleware",
+      "landed_in": "Constraint",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-2026-05-14-scheduled-export-jobs-1",
+      "source_path": "discover/2026-05-14-scheduled-export-jobs.md",
+      "source_section": "",
+      "content": "Internal canonical: existing job runner under src/jobs/",
+      "landed_in": "AC",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-2026-05-14-scheduled-export-jobs-2",
+      "source_path": "discover/2026-05-14-scheduled-export-jobs.md",
+      "source_section": "",
+      "content": "Recommended option: extend existing job runner",
+      "landed_in": "AC",
+      "landed_ref": ""
+    },
+    {
+      "finding_id": "F-2026-05-14-scheduled-export-jobs-3",
+      "source_path": "discover/2026-05-14-scheduled-export-jobs.md",
+      "source_section": "",
+      "content": "Discovery report enumerates two design options",
+      "landed_in": "AC",
+      "landed_ref": ""
+    }
+  ],
+  "source_no_items_relevant": {
+    ".claude/memory/MEMORY.md": true,
+    "CLAUDE.md": true,
+    "docs/architecture.md": true
+  },
+  "findings_finalized": true,
+  "decision_points": [
+    {
+      "dp_id": "DP-scope_boundaries-1",
+      "category": "scope_boundaries",
+      "description": "Export targets supported",
+      "valid_implementations": [
+        "csv",
+        "csv and json",
+        "csv json parquet"
+      ],
+      "status": "default_applied",
+      "user_answer": "",
+      "default_applied": "csv and json",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-tooling_configuration-1",
+      "category": "tooling_configuration",
+      "description": "Scheduler component to use",
+      "valid_implementations": [
+        "existing job runner",
+        "new cron service"
+      ],
+      "status": "default_applied",
+      "user_answer": "",
+      "default_applied": "existing job runner",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-existing_behavior-1",
+      "category": "existing_behavior",
+      "description": "no relevant decision point for existing_behavior",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-data_flow_state-1",
+      "category": "data_flow_state",
+      "description": "no relevant decision point for data_flow_state",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-edge_cases-1",
+      "category": "edge_cases",
+      "description": "no relevant decision point for edge_cases",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-ui_ux_details-1",
+      "category": "ui_ux_details",
+      "description": "no relevant decision point for ui_ux_details",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    },
+    {
+      "dp_id": "DP-breaking_changes-1",
+      "category": "breaking_changes",
+      "description": "no relevant decision point for breaking_changes",
+      "valid_implementations": [],
+      "status": "no_DP_in_category",
+      "user_answer": "",
+      "default_applied": "",
+      "deferral_reason": "",
+      "turns": 0
+    }
+  ],
+  "dp_finalized": true,
+  "mode": "auto",
+  "mandatory_reads": [
+    {
+      "spec_type": "greenfield_feature",
+      "read_path": "constitution.md#scaffolding-guide",
+      "slot_pattern": "",
+      "n_a_reason": ""
+    },
+    {
+      "spec_type": "greenfield_feature",
+      "read_path": "",
+      "slot_pattern": "__framework_docs__",
+      "n_a_reason": "no third-party framework involved"
+    },
+    {
+      "spec_type": "greenfield_feature",
+      "read_path": ".claude/memory/MEMORY.md",
+      "slot_pattern": "",
+      "n_a_reason": ""
+    },
+    {
+      "spec_type": "greenfield_feature",
+      "read_path": "discover/2026-05-14-scheduled-export-jobs.md",
+      "slot_pattern": "",
+      "n_a_reason": ""
+    }
+  ],
+  "discretionary_reads": [],
+  "phase3_finalized": true,
+  "overview": "Introduce scheduled export jobs for tenant data via the existing job runner.",
+  "current_state": "Scaffolding for scheduled jobs lives under src/jobs/ per constitution Section 7; no export jobs exist yet.",
+  "desired_behavior": "Tenants can register a recurring export job and receive a result file via the existing storage hook.",
+  "affected_areas": [
+    {
+      "area": "Jobs",
+      "files": [
+        "src/jobs/exports.ts",
+        "src/jobs/registry.ts"
+      ],
+      "impact": "add new job registration and runner glue"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-1",
+      "subsection": "tooling_artifact_presence",
+      "ears_variant": "ubiquitous",
+      "statement": "The repository shall contain a new exports job module under src/jobs/.",
+      "verification_command": "ls src/jobs/exports.ts returns the file",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-2",
+      "subsection": "behavior_change",
+      "ears_variant": "event_driven",
+      "statement": "WHEN a tenant registers an export schedule, the runner shall enqueue the job.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-3",
+      "subsection": "hooks_gates",
+      "ears_variant": "state_driven",
+      "statement": "WHILE the export job is running, the storage hook shall hold the partial file.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-4",
+      "subsection": "documentation",
+      "ears_variant": "ubiquitous",
+      "statement": "The exports README shall document the new registration flow.",
+      "verification_command": "",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-5",
+      "subsection": "hygiene",
+      "ears_variant": "ubiquitous",
+      "statement": "The repository shall contain no stray TODO markers in the new job module.",
+      "verification_command": "grep -E 'TODO' src/jobs/exports.ts returns no matches",
+      "test_anchor": "",
+      "n_a_reason": ""
+    }
+  ],
+  "ac_subsection_na": {
+    "behavior_preservation": "greenfield surface; nothing to preserve yet",
+    "ci_pipeline": "no pipeline change required"
+  },
+  "out_of_scope": [
+    {
+      "content": "Ad-hoc on-demand exports outside scheduling",
+      "finding_ref": ""
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "follow",
+      "content": "Constitution Section 7 scaffolding rules"
+    },
+    {
+      "kind": "use",
+      "content": "Existing job runner from src/jobs/registry.ts"
+    }
+  ],
+  "open_questions": [],
+  "risks": [
+    {
+      "risk": "Storage hook contention under concurrent exports",
+      "likelihood": "Low",
+      "impact": "Med",
+      "mitigation": "Add per-tenant queue to serialize exports"
+    }
+  ],
+  "approval_summary": null,
+  "plan_handoff_block": null,
+  "open_question_resolutions": [],
+  "conflicts": []
+}
