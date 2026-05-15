@@ -1,7 +1,8 @@
 """Tests for src/devforge/lib/specify_helper.py.
 
-Coverage matrix (Step 2 schemas + Step 3 Phase 0/1/1.5 subcommands).
-Phase 2-5 subcommands ship next session per SPECIFY-REDESIGN-PLAN.md.
+Coverage matrix (Step 2 schemas + Step 3 Phase 0/1/1.5/2/3 subcommands +
+cross-phase summary). Phase 4-5 subcommands ship next session per
+SPECIFY-REDESIGN-PLAN.md.
 
 Subprocess pattern: each test runs in its own tempfile.TemporaryDirectory.
 Real subcommands (subprocess) produce fixture state — no hand-fabricated
@@ -1234,6 +1235,1012 @@ class TestStateAtomicity(unittest.TestCase):
                     raise RuntimeError("simulated failure")
             after = sentinel_path.read_text()
             self.assertEqual(before, after)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — detect-mode (C-strict, no LLM judgment).
+# ---------------------------------------------------------------------------
+
+
+class TestDetectModePure(unittest.TestCase):
+    """Unit-test pure detect_mode() — env / flag / reminder substring."""
+
+    def test_default_interactive(self):
+        self.assertEqual(
+            specify_helper.detect_mode({}, False, ""), "interactive",
+        )
+
+    def test_env_var_triggers_auto(self):
+        self.assertEqual(
+            specify_helper.detect_mode(
+                {"DEVFORGE_AUTO_MODE": "1"}, False, "",
+            ),
+            "auto",
+        )
+
+    def test_env_var_value_2_does_not_trigger(self):
+        self.assertEqual(
+            specify_helper.detect_mode(
+                {"DEVFORGE_AUTO_MODE": "2"}, False, "",
+            ),
+            "interactive",
+        )
+
+    def test_flag_triggers_auto(self):
+        self.assertEqual(
+            specify_helper.detect_mode({}, True, ""), "auto",
+        )
+
+    def test_reminder_substring_is_active(self):
+        self.assertEqual(
+            specify_helper.detect_mode(
+                {}, False, "AUTO MODE IS ACTIVE per project conventions",
+            ),
+            "auto",
+        )
+
+    def test_reminder_substring_still_active(self):
+        self.assertEqual(
+            specify_helper.detect_mode(
+                {}, False, "...auto mode still active...",
+            ),
+            "auto",
+        )
+
+    def test_reminder_case_insensitive(self):
+        self.assertEqual(
+            specify_helper.detect_mode(
+                {}, False, "Auto Mode Is Active",
+            ),
+            "auto",
+        )
+
+    def test_reminder_no_substring_stays_interactive(self):
+        self.assertEqual(
+            specify_helper.detect_mode(
+                {}, False,
+                "User wants automation but no exact substring match.",
+            ),
+            "interactive",
+        )
+
+    def test_natural_language_prose_ignored(self):
+        # Per Variance rule #8 — only literal substrings count.
+        self.assertEqual(
+            specify_helper.detect_mode(
+                {}, False, "please run in auto mode for me",
+            ),
+            "interactive",
+        )
+
+
+class TestDetectModeSubcommand(unittest.TestCase):
+    def test_interactive_default_persisted(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run(["--devforge-dir", str(dev), "detect-mode"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "interactive")
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["mode"], "interactive")
+
+    def test_auto_via_env(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            env = os.environ.copy()
+            env["DEVFORGE_AUTO_MODE"] = "1"
+            r = _run(
+                ["--devforge-dir", str(dev), "detect-mode"], env=env,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "auto")
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["mode"], "auto")
+
+    def test_auto_via_flag(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "detect-mode", "--auto",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "auto")
+
+    def test_auto_via_reminder_text(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "detect-mode",
+                "--reminder-text",
+                "...some context... auto mode is active ...end...",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "auto")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — record-decision-point.
+# ---------------------------------------------------------------------------
+
+
+class TestRecordDecisionPoint(unittest.TestCase):
+    def _setup(self, td: Path) -> Path:
+        dev = td / ".devforge"
+        r = _run(["--devforge-dir", str(dev), "reset-state"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return dev
+
+    def test_basic_record_pending(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "Touch only module X or modules X+Y?",
+                "--valid-implementations",
+                json.dumps(["X only", "X and Y"]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "DP-scope_boundaries-1")
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(len(state["decision_points"]), 1)
+            dp = state["decision_points"][0]
+            self.assertEqual(dp["status"], "pending")
+            self.assertEqual(dp["category"], "scope_boundaries")
+            self.assertEqual(dp["valid_implementations"], ["X only", "X and Y"])
+            self.assertEqual(dp["turns"], 0)
+
+    def test_dp_id_increments_per_category(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            for i in range(3):
+                _run([
+                    "--devforge-dir", str(dev), "record-decision-point",
+                    "--category", "edge_cases",
+                    "--description", "Case {0}?".format(i),
+                    "--valid-implementations", json.dumps(["a", "b"]),
+                ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            ids = [d["dp_id"] for d in state["decision_points"]]
+            self.assertEqual(
+                ids,
+                ["DP-edge_cases-1", "DP-edge_cases-2", "DP-edge_cases-3"],
+            )
+
+    def test_rejects_unknown_category(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "bogus_category",
+                "--description", "x",
+                "--valid-implementations", json.dumps(["a", "b"]),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("category", r.stderr)
+
+    def test_rejects_single_implementation(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "x",
+                "--valid-implementations", json.dumps(["only one"]),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("≥2", r.stderr)
+
+    def test_rejects_non_array_valid_implementations(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "x",
+                "--valid-implementations", json.dumps({"a": "b"}),
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_rejects_invalid_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "x",
+                "--valid-implementations", "[oops",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_no_dp_in_category_marker(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "ui_ux_details",
+                "--description",
+                "Spec touches CLI only — no UI surface affected.",
+                "--no-dp-in-category",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            dp = state["decision_points"][0]
+            self.assertEqual(dp["status"], "no_DP_in_category")
+            self.assertEqual(dp["valid_implementations"], [])
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — set-dp-answer / set-dp-default-applied / set-dp-deferral.
+# ---------------------------------------------------------------------------
+
+
+class TestSetDpSetters(unittest.TestCase):
+    def _setup_with_dp(self, td: Path, mode: str) -> Path:
+        dev = td / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        # Force mode by writing state directly via setter helper.
+        # detect-mode used so persisted mode matches.
+        if mode == "auto":
+            _run([
+                "--devforge-dir", str(dev), "detect-mode", "--auto",
+            ])
+        else:
+            _run(["--devforge-dir", str(dev), "detect-mode"])
+        _run([
+            "--devforge-dir", str(dev), "record-decision-point",
+            "--category", "scope_boundaries",
+            "--description", "narrow or broad?",
+            "--valid-implementations", json.dumps(["narrow", "broad"]),
+        ])
+        return dev
+
+    def test_set_answer_interactive_ok(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-answer",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--user-answer", "narrow",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            dp = state["decision_points"][0]
+            self.assertEqual(dp["status"], "answered")
+            self.assertEqual(dp["user_answer"], "narrow")
+
+    def test_set_answer_rejected_in_auto_mode(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "auto")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-answer",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--user-answer", "narrow",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("auto", r.stderr)
+
+    def test_set_default_applied_auto_ok(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "auto")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-default-applied",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--default-applied", "narrow",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            dp = state["decision_points"][0]
+            self.assertEqual(dp["status"], "default_applied")
+            self.assertEqual(dp["default_applied"], "narrow")
+
+    def test_set_default_applied_rejected_in_interactive(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-default-applied",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--default-applied", "narrow",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("interactive", r.stderr)
+
+    def test_set_answer_unknown_dp_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-answer",
+                "--dp-id", "DP-bogus-99",
+                "--user-answer", "x",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_set_deferral_oos_basic(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--deferral-kind", "OOS",
+                "--reason", "scope-creep — defer to v2",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            dp = state["decision_points"][0]
+            self.assertEqual(dp["status"], "deferred_OOS")
+            self.assertEqual(dp["deferral_reason"], "scope-creep — defer to v2")
+            self.assertEqual(dp["turns"], 0)
+
+    def test_set_deferral_open_question_basic(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--deferral-kind", "open_question",
+                "--reason", "needs PM input post-spec",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            dp = state["decision_points"][0]
+            self.assertEqual(dp["status"], "deferred_open_question")
+            self.assertEqual(dp["deferral_reason"], "needs PM input post-spec")
+
+    def test_increment_turn_bumps_counter(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--deferral-kind", "OOS",
+                "--reason", "round 1",
+                "--increment-turn",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["decision_points"][0]["turns"], 1)
+            # Status reflects supplied kind because turns < cap.
+            self.assertEqual(
+                state["decision_points"][0]["status"], "deferred_OOS",
+            )
+
+    def test_turn_cap_forces_open_question(self):
+        # 3 increments → turns=3 == DP_TURN_CAP → forced open_question.
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            for i in range(3):
+                _run([
+                    "--devforge-dir", str(dev), "set-dp-deferral",
+                    "--dp-id", "DP-scope_boundaries-1",
+                    "--deferral-kind", "OOS",
+                    "--reason", "round {0}".format(i),
+                    "--increment-turn",
+                ])
+            state = json.loads((dev / "specify-state.json").read_text())
+            dp = state["decision_points"][0]
+            self.assertEqual(dp["turns"], 3)
+            self.assertEqual(dp["status"], "deferred_open_question")
+            self.assertEqual(
+                dp["deferral_reason"],
+                specify_helper.DP_TURN_CAP_REASON,
+            )
+
+    def test_set_deferral_unknown_kind_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup_with_dp(Path(td), "interactive")
+            r = _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--deferral-kind", "bogus",
+                "--reason", "x",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — coverage helpers (dp-coverage / rubric-coverage).
+# ---------------------------------------------------------------------------
+
+
+class TestDpAndRubricCoverage(unittest.TestCase):
+    def _setup(self, td: Path) -> Path:
+        dev = td / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        _run(["--devforge-dir", str(dev), "detect-mode"])
+        return dev
+
+    def test_dp_coverage_emits_dp_id_status_map(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "x",
+                "--valid-implementations", json.dumps(["a", "b"]),
+            ])
+            r = _run(["--devforge-dir", str(dev), "dp-coverage"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(r.stdout)
+            self.assertEqual(data["DP-scope_boundaries-1"], "pending")
+
+    def test_rubric_missing_for_categories_with_no_dp(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run(["--devforge-dir", str(dev), "rubric-coverage"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(r.stdout)
+            for cat in specify_helper.DP_CATEGORY_ENUM:
+                self.assertEqual(data[cat], "Missing")
+
+    def test_rubric_partial_then_clear(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "data_flow_state",
+                "--description", "x",
+                "--valid-implementations", json.dumps(["a", "b"]),
+            ])
+            r = _run(["--devforge-dir", str(dev), "rubric-coverage"])
+            data = json.loads(r.stdout)
+            self.assertEqual(data["data_flow_state"], "Partial")
+            _run([
+                "--devforge-dir", str(dev), "set-dp-answer",
+                "--dp-id", "DP-data_flow_state-1",
+                "--user-answer", "a",
+            ])
+            r = _run(["--devforge-dir", str(dev), "rubric-coverage"])
+            data = json.loads(r.stdout)
+            self.assertEqual(data["data_flow_state"], "Clear")
+
+    def test_rubric_no_dp_in_category_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "ui_ux_details",
+                "--description", "no UI surface",
+                "--no-dp-in-category",
+            ])
+            r = _run(["--devforge-dir", str(dev), "rubric-coverage"])
+            data = json.loads(r.stdout)
+            self.assertEqual(data["ui_ux_details"], "NoDPInCategory")
+
+    def test_rubric_no_dp_wins_over_pending_in_same_category(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "ui_ux_details",
+                "--description", "no UI surface",
+                "--no-dp-in-category",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "ui_ux_details",
+                "--description", "stray DP",
+                "--valid-implementations", json.dumps(["a", "b"]),
+            ])
+            r = _run(["--devforge-dir", str(dev), "rubric-coverage"])
+            data = json.loads(r.stdout)
+            self.assertEqual(data["ui_ux_details"], "NoDPInCategory")
+
+    def test_clear_when_deferred_oos(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "breaking_changes",
+                "--description", "x",
+                "--valid-implementations", json.dumps(["a", "b"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-deferral",
+                "--dp-id", "DP-breaking_changes-1",
+                "--deferral-kind", "OOS",
+                "--reason", "v2",
+            ])
+            r = _run(["--devforge-dir", str(dev), "rubric-coverage"])
+            data = json.loads(r.stdout)
+            self.assertEqual(data["breaking_changes"], "Clear")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — verify-decision-coverage / rubric-finalize / dp-finalize.
+# ---------------------------------------------------------------------------
+
+
+def _seed_all_categories_clear(dev: Path) -> None:
+    _run(["--devforge-dir", str(dev), "reset-state"])
+    _run(["--devforge-dir", str(dev), "detect-mode"])
+    for cat in specify_helper.DP_CATEGORY_ENUM:
+        _run([
+            "--devforge-dir", str(dev), "record-decision-point",
+            "--category", cat,
+            "--description", "no surface for " + cat,
+            "--no-dp-in-category",
+        ])
+
+
+class TestVerifyDecisionCoverage(unittest.TestCase):
+    def test_all_no_dp_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _seed_all_categories_clear(dev)
+            r = _run([
+                "--devforge-dir", str(dev), "verify-decision-coverage",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_pending_blocks(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _seed_all_categories_clear(dev)
+            # Add a stray pending DP — replaces NoDPInCategory in
+            # tooling_configuration with Partial coverage. Actually no —
+            # NoDPInCategory wins. Easier: clear one cat, leave it Missing.
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "detect-mode"])
+            cats = list(specify_helper.DP_CATEGORY_ENUM)
+            for cat in cats[:-1]:
+                _run([
+                    "--devforge-dir", str(dev), "record-decision-point",
+                    "--category", cat,
+                    "--description", "no surface",
+                    "--no-dp-in-category",
+                ])
+            # Last cat → Pending.
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", cats[-1],
+                "--description", "x",
+                "--valid-implementations", json.dumps(["a", "b"]),
+            ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-decision-coverage",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn(cats[-1], r.stderr)
+            self.assertIn("Partial", r.stderr)
+
+    def test_missing_blocks(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "detect-mode"])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-decision-coverage",
+            ])
+            self.assertEqual(r.returncode, 2)
+            for cat in specify_helper.DP_CATEGORY_ENUM:
+                self.assertIn(cat, r.stderr)
+
+
+class TestRubricFinalize(unittest.TestCase):
+    def test_passes_when_clear(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _seed_all_categories_clear(dev)
+            r = _run(["--devforge-dir", str(dev), "rubric-finalize"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_fails_when_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run(["--devforge-dir", str(dev), "rubric-finalize"])
+            self.assertEqual(r.returncode, 2)
+
+
+class TestDpFinalize(unittest.TestCase):
+    def test_passes_and_stamps(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _seed_all_categories_clear(dev)
+            r = _run(["--devforge-dir", str(dev), "dp-finalize"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertTrue(state["dp_finalized"])
+
+    def test_does_not_stamp_when_failing(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run(["--devforge-dir", str(dev), "dp-finalize"])
+            self.assertEqual(r.returncode, 2)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertFalse(state["dp_finalized"])
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — classify-spec-type.
+# ---------------------------------------------------------------------------
+
+
+class TestClassifySpecType(unittest.TestCase):
+    def _setup(self, td: Path) -> Path:
+        dev = td / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        return dev
+
+    def test_basic_classification(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "classify-spec-type",
+                "--spec-type", "feature_addition",
+                "--rationale", "Net-new behavior in existing module.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["spec_type"], "feature_addition")
+            self.assertEqual(
+                state["spec_type_rationale"],
+                "Net-new behavior in existing module.",
+            )
+            self.assertFalse(state["spec_type_seeded_by_upstream"])
+
+    def test_seeded_by_upstream_flag(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "classify-spec-type",
+                "--spec-type", "greenfield_feature",
+                "--rationale", "/discover seed",
+                "--seeded-by-upstream",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertTrue(state["spec_type_seeded_by_upstream"])
+
+    def test_rejects_unknown_type(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td))
+            r = _run([
+                "--devforge-dir", str(dev), "classify-spec-type",
+                "--spec-type", "bogus",
+                "--rationale", "x",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — record-mandatory-read + verify-mandatory-reads.
+# ---------------------------------------------------------------------------
+
+
+def _classify(dev: Path, spec_type: str) -> None:
+    _run([
+        "--devforge-dir", str(dev), "classify-spec-type",
+        "--spec-type", spec_type,
+        "--rationale", "test",
+    ])
+
+
+class TestRecordMandatoryRead(unittest.TestCase):
+    def _setup(self, td: Path, spec_type: str) -> Path:
+        dev = td / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        _classify(dev, spec_type)
+        return dev
+
+    def test_record_read_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            r = _run([
+                "--devforge-dir", str(dev), "record-mandatory-read",
+                "--read-path", "package.json",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(len(state["mandatory_reads"]), 1)
+            entry = state["mandatory_reads"][0]
+            self.assertEqual(entry["read_path"], "package.json")
+            self.assertEqual(entry["spec_type"], "migration_tooling")
+            self.assertEqual(entry["n_a_reason"], "")
+
+    def test_record_na_marker(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            r = _run([
+                "--devforge-dir", str(dev), "record-mandatory-read",
+                "--slot-pattern", "rush.json",
+                "--n-a-reason", "Repo uses pnpm, not rush.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            entry = state["mandatory_reads"][0]
+            self.assertEqual(entry["slot_pattern"], "rush.json")
+            self.assertEqual(entry["n_a_reason"], "Repo uses pnpm, not rush.")
+
+    def test_record_rejects_no_args(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            r = _run([
+                "--devforge-dir", str(dev), "record-mandatory-read",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_record_rejects_both_read_and_na(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            r = _run([
+                "--devforge-dir", str(dev), "record-mandatory-read",
+                "--read-path", "package.json",
+                "--n-a-reason", "x",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_record_rejects_na_without_slot(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            r = _run([
+                "--devforge-dir", str(dev), "record-mandatory-read",
+                "--n-a-reason", "no slot named",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_record_rejects_when_spec_type_unset(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "record-mandatory-read",
+                "--read-path", "package.json",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("spec_type", r.stderr)
+
+
+class TestVerifyMandatoryReads(unittest.TestCase):
+    def _setup(self, td: Path, spec_type: str) -> Path:
+        dev = td / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        _classify(dev, spec_type)
+        return dev
+
+    def _cover_all(self, dev: Path, spec_type: str) -> None:
+        for slot, _ in specify_helper.MANDATORY_READS_BY_TYPE[spec_type]:
+            if slot.startswith("__") and slot.endswith("__"):
+                _run([
+                    "--devforge-dir", str(dev), "record-mandatory-read",
+                    "--slot-pattern", slot,
+                    "--n-a-reason", "stub coverage for " + slot,
+                ])
+            else:
+                _run([
+                    "--devforge-dir", str(dev), "record-mandatory-read",
+                    "--slot-pattern", slot,
+                    "--n-a-reason", "n/a in test fixture",
+                ])
+
+    def test_passes_when_all_slots_covered(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "bug_fix")
+            self._cover_all(dev, "bug_fix")
+            r = _run([
+                "--devforge-dir", str(dev), "verify-mandatory-reads",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_fails_when_slot_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "refactor")
+            # Only one of the three slots covered.
+            _run([
+                "--devforge-dir", str(dev), "record-mandatory-read",
+                "--slot-pattern", "__refactored_files__",
+                "--n-a-reason", "x",
+            ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-mandatory-reads",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("__all_callers__", r.stderr)
+            self.assertIn("__all_tests__", r.stderr)
+
+    def test_fails_when_spec_type_unset(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-mandatory-reads",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("spec_type", r.stderr)
+
+    def test_concrete_pattern_matches_via_fnmatch(self):
+        # Migration tooling pkg slot matches root package.json.
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            for slot, _ in (
+                specify_helper.MANDATORY_READS_BY_TYPE["migration_tooling"]
+            ):
+                if slot == "package.json":
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--read-path", "package.json",
+                    ])
+                else:
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--slot-pattern", slot,
+                        "--n-a-reason", "n/a",
+                    ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-mandatory-reads",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_substring_pattern_matches_workflows(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            # Cover the workflows slot via concrete file path.
+            for slot, _ in (
+                specify_helper.MANDATORY_READS_BY_TYPE["migration_tooling"]
+            ):
+                if slot == ".github/workflows/*":
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--read-path", ".github/workflows/ci.yml",
+                    ])
+                else:
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--slot-pattern", slot,
+                        "--n-a-reason", "n/a",
+                    ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-mandatory-reads",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_nested_package_json_matches_doublestar(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "migration_tooling")
+            for slot, _ in (
+                specify_helper.MANDATORY_READS_BY_TYPE["migration_tooling"]
+            ):
+                if slot == "**/package.json":
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--read-path", "packages/api/package.json",
+                    ])
+                else:
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--slot-pattern", slot,
+                        "--n-a-reason", "n/a",
+                    ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-mandatory-reads",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestPhase3Finalize(unittest.TestCase):
+    def test_passes_and_stamps(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _classify(dev, "bug_fix")
+            for slot, _ in (
+                specify_helper.MANDATORY_READS_BY_TYPE["bug_fix"]
+            ):
+                _run([
+                    "--devforge-dir", str(dev), "record-mandatory-read",
+                    "--slot-pattern", slot,
+                    "--n-a-reason", "n/a",
+                ])
+            r = _run(["--devforge-dir", str(dev), "phase3-finalize"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertTrue(state["phase3_finalized"])
+
+    def test_does_not_stamp_when_failing(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _classify(dev, "bug_fix")
+            r = _run(["--devforge-dir", str(dev), "phase3-finalize"])
+            self.assertEqual(r.returncode, 2)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertFalse(state["phase3_finalized"])
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — MANDATORY_READS_BY_TYPE schema sanity.
+# ---------------------------------------------------------------------------
+
+
+class TestMandatoryReadsTable(unittest.TestCase):
+    def test_every_spec_type_has_table(self):
+        for st in specify_helper.SPEC_TYPE_ENUM:
+            self.assertIn(
+                st, specify_helper.MANDATORY_READS_BY_TYPE,
+                "missing slot table for spec_type " + st,
+            )
+
+    def test_every_slot_has_pattern_and_description(self):
+        for st, slots in (
+            specify_helper.MANDATORY_READS_BY_TYPE.items()
+        ):
+            for entry in slots:
+                self.assertEqual(
+                    len(entry), 2,
+                    "{0} slot wrong shape: {1!r}".format(st, entry),
+                )
+                pattern, desc = entry
+                self.assertTrue(pattern.strip(), "empty pattern in " + st)
+                self.assertTrue(desc.strip(), "empty description in " + st)
+
+    def test_greenfield_includes_constitution_and_memory(self):
+        slots = dict(
+            specify_helper.MANDATORY_READS_BY_TYPE["greenfield_feature"]
+        )
+        self.assertIn("constitution.md#scaffolding-guide", slots)
+        self.assertIn(".claude/memory/MEMORY.md", slots)
+
+
+# ---------------------------------------------------------------------------
+# Cross-phase — summary subcommand.
+# ---------------------------------------------------------------------------
+
+
+class TestSummarySubcommand(unittest.TestCase):
+    def test_empty_state_dashboard(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run(["--devforge-dir", str(dev), "summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(r.stdout)
+            self.assertIsNone(data["spec_type"])
+            self.assertEqual(data["status"], "Draft")
+            self.assertFalse(data["phase_finalized"]["phase1"])
+            self.assertEqual(data["counts"]["input_reads"], 0)
+            for cat in specify_helper.DP_CATEGORY_ENUM:
+                self.assertEqual(data["rubric_coverage"][cat], "Missing")
+
+    def test_counts_reflect_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            _run(["--devforge-dir", str(dev), "detect-mode"])
+            _run([
+                "--devforge-dir", str(dev), "record-input-read",
+                "--path", "constitution.md",
+            ])
+            for i in range(3):
+                _run([
+                    "--devforge-dir", str(dev), "record-finding",
+                    "--source-path", "constitution.md",
+                    "--content", "x{0}".format(i),
+                ])
+            _run([
+                "--devforge-dir", str(dev), "record-decision-point",
+                "--category", "scope_boundaries",
+                "--description", "x",
+                "--valid-implementations", json.dumps(["a", "b"]),
+            ])
+            _run([
+                "--devforge-dir", str(dev), "set-dp-answer",
+                "--dp-id", "DP-scope_boundaries-1",
+                "--user-answer", "a",
+            ])
+            r = _run(["--devforge-dir", str(dev), "summary"])
+            data = json.loads(r.stdout)
+            self.assertEqual(data["counts"]["input_reads"], 1)
+            self.assertEqual(data["counts"]["findings"], 3)
+            self.assertEqual(data["counts"]["decision_points"], 1)
+            self.assertEqual(
+                data["counts"]["decision_points_by_status"]["answered"], 1,
+            )
+            self.assertEqual(data["mode"], "interactive")
 
 
 if __name__ == "__main__":

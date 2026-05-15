@@ -15,17 +15,23 @@ State file
 
   .devforge/specify-state.json — full SpecDoc + phase progress.
 
-Subcommand summary (Phase 0 / 1 / 1.5 — this session)
-----------------------------------------------------
+Subcommand summary (Phase 0 / 1 / 1.5 / 2 / 3 + cross-phase)
+------------------------------------------------------------
 
   Plumbing     reset-state, read-state, preflight
   Phase 1      record-input-read, phase1-finalize
   Phase 1.5    record-finding, mark-source-no-items-relevant,
                verify-findings, render-findings, findings-finalize
+  Phase 2      detect-mode, record-decision-point, set-dp-answer,
+               set-dp-default-applied, set-dp-deferral, dp-coverage,
+               rubric-coverage, verify-decision-coverage,
+               rubric-finalize, dp-finalize
+  Phase 3      classify-spec-type, record-mandatory-read,
+               verify-mandatory-reads, phase3-finalize
+  Cross-phase  summary
 
-Phase 2-5 subcommands (decision points, codebase analysis, spec render,
-approval) ship in a subsequent session per SPECIFY-REDESIGN-PLAN.md
-Work order.
+Phase 4-5 subcommands (spec render, approval, /plan handoff) ship in a
+subsequent session per SPECIFY-REDESIGN-PLAN.md Work order.
 
 Stdlib only. Python 3.8+.
 """
@@ -769,6 +775,656 @@ def cmd_findings_finalize(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Phase 2 — mode detection + decision-point coverage.
+# ---------------------------------------------------------------------------
+
+
+def detect_mode(
+    env: Dict[str, str],
+    auto_flag: bool,
+    reminder_text: str,
+) -> str:
+    """C-strict mode detection (Variance rule #8). Three signals:
+
+      - DEVFORGE_AUTO_MODE env var == "1"
+      - --auto flag set
+      - case-insensitive substring of any AUTO_MODE_REMINDER_SUBSTRINGS in
+        the supplied reminder_text (orchestrator passes the latest
+        <system-reminder> block content)
+
+    No LLM judgment — defaults to "interactive" when no signal fires.
+    """
+    if env.get(AUTO_MODE_ENV_VAR) == "1":
+        return "auto"
+    if auto_flag:
+        return "auto"
+    if reminder_text:
+        haystack = reminder_text.lower()
+        for needle in AUTO_MODE_REMINDER_SUBSTRINGS:
+            if needle in haystack:
+                return "auto"
+    return "interactive"
+
+
+def cmd_detect_mode(args: argparse.Namespace) -> int:
+    """Resolve mode from C-strict signals, persist, print to stdout."""
+    mode = detect_mode(
+        os.environ,
+        bool(args.auto),
+        args.reminder_text or "",
+    )
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["mode"] = mode
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("detect-mode: {0}".format(err))
+    sys.stdout.write(mode + "\n")
+    return 0
+
+
+def _next_dp_id(state: Dict[str, Any], category: str) -> str:
+    prefix = "DP-{0}-".format(category)
+    n = 1 + sum(
+        1 for d in state["decision_points"]
+        if d.get("dp_id", "").startswith(prefix)
+    )
+    return "{0}{1}".format(prefix, n)
+
+
+def _find_dp(state: Dict[str, Any], dp_id: str) -> Optional[Dict[str, Any]]:
+    for d in state["decision_points"]:
+        if d.get("dp_id") == dp_id:
+            return d
+    return None
+
+
+def cmd_record_decision_point(args: argparse.Namespace) -> int:
+    """Record a new DecisionPoint. ≥2 valid_implementations required.
+
+    Pass `--no-dp-in-category` instead of `--description` to record the
+    terminal NoDPInCategory marker for a category (its valid_implementations
+    list is empty by definition; description carries the no-DP rationale).
+    """
+    try:
+        category = _validate_enum(
+            args.category, "category", DP_CATEGORY_ENUM,
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    if args.no_dp_in_category:
+        try:
+            description = _validate_scalar(
+                args.description, "description",
+            )
+        except ValueError as err:
+            return _die(str(err), code=2)
+        valid_implementations: List[str] = []
+        status = "no_DP_in_category"
+    else:
+        try:
+            description = _validate_scalar(
+                args.description, "description",
+            )
+        except ValueError as err:
+            return _die(str(err), code=2)
+        try:
+            parsed = json.loads(args.valid_implementations or "[]")
+        except json.JSONDecodeError as err:
+            return _die(
+                "valid_implementations: not valid JSON ({0})".format(err),
+                code=2,
+            )
+        if not isinstance(parsed, list) or not all(
+            isinstance(v, str) for v in parsed
+        ):
+            return _die(
+                "valid_implementations: must be a JSON array of strings",
+                code=2,
+            )
+        valid_implementations = [v.strip() for v in parsed if v.strip()]
+        if len(valid_implementations) < 2:
+            return _die(
+                "valid_implementations: ≥2 entries required (got {0})".format(
+                    len(valid_implementations),
+                ),
+                code=2,
+            )
+        status = "pending"
+
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            dp_id = _next_dp_id(state, category)
+            state["decision_points"].append({
+                "dp_id": dp_id,
+                "category": category,
+                "description": description,
+                "valid_implementations": valid_implementations,
+                "status": status,
+                "user_answer": "",
+                "default_applied": "",
+                "deferral_reason": "",
+                "turns": 0,
+            })
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-decision-point: {0}".format(err))
+    sys.stdout.write(dp_id + "\n")
+    return 0
+
+
+def cmd_set_dp_answer(args: argparse.Namespace) -> int:
+    """Interactive path. Sets DP.status=answered + user_answer."""
+    try:
+        user_answer = _validate_scalar(args.user_answer, "user_answer")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            if state.get("mode") == "auto":
+                return _die(
+                    "set-dp-answer: mode=auto rejects user-answer setter "
+                    "(use set-dp-default-applied)",
+                    code=2,
+                )
+            dp = _find_dp(state, args.dp_id)
+            if dp is None:
+                return _die(
+                    "set-dp-answer: dp_id {0!r} not found".format(args.dp_id),
+                    code=2,
+                )
+            if dp.get("status") == "no_DP_in_category":
+                return _die(
+                    "set-dp-answer: {0} is no_DP_in_category (terminal)".format(
+                        args.dp_id,
+                    ),
+                    code=2,
+                )
+            dp["status"] = "answered"
+            dp["user_answer"] = user_answer
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-dp-answer: {0}".format(err))
+    return 0
+
+
+def cmd_set_dp_default_applied(args: argparse.Namespace) -> int:
+    """Auto path. Sets DP.status=default_applied + default_applied."""
+    try:
+        default_applied = _validate_scalar(
+            args.default_applied, "default_applied",
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            if state.get("mode") == "interactive":
+                return _die(
+                    "set-dp-default-applied: mode=interactive rejects "
+                    "default-applied setter (use set-dp-answer)",
+                    code=2,
+                )
+            dp = _find_dp(state, args.dp_id)
+            if dp is None:
+                return _die(
+                    "set-dp-default-applied: dp_id {0!r} not found".format(
+                        args.dp_id,
+                    ),
+                    code=2,
+                )
+            if dp.get("status") == "no_DP_in_category":
+                return _die(
+                    "set-dp-default-applied: {0} is no_DP_in_category "
+                    "(terminal)".format(args.dp_id),
+                    code=2,
+                )
+            dp["status"] = "default_applied"
+            dp["default_applied"] = default_applied
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-dp-default-applied: {0}".format(err))
+    return 0
+
+
+# Deferral-kind argument enum (subset of DP_STATUS_ENUM deferred-* values
+# stripped to the kind suffix for CLI ergonomics).
+DP_DEFERRAL_KIND_ENUM: Tuple[str, ...] = ("OOS", "open_question")
+_DEFERRAL_KIND_TO_STATUS: Dict[str, str] = {
+    "OOS": "deferred_OOS",
+    "open_question": "deferred_open_question",
+}
+DP_TURN_CAP_REASON = "exceeded follow-up cap"
+
+
+def cmd_set_dp_deferral(args: argparse.Namespace) -> int:
+    """Defer a DP to OOS or open-question. Enforces per-DP turn cap.
+
+    --increment-turn bumps the per-DP follow-up counter before deferral
+    resolution. When turns >= DP_TURN_CAP after increment, helper forces
+    status=deferred_open_question + deferral_reason=DP_TURN_CAP_REASON
+    regardless of the supplied --deferral-kind (Variance rule #7 stop
+    discipline + plan line 335-339).
+    """
+    try:
+        kind = _validate_enum(
+            args.deferral_kind, "deferral_kind", DP_DEFERRAL_KIND_ENUM,
+        )
+        reason = _validate_scalar(args.reason, "reason")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            dp = _find_dp(state, args.dp_id)
+            if dp is None:
+                return _die(
+                    "set-dp-deferral: dp_id {0!r} not found".format(args.dp_id),
+                    code=2,
+                )
+            if dp.get("status") == "no_DP_in_category":
+                return _die(
+                    "set-dp-deferral: {0} is no_DP_in_category "
+                    "(terminal)".format(args.dp_id),
+                    code=2,
+                )
+            if args.increment_turn:
+                dp["turns"] = int(dp.get("turns", 0)) + 1
+            if int(dp.get("turns", 0)) >= DP_TURN_CAP:
+                dp["status"] = "deferred_open_question"
+                dp["deferral_reason"] = DP_TURN_CAP_REASON
+            else:
+                dp["status"] = _DEFERRAL_KIND_TO_STATUS[kind]
+                dp["deferral_reason"] = reason
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-dp-deferral: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — coverage + finalize.
+# ---------------------------------------------------------------------------
+
+
+_DP_CLEAR_STATUSES: Tuple[str, ...] = (
+    "answered", "default_applied", "deferred_OOS", "deferred_open_question",
+)
+
+
+def _category_state(state: Dict[str, Any], category: str) -> str:
+    """Compute per-category coverage state per plan §Phase 2 table.
+
+    Precedence (verbatim from plan line 333-338):
+      1. NoDPInCategory   — single no_DP_in_category DP recorded
+      2. Clear            — ≥1 DP with status ∈ _DP_CLEAR_STATUSES
+      3. Partial          — ≥1 DP pending AND no Clear yet
+      4. Missing          — no DPs in this category
+    """
+    in_cat = [
+        d for d in state["decision_points"]
+        if d.get("category") == category
+    ]
+    if not in_cat:
+        return "Missing"
+    if any(d.get("status") == "no_DP_in_category" for d in in_cat):
+        return "NoDPInCategory"
+    if any(d.get("status") in _DP_CLEAR_STATUSES for d in in_cat):
+        return "Clear"
+    if any(d.get("status") == "pending" for d in in_cat):
+        return "Partial"
+    return "Missing"
+
+
+def cmd_dp_coverage(args: argparse.Namespace) -> int:
+    """Emit per-DP {dp_id: status} JSON map (debug aid)."""
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("dp-coverage: {0}".format(err))
+    out = {
+        d.get("dp_id"): d.get("status")
+        for d in state["decision_points"]
+    }
+    json.dump(out, sys.stdout, indent=2, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_rubric_coverage(args: argparse.Namespace) -> int:
+    """Emit per-category {category: state} JSON map. Deterministic order."""
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("rubric-coverage: {0}".format(err))
+    out: Dict[str, str] = {}
+    for cat in DP_CATEGORY_ENUM:
+        out[cat] = _category_state(state, cat)
+    # Preserve DP_CATEGORY_ENUM order (json.dump w/ sort_keys=False keeps
+    # insertion order in CPython 3.7+).
+    json.dump(out, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_verify_decision_coverage(args: argparse.Namespace) -> int:
+    """Gate: every category state ∈ {Clear, NoDPInCategory}."""
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("verify-decision-coverage: {0}".format(err))
+    failing: List[Tuple[str, str]] = []
+    for cat in DP_CATEGORY_ENUM:
+        st = _category_state(state, cat)
+        if st not in ("Clear", "NoDPInCategory"):
+            failing.append((cat, st))
+    if failing:
+        sys.stderr.write(
+            "verify-decision-coverage: categories not covered:\n"
+        )
+        for cat, st in failing:
+            sys.stderr.write("  - {0}: {1}\n".format(cat, st))
+        return 2
+    return 0
+
+
+def cmd_rubric_finalize(args: argparse.Namespace) -> int:
+    """Same gate as verify-decision-coverage (plan line 333)."""
+    return cmd_verify_decision_coverage(args)
+
+
+def cmd_dp_finalize(args: argparse.Namespace) -> int:
+    """Gate Phase 2 → Phase 3. Re-runs decision-coverage + stamps."""
+    rc = cmd_verify_decision_coverage(args)
+    if rc != 0:
+        return rc
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["dp_finalized"] = True
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("dp-finalize: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — spec-type classification + per-type mandatory reads.
+# ---------------------------------------------------------------------------
+
+# Mandatory-read slot table (SPECIFY-REDESIGN-PLAN §Phase 3 Step 2,
+# line 412-418). Each entry is (slot_pattern, description). slot_pattern
+# is matched against orchestrator-supplied --read-path via fnmatch so the
+# orchestrator owns enumeration; helper just confirms every slot has at
+# least one read_path (or n_a_reason) covering it.
+MANDATORY_READS_BY_TYPE: Dict[str, Tuple[Tuple[str, str], ...]] = {
+    "migration_tooling": (
+        ("package.json", "Root package.json"),
+        (".github/workflows/*", "Every .github/workflows/ file"),
+        ("**/package.json",
+         "Per-package package.json with peer/deps/workspace links"),
+        (".husky/*", "Husky hook configs (.husky/)"),
+        (".pre-commit-config.yaml", "pre-commit config"),
+        (".lefthook.yml", "lefthook config"),
+        ("lerna.json", "lerna monorepo config"),
+        ("turbo.json", "turbo monorepo config"),
+        ("nx.json", "nx monorepo config"),
+        ("pnpm-workspace.yaml", "pnpm workspace config"),
+        ("rush.json", "rush monorepo config"),
+        ("*lock*", "Lockfiles (note presence/size only)"),
+        (".npmrc", "Root .npmrc"),
+        (".yarnrc", "Root .yarnrc"),
+        (".pnpmrc", "Root .pnpmrc"),
+    ),
+    "feature_addition": (
+        ("__entry__", "Root component/entry files (router, store, app init)"),
+        ("__similar_feature__",
+         "Most-similar existing feature (via grep)"),
+        ("__type_defs__", "Type defs for affected entities"),
+        ("__api_ops__", "API/GraphQL ops for affected resources"),
+        ("__test_files__", "Test files for affected area"),
+    ),
+    "bug_fix": (
+        ("__buggy_files__", "The buggy file(s) named in request"),
+        ("__direct_deps__", "Direct deps of buggy file"),
+        ("__direct_callers__", "Direct callers (via grep)"),
+        ("__recent_git_log__", "Recent git log on buggy file (git log -5)"),
+    ),
+    "refactor": (
+        ("__refactored_files__", "The file(s) being refactored"),
+        ("__all_callers__", "All callers (via grep)"),
+        ("__all_tests__", "All tests for refactored code"),
+    ),
+    "greenfield_feature": (
+        ("constitution.md#scaffolding-guide",
+         "Constitution Section 7 (Scaffolding Guide)"),
+        ("__framework_docs__",
+         "Framework docs via WebSearch for feature pattern"),
+        (".claude/memory/MEMORY.md",
+         "MEMORY.md prior-feature lessons"),
+        ("discover/*.md",
+         "/discover reference md (if Phase 1 adapter loaded one)"),
+    ),
+}
+
+
+def _slot_matches_path(slot_pattern: str, read_path: str) -> bool:
+    """Return True iff `read_path` satisfies `slot_pattern`.
+
+    Match strategy:
+      - Sentinel slots (surrounded by `__`) require explicit --slot-pattern
+        on record-mandatory-read; never auto-match by read-path.
+      - Concrete patterns use fnmatch-style globbing
+        (`Path.match` semantics) plus a substring fallback so
+        `**/package.json` matches `services/api/package.json`.
+    """
+    if slot_pattern.startswith("__") and slot_pattern.endswith("__"):
+        return False
+    try:
+        if Path(read_path).match(slot_pattern):
+            return True
+    except (ValueError, TypeError):
+        pass
+    # Substring fallback for path-suffix matches like `.github/workflows/*`.
+    base = slot_pattern.rstrip("*").rstrip("/")
+    if base and base in read_path:
+        return True
+    return False
+
+
+def cmd_classify_spec_type(args: argparse.Namespace) -> int:
+    """Set spec_type + rationale. Helper does NOT auto-derive the type."""
+    try:
+        spec_type = _validate_enum(
+            args.spec_type, "spec_type", SPEC_TYPE_ENUM,
+        )
+        rationale = _validate_scalar(args.rationale, "rationale")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["spec_type"] = spec_type
+            state["spec_type_rationale"] = rationale
+            state["spec_type_seeded_by_upstream"] = bool(
+                args.seeded_by_upstream
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("classify-spec-type: {0}".format(err))
+    return 0
+
+
+def cmd_record_mandatory_read(args: argparse.Namespace) -> int:
+    """Record a Phase 3 per-spec-type mandatory-read entry.
+
+    Two CLI shapes (mutually exclusive):
+
+      --read-path PATH                      (actual file read)
+      --slot-pattern PATTERN --n-a-reason TEXT   (mark slot N/A)
+
+    spec_type pulled from state (must be set via classify-spec-type
+    first). Helper only records — coverage gating is verify-mandatory-reads.
+    """
+    has_read = bool(args.read_path)
+    has_na = bool(args.n_a_reason)
+    if has_read and has_na:
+        return _die(
+            "record-mandatory-read: --read-path and --n-a-reason are "
+            "mutually exclusive",
+            code=2,
+        )
+    if not has_read and not has_na:
+        return _die(
+            "record-mandatory-read: one of --read-path / --n-a-reason "
+            "required",
+            code=2,
+        )
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            spec_type = state.get("spec_type")
+            if not spec_type:
+                return _die(
+                    "record-mandatory-read: spec_type unset "
+                    "(call classify-spec-type first)",
+                    code=2,
+                )
+            entry: Dict[str, Any] = {
+                "spec_type": spec_type,
+                "read_path": "",
+                "slot_pattern": "",
+                "n_a_reason": "",
+            }
+            if has_read:
+                entry["read_path"] = args.read_path.strip()
+                entry["slot_pattern"] = (args.slot_pattern or "").strip()
+            else:
+                if not args.slot_pattern:
+                    return _die(
+                        "record-mandatory-read: --n-a-reason requires "
+                        "--slot-pattern",
+                        code=2,
+                    )
+                entry["slot_pattern"] = args.slot_pattern.strip()
+                entry["n_a_reason"] = args.n_a_reason.strip()
+            state["mandatory_reads"].append(entry)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-mandatory-read: {0}".format(err))
+    return 0
+
+
+def _slot_covered(
+    state: Dict[str, Any], slot_pattern: str,
+) -> bool:
+    for e in state["mandatory_reads"]:
+        if e.get("n_a_reason") and e.get("slot_pattern") == slot_pattern:
+            return True
+        rp = e.get("read_path", "")
+        if not rp:
+            continue
+        if e.get("slot_pattern") == slot_pattern:
+            return True
+        if _slot_matches_path(slot_pattern, rp):
+            return True
+    return False
+
+
+def cmd_verify_mandatory_reads(args: argparse.Namespace) -> int:
+    """Walk MANDATORY_READS_BY_TYPE[spec_type]; every slot must be covered."""
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("verify-mandatory-reads: {0}".format(err))
+    spec_type = state.get("spec_type")
+    if not spec_type:
+        return _die(
+            "verify-mandatory-reads: spec_type unset "
+            "(call classify-spec-type first)",
+            code=2,
+        )
+    if spec_type not in MANDATORY_READS_BY_TYPE:
+        return _die(
+            "verify-mandatory-reads: no mandatory-read table for "
+            "spec_type {0!r}".format(spec_type),
+            code=2,
+        )
+    missing: List[Tuple[str, str]] = []
+    for slot_pattern, description in MANDATORY_READS_BY_TYPE[spec_type]:
+        if not _slot_covered(state, slot_pattern):
+            missing.append((slot_pattern, description))
+    if missing:
+        sys.stderr.write(
+            "verify-mandatory-reads: missing slots for spec_type "
+            "{0!r}:\n".format(spec_type)
+        )
+        for slot, desc in missing:
+            sys.stderr.write("  - {0} — {1}\n".format(slot, desc))
+        return 2
+    return 0
+
+
+def cmd_phase3_finalize(args: argparse.Namespace) -> int:
+    """Gate Phase 3 → Phase 4. Re-runs verify-mandatory-reads + stamps."""
+    rc = cmd_verify_mandatory_reads(args)
+    if rc != 0:
+        return rc
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["phase3_finalized"] = True
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("phase3-finalize: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Cross-phase — summary dashboard.
+# ---------------------------------------------------------------------------
+
+
+def cmd_summary(args: argparse.Namespace) -> int:
+    """Emit phase-progress + counts dashboard JSON."""
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("summary: {0}".format(err))
+
+    dp_status_counts: Dict[str, int] = {s: 0 for s in DP_STATUS_ENUM}
+    for d in state["decision_points"]:
+        st = d.get("status")
+        if st in dp_status_counts:
+            dp_status_counts[st] += 1
+
+    rubric: Dict[str, str] = {
+        cat: _category_state(state, cat) for cat in DP_CATEGORY_ENUM
+    }
+
+    out = {
+        "topic": state.get("topic"),
+        "spec_type": state.get("spec_type"),
+        "spec_type_seeded_by_upstream": state.get(
+            "spec_type_seeded_by_upstream", False,
+        ),
+        "status": state.get("status"),
+        "mode": state.get("mode"),
+        "phase_finalized": {
+            "phase1": bool(state.get("phase1_finalized")),
+            "findings": bool(state.get("findings_finalized")),
+            "dp": bool(state.get("dp_finalized")),
+            "phase3": bool(state.get("phase3_finalized")),
+        },
+        "counts": {
+            "input_reads": len(state.get("input_reads", [])),
+            "findings": len(state.get("findings", [])),
+            "decision_points": len(state.get("decision_points", [])),
+            "decision_points_by_status": dp_status_counts,
+            "mandatory_reads": len(state.get("mandatory_reads", [])),
+            "discretionary_reads": len(state.get("discretionary_reads", [])),
+            "affected_areas": len(state.get("affected_areas", [])),
+            "acceptance_criteria": len(state.get("acceptance_criteria", [])),
+            "out_of_scope": len(state.get("out_of_scope", [])),
+            "constraints": len(state.get("constraints", [])),
+            "open_questions": len(state.get("open_questions", [])),
+            "risks": len(state.get("risks", [])),
+            "conflicts": len(state.get("conflicts", [])),
+        },
+        "rubric_coverage": rubric,
+    }
+    json.dump(out, sys.stdout, indent=2, sort_keys=False)
+    sys.stdout.write("\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI parser + main.
 # ---------------------------------------------------------------------------
 
@@ -847,6 +1503,161 @@ def build_parser() -> argparse.ArgumentParser:
         help="Gate Phase 1.5 → Phase 2 (verify-findings + stamp).",
     )
     sp.set_defaults(func=cmd_findings_finalize)
+
+    # ----- Phase 2 ---------------------------------------------------------
+
+    sp = sub.add_parser(
+        "detect-mode",
+        help="Resolve auto vs interactive mode from C-strict signals.",
+    )
+    sp.add_argument(
+        "--auto", action="store_true", default=False,
+        help="Force auto mode (one of three C-strict signals).",
+    )
+    sp.add_argument(
+        "--reminder-text", default="", dest="reminder_text",
+        help="Text of latest <system-reminder> block (orchestrator-supplied).",
+    )
+    sp.set_defaults(func=cmd_detect_mode)
+
+    sp = sub.add_parser(
+        "record-decision-point",
+        help="Record a Phase 2 DecisionPoint (≥2 valid_implementations).",
+    )
+    sp.add_argument("--category", required=True)
+    sp.add_argument("--description", required=True)
+    sp.add_argument(
+        "--valid-implementations", default="[]",
+        dest="valid_implementations",
+        help="JSON array of strings; ≥2 entries required.",
+    )
+    sp.add_argument(
+        "--no-dp-in-category", action="store_true", default=False,
+        dest="no_dp_in_category",
+        help="Record terminal NoDPInCategory marker (skips ≥2-impl rule).",
+    )
+    sp.set_defaults(func=cmd_record_decision_point)
+
+    sp = sub.add_parser(
+        "set-dp-answer",
+        help="Interactive path: mark DP answered with user_answer.",
+    )
+    sp.add_argument("--dp-id", required=True, dest="dp_id")
+    sp.add_argument("--user-answer", required=True, dest="user_answer")
+    sp.set_defaults(func=cmd_set_dp_answer)
+
+    sp = sub.add_parser(
+        "set-dp-default-applied",
+        help="Auto path: mark DP default_applied with named default.",
+    )
+    sp.add_argument("--dp-id", required=True, dest="dp_id")
+    sp.add_argument(
+        "--default-applied", required=True, dest="default_applied",
+    )
+    sp.set_defaults(func=cmd_set_dp_default_applied)
+
+    sp = sub.add_parser(
+        "set-dp-deferral",
+        help="Defer DP to OOS or open-question (auto-fires turn cap).",
+    )
+    sp.add_argument("--dp-id", required=True, dest="dp_id")
+    sp.add_argument(
+        "--deferral-kind", required=True, dest="deferral_kind",
+        choices=list(DP_DEFERRAL_KIND_ENUM),
+    )
+    sp.add_argument("--reason", required=True)
+    sp.add_argument(
+        "--increment-turn", action="store_true", default=False,
+        dest="increment_turn",
+        help="Bump per-DP follow-up counter; turn cap may force open-question.",
+    )
+    sp.set_defaults(func=cmd_set_dp_deferral)
+
+    sp = sub.add_parser(
+        "dp-coverage", help="Emit per-DP {dp_id: status} JSON.",
+    )
+    sp.set_defaults(func=cmd_dp_coverage)
+
+    sp = sub.add_parser(
+        "rubric-coverage",
+        help="Emit per-category {category: state} JSON.",
+    )
+    sp.set_defaults(func=cmd_rubric_coverage)
+
+    sp = sub.add_parser(
+        "verify-decision-coverage",
+        help="Gate: every category ∈ {Clear, NoDPInCategory}.",
+    )
+    sp.set_defaults(func=cmd_verify_decision_coverage)
+
+    sp = sub.add_parser(
+        "rubric-finalize",
+        help="Same gate as verify-decision-coverage (plan line 333).",
+    )
+    sp.set_defaults(func=cmd_rubric_finalize)
+
+    sp = sub.add_parser(
+        "dp-finalize",
+        help="Gate Phase 2 → Phase 3 (verify-decision-coverage + stamp).",
+    )
+    sp.set_defaults(func=cmd_dp_finalize)
+
+    # ----- Phase 3 ---------------------------------------------------------
+
+    sp = sub.add_parser(
+        "classify-spec-type",
+        help="Set spec_type + rationale + (optional) seeded-by-upstream flag.",
+    )
+    sp.add_argument(
+        "--spec-type", required=True, dest="spec_type",
+        choices=list(SPEC_TYPE_ENUM),
+    )
+    sp.add_argument("--rationale", required=True)
+    sp.add_argument(
+        "--seeded-by-upstream", action="store_true", default=False,
+        dest="seeded_by_upstream",
+        help="Phase 1 adapter pre-seeded from /discover (path-based).",
+    )
+    sp.set_defaults(func=cmd_classify_spec_type)
+
+    sp = sub.add_parser(
+        "record-mandatory-read",
+        help="Record a Phase 3 mandatory-read entry (--read-path or "
+             "--n-a-reason+--slot-pattern).",
+    )
+    sp.add_argument(
+        "--read-path", default="", dest="read_path",
+        help="Actual file path read (mutually exclusive with --n-a-reason).",
+    )
+    sp.add_argument(
+        "--slot-pattern", default="", dest="slot_pattern",
+        help="Explicit slot pattern (required with --n-a-reason; "
+             "optional with --read-path for sentinel slots).",
+    )
+    sp.add_argument(
+        "--n-a-reason", default="", dest="n_a_reason",
+        help="Reason for marking the slot N/A.",
+    )
+    sp.set_defaults(func=cmd_record_mandatory_read)
+
+    sp = sub.add_parser(
+        "verify-mandatory-reads",
+        help="Walk MANDATORY_READS_BY_TYPE; every slot must be covered.",
+    )
+    sp.set_defaults(func=cmd_verify_mandatory_reads)
+
+    sp = sub.add_parser(
+        "phase3-finalize",
+        help="Gate Phase 3 → Phase 4 (verify-mandatory-reads + stamp).",
+    )
+    sp.set_defaults(func=cmd_phase3_finalize)
+
+    # ----- Cross-phase -----------------------------------------------------
+
+    sp = sub.add_parser(
+        "summary", help="Emit phase-progress + counts dashboard JSON.",
+    )
+    sp.set_defaults(func=cmd_summary)
 
     return parser
 
