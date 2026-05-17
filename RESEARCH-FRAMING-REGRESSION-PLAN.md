@@ -1,6 +1,6 @@
 # RESEARCH-FRAMING-REGRESSION-PLAN
 
-**Status**: Patch 1 applied + tests green (126/126 in `tests/lib/test_research_helper.py`); Patches 2/3/4 pending. F2 (Phase 2.4c cross-layer vs same-package) deferred until Patch 2 lands.
+**Status**: Patches 1 + 2 applied + tests green (160/160 in `tests/lib/test_research_helper.py`); Patches 3/4 pending. F2 closed by Patch 2 (layer-boundary stopping rule + check 8b cross-layer gate + `record-fix-path-helper --file-line`).
 **Date**: 2026-05-16
 **Branch**: `develop-2.0-init`
 **File**: `src/commands/research/main.md` (~554 lines) + `src/devforge/lib/research_helper.py` setters + verify checks

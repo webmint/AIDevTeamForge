@@ -458,6 +458,101 @@ def _validate_file_line(value: str, field_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Layer-boundary path utilities (used by check 8b in cmd_verify).
+# ---------------------------------------------------------------------------
+
+# Presentation-layer file extensions.
+_PRESENTATION_EXTENSIONS = {".vue", ".tsx", ".jsx"}
+
+# Presentation-layer path fragments — must appear as full path components
+# (i.e., preceded by '/') to avoid matching 'subviews/' when '/views/' is
+# the intended sentinel.
+_PRESENTATION_PATH_FRAGMENTS = ("/views/", "/components/", "/pages/", "/screens/", "/ui/")
+
+# Presentation-layer path prefixes (normalized, no leading slash).
+_PRESENTATION_PATH_PREFIXES = ("apps/app-web/", "apps/web/", "apps/frontend/")
+
+
+def _is_presentation_layer(file_path: str) -> bool:
+    """Return True iff file_path is a presentation-layer file.
+
+    Heuristics (case-sensitive, in order):
+    1. Extension ∈ {.vue, .tsx, .jsx}.
+    2. Normalized path contains a presentation fragment (/views/, /components/,
+       /pages/, /screens/, /ui/) — the leading '/' guards against false matches
+       on e.g. 'subviews/'.
+    3. Normalized path starts with a presentation prefix (apps/app-web/, etc.).
+
+    None or empty → False.
+    """
+    if not file_path:
+        return False
+    # Extension check.
+    _, ext = os.path.splitext(file_path)
+    if ext in _PRESENTATION_EXTENSIONS:
+        return True
+    # Normalize: strip leading './' but keep leading '/' so fragment checks work.
+    normalized = file_path
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    # Prepend '/' so fragment checks work on paths that start at the first
+    # component (e.g. 'src/views/Foo.ts' → '/src/views/Foo.ts').
+    slashed = "/" + normalized if not normalized.startswith("/") else normalized
+    for frag in _PRESENTATION_PATH_FRAGMENTS:
+        if frag in slashed:
+            return True
+    # Prefix check against normalized (leading '/' already stripped by logic above).
+    normed_no_slash = normalized.lstrip("/")
+    for prefix in _PRESENTATION_PATH_PREFIXES:
+        if normed_no_slash.startswith(prefix):
+            return True
+    return False
+
+
+def _extract_package(file_path: str) -> str:
+    """Derive a two-component package key from file_path.
+
+    Rules:
+    - Strip a leading '/' or './' prefix.
+    - Split on '/'; take the first two components when both are present.
+    - When only one component exists (no '/'), return it as-is.
+    - None, empty, or whitespace-only → empty string.
+
+    Examples:
+      'apps/app-web/src/foo.vue' → 'apps/app-web'
+      'pkg-cse-core/utils.ts'    → 'pkg-cse-core'  (file at index 1)
+      'src/admin/Products.vue'   → 'src/admin'
+      'foo.vue'                  → 'foo.vue'
+      './apps/web/x.ts'          → 'apps/web'
+      '/apps/web/x.ts'           → 'apps/web'
+      ''                         → ''
+    """
+    if not file_path or not file_path.strip():
+        return ""
+    # Strip leading './' or '/'.
+    normalized = file_path
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    normalized = normalized.lstrip("/")
+    parts = normalized.split("/")
+    # Filter out empty segments (shouldn't arise after strip, but be safe).
+    parts = [p for p in parts if p]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        # Single component — no directory structure, return as-is.
+        return parts[0]
+    # Two components: if the second is a file (contains '.'), the first
+    # component IS the package (flat-package layout like pkg-cse-core/utils.ts).
+    # If the second has no dot it's a directory → return both (src/admin).
+    if len(parts) == 2 and "." in parts[1]:
+        return parts[0]
+    # Three or more components, or two components where the second is a
+    # directory: return first two.
+    return parts[0] + "/" + parts[1]
+
+
+# ---------------------------------------------------------------------------
 # Topic slug derivation (used for filename + state record).
 # ---------------------------------------------------------------------------
 
@@ -951,9 +1046,19 @@ def _register_subcommands(subparsers) -> None:
     # Phase 2.4c setters
     sp = subparsers.add_parser(
         "record-fix-path-helper",
-        help="Append a helper QN to fix_path_helpers (deduped).",
+        help="Append a {qn, file_line} helper entry to fix_path_helpers (deduped on qn).",
     )
     sp.add_argument("--helper-qn", required=True, dest="helper_qn")
+    sp.add_argument(
+        "--file-line",
+        required=True,
+        dest="file_line",
+        help=(
+            "Helper definition location as file:line (from search_graph result). "
+            "Must be a real path — sentinel '(none)' is rejected here because "
+            "the file_line is used for package extraction in check 8b."
+        ),
+    )
     sp.set_defaults(func=cmd_record_fix_path_helper)
 
     sp = subparsers.add_parser(
@@ -1750,16 +1855,30 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
 
 
 def cmd_record_fix_path_helper(args: argparse.Namespace) -> int:
-    """Append a helper QN to fix_path_helpers (deduped)."""
+    """Append a {qn, file_line} entry to fix_path_helpers (deduped on qn).
+
+    file_line is the HELPER'S DEFINITION location (from search_graph result),
+    NOT the call-site. The sentinel '(none)' is explicitly rejected — the
+    definition file is required for layer-boundary package extraction in check 8b.
+    """
     try:
         helper_qn = _validate_scalar(args.helper_qn, "fix_path_helper.helper_qn")
+        file_line = _validate_file_line(args.file_line, "fix_path_helper.file_line")
     except ValueError as err:
         return _die(str(err), code=2)
+    if file_line == "(none)":
+        return _die(
+            "record-fix-path-helper: --file-line cannot be (none) — "
+            "the helper's definition must have a real file path for "
+            "layer-boundary detection",
+            code=2,
+        )
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
             lst = report.setdefault("fix_path_helpers", [])
-            if helper_qn not in lst:
-                lst.append(helper_qn)
+            # Dedupe on qn: skip if an entry with the same qn already exists.
+            if not any(entry.get("qn") == helper_qn for entry in lst):
+                lst.append({"qn": helper_qn, "file_line": file_line})
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-fix-path-helper: {0}".format(err))
     return 0
@@ -2154,6 +2273,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
          runtime_probe_needed=true.
       7. Summary, complexity, ≥1 approach present.
       8. fix_path_helpers non-empty for bug mode.
+      8b. Bug mode + symptom is presentation-layer + all fix_path_helpers
+          defined in same package → cross-layer trace required. Package
+          derived from fix_path_helpers[].file_line (helper definition),
+          NOT from inbound_callers call-sites.
       9. Every fix_path_helper has at least one inbound_callers row.
      10. If value_semantics has an invariant AND dead_siblings is non-empty,
          at least one approach mentions the signature change or dead-sibling QN.
@@ -2277,9 +2400,57 @@ def cmd_verify(args: argparse.Namespace) -> int:
             "fix_path_helpers: empty (Phase 2.4c requires at least one helper enumerated for bug mode)"
         )
 
+    # Check 8b: when bug mode + symptom is in a presentation-layer file, at
+    # least one fix_path_helper must be defined in a DIFFERENT package
+    # (cross-layer rule). Package derived from fix_path_helpers[].file_line
+    # (the helper's definition location), NOT from inbound_callers call-sites.
+    # Fires only when check 8 already passed (list non-empty) and mode==bug,
+    # so the two checks compose without redundancy.
+    if fix_path_helpers and (report.get("mode") == "bug" or memo.get("mode") == "bug"):
+        findings_for_8b = report.get("findings") or []
+        # Identify the primary symptom path: first finding with framing==primary
+        # (or framing missing, which defaults to primary per record-finding).
+        primary_path_8b = None  # type: Optional[str]
+        for f in findings_for_8b:
+            framing_val = f.get("framing") or "primary"
+            if framing_val == "primary":
+                fl = f.get("file_line") or ""
+                colon_pos = fl.rfind(":")
+                if colon_pos > 0:
+                    primary_path_8b = fl[:colon_pos]
+                elif fl:
+                    primary_path_8b = fl
+                break  # first primary finding only
+        if primary_path_8b and _is_presentation_layer(primary_path_8b):
+            symptom_pkg = _extract_package(primary_path_8b)
+            has_cross_layer = False
+            for h in fix_path_helpers:
+                # Only dict entries carry file_line; skip bare strings
+                # (legacy direct-JSON writes) — they contribute no package info.
+                if not isinstance(h, dict):
+                    continue
+                # Derive helper package from the helper's own definition file_line.
+                helper_file_line = h.get("file_line") or ""
+                colon_pos = helper_file_line.rfind(":")
+                if colon_pos > 0:
+                    helper_file = helper_file_line[:colon_pos]
+                else:
+                    helper_file = helper_file_line
+                if _extract_package(helper_file) != symptom_pkg:
+                    has_cross_layer = True
+                    break
+            if not has_cross_layer:
+                violations.append(
+                    "fix_path_helpers: all entries in same package as "
+                    "presentation-layer symptom site {0!r}; Phase 2.4c must "
+                    "trace at least one helper UP to a different package "
+                    "(cross-layer rule)".format(primary_path_8b)
+                )
+
     # Check 9: every enumerated helper needs at least one inbound caller row.
     inbound_callers = report.get("inbound_callers") or []
-    for helper_qn in fix_path_helpers:
+    for h in fix_path_helpers:
+        helper_qn = h.get("qn") if isinstance(h, dict) else h
         if not any(r.get("helper_qn") == helper_qn for r in inbound_callers):
             violations.append(
                 "inbound_callers: no entry for helper {0!r} "

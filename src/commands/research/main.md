@@ -324,17 +324,21 @@ Helper-API surface enumeration runs once per framing recorded in Phase 2.3b. The
 
 Without this step the LLM anchors on view-layer / minimal-change fixes when the helper layer already has the inputs to enforce an invariant. Phase 2.4c forces structural evidence — inbound callers, dead siblings, consumer-chain endpoints — onto the report before Phase 3 enumerates approaches.
 
-**Definition of "fix-path helper".** A helper whose signature carries the symptom value, or any value the symptom value derives from. Stopping rule: trace AT MOST 2 layers above the symptom site through helpers in the SAME package; do not cross package boundaries (do not trace into infrastructure, vendor, or framework packages).
+**Definition of "fix-path helper".** A helper whose signature carries the symptom value, or any value the symptom value derives from.
+
+**Stopping rule (layer-boundary, NOT same-package).** Trace AT MOST 2 layer boundaries above the symptom site, following the dependency-inversion direction (outer-to-inner; e.g., presentation-layer file → composable/store → domain helper → entity static; presentation → application → domain). Stop at framework/vendor packages (do not trace into framework internals, vendored SDKs, or shared utility libs). Cross application/domain package boundaries within the project workspace — this is the explicit point of the rule. The OLD same-package restriction is removed: cross-package traces within the project are NOT just allowed, they are REQUIRED when the symptom lives in a presentation-layer file (Vue / React component, view, page). Verify check 8b enforces this: when the primary finding's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers` entry's `file_line` is in the same package as the symptom, `verify` exits non-zero with a `cross-layer rule` violation. Domain-layer symptoms (a bug whose symptom site is already inside `pkg-<domain>/`) remain same-package OK — no cross-layer trace is required for domain-internal bugs because the helper layer is already the symptom layer.
 
 For each fix-path helper, run the four steps below in order.
 
-**Step 1 — Record the helper itself.**
+**Step 1 — Record the helper itself.** Run `search_graph(label="Method", qn_pattern="<helper QN>")` (or `label="Function"` / `label="Class"` per the helper's kind) to confirm the helper exists in the codebase index and to capture its definition `file_path:line`. Both the helper's qualified name AND its definition `file:line` are required:
 
 ```bash
-.devforge/lib/research_helper record-fix-path-helper --helper-qn "<helper qualified name>"
+.devforge/lib/research_helper record-fix-path-helper \
+    --helper-qn "<helper qualified name>" \
+    --file-line "<helper definition file_path:line>"
 ```
 
-The setter is dedupe-on-append: re-recording the same `--helper-qn` is a no-op.
+`--file-line` MUST be copied verbatim from the `search_graph` result row's `file_path` + `line` fields — this is where the helper itself is DEFINED, NOT where it is CALLED FROM. The setter rejects the `(none)` sentinel for `--file-line` because layer-boundary detection requires a real path. The setter is dedupe-on-append: re-recording the same `--helper-qn` is a no-op (the existing `--file-line` is preserved).
 
 **Step 2 — Inbound caller enumeration.**
 
@@ -396,7 +400,7 @@ Record the consumer-chain endpoint (the consumer that actually reads the value) 
 
 The Phase 2.3 `file:line` grounding rule applies to `--file-line` here as well.
 
-**MANDATORY in bug mode.** Skipping is forbidden when `memo.mode == "bug"`. The helper's `verify` step (check 8) rejects an empty `fix_path_helpers` list in bug mode; check 9 rejects any `fix_path_helpers` entry that has no `inbound_callers` row. On non-zero exit from `verify` citing these checks, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then return to Phase 2.4c and complete the missing steps before re-running `verify`.
+**MANDATORY in bug mode.** Skipping is forbidden when `memo.mode == "bug"`. The helper's `verify` step enforces three gates on Phase 2.4c state: check 8 rejects an empty `fix_path_helpers` list in bug mode; check 8b (the cross-layer rule documented in the Stopping rule above) rejects a list where every `fix_path_helpers[].file_line` is in the same package as the primary symptom's file path when that symptom path is presentation-layer (Vue / React / views); check 9 rejects any `fix_path_helpers` entry that has no `inbound_callers` row. On non-zero exit from `verify` citing any of these checks, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then return to Phase 2.4c and complete the missing steps before re-running `verify`. For check 8b specifically, the fix is to trace one helper UP through a package boundary (presentation → application or presentation → domain) and re-run Step 1 with that helper's qualified name and definition `file:line`.
 
 For enhancement mode this phase is OPTIONAL — run it when the enhancement adds a new code path that touches an existing helper signature; skip when the enhancement is purely additive in a new module.
 
@@ -567,7 +571,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 .devforge/lib/research_helper verify
 ```
 
-Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
+Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 8b (cross-layer rule) rejects a bug-mode report where the primary symptom's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers[].file_line` is in the same package as the symptom — at least one helper must trace through a package boundary; see Phase 2.4c Stopping rule. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
 
 On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` from scratch (all prior state will be overwritten).
 

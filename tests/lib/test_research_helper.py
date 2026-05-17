@@ -1104,15 +1104,31 @@ def _build_bug_state(devforge):
     ])
 
     # Phase 2.4c: satisfy checks 8 + 9 (required for bug mode verify).
+    # Two helpers: one same-package (src/admin) with its DEFINITION file_line
+    # in src/admin, and one cross-layer (pkg-shared) with its definition in
+    # pkg-shared — so check 8b (cross-layer rule) passes because at least one
+    # helper's definition is in a different package than the symptom (src/admin).
     _run([
         "--devforge-dir", str(devforge), "record-fix-path-helper",
         "--helper-qn", "ProductsListComponent.sortItems",
+        "--file-line", "src/admin/Products.vue:201",  # helper defined in same package (presentation)
     ])
     _run([
         "--devforge-dir", str(devforge), "record-inbound-caller",
         "--helper-qn", "ProductsListComponent.sortItems",
         "--caller-qn", "ProductsListComponent.watchItems",
         "--file-line", "src/admin/Products.vue:201",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "SharedProductsHelper.compare",
+        "--file-line", "pkg-shared/sort.ts:10",  # helper defined in cross-layer package
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-inbound-caller",
+        "--helper-qn", "SharedProductsHelper.compare",
+        "--caller-qn", "ProductsListComponent.sortItems",
+        "--file-line", "src/admin/Products.vue:215",  # this is the CALL SITE in admin
     ])
 
     # Phase 2.3b: satisfy check 12 (mandatory runner-up framing + ≥1 tagged finding).
@@ -1470,10 +1486,16 @@ class TestPhase24cSetters(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "OrderBLoC.fetchOrder",
+                "--file-line", "lib/blocs/order_bloc.dart:42",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
-            self.assertIn("OrderBLoC.fetchOrder", rep["fix_path_helpers"])
+            qns = [h["qn"] for h in rep["fix_path_helpers"]]
+            self.assertIn("OrderBLoC.fetchOrder", qns)
+            # Verify full dict shape.
+            entry = rep["fix_path_helpers"][0]
+            self.assertEqual(entry["qn"], "OrderBLoC.fetchOrder")
+            self.assertEqual(entry["file_line"], "lib/blocs/order_bloc.dart:42")
         finally:
             tmp.cleanup()
 
@@ -1484,11 +1506,13 @@ class TestPhase24cSetters(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "OrderBLoC.fetchOrder",
+                "--file-line", "lib/blocs/order_bloc.dart:42",
             ])
             _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "OrderBLoC.fetchOrder",
+                "--file-line", "lib/blocs/order_bloc.dart:99",  # different file_line, same qn → deduped
             ])
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["fix_path_helpers"]), 1)
@@ -1502,14 +1526,59 @@ class TestPhase24cSetters(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "OrderBLoC.fetchOrder",
+                "--file-line", "lib/blocs/order_bloc.dart:42",
             ])
             _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "FetchOrderUseCase.execute",
+                "--file-line", "lib/use_cases/fetch_order.dart:10",
             ])
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["fix_path_helpers"]), 2)
+        finally:
+            tmp.cleanup()
+
+    def test_record_fix_path_helper_rejects_none_sentinel(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--file-line", "(none)",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("(none)", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_fix_path_helper_rejects_missing_file_line(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+                # --file-line deliberately omitted
+            ])
+            # argparse must reject with exit 2.
+            self.assertNotEqual(r.returncode, 0)
+        finally:
+            tmp.cleanup()
+
+    def test_record_fix_path_helper_rejects_bad_file_line(self):
+        """file_line without colon is rejected by _validate_file_line."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--file-line", "no-colon-here",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("file_line", r.stderr)
         finally:
             tmp.cleanup()
 
@@ -1808,10 +1877,12 @@ class TestVerifyCheck8(unittest.TestCase):
             devforge = Path(tmp) / ".devforge"
             self._build_base_state(devforge)
             # Add a fix_path_helper and a matching inbound_caller.
+            # --file-line gives the helper's definition location (cross-layer from src/admin).
             _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "SomeHelper.doThing",
+                "--file-line", "lib/helpers/some.ts:10",
             ])
             _run([
                 "--devforge-dir", str(devforge),
@@ -1842,7 +1913,7 @@ class TestVerifyCheck9(unittest.TestCase):
             # Add helper without a corresponding caller.
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = []
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
@@ -1856,7 +1927,7 @@ class TestVerifyCheck9(unittest.TestCase):
             _build_bug_state(devforge)
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
             ]
@@ -1873,7 +1944,7 @@ class TestVerifyCheck10(unittest.TestCase):
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
         # Satisfy checks 8 + 9.
-        data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+        data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
         data["inbound_callers"] = [
             {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
@@ -1935,7 +2006,7 @@ class TestVerifyCheck10(unittest.TestCase):
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
             ]
@@ -1963,7 +2034,7 @@ class TestVerifyCheck11(unittest.TestCase):
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
         # Satisfy checks 8 + 9.
-        data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+        data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
         data["inbound_callers"] = [
             {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
@@ -2017,7 +2088,7 @@ class TestVerifyCheck11(unittest.TestCase):
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "s:1"}
             ]
@@ -2197,7 +2268,7 @@ class TestVerifyCheck11EmptyTokenList(unittest.TestCase):
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
             ]
@@ -2232,7 +2303,7 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
         # Satisfy checks 8 + 9.
-        data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+        data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
         data["inbound_callers"] = [
             {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
@@ -2279,7 +2350,7 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build",
                  "file_line": "src/v.dart:5"}
@@ -2703,6 +2774,355 @@ class TestRenderFramingColumn(unittest.TestCase):
             self.assertIn("| primary |", r.stdout)
         finally:
             tmp.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Layer-boundary detection — unit tests for _is_presentation_layer and
+# _extract_package (Patch 2 / check 8b).
+# ---------------------------------------------------------------------------
+
+
+class TestLayerBoundaryDetection(unittest.TestCase):
+    """Unit tests for _is_presentation_layer and _extract_package."""
+
+    # --- _is_presentation_layer ---
+
+    def test_vue_extension_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/Foo.vue"))
+
+    def test_tsx_extension_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/Bar.tsx"))
+
+    def test_jsx_extension_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/Baz.jsx"))
+
+    def test_views_fragment_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/views/Foo.ts"))
+
+    def test_components_fragment_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/components/Bar.ts"))
+
+    def test_pages_fragment_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/pages/Home.ts"))
+
+    def test_screens_fragment_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/screens/Login.ts"))
+
+    def test_ui_fragment_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("src/ui/Button.ts"))
+
+    def test_apps_app_web_prefix_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("apps/app-web/index.ts"))
+
+    def test_apps_web_prefix_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("apps/web/main.ts"))
+
+    def test_apps_frontend_prefix_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("apps/frontend/App.vue"))
+
+    def test_regular_ts_is_not_presentation(self):
+        self.assertFalse(research_helper._is_presentation_layer("src/utils/helpers.ts"))
+
+    def test_domain_package_is_not_presentation(self):
+        self.assertFalse(research_helper._is_presentation_layer("pkg-cse-core/QuoteLine.ts"))
+
+    def test_empty_string_is_not_presentation(self):
+        self.assertFalse(research_helper._is_presentation_layer(""))
+
+    def test_none_is_not_presentation(self):
+        self.assertFalse(research_helper._is_presentation_layer(None))
+
+    def test_subviews_does_not_match_views_fragment(self):
+        # '/views/' guard — 'subviews/' must not match.
+        self.assertFalse(research_helper._is_presentation_layer("src/subviews/Foo.ts"))
+
+    def test_src_admin_products_vue_is_presentation(self):
+        # Validates the actual fixture path used in _build_bug_state.
+        self.assertTrue(research_helper._is_presentation_layer("src/admin/Products.vue"))
+
+    # --- _extract_package ---
+
+    def test_extract_deep_path(self):
+        self.assertEqual(
+            research_helper._extract_package("apps/app-web/src/foo.vue"),
+            "apps/app-web",
+        )
+
+    def test_extract_two_component_path(self):
+        # File sits at second component slot — still returns first two components.
+        self.assertEqual(
+            research_helper._extract_package("pkg-cse-core/utils.ts"),
+            "pkg-cse-core",
+        )
+
+    def test_extract_src_admin(self):
+        self.assertEqual(
+            research_helper._extract_package("src/admin/Products.vue"),
+            "src/admin",
+        )
+
+    def test_extract_single_component(self):
+        # Degenerate: no slash → return the single segment as-is.
+        self.assertEqual(
+            research_helper._extract_package("foo.vue"),
+            "foo.vue",
+        )
+
+    def test_extract_dotslash_prefix_stripped(self):
+        self.assertEqual(
+            research_helper._extract_package("./apps/web/x.ts"),
+            "apps/web",
+        )
+
+    def test_extract_leading_slash_stripped(self):
+        self.assertEqual(
+            research_helper._extract_package("/apps/web/x.ts"),
+            "apps/web",
+        )
+
+    def test_extract_empty_string(self):
+        self.assertEqual(research_helper._extract_package(""), "")
+
+    def test_extract_none(self):
+        self.assertEqual(research_helper._extract_package(None), "")
+
+    def test_extract_pkg_shared(self):
+        self.assertEqual(
+            research_helper._extract_package("pkg-shared/sort.ts"),
+            "pkg-shared",
+        )
+
+    def test_extract_whitespace_only(self):
+        # F4: whitespace-only input must return empty string, not the space chars.
+        self.assertEqual(research_helper._extract_package("   "), "")
+
+
+# ---------------------------------------------------------------------------
+# Check 8b integration tests — presentation-layer symptom cross-layer rule.
+# ---------------------------------------------------------------------------
+
+
+def _build_bug_state_same_package(devforge):
+    """Bug state variant where ALL fix_path_helpers' inbound callers are in
+    the SAME package as the (presentation-layer) symptom site.
+
+    Used exclusively for check 8b failure tests so that _build_bug_state can
+    stay cross-layer compliant (the exemplar).
+    """
+    _run(["--devforge-dir", str(devforge), "reset-memo"])
+    _run(["--devforge-dir", str(devforge), "reset-report"])
+
+    for d, val in (
+        ("symptom", "Items not sorted in admin products list"),
+        ("affected_area", "Admin > Products > List"),
+        ("repro_or_current", "Open list with 50+ items"),
+        ("desired", "alphabetical sort by name A->Z"),
+        ("scope", "One component"),
+        ("unchanged_behavior", "Filter + pagination must keep working"),
+    ):
+        _run([
+            "--devforge-dir", str(devforge),
+            "set-" + d.replace("_", "-"),
+            "--value", val, "--state", "Clear",
+        ])
+    _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+    _run(["--devforge-dir", str(devforge), "set-topic", "--value", "items-not-sorted"])
+    _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-11"])
+
+    # Primary finding — presentation layer (src/admin).
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "products list component",
+        "--file-line", "src/admin/Products.vue:201",
+        "--relevance", "inline .sort() call inside watch body",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "list helper",
+        "--file-line", "src/admin/helpers.ts:45",
+        "--relevance", "shared comparator unused here",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "unstable comparator in inline sort",
+        "--falsifier", "swap comparator; verify order stable",
+        "--runtime-probe-needed", "no",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "race between fetch and watch",
+        "--falsifier", "log fetch ids before sort",
+        "--runtime-probe-needed", "no",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-hypothesis",
+        "--value", "Inline .sort() in watch body uses unstable comparator.",
+    ])
+    _run(["--devforge-dir", str(devforge), "set-confidence", "--value", "Hypothesis"])
+    _run([
+        "--devforge-dir", str(devforge), "set-trigger",
+        "--value", "User scrolls past 50 items",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-systemic",
+        "--value", "Inline sort in reactive body without stable comparator",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "set-approach",
+        "--name", "Option A: Use stable comparator",
+        "--description", "Replace inline sort",
+        "--addresses-hypotheses", json.dumps(["unstable comparator in inline sort"]),
+        "--does-not-cover", json.dumps(["race between fetch and watch"]),
+        "--pros", json.dumps(["simple"]),
+        "--cons", json.dumps(["partial"]),
+        "--complexity", "Low",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-recommended-approach",
+        "--name", "Option A: Use stable comparator",
+        "--rationale", "Closes primary hypothesis",
+        "--hypotheses-addressed", json.dumps(["unstable comparator in inline sort"]),
+        "--hypotheses-not-covered", json.dumps([]),
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-constitution-constraints",
+        "--rule", "Rule 2.1 — sort must be deterministic",
+        "--impact", "Forces stable comparator",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-complexity",
+        "--codebase-changes", "Low", "--codebase-notes", "1 component",
+        "--risk", "Low", "--risk-notes", "pagination preserved",
+        "--verify-cost", "Low", "--verify-notes", "quick visual check",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-verdict",
+        "--value", "Root cause hypothesis (needs repro)",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-summary",
+        "--value", "Inline sort is unstable; fix with stable comparator.",
+    ])
+    _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+
+    # SAME-PACKAGE helpers: DEFINITION file_line also in src/admin (same as symptom src/admin).
+    # This means check 8b will fire — no helper defined outside presentation package.
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--file-line", "src/admin/Products.vue:201",  # definition in same package
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-inbound-caller",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--caller-qn", "ProductsListComponent.watchItems",
+        "--file-line", "src/admin/Products.vue:201",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "ProductsAdminHelper.doSort",
+        "--file-line", "src/admin/helpers.ts:10",  # definition also in same package
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-inbound-caller",
+        "--helper-qn", "ProductsAdminHelper.doSort",
+        "--caller-qn", "ProductsListComponent.sortItems",
+        "--file-line", "src/admin/Products.vue:205",
+    ])
+
+    # Mandatory runner-up framing (check 12a).
+    _run([
+        "--devforge-dir", str(devforge), "record-runner-up-framing",
+        "--frame", "Race between fetch and watch",
+        "--falsifier", "Stabilizing comparator alone fixes order",
+        "--confidence-vs-primary", "lower",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "fetch / watch race window",
+        "--file-line", "src/admin/Products.vue:180",
+        "--relevance", "race probe — runner-up",
+        "--framing", "runner-up",
+    ])
+
+
+class TestVerifyCheck8b(unittest.TestCase):
+    """Check 8b: presentation-layer symptom + all helpers in same package → violation."""
+
+    def test_verify_check8b_passes_when_symptom_is_domain_layer(self):
+        """Domain-layer symptom: check 8b skipped regardless of helper packages."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Rewrite findings + helpers so symptom is domain-layer (pkg-cse-core).
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Symptom finding → domain-layer file.
+            data["findings"] = [
+                {
+                    "surface": "core util",
+                    "file_line": "pkg-cse-core/utils.ts:10",
+                    "relevance": "comparison logic",
+                    "framing": "primary",
+                },
+                {
+                    "surface": "race probe",
+                    "file_line": "pkg-cse-core/utils.ts:20",
+                    "relevance": "runner-up probe",
+                    "framing": "runner-up",
+                },
+            ]
+            # All helpers also in pkg-cse-core — would trigger 8b for presentation
+            # but domain symptom means 8b is skipped.
+            data["fix_path_helpers"] = [{"qn": "CoreUtil.compare", "file_line": "pkg-cse-core/utils.ts:10"}]
+            data["inbound_callers"] = [
+                {
+                    "helper_qn": "CoreUtil.compare",
+                    "caller_qn": "CoreUtil.sort",
+                    "file_line": "pkg-cse-core/sort.ts:5",
+                },
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("cross-layer rule", r.stderr)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_verify_check8b_passes_when_helpers_cross_layer(self):
+        """Presentation symptom + helpers split across packages → check 8b passes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # _build_bug_state already provides cross-layer helpers.
+            _build_bug_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("cross-layer rule", r.stderr)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_verify_check8b_fails_when_presentation_symptom_all_helpers_same_package(self):
+        """Presentation symptom + all helpers same package → 8b violation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state_same_package(devforge)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("cross-layer rule", r.stderr)
+            self.assertIn("src/admin/Products.vue", r.stderr)
+
+    def test_verify_check8b_skipped_when_no_primary_finding(self):
+        """No findings recorded → check 8b silently skipped (no cross-layer violation)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Remove all findings so there's no primary finding to evaluate.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["findings"] = []
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # 8b must not contribute a violation — only 12b (no runner-up finding)
+            # might fire; confirm 8b's specific message is absent.
+            self.assertNotIn("cross-layer rule", r.stderr)
 
 
 if __name__ == "__main__":
