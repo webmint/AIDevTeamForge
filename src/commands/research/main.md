@@ -228,46 +228,198 @@ Confidence calibration: 0 hits at `search_graph` alone means "no NAMED implement
 
 **`file:line` grounding (MANDATORY).** Every `file_path:line` you will later pass to `record-finding` MUST be copied verbatim from a `search_graph` or `search_code` result row's `file_path` + `line` fields. Never derive a line number from `get_code_snippet` output — `get_code_snippet` returns a code slice whose internal lines do NOT correspond to absolute file line numbers, and the LLM will drift by ±1 to ±N. Never reconstruct a line number from prose context. If you only have a snippet and need the line, re-run `search_code` for a literal token from the snippet to recover the authoritative `file:line` row. If that re-run returns 0 hits, widen the token (try a longer substring or a different literal from the same snippet) and retry once. If still 0 hits, fall back to the original result-row `file:line` you held before calling `get_code_snippet`, and note in `--relevance` that the line could not be re-confirmed.
 
+### Phase 2.3b — Framing challenge (MANDATORY)
+
+Phase 2.3 framing locks in. Without adversarial competition, Phase 2.4 / 2.4b / 2.4c inherit the chosen frame unchallenged — the LLM enumerates hypotheses *within* the chosen frame, never *across* competing frames. Phase 2.3b breaks the lock by forcing one alternative-framing commit BEFORE downstream searches run, so subsequent searches probe BOTH frames.
+
+1. **State the PRIMARY framing** in one sentence based on Phase 2.3 evidence ("the bug is caused by X").
+
+2. **State the strongest ALTERNATIVE framing** — a different root-cause hypothesis at the FRAMING level, not at the hypothesis level. Framing-level competition is distinct from the ≥2 hypothesis enumeration the helper enforces in Phase 2.5 — that enumeration produces hypotheses *within* one frame. Two examples to disambiguate:
+
+   - Same frame, two hypotheses (NOT what Phase 2.3b wants): primary frame "comparator field-name typo" → H1 "primary-id vs alternate-id mismatch" / H2 "type coercion drops the match". Both H1 + H2 live inside the same comparator-typo frame.
+   - Different framings (what Phase 2.3b wants): primary "id-field mismatch (presentation-layer fix)" vs runner-up "shallow walk + missing structural classifier (cross-layer fix)". Different root causes, different fix layers, different surfaces.
+
+3. **Identify the CONCRETE FALSIFIER** — the specific evidence that would prove the alternative framing OVER the primary. Phase 2.4 / 2.4b / 2.4c searches will probe FOR this evidence.
+
+4. **Rate `confidence_vs_primary`** as one of `lower` / `comparable` / `higher` relative to the primary framing.
+
+5. **Record via:**
+
+   ```bash
+   .devforge/lib/research_helper record-runner-up-framing \
+       --frame "<one-sentence alternative root cause>" \
+       --falsifier "<concrete evidence that would confirm THIS framing over the primary>" \
+       --confidence-vs-primary "lower|comparable|higher"
+   ```
+
+   ONE call per `/research` run. Re-calling overwrites (last call wins).
+
+**MANDATORY — never skip, even when the bug looks unambiguous.** The phase exists specifically to challenge "looks unambiguous" framings: the regression class this phase guards against is the LLM that commits to the first plausible frame in Phase 2.3 and stops considering alternatives.
+
+**Downstream impact.** Phase 2.4 / 2.4b / 2.4c findings that support the runner-up frame are tagged `--framing runner-up` when persisted via `record-finding` in Phase 2.6; findings supporting the primary frame default to `--framing primary` (no tag needed). Phase 3's `verify` enforces two gates: check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b is mandatory and must execute before `verify` runs; check 12b (conditional on `runner_up_framing` set) rejects a report with zero `--framing runner-up` findings — at least one runner-up-tagged finding (positive or negative) must follow.
+
 ### Phase 2.4 — Parallel-pattern sweep (MANDATORY)
+
+Phase 2.4 searches MUST probe both framings recorded in Phase 2.3b. After identifying the primary-frame parallel-pattern surface, run a SECOND search targeting the runner-up frame's falsifier. Findings supporting the runner-up frame are tagged `--framing runner-up` when persisted via `record-finding` in Phase 2.6; findings supporting the primary frame default to `--framing primary` (no tag needed).
 
 After the primary surface is located, run a parallel-pattern sweep over the SAME file before recording findings:
 
 ```
-search_code(pattern="<bug-pattern literal>")
+search_code(pattern="<primary-frame bug-pattern literal>")
 ```
 
 The supported `search_code` argument is `pattern` only. Scope the sweep to the primary file by filtering the returned hits in the orchestrator — keep only rows whose `file_path` equals `<primary_file_path>`. Discard every hit outside that file. If `pattern` returns dozens of hits across the package, narrow it (add a containing identifier, include the file's base name as an OR-token in the regex) so the in-file rows surface near the top.
 
-Example: primary surface is a `.sort()` at `ProductListView.vue:114` with status-only comparator. Sweep the same file for any other `.sort(` / `.filter(` / `.map(` calls that touch the same data shape — there is often a parallel block (e.g. a sibling block at line 252-279) with the same bug. Missing the parallel block lets it ship as a regression. Record every parallel surface as its own `Finding` row.
+Then run a SECOND `search_code` targeting the runner-up frame's falsifier token PROJECT-WIDE (not in-file-only — the runner-up may surface in a different file):
+
+```
+search_code(pattern="<runner-up-falsifier literal>")
+```
+
+The falsifier literal comes from the `--falsifier` text recorded in Phase 2.3b — extract a literal code token from it (a method name, a property, a class identifier, a call shape). Both searches are MANDATORY; skipping the runner-up search leaves the runner-up frame's parallel-pattern evidence ungathered and biases the report toward the primary framing by default. If the runner-up search returns 0 hits, record a negative Finding via the Phase 2.6 setter with `--file-line="(none)"`, `--framing runner-up`, `--relevance="runner-up falsifier not found project-wide"`. If it returns hits, evaluate each and record supporting or disproving findings tagged `--framing runner-up`.
+
+Example: primary surface is a `.sort()` at `ProductListView.vue:114` with status-only comparator (primary frame = "unstable comparator"); runner-up frame = "race between fetch and watch" with falsifier literal `watch(` or the fetch handler name. Sweep the primary file for any other `.sort(` / `.filter(` / `.map(` calls that touch the same data shape — there is often a parallel block (e.g. a sibling block at line 252-279) with the same bug; missing the parallel block lets it ship as a regression. Sweep project-wide for the runner-up falsifier literal — hits identify other places where the same race shape could occur. Record every parallel surface AND every runner-up hit as its own `Finding` row with the correct `--framing` tag.
 
 This step is MANDATORY when `mode == "bug"` and the primary surface is an inline expression (sort / filter / comparator / validator). For enhancement mode, sweep is OPTIONAL.
 
 ### Phase 2.4b — Canonical-pattern search (MANDATORY)
 
+Canonical-pattern search runs once per framing recorded in Phase 2.3b. The runner-up frame's canonical pattern may diverge from the primary's because the two frames imply different solution classes — search the codebase for the canonical pattern of EACH framing's desired fix. Findings supporting the runner-up frame are tagged `--framing runner-up` when persisted via `record-finding` in Phase 2.6; findings supporting the primary frame default to `--framing primary` (no tag needed).
+
 Before composing approaches in Phase 3, search the codebase for **existing implementations of the DESIRED behavior** — not the bug. Phase 2.3/2.4 chain finds where the bug LIVES; this step finds how the codebase ALREADY SOLVES the same problem class. Reuse beats reinvention; "Search before building" is a constitution constraint in every project.
 
-Run a project-wide `search_code` for the literal token that characterizes the fix pattern:
+Run a project-wide `search_code` for the literal token that characterizes the **primary** framing's fix pattern:
 
 ```
-search_code(pattern="<solution-pattern literal>")
+search_code(pattern="<primary-frame solution-pattern literal>")
 ```
 
-Example (matching the Phase 2.4 example): if the bug is "sort comparator with no alphabetical tie-breaker", the solution-pattern literal is `localeCompare` (or `sortBy`, or whatever the project's canonical secondary-sort idiom is). Result rows = candidate canonical implementations elsewhere in the codebase. For each, judge whether it really solves the same problem class (look at the surrounding comparator structure via `get_code_snippet`).
+Then run a SECOND project-wide `search_code` for the literal token that characterizes the **runner-up** framing's fix pattern (the canonical implementation that would resolve the runner-up frame's falsifier):
+
+```
+search_code(pattern="<runner-up-frame solution-pattern literal>")
+```
+
+Both searches are MANDATORY — the runner-up frame's canonical pattern may diverge from the primary's because the two frames imply different solution classes. Skipping the runner-up search leaves the runner-up frame without a canonical-reuse candidate, which biases Phase 3 toward the primary-frame recommendation by default.
+
+Example (matching the Phase 2.4 example): if the primary frame is "sort comparator with no alphabetical tie-breaker", the primary solution-pattern literal is `localeCompare` (or `sortBy`, or whatever the project's canonical secondary-sort idiom is); if the runner-up frame is "fetch / watch race causes unstable input order", the runner-up solution-pattern literal is the project's canonical reactive-derivation idiom (e.g. `computed(` for Vue, `useMemo(` for React). Result rows from EITHER search = candidate canonical implementations elsewhere in the codebase. For each, judge whether it really solves the same problem class (look at the surrounding structure via `get_code_snippet`).
 
 Record every confirmed canonical implementation as its own `Finding` row with:
 - `--surface` = a label naming the helper / file role (e.g. "canonical sort helper", "existing localeCompare site")
 - `--file-line` = exact `file_path:line` from the `search_code` result row (per Phase 2.3 grounding rule)
 - `--relevance` = the literal phrase "canonical pattern — reusable" followed by a one-line note on what it does
+- `--framing` = `primary` when the row supports the primary framing's canonical pattern; `runner-up` when it supports the runner-up framing's canonical pattern (per Phase 2.3b's downstream-impact rule)
 
 These findings feed Phase 3:
 - The recommended approach MUST cite the canonical pattern by exact file:line if one was found, and MUST recommend reusing it over writing a new helper. Fresh helper extraction is only justified when Phase 2.4b recorded `file_line = "(none)"` (no canonical found); in that case the `--rationale` must say so explicitly.
 - When a canonical pattern was found, the Constitution Constraints section MUST include the "Search before building" rule with the canonical helper's file:line in the impact column. When no canonical was found, omit this entry — its absence is information.
 
-If 0 canonical implementations are found (the codebase has no existing solution for this problem class): record one `Finding` with `--surface="canonical-pattern search"`, `--file-line="(none)"`, `--relevance="no canonical pattern found project-wide for <solution-pattern>; new helper extraction is justified"`. This makes the negative result explicit so a reviewer can spot a miss. Note: `"(none)"` is the only sanctioned exception to the Phase 2.3 `file:line` grounding rule — it is a sentinel for an explicitly absent result, not a missing verification.
+If 0 canonical implementations are found for a framing (the codebase has no existing solution for that frame's problem class): record one `Finding` for THAT framing with `--surface="canonical-pattern search"`, `--file-line="(none)"`, `--relevance="no canonical pattern found project-wide for <framing's solution-pattern>; new helper extraction is justified"`, and the matching `--framing primary|runner-up` tag. Record the negative result independently per framing — a 0-result on the primary search does NOT mean the runner-up search is skipped, and vice versa. This makes the negative result explicit per framing so a reviewer can spot a miss. Note: `"(none)"` is the only sanctioned exception to the Phase 2.3 `file:line` grounding rule — it is a sentinel for an explicitly absent result, not a missing verification.
 
 This step is MANDATORY for both bug and enhancement modes. Skipping it silently re-invents what already exists.
 
+### Phase 2.4c — Helper-API surface enumeration (MANDATORY for bug mode; OPTIONAL for enhancement)
+
+Helper-API surface enumeration runs once per framing recorded in Phase 2.3b. The runner-up frame may surface different fix-path helpers than the primary — the two frames imply different layer-stack entry points. Findings supporting the runner-up frame are tagged `--framing runner-up` when persisted via `record-finding` in Phase 2.6; findings supporting the primary frame default to `--framing primary` (no tag needed).
+
+Without this step the LLM anchors on view-layer / minimal-change fixes when the helper layer already has the inputs to enforce an invariant. Phase 2.4c forces structural evidence — inbound callers, dead siblings, consumer-chain endpoints — onto the report before Phase 3 enumerates approaches.
+
+**Definition of "fix-path helper".** A helper whose signature carries the symptom value, or any value the symptom value derives from. Stopping rule: trace AT MOST 2 layers above the symptom site through helpers in the SAME package; do not cross package boundaries (do not trace into infrastructure, vendor, or framework packages).
+
+For each fix-path helper, run the four steps below in order.
+
+**Step 1 — Record the helper itself.**
+
+```bash
+.devforge/lib/research_helper record-fix-path-helper --helper-qn "<helper qualified name>"
+```
+
+The setter is dedupe-on-append: re-recording the same `--helper-qn` is a no-op.
+
+**Step 2 — Inbound caller enumeration.**
+
+```
+trace_path(<helper_qn>, mode=calls, direction=inbound)
+```
+
+Record EVERY caller (including the symptom site itself) via:
+
+```bash
+.devforge/lib/research_helper record-inbound-caller \
+    --helper-qn "<helper_qn>" \
+    --caller-qn "<caller_qn>" \
+    --file-line "<path:line>"
+```
+
+The Phase 2.3 `file:line` grounding rule applies — `<path:line>` MUST be copied verbatim from the `trace_path` result row's `file_path` + `line` fields. Never reconstruct.
+
+**Step 3 — Sibling-method enumeration.**
+
+```
+search_graph(label="Method", qn_pattern="<containing_class>\\.")
+```
+
+For each sibling returned, run `trace_path mode=calls direction=inbound`. Any sibling that appears to have an empty inbound set MUST be cross-verified via:
+
+```
+search_code(pattern="<method-name>(")
+```
+
+Only siblings with 0 inbound callers in `trace_path` AND 0 textual call sites in `search_code` are confirmed dead. Record each confirmed dead sibling via:
+
+```bash
+.devforge/lib/research_helper record-dead-sibling \
+    --class-qn "<class qualified name>" \
+    --method-qn "<method qualified name>" \
+    --verified-via <trace_path|search_code>
+```
+
+`--verified-via` documents which evidence source confirmed the dead state. For any dead sibling discovered through this step, always pass `--verified-via search_code` — the textual cross-check is mandatory and `search_code` is the confirming evidence source. The `--verified-via trace_path` value exists for future cases where a graph-only trace is conclusive on its own; do not use it here. The helper accepts only those two literal values.
+
+**Step 4 — Forward data-flow trace on the symptom value(s).** Extraction rule: from `memo.dimensions.desired.value`, pull every noun-phrase or token that maps to a code symbol (a method, property, class, named data field, or named payload value). If `desired.value` is expressed purely in user-facing terms with no identifiable code-symbols (e.g. 'list shows alphabetically'), skip Step 4 and note in the consumer-chain that desired is expressed in user terms only — Phase 2.5 classification will then default to `preference` (no payload-shape evidence available).
+
+For each symbol cited in `memo.dimensions.desired.value`:
+
+```
+trace_path(<symptom-value-source>, mode=data_flow, direction=outbound)
+```
+
+Record the consumer-chain endpoint (the consumer that actually reads the value) via:
+
+```bash
+.devforge/lib/research_helper record-consumer-chain \
+    --value "<symbol>" \
+    --consumer-qn "<qualified name>" \
+    --file-line "<path:line>" \
+    --role "<one-line description of what the consumer does with this value>"
+```
+
+The Phase 2.3 `file:line` grounding rule applies to `--file-line` here as well.
+
+**MANDATORY in bug mode.** Skipping is forbidden when `memo.mode == "bug"`. The helper's `verify` step (check 8) rejects an empty `fix_path_helpers` list in bug mode; check 9 rejects any `fix_path_helpers` entry that has no `inbound_callers` row. On non-zero exit from `verify` citing these checks, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then return to Phase 2.4c and complete the missing steps before re-running `verify`.
+
+For enhancement mode this phase is OPTIONAL — run it when the enhancement adds a new code path that touches an existing helper signature; skip when the enhancement is purely additive in a new module.
+
 ### Phase 2.5 — Hypothesis enumeration (MANDATORY ≥2)
+
+**MANDATORY value-semantics classification (run before hypothesis enumeration).** For every symbol extracted via the Phase 2.4c Step 4 extraction rule, classify it as one of:
+
+- `preference` — per-user-action, per-toggle, per-request-context (e.g., a sort order the user picked, a filter the user set).
+- `invariant` — per-identity, per-business-rule, payload-shape contract (e.g., an identifier required by the API contract, a flag the receiver dispatches on).
+- `unclassified` — evidence insufficient to commit to either.
+
+Evidence should cite a `consumer_chain` row recorded in Phase 2.4c — `--evidence` typically cites the consumer's `file:line` or its role string. (Helper does NOT validate the `--evidence` content beyond non-empty; the existence of a `consumer_chain` row for the same `--value` is what the helper enforces when `--classification invariant` is passed.) Call:
+
+```bash
+.devforge/lib/research_helper set-value-semantics \
+    --value "<symbol>" \
+    --classification <preference|invariant|unclassified> \
+    --evidence "<text — typically a file:line or consumer name>"
+```
+
+The helper enforces this dependency: `set-value-semantics --classification invariant` exits with code 2 when no `consumer_chain` row exists for `<symbol>`. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), return to Phase 2.4c Step 4 to record the missing `consumer_chain` entry, then end the turn. The next turn re-runs `set-value-semantics`. The helper writes nothing on rejection — the state file is untouched.
+
+Why this matters: an invariant value mis-classified as preference produces hypotheses framed "the UI didn't seed correctly" — wrong framing leads to view-layer fix recommendations in Phase 3. Classification grounds hypothesis enumeration in the right semantics.
 
 Enumerate at least 2 candidate root causes for the symptom. For each, write a one-line falsifier (the observation that would disprove it) and mark whether falsification needs runtime data. Single-hypothesis output is rejected by the helper's `verify` gate.
 
@@ -275,7 +427,7 @@ For any hypothesis whose falsifier needs runtime data (lifecycle race, framework
 
 ### Phase 2.6 — Wire findings into helper
 
-After the CBM chain + parallel-pattern sweep + canonical-pattern search + hypothesis enumeration complete, call helper setters in this order. Compose values from the in-context findings; do not re-shape.
+After the CBM chain + parallel-pattern sweep + canonical-pattern search + helper-API surface enumeration (Phase 2.4c) + hypothesis enumeration complete, call helper setters in this order. Phase 2.4c state (`fix_path_helpers`, `inbound_callers`, `dead_siblings`, `consumer_chain`, `value_semantics`) is already recorded in the report by its own setters — do not re-record those surfaces via `record-finding`. Compose values from the in-context findings; do not re-shape.
 
 For each finding — one per code surface that bears on the symptom, including every parallel surface from Phase 2.4 AND every canonical-pattern row from Phase 2.4b. Apply the same `search_code` pre-verification loop to canonical rows. The `--file-line="(none)"` negative-result row from Phase 2.4b is exempt from `search_code` verification — `(none)` is the sentinel value, not a path to verify.
 
@@ -283,10 +435,13 @@ For each finding — one per code surface that bears on the symptom, including e
 .devforge/lib/research_helper record-finding \
     --surface "<surface label>" \
     --file-line "<path:line>" \
-    --relevance "<one-line how-it-relates>"
+    --relevance "<one-line how-it-relates>" \
+    --framing "<primary|runner-up>"
 ```
 
 `<path:line>` MUST be the exact `file_path:line` from a `search_graph` or `search_code` result row (per Phase 2.3 grounding rule). BEFORE every `record-finding` call, run a one-line verification: `search_code(pattern="<expected literal at that line>")` and confirm the result row's `file_path:line` matches the value you are about to pass. On mismatch, take the result row's line as authoritative and pass THAT to `--file-line`; the LLM's recollection is wrong (off-by-one drift is the failure this catches). Only after the verification matches: call `record-finding`. If the verification `search_code` returns 0 hits: widen the pattern (try an adjacent literal) and retry once. If still 0 hits, pass the original result-row `file:line` you already hold (from the Phase 2.3 chain) and note the unconfirmed status in `--relevance`. Do not skip the finding.
+
+`--framing` is optional and defaults to `primary` when omitted. Pass `--framing runner-up` for findings that support the runner-up framing recorded in Phase 2.3b — including NEGATIVE findings (evidence disproving the runner-up). At least one finding must carry `--framing runner-up` for `verify` check 12b to pass (check 12b fires only once `runner_up_framing` is set; check 12a — the unconditional gate that demands `runner_up_framing` be set at all — is satisfied earlier by the Phase 2.3b `record-runner-up-framing` call). That one finding may be positive (evidence supporting the runner-up) or negative (evidence the runner-up's falsifier did not hold up).
 
 For each hypothesis (≥2):
 
@@ -354,6 +509,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
        --complexity <Low|Med|High>
    ```
 
+   **MANDATORY (when `value_semantics` contains an invariant row AND `dead_siblings` is non-empty):** at least one approach in the enumerated list MUST touch the helper signature or revive a dead sibling — and MUST cite the dead-sibling `method_qn` (or the literal token `signature`) explicitly in the approach's `--name`, `--description`, `--pros`, or `--cons`. The helper's `verify` step (check 10) enforces this: on non-zero exit citing "no approach mentions helper signature change or dead-sibling QN", copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then re-call `set-approach` (overwriting or adding) so at least one approach satisfies the check.
+
 3. **Recommended approach** — name must match an existing approach. Helper additionally enforces "must not violate `memo.dimensions.unchanged_behavior.value`" via a cross-check; pick the approach + cite hypotheses accordingly:
 
    ```bash
@@ -365,6 +522,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
    ```
 
    **MANDATORY canonical-pattern citation.** If Phase 2.4b recorded any `Finding` row with `relevance` starting "canonical pattern — reusable", the `--rationale` MUST cite that pattern's `file:line` and state the recommended approach REUSES it (not reinvents). Only justify a fresh helper extraction when the canonical pattern's `file_line` was recorded as `(none)` in Phase 2.4b (no canonical found), and the `--rationale` must say so explicitly: "no canonical pattern exists project-wide; new helper justified".
+
+   **MANDATORY (when `value_semantics` contains an invariant row):** `--rationale` MUST cite at least one of: a `consumer_chain` row's `consumer_qn`, an invariant row's `evidence` string, OR a `dead_siblings` row's `method_qn`. The helper's `verify` step (check 11) enforces this: on non-zero exit citing "rationale cites neither a consumer_chain entry, an invariant evidence string, nor a dead-sibling QN", copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then re-call `set-recommended-approach` with a `--rationale` that contains one of those tokens.
 
 4. **Constitution constraints** — read `constitution.md` for rules that bear on the affected area + recommended approach. For each rule that constrains or enables the change:
 
@@ -408,7 +567,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 .devforge/lib/research_helper verify
 ```
 
-Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
+Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
 
 On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` from scratch (all prior state will be overwritten).
 
@@ -418,7 +577,7 @@ On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter f
 .devforge/lib/research_helper render
 ```
 
-Helper walks the locked schema and emits the full research report markdown to stdout. The orchestrator does NOT compose this markdown; the helper owns the section order (Header → Metadata → Summary → Symptom → Codebase Findings (WHERE) → Root Cause Hypothesis (WHY) → optional Structured Root Cause → Hypothesis Enumeration → optional Recommended Verify Step → Approaches (HOW) → Constitution Constraints → Complexity Assessment → optional Open Uncertainties → optional Next Step), heading levels, and table shapes.
+Helper walks the locked schema and emits the full research report markdown to stdout. The orchestrator does NOT compose this markdown; the helper owns the section order (Header → Metadata → Summary → Symptom → Codebase Findings (WHERE) → Root Cause Hypothesis (WHY) → optional Structured Root Cause → optional Runner-up framing → Hypothesis Enumeration → optional Recommended Verify Step → Approaches (HOW) → Constitution Constraints → Complexity Assessment → optional Open Uncertainties → optional Next Step), heading levels, and table shapes. The Runner-up framing section renders only when `runner_up_framing` is set (see Phase 2.3b). The Codebase Findings table includes a `Framing` column showing the per-finding tag (`primary` or `runner-up`).
 
 Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). This is the user's first look at the rendered report.
 

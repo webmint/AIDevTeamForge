@@ -30,16 +30,20 @@ Phases (target order per REDESIGN-RESEARCH-PLAN.md)
   PHASE 3  Save + recommend          — render artifact + ask-to-save handled
                                        by orchestrator; helper renders + verifies.
 
-Subcommand summary (33)
+Subcommand summary (43)
 -----------------------
 
-  Plumbing       reset-memo, reset-report, read-memo, read-report,
-                 preflight, summary
+  Plumbing (8)   reset-memo, reset-report, read-memo, read-report,
+                 preflight, summary, set-topic, set-date
   Phase 0  (12)  set-symptom, set-affected-area, set-repro-or-current,
                  set-desired, set-scope, set-unchanged-behavior,
                  detect-mode, record-gap, check-conflicts,
                  record-conflict-resolution, symptom-coverage,
                  symptom-finalize
+  Phase 2.3b (1) record-runner-up-framing
+  Phase 2.4c (5) record-fix-path-helper, record-inbound-caller,
+                 record-dead-sibling, record-consumer-chain,
+                 set-value-semantics
   Phase 1  (8)   record-finding, record-hypothesis,
                  set-root-cause-hypothesis, set-confidence,
                  set-trigger, set-root-cause-systemic,
@@ -133,6 +137,12 @@ VERDICT_PROCEEDING = {
 # verify_cost).
 COMPLEXITY_ENUM = ("Low", "Med", "High")
 
+# Confidence-vs-primary enum for runner-up framing.
+CONFIDENCE_VS_PRIMARY_ENUM = ("lower", "comparable", "higher")
+
+# Framing tag enum for findings.
+FRAMING_ENUM = ("primary", "runner-up")
+
 # Conflict type enum (Phase 0 misalignment detection).
 CONFLICT_TYPE_ENUM = ("direct", "drift", "refinement", "mode-flip")
 
@@ -209,6 +219,15 @@ def default_report_state() -> dict:
         "open_uncertainties": [],
         "verdict": None,
         "next_step_text": None,
+        # Phase 2.3b — runner-up framing. None until record-runner-up-framing fires;
+        # overwritten (last call wins) if called more than once.
+        "runner_up_framing": None,
+        # Phase 2.4c — helper-API surface enumeration fields.
+        "fix_path_helpers": [],
+        "inbound_callers": [],
+        "dead_siblings": [],
+        "consumer_chain": [],
+        "value_semantics": [],
     }
 
 
@@ -395,6 +414,47 @@ def _validate_verbatim(value: str, field_name: str) -> str:
     if not value.strip():
         raise ValueError("{0}: value cannot be empty".format(field_name))
     return value
+
+
+def _validate_file_line(value: str, field_name: str) -> str:
+    """Validate path:line format OR literal sentinel '(none)'.
+
+    Accepted forms:
+      - The literal string "(none)" (sentinel meaning no grounding available).
+      - "<non-empty-path>:<positive-integer>" — e.g. "src/foo.ts:42".
+
+    Raises ValueError on any other form.
+    """
+    stripped = value.strip()
+    if stripped == "(none)":
+        return stripped
+    # Must contain at least one colon separator.
+    colon_idx = stripped.rfind(":")
+    if colon_idx <= 0:
+        raise ValueError(
+            "{0}: must be '<path>:<line>' or '(none)', got {1!r}".format(field_name, stripped)
+        )
+    path_part = stripped[:colon_idx]
+    line_part = stripped[colon_idx + 1:]
+    if not path_part:
+        raise ValueError(
+            "{0}: path portion is empty in {1!r}".format(field_name, stripped)
+        )
+    try:
+        line_num = int(line_part)
+    except ValueError:
+        raise ValueError(
+            "{0}: line portion {2!r} is not an integer in {1!r}".format(
+                field_name, stripped, line_part
+            )
+        )
+    if line_num <= 0:
+        raise ValueError(
+            "{0}: line number must be positive, got {1} in {2!r}".format(
+                field_name, line_num, stripped
+            )
+        )
+    return stripped
 
 
 # ---------------------------------------------------------------------------
@@ -697,12 +757,40 @@ def _register_subcommands(subparsers) -> None:
     # Phase 1 setters
     sp = subparsers.add_parser(
         "record-finding",
-        help="Append a {surface, file_line, relevance} Finding to report.findings.",
+        help="Append a {surface, file_line, relevance, framing} Finding to report.findings.",
     )
     sp.add_argument("--surface", required=True)
     sp.add_argument("--file-line", required=True, dest="file_line")
     sp.add_argument("--relevance", required=True)
+    sp.add_argument(
+        "--framing",
+        default="primary",
+        choices=list(FRAMING_ENUM),
+        dest="framing",
+        help="Which framing this finding supports (default: primary).",
+    )
     sp.set_defaults(func=cmd_record_finding)
+
+    sp = subparsers.add_parser(
+        "record-runner-up-framing",
+        help=(
+            "Set report.runner_up_framing {frame, falsifier, confidence_vs_primary}. "
+            "Overwrites any prior value (last call wins). "
+            "Required before Phase 2.4 searches start."
+        ),
+    )
+    sp.add_argument("--frame", required=True, dest="frame",
+                    help="One-sentence alternative root cause.")
+    sp.add_argument("--falsifier", required=True, dest="falsifier",
+                    help="Concrete evidence that would confirm this framing over the primary.")
+    sp.add_argument(
+        "--confidence-vs-primary",
+        required=True,
+        dest="confidence_vs_primary",
+        choices=list(CONFIDENCE_VS_PRIMARY_ENUM),
+        help="Confidence of runner-up vs primary: lower|comparable|higher.",
+    )
+    sp.set_defaults(func=cmd_record_runner_up_framing)
 
     sp = subparsers.add_parser(
         "record-hypothesis",
@@ -859,6 +947,60 @@ def _register_subcommands(subparsers) -> None:
         help="Cross-check report state for required invariants. Exit 0 pass / 2 violations.",
     )
     sp.set_defaults(func=cmd_verify)
+
+    # Phase 2.4c setters
+    sp = subparsers.add_parser(
+        "record-fix-path-helper",
+        help="Append a helper QN to fix_path_helpers (deduped).",
+    )
+    sp.add_argument("--helper-qn", required=True, dest="helper_qn")
+    sp.set_defaults(func=cmd_record_fix_path_helper)
+
+    sp = subparsers.add_parser(
+        "record-inbound-caller",
+        help="Append a {helper_qn, caller_qn, file_line} record to inbound_callers.",
+    )
+    sp.add_argument("--helper-qn", required=True, dest="helper_qn")
+    sp.add_argument("--caller-qn", required=True, dest="caller_qn")
+    sp.add_argument("--file-line", required=True, dest="file_line")
+    sp.set_defaults(func=cmd_record_inbound_caller)
+
+    sp = subparsers.add_parser(
+        "record-dead-sibling",
+        help="Append a {class_qn, method_qn, verified_via} record to dead_siblings.",
+    )
+    sp.add_argument("--class-qn", required=True, dest="class_qn")
+    sp.add_argument("--method-qn", required=True, dest="method_qn")
+    sp.add_argument(
+        "--verified-via",
+        required=True,
+        dest="verified_via",
+        choices=("trace_path", "search_code"),
+    )
+    sp.set_defaults(func=cmd_record_dead_sibling)
+
+    sp = subparsers.add_parser(
+        "record-consumer-chain",
+        help="Append a {value, consumer_qn, file_line, role} record to consumer_chain.",
+    )
+    sp.add_argument("--value", required=True)
+    sp.add_argument("--consumer-qn", required=True, dest="consumer_qn")
+    sp.add_argument("--file-line", required=True, dest="file_line")
+    sp.add_argument("--role", required=True)
+    sp.set_defaults(func=cmd_record_consumer_chain)
+
+    sp = subparsers.add_parser(
+        "set-value-semantics",
+        help="Upsert a {value, classification, evidence} record in value_semantics.",
+    )
+    sp.add_argument("--value", required=True)
+    sp.add_argument(
+        "--classification",
+        required=True,
+        choices=("preference", "invariant", "unclassified"),
+    )
+    sp.add_argument("--evidence", required=True)
+    sp.set_defaults(func=cmd_set_value_semantics)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1200,20 +1342,54 @@ def cmd_symptom_finalize(args: argparse.Namespace) -> int:
 
 
 def cmd_record_finding(args: argparse.Namespace) -> int:
-    """Append a {surface, file_line, relevance} Finding."""
+    """Append a {surface, file_line, relevance, framing} Finding."""
     try:
         surface = _validate_scalar(args.surface, "finding.surface")
-        file_line = _validate_scalar(args.file_line, "finding.file_line")
+        file_line = _validate_file_line(args.file_line, "finding.file_line")
         relevance = _validate_scalar(args.relevance, "finding.relevance")
+        framing = _validate_enum(
+            getattr(args, "framing", "primary") or "primary",
+            "finding.framing",
+            FRAMING_ENUM,
+        )
     except ValueError as err:
         return _die(str(err), code=2)
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
             report.setdefault("findings", []).append(
-                {"surface": surface, "file_line": file_line, "relevance": relevance}
+                {
+                    "surface": surface,
+                    "file_line": file_line,
+                    "relevance": relevance,
+                    "framing": framing,
+                }
             )
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-finding: {0}".format(err))
+    return 0
+
+
+def cmd_record_runner_up_framing(args: argparse.Namespace) -> int:
+    """Set report.runner_up_framing. Overwrites any prior value (last call wins)."""
+    try:
+        frame = _validate_scalar(args.frame, "runner_up_framing.frame")
+        falsifier = _validate_scalar(args.falsifier, "runner_up_framing.falsifier")
+        confidence = _validate_enum(
+            args.confidence_vs_primary,
+            "runner_up_framing.confidence_vs_primary",
+            CONFIDENCE_VS_PRIMARY_ENUM,
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["runner_up_framing"] = {
+                "frame": frame,
+                "falsifier": falsifier,
+                "confidence_vs_primary": confidence,
+            }
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-runner-up-framing: {0}".format(err))
     return 0
 
 
@@ -1570,6 +1746,125 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- Phase 2.4c setters (helper-API surface enumeration) --------------------
+
+
+def cmd_record_fix_path_helper(args: argparse.Namespace) -> int:
+    """Append a helper QN to fix_path_helpers (deduped)."""
+    try:
+        helper_qn = _validate_scalar(args.helper_qn, "fix_path_helper.helper_qn")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            lst = report.setdefault("fix_path_helpers", [])
+            if helper_qn not in lst:
+                lst.append(helper_qn)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-fix-path-helper: {0}".format(err))
+    return 0
+
+
+def cmd_record_inbound_caller(args: argparse.Namespace) -> int:
+    """Append a {helper_qn, caller_qn, file_line} record to inbound_callers."""
+    try:
+        helper_qn = _validate_scalar(args.helper_qn, "inbound_caller.helper_qn")
+        caller_qn = _validate_scalar(args.caller_qn, "inbound_caller.caller_qn")
+        file_line = _validate_file_line(args.file_line, "inbound_caller.file_line")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report.setdefault("inbound_callers", []).append(
+                {"helper_qn": helper_qn, "caller_qn": caller_qn, "file_line": file_line}
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-inbound-caller: {0}".format(err))
+    return 0
+
+
+def cmd_record_dead_sibling(args: argparse.Namespace) -> int:
+    """Append a {class_qn, method_qn, verified_via} record to dead_siblings."""
+    try:
+        class_qn = _validate_scalar(args.class_qn, "dead_sibling.class_qn")
+        method_qn = _validate_scalar(args.method_qn, "dead_sibling.method_qn")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    # verified_via is already constrained by argparse choices=
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            # Intentional: no dedupe. Two recordings of the same (class_qn, method_qn)
+            # from different trace passes are both kept; verify checks tolerate duplicates.
+            report.setdefault("dead_siblings", []).append(
+                {"class_qn": class_qn, "method_qn": method_qn, "verified_via": args.verified_via}
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-dead-sibling: {0}".format(err))
+    return 0
+
+
+def cmd_record_consumer_chain(args: argparse.Namespace) -> int:
+    """Append a {value, consumer_qn, file_line, role} record to consumer_chain."""
+    try:
+        value = _validate_scalar(args.value, "consumer_chain.value")
+        consumer_qn = _validate_scalar(args.consumer_qn, "consumer_chain.consumer_qn")
+        file_line = _validate_file_line(args.file_line, "consumer_chain.file_line")
+        role = _validate_scalar(args.role, "consumer_chain.role")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report.setdefault("consumer_chain", []).append(
+                {"value": value, "consumer_qn": consumer_qn, "file_line": file_line, "role": role}
+            )
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-consumer-chain: {0}".format(err))
+    return 0
+
+
+def cmd_set_value_semantics(args: argparse.Namespace) -> int:
+    """Upsert a {value, classification, evidence} record in value_semantics.
+
+    Last-write-wins on value key. When classification==invariant, requires
+    at least one consumer_chain row with matching value field.
+    """
+    try:
+        value = _validate_scalar(args.value, "value_semantics.value")
+        evidence = _validate_scalar(args.evidence, "value_semantics.evidence")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    # classification is already constrained by argparse choices=
+    classification = args.classification
+
+    # Invariant guard: check before entering the state transaction so the
+    # file is never rewritten on a validation rejection.
+    if classification == "invariant":
+        try:
+            report_snapshot = _load_report(args.devforge_dir)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("set-value-semantics: {0}".format(err))
+        chain = report_snapshot.get("consumer_chain") or []
+        if not any(r.get("value") == value for r in chain):
+            return _die(
+                "set-value-semantics: classification=invariant requires at least one "
+                "consumer_chain entry for value={0!r}; record-consumer-chain first".format(value),
+                code=2,
+            )
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            rows = report.setdefault("value_semantics", [])
+            for i, row in enumerate(rows):
+                if row.get("value") == value:
+                    rows[i] = {"value": value, "classification": classification, "evidence": evidence}
+                    break
+            else:
+                rows.append({"value": value, "classification": classification, "evidence": evidence})
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-value-semantics: {0}".format(err))
+    return 0
+
+
 # --- Render + verify + summary ----------------------------------------------
 
 
@@ -1580,9 +1875,10 @@ def _render_report_md(memo: dict, report: dict) -> str:
       1. Title + frontmatter (Date, Topic, Mode, Verdict)
       2. Summary
       3. Symptom (5-dim table)
-      4. Codebase Findings
+      4. Codebase Findings (with Framing column)
       5. Root Cause Hypothesis
       6. Structured root cause (bug-mode + confidence ≥ Hypothesis)
+      6b. Runner-up framing (when runner_up_framing is set)
       7. Hypothesis Enumeration
       8. Recommended Verify Step (when present)
       9. Approaches
@@ -1633,13 +1929,14 @@ def _render_report_md(memo: dict, report: dict) -> str:
     out.append("")
     findings = report.get("findings", []) or []
     if findings:
-        out.append("| Surface | File:line | Relevance |")
-        out.append("|---|---|---|")
+        out.append("| Surface | File:line | Relevance | Framing |")
+        out.append("|---|---|---|---|")
         for f in findings:
-            out.append("| {0} | {1} | {2} |".format(
+            out.append("| {0} | {1} | {2} | {3} |".format(
                 _md_escape_cell(f.get("surface", "")),
                 _md_escape_cell(f.get("file_line", "")),
                 _md_escape_cell(f.get("relevance", "")),
+                _md_escape_cell(f.get("framing", "primary")),
             ))
     else:
         out.append("(no findings recorded)")
@@ -1672,6 +1969,19 @@ def _render_report_md(memo: dict, report: dict) -> str:
         else:
             joined = "(none)"
         out.append("| contributing_factors | {0} |".format(_md_escape_cell(joined)))
+        out.append("")
+
+    runner_up = report.get("runner_up_framing")
+    if runner_up is not None:
+        out.append("## Runner-up framing")
+        out.append("")
+        out.append("| Field | Value |")
+        out.append("|---|---|")
+        out.append("| Frame | {0} |".format(_md_escape_cell(runner_up.get("frame") or "(unset)")))
+        out.append("| Falsifier | {0} |".format(_md_escape_cell(runner_up.get("falsifier") or "(unset)")))
+        out.append("| Confidence vs primary | {0} |".format(
+            _md_escape_cell(runner_up.get("confidence_vs_primary") or "(unset)")
+        ))
         out.append("")
 
     out.append("## Hypothesis Enumeration")
@@ -1843,6 +2153,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
       6. Verify-step 3 sub-fields populated when any hypothesis has
          runtime_probe_needed=true.
       7. Summary, complexity, ≥1 approach present.
+      8. fix_path_helpers non-empty for bug mode.
+      9. Every fix_path_helper has at least one inbound_callers row.
+     10. If value_semantics has an invariant AND dead_siblings is non-empty,
+         at least one approach mentions the signature change or dead-sibling QN.
+     11. If value_semantics has an invariant, recommended_approach.rationale
+         cites a consumer_chain entry, invariant evidence, or dead-sibling QN.
+     12. If runner_up_framing is set, at least one finding must be tagged
+         framing=runner-up (Phase 2.4 must probe the runner-up frame).
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -1951,6 +2269,100 @@ def cmd_verify(args: argparse.Namespace) -> int:
         violations.append("complexity: unset")
     if not approaches:
         violations.append("approaches: empty")
+
+    # Check 8: bug mode requires fix_path_helpers non-empty.
+    fix_path_helpers = report.get("fix_path_helpers") or []
+    if (report.get("mode") == "bug" or memo.get("mode") == "bug") and not fix_path_helpers:
+        violations.append(
+            "fix_path_helpers: empty (Phase 2.4c requires at least one helper enumerated for bug mode)"
+        )
+
+    # Check 9: every enumerated helper needs at least one inbound caller row.
+    inbound_callers = report.get("inbound_callers") or []
+    for helper_qn in fix_path_helpers:
+        if not any(r.get("helper_qn") == helper_qn for r in inbound_callers):
+            violations.append(
+                "inbound_callers: no entry for helper {0!r} "
+                "(record-inbound-caller required for every fix_path_helper)".format(helper_qn)
+            )
+
+    # Check 10: invariant + dead siblings demands signature-touching approach.
+    value_semantics = report.get("value_semantics") or []
+    dead_siblings = report.get("dead_siblings") or []
+    has_invariant = any(v.get("classification") == "invariant" for v in value_semantics)
+    if has_invariant and dead_siblings:
+        candidate_tokens = {"signature", "drop param"}
+        for ds in dead_siblings:
+            mq = ds.get("method_qn") or ""
+            if mq:
+                candidate_tokens.add(mq.lower())
+        found_approach = False
+        for ap in approaches:
+            haystack = (
+                (ap.get("name") or "")
+                + " "
+                + (ap.get("description") or "")
+                + " "
+                + " ".join(ap.get("pros") or [])
+                + " "
+                + " ".join(ap.get("cons") or [])
+            ).lower()
+            if any(tok in haystack for tok in candidate_tokens):
+                found_approach = True
+                break
+        if not found_approach:
+            dead_qn_sample = (dead_siblings[0].get("method_qn") or "") if dead_siblings else ""
+            violations.append(
+                "approaches: value_semantics has invariant AND dead_siblings non-empty, "
+                "but no approach mentions helper signature change or dead-sibling QN "
+                "(cite signature change or {0!r} in an approach)".format(dead_qn_sample)
+            )
+
+    # Check 11: invariant requires evidence cite in recommended approach rationale.
+    if has_invariant and rec is not None:
+        rationale = (rec.get("rationale") or "").lower()
+        consumer_chain = report.get("consumer_chain") or []
+        candidate_rationale_tokens = []  # type: List[str]
+        for cc_row in consumer_chain:
+            cq = cc_row.get("consumer_qn") or ""
+            if cq:
+                candidate_rationale_tokens.append(cq.lower())
+        for vs_row in value_semantics:
+            if vs_row.get("classification") == "invariant":
+                ev = vs_row.get("evidence") or ""
+                if ev:
+                    candidate_rationale_tokens.append(ev.lower())
+        for ds in dead_siblings:
+            mq = ds.get("method_qn") or ""
+            if mq:
+                candidate_rationale_tokens.append(mq.lower())
+        if candidate_rationale_tokens and not any(tok in rationale for tok in candidate_rationale_tokens):
+            violations.append(
+                "recommended_approach.rationale: value_semantics has invariant, but rationale "
+                "cites neither a consumer_chain entry, an invariant evidence string, "
+                "nor a dead-sibling QN"
+            )
+
+    # Check 12a: Phase 2.3b is MANDATORY — runner_up_framing must be set.
+    # Closes the spec-vs-helper gap where an LLM skipping Phase 2.3b entirely
+    # would never trigger the conditional check 12b.
+    runner_up_framing = report.get("runner_up_framing")
+    if runner_up_framing is None:
+        violations.append(
+            "runner_up_framing: unset — Phase 2.3b is MANDATORY; "
+            "call record-runner-up-framing before verify"
+        )
+    else:
+        # Check 12b: when runner_up_framing is set, at least one finding must
+        # be tagged framing=runner-up so Phase 2.4 probed the runner-up frame.
+        findings = report.get("findings") or []
+        runner_up_findings = [f for f in findings if f.get("framing") == "runner-up"]
+        if len(runner_up_findings) < 1:
+            violations.append(
+                "runner_up_framing is set but no findings tagged framing=runner-up; "
+                "Phase 2.4 must probe the runner-up frame with at least one finding "
+                "(record-finding --framing runner-up ...)"
+            )
 
     if violations:
         for v in violations:

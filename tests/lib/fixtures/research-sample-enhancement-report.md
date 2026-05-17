@@ -22,16 +22,25 @@ Async via JobsQueue moves export off the request thread; preserves small-dataset
 
 ## Codebase Findings (WHERE)
 
-| Surface | File:line | Relevance |
-|---|---|---|
-| ExportService | services/export.ts:88 | synchronous fetch + serialize on the request thread |
-| JobsQueue | services/jobs.ts:12 | available but unused for exports |
+| Surface | File:line | Relevance | Framing |
+|---|---|---|---|
+| ExportService | services/export.ts:88 | synchronous fetch + serialize on the request thread | primary |
+| JobsQueue | services/jobs.ts:12 | available but unused for exports | primary |
+| upstream chunked write | services/network.ts:54 | egress buffer saturates before serializer completes — runner-up probe | runner-up |
 
 ## Root Cause Hypothesis (WHY)
 
 **Primary hypothesis**: Current synchronous design serializes on the request thread; both fetch and serialize contribute.
 
 **Confidence**: Speculative
+
+## Runner-up framing
+
+| Field | Value |
+|---|---|
+| Frame | Network IO dominates — fetch + chunked write upstream |
+| Falsifier | Profile shows CPU-bound serializer, not network |
+| Confidence vs primary | lower |
 
 ## Hypothesis Enumeration
 

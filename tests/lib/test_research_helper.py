@@ -137,11 +137,16 @@ class TestSchemas(unittest.TestCase):
             "topic", "date", "mode", "summary", "root_cause_hypothesis",
             "confidence", "structured_root_cause", "verify_step",
             "recommended_approach", "complexity", "verdict", "next_step_text",
+            # Phase 2.3b field
+            "runner_up_framing",
         ):
             self.assertIsNone(rep[field], "field {0} default".format(field))
         for arr_field in (
             "findings", "hypotheses", "approaches",
             "constitution_constraints", "open_uncertainties",
+            # Phase 2.4c fields
+            "fix_path_helpers", "inbound_callers", "dead_siblings",
+            "consumer_chain", "value_semantics",
         ):
             self.assertEqual(rep[arr_field], [], "field {0} default".format(arr_field))
         self.assertEqual(
@@ -1098,6 +1103,33 @@ def _build_bug_state(devforge):
         "--devforge-dir", str(devforge), "set-next-step-text",
     ])
 
+    # Phase 2.4c: satisfy checks 8 + 9 (required for bug mode verify).
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "ProductsListComponent.sortItems",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-inbound-caller",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--caller-qn", "ProductsListComponent.watchItems",
+        "--file-line", "src/admin/Products.vue:201",
+    ])
+
+    # Phase 2.3b: satisfy check 12 (mandatory runner-up framing + ≥1 tagged finding).
+    _run([
+        "--devforge-dir", str(devforge), "record-runner-up-framing",
+        "--frame", "Race between fetch and watch (not comparator)",
+        "--falsifier", "Stabilizing comparator alone fixes order under repro",
+        "--confidence-vs-primary", "lower",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "fetch / watch race window",
+        "--file-line", "src/admin/Products.vue:180",
+        "--relevance", "fetch can complete while watch still iterating — runner-up probe",
+        "--framing", "runner-up",
+    ])
+
 
 def _build_enhancement_state(devforge):
     """Build a complete enhancement-mode state.
@@ -1227,6 +1259,21 @@ def _build_enhancement_state(devforge):
         "--devforge-dir", str(devforge), "set-next-step-text",
     ])
 
+    # Phase 2.3b: satisfy check 12 (mandatory runner-up framing + ≥1 tagged finding).
+    _run([
+        "--devforge-dir", str(devforge), "record-runner-up-framing",
+        "--frame", "Network IO dominates — fetch + chunked write upstream",
+        "--falsifier", "Profile shows CPU-bound serializer, not network",
+        "--confidence-vs-primary", "lower",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "upstream chunked write",
+        "--file-line", "services/network.ts:54",
+        "--relevance", "egress buffer saturates before serializer completes — runner-up probe",
+        "--framing", "runner-up",
+    ])
+
 
 class TestVerifyHappyPath(unittest.TestCase):
     def test_bug_mode_verify_passes(self):
@@ -1350,6 +1397,1312 @@ class TestRoundTripFixtures(unittest.TestCase):
             actual = self._render(devforge)
             fixture = (_FIXTURES_DIR / "research-sample-enhancement-report.md").read_text()
             self.assertEqual(actual, fixture)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.4c — helper-API surface enumeration setters + verify checks.
+# ---------------------------------------------------------------------------
+
+
+class TestValidateFileLine(unittest.TestCase):
+    """Unit tests for the _validate_file_line helper."""
+
+    def test_valid_path_colon_line(self):
+        self.assertEqual(
+            research_helper._validate_file_line("src/foo.ts:42", "f"),
+            "src/foo.ts:42",
+        )
+
+    def test_sentinel_none_accepted(self):
+        self.assertEqual(
+            research_helper._validate_file_line("(none)", "f"),
+            "(none)",
+        )
+
+    def test_path_with_colon_in_path_uses_rfind(self):
+        # Windows-style path with drive letter — rfind picks the last colon.
+        self.assertEqual(
+            research_helper._validate_file_line("C:/src/foo.ts:10", "f"),
+            "C:/src/foo.ts:10",
+        )
+
+    def test_missing_colon_rejected(self):
+        with self.assertRaises(ValueError):
+            research_helper._validate_file_line("src/foo.ts", "f")
+
+    def test_zero_line_rejected(self):
+        with self.assertRaises(ValueError):
+            research_helper._validate_file_line("src/foo.ts:0", "f")
+
+    def test_negative_line_rejected(self):
+        with self.assertRaises(ValueError):
+            research_helper._validate_file_line("src/foo.ts:-1", "f")
+
+    def test_non_integer_line_rejected(self):
+        with self.assertRaises(ValueError):
+            research_helper._validate_file_line("src/foo.ts:abc", "f")
+
+    def test_empty_string_rejected(self):
+        with self.assertRaises(ValueError):
+            research_helper._validate_file_line("", "f")
+
+
+class TestPhase24cSetters(unittest.TestCase):
+    """Round-trip tests for all 5 Phase 2.4c setters."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    # --- record-fix-path-helper ---
+
+    def test_record_fix_path_helper_round_trip(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertIn("OrderBLoC.fetchOrder", rep["fix_path_helpers"])
+        finally:
+            tmp.cleanup()
+
+    def test_record_fix_path_helper_deduplication(self):
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+            ])
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["fix_path_helpers"]), 1)
+        finally:
+            tmp.cleanup()
+
+    def test_record_fix_path_helper_multiple_distinct(self):
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "FetchOrderUseCase.execute",
+            ])
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["fix_path_helpers"]), 2)
+        finally:
+            tmp.cleanup()
+
+    # --- record-inbound-caller ---
+
+    def test_record_inbound_caller_round_trip(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-inbound-caller",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--caller-qn", "OrderViewWidget.build",
+                "--file-line", "lib/order_view.dart:88",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["inbound_callers"]), 1)
+            row = rep["inbound_callers"][0]
+            self.assertEqual(row["helper_qn"], "OrderBLoC.fetchOrder")
+            self.assertEqual(row["caller_qn"], "OrderViewWidget.build")
+            self.assertEqual(row["file_line"], "lib/order_view.dart:88")
+        finally:
+            tmp.cleanup()
+
+    def test_record_inbound_caller_accepts_sentinel(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-inbound-caller",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--caller-qn", "dynamic_dispatch",
+                "--file-line", "(none)",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["inbound_callers"][0]["file_line"], "(none)")
+        finally:
+            tmp.cleanup()
+
+    def test_record_inbound_caller_rejects_bad_file_line(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-inbound-caller",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--caller-qn", "foo.bar",
+                "--file-line", "no-colon-here",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("file_line", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    # --- record-dead-sibling ---
+
+    def test_record_dead_sibling_round_trip(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-dead-sibling",
+                "--class-qn", "OrderBLoC",
+                "--method-qn", "OrderBLoC.toggleSplit",
+                "--verified-via", "trace_path",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["dead_siblings"]), 1)
+            row = rep["dead_siblings"][0]
+            self.assertEqual(row["class_qn"], "OrderBLoC")
+            self.assertEqual(row["method_qn"], "OrderBLoC.toggleSplit")
+            self.assertEqual(row["verified_via"], "trace_path")
+        finally:
+            tmp.cleanup()
+
+    def test_record_dead_sibling_search_code_variant(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-dead-sibling",
+                "--class-qn", "OrderBLoC",
+                "--method-qn", "OrderBLoC.toggleSplit",
+                "--verified-via", "search_code",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_dead_sibling_rejects_invalid_verified_via(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-dead-sibling",
+                "--class-qn", "OrderBLoC",
+                "--method-qn", "OrderBLoC.toggleSplit",
+                "--verified-via", "grep",
+            ])
+            # argparse will exit 2 with error about choices
+            self.assertNotEqual(r.returncode, 0)
+        finally:
+            tmp.cleanup()
+
+    # --- record-consumer-chain ---
+
+    def test_record_consumer_chain_round_trip(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "splitOnSNA",
+                "--consumer-qn", "OrderCreationUseCase.execute",
+                "--file-line", "lib/order_creation.dart:55",
+                "--role", "enforces Q&O parity at server boundary",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["consumer_chain"]), 1)
+            row = rep["consumer_chain"][0]
+            self.assertEqual(row["value"], "splitOnSNA")
+            self.assertEqual(row["consumer_qn"], "OrderCreationUseCase.execute")
+            self.assertEqual(row["file_line"], "lib/order_creation.dart:55")
+            self.assertEqual(row["role"], "enforces Q&O parity at server boundary")
+        finally:
+            tmp.cleanup()
+
+    def test_record_consumer_chain_rejects_bad_file_line(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "splitOnSNA",
+                "--consumer-qn", "foo",
+                "--file-line", "bad-file-line",
+                "--role", "some role",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+        finally:
+            tmp.cleanup()
+
+    # --- set-value-semantics ---
+
+    def test_set_value_semantics_preference_round_trip(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "preference",
+                "--evidence", "only set per user action",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["value_semantics"]), 1)
+            row = rep["value_semantics"][0]
+            self.assertEqual(row["value"], "splitOnSNA")
+            self.assertEqual(row["classification"], "preference")
+            self.assertEqual(row["evidence"], "only set per user action")
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_last_write_wins(self):
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "preference",
+                "--evidence", "first evidence",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "unclassified",
+                "--evidence", "second evidence",
+            ])
+            rep = self._read_report(devforge)
+            # Only one row for the same value.
+            rows = [r for r in rep["value_semantics"] if r["value"] == "splitOnSNA"]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["classification"], "unclassified")
+            self.assertEqual(rows[0]["evidence"], "second evidence")
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_different_values_append(self):
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "preference",
+                "--evidence", "e1",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "isExternal",
+                "--classification", "preference",
+                "--evidence", "e2",
+            ])
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["value_semantics"]), 2)
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_invariant_requires_consumer_chain(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "invariant",
+                "--evidence", "Q&O parity rule",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("requires at least one consumer_chain entry", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_invariant_succeeds_with_consumer_chain(self):
+        tmp, devforge = self._fresh()
+        try:
+            # Record consumer_chain first.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "splitOnSNA",
+                "--consumer-qn", "OrderCreationUseCase.execute",
+                "--file-line", "lib/order.dart:10",
+                "--role", "enforces invariant",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "invariant",
+                "--evidence", "OrderCreationUseCase.execute enforces Q&O parity",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            rows = [row for row in rep["value_semantics"] if row["value"] == "splitOnSNA"]
+            self.assertEqual(rows[0]["classification"], "invariant")
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_rejects_invalid_classification(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "definitely-not-valid",
+                "--evidence", "e",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+        finally:
+            tmp.cleanup()
+
+
+class TestVerifyCheck8(unittest.TestCase):
+    """Check 8: bug mode requires fix_path_helpers non-empty."""
+
+    def _build_base_state(self, devforge):
+        _build_bug_state(devforge)
+
+    def test_check8_fails_when_fix_path_helpers_empty_bug_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_base_state(devforge)
+            # Clear fix_path_helpers + inbound_callers by editing JSON directly.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["fix_path_helpers"] = []
+            data["inbound_callers"] = []
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("fix_path_helpers", r.stderr)
+            self.assertIn("Phase 2.4c", r.stderr)
+
+    def test_check8_passes_when_fix_path_helpers_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_base_state(devforge)
+            # Add a fix_path_helper and a matching inbound_caller.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "SomeHelper.doThing",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-inbound-caller",
+                "--helper-qn", "SomeHelper.doThing",
+                "--caller-qn", "SomeCaller.call",
+                "--file-line", "src/caller.ts:10",
+            ])
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check8_not_triggered_for_enhancement_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            # fix_path_helpers empty + enhancement mode → check 8 should not fire.
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestVerifyCheck9(unittest.TestCase):
+    """Check 9: every enumerated helper needs at least one inbound caller row."""
+
+    def test_check9_fails_when_helper_missing_caller(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Add helper without a corresponding caller.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["inbound_callers"] = []
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("inbound_callers", r.stderr)
+            self.assertIn("OrderBLoC.fetchOrder", r.stderr)
+
+    def test_check9_passes_when_all_helpers_have_callers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["inbound_callers"] = [
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestVerifyCheck10(unittest.TestCase):
+    """Check 10: invariant + dead siblings demands signature-touching approach."""
+
+    def _state_with_invariant_and_dead_sibling(self, devforge, approach_desc):
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+        # Satisfy checks 8 + 9.
+        data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+        data["inbound_callers"] = [
+            {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+        ]
+        # Set value_semantics with invariant + consumer_chain.
+        data["consumer_chain"] = [
+            {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
+             "file_line": "lib/order.dart:10", "role": "enforces parity"}
+        ]
+        data["value_semantics"] = [
+            {"value": "splitOnSNA", "classification": "invariant", "evidence": "Q&O rule"}
+        ]
+        data["dead_siblings"] = [
+            {"class_qn": "OrderBLoC", "method_qn": "OrderBLoC.toggleSplit", "verified_via": "trace_path"}
+        ]
+        # Replace approach description.
+        for ap in data["approaches"]:
+            ap["description"] = approach_desc
+            ap["pros"] = ["some pro"]
+            ap["cons"] = ["some con"]
+        # Make recommended approach rationale cite consumer to satisfy check 11.
+        if data.get("recommended_approach"):
+            data["recommended_approach"]["rationale"] = (
+                "OrderCreationUseCase.execute enforces invariant"
+            )
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_check10_fails_when_no_approach_mentions_signature(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._state_with_invariant_and_dead_sibling(devforge, "use inline fix")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("dead_siblings non-empty", r.stderr)
+
+    def test_check10_passes_when_approach_mentions_signature(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._state_with_invariant_and_dead_sibling(
+                devforge,
+                "change the helper signature to enforce invariant",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check10_passes_when_approach_mentions_dead_sibling_qn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._state_with_invariant_and_dead_sibling(
+                devforge,
+                "revive OrderBLoC.toggleSplit to enforce invariant",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check10_not_triggered_when_no_dead_siblings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Satisfy checks 8 + 9.
+            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["inbound_callers"] = [
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
+            ]
+            # Invariant but no dead siblings.
+            data["consumer_chain"] = [
+                {"value": "x", "consumer_qn": "SomeUseCase.run",
+                 "file_line": "lib/s.dart:1", "role": "enforces it"}
+            ]
+            data["value_semantics"] = [
+                {"value": "x", "classification": "invariant", "evidence": "SomeUseCase.run"}
+            ]
+            data["dead_siblings"] = []
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["rationale"] = "SomeUseCase.run enforces the rule"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestVerifyCheck11(unittest.TestCase):
+    """Check 11: invariant requires evidence cite in recommended approach rationale."""
+
+    def _state_with_invariant_and_rationale(self, devforge, rationale):
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+        # Satisfy checks 8 + 9.
+        data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+        data["inbound_callers"] = [
+            {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+        ]
+        data["consumer_chain"] = [
+            {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
+             "file_line": "lib/order.dart:10", "role": "enforces parity"}
+        ]
+        data["value_semantics"] = [
+            {"value": "splitOnSNA", "classification": "invariant", "evidence": "Q&O parity rule"}
+        ]
+        data["dead_siblings"] = []
+        if data.get("recommended_approach"):
+            data["recommended_approach"]["rationale"] = rationale
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_check11_fails_when_rationale_cites_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._state_with_invariant_and_rationale(
+                devforge,
+                "this fix is the minimal change",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("recommended_approach.rationale", r.stderr)
+
+    def test_check11_passes_when_rationale_cites_consumer_qn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._state_with_invariant_and_rationale(
+                devforge,
+                "OrderCreationUseCase.execute enforces the invariant so fix lives there",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check11_passes_when_rationale_cites_evidence_string(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._state_with_invariant_and_rationale(
+                devforge,
+                "Q&O parity rule means the BLoC must enforce it, not the UI",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check11_not_triggered_when_no_invariant(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Satisfy checks 8 + 9.
+            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["inbound_callers"] = [
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "s:1"}
+            ]
+            # Preference only, no invariant.
+            data["value_semantics"] = [
+                {"value": "x", "classification": "preference", "evidence": "user sets it"}
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestVerifyHappyPathWithPhase24c(unittest.TestCase):
+    """Full happy-path verify with all Phase 2.4c fields populated."""
+
+    def test_full_happy_path_bug_with_phase24c(self):
+        """Bug mode: helpers, callers, invariant value, dead sibling, approaches, rationale all wired."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+
+            # Satisfy check 8: fix_path_helpers non-empty.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+            ])
+            # Satisfy check 9: inbound caller for every helper.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-inbound-caller",
+                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--caller-qn", "OrderViewWidget.build",
+                "--file-line", "lib/order_view.dart:88",
+            ])
+            # Set up consumer_chain (required before invariant classification).
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "splitOnSNA",
+                "--consumer-qn", "OrderCreationUseCase.execute",
+                "--file-line", "lib/order_creation.dart:55",
+                "--role", "enforces Q&O parity at server boundary",
+            ])
+            # Set value_semantics to invariant.
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "invariant",
+                "--evidence", "OrderCreationUseCase.execute enforces Q&O parity",
+            ])
+            # Add dead sibling.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-dead-sibling",
+                "--class-qn", "OrderBLoC",
+                "--method-qn", "OrderBLoC.toggleSplit",
+                "--verified-via", "trace_path",
+            ])
+
+            # Satisfy check 10: patch an approach to mention "signature".
+            # Satisfy check 11: patch recommended_approach.rationale to cite consumer_qn.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Patch first approach description to contain "signature".
+            if data["approaches"]:
+                data["approaches"][0]["description"] = (
+                    "Change helper signature to enforce invariant at BLoC layer"
+                )
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["rationale"] = (
+                    "OrderCreationUseCase.execute already enforces invariant; "
+                    "fix belongs in helper signature, not view layer"
+                )
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestResetReportClearsPhase24cFields(unittest.TestCase):
+    """reset-report must clear Phase 2.4c fields back to empty lists."""
+
+    def test_reset_clears_all_phase24c_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            # Populate some fields.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-fix-path-helper",
+                "--helper-qn", "Foo.bar",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-dead-sibling",
+                "--class-qn", "Foo",
+                "--method-qn", "Foo.dead",
+                "--verified-via", "search_code",
+            ])
+            # Reset.
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            data = json.loads((devforge / "research-report.json").read_text())
+            for field in ("fix_path_helpers", "inbound_callers", "dead_siblings",
+                          "consumer_chain", "value_semantics"):
+                self.assertEqual(data[field], [], "field {0} not reset".format(field))
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: transaction-escape — invariant rejection must NOT rewrite state file.
+# ---------------------------------------------------------------------------
+
+
+class TestSetValueSemanticsTransactionEscape(unittest.TestCase):
+    """Invariant rejection must use exit code 2 and must not rewrite the state file."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def test_invariant_rejection_exit_code_is_2(self):
+        """Rejecting invariant (no consumer_chain) must exit 2, not 1."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "invariant",
+                "--evidence", "Q&O parity rule",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("requires at least one consumer_chain entry", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_invariant_rejection_does_not_rewrite_state_file(self):
+        """Rejecting invariant must not touch research-report.json (mtime unchanged)."""
+        tmp, devforge = self._fresh()
+        try:
+            rep_path = devforge / "research-report.json"
+            mtime_before = rep_path.stat().st_mtime_ns
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "splitOnSNA",
+                "--classification", "invariant",
+                "--evidence", "Q&O parity rule",
+            ])
+            mtime_after = rep_path.stat().st_mtime_ns
+            self.assertEqual(
+                mtime_before,
+                mtime_after,
+                "research-report.json was rewritten despite invariant validation failure",
+            )
+        finally:
+            tmp.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Check 11 — empty candidate token list must not fire the violation.
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyCheck11EmptyTokenList(unittest.TestCase):
+    """Check 11 must degrade gracefully when no citable tokens exist."""
+
+    def test_check11_no_violation_when_token_list_empty(self):
+        """has_invariant=True but consumer_chain empty + evidence empty + no dead_siblings
+        → candidate token list is empty → Check 11 must NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Satisfy checks 8 + 9.
+            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["inbound_callers"] = [
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
+            ]
+            # Invariant entry: empty evidence, no consumer_chain, no dead_siblings.
+            # Hand-authored to bypass the setter's consumer_chain prerequisite.
+            data["consumer_chain"] = []
+            data["value_semantics"] = [
+                {"value": "X", "classification": "invariant", "evidence": ""}
+            ]
+            data["dead_siblings"] = []
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["rationale"] = "anything goes here"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # Check 11 must not fire — empty token list means nothing to cite.
+            self.assertNotIn("recommended_approach.rationale", r.stderr)
+            # Overall result depends only on other checks; as long as Check 11
+            # doesn't produce its specific message we've confirmed the fix.
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: Check 10 — approach name included in haystack.
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyCheck10NameInHaystack(unittest.TestCase):
+    """Check 10 haystack must include approach.name (not just description/pros/cons)."""
+
+    def _state_with_invariant_dead_sibling_name_only(self, devforge, approach_name):
+        """Build state where the dead-sibling QN is in approach name only."""
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+        # Satisfy checks 8 + 9.
+        data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+        data["inbound_callers"] = [
+            {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+        ]
+        data["consumer_chain"] = [
+            {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
+             "file_line": "lib/order.dart:10", "role": "enforces parity"}
+        ]
+        data["value_semantics"] = [
+            {"value": "splitOnSNA", "classification": "invariant", "evidence": "Q&O rule"}
+        ]
+        data["dead_siblings"] = [
+            {"class_qn": "OrderBLoC", "method_qn": "OrderBLoC.toggleSplit", "verified_via": "trace_path"}
+        ]
+        # Approach: dead-sibling QN only in name; description/pros/cons are generic.
+        for ap in data["approaches"]:
+            ap["name"] = approach_name
+            ap["description"] = "generic description with no relevant tokens"
+            ap["pros"] = ["some improvement"]
+            ap["cons"] = ["some cost"]
+        # recommended_approach.name must match one of the (now-renamed) approaches.
+        if data.get("recommended_approach"):
+            data["recommended_approach"]["name"] = approach_name
+            data["recommended_approach"]["rationale"] = (
+                "OrderCreationUseCase.execute enforces invariant"
+            )
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_check10_passes_when_approach_name_mentions_dead_sibling_qn(self):
+        """Dead-sibling QN in approach.name only must satisfy Check 10."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._state_with_invariant_dead_sibling_name_only(
+                devforge,
+                "Revive OrderBLoC.toggleSplit",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check10_case_insensitive_signature(self):
+        """Uppercase 'SIGNATURE' in approach description must match (both sides lowercased)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Satisfy checks 8 + 9.
+            data["fix_path_helpers"] = ["OrderBLoC.fetchOrder"]
+            data["inbound_callers"] = [
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build",
+                 "file_line": "src/v.dart:5"}
+            ]
+            data["consumer_chain"] = [
+                {"value": "X", "consumer_qn": "SomeUseCase.run",
+                 "file_line": "lib/s.dart:1", "role": "enforces it"}
+            ]
+            data["value_semantics"] = [
+                {"value": "X", "classification": "invariant", "evidence": "SomeUseCase.run"}
+            ]
+            data["dead_siblings"] = [
+                {"class_qn": "C", "method_qn": "m", "verified_via": "trace_path"}
+            ]
+            for ap in data["approaches"]:
+                ap["description"] = "Use SIGNATURE-level enforcement at chokepoint"
+                ap["pros"] = ["clean"]
+                ap["cons"] = ["effort"]
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["rationale"] = "SomeUseCase.run enforces the rule"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Fix 4b: record-dead-sibling no-dedupe behavior.
+# ---------------------------------------------------------------------------
+
+
+class TestRecordDeadSiblingNoDedupe(unittest.TestCase):
+    """record-dead-sibling must NOT dedupe identical (class_qn, method_qn) pairs."""
+
+    def test_record_dead_sibling_no_dedupe(self):
+        """Two calls with identical (class_qn, method_qn) produce two entries."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            for _ in range(2):
+                _run([
+                    "--devforge-dir", str(devforge),
+                    "record-dead-sibling",
+                    "--class-qn", "OrderBLoC",
+                    "--method-qn", "OrderBLoC.toggleSplit",
+                    "--verified-via", "trace_path",
+                ])
+            data = json.loads((devforge / "research-report.json").read_text())
+            self.assertEqual(
+                len(data["dead_siblings"]),
+                2,
+                "expected 2 entries (no dedupe); got {0}".format(len(data["dead_siblings"])),
+            )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.3b — record-runner-up-framing setter + record-finding --framing arg
+# + verify Check 12.
+# ---------------------------------------------------------------------------
+
+
+class TestRecordRunnerUpFraming(unittest.TestCase):
+    """Tests for the record-runner-up-framing setter."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_record_runner_up_framing_happy_path(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "shallow walk misses nested options",
+                "--falsifier", "if recursive walk finds duplicates, shallow walk is the cause",
+                "--confidence-vs-primary", "comparable",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            ruf = rep["runner_up_framing"]
+            self.assertIsNotNone(ruf)
+            self.assertEqual(ruf["frame"], "shallow walk misses nested options")
+            self.assertEqual(
+                ruf["falsifier"],
+                "if recursive walk finds duplicates, shallow walk is the cause",
+            )
+            self.assertEqual(ruf["confidence_vs_primary"], "comparable")
+        finally:
+            tmp.cleanup()
+
+    def test_record_runner_up_framing_invalid_confidence(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "some frame",
+                "--falsifier", "some falsifier",
+                "--confidence-vs-primary", "maybe",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("maybe", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_runner_up_framing_empty_frame(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "",
+                "--falsifier", "some falsifier",
+                "--confidence-vs-primary", "lower",
+            ])
+            self.assertEqual(r.returncode, 2)
+        finally:
+            tmp.cleanup()
+
+    def test_record_runner_up_framing_overwrites_on_resave(self):
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "first frame",
+                "--falsifier", "first falsifier",
+                "--confidence-vs-primary", "lower",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "second frame",
+                "--falsifier", "second falsifier",
+                "--confidence-vs-primary", "higher",
+            ])
+            rep = self._read_report(devforge)
+            ruf = rep["runner_up_framing"]
+            self.assertEqual(ruf["frame"], "second frame")
+            self.assertEqual(ruf["falsifier"], "second falsifier")
+            self.assertEqual(ruf["confidence_vs_primary"], "higher")
+        finally:
+            tmp.cleanup()
+
+
+class TestRecordFindingFramingArg(unittest.TestCase):
+    """Tests for the --framing arg added to record-finding."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_record_finding_framing_default_primary(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-finding",
+                "--surface", "list component",
+                "--file-line", "src/list.vue:42",
+                "--relevance", "inline sort call",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["findings"]), 1)
+            self.assertEqual(rep["findings"][0]["framing"], "primary")
+        finally:
+            tmp.cleanup()
+
+    def test_record_finding_framing_runner_up(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-finding",
+                "--surface", "deep walker",
+                "--file-line", "src/walker.ts:10",
+                "--relevance", "only traverses one level",
+                "--framing", "runner-up",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["findings"]), 1)
+            self.assertEqual(rep["findings"][0]["framing"], "runner-up")
+        finally:
+            tmp.cleanup()
+
+    def test_record_finding_framing_invalid(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-finding",
+                "--surface", "list component",
+                "--file-line", "src/list.vue:42",
+                "--relevance", "inline sort call",
+                "--framing", "wibble",
+            ])
+            self.assertEqual(r.returncode, 2)
+        finally:
+            tmp.cleanup()
+
+
+class TestVerifyCheck12(unittest.TestCase):
+    """Check 12a: Phase 2.3b mandatory (runner_up_framing must be set).
+    Check 12b: when set, at least one finding must carry framing=runner-up."""
+
+    def test_verify_fails_when_runner_up_framing_unset(self):
+        """12a unconditional: report w/o runner_up_framing → exit 2 + Phase 2.3b reminder."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["runner_up_framing"] = None
+            data["findings"] = [
+                f for f in data.get("findings") or []
+                if f.get("framing") != "runner-up"
+            ]
+            rep_path.write_text(json.dumps(data, indent=2))
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("runner_up_framing", r.stderr)
+            self.assertIn("Phase 2.3b", r.stderr)
+
+    def test_verify_fails_when_runner_up_set_but_no_runner_up_findings(self):
+        """12b conditional: framing set, zero runner-up findings → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            self.assertIsNotNone(data.get("runner_up_framing"))
+            data["findings"] = [
+                f for f in data.get("findings") or []
+                if f.get("framing") != "runner-up"
+            ]
+            rep_path.write_text(json.dumps(data, indent=2))
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("runner_up_framing", r.stderr)
+            self.assertIn("runner-up", r.stderr)
+
+    def test_verify_passes_when_runner_up_set_with_runner_up_finding(self):
+        """Happy path: _build_bug_state already sets framing + tagged finding."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Render — framing column + runner-up section.
+# ---------------------------------------------------------------------------
+
+
+class TestRenderFramingColumn(unittest.TestCase):
+    """Findings table must include a Framing column in rendered markdown."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-memo"])
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_render_includes_framing_column_default_primary(self):
+        """Findings recorded without --framing → rendered table shows 'primary' in Framing cell."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "auth module",
+                "--file-line", "src/auth.ts:10",
+                "--relevance", "login handler",
+            ])
+            md = self._render(devforge)
+            self.assertIn("| Surface | File:line | Relevance | Framing |", md)
+            self.assertIn("|---|---|---|---|", md)
+            self.assertIn("| primary |", md)
+        finally:
+            tmp.cleanup()
+
+    def test_render_includes_framing_column_runner_up(self):
+        """Finding recorded with --framing runner-up → rendered table shows 'runner-up' for that row."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "deep walker",
+                "--file-line", "src/walker.ts:10",
+                "--relevance", "only traverses one level",
+                "--framing", "runner-up",
+            ])
+            md = self._render(devforge)
+            self.assertIn("| Surface | File:line | Relevance | Framing |", md)
+            self.assertIn("| runner-up |", md)
+            self.assertNotIn("| primary |", md)
+        finally:
+            tmp.cleanup()
+
+    def test_render_omits_runner_up_section_when_unset(self):
+        """When runner_up_framing is None, rendered output has no ## Runner-up framing section."""
+        tmp, devforge = self._fresh()
+        try:
+            md = self._render(devforge)
+            self.assertNotIn("## Runner-up framing", md)
+        finally:
+            tmp.cleanup()
+
+    def test_render_includes_runner_up_section_when_set(self):
+        """When record-runner-up-framing was called, rendered output has the full section."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "shallow walk misses nested options",
+                "--falsifier", "if recursive walk finds duplicates, shallow walk is the cause",
+                "--confidence-vs-primary", "comparable",
+            ])
+            md = self._render(devforge)
+            self.assertIn("## Runner-up framing", md)
+            self.assertIn("| Frame | shallow walk misses nested options |", md)
+            self.assertIn("| Falsifier | if recursive walk finds duplicates, shallow walk is the cause |", md)
+            self.assertIn("| Confidence vs primary | comparable |", md)
+        finally:
+            tmp.cleanup()
+
+    def test_render_runner_up_section_before_hypothesis_enumeration(self):
+        """## Runner-up framing must appear before ## Hypothesis Enumeration in the output."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "alternative cause",
+                "--falsifier", "probe X",
+                "--confidence-vs-primary", "lower",
+            ])
+            md = self._render(devforge)
+            idx_runner_up = md.find("## Runner-up framing")
+            idx_hypo = md.find("## Hypothesis Enumeration")
+            self.assertNotEqual(idx_runner_up, -1, "## Runner-up framing not found")
+            self.assertNotEqual(idx_hypo, -1, "## Hypothesis Enumeration not found")
+            self.assertLess(
+                idx_runner_up, idx_hypo,
+                "## Runner-up framing must appear before ## Hypothesis Enumeration",
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_render_section_order_with_root_cause_and_runner_up(self):
+        tmp, devforge = self._fresh()
+        try:
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+            _run(["--devforge-dir", str(devforge), "set-confidence", "--value", "Hypothesis"])
+            _run([
+                "--devforge-dir", str(devforge), "set-trigger",
+                "--value", "User opens list with 50+ items",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-root-cause-systemic",
+                "--value", "Inline sort without stable comparator",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-runner-up-framing",
+                "--frame", "race condition between fetch and render",
+                "--falsifier", "log fetch ids before sort",
+                "--confidence-vs-primary", "lower",
+            ])
+            md = self._render(devforge)
+            self.assertIn("### Structured root cause", md)
+            self.assertIn("## Runner-up framing", md)
+            self.assertIn("## Hypothesis Enumeration", md)
+            idx_src = md.index("### Structured root cause")
+            idx_runner_up = md.index("## Runner-up framing")
+            idx_hypo = md.index("## Hypothesis Enumeration")
+            self.assertLess(idx_src, idx_runner_up)
+            self.assertLess(idx_runner_up, idx_hypo)
+        finally:
+            tmp.cleanup()
+
+    def test_render_legacy_finding_without_framing_key(self):
+        tmp, devforge = self._fresh()
+        try:
+            state = research_helper.default_report_state()
+            state["findings"] = [
+                {
+                    "surface": "auth module",
+                    "file_line": "src/x.py:10",
+                    "relevance": "login path",
+                }
+            ]
+            (devforge / "research-report.json").write_text(
+                json.dumps(state, indent=2) + "\n"
+            )
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("| primary |", r.stdout)
+        finally:
+            tmp.cleanup()
 
 
 if __name__ == "__main__":

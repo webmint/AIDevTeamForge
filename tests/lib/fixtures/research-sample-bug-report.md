@@ -22,10 +22,11 @@ Inline sort in reactive body is unstable; recommended fix is a derived computed 
 
 ## Codebase Findings (WHERE)
 
-| Surface | File:line | Relevance |
-|---|---|---|
-| products list component | src/admin/Products.vue:201 | inline .sort() call inside watch body |
-| list helper | src/admin/helpers.ts:45 | shared comparator unused here |
+| Surface | File:line | Relevance | Framing |
+|---|---|---|---|
+| products list component | src/admin/Products.vue:201 | inline .sort() call inside watch body | primary |
+| list helper | src/admin/helpers.ts:45 | shared comparator unused here | primary |
+| fetch / watch race window | src/admin/Products.vue:180 | fetch can complete while watch still iterating — runner-up probe | runner-up |
 
 ## Root Cause Hypothesis (WHY)
 
@@ -40,6 +41,14 @@ Inline sort in reactive body is unstable; recommended fix is a derived computed 
 | trigger | User scrolls past 50 items + new item created concurrently |
 | root_cause | Inline sort in reactive body without stable comparator; no shared helper |
 | contributing_factors | 1. No e2e covers paginate-while-mutating 2. Component uses inline .sort() vs shared helper |
+
+## Runner-up framing
+
+| Field | Value |
+|---|---|
+| Frame | Race between fetch and watch (not comparator) |
+| Falsifier | Stabilizing comparator alone fixes order under repro |
+| Confidence vs primary | lower |
 
 ## Hypothesis Enumeration
 
