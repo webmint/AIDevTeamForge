@@ -30,7 +30,7 @@ Phases (target order per REDESIGN-RESEARCH-PLAN.md)
   PHASE 3  Save + recommend          — render artifact + ask-to-save handled
                                        by orchestrator; helper renders + verifies.
 
-Subcommand summary (44)
+Subcommand summary (45)
 -----------------------
 
   Plumbing (8)   reset-memo, reset-report, read-memo, read-report,
@@ -45,6 +45,7 @@ Subcommand summary (44)
                  record-dead-sibling, record-consumer-chain,
                  set-value-semantics
   Phase 2.4d (1) record-data-flow-chain
+  Phase 2.5  (1) record-value-production-site
   Phase 1  (8)   record-finding, record-hypothesis,
                  set-root-cause-hypothesis, set-confidence,
                  set-trigger, set-root-cause-systemic,
@@ -236,6 +237,10 @@ def default_report_state() -> dict:
         # Patch 6 — data-flow chain (Gap 6: adapter tracing). None until
         # record-data-flow-chain fires; overwritten (last-write-wins) on re-call.
         "data_flow_chain": None,
+        # Patch 7 — value production sites (Gap 7: id-stability axis). Each entry:
+        # {value, file_line, is_stable}. Multi-site per value via distinct file_line
+        # dedupe: same (value, file_line) pair is no-op; different file_lines append.
+        "value_production_sites": [],
     }
 
 
@@ -1285,7 +1290,41 @@ def _register_subcommands(subparsers) -> None:
         choices=("preference", "invariant", "unclassified"),
     )
     sp.add_argument("--evidence", required=True)
+    sp.add_argument(
+        "--stable-across-calls",
+        default=None,
+        choices=("true", "false", "unknown"),
+        dest="stable_across_calls",
+        help=(
+            "Stability axis for the value across the operation chain. "
+            "REQUIRED when --classification invariant. "
+            "Optional for other classifications (ignored if set)."
+        ),
+    )
     sp.set_defaults(func=cmd_set_value_semantics)
+
+    sp = subparsers.add_parser(
+        "record-value-production-site",
+        help=(
+            "Append a {value, file_line, is_stable} record to value_production_sites. "
+            "Dedupes by (value, file_line) pair; multiple file_lines per value allowed."
+        ),
+    )
+    sp.add_argument("--value", required=True, help="Symbol whose production site is being recorded.")
+    sp.add_argument(
+        "--file-line",
+        required=True,
+        dest="file_line",
+        help="path:line where the value is randomized/rewritten (must not be (none)).",
+    )
+    sp.add_argument(
+        "--is-stable",
+        required=True,
+        dest="is_stable",
+        choices=("true", "false"),
+        help="Whether the value is stable at this production site.",
+    )
+    sp.set_defaults(func=cmd_record_value_production_site)
 
     sp = subparsers.add_parser(
         "record-data-flow-chain",
@@ -2371,8 +2410,16 @@ def cmd_record_consumer_chain(args: argparse.Namespace) -> int:
 def cmd_set_value_semantics(args: argparse.Namespace) -> int:
     """Upsert a {value, classification, evidence} record in value_semantics.
 
-    Last-write-wins on value key. When classification==invariant, requires
-    at least one consumer_chain row with matching value field.
+    Last-write-wins on value key. When classification==invariant, requires:
+      - --stable-across-calls (true|false|unknown) — REQUIRED for invariant.
+      - At least one consumer_chain row with matching value field.
+      - When --stable-across-calls==unknown AND symptom is presentation-layer,
+        rejected (must investigate via Phase 2.4d data-flow chain first).
+      - When --stable-across-calls==false, at least one value_production_sites
+        row must already exist for this value.
+
+    Row shape: {value, classification, evidence} for non-invariant.
+               {value, classification, evidence, stable_across_calls} for invariant.
     """
     try:
         value = _validate_scalar(args.value, "value_semantics.value")
@@ -2381,14 +2428,52 @@ def cmd_set_value_semantics(args: argparse.Namespace) -> int:
         return _die(str(err), code=2)
     # classification is already constrained by argparse choices=
     classification = args.classification
+    stable_across_calls = getattr(args, "stable_across_calls", None)
 
-    # Invariant guard: check before entering the state transaction so the
-    # file is never rewritten on a validation rejection.
+    # Invariant guards: all checked before entering the state transaction so
+    # the file is never rewritten on a validation rejection.
     if classification == "invariant":
+        # Gate 1: --stable-across-calls is required when classification==invariant.
+        if stable_across_calls is None:
+            return _die(
+                "set-value-semantics: --stable-across-calls is required when "
+                "--classification == 'invariant'; values invariant by kind may still be "
+                "randomized per call (the production-site rewriter pattern). "
+                "Pass --stable-across-calls true|false|unknown.",
+                code=2,
+            )
+
         try:
             report_snapshot = _load_report(args.devforge_dir)
         except (OSError, json.JSONDecodeError) as err:
             return _die("set-value-semantics: {0}".format(err))
+
+        # Gate 2: --stable-across-calls==unknown + presentation-layer → reject.
+        if stable_across_calls == "unknown":
+            # Determine if the primary finding is presentation-layer (same pattern
+            # as check 8b / check 15 in cmd_verify).
+            all_findings = report_snapshot.get("findings") or []
+            primary_path = None  # type: Optional[str]
+            for f in all_findings:
+                framing_val = f.get("framing") or "primary"
+                if framing_val == "primary":
+                    fl = f.get("file_line") or ""
+                    colon_pos = fl.rfind(":")
+                    if colon_pos > 0:
+                        primary_path = fl[:colon_pos]
+                    elif fl:
+                        primary_path = fl
+                    break
+            if primary_path and _is_presentation_layer(primary_path):
+                return _die(
+                    "set-value-semantics: --stable-across-calls cannot be 'unknown' when "
+                    "--classification is 'invariant' AND symptom is presentation-layer; "
+                    "investigate the production site (where the value is assigned) "
+                    "via Phase 2.4d data-flow chain (already recorded) before classifying",
+                    code=2,
+                )
+
+        # Gate 3: consumer_chain row required.
         chain = report_snapshot.get("consumer_chain") or []
         if not any(r.get("value") == value for r in chain):
             return _die(
@@ -2397,17 +2482,86 @@ def cmd_set_value_semantics(args: argparse.Namespace) -> int:
                 code=2,
             )
 
+        # Gate 4: --stable-across-calls==false requires at least one
+        # value_production_sites row for this value.
+        if stable_across_calls == "false":
+            sites = report_snapshot.get("value_production_sites") or []
+            if not any(s.get("value") == value for s in sites):
+                return _die(
+                    "set-value-semantics: --stable-across-calls=false for value {0!r} requires "
+                    "at least one record-value-production-site call for this value first. Call "
+                    "record-value-production-site with the file:line where the value is "
+                    "randomized/rewritten (e.g., Math.random, Date.now, manual id reassignment), "
+                    "then re-run set-value-semantics.".format(value),
+                    code=2,
+                )
+
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
             rows = report.setdefault("value_semantics", [])
+            # Build row — include stable_across_calls only for invariant classification.
+            if classification == "invariant":
+                new_row = {
+                    "value": value,
+                    "classification": classification,
+                    "evidence": evidence,
+                    "stable_across_calls": stable_across_calls,
+                }
+            else:
+                new_row = {"value": value, "classification": classification, "evidence": evidence}
             for i, row in enumerate(rows):
                 if row.get("value") == value:
-                    rows[i] = {"value": value, "classification": classification, "evidence": evidence}
+                    rows[i] = new_row
                     break
             else:
-                rows.append({"value": value, "classification": classification, "evidence": evidence})
+                rows.append(new_row)
     except (OSError, json.JSONDecodeError) as err:
         return _die("set-value-semantics: {0}".format(err))
+    return 0
+
+
+# --- Patch 7: value production site setter -----------------------------------
+
+
+def cmd_record_value_production_site(args: argparse.Namespace) -> int:
+    """Append a {value, file_line, is_stable} record to value_production_sites.
+
+    Dedupes by (value, file_line) pair: same pair is no-op (do not append,
+    do not modify). Multiple file_lines for the same value all append
+    (multi-site per value, concern C5).
+
+    Rejects (none) sentinel for file_line — production site must be a real path.
+    """
+    try:
+        value = _validate_scalar(args.value, "value_production_sites.value")
+        file_line = _validate_file_line(args.file_line, "value_production_sites.file_line")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # Reject (none) sentinel — production site must be a real path.
+    if file_line == "(none)":
+        return _die(
+            "record-value-production-site: --file-line cannot be (none) — "
+            "production site must be a real path",
+            code=2,
+        )
+
+    # args.is_stable is constrained by argparse choices=("true","false").
+    # Store as string (not bool) so the field is type-consistent with
+    # value_semantics.stable_across_calls ("true"/"false"/"unknown").
+    is_stable_str = args.is_stable
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            sites = report.setdefault("value_production_sites", [])
+            # Dedupe by (value, file_line) pair.
+            for existing in sites:
+                if existing.get("value") == value and existing.get("file_line") == file_line:
+                    # No-op: same (value, file_line) already recorded.
+                    return 0
+            sites.append({"value": value, "file_line": file_line, "is_stable": is_stable_str})
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-value-production-site: {0}".format(err))
     return 0
 
 
@@ -2718,6 +2872,45 @@ def _render_report_md(memo: dict, report: dict) -> str:
         out.append("(complexity unset)")
     out.append("")
 
+    # Value Semantics (Patch 7: stability column for invariant rows).
+    value_semantics = report.get("value_semantics") or []
+    if value_semantics:
+        out.append("## Value Semantics")
+        out.append("")
+        out.append("| Value | Classification | Evidence | Stability |")
+        out.append("|---|---|---|---|")
+        for vs in value_semantics:
+            # Non-invariant rows have no stability axis — render "—". Invariant rows
+            # show the stable_across_calls value (or "—" if missing, which should
+            # not occur post-Patch-7 but stays defensive).
+            if vs.get("classification") == "invariant":
+                stability = vs.get("stable_across_calls") or "—"
+            else:
+                stability = "—"
+            out.append("| {0} | {1} | {2} | {3} |".format(
+                _md_escape_cell(vs.get("value") or ""),
+                _md_escape_cell(vs.get("classification") or ""),
+                _md_escape_cell(vs.get("evidence") or ""),
+                _md_escape_cell(stability),
+            ))
+        out.append("")
+
+    # Value Production Sites (Patch 7: where values are randomized/rewritten).
+    value_production_sites = report.get("value_production_sites") or []
+    if value_production_sites:
+        out.append("## Value Production Sites")
+        out.append("")
+        out.append("| Value | File:line | Is Stable |")
+        out.append("|---|---|---|")
+        for site in value_production_sites:
+            is_stable_str = site.get("is_stable") or "false"
+            out.append("| {0} | {1} | {2} |".format(
+                _md_escape_cell(site.get("value") or ""),
+                _md_escape_cell(site.get("file_line") or ""),
+                is_stable_str,
+            ))
+        out.append("")
+
     gaps = memo.get("gaps") or []
     if gaps:
         out.append("## Open Uncertainties")
@@ -2825,6 +3018,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
          AND the first primary finding's path is presentation-layer. Forces
          the LLM to trace from click handler through intermediates to the
          write-boundary call via record-data-flow-chain (Patch 6 / Gap 6).
+     16. Hypothesis must cite production-site rewriter when any value_semantics
+         row has stable_across_calls=false. Gated on bug mode. Fires when
+         unstable value(s) exist in value_semantics AND no hypothesis cause
+         contains any production-site file_line as a substring. Closes Gap 7
+         — forces Phase 2.5 to enumerate the production-site rewriter (e.g.,
+         Math.random, Date.now) as a candidate root cause when randomization
+         is detected (Patch 7).
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -3173,6 +3373,52 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     "symptom at {0!r}; Phase 2.4d MANDATORY — trace from click handler to "
                     "write-boundary call via trace_path mode=calls and record via "
                     "record-data-flow-chain".format(primary_path_15)
+                )
+
+    # Check 16: when any value_semantics row has stable_across_calls=false, at least
+    # one hypothesis must cite the production-site rewriter file:line. Closes Gap 7 —
+    # forces hypothesis enumeration to surface the production-site rewriter as a
+    # candidate root cause when randomization is detected.
+    bug_mode_16 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
+    if bug_mode_16:
+        unstable_values = [
+            v["value"]
+            for v in (report.get("value_semantics") or [])
+            if v.get("stable_across_calls") == "false"
+        ]
+        if unstable_values:
+            production_sites = report.get("value_production_sites") or []
+            hypothesis_causes = [
+                h.get("cause") or ""
+                for h in (report.get("hypotheses") or [])
+            ]
+            # For all unstable values, gather their production-site file_line strings.
+            all_site_file_lines = [
+                s["file_line"]
+                for s in production_sites
+                if s.get("value") in unstable_values and s.get("file_line")
+            ]
+            # At least one hypothesis cause must contain at least one site file_line.
+            # Use word-boundary lookahead so "src/foo.ts:5" does NOT match "src/foo.ts:50"
+            # (prefix collision would let the LLM cite an adjacent-but-wrong line).
+            def _cause_cites_site(cause: str, site_fl: str) -> bool:
+                return bool(re.search(re.escape(site_fl) + r"(?!\d)", cause))
+
+            cited = any(
+                _cause_cites_site(cause, site_fl)
+                for cause in hypothesis_causes
+                for site_fl in all_site_file_lines
+            )
+            if not cited:
+                violations.append(
+                    "check 16: value_semantics has invariant-but-unstable row(s) "
+                    "({0}) but no hypothesis cites the production-site rewriter "
+                    "file_line ({1}); Phase 2.5 must enumerate the production-site "
+                    "rewriter as a candidate root cause".format(
+                        unstable_values,
+                        [s.get("file_line") for s in production_sites
+                         if s.get("value") in unstable_values],
+                    )
                 )
 
     if violations:

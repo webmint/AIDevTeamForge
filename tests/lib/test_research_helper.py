@@ -151,6 +151,8 @@ class TestSchemas(unittest.TestCase):
             "consumer_chain", "value_semantics",
             # Patch 5 anchor-gate rejection log
             "helper_rejection_log",
+            # Patch 7 value production sites
+            "value_production_sites",
         ):
             self.assertEqual(rep[arr_field], [], "field {0} default".format(arr_field))
         self.assertEqual(
@@ -1843,12 +1845,15 @@ class TestPhase24cSetters(unittest.TestCase):
     def test_set_value_semantics_invariant_requires_consumer_chain(self):
         tmp, devforge = self._fresh()
         try:
+            # Patch 7: --stable-across-calls is now required for invariant; pass it so
+            # the consumer_chain gate (not the stable_across_calls gate) fires.
             r = _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
                 "--value", "splitOnSNA",
                 "--classification", "invariant",
                 "--evidence", "Q&O parity rule",
+                "--stable-across-calls", "true",
             ])
             self.assertNotEqual(r.returncode, 0)
             self.assertIn("requires at least one consumer_chain entry", r.stderr)
@@ -1867,12 +1872,14 @@ class TestPhase24cSetters(unittest.TestCase):
                 "--file-line", "lib/order.dart:10",
                 "--role", "enforces invariant",
             ])
+            # Patch 7: --stable-across-calls is now required for invariant.
             r = _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
                 "--value", "splitOnSNA",
                 "--classification", "invariant",
                 "--evidence", "OrderCreationUseCase.execute enforces Q&O parity",
+                "--stable-across-calls", "true",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -2250,12 +2257,14 @@ class TestVerifyHappyPathWithPhase24c(unittest.TestCase):
                 "--role", "enforces Q&O parity at server boundary",
             ])
             # Set value_semantics to invariant.
+            # Patch 7: --stable-across-calls required for invariant.
             _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
                 "--value", "splitOnSNA",
                 "--classification", "invariant",
                 "--evidence", "OrderCreationUseCase.execute enforces Q&O parity",
+                "--stable-across-calls", "true",
             ])
             # Add dead sibling.
             _run([
@@ -2310,7 +2319,8 @@ class TestResetReportClearsPhase24cFields(unittest.TestCase):
             _run(["--devforge-dir", str(devforge), "reset-report"])
             data = json.loads((devforge / "research-report.json").read_text())
             for field in ("fix_path_helpers", "inbound_callers", "dead_siblings",
-                          "consumer_chain", "value_semantics", "helper_rejection_log"):
+                          "consumer_chain", "value_semantics", "helper_rejection_log",
+                          "value_production_sites"):  # Patch 7
                 self.assertEqual(data[field], [], "field {0} not reset".format(field))
 
 
@@ -2329,7 +2339,10 @@ class TestSetValueSemanticsTransactionEscape(unittest.TestCase):
         return tmp, devforge
 
     def test_invariant_rejection_exit_code_is_2(self):
-        """Rejecting invariant (no consumer_chain) must exit 2, not 1."""
+        """Rejecting invariant (no consumer_chain) must exit 2, not 1.
+        Patch 7: pass --stable-across-calls true so the consumer_chain gate
+        (not the stable_across_calls gate) fires and produces exit 2.
+        """
         tmp, devforge = self._fresh()
         try:
             r = _run([
@@ -2338,6 +2351,7 @@ class TestSetValueSemanticsTransactionEscape(unittest.TestCase):
                 "--value", "splitOnSNA",
                 "--classification", "invariant",
                 "--evidence", "Q&O parity rule",
+                "--stable-across-calls", "true",
             ])
             self.assertEqual(r.returncode, 2)
             self.assertIn("requires at least one consumer_chain entry", r.stderr)
@@ -2345,7 +2359,10 @@ class TestSetValueSemanticsTransactionEscape(unittest.TestCase):
             tmp.cleanup()
 
     def test_invariant_rejection_does_not_rewrite_state_file(self):
-        """Rejecting invariant must not touch research-report.json (mtime unchanged)."""
+        """Rejecting invariant must not touch research-report.json (mtime unchanged).
+        Patch 7: pass --stable-across-calls true so the consumer_chain gate fires
+        and the state file is still not rewritten (pre-transaction guard).
+        """
         tmp, devforge = self._fresh()
         try:
             rep_path = devforge / "research-report.json"
@@ -2356,6 +2373,7 @@ class TestSetValueSemanticsTransactionEscape(unittest.TestCase):
                 "--value", "splitOnSNA",
                 "--classification", "invariant",
                 "--evidence", "Q&O parity rule",
+                "--stable-across-calls", "true",
             ])
             mtime_after = rep_path.stat().st_mtime_ns
             self.assertEqual(
@@ -5030,6 +5048,548 @@ class TestVerifyCheck15(unittest.TestCase):
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("check 15", r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Patch 7: set-value-semantics stability axis + record-value-production-site
+# + verify check 16 + render.
+# ---------------------------------------------------------------------------
+
+
+class TestSetValueSemanticsStability(unittest.TestCase):
+    """Tests for the --stable-across-calls stability axis on set-value-semantics."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _add_consumer_chain(self, devforge, value="itemId"):
+        _run([
+            "--devforge-dir", str(devforge),
+            "record-consumer-chain",
+            "--value", value,
+            "--consumer-qn", "CartService.addItem",
+            "--file-line", "lib/cart_service.dart:10",
+            "--role", "persists id",
+        ])
+
+    def test_set_value_semantics_invariant_requires_stable_across_calls(self):
+        """--classification invariant without --stable-across-calls exits 2 with 'is required' error."""
+        tmp, devforge = self._fresh()
+        try:
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "itemId",
+                "--classification", "invariant",
+                "--evidence", "persisted in orders table",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("is required when --classification == 'invariant'", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_invariant_unknown_rejected_on_presentation(self):
+        """--stable-across-calls unknown + presentation-layer primary finding exits 2."""
+        tmp, devforge = self._fresh()
+        try:
+            # Add a presentation-layer primary finding.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-finding",
+                "--surface", "item card component",
+                "--file-line", "apps/app-web/src/components/Foo.vue:5",
+                "--relevance", "renders item id",
+            ])
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "itemId",
+                "--classification", "invariant",
+                "--evidence", "server assigns once",
+                "--stable-across-calls", "unknown",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("cannot be 'unknown'", r.stderr)
+            self.assertIn("presentation-layer", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_invariant_unknown_accepted_on_domain(self):
+        """--stable-across-calls unknown + domain-layer primary finding exits 0 and row persisted."""
+        tmp, devforge = self._fresh()
+        try:
+            # Add a domain-layer primary finding (not presentation).
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-finding",
+                "--surface", "cart service",
+                "--file-line", "packages/pkg-core/src/services/foo.ts:5",
+                "--relevance", "assigns id to item",
+            ])
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "itemId",
+                "--classification", "invariant",
+                "--evidence", "server assigns once",
+                "--stable-across-calls", "unknown",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            rows = [row for row in data["value_semantics"] if row["value"] == "itemId"]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["stable_across_calls"], "unknown")
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_invariant_false_requires_production_site(self):
+        """--stable-across-calls false with no production site exits 2."""
+        tmp, devforge = self._fresh()
+        try:
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "itemId",
+                "--classification", "invariant",
+                "--evidence", "server assigns once",
+                "--stable-across-calls", "false",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("requires at least one record-value-production-site call", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_invariant_false_accepted_after_production_site(self):
+        """--stable-across-calls false + production site already recorded exits 0."""
+        tmp, devforge = self._fresh()
+        try:
+            # Record production site first.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "itemId",
+                "--file-line", "src/adapters/item_adapter.js:42",
+                "--is-stable", "false",
+            ])
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "itemId",
+                "--classification", "invariant",
+                "--evidence", "adapter randomizes on each call",
+                "--stable-across-calls", "false",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            rows = [row for row in data["value_semantics"] if row["value"] == "itemId"]
+            self.assertEqual(rows[0]["stable_across_calls"], "false")
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_invariant_true_accepted_without_production_site(self):
+        """--stable-across-calls true exits 0 without needing a production site."""
+        tmp, devforge = self._fresh()
+        try:
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "itemId",
+                "--classification", "invariant",
+                "--evidence", "server assigns stable UUID",
+                "--stable-across-calls", "true",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            rows = [row for row in data["value_semantics"] if row["value"] == "itemId"]
+            self.assertEqual(rows[0]["stable_across_calls"], "true")
+        finally:
+            tmp.cleanup()
+
+    def test_set_value_semantics_non_invariant_ignores_stability(self):
+        """Non-invariant classification: --stable-across-calls is accepted but stripped from row."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "sortOrder",
+                "--classification", "preference",
+                "--evidence", "user sets via UI",
+                "--stable-across-calls", "false",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            rows = [row for row in data["value_semantics"] if row["value"] == "sortOrder"]
+            self.assertEqual(len(rows), 1)
+            # Non-invariant rows must NOT carry stable_across_calls (keep row shape stable).
+            self.assertNotIn("stable_across_calls", rows[0])
+        finally:
+            tmp.cleanup()
+
+
+class TestRecordValueProductionSite(unittest.TestCase):
+    """Tests for the record-value-production-site setter."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        return json.loads((devforge / "research-report.json").read_text())
+
+    def test_record_value_production_site_rejects_empty_value(self):
+        """--value '' exits 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "",
+                "--file-line", "src/adapters/item.js:10",
+                "--is-stable", "false",
+            ])
+            self.assertEqual(r.returncode, 2)
+        finally:
+            tmp.cleanup()
+
+    def test_record_value_production_site_rejects_none_sentinel_file_line(self):
+        """--file-line '(none)' exits 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "itemId",
+                "--file-line", "(none)",
+                "--is-stable", "false",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("cannot be (none)", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_value_production_site_rejects_malformed_file_line(self):
+        """--file-line without colon exits 2 via _validate_file_line."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "itemId",
+                "--file-line", "no-colon-here",
+                "--is-stable", "false",
+            ])
+            self.assertEqual(r.returncode, 2)
+        finally:
+            tmp.cleanup()
+
+    def test_record_value_production_site_appends_row(self):
+        """Single call appends row with correct shape {value, file_line, is_stable}."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "itemId",
+                "--file-line", "src/adapters/item.js:42",
+                "--is-stable", "false",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            sites = data.get("value_production_sites", [])
+            self.assertEqual(len(sites), 1)
+            self.assertEqual(sites[0]["value"], "itemId")
+            self.assertEqual(sites[0]["file_line"], "src/adapters/item.js:42")
+            self.assertEqual(sites[0]["is_stable"], "false")
+        finally:
+            tmp.cleanup()
+
+    def test_record_value_production_site_dedupes_same_value_same_file_line(self):
+        """Two identical calls produce only one row (dedupe by (value, file_line))."""
+        tmp, devforge = self._fresh()
+        try:
+            for _ in range(2):
+                _run([
+                    "--devforge-dir", str(devforge),
+                    "record-value-production-site",
+                    "--value", "itemId",
+                    "--file-line", "src/adapters/item.js:42",
+                    "--is-stable", "false",
+                ])
+            data = self._read_report(devforge)
+            sites = [s for s in data["value_production_sites"] if s["value"] == "itemId"]
+            self.assertEqual(len(sites), 1, "expected 1 row (deduped); got {0}".format(len(sites)))
+        finally:
+            tmp.cleanup()
+
+    def test_record_value_production_site_accepts_same_value_different_file_line(self):
+        """Multi-site: two calls with same value, different file_lines both append."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "itemId",
+                "--file-line", "src/adapters/item.js:42",
+                "--is-stable", "false",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "itemId",
+                "--file-line", "src/adapters/cart.js:17",
+                "--is-stable", "false",
+            ])
+            data = self._read_report(devforge)
+            sites = [s for s in data["value_production_sites"] if s["value"] == "itemId"]
+            self.assertEqual(len(sites), 2, "expected 2 rows (multi-site); got {0}".format(len(sites)))
+            file_lines = {s["file_line"] for s in sites}
+            self.assertIn("src/adapters/item.js:42", file_lines)
+            self.assertIn("src/adapters/cart.js:17", file_lines)
+        finally:
+            tmp.cleanup()
+
+    def test_record_value_production_site_accepts_same_file_line_different_values(self):
+        """Two values randomized at the SAME file:line → both rows append (not deduped).
+
+        Closes Finding 4 from python-reviewer: dedupe key is (value, file_line) AND,
+        not file_line alone. Real case: an adapter rewrites two symbols (itemId +
+        bqItemId) at the same line — both records must persist.
+        """
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "itemId",
+                "--file-line", "src/adapters/item.js:42",
+                "--is-stable", "false",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-value-production-site",
+                "--value", "bqItemId",
+                "--file-line", "src/adapters/item.js:42",
+                "--is-stable", "false",
+            ])
+            data = self._read_report(devforge)
+            sites = data.get("value_production_sites", [])
+            self.assertEqual(len(sites), 2, "expected 2 rows for distinct values at same line")
+            values = {s["value"] for s in sites}
+            self.assertEqual(values, {"itemId", "bqItemId"})
+        finally:
+            tmp.cleanup()
+
+    def test_record_value_production_site_default_state_has_empty_list(self):
+        """fresh default_report_state has value_production_sites: []."""
+        state = research_helper.default_report_state()
+        self.assertIn("value_production_sites", state)
+        self.assertEqual(state["value_production_sites"], [])
+
+
+class TestVerifyCheck16(unittest.TestCase):
+    """Tests for verify check 16: hypothesis must cite production-site file_line."""
+
+    def _build_check16_state(self, devforge, hypothesis_cause, production_site_file_line="src/adapters/item.js:42"):
+        """Build bug-mode state with an unstable value + production site + one hypothesis."""
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+        # Inject unstable value_semantics row (stable_across_calls=false).
+        data.setdefault("value_semantics", []).append({
+            "value": "itemId",
+            "classification": "invariant",
+            "evidence": "server assigns once",
+            "stable_across_calls": "false",
+        })
+        # Inject production site.
+        data.setdefault("value_production_sites", []).append({
+            "value": "itemId",
+            "file_line": production_site_file_line,
+            "is_stable": "false",
+        })
+        # Overwrite hypotheses with controlled set.
+        data["hypotheses"] = [
+            {
+                "cause": hypothesis_cause,
+                "falsifier": "check if value changes per call",
+                "runtime_probe_needed": False,
+            },
+            {
+                "cause": "second hypothesis to satisfy min-2 check",
+                "falsifier": "observe two sequential calls",
+                "runtime_probe_needed": False,
+            },
+        ]
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_check_16_fires_on_unstable_value_no_hypothesis_citation(self):
+        """Unstable value + production site + hypothesis not citing file_line → check 16 fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check16_state(
+                devforge,
+                hypothesis_cause="comparator is wrong",  # does NOT cite the production site
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 16", r.stderr)
+
+    def test_check_16_passes_when_hypothesis_cites_production_site(self):
+        """One hypothesis cause contains the production-site file_line → check 16 passes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check16_state(
+                devforge,
+                hypothesis_cause="id is randomized at src/adapters/item.js:42 via Math.random()",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 16", r.stderr)
+
+    def test_check_16_skipped_when_no_unstable_values(self):
+        """value_semantics has only stable rows → check 16 does NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Only stable rows, no production sites.
+            data["value_semantics"] = [
+                {"value": "sortField", "classification": "invariant",
+                 "evidence": "fixed by server", "stable_across_calls": "true"},
+            ]
+            data["value_production_sites"] = []
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 16", r.stderr)
+
+    def test_check_16_fires_on_prefix_collision_only_cite(self):
+        """Hypothesis citing :50 must NOT satisfy a production site at :5 (word-boundary).
+
+        Closes Finding 2 from python-reviewer: bare substring match would allow
+        prefix collisions ("src/foo.ts:5" in "src/foo.ts:50"). Check 16 uses a
+        regex lookahead (?!\\d) to require word-boundary after the line number.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check16_state(
+                devforge,
+                production_site_file_line="src/adapters/item.js:5",
+                hypothesis_cause="bug at src/adapters/item.js:50",  # prefix collision only
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 16", r.stderr)
+
+    def test_check_16_fires_on_unstable_value_no_production_site(self):
+        """Unstable value_semantics row + EMPTY value_production_sites → check 16 fires.
+
+        Closes Finding 5: direct JSON mutation can create stable_across_calls=false
+        without a production site; the setter prevents this path but the check must
+        still catch state injected via raw JSON write.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["value_semantics"] = [{
+                "value": "itemId",
+                "classification": "invariant",
+                "evidence": "adapter assigns",
+                "stable_across_calls": "false",
+            }]
+            data["value_production_sites"] = []
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 16", r.stderr)
+
+    def test_check_16_skipped_on_enhancement_mode(self):
+        """Enhancement mode + unstable value + no hypothesis citation → check 16 does NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Inject unstable row + production site + hypothesis without citation.
+            data["value_semantics"] = [{
+                "value": "itemId",
+                "classification": "invariant",
+                "evidence": "adapter assigns",
+                "stable_across_calls": "false",
+            }]
+            data["value_production_sites"] = [{
+                "value": "itemId",
+                "file_line": "src/adapters/item.js:42",
+                "is_stable": "false",
+            }]
+            # Keep existing hypotheses (none cite the production site).
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # Enhancement mode → check 16 must NOT fire.
+            self.assertNotIn("check 16", r.stderr)
+
+
+class TestRenderPatch7(unittest.TestCase):
+    """Tests for the Patch 7 render extensions: stability column + production sites section."""
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        return r.stdout
+
+    def test_render_shows_stability_column_in_value_semantics(self):
+        """Render output contains the stability column for an invariant row."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            # Inject value_semantics with invariant + stable_across_calls directly
+            # (bypassing setter for render-only test).
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["value_semantics"] = [
+                {"value": "itemId", "classification": "invariant",
+                 "evidence": "server assigns", "stable_across_calls": "false"},
+                {"value": "sortOrder", "classification": "preference",
+                 "evidence": "user choice"},
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            output = self._render(devforge)
+            self.assertIn("## Value Semantics", output)
+            self.assertIn("Stability", output)
+            # Invariant row must show stable_across_calls value in the table cell.
+            self.assertIn("| itemId | invariant | server assigns | false |", output)
+            # Preference row stability column renders "—" (no stability axis applies).
+            self.assertIn("| sortOrder | preference | user choice | — |", output)
+
+    def test_render_shows_production_sites_section(self):
+        """Render output contains the Value Production Sites section when rows exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["value_production_sites"] = [
+                {"value": "itemId", "file_line": "src/adapters/item.js:42", "is_stable": "false"},
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            output = self._render(devforge)
+            self.assertIn("## Value Production Sites", output)
+            self.assertIn("src/adapters/item.js:42", output)
+            self.assertIn("Is Stable", output)
 
 
 if __name__ == "__main__":

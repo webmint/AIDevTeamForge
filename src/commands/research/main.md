@@ -506,14 +506,39 @@ Evidence should cite a `consumer_chain` row recorded in Phase 2.4c — `--eviden
 .devforge/lib/research_helper set-value-semantics \
     --value "<symbol>" \
     --classification <preference|invariant|unclassified> \
-    --evidence "<text — typically a file:line or consumer name>"
+    --evidence "<text — typically a file:line or consumer name>" \
+    --stable-across-calls <true|false|unknown>     # REQUIRED when --classification invariant
 ```
 
-The helper enforces this dependency: `set-value-semantics --classification invariant` exits with code 2 when no `consumer_chain` row exists for `<symbol>`. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), return to Phase 2.4c Step 4 to record the missing `consumer_chain` entry, then end the turn. The next turn re-runs `set-value-semantics`. The helper writes nothing on rejection — the state file is untouched.
+**`--stable-across-calls` (stability axis — REQUIRED for invariant).** A value being invariant by KIND (an `id`, a contract field, a payload-shape token) does NOT imply the value is STABLE across calls. An adapter / transformer / mapper between the user-action handler and the write-boundary may reassign the value per call (`Math.random()`, `Date.now()`, `uuid()`, manual id reassignment). The kind axis and the stability axis are independent — an invariant id that is randomized per call still satisfies "invariant by kind" but breaks any downstream comparator that expects stability.
 
-Why this matters: an invariant value mis-classified as preference produces hypotheses framed "the UI didn't seed correctly" — wrong framing leads to view-layer fix recommendations in Phase 3. Classification grounds hypothesis enumeration in the right semantics.
+Pass `--stable-across-calls true` when Phase 2.4d's data-flow chain shows every intermediate is identity-preserving on the value (no `Math.random` / `Date.now` / manual reassignment in any intermediate body). Pass `--stable-across-calls false` when at least one intermediate rewrites the value (and call `record-value-production-site` for the rewriter site FIRST — see below). Pass `--stable-across-calls unknown` ONLY when the symptom is domain-layer (no presentation-layer trace path applies); the helper REJECTS `unknown` for presentation-layer symptoms because Phase 2.4d's data-flow chain (already recorded) provides the structural evidence to investigate.
+
+**Helper gates on `set-value-semantics --classification invariant`.** Four independent rejections (evaluated in this order — first failing gate emits the rejection):
+
+1. `--stable-across-calls` is required — exit 2 if omitted.
+2. `--stable-across-calls unknown` AND symptom is presentation-layer — exit 2 with: investigate the production site via Phase 2.4d data-flow chain (already recorded) before classifying.
+3. No `consumer_chain` row for `--value` — exit 2 (unchanged from prior phase). Recovery: return to Phase 2.4c Step 4 and call `record-consumer-chain` first.
+4. `--stable-across-calls false` requires at least one `value_production_sites` row for `--value` — exit 2. Recovery: call `record-value-production-site` first.
+
+On any exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The helper writes nothing on rejection — the state file is untouched.
+
+**Production-site recording (required before `--stable-across-calls false`).** When Phase 2.4d's intermediate-trace reveals a rewriter (an intermediate function whose body contains `Math.random`, `crypto.random`, `Date.now`, `uuid()`, or a manual id reassignment), record the rewriter site:
+
+```bash
+.devforge/lib/research_helper record-value-production-site \
+    --value "<symbol>" \
+    --file-line "<rewriter file:line — the exact line where the value is assigned/computed>" \
+    --is-stable <true|false>
+```
+
+The setter is append-only with `(value, file_line)` distinct dedupe. A single value may have MULTIPLE production sites (e.g., three adapters all rewriting the same id field — record each via a separate call with distinct `--file-line`). The setter rejects the `(none)` sentinel — production site must be a real path. `--is-stable false` flags a randomization site (the value differs across calls — e.g., `Math.random`, `Date.now`, `uuid()`); `--is-stable true` flags a deterministic reassignment site (the value is reassigned but produces the same output for the same input — e.g., a normalization helper, a hash function, an enum-coercion).
+
+Why this matters: an invariant value mis-classified as preference produces hypotheses framed "the UI didn't seed correctly" — wrong framing leads to view-layer fix recommendations in Phase 3. A stable-but-unstable invariant value mis-classified as just "invariant by kind" produces hypotheses framed "id field-name mismatch" or "type coercion" — wrong framing leads to comparator fixes in the symptom file while the actual rewriter at the production site continues to randomize the id every call. Classification + stability ground hypothesis enumeration in the right semantics.
 
 Enumerate at least 2 candidate root causes for the symptom. For each, write a one-line falsifier (the observation that would disprove it) and mark whether falsification needs runtime data. Single-hypothesis output is rejected by the helper's `verify` gate.
+
+**Hypothesis-citation gate (check 16).** In bug mode, when any `value_semantics` row has `--stable-across-calls false` (recorded above), at least one `record-hypothesis --cause` text MUST contain a `value_production_sites[].file_line` for one of those unstable values as a substring (word-boundary match on the `:line` suffix — `src/foo.ts:5` does NOT match `src/foo.ts:50`). The helper's `verify` step (check 16) exits with code 2 when no hypothesis cites any production-site file_line — the LLM must enumerate the production-site rewriter as a candidate root cause. Enhancement mode skips check 16 (no production-site-rewriter root cause enumeration is required). On exit 2 in bug mode, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then add a hypothesis whose `--cause` text references the production-site `file:line` literally (e.g., `--cause "id is randomized per-call at src/helpers/strataFamilyToItemAdapters.ts:5 via Math.random()"`).
 
 For any hypothesis whose falsifier needs runtime data (lifecycle race, framework lifecycle gap, vendor side-effect, network-shaped issue, timing-shaped issue), prepare a specific probe — a `console.log` probe, an `app.config.warnHandler` capture, a network-tab inspection, a breakpoint dump, etc.
 
