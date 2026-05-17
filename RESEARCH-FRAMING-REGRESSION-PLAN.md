@@ -1,6 +1,6 @@
 # RESEARCH-FRAMING-REGRESSION-PLAN
 
-**Status**: Patches 1 + 2 + 3 applied + tests green (176/176 in `tests/lib/test_research_helper.py`); Patches 4/5 pending. F2 closed by Patch 2 (layer-boundary stopping rule + check 8b cross-layer gate + `record-fix-path-helper --file-line`). Patch 3 closed Gap 3 (`set-scope` evidence gate on narrow framing). **Patch 5 added 2026-05-17** — fix-path helper anchor gate; addresses Gap 5 (target-selection blind spot the strengthened constitution can't see — constitution catches wrong PATTERN of cross-layer fix, Patch 5 catches wrong TARGET).
+**Status**: Patches 1 + 2 + 3 + 4 applied + tests green (199/199 in `tests/lib/test_research_helper.py`); Patch 5 pending. F2 closed by Patch 2 (layer-boundary stopping rule + check 8b cross-layer gate + `record-fix-path-helper --file-line`). Patch 3 closed Gap 3 (`set-scope` evidence gate on narrow framing). Patch 4 closed Gap 4 (`set-recommended-approach` single-layer gate with `--single-layer-justification` + `--cites` + check 13 verify-time mirror + 8b-precedence suppression). **Patch 5 added 2026-05-17** — fix-path helper anchor gate; addresses Gap 5 (target-selection blind spot the strengthened constitution can't see — constitution catches wrong PATTERN of cross-layer fix, Patch 5 catches wrong TARGET).
 **Date**: 2026-05-16
 **Branch**: `develop-2.0-init`
 **File**: `src/commands/research/main.md` (~554 lines) + `src/devforge/lib/research_helper.py` setters + verify checks

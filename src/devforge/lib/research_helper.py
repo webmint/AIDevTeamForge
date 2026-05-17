@@ -553,6 +553,57 @@ def _extract_package(file_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Check 8b predicate — shared between cmd_verify and cmd_set_recommended_approach.
+# ---------------------------------------------------------------------------
+
+
+def _compute_check_8b_would_fire(report: dict, bug_mode: bool) -> bool:
+    """Return True iff check 8b's conditions are fully met.
+
+    Conditions (all must hold):
+    - bug_mode is True
+    - fix_path_helpers is non-empty
+    - The first primary finding's file_line resolves to a presentation-layer path
+      (per _is_presentation_layer)
+    - Every fix_path_helper's file_line resolves to the SAME package as the
+      primary symptom (i.e., no helper crosses a package boundary)
+
+    Used by cmd_verify (to decide whether check 13 is suppressed) and by
+    cmd_set_recommended_approach (to decide whether the single-layer gate
+    should be enforced). When check 8b would fire, check 13 / the setter gate
+    are structurally unavailable — the LLM's only recovery path is to add
+    cross-layer helpers, not to supply single_layer_justification.
+    """
+    if not bug_mode:
+        return False
+    fix_path_helpers = report.get("fix_path_helpers") or []
+    if not fix_path_helpers:
+        return False
+    # Identify the primary symptom path from findings.
+    primary_path = None  # type: Optional[str]
+    for f in (report.get("findings") or []):
+        framing_val = f.get("framing") or "primary"
+        if framing_val == "primary":
+            fl = f.get("file_line") or ""
+            colon_pos = fl.rfind(":")
+            primary_path = fl[:colon_pos] if colon_pos > 0 else (fl if fl else None)
+            break
+    if not primary_path or not _is_presentation_layer(primary_path):
+        return False
+    symptom_pkg = _extract_package(primary_path)
+    # All helpers must be in the same package as the symptom for 8b to fire.
+    for h in fix_path_helpers:
+        if not isinstance(h, dict):
+            continue
+        helper_file_line = h.get("file_line") or ""
+        colon_pos = helper_file_line.rfind(":")
+        helper_file = helper_file_line[:colon_pos] if colon_pos > 0 else helper_file_line
+        if _extract_package(helper_file) != symptom_pkg:
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Topic slug derivation (used for filename + state record).
 # ---------------------------------------------------------------------------
 
@@ -1019,6 +1070,29 @@ def _register_subcommands(subparsers) -> None:
         required=True,
         dest="hypotheses_not_covered",
         help="JSON array of hypothesis-index strings.",
+    )
+    sp.add_argument(
+        "--single-layer-justification",
+        default=None,
+        dest="single_layer_justification",
+        help=(
+            "Prose justification for a single-layer recommendation. Required when all "
+            "fix_path_helpers resolve to the same package (single-layer detection) "
+            "AND the symptom is NOT a presentation-layer file. "
+            "Path is only available for non-presentation-layer symptoms; "
+            "presentation-layer symptoms must trace through a package boundary (see check 8b). "
+            "Must be accompanied by --cites citing recorded evidence rows."
+        ),
+    )
+    sp.add_argument(
+        "--cites",
+        default=None,
+        dest="cites",
+        help=(
+            "JSON array of cite tokens (consumer_chain.consumer_qn, value_semantics.value, "
+            "value_semantics.evidence, or dead_siblings.method_qn) proving the symptom is "
+            "layer-local. Required when --single-layer-justification is provided."
+        ),
     )
     sp.set_defaults(func=cmd_set_recommended_approach)
 
@@ -1758,6 +1832,12 @@ def cmd_set_recommended_approach(args: argparse.Namespace) -> int:
     Validates: name resolves to an existing approach, hypotheses lists are
     JSON arrays of strings, rationale non-empty. Does not run the
     unchanged_behavior cross-check at set time — that runs in `verify`.
+
+    Single-layer gate (Gap 4 — Patch 4): when all fix_path_helpers resolve
+    to the same package (bug mode), --single-layer-justification + non-empty
+    --cites are required. Each cite must match a recorded consumer_chain,
+    value_semantics, or dead_siblings row token, proving the symptom is
+    layer-local.
     """
     try:
         name = _validate_scalar(args.name, "recommended_approach.name")
@@ -1779,12 +1859,101 @@ def cmd_set_recommended_approach(args: argparse.Namespace) -> int:
                     "have {1}".format(name, sorted(names)),
                     code=2,
                 )
-            report["recommended_approach"] = {
+
+            recommended_record = {
                 "name": name,
                 "rationale": rationale,
                 "hypotheses_addressed": addressed,
                 "hypotheses_not_covered": not_covered,
             }
+
+            # Single-layer detection: when all fix_path_helpers are in the same package,
+            # the recommendation is anchored to one layer-stack region. Require an
+            # explicit prose justification + cite at least one consumer_chain /
+            # value_semantics / dead_siblings row proving the symptom is layer-local.
+            # Closes Gap 4 in RESEARCH-FRAMING-REGRESSION-PLAN.
+            fix_path_helpers = report.get("fix_path_helpers") or []
+            memo_mode = None
+            try:
+                memo_state = _load_memo(args.devforge_dir)
+                memo_mode = memo_state.get("mode")
+            except (OSError, json.JSONDecodeError):
+                pass
+            bug_mode = (report.get("mode") == "bug" or memo_mode == "bug")
+
+            # Only gate bug-mode reports — enhancement mode rarely populates fix_path_helpers
+            # and the layer-locality framing isn't a Gap-4 failure class for enhancements.
+            # SUPPRESSION: when check 8b would fire (presentation-layer symptom + all helpers
+            # same package), check 13 / this setter gate are structurally unreachable —
+            # supplying --single-layer-justification cannot satisfy verify because 8b vetoes
+            # unconditionally. Skip the gate entirely; the LLM's only recovery is to add
+            # cross-layer helpers, not supply justification.
+            if bug_mode and len(fix_path_helpers) >= 1 and not _compute_check_8b_would_fire(report, bug_mode):
+                packages = set()
+                for h in fix_path_helpers:
+                    if isinstance(h, dict) and h.get("file_line"):
+                        pkg = _extract_package(h["file_line"].rsplit(":", 1)[0])
+                        if pkg:
+                            packages.add(pkg)
+                single_layer = len(packages) == 1
+                if single_layer:
+                    justification = getattr(args, "single_layer_justification", None)
+                    cites = getattr(args, "cites", None)
+                    if not justification or not justification.strip():
+                        return _die(
+                            "set-recommended-approach: --single-layer-justification is required when all fix_path_helpers "
+                            "resolve to the same package ({0!r}). Single-layer recommendations bypass the cross-layer "
+                            "trace evidence — supply a justification text explaining why the symptom is layer-local AND "
+                            "cite at least one consumer_chain / value_semantics / dead_siblings row via --cites.".format(
+                                next(iter(packages))
+                            ),
+                            code=2,
+                        )
+                    # Parse cites JSON array
+                    try:
+                        cites_list = _validate_string_array_json(cites or "[]", "recommended_approach.cites")
+                    except ValueError as err:
+                        return _die(str(err), code=2)
+                    if not cites_list:
+                        return _die(
+                            "set-recommended-approach: --cites is required (non-empty JSON array) when "
+                            "--single-layer-justification is provided. Each cite must match a recorded "
+                            "consumer_chain.consumer_qn, value_semantics.value (or value_semantics.evidence), "
+                            "or dead_siblings.method_qn from the report state.",
+                            code=2,
+                        )
+                    # Validate each cite resolves to a recorded row
+                    consumer_chain = report.get("consumer_chain") or []
+                    value_semantics = report.get("value_semantics") or []
+                    dead_siblings = report.get("dead_siblings") or []
+                    valid_tokens = set()
+                    for cc in consumer_chain:
+                        if cc.get("consumer_qn"):
+                            valid_tokens.add(cc["consumer_qn"])
+                    for vs in value_semantics:
+                        if vs.get("value"):
+                            valid_tokens.add(vs["value"])
+                        if vs.get("evidence"):
+                            valid_tokens.add(vs["evidence"])
+                    for ds in dead_siblings:
+                        if ds.get("method_qn"):
+                            valid_tokens.add(ds["method_qn"])
+                    unresolved = [c for c in cites_list if c not in valid_tokens]
+                    if unresolved:
+                        return _die(
+                            "set-recommended-approach: --cites contains tokens that do not match any recorded "
+                            "consumer_chain.consumer_qn, value_semantics.value, value_semantics.evidence, or "
+                            "dead_siblings.method_qn: {0!r}. Recorded tokens: {1!r}.".format(
+                                unresolved, sorted(valid_tokens)
+                            ),
+                            code=2,
+                        )
+                    # All citation checks pass — store on the recommended_approach record
+                    # under new keys so render + verify can surface them.
+                    recommended_record["single_layer_justification"] = justification
+                    recommended_record["cites"] = cites_list
+
+            report["recommended_approach"] = recommended_record
     except (OSError, json.JSONDecodeError) as err:
         return _die("set-recommended-approach: {0}".format(err))
     return 0
@@ -2253,6 +2422,18 @@ def _render_report_md(memo: dict, report: dict) -> str:
             out.append("**Recommended approach**: {0} — {1}".format(
                 rec_name, rec.get("rationale") or "(no rationale)"
             ))
+            # Single-layer justification sub-section (only when present).
+            single_layer_just = rec.get("single_layer_justification")
+            if single_layer_just:
+                out.append("")
+                out.append("**Single-layer justification:**")
+                out.append(single_layer_just.strip())
+                cites_list = rec.get("cites") or []
+                if cites_list:
+                    out.append("")
+                    out.append("**Cites:**")
+                    for cite in cites_list:
+                        out.append("- {0}".format(cite))
             out.append("")
     else:
         out.append("(no approaches recorded)")
@@ -2374,7 +2555,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
       8b. Bug mode + symptom is presentation-layer + all fix_path_helpers
           defined in same package → cross-layer trace required. Package
           derived from fix_path_helpers[].file_line (helper definition),
-          NOT from inbound_callers call-sites.
+          NOT from inbound_callers call-sites. Check 13 is subordinate:
+          when 8b fires, the single-layer-justification path cannot
+          satisfy verify, so check 13 is suppressed to give the LLM a
+          single actionable error.
       9. Every fix_path_helper has at least one inbound_callers row.
      10. If value_semantics has an invariant AND dead_siblings is non-empty,
          at least one approach mentions the signature change or dead-sibling QN.
@@ -2382,6 +2566,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
          cites a consumer_chain entry, invariant evidence, or dead-sibling QN.
      12. If runner_up_framing is set, at least one finding must be tagged
          framing=runner-up (Phase 2.4 must probe the runner-up frame).
+     13. Cross-layer recommendation enforcement: when bug mode + fix_path_helpers
+         all resolve to the same package (single-layer), recommended_approach
+         must carry single_layer_justification (non-empty) and cites (non-empty).
+         Catches out-of-order setter calls where recommended_approach was set
+         before fix_path_helpers collapsed to single-layer. Only fires when
+         check 8b does NOT apply (i.e., symptom is NOT presentation-layer);
+         for presentation-layer symptoms, check 8b is the blocking gate and
+         the single-layer escape path is structurally unavailable.
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -2633,6 +2825,54 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 "(record-finding --framing runner-up ...)"
             )
 
+    # Check 13: cross-layer recommendation enforcement. When bug mode +
+    # fix_path_helpers all resolve to the same package (single-layer detection),
+    # recommended_approach must carry single_layer_justification (non-empty) and
+    # cites (non-empty). This catches out-of-order setter calls where
+    # recommended_approach was written before fix_path_helpers collapsed to
+    # single-layer. Closes Gap 4 (verify-time) in RESEARCH-FRAMING-REGRESSION-PLAN.
+    # SUPPRESSION: check 13 is subordinate to check 8b. When 8b would fire
+    # (presentation-layer symptom + all helpers same package), the single-layer-
+    # justification escape is structurally unavailable — the only recovery is
+    # adding cross-layer helpers. Skip check 13 so the LLM gets a single
+    # actionable error from 8b rather than a misleading 13 violation pointing at
+    # a path that cannot satisfy verify.
+    check_13_suppressed = _compute_check_8b_would_fire(
+        report, report.get("mode") == "bug" or memo.get("mode") == "bug"
+    )
+    if (
+        (report.get("mode") == "bug" or memo.get("mode") == "bug")
+        and rec is not None
+        and fix_path_helpers
+        and not check_13_suppressed
+    ):
+        packages_13 = set()
+        for h in fix_path_helpers:
+            if isinstance(h, dict) and h.get("file_line"):
+                pkg = _extract_package(h["file_line"].rsplit(":", 1)[0])
+                if pkg:
+                    packages_13.add(pkg)
+        if len(packages_13) == 1:
+            if not (rec.get("single_layer_justification") or "").strip():
+                violations.append(
+                    "check 13: recommended_approach is single-layer (all fix_path_helpers "
+                    "in package {0!r}) but single_layer_justification is missing or empty; "
+                    "use set-recommended-approach --single-layer-justification to supply "
+                    "a prose justification proving the symptom is layer-local".format(
+                        next(iter(packages_13))
+                    )
+                )
+            if not rec.get("cites"):
+                violations.append(
+                    "check 13: recommended_approach is single-layer (all fix_path_helpers "
+                    "in package {0!r}) but cites is missing or empty; "
+                    "use set-recommended-approach --cites '[\"token\"]' to cite at least one "
+                    "consumer_chain.consumer_qn, value_semantics.value, value_semantics.evidence, "
+                    "or dead_siblings.method_qn row proving the symptom is layer-local".format(
+                        next(iter(packages_13))
+                    )
+                )
+
     if violations:
         for v in violations:
             sys.stderr.write("research_helper verify: {0}\n".format(v))
@@ -2684,6 +2924,18 @@ def cmd_summary(args: argparse.Namespace) -> int:
     lines.append("  recommended_approach: {0}".format(
         (report.get("recommended_approach") or {}).get("name") or "(unset)"
     ))
+    # Single-layer detection summary line: shown for bug mode + non-empty fix_path_helpers.
+    mode_for_summary = report.get("mode") or memo.get("mode")
+    fix_path_helpers_for_summary = report.get("fix_path_helpers") or []
+    if mode_for_summary == "bug" and fix_path_helpers_for_summary:
+        packages_summary = set()
+        for h in fix_path_helpers_for_summary:
+            if isinstance(h, dict) and h.get("file_line"):
+                pkg = _extract_package(h["file_line"].rsplit(":", 1)[0])
+                if pkg:
+                    packages_summary.add(pkg)
+        single_layer_label = "yes" if len(packages_summary) == 1 else "no"
+        lines.append("  recommended_approach.single_layer: {0}".format(single_layer_label))
     lines.append("  structured_root_cause: {0}".format(
         "set" if report.get("structured_root_cause") else "(unset)"
     ))

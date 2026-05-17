@@ -1931,6 +1931,16 @@ class TestVerifyCheck9(unittest.TestCase):
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
             ]
+            # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
+            data["consumer_chain"] = [
+                {"value": "fetchOrder", "consumer_qn": "View.build",
+                 "file_line": "src/v.dart:5", "role": "caller"}
+            ]
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["single_layer_justification"] = (
+                    "Bug is local to the BLoC layer; no cross-layer helpers involved."
+                )
+                data["recommended_approach"]["cites"] = ["View.build"]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -1965,10 +1975,15 @@ class TestVerifyCheck10(unittest.TestCase):
             ap["pros"] = ["some pro"]
             ap["cons"] = ["some con"]
         # Make recommended approach rationale cite consumer to satisfy check 11.
+        # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
         if data.get("recommended_approach"):
             data["recommended_approach"]["rationale"] = (
                 "OrderCreationUseCase.execute enforces invariant"
             )
+            data["recommended_approach"]["single_layer_justification"] = (
+                "Bug is local to the BLoC layer; consumer_chain confirms OrderCreationUseCase.execute enforces invariant."
+            )
+            data["recommended_approach"]["cites"] = ["OrderCreationUseCase.execute"]
         rep_path.write_text(json.dumps(data, indent=2) + "\n")
 
     def test_check10_fails_when_no_approach_mentions_signature(self):
@@ -2019,8 +2034,13 @@ class TestVerifyCheck10(unittest.TestCase):
                 {"value": "x", "classification": "invariant", "evidence": "SomeUseCase.run"}
             ]
             data["dead_siblings"] = []
+            # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
             if data.get("recommended_approach"):
                 data["recommended_approach"]["rationale"] = "SomeUseCase.run enforces the rule"
+                data["recommended_approach"]["single_layer_justification"] = (
+                    "Bug is local to the BLoC layer; SomeUseCase.run confirms no cross-layer fix needed."
+                )
+                data["recommended_approach"]["cites"] = ["SomeUseCase.run"]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -2046,8 +2066,15 @@ class TestVerifyCheck11(unittest.TestCase):
             {"value": "splitOnSNA", "classification": "invariant", "evidence": "Q&O parity rule"}
         ]
         data["dead_siblings"] = []
+        # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
+        # The rationale param is set by the caller so check 11 can test different scenarios;
+        # check 13 cites are always valid (consumer_qn is always present).
         if data.get("recommended_approach"):
             data["recommended_approach"]["rationale"] = rationale
+            data["recommended_approach"]["single_layer_justification"] = (
+                "Bug is local to the BLoC layer; OrderCreationUseCase.execute consumer_chain confirms it."
+            )
+            data["recommended_approach"]["cites"] = ["OrderCreationUseCase.execute"]
         rep_path.write_text(json.dumps(data, indent=2) + "\n")
 
     def test_check11_fails_when_rationale_cites_nothing(self):
@@ -2093,9 +2120,19 @@ class TestVerifyCheck11(unittest.TestCase):
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "s:1"}
             ]
             # Preference only, no invariant.
+            data["consumer_chain"] = [
+                {"value": "x", "consumer_qn": "V.build",
+                 "file_line": "s:1", "role": "uses it"}
+            ]
             data["value_semantics"] = [
                 {"value": "x", "classification": "preference", "evidence": "user sets it"}
             ]
+            # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["single_layer_justification"] = (
+                    "Bug is preference-level in the BLoC layer only."
+                )
+                data["recommended_approach"]["cites"] = ["V.build"]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -2267,10 +2304,15 @@ class TestVerifyCheck11EmptyTokenList(unittest.TestCase):
             _build_bug_state(devforge)
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            # Use cross-layer helpers so check 13 doesn't fire (this test focuses on check 11).
+            # src/admin (presentation) + lib/blocs (domain) = two packages → cross-layer.
+            data["fix_path_helpers"] = [
+                {"qn": "ProductsHelper.sort", "file_line": "src/admin/helpers.ts:10"},
+                {"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"},
+            ]
             data["inbound_callers"] = [
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
+                {"helper_qn": "ProductsHelper.sort", "caller_qn": "View.render", "file_line": "src/v.ts:5"},
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"},
             ]
             # Invariant entry: empty evidence, no consumer_chain, no dead_siblings.
             # Hand-authored to bypass the setter's consumer_chain prerequisite.
@@ -2324,11 +2366,16 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
             ap["pros"] = ["some improvement"]
             ap["cons"] = ["some cost"]
         # recommended_approach.name must match one of the (now-renamed) approaches.
+        # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
         if data.get("recommended_approach"):
             data["recommended_approach"]["name"] = approach_name
             data["recommended_approach"]["rationale"] = (
                 "OrderCreationUseCase.execute enforces invariant"
             )
+            data["recommended_approach"]["single_layer_justification"] = (
+                "Bug is local to the BLoC layer; consumer_chain confirms via OrderCreationUseCase.execute."
+            )
+            data["recommended_approach"]["cites"] = ["OrderCreationUseCase.execute"]
         rep_path.write_text(json.dumps(data, indent=2) + "\n")
 
     def test_check10_passes_when_approach_name_mentions_dead_sibling_qn(self):
@@ -2369,8 +2416,13 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
                 ap["description"] = "Use SIGNATURE-level enforcement at chokepoint"
                 ap["pros"] = ["clean"]
                 ap["cons"] = ["effort"]
+            # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
             if data.get("recommended_approach"):
                 data["recommended_approach"]["rationale"] = "SomeUseCase.run enforces the rule"
+                data["recommended_approach"]["single_layer_justification"] = (
+                    "Bug is local to the BLoC layer; SomeUseCase.run consumer_chain confirms it."
+                )
+                data["recommended_approach"]["cites"] = ["SomeUseCase.run"]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -3052,7 +3104,8 @@ class TestVerifyCheck8b(unittest.TestCase):
     """Check 8b: presentation-layer symptom + all helpers in same package → violation."""
 
     def test_verify_check8b_passes_when_symptom_is_domain_layer(self):
-        """Domain-layer symptom: check 8b skipped regardless of helper packages."""
+        """Domain-layer symptom: check 8b skipped regardless of helper packages.
+        Check 13 still fires for single-layer helpers — must add justification + cites."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_bug_state(devforge)
@@ -3076,6 +3129,7 @@ class TestVerifyCheck8b(unittest.TestCase):
             ]
             # All helpers also in pkg-cse-core — would trigger 8b for presentation
             # but domain symptom means 8b is skipped.
+            # Check 13 still fires for single-layer, so add justification + cites.
             data["fix_path_helpers"] = [{"qn": "CoreUtil.compare", "file_line": "pkg-cse-core/utils.ts:10"}]
             data["inbound_callers"] = [
                 {
@@ -3084,6 +3138,16 @@ class TestVerifyCheck8b(unittest.TestCase):
                     "file_line": "pkg-cse-core/sort.ts:5",
                 },
             ]
+            # Provide consumer_chain to anchor cites for check 13.
+            data["consumer_chain"] = [
+                {"value": "compareResult", "consumer_qn": "CoreUtil.sort",
+                 "file_line": "pkg-cse-core/sort.ts:5", "role": "consumes compare result"}
+            ]
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["single_layer_justification"] = (
+                    "Symptom is domain-local (pkg-cse-core comparison logic); no cross-layer trace needed."
+                )
+                data["recommended_approach"]["cites"] = ["CoreUtil.sort"]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertNotIn("cross-layer rule", r.stderr)
@@ -3393,6 +3457,834 @@ class TestSetScopeEvidenceGate(unittest.TestCase):
                 "--state", "Clear",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Patch 4 — single-layer recommendation gate (check 13).
+# ---------------------------------------------------------------------------
+
+
+def _build_single_layer_bug_state(devforge):
+    """Build a bug state with ALL fix_path_helpers in the same package (src/admin).
+
+    Used for Patch 4 single-layer gate tests. The symptom site and BOTH helpers
+    are in src/admin — so _extract_package maps all to 'src/admin', triggering
+    the single-layer gate in set-recommended-approach and verify check 13.
+    Compared with _build_bug_state (cross-layer): that has one helper in src/admin
+    and one in pkg-shared, so the gate does NOT fire there.
+    """
+    _run(["--devforge-dir", str(devforge), "reset-memo"])
+    _run(["--devforge-dir", str(devforge), "reset-report"])
+
+    for d, val in (
+        ("symptom", "Items not sorted in admin products list (sort fails)"),
+        ("affected_area", "Admin > Products > List"),
+        ("repro_or_current", "Open list with 50+ items"),
+        ("desired", "alphabetical sort by name A->Z"),
+        ("scope", "One component"),
+        ("unchanged_behavior", "Filter + pagination must keep working"),
+    ):
+        _run([
+            "--devforge-dir", str(devforge),
+            "set-" + d.replace("_", "-"),
+            "--value", val, "--state", "Clear",
+        ])
+    _run(["--devforge-dir", str(devforge), "detect-mode"])
+    _run(["--devforge-dir", str(devforge), "set-topic", "--value", "items-not-sorted"])
+    _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-11"])
+
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "products list component",
+        "--file-line", "src/admin/Products.vue:201",
+        "--relevance", "inline .sort() call inside watch body",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "race probe",
+        "--file-line", "src/admin/Products.vue:180",
+        "--relevance", "race between fetch and watch — runner-up probe",
+        "--framing", "runner-up",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "unstable comparator in inline sort",
+        "--falsifier", "swap comparator; verify order stable",
+        "--runtime-probe-needed", "no",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "race between fetch and watch",
+        "--falsifier", "log fetch ids before sort",
+        "--runtime-probe-needed", "yes",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-hypothesis",
+        "--value", "Inline .sort() in watch body uses unstable comparator.",
+    ])
+    _run(["--devforge-dir", str(devforge), "set-confidence", "--value", "Hypothesis"])
+    _run([
+        "--devforge-dir", str(devforge), "set-trigger",
+        "--value", "User scrolls past 50 items + new item created concurrently",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-systemic",
+        "--value", "Inline sort in reactive body without stable comparator; no shared helper",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-verify-step",
+        "--probe", "console.log sort-input at Products.vue:201",
+        "--reproduction", "Open Products; sort by name; create item in another tab; switch back",
+        "--discriminator", "if sort-input randomized then race; if ordered and output not then comparator",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "set-approach",
+        "--name", "Option A: comparator fix",
+        "--description", "Fix the inline comparator in src/admin/Products.vue",
+        "--addresses-hypotheses", json.dumps(["unstable comparator in inline sort"]),
+        "--does-not-cover", json.dumps(["race between fetch and watch"]),
+        "--pros", json.dumps(["small diff"]),
+        "--cons", json.dumps(["does not address race"]),
+        "--complexity", "Low",
+    ])
+    # Note: set-recommended-approach is NOT called here — each test calls it with
+    # different args to exercise the gate. Callers must call it themselves.
+
+    _run([
+        "--devforge-dir", str(devforge), "set-constitution-constraints",
+        "--rule", "Rule 2.1 — UI sort logic must be deterministic",
+        "--impact", "Forces stable comparator",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-complexity",
+        "--codebase-changes", "Low", "--codebase-notes", "1 component",
+        "--risk", "Low", "--risk-notes", "pagination preserved",
+        "--verify-cost", "Med", "--verify-notes", "needs e2e",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-verdict",
+        "--value", "Root cause hypothesis (needs repro)",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-summary",
+        "--value", "Inline sort in reactive body is unstable.",
+    ])
+
+    # BOTH helpers are in src/admin — single-layer (presentation layer).
+    # This triggers the single-layer gate in set-recommended-approach.
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--file-line", "src/admin/Products.vue:201",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-inbound-caller",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--caller-qn", "ProductsListComponent.watchItems",
+        "--file-line", "src/admin/Products.vue:201",
+    ])
+
+    # Mandatory runner-up framing.
+    _run([
+        "--devforge-dir", str(devforge), "record-runner-up-framing",
+        "--frame", "Race between fetch and watch (not comparator)",
+        "--falsifier", "Stabilizing comparator alone fixes order under repro",
+        "--confidence-vs-primary", "lower",
+    ])
+
+
+def _build_domain_single_layer_bug_state(devforge):
+    """Single-layer bug state in a NON-presentation package (Dart BLoC layer).
+
+    Used by Patch 4 check-13 tests. Symptom + all helpers live in
+    `lib/blocs/order_bloc.dart` — single-package AND non-presentation, so
+    check 8b does NOT fire (its suppression of check 13 does not apply)
+    AND check 13's single-layer detection DOES fire. This is the only
+    configuration where the --single-layer-justification gate is the
+    blocking constraint.
+    """
+    _run(["--devforge-dir", str(devforge), "reset-memo"])
+    _run(["--devforge-dir", str(devforge), "reset-report"])
+
+    for d, val in (
+        ("symptom", "Order BLoC fetch returns stale rows after refresh"),
+        ("affected_area", "OrderBLoC.fetchOrder"),
+        ("repro_or_current", "Trigger refresh while a fetch is in-flight"),
+        ("desired", "Latest fetch's rows always emitted last"),
+        ("scope", "One component"),
+        ("unchanged_behavior", "Single-fetch path must keep working"),
+    ):
+        _run([
+            "--devforge-dir", str(devforge),
+            "set-" + d.replace("_", "-"),
+            "--value", val, "--state", "Clear",
+        ])
+    _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+    _run(["--devforge-dir", str(devforge), "set-topic", "--value", "order-bloc-stale"])
+    _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-17"])
+
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "BLoC dispatch",
+        "--file-line", "lib/blocs/order_bloc.dart:42",
+        "--relevance", "primary symptom site",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "race-window probe",
+        "--file-line", "lib/blocs/order_bloc.dart:99",
+        "--relevance", "runner-up probe",
+        "--framing", "runner-up",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "last-fetch-wins racing in fetchOrder",
+        "--falsifier", "serialize fetches; verify order stable",
+        "--runtime-probe-needed", "no",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "subscription resubscribed mid-stream",
+        "--falsifier", "log subscription identity across refresh",
+        "--runtime-probe-needed", "yes",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-hypothesis",
+        "--value", "OrderBLoC.fetchOrder lacks fetch-id guard.",
+    ])
+    _run(["--devforge-dir", str(devforge), "set-confidence", "--value", "Hypothesis"])
+    _run([
+        "--devforge-dir", str(devforge), "set-trigger",
+        "--value", "Concurrent refresh while in-flight fetch pending",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-systemic",
+        "--value", "Internal BLoC state not guarded against concurrent fetch IDs",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-verify-step",
+        "--probe", "log fetch ids before sink at order_bloc.dart:42",
+        "--reproduction", "Trigger refresh twice within 100ms",
+        "--discriminator", "if older fetch wins then race; else state mutation",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "set-approach",
+        "--name", "Option A: fetch-id guard",
+        "--description", "Add fetch-id guard inside OrderBLoC.fetchOrder",
+        "--addresses-hypotheses", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+        "--does-not-cover", json.dumps(["subscription resubscribed mid-stream"]),
+        "--pros", json.dumps(["small diff", "no public-API change"]),
+        "--cons", json.dumps(["does not address resubscription"]),
+        "--complexity", "Low",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "set-constitution-constraints",
+        "--rule", "Rule 4.1 — Concurrent state must be guarded",
+        "--impact", "Forces fetch-id check",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-complexity",
+        "--codebase-changes", "Low", "--codebase-notes", "1 BLoC method",
+        "--risk", "Low", "--risk-notes", "single-fetch path preserved",
+        "--verify-cost", "Med", "--verify-notes", "needs race repro",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-verdict",
+        "--value", "Root cause hypothesis (needs repro)",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-summary",
+        "--value", "OrderBLoC.fetchOrder vulnerable to concurrent-fetch race.",
+    ])
+
+    # BOTH helpers in lib/blocs — single-package AND non-presentation-layer.
+    # Triggers check 13 single-layer gate; does NOT trigger check 8b suppression.
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "OrderBLoC.fetchOrder",
+        "--file-line", "lib/blocs/order_bloc.dart:42",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-inbound-caller",
+        "--helper-qn", "OrderBLoC.fetchOrder",
+        "--caller-qn", "OrderBLoC.handleRefresh",
+        "--file-line", "lib/blocs/order_bloc.dart:5",
+    ])
+
+    _run([
+        "--devforge-dir", str(devforge), "record-runner-up-framing",
+        "--frame", "Subscription resubscribed mid-stream (not fetch-id race)",
+        "--falsifier", "Adding fetch-id guard alone fixes order",
+        "--confidence-vs-primary", "lower",
+    ])
+
+
+class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
+    """Patch 4 — single-layer gate on set-recommended-approach (setter-time).
+
+    When all fix_path_helpers resolve to the same package (bug mode)
+    AND check 8b does NOT fire (symptom is NOT presentation-layer),
+    --single-layer-justification + non-empty --cites are required.
+    Each cite must match a recorded consumer_chain / value_semantics /
+    dead_siblings row token.
+
+    Fixture uses Dart BLoC layer (`lib/blocs/order_bloc.dart`) — single-package
+    AND non-presentation, so check 8b does not suppress the gate.
+    """
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _build_domain_single_layer_bug_state(devforge)
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _add_consumer_chain(self, devforge, consumer_qn="FetchConsumer.handleResult"):
+        """Helper to record a consumer_chain row so valid cites exist."""
+        _run([
+            "--devforge-dir", str(devforge),
+            "record-consumer-chain",
+            "--value", "fetchId",
+            "--consumer-qn", consumer_qn,
+            "--file-line", "lib/blocs/order_bloc.dart:80",
+            "--role", "drives sink emission",
+        ])
+
+    # --- cross-layer passes without justification ---
+
+    def test_set_recommended_approach_cross_layer_passes_without_justification(self):
+        """Cross-layer helpers (src/admin + pkg-shared): gate does not fire.
+
+        No --single-layer-justification / --cites required. New fields NOT written.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)  # already cross-layer
+            # Confirm _build_bug_state helpers are in different packages.
+            # (src/admin + pkg-shared → two distinct packages → not single-layer)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option B: Move sort to derived computed + stabilize comparator",
+                "--rationale", "Closes both hypotheses; preserves pagination + filter behavior",
+                "--hypotheses-addressed", json.dumps([
+                    "unstable comparator in inline sort",
+                    "race between fetch and watch",
+                ]),
+                "--hypotheses-not-covered", json.dumps([]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            rec = rep["recommended_approach"]
+            self.assertIsNone(rec.get("single_layer_justification"))
+            self.assertIsNone(rec.get("cites"))
+
+    # --- single-layer: gate fires ---
+
+    def test_set_recommended_approach_single_layer_requires_justification(self):
+        """Single-layer helpers (lib/blocs only, non-presentation): gate rejects without --single-layer-justification."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--single-layer-justification is required", r.stderr)
+            # Error must name the detected package.
+            self.assertIn("lib/blocs", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_recommended_approach_single_layer_requires_cites(self):
+        """Justification supplied but --cites omitted: gate rejects."""
+        tmp, devforge = self._fresh()
+        try:
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                # --cites deliberately omitted
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--cites is required", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_recommended_approach_single_layer_requires_cites_empty_array(self):
+        """--cites '[]' (empty array) also triggers the cites-required error."""
+        tmp, devforge = self._fresh()
+        try:
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", "[]",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--cites is required", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_recommended_approach_cites_must_resolve_to_recorded_row(self):
+        """Cite token not in consumer_chain / value_semantics / dead_siblings: rejected."""
+        tmp, devforge = self._fresh()
+        try:
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", json.dumps(["NotARecordedQN"]),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("NotARecordedQN", r.stderr)
+            self.assertIn("Recorded tokens", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    # --- cite sources: consumer_chain.consumer_qn ---
+
+    def test_set_recommended_approach_single_layer_consumer_chain_cite_passes(self):
+        """consumer_chain.consumer_qn token accepted as a valid cite."""
+        tmp, devforge = self._fresh()
+        try:
+            self._add_consumer_chain(devforge, consumer_qn="FetchConsumer.handleResult")
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard closes the race",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer; no cross-layer trace needed.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            rec = rep["recommended_approach"]
+            self.assertEqual(rec["single_layer_justification"],
+                             "Bug is local to the BLoC layer; no cross-layer trace needed.")
+            self.assertEqual(rec["cites"], ["FetchConsumer.handleResult"])
+        finally:
+            tmp.cleanup()
+
+    # --- cite sources: dead_siblings.method_qn ---
+
+    def test_set_recommended_approach_single_layer_dead_sibling_cite_passes(self):
+        """dead_siblings.method_qn accepted as a valid cite token."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-dead-sibling",
+                "--class-qn", "OrderBLoC",
+                "--method-qn", "OldFetchOrderMethod",
+                "--verified-via", "search_code",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard closes the race",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to BLoC; OldFetchOrderMethod was already removed.",
+                "--cites", json.dumps(["OldFetchOrderMethod"]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["recommended_approach"]["cites"], ["OldFetchOrderMethod"])
+        finally:
+            tmp.cleanup()
+
+    # --- cite sources: value_semantics.value ---
+
+    def test_set_recommended_approach_single_layer_value_semantics_cite_passes(self):
+        """value_semantics.value accepted as a valid cite token."""
+        tmp, devforge = self._fresh()
+        try:
+            # Record consumer_chain first (required for invariant classification).
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "fetchId",
+                "--consumer-qn", "FetchConsumer.handleResult",
+                "--file-line", "lib/blocs/order_bloc.dart:80",
+                "--role", "drives sink emission",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "fetchId",
+                "--classification", "preference",
+                "--evidence", "incremented per refresh trigger",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard closes the race",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "fetchId is a BLoC-internal counter; bug is layer-local.",
+                "--cites", json.dumps(["fetchId"]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["recommended_approach"]["cites"], ["fetchId"])
+        finally:
+            tmp.cleanup()
+
+    # --- cite sources: value_semantics.evidence ---
+
+    def test_set_recommended_approach_single_layer_value_semantics_evidence_cite_passes(self):
+        """value_semantics.evidence string accepted as a valid cite token."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "fetchId",
+                "--consumer-qn", "FetchConsumer.handleResult",
+                "--file-line", "lib/blocs/order_bloc.dart:80",
+                "--role", "drives sink emission",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-value-semantics",
+                "--value", "fetchId",
+                "--classification", "preference",
+                "--evidence", "lib/blocs/order_bloc.dart:42",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard closes the race",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "fetchId is a BLoC-internal counter scoped to OrderBLoC.",
+                "--cites", json.dumps(["lib/blocs/order_bloc.dart:42"]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["recommended_approach"]["cites"], ["lib/blocs/order_bloc.dart:42"])
+        finally:
+            tmp.cleanup()
+
+    # --- enhancement mode skips the gate ---
+
+    def test_set_recommended_approach_skips_gate_when_check_8b_would_fire(self):
+        """Presentation-layer single-package: check 8b will veto verify, so the
+        setter gate is suppressed — supplying --single-layer-justification cannot
+        rescue an 8b-failing state, so the setter does not demand it. The LLM
+        gets a single actionable error from 8b at verify time instead.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_single_layer_bug_state(devforge)  # presentation-layer single-package
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: comparator fix",
+                "--rationale", "Comparator swap is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["unstable comparator in inline sort"]),
+                "--hypotheses-not-covered", json.dumps([]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_set_recommended_approach_enhancement_mode_skipped(self):
+        """Enhancement mode: single-layer gate does not fire even with same-package helpers."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            # The enhancement state has no fix_path_helpers, so gate definitely
+            # doesn't fire. Confirm exit 0 without --single-layer-justification.
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: Async via JobsQueue",
+                "--rationale", "Closes both hypotheses; preserves small-dataset path",
+                "--hypotheses-addressed", json.dumps([
+                    "Serial DB fetch is the bottleneck",
+                    "Serializer hot loop dominates",
+                ]),
+                "--hypotheses-not-covered", json.dumps([]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestVerifyCheck13(unittest.TestCase):
+    """Check 13: cross-layer recommendation enforcement (verify-time).
+
+    Catches out-of-order setter calls where recommended_approach was written
+    before fix_path_helpers collapsed to single-layer.
+    """
+
+    def test_verify_check13_passes_cross_layer(self):
+        """Cross-layer helpers: check 13 does not fire. _build_bug_state is cross-layer."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("check 13", r.stderr)
+
+    def test_verify_check13_fails_single_layer_no_justification(self):
+        """Single-layer state (non-presentation) without single_layer_justification → check 13 violation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Mutate state directly: collapse to single-layer NON-presentation
+            # (Dart BLoC layer). Use non-presentation so check 8b does NOT fire
+            # and suppress check 13 — we need check 13 itself to fire here.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["findings"] = [
+                {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                 "relevance": "primary symptom site", "framing": "primary"},
+                {"surface": "race probe", "file_line": "lib/blocs/order_bloc.dart:99",
+                 "relevance": "runner-up", "framing": "runner-up"},
+            ]
+            data["fix_path_helpers"] = [
+                {"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"},
+            ]
+            data["inbound_callers"] = [
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "OrderBLoC.handleRefresh",
+                 "file_line": "lib/blocs/order_bloc.dart:5"},
+            ]
+            if data.get("recommended_approach"):
+                data["recommended_approach"].pop("single_layer_justification", None)
+                data["recommended_approach"].pop("cites", None)
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 13", r.stderr)
+            self.assertIn("single_layer_justification", r.stderr)
+
+    def test_verify_check13_fails_single_layer_no_cites(self):
+        """Single-layer state (non-presentation) with justification but no cites → check 13 violation (cites)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["findings"] = [
+                {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                 "relevance": "primary symptom site", "framing": "primary"},
+                {"surface": "race probe", "file_line": "lib/blocs/order_bloc.dart:99",
+                 "relevance": "runner-up", "framing": "runner-up"},
+            ]
+            data["fix_path_helpers"] = [
+                {"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"},
+            ]
+            data["inbound_callers"] = [
+                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "OrderBLoC.handleRefresh",
+                 "file_line": "lib/blocs/order_bloc.dart:5"},
+            ]
+            if data.get("recommended_approach"):
+                # Has justification but no cites.
+                data["recommended_approach"]["single_layer_justification"] = (
+                    "Bug is layer-local to OrderBLoC."
+                )
+                data["recommended_approach"].pop("cites", None)
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 13", r.stderr)
+            self.assertIn("cites", r.stderr)
+
+    def test_verify_check13_skipped_for_enhancement_mode(self):
+        """Enhancement mode: check 13 never fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("check 13", r.stderr)
+
+    def test_verify_check13_skipped_when_no_fix_path_helpers(self):
+        """No fix_path_helpers: check 13 does not fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["fix_path_helpers"] = []
+            data["inbound_callers"] = []
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # Check 8 fires (fix_path_helpers empty for bug mode) but NOT check 13.
+            self.assertIn("fix_path_helpers", r.stderr)
+            self.assertNotIn("check 13", r.stderr)
+
+    def test_verify_check13_passes_single_layer_with_justification_and_cites(self):
+        """Domain-layer single-package + valid justification + cites → verify exits 0.
+
+        Confirms the check 13 escape path is reachable: when symptom is NOT
+        presentation-layer (so check 8b doesn't fire) AND all helpers are in
+        one non-presentation package AND set-recommended-approach is called
+        with --single-layer-justification + --cites pointing at a recorded row,
+        verify accepts the report.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            # Add a consumer_chain row so cites have something to resolve to.
+            _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "fetchId",
+                "--consumer-qn", "FetchConsumer.handleResult",
+                "--file-line", "lib/blocs/order_bloc.dart:80",
+                "--role", "drives sink emission",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard closes the race",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to BLoC layer; consumer chain confirms layer-locality.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(v.returncode, 0, v.stderr)
+            self.assertNotIn("check 13", v.stderr)
+            self.assertNotIn("check 8b", v.stderr)
+
+    def test_verify_check13_suppressed_when_check_8b_fires(self):
+        """Presentation-layer single-package + no justification → only check 8b
+        violation surfaces; check 13 is suppressed.
+
+        Without suppression, the LLM would see TWO violations (8b + 13) and a
+        confusing "supply --single-layer-justification" recommendation that
+        could not satisfy verify (8b would still veto). Suppression ensures
+        the LLM sees only the one actionable error from 8b.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_single_layer_bug_state(devforge)
+            # Set a recommended_approach WITHOUT justification (setter gate also
+            # suppressed by 8b, so this succeeds at write time).
+            _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: comparator fix",
+                "--rationale", "Comparator swap is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["unstable comparator in inline sort"]),
+                "--hypotheses-not-covered", json.dumps([]),
+            ])
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("cross-layer rule", r.stderr)  # check 8b fires
+            self.assertNotIn("check 13", r.stderr)        # check 13 suppressed
+            self.assertNotIn("single_layer_justification", r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Patch 4 — render + summary integration for single-layer justification.
+# ---------------------------------------------------------------------------
+
+
+class TestSingleLayerRenderAndSummary(unittest.TestCase):
+    """Render and summary output for single-layer justification fields."""
+
+    def _fresh_cross_layer(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _build_bug_state(devforge)
+        return tmp, devforge
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def _summary(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "summary"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_render_omits_single_layer_section_when_not_set(self):
+        """Cross-layer recommendation: single_layer_justification absent → no extra render section."""
+        tmp, devforge = self._fresh_cross_layer()
+        try:
+            md = self._render(devforge)
+            self.assertNotIn("Single-layer justification:", md)
+            self.assertNotIn("**Cites:**", md)
+        finally:
+            tmp.cleanup()
+
+    def test_render_includes_single_layer_section_when_set(self):
+        """State with single_layer_justification + cites → render section present."""
+        tmp, devforge = self._fresh_cross_layer()
+        try:
+            # Inject single_layer_justification directly to test render independently.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            if data.get("recommended_approach"):
+                data["recommended_approach"]["single_layer_justification"] = (
+                    "Bug is layer-local to admin comparator."
+                )
+                data["recommended_approach"]["cites"] = ["SortConsumer.handleSort", "sortKey"]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            md = self._render(devforge)
+            self.assertIn("**Single-layer justification:**", md)
+            self.assertIn("Bug is layer-local to admin comparator.", md)
+            self.assertIn("**Cites:**", md)
+            self.assertIn("- SortConsumer.handleSort", md)
+            self.assertIn("- sortKey", md)
+        finally:
+            tmp.cleanup()
+
+    def test_summary_shows_single_layer_yes_for_single_package(self):
+        """summary shows 'recommended_approach.single_layer: yes' for single-package state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Collapse to single-layer for summary test.
+            data["fix_path_helpers"] = [
+                {"qn": "ProductsListComponent.sortItems", "file_line": "src/admin/Products.vue:201"},
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            out = self._summary(devforge)
+            self.assertIn("recommended_approach.single_layer: yes", out)
+
+    def test_summary_shows_single_layer_no_for_cross_layer(self):
+        """summary shows 'recommended_approach.single_layer: no' for cross-layer state."""
+        tmp, devforge = self._fresh_cross_layer()
+        try:
+            out = self._summary(devforge)
+            self.assertIn("recommended_approach.single_layer: no", out)
+        finally:
+            tmp.cleanup()
+
+    def test_summary_omits_single_layer_line_for_enhancement(self):
+        """Enhancement mode: summary has no 'recommended_approach.single_layer' line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            out = self._summary(devforge)
+            self.assertNotIn("recommended_approach.single_layer", out)
 
 
 if __name__ == "__main__":
