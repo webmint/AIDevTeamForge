@@ -139,6 +139,8 @@ class TestSchemas(unittest.TestCase):
             "recommended_approach", "complexity", "verdict", "next_step_text",
             # Phase 2.3b field
             "runner_up_framing",
+            # Patch 6 field
+            "data_flow_chain",
         ):
             self.assertIsNone(rep[field], "field {0} default".format(field))
         for arr_field in (
@@ -1159,6 +1161,16 @@ def _build_bug_state(devforge):
         "--file-line", "src/admin/Products.vue:180",
         "--relevance", "fetch can complete while watch still iterating — runner-up probe",
         "--framing", "runner-up",
+    ])
+
+    # Patch 6 — satisfy check 15: bug mode + presentation-layer primary symptom
+    # requires data_flow_chain to be set. Empty intermediates are valid (direct
+    # handler→write-boundary without adapter hops in this particular scenario).
+    _run([
+        "--devforge-dir", str(devforge), "record-data-flow-chain",
+        "--handler-qn", "ProductsListComponent.sortItems",
+        "--write-boundary-qn", "SharedProductsHelper.compare",
+        "--intermediate-qns", "[]",
     ])
 
 
@@ -4741,6 +4753,283 @@ class TestVerifyCheck14(unittest.TestCase):
             r = _run(["--devforge-dir", str(devforge), "verify"])
             # Check 14 is bug-mode-gated; enhancement mode → check 14 cannot fire.
             self.assertNotIn("check 14", r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Patch 6 — record-data-flow-chain setter tests.
+# ---------------------------------------------------------------------------
+
+
+class TestRecordDataFlowChain(unittest.TestCase):
+    """Round-trip + validation tests for the record-data-flow-chain setter."""
+
+    def _fresh(self):
+        """Return (TemporaryDirectory, devforge Path) with a reset report."""
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _seed_finding(self, devforge, surface, relevance, file_line="src/x.ts:1"):
+        _run([
+            "--devforge-dir", str(devforge), "record-finding",
+            "--surface", surface,
+            "--file-line", file_line,
+            "--relevance", relevance,
+        ])
+
+    def test_record_data_flow_chain_rejects_empty_handler_qn(self):
+        """--handler-qn '' exits 2 with validation error."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "",
+                "--write-boundary-qn", "SomeRepo.save",
+                "--intermediate-qns", "[]",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("handler_qn", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_rejects_empty_write_boundary_qn(self):
+        """--write-boundary-qn '' exits 2 with validation error."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "SomeHandler.onClick",
+                "--write-boundary-qn", "",
+                "--intermediate-qns", "[]",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("write_boundary_qn", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_rejects_malformed_json(self):
+        """--intermediate-qns 'not json' exits 2 with JSON parse error."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "SomeHandler.onClick",
+                "--write-boundary-qn", "SomeRepo.save",
+                "--intermediate-qns", "not json",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("intermediate_qns", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_rejects_intermediate_without_finding(self):
+        """Intermediate QN not referenced in any Finding exits 2."""
+        tmp, devforge = self._fresh()
+        try:
+            # Seed a finding that does NOT reference qn_X.
+            self._seed_finding(devforge, "Some surface", "Some relevance about foo", "src/foo.ts:1")
+            r = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "SomeHandler.onClick",
+                "--write-boundary-qn", "SomeRepo.save",
+                "--intermediate-qns", '["qn_X"]',
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("qn_X", r.stderr)
+            self.assertIn("no Finding row referencing it", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_accepts_intermediate_in_relevance(self):
+        """Intermediate QN found in a finding's relevance field exits 0."""
+        tmp, devforge = self._fresh()
+        try:
+            # Seed a finding whose relevance contains qn_A.
+            self._seed_finding(
+                devforge,
+                "Adapter surface",
+                "data-flow intermediate: qn_A transforms the payload",
+                "src/adapter.ts:10",
+            )
+            r = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "ClickHandler.handle",
+                "--write-boundary-qn", "Repo.persist",
+                "--intermediate-qns", '["qn_A"]',
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            chain = rep.get("data_flow_chain")
+            self.assertIsNotNone(chain)
+            self.assertEqual(chain["handler_qn"], "ClickHandler.handle")
+            self.assertEqual(chain["write_boundary_qn"], "Repo.persist")
+            self.assertEqual(chain["intermediate_qns"], ["qn_A"])
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_accepts_intermediate_in_surface(self):
+        """Intermediate QN found in a finding's surface field exits 0."""
+        tmp, devforge = self._fresh()
+        try:
+            # Seed a finding whose surface contains qn_B.
+            self._seed_finding(
+                devforge,
+                "qn_B adapter layer",
+                "Transforms payload before write",
+                "src/adapters/b.ts:5",
+            )
+            r = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "ClickHandler.handle",
+                "--write-boundary-qn", "Repo.persist",
+                "--intermediate-qns", '["qn_B"]',
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            chain = rep.get("data_flow_chain")
+            self.assertIsNotNone(chain)
+            self.assertEqual(chain["intermediate_qns"], ["qn_B"])
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_accepts_empty_intermediates(self):
+        """Empty --intermediate-qns '[]' exits 0 and persists empty list."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "ClickHandler.handle",
+                "--write-boundary-qn", "Repo.persist",
+                "--intermediate-qns", "[]",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            chain = rep.get("data_flow_chain")
+            self.assertIsNotNone(chain)
+            self.assertEqual(chain["handler_qn"], "ClickHandler.handle")
+            self.assertEqual(chain["write_boundary_qn"], "Repo.persist")
+            self.assertEqual(chain["intermediate_qns"], [])
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_last_write_wins(self):
+        """Calling record-data-flow-chain twice overwrites the prior chain."""
+        tmp, devforge = self._fresh()
+        try:
+            # First call.
+            r1 = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "HandlerA.handle",
+                "--write-boundary-qn", "RepoA.save",
+                "--intermediate-qns", "[]",
+            ])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            # Second call with different values — overwrites.
+            r2 = _run([
+                "--devforge-dir", str(devforge), "record-data-flow-chain",
+                "--handler-qn", "HandlerB.handle",
+                "--write-boundary-qn", "RepoB.save",
+                "--intermediate-qns", "[]",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            rep = self._read_report(devforge)
+            chain = rep.get("data_flow_chain")
+            self.assertIsNotNone(chain)
+            # State should match the SECOND call, not the first.
+            self.assertEqual(chain["handler_qn"], "HandlerB.handle")
+            self.assertEqual(chain["write_boundary_qn"], "RepoB.save")
+        finally:
+            tmp.cleanup()
+
+    def test_record_data_flow_chain_default_state_has_none(self):
+        """Fresh default_report_state() has data_flow_chain == None."""
+        rep = research_helper.default_report_state()
+        self.assertIsNone(rep["data_flow_chain"])
+
+
+# ---------------------------------------------------------------------------
+# Patch 6 — verify check 15 tests.
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyCheck15(unittest.TestCase):
+    """Check 15: bug mode + presentation-layer primary symptom requires data_flow_chain.
+
+    Uses _build_bug_state (which sets data_flow_chain via Patch 6 migration),
+    then surgically mutates state JSON to exercise each gate condition.
+    """
+
+    def test_check_15_fires_on_bug_presentation_unset_chain(self):
+        """Bug mode + presentation-layer primary finding + no chain → check 15 violation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Remove data_flow_chain to simulate unset state.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # _build_bug_state now seeds data_flow_chain — reset it to exercise the unset path.
+            data["data_flow_chain"] = None
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 15", r.stderr)
+            self.assertIn("data_flow_chain", r.stderr)
+
+    def test_check_15_skipped_on_bug_domain_symptom(self):
+        """Bug mode + domain-layer primary finding → check 15 does NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Replace the primary finding's file_line with a domain-layer path
+            # (packages/pkg-core/src/services/foo.ts:5 — not presentation-layer).
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # _build_bug_state now seeds data_flow_chain — reset it to exercise the unset path.
+            data["data_flow_chain"] = None
+            # Rewrite primary finding to a non-presentation path.
+            for f in data["findings"]:
+                framing = f.get("framing") or "primary"
+                if framing == "primary":
+                    f["file_line"] = "packages/pkg-core/src/services/foo.ts:5"
+                    break
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # Check 15 must NOT fire (other checks may fire, but not check 15).
+            self.assertNotIn("check 15", r.stderr)
+
+    def test_check_15_skipped_on_enhancement_mode(self):
+        """Enhancement mode + presentation-layer finding + no chain → check 15 does NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            # Inject a presentation-layer finding as primary and leave chain unset.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # data_flow_chain is None by default in enhancement state.
+            # Make the first finding a presentation-layer path.
+            if data["findings"]:
+                data["findings"][0]["file_line"] = "apps/app-web/src/components/Foo.vue:5"
+            data["data_flow_chain"] = None
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # Enhancement mode → check 15 must NOT fire.
+            self.assertNotIn("check 15", r.stderr)
+
+    def test_check_15_passes_with_chain_set(self):
+        """Bug mode + presentation-layer finding + data_flow_chain set → check 15 passes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # _build_bug_state already sets data_flow_chain; verify exits 0.
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("check 15", r.stderr)
 
 
 if __name__ == "__main__":

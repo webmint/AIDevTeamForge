@@ -426,6 +426,72 @@ The Phase 2.3 `file:line` grounding rule applies to `--file-line` here as well.
 
 For enhancement mode this phase is OPTIONAL — run it when the enhancement adds a new code path that touches an existing helper signature; skip when the enhancement is purely additive in a new module.
 
+### Phase 2.4d — Click-handler-to-write-boundary trace (MANDATORY when bug mode + presentation-layer symptom)
+
+Phase 2.4c surfaces helper-API surfaces; it does NOT force the LLM to read intermediate transformers/adapters/mappers that sit BETWEEN the user-action handler and the write-boundary call. Adapter functions advertise shape conversion via their names (`adapter`, `mapper`, `transformer`) and the LLM treats them as identity-preserving on the values they pass through — so a function that silently rewrites `id` to `Math.floor(10000 + Math.random() * 90000)` looks like a no-op from outside and gets skipped. Phase 2.4d closes that gap by forcing end-to-end reads of every intermediate on the call chain from handler to write-boundary.
+
+**Gate.** This phase is MANDATORY when `memo.mode == "bug"` AND the primary finding's `file_line` resolves to a presentation-layer path (Vue / React / views — same `_is_presentation_layer` heuristic check 8b uses). Skip when: (bug mode AND primary finding is a domain-layer path) OR (enhancement mode regardless of layer).
+
+**Step 1 — Identify the user-action handler.** The function on the symptom file that fires on the user's repro action (click handler, form submit, input change). Source: `repro_or_current` dimension prose + the `affected_area` file path. Run `search_code` for event-binding tokens in the symptom file:
+
+```
+search_code(pattern="@click=|onClick=|addEventListener|v-on:|onPress|onPanResponderMove|hx-on::|dispatchEvent|useClickHandler|useEventListener")
+```
+
+Pick the function bound to the user-action event. Record its qualified name.
+
+**Heuristic-fragility fallback.** If no handler token is found via the `search_code` sweep (dynamic event binding with variable event type, composable-wrapped binding, framework-specific syntax not in the token list, programmatic dispatch), ask the user ONE direct prompt: *"I couldn't auto-detect the click/event handler that triggers the bug from the symptom file. Which function or method handles the user action that reproduces the bug? (give a function name or `file:line`)"*. Wait for the user answer, then proceed. Do NOT guess. Do NOT skip Phase 2.4d on heuristic miss — the user-fallback is the recovery path.
+
+**Step 2 — Identify the write-boundary call.** The function the handler eventually calls that PERSISTS the operation. Write-boundary token list (covers REST + Redux + repository + WebSocket + GraphQL + IndexedDB + SSE + message-bus + Apollo cache + state-management actions):
+
+```
+addLine|dispatch|commit|mutate|mutation|repo.save|*.put|*.post|*.create|*.update|*.emit|*.send|*.publish|cache.writeQuery|cache.writeFragment|store.put|tx.add|tx.put|.dispatchEvent|eventBus.emit|bus.publish
+```
+
+Run `search_code` for those tokens in the symptom file. Pick the call whose receiver name matches one of the tokens AND whose argument list visibly carries the symptom value (the value cited in `memo.dimensions.symptom` or `memo.dimensions.desired`). Record its qualified name. If no token matches (project uses non-conventional write-boundary verbs not on the list — e.g., `tellSaga`, `enqueueWork`, `requestSync`), ask the user ONE direct prompt: *"I couldn't auto-detect the write-boundary call (the function that persists the operation) from the symptom file. Which function in the call chain actually persists the change? (give a function name or `file:line`)"*. Wait for the user answer, then proceed.
+
+**Step 3 — Trace handler → write-boundary.** Run:
+
+```
+trace_path(<handler_qn>, mode=calls, direction=outbound)
+```
+
+Record the full path of intermediate function QNs (everything between the handler and the write-boundary call, exclusive on both ends). Use `mode=calls` always — CBM's `mode=data_flow` returns identical hop lists to `mode=calls` for first-party project code (pre-flight verified 2026-05-18) and provides no incremental signal.
+
+**Handler-not-a-graph-node fallback.** Vue / SFC template files emit only File and Module nodes in the CBM graph — the handler defined in `<script setup>` may not resolve as a Function node. If `trace_path` returns empty OR `search_graph(name_pattern="<handler_name>")` returns 0 results, ask the user ONE direct prompt: *"I couldn't trace from `<handler>` to a write-boundary call via the code graph (Vue/template files often aren't indexed at function granularity). What intermediate functions does the handler call before reaching the persistence call? (list function names or `file:line` references)"*. Wait for the user answer, then proceed with the user-supplied chain.
+
+**Step 4 — Read each intermediate end-to-end + record findings.** For EACH intermediate function on the path (excluding the handler and the write-boundary themselves), apply two cumulative filters to decide whether to call `get_code_snippet`:
+
+1. **First-party filter.** Skip functions whose source file is in framework / vendor / SDK packages (Vue runtime, Pinia store internals, BLoC infrastructure, `node_modules/*`, `@vue/*`, `@pinia/*`). Read only first-party project workspace files.
+2. **Shape-conversion-name filter (priority hint).** Preferentially read functions whose name matches a shape-conversion pattern (case-insensitive substring): `adapter|mapper|transformer|normalizer|converter|serializer|deserializer|encoder|decoder|wrapper|builder|formatter|parser`. These names advertise shape conversion but commonly hide value mutation. Pure-passthrough functions (handlers / dispatchers / forwarders whose names do NOT match the pattern) may be skipped at LLM discretion when the file body is large. The filter is a HINT, not a hard gate — when in doubt, read.
+
+For each function read, look for value-mutation patterns: `Math.random`, `crypto.random`, `Date.now`, `uuid()`, manual id reassignment (`item.id = ...`, `obj[...] = ...`), `structuredClone` / destructuring that loses fields, type-coercion that drops precision.
+
+Then record EACH intermediate function as a Finding row via:
+
+```bash
+.devforge/lib/research_helper record-finding \
+    --surface "data-flow intermediate: <one-line role>" \
+    --file-line "<path:line>" \
+    --relevance "<one-line note — include the intermediate's qualified name here (or in --surface)>" \
+    --framing "primary"
+```
+
+Either the `--relevance` or `--surface` text MUST contain the intermediate's qualified name as a substring — the `record-data-flow-chain` setter substring-matches each `intermediate_qns[i]` against existing findings' `relevance` AND `surface` fields and rejects intermediates with no referencing finding. Inline-call expressions also count as intermediates: when the write-boundary call argument list contains a function call expression (not just identifier passthrough), the call expression's callee MUST be added to `intermediate_qns` as well.
+
+**Step 5 — Persist the chain.** After every intermediate has a recorded Finding:
+
+```bash
+.devforge/lib/research_helper record-data-flow-chain \
+    --handler-qn "<handler qualified name>" \
+    --write-boundary-qn "<write-boundary qualified name>" \
+    --intermediate-qns '["<intermediate_qn_1>", "<intermediate_qn_2>", ...]'
+```
+
+`--intermediate-qns '[]'` is valid (direct handler→write-boundary call with no intermediates). The setter validates each intermediate_qn against existing findings; if any intermediate has no referencing Finding, the setter exits with code 2 — copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), record the missing Finding via `record-finding` first, then re-run `record-data-flow-chain`. Last-write-wins on subsequent calls.
+
+**Verify enforcement.** The helper's `verify` step adds check 15: when bug mode + presentation-layer primary symptom, `data_flow_chain` must be non-null. On non-zero exit from `verify` citing check 15, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then return to Phase 2.4d Step 1 to complete the missing trace.
+
 ### Phase 2.5 — Hypothesis enumeration (MANDATORY ≥2)
 
 **MANDATORY value-semantics classification (run before hypothesis enumeration).** For every symbol extracted via the Phase 2.4c Step 4 extraction rule, classify it as one of:

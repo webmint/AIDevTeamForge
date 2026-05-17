@@ -30,7 +30,7 @@ Phases (target order per REDESIGN-RESEARCH-PLAN.md)
   PHASE 3  Save + recommend          — render artifact + ask-to-save handled
                                        by orchestrator; helper renders + verifies.
 
-Subcommand summary (43)
+Subcommand summary (44)
 -----------------------
 
   Plumbing (8)   reset-memo, reset-report, read-memo, read-report,
@@ -44,6 +44,7 @@ Subcommand summary (43)
   Phase 2.4c (5) record-fix-path-helper, record-inbound-caller,
                  record-dead-sibling, record-consumer-chain,
                  set-value-semantics
+  Phase 2.4d (1) record-data-flow-chain
   Phase 1  (8)   record-finding, record-hypothesis,
                  set-root-cause-hypothesis, set-confidence,
                  set-trigger, set-root-cause-systemic,
@@ -232,6 +233,9 @@ def default_report_state() -> dict:
         # Records (qn, file_line) combos rejected by the anchor check so that
         # sticky-reject can block post-hoc-anchor adversarial retries.
         "helper_rejection_log": [],
+        # Patch 6 — data-flow chain (Gap 6: adapter tracing). None until
+        # record-data-flow-chain fires; overwritten (last-write-wins) on re-call.
+        "data_flow_chain": None,
     }
 
 
@@ -377,7 +381,7 @@ def _validate_enum(value: str, field_name: str, allowed: tuple) -> str:
 
 
 def _validate_string_array_json(value: str, field_name: str) -> List[str]:
-    """Parse value as JSON array of strings. Reject empty array / non-string items.
+    """Parse value as JSON array of strings. Reject non-list input, non-string items, or blank items. Empty array `[]` IS accepted (callers like approach.does_not_cover, approach.cons, data_flow_chain.intermediate_qns rely on this).
 
     Used for fields where items may contain commas (rule text, hypothesis
     falsifier). Caller passes a JSON-array string like '["a", "b"]'.
@@ -1282,6 +1286,36 @@ def _register_subcommands(subparsers) -> None:
     )
     sp.add_argument("--evidence", required=True)
     sp.set_defaults(func=cmd_set_value_semantics)
+
+    sp = subparsers.add_parser(
+        "record-data-flow-chain",
+        help=(
+            "Record the data-flow chain from click handler to write-boundary call. "
+            "Each intermediate must have a prior Finding row referencing it."
+        ),
+    )
+    sp.add_argument(
+        "--handler-qn",
+        required=True,
+        dest="handler_qn",
+        help="Qualified name of the user-action handler (entry point).",
+    )
+    sp.add_argument(
+        "--write-boundary-qn",
+        required=True,
+        dest="write_boundary_qn",
+        help="Qualified name of the persistence / write-boundary call.",
+    )
+    sp.add_argument(
+        "--intermediate-qns",
+        required=True,
+        dest="intermediate_qns",
+        help=(
+            "JSON array of intermediate transformer/adapter QNs between handler and "
+            "write-boundary. May be empty list '[]' for direct handler→boundary calls."
+        ),
+    )
+    sp.set_defaults(func=cmd_record_data_flow_chain)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -2377,6 +2411,81 @@ def cmd_set_value_semantics(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- Patch 6: data-flow chain setter ----------------------------------------
+
+
+def cmd_record_data_flow_chain(args: argparse.Namespace) -> int:
+    """Record the data-flow chain from click handler to write-boundary call.
+
+    Validates each intermediate has a prior Finding row referencing its QN
+    (substring match in finding's relevance or surface). Persists
+    {handler_qn, write_boundary_qn, intermediate_qns} to report state.
+    Last-write-wins — subsequent calls overwrite the prior chain.
+
+    Empty intermediate_qns list [] is valid (direct handler→write-boundary).
+
+    Gate: each intermediate_qn must appear in at least one existing Finding's
+    relevance or surface field (simple substring match). The spec instructs
+    the LLM to record intermediates via record-finding --surface / --relevance
+    before calling this setter.
+
+    KNOWN GAP: intermediate-qn ↔ Finding cross-check runs only at set time.
+    Direct JSON mutation that writes an arbitrary truthy `data_flow_chain`
+    value bypasses this validation; verify check 15 only confirms the field
+    is non-null at verify time and does NOT re-validate intermediate_qns
+    against findings. Closing the gap would require a verify-time re-walk
+    of the same substring check — deferred until empirical evidence shows
+    the bypass is being exploited.
+    """
+    try:
+        handler_qn = _validate_scalar(args.handler_qn, "data_flow_chain.handler_qn")
+        write_boundary_qn = _validate_scalar(
+            args.write_boundary_qn, "data_flow_chain.write_boundary_qn"
+        )
+        intermediate_qns = _validate_string_array_json(
+            args.intermediate_qns, "data_flow_chain.intermediate_qns"
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # Validate each intermediate has a Finding row referencing it before entering
+    # the state transaction (so the file is never rewritten on validation failure).
+    if intermediate_qns:
+        try:
+            report_snapshot = _load_report(args.devforge_dir)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("record-data-flow-chain: {0}".format(err))
+        findings = report_snapshot.get("findings") or []
+        for qn in intermediate_qns:
+            referenced = any(
+                qn in (f.get("relevance") or "") or qn in (f.get("surface") or "")
+                for f in findings
+            )
+            if not referenced:
+                existing_surfaces = sorted(
+                    f.get("surface") or "" for f in findings if f.get("surface")
+                )
+                return _die(
+                    "record-data-flow-chain: intermediate_qn {0!r} has no Finding row "
+                    "referencing it (record-finding must be called for each intermediate "
+                    "before record-data-flow-chain). Existing findings: {1!r}".format(
+                        qn, existing_surfaces
+                    ),
+                    code=2,
+                )
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report["data_flow_chain"] = {
+                "handler_qn": handler_qn,
+                "write_boundary_qn": write_boundary_qn,
+                "intermediate_qns": intermediate_qns,
+            }
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-data-flow-chain: {0}".format(err))
+    return 0
+
+
 # --- Render + verify + summary ----------------------------------------------
 
 
@@ -2711,6 +2820,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
          must anchor to a finding (exact match OR same path within ±5 lines).
          Catches direct state mutation bypassing record-fix-path-helper setter.
          Gated on bug mode (consistent with checks 8 / 13).
+     15. Data-flow chain required for bug mode + presentation-layer primary
+         symptom: data_flow_chain must be non-null. Fires only when mode==bug
+         AND the first primary finding's path is presentation-layer. Forces
+         the LLM to trace from click handler through intermediates to the
+         write-boundary call via record-data-flow-chain (Patch 6 / Gap 6).
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -3027,6 +3141,38 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     "anchor to any recorded finding (exact match or same path within ±5 "
                     "lines); direct state mutation likely bypassed record-fix-path-helper "
                     "anchor gate".format(h.get("qn"), h_fl)
+                )
+
+    # Check 15: data-flow chain required for bug mode + presentation-layer symptom.
+    # Fires when mode==bug AND the first primary finding's path is presentation-layer.
+    # Requires data_flow_chain to be non-null (set via record-data-flow-chain).
+    # NOTE: check 15 is set-time only — intermediate_qns→Finding references are
+    # validated at record-data-flow-chain call time and not re-walked here.
+    # Direct JSON mutation that sets an arbitrary truthy value bypasses the
+    # intermediate gate. Deferred until empirical evidence shows the bypass is
+    # exploited; closing it would require duplicating the substring check here.
+    bug_mode_15 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
+    if bug_mode_15:
+        # Reuse the primary finding path extraction pattern from check 8b.
+        all_findings_15 = report.get("findings") or []
+        primary_path_15 = None  # type: Optional[str]
+        for f in all_findings_15:
+            framing_val = f.get("framing") or "primary"
+            if framing_val == "primary":
+                fl = f.get("file_line") or ""
+                colon_pos = fl.rfind(":")
+                if colon_pos > 0:
+                    primary_path_15 = fl[:colon_pos]
+                elif fl:
+                    primary_path_15 = fl
+                break  # first primary finding only
+        if primary_path_15 and _is_presentation_layer(primary_path_15):
+            if not report.get("data_flow_chain"):
+                violations.append(
+                    "check 15: data_flow_chain is unset for bug-mode + presentation-layer "
+                    "symptom at {0!r}; Phase 2.4d MANDATORY — trace from click handler to "
+                    "write-boundary call via trace_path mode=calls and record via "
+                    "record-data-flow-chain".format(primary_path_15)
                 )
 
     if violations:
