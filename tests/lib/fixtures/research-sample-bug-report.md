@@ -26,6 +26,7 @@ Inline sort in reactive body is unstable; recommended fix is a derived computed 
 |---|---|---|---|
 | products list component | src/admin/Products.vue:201 | inline .sort() call inside watch body | primary |
 | list helper | src/admin/helpers.ts:45 | shared comparator unused here | primary |
+| shared sort helper | pkg-shared/sort.ts:10 | canonical comparator used by other packages — cross-layer fix candidate | primary |
 | fetch / watch race window | src/admin/Products.vue:180 | fetch can complete while watch still iterating — runner-up probe | runner-up |
 
 ## Root Cause Hypothesis (WHY)

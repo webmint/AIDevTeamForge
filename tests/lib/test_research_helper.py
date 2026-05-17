@@ -147,6 +147,8 @@ class TestSchemas(unittest.TestCase):
             # Phase 2.4c fields
             "fix_path_helpers", "inbound_callers", "dead_siblings",
             "consumer_chain", "value_semantics",
+            # Patch 5 anchor-gate rejection log
+            "helper_rejection_log",
         ):
             self.assertEqual(rep[arr_field], [], "field {0} default".format(arr_field))
         self.assertEqual(
@@ -1108,6 +1110,19 @@ def _build_bug_state(devforge):
     # in src/admin, and one cross-layer (pkg-shared) with its definition in
     # pkg-shared — so check 8b (cross-layer rule) passes because at least one
     # helper's definition is in a different package than the symptom (src/admin).
+    #
+    # Patch 5 migration: record-fix-path-helper now enforces anchor gate —
+    # every helper's file_line must collide with a recorded finding (exact or ±5).
+    # The first helper anchors to the existing src/admin/Products.vue:201 finding
+    # (exact match). The second helper (pkg-shared/sort.ts:10) requires a finding
+    # at that path — added here to represent the CBM hit that surfaced the
+    # cross-layer helper during Phase 2.4b canonical-pattern search.
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "shared sort helper",
+        "--file-line", "pkg-shared/sort.ts:10",
+        "--relevance", "canonical comparator used by other packages — cross-layer fix candidate",
+    ])
     _run([
         "--devforge-dir", str(devforge), "record-fix-path-helper",
         "--helper-qn", "ProductsListComponent.sortItems",
@@ -1470,6 +1485,20 @@ class TestPhase24cSetters(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         devforge = Path(tmp.name) / ".devforge"
         _run(["--devforge-dir", str(devforge), "reset-report"])
+        # Patch 5: pre-seed findings for the file_lines used across these tests
+        # so the anchor gate passes when record-fix-path-helper is called.
+        _run([
+            "--devforge-dir", str(devforge), "record-finding",
+            "--surface", "BLoC dispatch",
+            "--file-line", "lib/blocs/order_bloc.dart:42",
+            "--relevance", "primary symptom site",
+        ])
+        _run([
+            "--devforge-dir", str(devforge), "record-finding",
+            "--surface", "fetch use case",
+            "--file-line", "lib/use_cases/fetch_order.dart:10",
+            "--relevance", "use-case entry point",
+        ])
         return tmp, devforge
 
     def _read_report(self, devforge):
@@ -1502,18 +1531,22 @@ class TestPhase24cSetters(unittest.TestCase):
     def test_record_fix_path_helper_deduplication(self):
         tmp, devforge = self._fresh()
         try:
-            _run([
+            r1 = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "OrderBLoC.fetchOrder",
                 "--file-line", "lib/blocs/order_bloc.dart:42",
             ])
-            _run([
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            # Second call: same qn, different file_line within anchor ±5 so the
+            # call reaches the dedupe path (not blocked by Patch 5 anchor gate).
+            r2 = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
                 "--helper-qn", "OrderBLoC.fetchOrder",
-                "--file-line", "lib/blocs/order_bloc.dart:99",  # different file_line, same qn → deduped
+                "--file-line", "lib/blocs/order_bloc.dart:44",  # Δ=2 vs finding at :42 → anchored; same qn → deduped
             ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["fix_path_helpers"]), 1)
         finally:
@@ -1876,6 +1909,15 @@ class TestVerifyCheck8(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._build_base_state(devforge)
+            # Add a finding at the helper's definition file_line so the
+            # Patch 5 anchor gate passes.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-finding",
+                "--surface", "some helper",
+                "--file-line", "lib/helpers/some.ts:10",
+                "--relevance", "cross-layer helper definition",
+            ])
             # Add a fix_path_helper and a matching inbound_caller.
             # --file-line gives the helper's definition location (cross-layer from src/admin).
             _run([
@@ -1931,6 +1973,11 @@ class TestVerifyCheck9(unittest.TestCase):
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
             ]
+            # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+            data.setdefault("findings", []).append({
+                "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                "relevance": "cross-layer helper candidate", "framing": "primary",
+            })
             # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
             data["consumer_chain"] = [
                 {"value": "fetchOrder", "consumer_qn": "View.build",
@@ -1958,6 +2005,11 @@ class TestVerifyCheck10(unittest.TestCase):
         data["inbound_callers"] = [
             {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
+        # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+        data.setdefault("findings", []).append({
+            "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+            "relevance": "cross-layer helper candidate", "framing": "primary",
+        })
         # Set value_semantics with invariant + consumer_chain.
         data["consumer_chain"] = [
             {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
@@ -2025,6 +2077,11 @@ class TestVerifyCheck10(unittest.TestCase):
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
             ]
+            # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+            data.setdefault("findings", []).append({
+                "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                "relevance": "cross-layer helper candidate", "framing": "primary",
+            })
             # Invariant but no dead siblings.
             data["consumer_chain"] = [
                 {"value": "x", "consumer_qn": "SomeUseCase.run",
@@ -2058,6 +2115,11 @@ class TestVerifyCheck11(unittest.TestCase):
         data["inbound_callers"] = [
             {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
+        # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+        data.setdefault("findings", []).append({
+            "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+            "relevance": "cross-layer helper candidate", "framing": "primary",
+        })
         data["consumer_chain"] = [
             {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
              "file_line": "lib/order.dart:10", "role": "enforces parity"}
@@ -2119,6 +2181,11 @@ class TestVerifyCheck11(unittest.TestCase):
             data["inbound_callers"] = [
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "s:1"}
             ]
+            # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+            data.setdefault("findings", []).append({
+                "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                "relevance": "cross-layer helper candidate", "framing": "primary",
+            })
             # Preference only, no invariant.
             data["consumer_chain"] = [
                 {"value": "x", "consumer_qn": "V.build",
@@ -2231,7 +2298,7 @@ class TestResetReportClearsPhase24cFields(unittest.TestCase):
             _run(["--devforge-dir", str(devforge), "reset-report"])
             data = json.loads((devforge / "research-report.json").read_text())
             for field in ("fix_path_helpers", "inbound_callers", "dead_siblings",
-                          "consumer_chain", "value_semantics"):
+                          "consumer_chain", "value_semantics", "helper_rejection_log"):
                 self.assertEqual(data[field], [], "field {0} not reset".format(field))
 
 
@@ -2314,6 +2381,15 @@ class TestVerifyCheck11EmptyTokenList(unittest.TestCase):
                 {"helper_qn": "ProductsHelper.sort", "caller_qn": "View.render", "file_line": "src/v.ts:5"},
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"},
             ]
+            # Patch 5: add findings anchoring both helper file_lines (check 14 requires it).
+            # src/admin/helpers.ts:45 is in the existing bug state but Δ=35 from :10 — add
+            # an explicit finding at :10. lib/blocs/order_bloc.dart:42 is new.
+            data.setdefault("findings", []).extend([
+                {"surface": "helpers entry", "file_line": "src/admin/helpers.ts:10",
+                 "relevance": "anchor for ProductsHelper.sort", "framing": "primary"},
+                {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                 "relevance": "anchor for OrderBLoC.fetchOrder", "framing": "primary"},
+            ])
             # Invariant entry: empty evidence, no consumer_chain, no dead_siblings.
             # Hand-authored to bypass the setter's consumer_chain prerequisite.
             data["consumer_chain"] = []
@@ -2349,6 +2425,11 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
         data["inbound_callers"] = [
             {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
+        # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+        data.setdefault("findings", []).append({
+            "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+            "relevance": "cross-layer helper candidate", "framing": "primary",
+        })
         data["consumer_chain"] = [
             {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
              "file_line": "lib/order.dart:10", "role": "enforces parity"}
@@ -2402,6 +2483,11 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
                 {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build",
                  "file_line": "src/v.dart:5"}
             ]
+            # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+            data.setdefault("findings", []).append({
+                "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                "relevance": "cross-layer helper candidate", "framing": "primary",
+            })
             data["consumer_chain"] = [
                 {"value": "X", "consumer_qn": "SomeUseCase.run",
                  "file_line": "lib/s.dart:1", "role": "enforces it"}
@@ -3071,6 +3157,14 @@ def _build_bug_state_same_package(devforge):
         "--helper-qn", "ProductsListComponent.sortItems",
         "--caller-qn", "ProductsListComponent.watchItems",
         "--file-line", "src/admin/Products.vue:201",
+    ])
+    # Anchor for the second same-package helper (Patch 5 anchor gate requires
+    # every fix_path_helper.file_line to collide with a recorded finding).
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "admin helpers entry",
+        "--file-line", "src/admin/helpers.ts:10",
+        "--relevance", "doSort helper definition — same-package (src/admin)",
     ])
     _run([
         "--devforge-dir", str(devforge), "record-fix-path-helper",
@@ -4285,6 +4379,368 @@ class TestSingleLayerRenderAndSummary(unittest.TestCase):
             _build_enhancement_state(devforge)
             out = self._summary(devforge)
             self.assertNotIn("recommended_approach.single_layer", out)
+
+
+# ---------------------------------------------------------------------------
+# Patch 5 — unit tests for _split_path_line + _has_anchor_finding.
+# ---------------------------------------------------------------------------
+
+
+class TestSplitPathLine(unittest.TestCase):
+    """Unit tests for _split_path_line."""
+
+    def test_normal_path_colon_line(self):
+        self.assertEqual(
+            research_helper._split_path_line("src/x.ts:42"),
+            ("src/x.ts", 42),
+        )
+
+    def test_sentinel_none(self):
+        path, line = research_helper._split_path_line("(none)")
+        self.assertEqual(path, "(none)")
+        self.assertIsNone(line)
+
+    def test_empty_string(self):
+        self.assertEqual(research_helper._split_path_line(""), (None, None))
+
+    def test_whitespace_only(self):
+        self.assertEqual(research_helper._split_path_line("   "), (None, None))
+
+    def test_no_colon(self):
+        self.assertEqual(research_helper._split_path_line("src/x.ts"), (None, None))
+
+    def test_colon_at_start(self):
+        # colon_idx <= 0 → (None, None)
+        self.assertEqual(research_helper._split_path_line(":42"), (None, None))
+
+    def test_non_integer_line(self):
+        self.assertEqual(research_helper._split_path_line("src/x.ts:abc"), (None, None))
+
+    def test_path_with_multiple_colons_rfind(self):
+        # rfind picks last colon
+        path, line = research_helper._split_path_line("C:/src/foo.ts:10")
+        self.assertEqual(path, "C:/src/foo.ts")
+        self.assertEqual(line, 10)
+
+
+class TestHasAnchorFinding(unittest.TestCase):
+    """Unit tests for _has_anchor_finding."""
+
+    def _finding(self, file_line, framing="primary"):
+        return {"surface": "s", "file_line": file_line, "relevance": "r", "framing": framing}
+
+    def test_exact_match(self):
+        findings = [self._finding("src/x.ts:42")]
+        self.assertTrue(research_helper._has_anchor_finding("src/x.ts:42", findings))
+
+    def test_within_5_above(self):
+        # target :46, finding :42 → Δ=4 ≤ 5
+        findings = [self._finding("src/x.ts:42")]
+        self.assertTrue(research_helper._has_anchor_finding("src/x.ts:46", findings))
+
+    def test_within_5_below(self):
+        # target :38, finding :42 → Δ=4 ≤ 5
+        findings = [self._finding("src/x.ts:42")]
+        self.assertTrue(research_helper._has_anchor_finding("src/x.ts:38", findings))
+
+    def test_exactly_5_boundary(self):
+        findings = [self._finding("src/x.ts:42")]
+        self.assertTrue(research_helper._has_anchor_finding("src/x.ts:47", findings))
+
+    def test_outside_5_lines(self):
+        # Δ=8 > 5
+        findings = [self._finding("src/x.ts:42")]
+        self.assertFalse(research_helper._has_anchor_finding("src/x.ts:50", findings))
+
+    def test_different_file_same_line(self):
+        findings = [self._finding("src/x.ts:42")]
+        self.assertFalse(research_helper._has_anchor_finding("src/y.ts:42", findings))
+
+    def test_sentinel_target_never_matches(self):
+        findings = [self._finding("(none)")]
+        self.assertFalse(research_helper._has_anchor_finding("(none)", findings))
+
+    def test_none_target_path_never_matches(self):
+        # malformed target → False
+        self.assertFalse(research_helper._has_anchor_finding("no-colon", []))
+
+    def test_sentinel_finding_does_not_match_real_target(self):
+        # (none) in findings must not match a real helper path
+        findings = [self._finding("(none)")]
+        self.assertFalse(research_helper._has_anchor_finding("src/x.ts:42", findings))
+
+    def test_empty_findings_list(self):
+        self.assertFalse(research_helper._has_anchor_finding("src/x.ts:42", []))
+
+
+# ---------------------------------------------------------------------------
+# Patch 5 — anchor gate + sticky-reject tests for record-fix-path-helper.
+# ---------------------------------------------------------------------------
+
+
+class TestFixPathHelperAnchorGate(unittest.TestCase):
+    """Anchor gate (Patch 5): record-fix-path-helper must anchor to a finding."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _record_finding(self, devforge, file_line, framing="primary"):
+        return _run([
+            "--devforge-dir", str(devforge), "record-finding",
+            "--surface", "s",
+            "--file-line", file_line,
+            "--relevance", "r",
+            "--framing", framing,
+        ])
+
+    def _record_helper(self, devforge, helper_qn, file_line):
+        return _run([
+            "--devforge-dir", str(devforge), "record-fix-path-helper",
+            "--helper-qn", helper_qn,
+            "--file-line", file_line,
+        ])
+
+    def test_rejects_when_no_finding_anchors(self):
+        """Fresh state, no findings → helper rejected; rejection_log populated."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("does not anchor", r.stderr)
+            # Rejection log must contain the entry.
+            rep = self._read_report(devforge)
+            log = rep.get("helper_rejection_log") or []
+            self.assertEqual(len(log), 1)
+            self.assertEqual(log[0]["qn"], "QN_A")
+            self.assertEqual(log[0]["file_line"], "src/x.ts:42")
+        finally:
+            tmp.cleanup()
+
+    def test_accepts_exact_file_line_match(self):
+        """Finding at src/x.ts:42, helper at src/x.ts:42 → exact match → exit 0."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record_finding(devforge, "src/x.ts:42")
+            r = self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_accepts_within_5_lines_above(self):
+        """Finding at src/x.ts:42, helper at src/x.ts:46 (Δ=4) → exit 0."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record_finding(devforge, "src/x.ts:42")
+            r = self._record_helper(devforge, "QN_A", "src/x.ts:46")
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_accepts_within_5_lines_below(self):
+        """Finding at src/x.ts:42, helper at src/x.ts:38 (Δ=4) → exit 0."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record_finding(devforge, "src/x.ts:42")
+            r = self._record_helper(devforge, "QN_A", "src/x.ts:38")
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_outside_5_line_tolerance(self):
+        """Finding at src/x.ts:42, helper at src/x.ts:50 (Δ=8) → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record_finding(devforge, "src/x.ts:42")
+            r = self._record_helper(devforge, "QN_A", "src/x.ts:50")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("does not anchor", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_different_file_same_line(self):
+        """Finding at src/x.ts:42, helper at src/y.ts:42 → different file → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record_finding(devforge, "src/x.ts:42")
+            r = self._record_helper(devforge, "QN_A", "src/y.ts:42")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("does not anchor", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_sticky_rejects_after_post_hoc_finding(self):
+        """Reject, then add finding at same path, then retry → STILL rejected (sticky).
+
+        Closes the adversarial path where LLM records a finding post-hoc to
+        unblock a rejected helper.
+        """
+        tmp, devforge = self._fresh()
+        try:
+            # Step 1: try helper with no findings → rejected.
+            r1 = self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            self.assertEqual(r1.returncode, 2)
+            self.assertIn("does not anchor", r1.stderr)
+
+            # Step 2: add finding at the exact path.
+            self._record_finding(devforge, "src/x.ts:42")
+
+            # Step 3: retry the same (qn, file_line) combo → sticky-rejected.
+            r2 = self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            self.assertEqual(r2.returncode, 2)
+            self.assertIn("previously rejected", r2.stderr)
+            self.assertIn("sticky-reject", r2.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_sticky_reject_per_combo(self):
+        """Sticky-reject scoped to (qn, file_line) combo — different qn or file_line is not blocked."""
+        tmp, devforge = self._fresh()
+        try:
+            # Reject (QN_A, src/x.ts:42) — no findings yet.
+            self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            # Add a finding far from :42 (at :60 — would normally be outside ±5).
+            self._record_finding(devforge, "src/x.ts:60")
+
+            # (QN_A, src/x.ts:60): different file_line — but check anchor first.
+            # src/x.ts:60 has a finding at :60 (exact match) → should succeed.
+            r2 = self._record_helper(devforge, "QN_A", "src/x.ts:60")
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            # (QN_B, src/x.ts:42): different qn — sticky-reject doesn't apply.
+            # But no finding anchors src/x.ts:42 (finding is at :60, Δ=18 > 5) → rejected.
+            r3 = self._record_helper(devforge, "QN_B", "src/x.ts:42")
+            self.assertEqual(r3.returncode, 2)
+            # Confirm it's the anchor error, NOT the sticky-reject error.
+            self.assertIn("does not anchor", r3.stderr)
+            self.assertNotIn("previously rejected", r3.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_anchor_skips_none_sentinel_in_findings(self):
+        """(none) in findings does not count as anchor for a real helper file_line."""
+        tmp, devforge = self._fresh()
+        try:
+            # record-inbound-caller accepts (none) as file_line; record-finding also does.
+            _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "s",
+                "--file-line", "(none)",
+                "--relevance", "r",
+            ])
+            r = self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("does not anchor", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_dedupe_still_works_after_anchor_accept(self):
+        """After anchor-accepted helper, recording same (qn, file_line) again is a no-op (deduped)."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record_finding(devforge, "src/x.ts:42")
+            r1 = self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            # Second call with same qn (even different file_line) → deduped on qn.
+            r2 = self._record_helper(devforge, "QN_A", "src/x.ts:42")
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["fix_path_helpers"]), 1)
+        finally:
+            tmp.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Patch 5 — verify check 14 tests.
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyCheck14(unittest.TestCase):
+    """Check 14: every fix_path_helpers[].file_line must anchor to a finding.
+
+    Catches direct state mutation that bypassed the record-fix-path-helper
+    anchor gate setter. Gated on bug mode.
+    """
+
+    def test_check14_passes_when_all_helpers_anchored(self):
+        """_build_bug_state happy path: both helpers are anchored to findings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("check 14", r.stderr)
+
+    def test_check14_fails_when_helper_lacks_anchor(self):
+        """Direct JSON mutation bypasses setter; unanchored helper → check 14 violation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Insert a helper at a path with no matching finding.
+            data["fix_path_helpers"].append({
+                "qn": "UnanchoredHelper.method",
+                "file_line": "some/novel/path.ts:999",
+            })
+            # Add a matching inbound_caller to satisfy check 9.
+            data.setdefault("inbound_callers", []).append({
+                "helper_qn": "UnanchoredHelper.method",
+                "caller_qn": "SomeCaller.call",
+                "file_line": "src/admin/Products.vue:201",
+            })
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 14", r.stderr)
+            self.assertIn("some/novel/path.ts:999", r.stderr)
+
+    def test_check14_within_5_line_tolerance(self):
+        """Helper at src/x.ts:46, finding at src/x.ts:42 (Δ=4) → check 14 passes."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Add finding at :46 and helper at :46 (or within ±5 of an existing finding).
+            # Use pkg-shared/sort.ts:10 as base (from Patch 5 migration in _build_bug_state).
+            # Add helper at pkg-shared/sort.ts:14 (Δ=4 from :10 → passes).
+            data["fix_path_helpers"].append({
+                "qn": "TolerantHelper.method",
+                "file_line": "pkg-shared/sort.ts:14",
+            })
+            data.setdefault("inbound_callers", []).append({
+                "helper_qn": "TolerantHelper.method",
+                "caller_qn": "SomeCaller.call",
+                "file_line": "src/admin/Products.vue:201",
+            })
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("check 14", r.stderr)
+
+    def test_check14_enhancement_mode_skipped(self):
+        """Enhancement mode: check 14 does not fire even with unanchored helpers."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Insert helpers with no matching findings (enhancement has no helpers by default).
+            data["fix_path_helpers"] = [{"qn": "SomeHelper.method", "file_line": "novel/path.ts:1"}]
+            data["inbound_callers"] = [{"helper_qn": "SomeHelper.method",
+                                        "caller_qn": "C.m", "file_line": "novel/path.ts:1"}]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # Check 14 is bug-mode-gated; enhancement mode → check 14 cannot fire.
+            self.assertNotIn("check 14", r.stderr)
 
 
 if __name__ == "__main__":

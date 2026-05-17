@@ -228,6 +228,10 @@ def default_report_state() -> dict:
         "dead_siblings": [],
         "consumer_chain": [],
         "value_semantics": [],
+        # Patch 5 — anchor-gate rejection log. Each entry: {qn, file_line}.
+        # Records (qn, file_line) combos rejected by the anchor check so that
+        # sticky-reject can block post-hoc-anchor adversarial retries.
+        "helper_rejection_log": [],
     }
 
 
@@ -455,6 +459,71 @@ def _validate_file_line(value: str, field_name: str) -> str:
             )
         )
     return stripped
+
+
+# ---------------------------------------------------------------------------
+# Patch 5 — anchor-gate helpers (_split_path_line + _has_anchor_finding).
+# ---------------------------------------------------------------------------
+
+# Line-number tolerance window for anchor-gate collision (lenient to absorb
+# minor CBM/trace offsets between a finding's recorded line and the helper's
+# definition line as returned by search_graph). Single source of truth for
+# the numeric tolerance; prose mentions of "±5" in docstrings and error
+# messages are documentation and stay as literals.
+_ANCHOR_LINE_WINDOW = 5
+
+
+def _split_path_line(file_line: str) -> Tuple[Optional[str], Optional[int]]:
+    """Split "path/to/file.ts:42" into ("path/to/file.ts", 42).
+
+    Returns (None, None) for malformed input (no colon, non-integer line).
+    Returns ("(none)", None) for the sentinel so (none) findings never
+    accidentally match a real helper file_line (sentinels have no line number
+    and therefore no ±5 neighbourhood).
+    """
+    if not file_line or not file_line.strip():
+        return (None, None)
+    stripped = file_line.strip()
+    if stripped == "(none)":
+        return ("(none)", None)
+    colon_idx = stripped.rfind(":")
+    if colon_idx <= 0:
+        return (None, None)
+    path_part = stripped[:colon_idx]
+    line_part = stripped[colon_idx + 1:]
+    if not path_part:
+        return (None, None)
+    try:
+        line_num = int(line_part)
+    except ValueError:
+        return (None, None)
+    return (path_part, line_num)
+
+
+def _has_anchor_finding(target_file_line: str, findings: list) -> bool:
+    """True iff some finding's file_line collides with target_file_line.
+
+    Collision: exact match OR same path with line numbers within ±5
+    (lenient to absorb minor CBM/trace offset). Sentinel (none) in
+    target_file_line always returns False — (none) is not a real anchor.
+    Per Patch 5 fix-path-helper anchor gate.
+    """
+    target_path, target_line = _split_path_line(target_file_line)
+    if target_path is None or target_path == "(none)":
+        return False
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        fl = f.get("file_line") or ""
+        if fl == target_file_line:
+            return True
+        f_path, f_line = _split_path_line(fl)
+        if f_path is None or f_path == "(none)":
+            continue
+        if f_path == target_path and target_line is not None and f_line is not None:
+            if abs(f_line - target_line) <= _ANCHOR_LINE_WINDOW:
+                return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -2120,6 +2189,13 @@ def cmd_record_fix_path_helper(args: argparse.Namespace) -> int:
     file_line is the HELPER'S DEFINITION location (from search_graph result),
     NOT the call-site. The sentinel '(none)' is explicitly rejected — the
     definition file is required for layer-boundary package extraction in check 8b.
+
+    Patch 5 — anchor gate: --file-line must collide with at least one
+    existing finding's file_line (exact match OR same path with line within ±5).
+    Once rejected for a (qn, file_line) combo, sticky-reject all future attempts
+    with that combo even if a matching finding is added post-hoc — closes the
+    adversarial generator path where the LLM unblocks rejection by recording a
+    fabricated finding.
     """
     try:
         helper_qn = _validate_scalar(args.helper_qn, "fix_path_helper.helper_qn")
@@ -2133,14 +2209,71 @@ def cmd_record_fix_path_helper(args: argparse.Namespace) -> int:
             "layer-boundary detection",
             code=2,
         )
+
+    # Collect the reject message and code outside the transaction so the
+    # write (rejection log update) completes before we emit to stderr and return.
+    reject_message = None  # type: Optional[str]
+    reject_code = 0
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
-            lst = report.setdefault("fix_path_helpers", [])
-            # Dedupe on qn: skip if an entry with the same qn already exists.
-            if not any(entry.get("qn") == helper_qn for entry in lst):
-                lst.append({"qn": helper_qn, "file_line": file_line})
+            rejection_log = report.get("helper_rejection_log") or []
+            # Sticky-reject: if this (qn, file_line) was previously rejected,
+            # refuse even if findings now contain a collision (closes the
+            # post-hoc-anchor adversarial path).
+            for r in rejection_log:
+                if r.get("qn") == helper_qn and r.get("file_line") == file_line:
+                    reject_message = (
+                        "record-fix-path-helper: this (helper_qn, file_line) combo was "
+                        "previously rejected as unanchored ({0!r} at {1!r}); cannot retry "
+                        "even if findings now contain a collision (sticky-reject closes "
+                        "the post-hoc-anchor adversarial path). Either pick a different "
+                        "--file-line that anchored to a finding at the time of THIS call, "
+                        "or restart /research to clear rejection state.\n".format(
+                            helper_qn, file_line
+                        )
+                    )
+                    reject_code = 2
+                    break
+
+            if reject_code == 0:
+                # Anchor check: does any finding's file_line collide?
+                findings = report.get("findings") or []
+                if not _has_anchor_finding(file_line, findings):
+                    # Persist the rejection in the same transaction so future
+                    # retries with the same (qn, file_line) are sticky-blocked.
+                    rejection_log.append({"qn": helper_qn, "file_line": file_line})
+                    report["helper_rejection_log"] = rejection_log
+                    finding_paths = sorted({
+                        f.get("file_line")
+                        for f in findings
+                        if f.get("file_line")
+                    })
+                    reject_message = (
+                        "record-fix-path-helper: --file-line {0!r} does not anchor to any "
+                        "recorded finding (no finding's file_line collides — exact match or "
+                        "same path within ±5 lines). Fix-path helpers MUST anchor to CBM "
+                        "evidence already in the report. Record the relevant finding via "
+                        "record-finding FIRST (with the file:line from a search_graph or "
+                        "search_code result row), then re-call record-fix-path-helper with "
+                        "a DIFFERENT --file-line if you've identified a closer-anchored "
+                        "helper site. Current finding file_lines: {1!r}.\n".format(
+                            file_line, finding_paths
+                        )
+                    )
+                    reject_code = 2
+
+            if reject_code == 0:
+                lst = report.setdefault("fix_path_helpers", [])
+                # Dedupe on qn: skip if an entry with the same qn already exists.
+                if not any(entry.get("qn") == helper_qn for entry in lst):
+                    lst.append({"qn": helper_qn, "file_line": file_line})
+
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-fix-path-helper: {0}".format(err))
+
+    if reject_code == 2:
+        sys.stderr.write(reject_message)
+        return 2
     return 0
 
 
@@ -2574,6 +2707,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
          check 8b does NOT apply (i.e., symptom is NOT presentation-layer);
          for presentation-layer symptoms, check 8b is the blocking gate and
          the single-layer escape path is structurally unavailable.
+     14. Anchor gate mirror (verify-time): every fix_path_helpers[].file_line
+         must anchor to a finding (exact match OR same path within ±5 lines).
+         Catches direct state mutation bypassing record-fix-path-helper setter.
+         Gated on bug mode (consistent with checks 8 / 13).
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -2873,6 +3010,25 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     )
                 )
 
+    # Check 14: anchor gate mirror — every fix_path_helpers[].file_line must
+    # anchor to a finding (exact match OR same path within ±5 lines). Catches
+    # state mutations that bypassed the record-fix-path-helper setter.
+    # Gated on bug mode (consistent with checks 8 / 13).
+    bug_mode_14 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
+    if bug_mode_14 and fix_path_helpers:
+        all_findings_14 = report.get("findings") or []
+        for h in fix_path_helpers:
+            if not isinstance(h, dict):
+                continue
+            h_fl = h.get("file_line") or ""
+            if not _has_anchor_finding(h_fl, all_findings_14):
+                violations.append(
+                    "check 14: fix_path_helper {0!r} has file_line {1!r} that does not "
+                    "anchor to any recorded finding (exact match or same path within ±5 "
+                    "lines); direct state mutation likely bypassed record-fix-path-helper "
+                    "anchor gate".format(h.get("qn"), h_fl)
+                )
+
     if violations:
         for v in violations:
             sys.stderr.write("research_helper verify: {0}\n".format(v))
@@ -2941,6 +3097,10 @@ def cmd_summary(args: argparse.Namespace) -> int:
     ))
     lines.append("  verify_step: {0}".format("set" if report.get("verify_step") else "(unset)"))
     lines.append("  next_step_text: {0}".format("set" if report.get("next_step_text") else "(unset)"))
+    # Rejection log: surface count when non-empty (useful debug signal for anchor gate).
+    rejection_log_for_summary = report.get("helper_rejection_log") or []
+    if rejection_log_for_summary:
+        lines.append("  helper_rejection_count: {0}".format(len(rejection_log_for_summary)))
 
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
