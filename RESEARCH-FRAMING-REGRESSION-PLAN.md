@@ -1,6 +1,6 @@
 # RESEARCH-FRAMING-REGRESSION-PLAN
 
-**Status**: Patches 1 + 2 applied + tests green (160/160 in `tests/lib/test_research_helper.py`); Patches 3/4 pending. F2 closed by Patch 2 (layer-boundary stopping rule + check 8b cross-layer gate + `record-fix-path-helper --file-line`).
+**Status**: Patches 1 + 2 + 3 applied + tests green (176/176 in `tests/lib/test_research_helper.py`); Patches 4/5 pending. F2 closed by Patch 2 (layer-boundary stopping rule + check 8b cross-layer gate + `record-fix-path-helper --file-line`). Patch 3 closed Gap 3 (`set-scope` evidence gate on narrow framing). **Patch 5 added 2026-05-17** — fix-path helper anchor gate; addresses Gap 5 (target-selection blind spot the strengthened constitution can't see — constitution catches wrong PATTERN of cross-layer fix, Patch 5 catches wrong TARGET).
 **Date**: 2026-05-16
 **Branch**: `develop-2.0-init`
 **File**: `src/commands/research/main.md` (~554 lines) + `src/devforge/lib/research_helper.py` setters + verify checks
@@ -53,9 +53,17 @@ Phase 3 `recommended_approach` accepts any approach text. If the recommendation 
 
 Effect: even if Phase 2.4c surfaced a same-package helper, Phase 3 has no forcing function to question whether the recommendation should cross layers.
 
+### Gap 5 — Fix-path helper target not anchored to Phase 2.3 evidence
+
+Phase 2.4c `record-fix-path-helper --helper-qn` accepts any string. Post-Patch-2 `--file-line` anchors it to a CBM result row, but LLM still picks the row. No structural relationship enforced between Phase 2.4c fix-path helpers and Phase 2.3 findings — LLM can record findings at `MenuSection.vue:206` then invent a fix-path helper at `quoteBloc.addLine:42` that was never surfaced by CBM discovery.
+
+Effect: 2-layer trace from a wrong starting point lands 2 layers from wrong. Constitution strengthening (`CONSTITUTION-STRENGTHENING-PLAN.md` §3.6 DI) catches **wrong PATTERN** of cross-layer fix (entity-class import in outer layer) but is **silent on wrong TARGET**. /specify, /plan, /execute-task can author a constitution-compliant wrapper-export pattern targeting the wrong code region → bug ships unfixed + new wrapper-export shipped uselessly.
+
+Distinction from Gap 2: Gap 2 controls how far Phase 2.4c traces (stopping rule). Gap 5 controls where Phase 2.4c starts (anchor rule). Different gates.
+
 ## Patches
 
-Four patches, in dependency order. Each leaves /research in a buildable, verifiable state. Apply sequentially.
+Five patches, in dependency order. Each leaves /research in a buildable, verifiable state. Apply sequentially.
 
 > **Rejected patch — prior-art input source (recorded for posterity).** An earlier draft proposed a Phase 1.5 step that walked `research/*.md` + `specs/*/spec.md` for topic-slug match + recorded them via `record-prior-art`. **Rejected** because (a) /research is `Fresh-every-run` by contract (main.md:66) — prior-art read contradicts that invariant; (b) prior LLM outputs propagate stale framing — old run's cited `specs/008` itself missed the wrapper-export step that the real ship corrected at code review, so transcribing it would propagate the same half-correct framing; (c) pollution scales with project age — N stale entries per fresh run anchor LLM toward older constitution + older code state; (d) /research's contract is independent investigation from CBM + docs + constitution, NOT consensus with prior LLM outputs. Patches 1 + 2 (renumbered below) make the framing-luck delta irrelevant without LLM-to-LLM transcription.
 
@@ -112,6 +120,25 @@ Helper verify check 8 strengthens: rejects a `fix_path_helpers` list where ALL e
 
 **Argue**: this is the strongest gate but also the most prose-heavy. Risk: LLM produces a vacuous justification (e.g., "single-layer fix is correct because the bug is in the Vue file"). Mitigation: justification text MUST cite a recorded row (helper enforces non-empty `--cites` arg referencing a row id). Without a recorded row to cite, justification fails. This raises the bar from "LLM agreed it's single-layer" to "LLM had to produce a row in its own evidence trail that supports single-layer".
 
+### Patch 5 — Fix-path helper anchor gate (Gap 5)
+
+**Where**: `record-fix-path-helper` setter + new verify check on the helper.
+
+**Change**: When `record-fix-path-helper --helper-qn ... --file-line <path:line>` is called, the setter enforces that `<path:line>` collides with at least one already-recorded `record-finding --file-line` row. Collision = identical `path:line` string OR same `path` with line numbers within ±5 (lenient to absorb minor line drift between CBM hit + helper trace). If no Phase 2.3 finding anchors the fix-path helper, setter exits 2 with stderr citing the missing anchor.
+
+Ordering enforcement: helper inspects findings recorded BEFORE the fix-path-helper call (via row timestamp or array-index gate). Findings added AFTER the fix-path call do NOT unlock the collision check retroactively. Adversarial-generator path closed.
+
+New verify check (sequential — wherever it lands in the numbered list): each `fix_path_helpers` entry must carry a non-null `--file-line` AND that file-line must anchor to a finding recorded earlier. Reject the report otherwise.
+
+**Verify**: dispatch /research on duplicate-options topic.
+- Negative path: LLM records findings at `MenuSection.vue:206` and `QuoteLine.ts:97`, then attempts `record-fix-path-helper --helper-qn quoteBloc.addLine --file-line src/quote/quoteBloc.ts:42`. Setter rejects — `quoteBloc.ts:42` is not in any prior finding.
+- Positive path: LLM records finding at `QuoteLine.ts:97` (isAttachment canonical static), then `record-fix-path-helper --helper-qn CoreQuoteLine.isAttachment --file-line src/quote/domain/entities/QuoteLine.ts:97`. Setter accepts.
+- Adversarial path: LLM tries `record-finding` AFTER `record-fix-path-helper` at the same wrong file-line. Setter still rejects because the finding wasn't earlier in the state.
+
+**Argue**: anchor rule is strict — could reject legitimate fix-paths that surface only via `trace_path mode=calls direction=inbound` (Phase 2.4c Step 2) without a prior CBM finding at that location. Mitigation: legitimate trace_path inbound walks SHOULD surface fix-path candidates that the LLM then records as a finding BEFORE record-fix-path-helper. This forces Phase 2.4c Step 2's inbound-caller enumeration to flow back into Phase 2.3 findings, tightening the evidence chain. If LLM legitimately finds a fix-path with no prior finding, the workflow is: (a) record the trace_path result as a finding, (b) THEN record-fix-path-helper. Two setter calls instead of one — small friction, big anchor guarantee. The ±5 line lenience absorbs CBM-vs-trace minor offsets.
+
+Independent of Patches 1-4 — Patch 5 closes the target-selection blind spot constitution can't see. Constitution strengthens **wrapper-export pattern** for cross-layer fixes; Patch 5 strengthens **which code region** the fix targets. Both layers needed.
+
 ## Out of scope (this plan)
 
 - **Re-run testForge20 /research on the duplicate-options topic AFTER patches** — that's the empirical verification step, runs once patches land.
@@ -132,7 +159,7 @@ Helper verify check 8 strengthens: rejects a `fix_path_helpers` list where ALL e
 Paste the following into a fresh Claude Code session at `~/Projects/ai-dev-team-forge`:
 
 ```
-Resume RESEARCH-FRAMING-REGRESSION-PLAN.md at repo root. Read the plan top-to-bottom — context, diagnosis, 4 patches (an earlier 5th patch on prior-art input was rejected — see boxed note under `## Patches`). Implementation order: Patch 1 → Patch 2 → Patch 3 → Patch 4, each in its own commit on develop-2.0-init. Per-patch flow: (a) draft helper setter changes + verify checks via python-engineer agent with test-first discipline; (b) draft Phase-N spec edits via instruction-author; (c) review via python-reviewer + instruction-reviewer; (d) re-loop until clean; (e) commit. Verify per patch against the verify criteria in the plan. After all 4 patches: re-dispatch /research on testForge20 against the duplicate-options topic, diff against `testForge20/tmp/2026-05-16-restriction-on-adding-the.md` (the old run that caught it), confirm fresh run now reaches structural diagnosis.
+Resume RESEARCH-FRAMING-REGRESSION-PLAN.md at repo root. Read the plan top-to-bottom — context, diagnosis (Gaps 1-5), 5 patches (an earlier prior-art-input draft was rejected — see boxed note under `## Patches`; Patch 5 is fix-path anchor gate, added 2026-05-17 to close target-selection blind spot constitution can't see). Implementation order: Patch 1 → Patch 2 → Patch 3 → Patch 4 → Patch 5, each in its own commit on develop-2.0-init. Per-patch flow: (a) draft helper setter changes + verify checks via python-engineer agent with test-first discipline; (b) draft Phase-N spec edits via instruction-author; (c) review via python-reviewer + instruction-reviewer; (d) re-loop until clean; (e) commit. Verify per patch against the verify criteria in the plan. After all 5 patches: re-dispatch /research on testForge20 against the duplicate-options topic, diff against `testForge20/tmp/2026-05-16-restriction-on-adding-the.md` (the old run that caught it), confirm fresh run now reaches structural diagnosis.
 ```
 
 ## When resuming work
@@ -150,7 +177,7 @@ Resume RESEARCH-FRAMING-REGRESSION-PLAN.md at repo root. Read the plan top-to-bo
    wc -l /Users/mykolakudlyk/Projects/ai-dev-team-forge/src/commands/research/main.md
    ```
 4. Apply patches in order. Each patch = one commit. Do not bundle.
-5. After Patch 4 lands, run the empirical verify: fresh testForge20 /research on the duplicate-options topic. Diff against `testForge20/tmp/2026-05-16-restriction-on-adding-the.md` to confirm framing parity.
+5. After Patch 5 lands, run the empirical verify: fresh testForge20 /research on the duplicate-options topic. Diff against `testForge20/tmp/2026-05-16-restriction-on-adding-the.md` to confirm framing parity AND target parity (fix-path helpers anchor to findings at `QuoteLine.ts:97` / `MenuSection.vue:206`, not invented elsewhere).
 6. Update this plan's Status: **Patches applied + empirically verified** OR list which patches landed and which deferred.
 
 ## Notes for engineer / reviewer

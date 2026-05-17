@@ -116,7 +116,23 @@ For each of the 6 dimensions, in highest-uncertainty-first order:
        --state <Clear|Partial|Missing>
    ```
 
-   Subcommand names: `set-symptom`, `set-affected-area`, `set-repro-or-current`, `set-desired`, `set-scope`, `set-unchanged-behavior`. Default `--state` is `Clear` — pass `--state Partial` when the answer leaves a gap. For follow-up turns on the same dimension, add `--increment-turn` so the helper tracks the bounded-turn cap.
+   Subcommand names: `set-symptom`, `set-affected-area`, `set-repro-or-current`, `set-desired`, `set-scope` **(see narrow-framing gate below — requires `--evidence` when value is `"one place"`)**, `set-unchanged-behavior`. Default `--state` is `Clear` — pass `--state Partial` when the answer leaves a gap. For follow-up turns on the same dimension, add `--increment-turn` so the helper tracks the bounded-turn cap.
+
+   **`set-scope` evidence requirement (narrow-framing gate).** When the user picks `"one place"` from the closed-choice options, `set-scope` requires an additional `--evidence` flag carrying a `file:line` citation that proves the symptom is localized to that single site:
+
+   ```bash
+   .devforge/lib/research_helper set-scope \
+       --value "one place" \
+       --evidence "<path:line of the single symptom site>" \
+       --state Clear
+   ```
+
+   `--evidence` is REQUIRED whenever `--value` normalizes to `"one place"` (case-insensitive, whitespace-stripped). It must be a real `file:line` citation in `path/to/file.ext:NNN` form — the `(none)` sentinel is rejected because narrow framing demands a concrete locality citation. Without `--evidence`, the helper exits with code 2 and stderr `set-scope: --evidence is required when --value == 'one place'.` plus the rationale (narrowing scope gates Phase 2 exploration depth, so the LLM must commit to a verifiable locality before downstream phases run). When `--evidence "(none)"` is passed, the helper also exits with code 2 and stderr `set-scope: --evidence cannot be '(none)' when --value == 'one place'; narrow framing requires a concrete file:line citation.` The citation should typically be the symptom site identified from the Phase 0 pre-rubric docs scan or from `$ARGUMENTS` if the user supplied a specific file in their topic. For `--value "feature-wide"` or `--value "cross-cutting"`, `--evidence` is not required (broader framings are the safer defaults; narrowing is the risky direction).
+
+   **Recovery on rejection.** If the helper rejects the call (exit 2), copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Then choose a recovery path based on which rejection fired:
+   - Missing or empty `--evidence` → (a) ask the user one follow-up to supply the locality citation if their original answer didn't include a file path, OR (b) re-prompt with the original `AskUserQuestion` options and let them pick a broader framing.
+   - `--evidence "(none)"` rejected → only path (b) applies: the user/LLM deliberately passed the sentinel, so re-prompting for a real `file:line` citation OR a broader framing is the only forward path; do not retry with `(none)`.
+   Do not retry the setter call without a citation — the gate will reject again.
 
 3. **Run helper-side conflict check.**
 

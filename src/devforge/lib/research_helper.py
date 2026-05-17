@@ -776,8 +776,11 @@ def _register_subcommands(subparsers) -> None:
     )
     sp.set_defaults(func=cmd_summary)
 
-    # Phase 0 setters
+    # Phase 0 setters — 5 non-scope dims built uniformly in the loop;
+    # scope built separately below with the evidence gate.
     for dim in RUBRIC_DIMENSIONS:
+        if dim == "scope":
+            continue
         sp_name = "set-" + dim.replace("_", "-")
         sp = subparsers.add_parser(sp_name, help="Set {0} dimension.".format(dim))
         sp.add_argument("--value", required=True, help="Value text (verbatim).")
@@ -793,6 +796,36 @@ def _register_subcommands(subparsers) -> None:
             help="Increment turn counter (use for follow-ups that didn't fully clear).",
         )
         sp.set_defaults(func=_make_dim_setter(dim))
+
+    # Scope setter — special-cased to add --evidence gate for "one place".
+    sp = subparsers.add_parser(
+        "set-scope",
+        help=(
+            "Set scope dimension. "
+            "--evidence is required when --value normalizes to 'one place'."
+        ),
+    )
+    sp.add_argument("--value", required=True, help="Value text (verbatim).")
+    sp.add_argument(
+        "--state",
+        default="Clear",
+        choices=list(RUBRIC_STATE_ENUM),
+        help="State after this set (default: Clear).",
+    )
+    sp.add_argument(
+        "--increment-turn",
+        action="store_true",
+        help="Increment turn counter (use for follow-ups that didn't fully clear).",
+    )
+    sp.add_argument(
+        "--evidence",
+        default=None,
+        help=(
+            "file:line citation proving the bug is localized. "
+            "Required when --value normalizes to 'one place'; ignored otherwise."
+        ),
+    )
+    sp.set_defaults(func=_make_scope_setter())
 
     sp = subparsers.add_parser(
         "detect-mode",
@@ -1241,6 +1274,64 @@ def _make_dim_setter(dim_name: str):
             return _die("set-{0}: {1}".format(dim_name, err))
         return 0
     handler.__name__ = "cmd_set_" + dim_name
+    return handler
+
+
+def _make_scope_setter():
+    """Build the set-scope handler with the 'one place' evidence gate.
+
+    Wraps _make_dim_setter("scope") with a pre-flight check: when --value
+    normalizes to 'one place' (case-insensitive, whitespace-stripped), an
+    --evidence flag carrying a valid file:line citation is required.
+    Narrowing scope to 'one place' gates Phase 2 exploration depth before
+    Phase 2 runs — forcing a citation ensures the LLM verifies locality
+    before committing to the narrow framing.
+
+    For all other scope values, --evidence is silently ignored (not stored)
+    so the dim record stays shape-stable across wide vs narrow framings.
+    """
+    inner = _make_dim_setter("scope")
+
+    def handler(args: argparse.Namespace) -> int:
+        normalized = (args.value or "").strip().lower()
+        if normalized == "one place":
+            evidence = getattr(args, "evidence", None)
+            # Treat empty string identically to missing.
+            if not evidence or not evidence.strip():
+                sys.stderr.write(
+                    "set-scope: --evidence is required when --value == 'one place'. "
+                    "Narrowing scope to 'one place' gates Phase 2 exploration depth "
+                    "before Phase 2 runs — cite a file:line proving the symptom is "
+                    "localized (typically the single symptom site).\n"
+                )
+                return 2
+            try:
+                evidence_validated = _validate_file_line(evidence.strip(), "scope.evidence")
+            except ValueError as err:
+                return _die(str(err), code=2)
+            if evidence_validated == "(none)":
+                sys.stderr.write(
+                    "set-scope: --evidence cannot be '(none)' when --value == 'one place'; "
+                    "narrow framing requires a concrete file:line citation.\n"
+                )
+                return 2
+            # Write the dimension record via the inner setter.
+            rc = inner(args)
+            if rc != 0:
+                return rc
+            # Append evidence to the scope dim record (second transaction).
+            try:
+                with _state_transaction(args.devforge_dir, "memo") as memo:
+                    rec = memo["dimensions"].get("scope") or _empty_dimension()
+                    rec["evidence"] = evidence_validated
+                    memo["dimensions"]["scope"] = rec
+            except (OSError, json.JSONDecodeError) as err:
+                return _die("set-scope: {0}".format(err))
+            return 0
+        # Non-narrow framing — evidence is optional and not stored.
+        return inner(args)
+
+    handler.__name__ = "cmd_set_scope"
     return handler
 
 
@@ -2040,7 +2131,14 @@ def _render_report_md(memo: dict, report: dict) -> str:
         ("desired", "Desired"),
         ("scope", "Scope"),
     ):
-        v = dim_map.get(d, {}).get("value") or "(unset)"
+        rec = dim_map.get(d, {})
+        v = rec.get("value") or "(unset)"
+        # Append evidence annotation for scope narrow-framing (evidence field
+        # is set only when --value == "one place" was passed with --evidence).
+        if d == "scope":
+            scope_evidence = rec.get("evidence")
+            if scope_evidence:
+                v = "{0} (evidence: {1})".format(v, scope_evidence)
         out.append("| {0} | {1} |".format(label, _md_escape_cell(v)))
     out.append("")
 
@@ -2563,7 +2661,13 @@ def cmd_summary(args: argparse.Namespace) -> int:
         val = rec.get("value") or "(unset)"
         st = rec.get("state") or RUBRIC_STATE_DEFAULT
         turns = rec.get("turns", 0)
-        lines.append("  {0}: state={1} turns={2} value={3!r}".format(d, st, turns, val[:80]))
+        line = "  {0}: state={1} turns={2} value={3!r}".format(d, st, turns, val[:80])
+        # Surface evidence field for scope narrow-framing runs.
+        if d == "scope":
+            scope_evidence = rec.get("evidence")
+            if scope_evidence:
+                line += " evidence={0}".format(scope_evidence)
+        lines.append(line)
     lines.append("  coverage: Clear={0} Partial={1} Missing={2}".format(clear, partial, missing))
     lines.append("  gaps: {0}".format(len(memo.get("gaps", []))))
     lines.append("  conflicts: {0}".format(len(memo.get("conflicts", []))))

@@ -3125,5 +3125,275 @@ class TestVerifyCheck8b(unittest.TestCase):
             self.assertNotIn("cross-layer rule", r.stderr)
 
 
+# ---------------------------------------------------------------------------
+# Patch 3 — set-scope evidence gate tests.
+# ---------------------------------------------------------------------------
+
+
+class TestSetScopeEvidenceGate(unittest.TestCase):
+    """Verify the 'one place' evidence requirement gate on set-scope."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-memo"])
+        return tmp, devforge
+
+    def _read_memo(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-memo"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    # --- narrow-framing (gate MUST fire) ---
+
+    def test_set_scope_one_place_with_evidence_passes(self):
+        """--value 'one place' + valid --evidence → exit 0; evidence stored on dim."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "one place",
+                "--evidence", "src/admin/Products.vue:201",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = self._read_memo(devforge)
+            scope_rec = memo["dimensions"]["scope"]
+            self.assertEqual(scope_rec["value"], "one place")
+            self.assertEqual(scope_rec["evidence"], "src/admin/Products.vue:201")
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_one_place_without_evidence_fails(self):
+        """--value 'one place' with no --evidence → exit 2 + stderr explains the rule."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "one place",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--evidence is required", r.stderr)
+            # Stable rationale phrase locked in assertion.
+            self.assertIn("Phase 2 exploration depth", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_one_place_empty_evidence_fails(self):
+        """--value 'one place' + --evidence '' (empty string) → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "one place",
+                "--evidence", "",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--evidence is required", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_one_place_none_sentinel_fails(self):
+        """--value 'one place' + --evidence '(none)' → exit 2; concrete citation required."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "one place",
+                "--evidence", "(none)",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("(none)", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_one_place_case_insensitive_gate(self):
+        """Gate fires case-insensitively: 'One Place' normalizes to 'one place'."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "One Place",
+                "--evidence", "src/x.ts:1",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = self._read_memo(devforge)
+            self.assertEqual(memo["dimensions"]["scope"]["evidence"], "src/x.ts:1")
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_one_place_whitespace_value_gate(self):
+        """Gate fires when value has surrounding whitespace: '  one place  '."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "  one place  ",
+                "--evidence", "src/x.ts:1",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = self._read_memo(devforge)
+            self.assertEqual(memo["dimensions"]["scope"]["evidence"], "src/x.ts:1")
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_evidence_invalid_file_line_fails(self):
+        """--value 'one place' + --evidence 'not a file:line' → exit 2 via _validate_file_line."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "one place",
+                "--evidence", "not a file line no colon",
+            ])
+            self.assertEqual(r.returncode, 2)
+            # Confirm inner validator's error message surfaces.
+            self.assertIn("scope.evidence", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    # --- non-narrow framings (gate must NOT fire) ---
+
+    def test_set_scope_feature_wide_no_evidence_passes(self):
+        """--value 'feature-wide' without --evidence → exit 0 (gate does not fire)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "feature-wide",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_cross_cutting_no_evidence_passes(self):
+        """--value 'cross-cutting' without --evidence → exit 0."""
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "cross-cutting",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_one_component_freeform_no_evidence_passes(self):
+        """Free-form synonym 'One component' (not exact 'one place') → exit 0.
+
+        This is the value used in _build_bug_state; gate matches literal 'one place'
+        only — free-form synonyms are NOT gated.
+        """
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "One component",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_set_scope_feature_wide_with_evidence_ignored(self):
+        """--value 'feature-wide' + --evidence provided → exit 0; evidence NOT stored.
+
+        Non-narrow framings accept (and silently discard) --evidence so callers
+        that always pass --evidence don't break. The dim record must NOT gain an
+        'evidence' key for non-narrow values.
+        """
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "feature-wide",
+                "--evidence", "src/x.ts:1",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            memo = self._read_memo(devforge)
+            # Evidence must NOT be stored for non-narrow framings.
+            self.assertNotIn("evidence", memo["dimensions"]["scope"])
+        finally:
+            tmp.cleanup()
+
+    # --- render + summary integration ---
+
+    def test_render_shows_evidence_for_one_place(self):
+        """Render output includes '(evidence: ...)' inline with scope value."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "one place",
+                "--evidence", "src/admin/Products.vue:201",
+            ])
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertIn("one place (evidence: src/admin/Products.vue:201)", r.stdout)
+        finally:
+            tmp.cleanup()
+
+    def test_render_no_evidence_annotation_for_feature_wide(self):
+        """Render output has no '(evidence:' annotation for non-narrow scope."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "feature-wide",
+            ])
+            r = _run(["--devforge-dir", str(devforge), "render"])
+            self.assertNotIn("(evidence:", r.stdout)
+        finally:
+            tmp.cleanup()
+
+    def test_summary_shows_evidence_for_one_place(self):
+        """Summary output includes 'evidence=...' in scope line."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "one place",
+                "--evidence", "src/admin/Products.vue:201",
+            ])
+            r = _run(["--devforge-dir", str(devforge), "summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("evidence=src/admin/Products.vue:201", r.stdout)
+        finally:
+            tmp.cleanup()
+
+    def test_summary_no_evidence_annotation_for_feature_wide(self):
+        """Summary output has no 'evidence=' annotation for non-narrow scope."""
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "feature-wide",
+            ])
+            r = _run(["--devforge-dir", str(devforge), "summary"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # Scope line should not contain evidence key.
+            scope_line = next(
+                (l for l in r.stdout.splitlines() if l.strip().startswith("scope:")), None
+            )
+            self.assertIsNotNone(scope_line)
+            self.assertNotIn("evidence=", scope_line)
+        finally:
+            tmp.cleanup()
+
+    # --- anti-regression: _build_bug_state uses 'One component' (free-form) ---
+
+    def test_build_bug_state_scope_not_gated(self):
+        """_build_bug_state's 'One component' scope value doesn't trigger the gate.
+
+        Verifies that no existing test fixture is broken by Patch 3.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # set-scope with 'One component' must succeed without --evidence.
+            r = _run([
+                "--devforge-dir", str(devforge), "set-scope",
+                "--value", "One component",
+                "--state", "Clear",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
