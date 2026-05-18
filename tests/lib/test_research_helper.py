@@ -153,6 +153,8 @@ class TestSchemas(unittest.TestCase):
             "helper_rejection_log",
             # Patch 7 value production sites
             "value_production_sites",
+            # Patch 8 literal archaeology
+            "literal_archaeology",
         ):
             self.assertEqual(rep[arr_field], [], "field {0} default".format(arr_field))
         self.assertEqual(
@@ -5590,6 +5592,442 @@ class TestRenderPatch7(unittest.TestCase):
             self.assertIn("## Value Production Sites", output)
             self.assertIn("src/adapters/item.js:42", output)
             self.assertIn("Is Stable", output)
+
+
+# ---------------------------------------------------------------------------
+# Patch 8 (V3) — literal-archaeology gate (Gap 8)
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultReportStateLiteralArchaeology(unittest.TestCase):
+    """Test 1: default_report_state() has literal_archaeology: []."""
+
+    def test_default_report_state_has_literal_archaeology_empty_list(self):
+        """fresh default_report_state has literal_archaeology: []."""
+        state = research_helper.default_report_state()
+        self.assertIn("literal_archaeology", state)
+        self.assertEqual(state["literal_archaeology"], [])
+
+
+class TestRecordLiteralArchaeology(unittest.TestCase):
+    """Tests for record-literal-archaeology setter."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-memo"])
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _record(self, devforge, **kwargs):
+        """Convenience wrapper: call record-literal-archaeology with given kwargs."""
+        defaults = {
+            "literal": "false",
+            "file_line": "OrderViewer.vue:290",
+            "introduced_by": "cca3514",
+            "introduced_when": "2023-12-12",
+            "commit_subject": "DEAL-292 refactor inline call into wrapper",
+            "intent": "inherited-refactor",
+        }
+        defaults.update(kwargs)
+        return _run([
+            "--devforge-dir", str(devforge),
+            "record-literal-archaeology",
+            "--literal", defaults["literal"],
+            "--file-line", defaults["file_line"],
+            "--introduced-by", defaults["introduced_by"],
+            "--introduced-when", defaults["introduced_when"],
+            "--commit-subject", defaults["commit_subject"],
+            "--intent", defaults["intent"],
+        ])
+
+    def test_record_literal_archaeology_happy_path(self):
+        """Basic call with all 6 args, intent=inherited-refactor. Row present + return 0."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            rows = data.get("literal_archaeology", [])
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertEqual(row["literal"], "false")
+            self.assertEqual(row["file_line"], "OrderViewer.vue:290")
+            self.assertEqual(row["introduced_by"], "cca3514")
+            self.assertEqual(row["introduced_when"], "2023-12-12")
+            self.assertEqual(row["commit_subject"], "DEAL-292 refactor inline call into wrapper")
+            self.assertEqual(row["intent"], "inherited-refactor")
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_dedupes_same_literal_and_file_line(self):
+        """Two calls with same (literal, file_line), different intent → only 1 row, original intent retained."""
+        tmp, devforge = self._fresh()
+        try:
+            r1 = self._record(devforge, intent="inherited-refactor")
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = self._record(devforge, intent="deliberate")
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            data = self._read_report(devforge)
+            rows = data.get("literal_archaeology", [])
+            self.assertEqual(len(rows), 1, "expected 1 row (deduped); got {0}".format(len(rows)))
+            self.assertEqual(rows[0]["intent"], "inherited-refactor", "original intent must be retained")
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_appends_when_file_line_differs(self):
+        """Same literal, different file_line → 2 rows appended."""
+        tmp, devforge = self._fresh()
+        try:
+            self._record(devforge, file_line="OrderViewer.vue:290")
+            self._record(devforge, file_line="OrderViewer.vue:310")
+            data = self._read_report(devforge)
+            rows = data.get("literal_archaeology", [])
+            self.assertEqual(len(rows), 2)
+            file_lines = {r["file_line"] for r in rows}
+            self.assertEqual(file_lines, {"OrderViewer.vue:290", "OrderViewer.vue:310"})
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_rejects_unrecognized_literal(self):
+        """--literal arr[0] and --literal foo() are rejected with exit 2 + message."""
+        tmp, devforge = self._fresh()
+        try:
+            for bad_lit in ("arr[0]", "foo()"):
+                r = self._record(devforge, literal=bad_lit)
+                self.assertEqual(r.returncode, 2, "expected exit 2 for literal {0!r}".format(bad_lit))
+                self.assertIn("is not a recognizable literal token", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_accepts_boolean_number_null_string_template(self):
+        """All recognized primitive literal forms are accepted (return 0)."""
+        tmp, devforge = self._fresh()
+        try:
+            for idx, lit in enumerate([
+                "false", "True", "null", "undefined", "None",
+                "0", "-42", "3.14", "1e-9", "0xff", "100n",
+                '"hello"', "'x'", "`tmpl`",
+            ]):
+                # Use distinct file_line to avoid dedupe short-circuit.
+                r = self._record(
+                    devforge,
+                    literal=lit,
+                    file_line="src/foo.ts:{0}".format(10 + idx),
+                )
+                self.assertEqual(
+                    r.returncode, 0,
+                    "expected exit 0 for literal {0!r}, got {1}: {2}".format(lit, r.returncode, r.stderr),
+                )
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_rejects_invalid_sha(self):
+        """--introduced-by 123 (too short) and zzz1234 (non-hex) → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r_short = self._record(devforge, introduced_by="123")
+            self.assertEqual(r_short.returncode, 2)
+            self.assertIn("7-40 char hex", r_short.stderr)
+
+            r_nonhex = self._record(devforge, introduced_by="zzz1234")
+            self.assertEqual(r_nonhex.returncode, 2)
+            self.assertIn("7-40 char hex", r_nonhex.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_rejects_invalid_date(self):
+        """--introduced-when with wrong format or invalid date → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r_slash = self._record(devforge, introduced_when="2026/05/18")
+            self.assertEqual(r_slash.returncode, 2)
+            self.assertIn("ISO date YYYY-MM-DD", r_slash.stderr)
+
+            r_bad = self._record(devforge, introduced_when="2026-13-99")
+            self.assertEqual(r_bad.returncode, 2)
+            self.assertIn("ISO date YYYY-MM-DD", r_bad.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_rejects_none_sentinel_file_line(self):
+        """--file-line '(none)' → exit 2 (rejected by handler)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, file_line="(none)")
+            self.assertEqual(r.returncode, 2)
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_rejects_empty_commit_subject(self):
+        """--commit-subject '' → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, commit_subject="")
+            self.assertEqual(r.returncode, 2)
+        finally:
+            tmp.cleanup()
+
+
+class TestDetectLiteralReplacement(unittest.TestCase):
+    """Tests for _detect_literal_replacement module-level helper."""
+
+    def test_returns_source_literal_replace_in_call(self):
+        """'replace fetchOrder(false) with ...' → 'false'."""
+        result = research_helper._detect_literal_replacement(
+            "replace fetchOrder(false) with fetchOrder(isExternalUser.value)"
+        )
+        self.assertEqual(result, "false")
+
+    def test_returns_source_literal_change_to(self):
+        """'change false to isExternalUser.value at line 290' → 'false'."""
+        result = research_helper._detect_literal_replacement(
+            "change false to isExternalUser.value at line 290"
+        )
+        self.assertEqual(result, "false")
+
+    def test_returns_source_literal_arrow(self):
+        """'false -> isExternalUser.value' → 'false'."""
+        result = research_helper._detect_literal_replacement("false -> isExternalUser.value")
+        self.assertEqual(result, "false")
+
+    def test_returns_source_literal_swap_for(self):
+        """'swap the literal false for the identity-derived bool' → 'false'."""
+        result = research_helper._detect_literal_replacement(
+            "swap the literal false for the identity-derived bool"
+        )
+        self.assertEqual(result, "false")
+
+    def test_returns_none_for_non_replacement_prose(self):
+        """'add a new wrapper function' → None."""
+        result = research_helper._detect_literal_replacement("add a new wrapper function")
+        self.assertIsNone(result)
+
+    def test_returns_none_for_empty_string(self):
+        """'' → None."""
+        result = research_helper._detect_literal_replacement("")
+        self.assertIsNone(result)
+
+    def test_returns_null_for_null_in_english_prose(self):
+        """FP: 'null' treated as literal even in English prose ('null check').
+        Documented acceptable per plan §Patch 8 ('over-matching is acceptable').
+        Pinned to prevent silent regression of the documented-FP behavior.
+        """
+        result = research_helper._detect_literal_replacement(
+            "replace the null check with an assertion"
+        )
+        self.assertEqual(result, "null")
+
+
+class TestVerifyCheck17(unittest.TestCase):
+    """Tests for verify check 17: literal-archaeology gate."""
+
+    def _build_check17_state(self, devforge, rationale="", approach_desc=""):
+        """Build a minimal bug-mode state with a recommended approach.
+
+        Uses _build_bug_state as base, then overwrites recommended_approach
+        and approaches to contain the given rationale/description.
+        """
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+
+        # Ensure there's a finding at OrderViewer.vue:290 (anchor for archaeology).
+        data["findings"].append({
+            "surface": "OrderViewer component",
+            "file_line": "OrderViewer.vue:290",
+            "relevance": "hardcoded false literal for splitOnSNA",
+            "framing": "primary",
+        })
+
+        # Set approach with the given description.
+        data["approaches"] = [
+            {
+                "name": "Fix splitOnSNA literal",
+                "description": approach_desc,
+                "addresses_hypotheses": ["unstable comparator in inline sort"],
+                "does_not_cover": [],
+                "pros": ["minimal change"],
+                "cons": [],
+                "complexity": "Low",
+            }
+        ]
+        data["recommended_approach"] = {
+            "name": "Fix splitOnSNA literal",
+            "rationale": rationale,
+            "hypotheses_addressed": ["unstable comparator in inline sort"],
+            "hypotheses_not_covered": [],
+        }
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_verify_check_17_fires_when_archaeology_missing(self):
+        """Bug-mode + rationale with literal-replacement + no archaeology row → check 17 fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check17_state(
+                devforge,
+                rationale="replace false with isExternalUser.value",
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 17", r.stderr)
+
+    def test_verify_check_17_passes_when_archaeology_recorded(self):
+        """Bug-mode + rationale with literal-replacement + archaeology row present → check 17 absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check17_state(
+                devforge,
+                rationale="replace false with isExternalUser.value",
+            )
+            # Record archaeology via setter (round-trip per test_first_python_helpers).
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-literal-archaeology",
+                "--literal", "false",
+                "--file-line", "OrderViewer.vue:290",
+                "--introduced-by", "cca3514",
+                "--introduced-when", "2023-12-12",
+                "--commit-subject", "DEAL-292 refactor inline call into wrapper",
+                "--intent", "inherited-refactor",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r_verify = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 17", r_verify.stderr)
+
+    def test_verify_check_17_silent_in_enhancement_mode(self):
+        """Enhancement mode + same literal-replacement prose → check 17 does NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Add approach + recommended_approach with literal-replacement rationale.
+            data["findings"].append({
+                "surface": "some file",
+                "file_line": "src/foo.ts:42",
+                "relevance": "literal false here",
+                "framing": "primary",
+            })
+            data["approaches"] = [
+                {
+                    "name": "Fix literal",
+                    "description": "change false to isExternalUser.value",
+                    "addresses_hypotheses": ["export speed"],
+                    "does_not_cover": [],
+                    "pros": [],
+                    "cons": [],
+                    "complexity": "Low",
+                }
+            ]
+            data["recommended_approach"] = {
+                "name": "Fix literal",
+                "rationale": "change false to isExternalUser.value",
+                "hypotheses_addressed": ["export speed"],
+                "hypotheses_not_covered": [],
+            }
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            # Enhancement mode → check 17 must NOT fire.
+            self.assertNotIn("check 17", r.stderr)
+
+    def test_verify_check_17_uses_linked_approach_description_too(self):
+        """Rationale has no literal-replacement, but linked approach.description does → check 17 fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check17_state(
+                devforge,
+                rationale="Fix the bug by updating the call site",  # no literal-replacement here
+                approach_desc="change false to isExternalUser.value",  # literal-replacement here
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 17", r.stderr)
+
+    def test_verify_check_17_silent_when_no_recommended_approach(self):
+        """Bug mode but no set-recommended-approach → check 17 does NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Do NOT set recommended_approach — verify will emit other errors but not check 17.
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["recommended_approach"] = None
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 17", r.stderr)
+
+    def test_verify_check_17_fires_when_archaeology_at_wrong_file_line(self):
+        """Archaeology row with matching literal but file_line NOT in findings → check 17 still fires.
+        Cross-check on row.file_line ∈ findings[].file_line must reject wrong-location records.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check17_state(
+                devforge,
+                rationale="replace false with isExternalUser.value",
+            )
+            # Record archaeology at WRONG file_line (not in findings).
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-literal-archaeology",
+                "--literal", "false",
+                "--file-line", "OtherFile.ts:10",
+                "--introduced-by", "abc1234",
+                "--introduced-when", "2024-01-15",
+                "--commit-subject", "unrelated commit",
+                "--intent", "deliberate",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r_verify = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r_verify.returncode, 2)
+            self.assertIn("check 17", r_verify.stderr)
+
+
+class TestRenderPatch8(unittest.TestCase):
+    """Tests for the Patch 8 render extension: Literal Archaeology section."""
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        return r.stdout
+
+    def test_render_includes_literal_archaeology_section_when_present(self):
+        """Render output contains ## Literal Archaeology and the row's literal value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            # Record 1 row via setter (round-trip).
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-literal-archaeology",
+                "--literal", "false",
+                "--file-line", "OrderViewer.vue:290",
+                "--introduced-by", "cca3514",
+                "--introduced-when", "2023-12-12",
+                "--commit-subject", "DEAL-292 refactor inline call into wrapper",
+                "--intent", "inherited-refactor",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn("## Literal Archaeology", output)
+            self.assertIn("false", output)
+            self.assertIn("OrderViewer.vue:290", output)
+            self.assertIn("inherited-refactor", output)
+
+    def test_render_omits_literal_archaeology_section_when_empty(self):
+        """Fresh report state → no ## Literal Archaeology section in render output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            output = self._render(devforge)
+            self.assertNotIn("Literal Archaeology", output)
 
 
 if __name__ == "__main__":

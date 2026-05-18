@@ -30,7 +30,7 @@ Phases (target order per REDESIGN-RESEARCH-PLAN.md)
   PHASE 3  Save + recommend          — render artifact + ask-to-save handled
                                        by orchestrator; helper renders + verifies.
 
-Subcommand summary (45)
+Subcommand summary (46)
 -----------------------
 
   Plumbing (8)   reset-memo, reset-report, read-memo, read-report,
@@ -46,6 +46,7 @@ Subcommand summary (45)
                  set-value-semantics
   Phase 2.4d (1) record-data-flow-chain
   Phase 2.5  (1) record-value-production-site
+  Phase 2.5b (1) record-literal-archaeology
   Phase 1  (8)   record-finding, record-hypothesis,
                  set-root-cause-hypothesis, set-confidence,
                  set-trigger, set-root-cause-systemic,
@@ -62,6 +63,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime
 import json
 import os
 import re
@@ -173,6 +175,64 @@ _ENHANCEMENT_TOKENS = (
     "extend",
 )
 
+# Patch 8 (V3) — literal-token regex. Matches recognizable primitive literals
+# as they appear in source code. Used by record-literal-archaeology's --literal
+# validation AND by LITERAL_REPLACEMENT_RE to extract the <X> target from
+# recommended-approach prose. Array / object / regex / function literals are
+# OUT OF SCOPE (rarely surface as the "bug literal" in /research practice).
+LITERAL_TOKEN_RE = re.compile(
+    r"""
+    (?:
+        true | false | True | False        # JS/TS + Python booleans
+      | null | undefined | None             # null-likes
+      | -?0x[0-9a-fA-F]+                   # hex int (must come before decimal — share '-' prefix)
+      | -?\d+n                              # BigInt
+      | -?\d+(?:\.\d+)?[eE][+-]?\d+        # scientific
+      | -?\d+(?:\.\d+)?                    # decimal int/float
+      | "[^"]*"                             # double-quoted string
+      | '[^']*'                             # single-quoted string
+      | `[^`]*`                             # backtick template (no ${} interpolation)
+    )
+    """,
+    re.VERBOSE,
+)
+
+# Literal-replacement prose patterns. Used by check 17 + Patch 9's
+# proposed-call-shape gate. Anchors on LITERAL_TOKEN_RE to extract <X>.
+# Three pattern forms (case-insensitive on the verb):
+#   - "replace <X> with <Y>"
+#   - "change <X> to <Y>"
+#   - "<X> -> <Y>"  (also "<X> => <Y>")
+# Captures <X> in group 1; <Y> capture not required for check 17 (only need
+# the source literal to look up its archaeology row).
+LITERAL_REPLACEMENT_RE = re.compile(
+    r"""
+    (?:
+        (?:replace|change|swap) \s+ (?:the\s+literal\s+)? .*? (?P<src1>{LITERAL}) [^,\n]*? \s+ (?:with|to|for) \s+
+      |
+        (?P<src2>{LITERAL}) \s* (?:->|=>) \s*
+    )
+    """.replace("{LITERAL}", LITERAL_TOKEN_RE.pattern),
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+def _detect_literal_replacement(text: str) -> Optional[str]:
+    """Scan prose for a literal-replacement pattern. Returns the source
+    literal (the <X> being replaced) if found, else None.
+
+    Used by check 17 to decide whether literal-archaeology is required.
+    Over-matching (false positives) is acceptable per plan §Patch 8 notes —
+    better to require archaeology on a few non-literal fixes than miss
+    actual literal-replacement cases.
+    """
+    if not text:
+        return None
+    m = LITERAL_REPLACEMENT_RE.search(text)
+    if not m:
+        return None
+    return m.group("src1") or m.group("src2")
+
 
 # ---------------------------------------------------------------------------
 # Default-state builders.
@@ -241,6 +301,11 @@ def default_report_state() -> dict:
         # {value, file_line, is_stable}. Multi-site per value via distinct file_line
         # dedupe: same (value, file_line) pair is no-op; different file_lines append.
         "value_production_sites": [],
+        # Patch 8 (V3) — literal archaeology rows for hardcoded literals that the
+        # recommended approach proposes to replace. Each entry:
+        # {literal, file_line, introduced_by, introduced_when, commit_subject, intent}.
+        # Dedupe on (literal, file_line) — re-recording same pair is no-op.
+        "literal_archaeology": [],
     }
 
 
@@ -1355,6 +1420,46 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_record_data_flow_chain)
+
+    sp = subparsers.add_parser(
+        "record-literal-archaeology",
+        help=(
+            "Record git-archaeology of a hardcoded literal that the recommended approach "
+            "proposes to replace. Dedupes by (literal, file_line)."
+        ),
+    )
+    sp.add_argument("--literal", required=True, help="Literal token as it appears in source (e.g. 'false', '0', \"''\").")
+    sp.add_argument(
+        "--file-line",
+        required=True,
+        dest="file_line",
+        help="path:line where the literal lives (must not be (none)).",
+    )
+    sp.add_argument(
+        "--introduced-by",
+        required=True,
+        dest="introduced_by",
+        help="Commit SHA (7-40 hex chars) of the commit that introduced the literal.",
+    )
+    sp.add_argument(
+        "--introduced-when",
+        required=True,
+        dest="introduced_when",
+        help="ISO date YYYY-MM-DD when the introducing commit landed.",
+    )
+    sp.add_argument(
+        "--commit-subject",
+        required=True,
+        dest="commit_subject",
+        help="One-line subject from the introducing commit.",
+    )
+    sp.add_argument(
+        "--intent",
+        required=True,
+        choices=("placeholder", "migrated", "deliberate", "forgotten", "inherited-refactor", "generated"),
+        help="Classification of the literal's historical intent.",
+    )
+    sp.set_defaults(func=cmd_record_literal_archaeology)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -2640,6 +2745,109 @@ def cmd_record_data_flow_chain(args: argparse.Namespace) -> int:
     return 0
 
 
+# --- Patch 8: literal-archaeology setter ------------------------------------
+
+
+def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
+    """Append a {literal, file_line, introduced_by, introduced_when, commit_subject, intent}
+    record to literal_archaeology.
+
+    Dedupes by (literal, file_line) pair: re-recording the same pair is a no-op
+    (original intent is retained; no error emitted — matches record-value-production-site
+    behavior). Multiple file_lines for the same literal are all appended.
+
+    Validates:
+      - --literal: non-empty + must fully match LITERAL_TOKEN_RE (primitive only).
+      - --file-line: via _validate_file_line; (none) sentinel rejected.
+      - --introduced-by: 7-40 hex char commit SHA.
+      - --introduced-when: ISO date YYYY-MM-DD.
+      - --commit-subject: non-empty.
+      - --intent: enforced by argparse choices.
+    """
+    # Validate --literal: non-empty, then fullmatch against LITERAL_TOKEN_RE.
+    literal_raw = args.literal
+    if not literal_raw or not literal_raw.strip():
+        return _die(
+            "record-literal-archaeology: --literal value cannot be empty",
+            code=2,
+        )
+    literal = literal_raw.strip()
+    if not re.fullmatch(LITERAL_TOKEN_RE.pattern, literal, re.VERBOSE):
+        return _die(
+            "record-literal-archaeology: --literal {0!r} is not a recognizable literal "
+            "token (expected: bool / number / null-like / quoted string; arrays / objects "
+            "/ regex / function literals are out of scope — record them as findings "
+            "instead).".format(literal),
+            code=2,
+        )
+
+    # Validate --file-line via existing helper; then reject (none) sentinel.
+    try:
+        file_line = _validate_file_line(args.file_line, "literal_archaeology.file_line")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    if file_line == "(none)":
+        return _die(
+            "record-literal-archaeology: --file-line cannot be (none) — "
+            "archaeology requires a real path",
+            code=2,
+        )
+
+    # Validate --introduced-by: 7-40 hex chars.
+    introduced_by = args.introduced_by.strip()
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", introduced_by):
+        return _die(
+            "record-literal-archaeology: --introduced-by {0!r} must be a 7-40 char hex "
+            "commit SHA.".format(introduced_by),
+            code=2,
+        )
+
+    # Validate --introduced-when: ISO date YYYY-MM-DD.
+    introduced_when = args.introduced_when.strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", introduced_when):
+        return _die(
+            "record-literal-archaeology: --introduced-when {0!r} must be ISO date "
+            "YYYY-MM-DD.".format(introduced_when),
+            code=2,
+        )
+    try:
+        datetime.date.fromisoformat(introduced_when)
+    except ValueError:
+        return _die(
+            "record-literal-archaeology: --introduced-when {0!r} must be ISO date "
+            "YYYY-MM-DD.".format(introduced_when),
+            code=2,
+        )
+
+    # Validate --commit-subject: non-empty.
+    try:
+        commit_subject = _validate_scalar(args.commit_subject, "literal_archaeology.commit_subject")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # --intent is enforced by argparse choices.
+    intent = args.intent
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            rows = report.setdefault("literal_archaeology", [])
+            # Dedupe by (literal, file_line) pair — no-op if same pair exists.
+            for existing in rows:
+                if existing.get("literal") == literal and existing.get("file_line") == file_line:
+                    return 0
+            rows.append({
+                "literal": literal,
+                "file_line": file_line,
+                "introduced_by": introduced_by,
+                "introduced_when": introduced_when,
+                "commit_subject": commit_subject,
+                "intent": intent,
+            })
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-literal-archaeology: {0}".format(err))
+    return 0
+
+
 # --- Render + verify + summary ----------------------------------------------
 
 
@@ -2659,8 +2867,11 @@ def _render_report_md(memo: dict, report: dict) -> str:
       9. Approaches
       10. Constitution Constraints
       11. Complexity Assessment
-      12. Open Uncertainties (when gaps present)
-      13. Next step (when verdict proceeds)
+      12. Value Semantics (when present)
+      13. Value Production Sites (when present)
+      14. Literal Archaeology (when present)
+      15. Open Uncertainties (when gaps present)
+      16. Next step (when verdict proceeds)
     """
     out = []  # type: List[str]
     topic = report.get("topic") or _derive_topic_for_render(memo, report)
@@ -2911,6 +3122,25 @@ def _render_report_md(memo: dict, report: dict) -> str:
             ))
         out.append("")
 
+    # Literal Archaeology (Patch 8 V3: historical-intent classification for
+    # hardcoded literals the recommended approach proposes to replace).
+    literal_archaeology = report.get("literal_archaeology") or []
+    if literal_archaeology:
+        out.append("## Literal Archaeology")
+        out.append("")
+        out.append("| Literal | File:line | Introduced by | When | Commit subject | Intent |")
+        out.append("|---|---|---|---|---|---|")
+        for row in literal_archaeology:
+            out.append("| {0} | {1} | {2} | {3} | {4} | {5} |".format(
+                _md_escape_cell(row.get("literal") or ""),
+                _md_escape_cell(row.get("file_line") or ""),
+                _md_escape_cell(row.get("introduced_by") or ""),
+                _md_escape_cell(row.get("introduced_when") or ""),
+                _md_escape_cell(row.get("commit_subject") or ""),
+                _md_escape_cell(row.get("intent") or ""),
+            ))
+        out.append("")
+
     gaps = memo.get("gaps") or []
     if gaps:
         out.append("## Open Uncertainties")
@@ -3025,6 +3255,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
          — forces Phase 2.5 to enumerate the production-site rewriter (e.g.,
          Math.random, Date.now) as a candidate root cause when randomization
          is detected (Patch 7).
+     17. Literal-archaeology required when recommended-approach prose contains
+         a literal-replacement pattern ("replace <X> with <Y>" / "<X> -> <Y>"
+         / etc.) and <X> is a primitive literal. Gated on bug mode. Fires when
+         no literal_archaeology row exists whose literal == <X> AND whose
+         file_line matches a recorded finding's file_line. Closes Gap 8 (V3)
+         — forces git-blame archaeology before recommending literal replacement
+         (Patch 8).
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -3418,6 +3655,53 @@ def cmd_verify(args: argparse.Namespace) -> int:
                         unstable_values,
                         [s.get("file_line") for s in production_sites
                          if s.get("value") in unstable_values],
+                    )
+                )
+
+    # Patch 8 (V3) — Gap 8: literal-archaeology requirement on bug-mode
+    # recommended approach. When the recommended approach's rationale OR the
+    # linked approach.description contains a literal-replacement pattern
+    # ("replace <X> with <Y>" / "<X> -> <Y>" / etc.) where <X> is a primitive
+    # literal, require a matching literal_archaeology row.
+    bug_mode_17 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
+    rec_approach = report.get("recommended_approach") or {}
+    if bug_mode_17 and rec_approach:
+        # Pull prose from BOTH the rationale AND the linked approach's description.
+        rationale_text = rec_approach.get("rationale") or ""
+        linked_name = rec_approach.get("name")
+        approach_desc = ""
+        if linked_name:
+            for ap in report.get("approaches") or []:
+                if ap.get("name") == linked_name:
+                    approach_desc = ap.get("description") or ""
+                    break
+        combined_text = "{0} {1}".format(rationale_text, approach_desc)
+        detected_literal = _detect_literal_replacement(combined_text)
+        if detected_literal is not None:
+            archaeology = report.get("literal_archaeology") or []
+            # Collect file_lines from findings (anchor surface).
+            finding_file_lines = {
+                f.get("file_line") for f in (report.get("findings") or [])
+                if f.get("file_line")
+            }
+            # Match: at least one archaeology row whose literal == detected_literal
+            # AND whose file_line ∈ findings[].file_line.
+            matched = any(
+                row.get("literal") == detected_literal
+                and row.get("file_line") in finding_file_lines
+                for row in archaeology
+            )
+            if not matched:
+                violations.append(
+                    "check 17: recommended approach proposes replacing literal "
+                    "{0!r} (detected in rationale or linked approach description) "
+                    "but no literal_archaeology record exists for it at a recorded "
+                    "finding's file_line. Run `git log -S {0!r} -- <file>` + "
+                    "`git blame -L <start>,<end> <file>`; classify intent "
+                    "(placeholder / migrated / deliberate / forgotten / "
+                    "inherited-refactor / generated); then call "
+                    "record-literal-archaeology before set-recommended-approach.".format(
+                        detected_literal
                     )
                 )
 

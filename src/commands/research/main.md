@@ -542,6 +542,56 @@ Enumerate at least 2 candidate root causes for the symptom. For each, write a on
 
 For any hypothesis whose falsifier needs runtime data (lifecycle race, framework lifecycle gap, vendor side-effect, network-shaped issue, timing-shaped issue), prepare a specific probe — a `console.log` probe, an `app.config.warnHandler` capture, a network-tab inspection, a breakpoint dump, etc.
 
+### Phase 2.5b — Literal archaeology (MANDATORY when bug points at a hardcoded literal)
+
+Phase 2.5 classifies value semantics + stability for symbols. It does NOT examine WHY a primitive literal exists at the bug site. A hardcoded `false` / `0` / `null` / `"string"` at the bug location has historical intent — placeholder, migrated from a legacy system, deliberate policy, forgotten across a later policy change, inherited verbatim by a refactor, or generated. Without that classification, the LLM treats the literal as "the bug" and proposes literal-replacement at the call site — which is the wrong fix layer when intent ∈ {placeholder, forgotten, inherited-refactor} (default-source belongs upstream: wrapper signature, state-init factory, or use-case default).
+
+**Trigger.** Run Phase 2.5b when ALL of the following hold: (1) bug mode; (2) Phase 2.4d's data-flow chain trace reveals a hardcoded primitive literal at a finding's `file_line` (one of the intermediate functions passes or assigns the literal rather than a variable) OR the Phase 3 recommended approach you are about to draft will replace a primitive literal with a different value. When in doubt, run Phase 2.5b — check 17 will fire at verify if the approach replaces a literal and archaeology was skipped. "Primitive literal" = JS/TS `true|false`, Python `True|False`, `null|undefined|None`, decimal / hex / BigInt / scientific number, single-quoted / double-quoted / backtick-template string. Array / object / regex / function literals are OUT OF SCOPE — record them as ordinary findings instead.
+
+**Steps.**
+
+1. **Find the introducing commit.** Run `git log -S "<literal>" -- <file>` with `<literal>` quoted (escape shell metacharacters). The introducing commit is the OLDEST commit whose diff added the literal (last entry in the log output). Multi-commit history is OUT OF SCOPE; anchor on the oldest.
+
+2. **Read the commit subject.** Run `git show --stat <introducing-commit-sha>` to see the commit's subject line and which files it touched.
+
+3. **Confirm author + date via blame.** Run `git blame -L <start>,<end> <file>` around the literal's line; the blame entry's author + date confirm the introducing-commit fingerprint.
+
+4. **Classify intent.** Pick ONE of the 6 enum values:
+
+   | Intent | When it applies |
+   |---|---|
+   | `placeholder` | Literal was a TODO / FIXME / temporary value (commit msg or surrounding code says "default for now", "TBD", etc.). |
+   | `migrated` | Literal carried over from a legacy system (commit msg cites the migration; surrounding code references the legacy identifier). |
+   | `deliberate` | Literal was a considered policy choice with rationale in the commit message (commit msg explains WHY this value). |
+   | `forgotten` | Literal added during a feature intro but never updated when a later policy was added (commit msg introduces the feature; a later commit adds the policy without revisiting the literal). |
+   | `inherited-refactor` | A later refactor preserved the literal verbatim while restructuring around it (commit msg describes structural change, not value change). |
+   | `generated` | Literal lives in a generated file (path matches `**/generated/**` or `**/node_modules/**`, OR file header has an `AUTO-GENERATED` marker). |
+
+5. **Record the archaeology.** Call:
+
+   ```bash
+   .devforge/lib/research_helper record-literal-archaeology \
+       --literal "<literal as it appears in source>" \
+       --file-line "<path:line>" \
+       --introduced-by "<commit sha — 7 to 40 hex chars>" \
+       --introduced-when "<YYYY-MM-DD>" \
+       --commit-subject "<one-line subject from the commit>" \
+       --intent <placeholder|migrated|deliberate|forgotten|inherited-refactor|generated>
+   ```
+
+   The setter dedupes on `(literal, file_line)` — re-recording the same pair is a no-op (first write wins on the `--intent` value). The setter rejects the `(none)` sentinel and unrecognized literal tokens. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
+
+**Per-intent recovery rule (drives Phase 3's recommended-approach drafting).**
+
+- `intent ∈ {placeholder, forgotten, inherited-refactor}` → the fix layer is NOT the literal site. Escalate the default-source one layer up: literal at a call-site → default at the wrapper signature; literal at state init → default at the state-init factory function; literal in a use-case caller → default in the use-case method signature. Phase 3 must propose the upstream default, not literal replacement at the call site.
+- `intent == migrated` → investigate the legacy system's behavior for the SAME literal before recommending. The legacy version likely had a different default OR an upstream policy that the migration dropped. Surface the legacy gap in Phase 3's rationale.
+- `intent == deliberate` → literal replacement may be the right fix (LLM's instinct was correct), BUT the archaeology row + commit-msg cite are REQUIRED to justify overriding a documented deliberate choice. Phase 3 rationale must cite the introducing commit by SHA + subject.
+- `intent == generated` → fix layer is the generator template, not the consumer. Trace back to the template file; propose the change there. Phase 3 should NOT recommend editing the generated file.
+
+**Helper verify check 17.** When Phase 3 sets a recommended approach whose `--rationale` or whose linked approach's `--description` contains literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) and no `literal_archaeology` row exists for `<X>` at a recorded finding's `file_line`, `verify` exits with code 2 citing check 17. Recovery: run the steps above + `record-literal-archaeology`, then re-run `verify`.
+
+**Fallback when archaeology fails.** On a shallow git clone or a file not under git tracking: `git log -S` returns 0 commits OR `git blame` returns `(uncommitted)`. Treat the archaeology as inconclusive — pass `--intent forgotten` (the conservative classification — forces fix-layer escalation per the recovery rule) and add a one-line note in the recommended-approach rationale: `"archaeology inconclusive (shallow clone or untracked file); intent assumed forgotten per Phase 2.5b fallback rule"`.
+
 ### Phase 2.6 — Wire findings into helper
 
 After the CBM chain + parallel-pattern sweep + canonical-pattern search + helper-API surface enumeration (Phase 2.4c) + hypothesis enumeration complete, call helper setters in this order. Phase 2.4c state (`fix_path_helpers`, `inbound_callers`, `dead_siblings`, `consumer_chain`, `value_semantics`) is already recorded in the report by its own setters — do not re-record those surfaces via `record-finding`. Compose values from the in-context findings; do not re-shape.
@@ -660,6 +710,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 
    **Recovery on rejection.** If the helper rejects the call (exit 2), copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Identify the rejection cause from the stderr text, fix the missing arg (supply justification, supply non-empty cites, or replace an unresolved cite with one that matches a recorded row), and re-call `set-recommended-approach`.
 
+   **MANDATORY (when the recommended approach replaces a hardcoded literal):** if `--rationale` or the linked approach's `--description` will contain literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) where `<X>` is a primitive literal, Phase 2.5b `record-literal-archaeology` for `<X>` at the bug's `file_line` MUST have been called BEFORE `set-recommended-approach`. Check 17 enforces this at verify time: on non-zero exit citing check 17, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), run Phase 2.5b's git-archaeology steps + `record-literal-archaeology`, then re-run `verify`.
+
 4. **Constitution constraints** — read `constitution.md` for rules that bear on the affected area + recommended approach. For each rule that constrains or enables the change:
 
    ```bash
@@ -702,7 +754,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 .devforge/lib/research_helper verify
 ```
 
-Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 8b (cross-layer rule) rejects a bug-mode report where the primary symptom's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers[].file_line` is in the same package as the symptom — at least one helper must trace through a package boundary; see Phase 2.4c Stopping rule. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Check 13 (single-layer recommendation gate) rejects a bug-mode report where all `fix_path_helpers[].file_line` resolve to one package AND `recommended_approach.single_layer_justification` / `cites` are missing or empty — supply both via `set-recommended-approach --single-layer-justification ... --cites '[...]'` (see Phase 3 step 3). Check 13 is suppressed when check 8b applies (presentation-layer symptom + same-package helpers); in that case the single-layer escape path cannot satisfy verify and the only recovery is adding a cross-layer helper. Check 14 (fix-path-helper anchor gate) rejects a bug-mode report where any `fix_path_helpers[]` entry's `file_line` does not anchor to a recorded finding (exact match OR same path within ±5 lines) — see Phase 2.4c Step 1 anchor gate. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
+Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 8b (cross-layer rule) rejects a bug-mode report where the primary symptom's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers[].file_line` is in the same package as the symptom — at least one helper must trace through a package boundary; see Phase 2.4c Stopping rule. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Check 13 (single-layer recommendation gate) rejects a bug-mode report where all `fix_path_helpers[].file_line` resolve to one package AND `recommended_approach.single_layer_justification` / `cites` are missing or empty — supply both via `set-recommended-approach --single-layer-justification ... --cites '[...]'` (see Phase 3 step 3). Check 13 is suppressed when check 8b applies (presentation-layer symptom + same-package helpers); in that case the single-layer escape path cannot satisfy verify and the only recovery is adding a cross-layer helper. Check 14 (fix-path-helper anchor gate) rejects a bug-mode report where any `fix_path_helpers[]` entry's `file_line` does not anchor to a recorded finding (exact match OR same path within ±5 lines) — see Phase 2.4c Step 1 anchor gate. Check 17 (literal-archaeology gate) rejects a bug-mode report whose `recommended_approach.rationale` OR the linked approach's `description` contains literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) where `<X>` is a recognizable primitive literal AND no `literal_archaeology` row exists for `<X>` at a `findings[].file_line` — recovery: run Phase 2.5b archaeology + `record-literal-archaeology`, then re-run `verify`. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
 
 On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` from scratch (all prior state will be overwritten).
 
@@ -712,7 +764,7 @@ On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter f
 .devforge/lib/research_helper render
 ```
 
-Helper walks the locked schema and emits the full research report markdown to stdout. The orchestrator does NOT compose this markdown; the helper owns the section order (Header → Metadata → Summary → Symptom → Codebase Findings (WHERE) → Root Cause Hypothesis (WHY) → optional Structured Root Cause → optional Runner-up framing → Hypothesis Enumeration → optional Recommended Verify Step → Approaches (HOW) → Constitution Constraints → Complexity Assessment → optional Open Uncertainties → optional Next Step), heading levels, and table shapes. The Runner-up framing section renders only when `runner_up_framing` is set (see Phase 2.3b). The Codebase Findings table includes a `Framing` column showing the per-finding tag (`primary` or `runner-up`).
+Helper walks the locked schema and emits the full research report markdown to stdout. The orchestrator does NOT compose this markdown; the helper owns the section order (Header → Metadata → Summary → Symptom → Codebase Findings (WHERE) → Root Cause Hypothesis (WHY) → optional Structured Root Cause → optional Runner-up framing → Hypothesis Enumeration → optional Recommended Verify Step → Approaches (HOW) → Constitution Constraints → Complexity Assessment → optional Value Semantics → optional Value Production Sites → optional Literal Archaeology → optional Open Uncertainties → optional Next Step), heading levels, and table shapes. The Runner-up framing section renders only when `runner_up_framing` is set (see Phase 2.3b). The Codebase Findings table includes a `Framing` column showing the per-finding tag (`primary` or `runner-up`).
 
 Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). This is the user's first look at the rendered report.
 
