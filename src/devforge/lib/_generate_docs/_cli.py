@@ -94,6 +94,7 @@ from ._package_input import _build_package_input, cmd_package_input
 from ._preflight import _build_preflight, cmd_preflight
 from ._project_input import _build_project_input, cmd_project_input
 from ._validate_doc import _build_validate_doc, cmd_validate_doc
+from ._verify_all import _build_verify_all, cmd_verify_all
 from ._glossary import (
     _build_build_glossary_bundles,
     cmd_build_glossary_bundles,
@@ -445,6 +446,8 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
     ("preflight", _build_preflight, cmd_preflight),
     # Plan F.5 — validate-doc (concern tier; v0).
     ("validate-doc", _build_validate_doc, cmd_validate_doc),
+    # Phase 5 aggregator gate — walks state JSON, runs validate-doc per path.
+    ("verify-all", _build_verify_all, cmd_verify_all),
     # Plan F.4 — concern-tier setter primitives + render-doc (v0).
     # F.7b — package-tier setters (set-doc-concerns / -layers / -patterns).
     # Hazards dropped: /audit owns hazard discovery; concern docs ship Purpose + Structure only.

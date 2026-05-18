@@ -572,7 +572,11 @@ Phase B assumes CBM is indexed. Phase 1's `preflight` SUBCMD calls `index_reposi
 
 ## Phase 5 — Verify
 
-For each rendered doc — concern AND package tier — walk the on-disk file and run `validate-doc` once more (defensive — per-tier validation in Steps 2.5/3.2/3.3 should have caught everything). Aggregate any new failures.
+```bash
+./.devforge/lib/generate_docs_helper verify-all
+```
+
+Exit 0 = every rendered concern + package doc passes `validate-doc`. Exit 2 = stderr enumerates failures; surface verbatim + STOP (the user re-runs the failed concern / package phase before continuing to Phase 6 Report).
 
 ---
 

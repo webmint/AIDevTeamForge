@@ -6049,5 +6049,233 @@ class CircuitBreakerTests(_EnvIsolationMixin, unittest.TestCase):
         )
 
 
+class TestVerifyAll(_RenderTestBase):
+    """Tests for the `verify-all` aggregator subcommand (Phase 5 gate).
+
+    Uses real setter + render helpers to build valid and invalid concern /
+    package docs, then asserts `verify-all` exits 0 (all pass) or 2 (some
+    fail) and writes the expected stderr.
+
+    Setup pattern: _RenderTestBase provides a real project_root + .devforge/
+    dir; `_run_cli` exercises the full CLI dispatch path (argparse → handler).
+    State is built via real CLI calls so no hand-authored state fixtures exist.
+    """
+
+    # ── Shared helpers ────────────────────────────────────────────────────
+
+    _SAMPLE_TREE = (
+        "src/auth/\n"
+        "├── login.ts\n"
+        "└── logout.ts\n"
+    )
+
+    _VALID_CONCERN_FRONTMATTER = json.dumps({
+        "concern": "auth",
+        "package": "apps/web",
+        "files": 2,
+        "source_stamp": "abc123",
+        "last_indexed": "2026-05-18",
+    })
+
+    _VALID_CONCERN_FRONTMATTER_B = json.dumps({
+        "concern": "billing",
+        "package": "apps/web",
+        "files": 1,
+        "source_stamp": "def456",
+        "last_indexed": "2026-05-18",
+    })
+
+    def _write_valid_concern_doc(self, pkg_path, concern_name, frontmatter_json):
+        """Build a valid concern doc via real setters + render-doc.
+
+        Subprocess calls run with `cwd=project_root` so that the doc-setter
+        helpers (which resolve `_doc_path_for` from `args.devforge_dir.parent`
+        rather than from the DEVFORGE_PROJECT_ROOT env override) place output
+        under the tmp project tree instead of the repo root.
+        """
+        target = f"{pkg_path}/{concern_name}"
+        # init-doc
+        proc = _run_cli(self.devforge_dir, "init-doc",
+                        "--tier", "concern",
+                        "--target", target,
+                        "--frontmatter", frontmatter_json,
+                        "--tree", self._SAMPLE_TREE,
+                        project_root=self.project_root, cwd=self.project_root)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"init-doc failed for {target}: {proc.stderr.decode()}"
+            )
+        # set-doc-purpose
+        proc = _run_cli(self.devforge_dir, "set-doc-purpose",
+                        "--tier", "concern",
+                        "--target", target,
+                        "--text", f"{concern_name} module for {pkg_path}.",
+                        project_root=self.project_root, cwd=self.project_root)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"set-doc-purpose failed for {target}: {proc.stderr.decode()}"
+            )
+        # render-doc (skeleton → final .md)
+        proc = _run_cli(self.devforge_dir, "render-doc",
+                        "--tier", "concern",
+                        "--target", target,
+                        project_root=self.project_root, cwd=self.project_root)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"render-doc failed for {target}: {proc.stderr.decode()}"
+            )
+
+    def _write_valid_package_overview_doc(self, pkg_path, pkg_name):
+        """Build a valid package-overview doc manually (no CLI setter for this tier)."""
+        doc_dir = self.project_root / "docs" / pkg_path
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        doc_content = (
+            "---\n"
+            f"package: {pkg_name}\n"
+            "source_stamp: abc123\n"
+            "last_indexed: 2026-05-18\n"
+            "---\n\n"
+            f"# {pkg_name}\n\n"
+            "## Purpose\n\n"
+            f"The {pkg_name} package handles core functionality.\n\n"
+            "## Concerns\n\n"
+            "- auth — authentication flows\n"
+            "- billing — billing workflows\n\n"
+            "## Files\n\n"
+            "- index.ts — barrel re-export\n"
+        )
+        (doc_dir / "overview.md").write_text(doc_content, encoding="utf-8")
+
+    # ── Test 1: happy path ─────────────────────────────────────────────────
+
+    def test_verify_all_happy_path(self):
+        """State with 2 concerns + 1 package-overview; all valid → exit 0."""
+        # Add package + concerns to state
+        self._run("add-package", "--path", "apps/web", "--name", "web")
+        self._run("add-concern", "--package", "apps/web", "--concern", "auth")
+        self._run("add-concern", "--package", "apps/web", "--concern", "billing")
+
+        # Build valid concern docs via real setters
+        self._write_valid_concern_doc("apps/web", "auth", self._VALID_CONCERN_FRONTMATTER)
+        billing_fm = json.dumps({
+            "concern": "billing",
+            "package": "apps/web",
+            "files": 1,
+            "source_stamp": "def456",
+            "last_indexed": "2026-05-18",
+        })
+        self._write_valid_concern_doc("apps/web", "billing", billing_fm)
+
+        # Build valid package-overview doc manually
+        self._write_valid_package_overview_doc("apps/web", "web")
+
+        # Also write valid package-architecture doc (verify-all validates both)
+        doc_dir = self.project_root / "docs" / "apps/web"
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        arch_content = (
+            "---\n"
+            "package: web\n"
+            "source_stamp: abc123\n"
+            "last_indexed: 2026-05-18\n"
+            "---\n\n"
+            "# web architecture\n\n"
+            "## Layers\n\n"
+            "- presentation — Vue components\n\n"
+            "## Patterns\n\n"
+            "- BLoC over Pinia — for cross-package state\n"
+        )
+        (doc_dir / "architecture.md").write_text(arch_content, encoding="utf-8")
+
+        proc = _run_cli(self.devforge_dir, "verify-all",
+                        project_root=self.project_root)
+        stderr = proc.stderr.decode("utf-8")
+        self.assertEqual(
+            proc.returncode, 0,
+            f"expected exit 0 (all valid), got {proc.returncode}; stderr: {stderr!r}",
+        )
+        self.assertEqual(stderr.strip(), "", f"expected empty stderr, got: {stderr!r}")
+
+    # ── Test 2: failure path ──────────────────────────────────────────────
+
+    def test_verify_all_failure_path(self):
+        """State with 1 concern; doc MISSING ## Structure → exit 2."""
+        # Add package + concern to state
+        self._run("add-package", "--path", "apps/web", "--name", "web")
+        self._run("add-concern", "--package", "apps/web", "--concern", "auth")
+
+        # Write a broken concern doc: init-doc (has ## Structure) but then
+        # overwrite the rendered doc with a version missing ## Structure.
+        target = "apps/web/auth"
+        _run_cli(self.devforge_dir, "init-doc",
+                 "--tier", "concern",
+                 "--target", target,
+                 "--frontmatter", self._VALID_CONCERN_FRONTMATTER,
+                 "--tree", self._SAMPLE_TREE,
+                 project_root=self.project_root, cwd=self.project_root)
+        _run_cli(self.devforge_dir, "set-doc-purpose",
+                 "--tier", "concern",
+                 "--target", target,
+                 "--text", "Auth module.",
+                 project_root=self.project_root, cwd=self.project_root)
+        _run_cli(self.devforge_dir, "render-doc",
+                 "--tier", "concern",
+                 "--target", target,
+                 project_root=self.project_root, cwd=self.project_root)
+
+        # Now overwrite the rendered .md with a version missing ## Structure
+        doc_path = self.project_root / "docs" / "apps/web" / "auth" / "index.md"
+        self.assertTrue(doc_path.is_file(), "render-doc should have created index.md")
+        content = doc_path.read_text(encoding="utf-8")
+        # Rename `## Structure` to a heading that doesn't contain the
+        # canonical anchor substring (validate-doc checks `anchor not in body`).
+        broken = content.replace("## Structure", "## Layout")
+        doc_path.write_text(broken, encoding="utf-8")
+
+        # Need valid package docs too so only the concern fails
+        self._write_valid_package_overview_doc("apps/web", "web")
+        doc_dir = self.project_root / "docs" / "apps/web"
+        arch_content = (
+            "---\n"
+            "package: web\n"
+            "source_stamp: abc123\n"
+            "last_indexed: 2026-05-18\n"
+            "---\n\n"
+            "# web architecture\n\n"
+            "## Layers\n\n"
+            "- presentation — Vue components\n\n"
+            "## Patterns\n\n"
+            "- BLoC over Pinia — for cross-package state\n"
+        )
+        (doc_dir / "architecture.md").write_text(arch_content, encoding="utf-8")
+
+        proc = _run_cli(self.devforge_dir, "verify-all",
+                        project_root=self.project_root)
+        stderr = proc.stderr.decode("utf-8")
+        self.assertEqual(
+            proc.returncode, 2,
+            f"expected exit 2 (validation failure), got {proc.returncode}; stderr: {stderr!r}",
+        )
+        # stderr should mention the concern target and "Structure"
+        self.assertIn("apps/web/auth", stderr,
+                      f"expected concern target in stderr: {stderr!r}")
+        self.assertIn("Structure", stderr,
+                      f"expected 'Structure' in stderr: {stderr!r}")
+
+    # ── Test 3: empty state ───────────────────────────────────────────────
+
+    def test_verify_all_empty_state(self):
+        """Fresh state with no packages → vacuous truth → exit 0, empty stderr."""
+        # No packages added — state file may not even exist yet.
+        proc = _run_cli(self.devforge_dir, "verify-all",
+                        project_root=self.project_root)
+        stderr = proc.stderr.decode("utf-8")
+        self.assertEqual(
+            proc.returncode, 0,
+            f"expected exit 0 for empty state, got {proc.returncode}; stderr: {stderr!r}",
+        )
+        self.assertEqual(stderr.strip(), "",
+                         f"expected empty stderr for empty state, got: {stderr!r}")
+
+
 if __name__ == "__main__":
     unittest.main()
