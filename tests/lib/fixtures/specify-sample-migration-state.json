@@ -17,22 +17,22 @@
     {
       "path": "constitution.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:37Z"
+      "read_timestamp": "2026-05-18T18:23:05Z"
     },
     {
       "path": ".claude/memory/MEMORY.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:37Z"
+      "read_timestamp": "2026-05-18T18:23:05Z"
     },
     {
       "path": "CLAUDE.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:37Z"
+      "read_timestamp": "2026-05-18T18:23:05Z"
     },
     {
       "path": "docs/architecture.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:37Z"
+      "read_timestamp": "2026-05-18T18:23:05Z"
     }
   ],
   "phase1_finalized": true,
@@ -374,8 +374,9 @@
       "content": "Existing dist output paths"
     },
     {
-      "kind": "use",
-      "content": "Corepack to pin pnpm version"
+      "kind": "external_system",
+      "content": "Corepack to pin pnpm version",
+      "protocol": "corepack"
     }
   ],
   "open_questions": [],

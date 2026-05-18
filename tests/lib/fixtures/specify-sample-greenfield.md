@@ -65,7 +65,7 @@ N/A — no pipeline change required
 ## 7. Technical Constraints
 
 - Must follow: Constitution Section 7 scaffolding rules
-- Must use: Existing job runner from src/jobs/registry.ts
+- Must follow: Existing job runner from src/jobs/registry.ts
 
 ## 8. Open Questions
 

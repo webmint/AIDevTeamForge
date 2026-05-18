@@ -200,7 +200,7 @@ class TestSchemaConstants(unittest.TestCase):
     def test_constraint_kind_enum(self):
         self.assertEqual(
             specify_helper.CONSTRAINT_KIND_ENUM,
-            ("follow", "not_break", "use"),
+            ("follow", "not_break", "nfr", "constitution_anchor", "external_system"),
         )
 
     def test_mode_detection_signals(self):
@@ -2527,11 +2527,25 @@ class TestPhase4SectionSetters(unittest.TestCase):
     def test_record_constraint_accepts_each_kind(self):
         with tempfile.TemporaryDirectory() as td:
             dev = self._dev(td)
+            # constitution.md required for constitution_anchor kind.
+            (Path(td) / "constitution.md").write_text(
+                "# Constitution\n\n### §3.6 Open/Closed pattern\n\nRules.\n",
+                encoding="utf-8",
+            )
+            # Per-kind required extra flags.
+            extra: Dict[str, List[str]] = {
+                "follow": [],
+                "not_break": [],
+                "nfr": ["--quantifier", "p95 < 200ms"],
+                "constitution_anchor": ["--constitution-ref", "§3.6"],
+                "external_system": ["--protocol", "REST"],
+            }
             for kind in specify_helper.CONSTRAINT_KIND_ENUM:
-                r = _run([
-                    "--devforge-dir", str(dev), "record-constraint",
-                    "--kind", kind, "--content", "c-{0}".format(kind),
-                ])
+                r = _run(
+                    ["--devforge-dir", str(dev), "record-constraint",
+                     "--kind", kind, "--content", "c-{0}".format(kind)]
+                    + extra[kind]
+                )
                 self.assertEqual(r.returncode, 0, r.stderr)
             state = json.loads((dev / "specify-state.json").read_text())
             self.assertEqual(
@@ -2570,6 +2584,261 @@ class TestPhase4SectionSetters(unittest.TestCase):
                 "--impact", "Med", "--mitigation", "y",
             ])
             self.assertEqual(r2.returncode, 0, r2.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — record-constraint kind-split tests (nfr / constitution_anchor /
+# external_system / legacy-use rejection / follow / not_break regression).
+# ---------------------------------------------------------------------------
+
+
+class RecordConstraintKindSplitTests(unittest.TestCase):
+    """Round-trip tests for the expanded constraint kind taxonomy.
+
+    All happy-path cases invoke the real subprocess and read state JSON.
+    Fixture constitution.md is placed at install_root (parent of .devforge/).
+    """
+
+    def _dev(self, td: str) -> Path:
+        dev = Path(td) / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        return dev
+
+    def _dev_with_constitution(self, td: str, extra_content: str = "") -> Path:
+        """Create .devforge/ and write a constitution.md with §3.6 heading."""
+        root = Path(td)
+        (root / "constitution.md").write_text(
+            "# Constitution\n\n### §3.6 Open/Closed pattern\n\nFollow it.\n"
+            + extra_content,
+            encoding="utf-8",
+        )
+        return self._dev(td)
+
+    # --- nfr ---
+
+    def test_nfr_valid_numeric_threshold(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "nfr",
+                "--quantifier", "10K users @ p95 < 200ms",
+                "--content", "System must handle load",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            c = state["constraints"][0]
+            self.assertEqual(c["kind"], "nfr")
+            self.assertEqual(c["quantifier"], "10K users @ p95 < 200ms")
+            self.assertEqual(c["content"], "System must handle load")
+
+    def test_nfr_valid_named_class(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "nfr",
+                "--quantifier", "PCI-DSS Level 1",
+                "--content", "Payment data handling",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            c = state["constraints"][0]
+            self.assertEqual(c["kind"], "nfr")
+            self.assertEqual(c["quantifier"], "PCI-DSS Level 1")
+
+    def test_nfr_rejects_empty_quantifier(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "nfr",
+                "--content", "System must handle load",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("required and non-empty", r.stderr)
+
+    def test_nfr_rejects_vague_high(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "nfr",
+                "--quantifier", "high",
+                "--content", "System must perform well",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("vague quantifier", r.stderr)
+
+    def test_nfr_rejects_bare_adjective(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "nfr",
+                "--quantifier", "fast and scalable",
+                "--content", "System must perform well",
+            ])
+            self.assertEqual(r.returncode, 2)
+            # Error must mention numeric threshold or named-class
+            self.assertTrue(
+                "numeric threshold" in r.stderr or "named-class" in r.stderr,
+                "expected numeric threshold or named-class in stderr: {0!r}".format(r.stderr),
+            )
+
+    # --- constitution_anchor ---
+
+    def test_constitution_anchor_valid_existing_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev_with_constitution(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "constitution_anchor",
+                "--constitution-ref", "§3.6",
+                "--content", "Must follow Open/Closed pattern",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            c = state["constraints"][0]
+            self.assertEqual(c["kind"], "constitution_anchor")
+            self.assertEqual(c["constitution_ref"], "§3.6")
+            self.assertEqual(c["content"], "Must follow Open/Closed pattern")
+
+    def test_constitution_anchor_valid_bare_ref(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev_with_constitution(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "constitution_anchor",
+                "--constitution-ref", "3.6",
+                "--content", "Must follow Open/Closed pattern",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            c = state["constraints"][0]
+            self.assertEqual(c["constitution_ref"], "3.6")
+
+    def test_constitution_anchor_rejects_missing_ref(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev_with_constitution(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "constitution_anchor",
+                "--content", "Must follow something",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("constitution_anchor", r.stderr)
+
+    def test_constitution_anchor_rejects_nonexistent_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev_with_constitution(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "constitution_anchor",
+                "--constitution-ref", "§99.99",
+                "--content", "Must follow nonexistent rule",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("99.99", r.stderr)
+
+    def test_constitution_anchor_rejects_no_constitution_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            # No constitution.md at install_root (td).
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "constitution_anchor",
+                "--constitution-ref", "§3.6",
+                "--content", "Must follow something",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("constitution.md", r.stderr)
+
+    # --- external_system ---
+
+    def test_external_system_with_protocol(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "external_system",
+                "--protocol", "REST",
+                "--content", "Payment gateway integration",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            c = state["constraints"][0]
+            self.assertEqual(c["kind"], "external_system")
+            self.assertEqual(c["protocol"], "REST")
+            self.assertEqual(c["content"], "Payment gateway integration")
+
+    def test_external_system_with_contract_doc_ref(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "external_system",
+                "--contract-doc-ref", "api/openapi.yaml",
+                "--content", "Auth provider integration",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            c = state["constraints"][0]
+            self.assertEqual(c["kind"], "external_system")
+            self.assertEqual(c["contract_doc_ref"], "api/openapi.yaml")
+
+    def test_external_system_rejects_neither_protocol_nor_contract(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "external_system",
+                "--content", "Some external thing",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--protocol", r.stderr)
+            self.assertIn("--contract-doc-ref", r.stderr)
+
+    # --- legacy use rejection ---
+
+    def test_legacy_use_kind_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "use",
+                "--content", "foo",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("nfr", r.stderr)
+            self.assertIn("constitution_anchor", r.stderr)
+            self.assertIn("external_system", r.stderr)
+
+    # --- regression: follow + not_break still work ---
+
+    def test_follow_still_works(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "follow",
+                "--content", "Wrapper pattern per §3.6",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["constraints"][0]["kind"], "follow")
+
+    def test_not_break_still_works(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._dev(td)
+            r = _run([
+                "--devforge-dir", str(dev), "record-constraint",
+                "--kind", "not_break",
+                "--content", "Existing API contract",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["constraints"][0]["kind"], "not_break")
 
 
 # ---------------------------------------------------------------------------
@@ -3108,7 +3377,9 @@ class TestPhase4Render(unittest.TestCase):
             dev = self._seed(td)
             _run([
                 "--devforge-dir", str(dev), "record-constraint",
-                "--kind", "use", "--content", "use thing",
+                "--kind", "nfr",
+                "--quantifier", "p95 < 200ms",
+                "--content", "nfr thing",
             ])
             _run([
                 "--devforge-dir", str(dev), "record-constraint",
@@ -3121,9 +3392,9 @@ class TestPhase4Render(unittest.TestCase):
             r = _run(["--devforge-dir", str(dev), "render"])
             pf = r.stdout.index("Must follow")
             pn = r.stdout.index("Must not break")
-            pu = r.stdout.index("Must use")
+            pnfr = r.stdout.index("Must satisfy NFR")
             self.assertLess(pf, pn)
-            self.assertLess(pn, pu)
+            self.assertLess(pn, pnfr)
 
     def test_renders_dp_default_applied_in_open_questions(self):
         with tempfile.TemporaryDirectory() as td:
@@ -3569,7 +3840,8 @@ def _build_migration_fixture_state(td_path: Path) -> Path:
     ])
     _run([
         "--devforge-dir", str(dev), "record-constraint",
-        "--kind", "use",
+        "--kind", "external_system",
+        "--protocol", "corepack",
         "--content", "Corepack to pin pnpm version",
     ])
     _run([
@@ -3809,7 +4081,7 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
     ])
     _run([
         "--devforge-dir", str(dev), "record-constraint",
-        "--kind", "use",
+        "--kind", "follow",
         "--content", "Existing job runner from src/jobs/registry.ts",
     ])
     _run([
@@ -3928,6 +4200,155 @@ class TestUpstreamCompanionFixtures(unittest.TestCase):
         )
         text = fp.read_text(encoding="utf-8")
         self.assertIn("/specify", text)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — verify-rendered (post-Write integrity gate).
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyRendered(unittest.TestCase):
+    """verify-rendered subcommand — canonical-form comparison of on-disk
+    spec.md against re-render of current state.
+
+    Render determinism is the precondition for this gate to be meaningful;
+    `TestPhase4Render.test_render_is_byte_deterministic` already locks
+    that invariant. These tests exercise the gate itself: happy path,
+    tamper detection, and cosmetic-noise tolerance (CRLF / trailing
+    whitespace / extra trailing newlines).
+    """
+
+    def _seed(self, td: str) -> Path:
+        """Build a minimal valid state via real setters."""
+        dev = Path(td) / ".devforge"
+        _run(["--devforge-dir", str(dev), "reset-state"])
+        _run(["--devforge-dir", str(dev), "set-date", "--date", "2026-05-18"])
+        _run(["--devforge-dir", str(dev), "assign-feature-name",
+              "--feature-name", "verify-rendered-fixture"])
+        _run(["--devforge-dir", str(dev), "set-overview",
+              "--content", "Test fixture for verify-rendered."])
+        _run(["--devforge-dir", str(dev), "add-ac",
+              "--subsection", "behavior_change",
+              "--ears-variant", "ubiquitous",
+              "--statement", "The system shall verify rendered specs."])
+        return dev
+
+    def _write_render(self, dev: Path, td: str) -> Path:
+        """Render via cmd_render + write to disk; return the path."""
+        spec_dir = Path(td) / "specs" / "001-verify-rendered-fixture"
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        spec_path = spec_dir / "spec.md"
+        r = _run(["--devforge-dir", str(dev), "render"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        spec_path.write_text(r.stdout, encoding="utf-8")
+        return spec_path
+
+    def test_render_is_deterministic(self):
+        """PRECONDITION: render(state) twice must be byte-identical.
+
+        If this fails the entire verify-rendered gate is meaningless.
+        Fix render (strip clock / env / cwd / random reads) before
+        shipping the gate.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            r1 = _run(["--devforge-dir", str(dev), "render"])
+            r2 = _run(["--devforge-dir", str(dev), "render"])
+            self.assertEqual(
+                r1.stdout, r2.stdout,
+                "render is non-deterministic — fix render "
+                "(strip clock / env / cwd / random reads) "
+                "BEFORE shipping verify-rendered gate.",
+            )
+
+    def test_verify_rendered_happy_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            spec = self._write_render(dev, td)
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-rendered",
+                "--path", str(spec),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stderr.strip(), "")
+
+    def test_verify_rendered_tamper_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            spec = self._write_render(dev, td)
+            # Append a stray byte mid-content (not just at EOF — must
+            # survive canonical EOF-newline collapse).
+            disk = spec.read_text(encoding="utf-8")
+            tampered = disk.replace(
+                "## 1. Overview",
+                "## 1. OverviewTAMPERED",
+                1,
+            )
+            spec.write_text(tampered, encoding="utf-8")
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-rendered",
+                "--path", str(spec),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("drift at line", r.stderr)
+
+    def test_verify_rendered_tolerates_crlf(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            spec = self._write_render(dev, td)
+            disk = spec.read_bytes()
+            spec.write_bytes(disk.replace(b"\n", b"\r\n"))
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-rendered",
+                "--path", str(spec),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_verify_rendered_tolerates_trailing_whitespace(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            spec = self._write_render(dev, td)
+            disk = spec.read_text(encoding="utf-8")
+            # Append two spaces to the end of every non-empty line.
+            mangled = "\n".join(
+                (line + "  ") if line.strip() else line
+                for line in disk.split("\n")
+            )
+            spec.write_text(mangled, encoding="utf-8")
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-rendered",
+                "--path", str(spec),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_verify_rendered_tolerates_extra_trailing_newlines(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            spec = self._write_render(dev, td)
+            disk = spec.read_text(encoding="utf-8")
+            spec.write_text(disk + "\n\n\n", encoding="utf-8")
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-rendered",
+                "--path", str(spec),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_verify_rendered_missing_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._seed(td)
+            missing = Path(td) / "does-not-exist.md"
+            r = _run([
+                "--devforge-dir", str(dev),
+                "verify-rendered",
+                "--path", str(missing),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("path not found", r.stderr)
 
 
 if __name__ == "__main__":

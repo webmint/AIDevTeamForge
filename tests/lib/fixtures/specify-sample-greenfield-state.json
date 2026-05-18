@@ -17,27 +17,27 @@
     {
       "path": "constitution.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:42Z"
+      "read_timestamp": "2026-05-18T18:23:09Z"
     },
     {
       "path": ".claude/memory/MEMORY.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:42Z"
+      "read_timestamp": "2026-05-18T18:23:09Z"
     },
     {
       "path": "CLAUDE.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:42Z"
+      "read_timestamp": "2026-05-18T18:23:09Z"
     },
     {
       "path": "docs/architecture.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-15T04:04:42Z"
+      "read_timestamp": "2026-05-18T18:23:10Z"
     },
     {
       "path": "discover/2026-05-14-scheduled-export-jobs.md",
       "source_origin": "discover",
-      "read_timestamp": "2026-05-15T04:04:42Z"
+      "read_timestamp": "2026-05-18T18:23:10Z"
     }
   ],
   "phase1_finalized": true,
@@ -289,7 +289,7 @@
       "content": "Constitution Section 7 scaffolding rules"
     },
     {
-      "kind": "use",
+      "kind": "follow",
       "content": "Existing job runner from src/jobs/registry.ts"
     }
   ],

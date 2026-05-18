@@ -67,7 +67,7 @@ Each AC must be testable and unambiguous. **Cover each category that applies. Ma
 
 - Must follow: Use pnpm workspace-protocol for intra-repo dependencies
 - Must not break: Existing dist output paths
-- Must use: Corepack to pin pnpm version
+- Must integrate with external system (corepack): Corepack to pin pnpm version
 
 ## 8. Open Questions
 

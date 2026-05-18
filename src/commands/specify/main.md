@@ -556,15 +556,56 @@ Be exhaustive on Out of Scope — this prevents scope creep during implementatio
 
 ### Step 4.6 — §7 Technical Constraints
 
-Call once per constraint. `--kind` picks the render label:
+§7 captures **constraints that drive architecture**, not the architecture itself. Architecture choices belong in `/plan` (sourced from CBM-indexed prior decisions + constitution rules), not here. Five kinds; helper rejects mismatched or vague invocations.
 
 ```bash
+# NFR — quantified non-functional requirement (drives architecture in /plan)
 .devforge/lib/specify_helper record-constraint \
-    --kind <follow|not_break|use> \
+    --kind nfr \
+    --quantifier "<numeric-threshold + unit OR named-compliance-class>" \
     --content "<constraint text>"
+
+# Constitution anchor — transcribes a code-pattern rule from constitution.md
+.devforge/lib/specify_helper record-constraint \
+    --kind constitution_anchor \
+    --constitution-ref "<§-ref, e.g. §3.6>" \
+    --content "<verbatim quoted rule text>"
+
+# External system — integration contract with an off-codebase dependency
+.devforge/lib/specify_helper record-constraint \
+    --kind external_system \
+    --protocol "<protocol name, e.g. REST | gRPC | SAML 2.0>" \
+    --content "<integration constraint text>"
+# OR — if the contract lives in a doc (OpenAPI / proto / etc.):
+.devforge/lib/specify_helper record-constraint \
+    --kind external_system \
+    --contract-doc-ref "<path/to/contract>" \
+    --content "<integration constraint text>"
+
+# Process rule — non-architectural workflow constraint (e.g. commit conventions)
+.devforge/lib/specify_helper record-constraint \
+    --kind follow \
+    --content "<rule text>"
+
+# Behavior preservation — existing functionality that must not regress
+.devforge/lib/specify_helper record-constraint \
+    --kind not_break \
+    --content "<behavior to preserve>"
 ```
 
-Render labels: `follow` → "Must follow"; `not_break` → "Must not break"; `use` → "Must use". Constraints come from `constitution.md`, architecture patterns, or external systems.
+Render labels: `nfr` → "Must satisfy NFR (<quantifier>)"; `constitution_anchor` → "Must follow constitution §<ref>"; `external_system` → "Must integrate with external system (<protocol or contract>)"; `follow` → "Must follow"; `not_break` → "Must not break".
+
+**Helper-enforced validators (will reject invalid invocations at write time):**
+
+- `nfr`: `--quantifier` required, must contain numeric threshold + unit (`ms / s / sec / min / hr / users / req/s / rps / qps / tps / GB / MB / KB / TB / % / $ / connections / rows / records`) OR named-class citation (`PCI-DSS / SOC 2 / ISO XXXXX / GDPR / HIPAA / FedRAMP / FIPS / NIST`). Bare adjectives (`high`, `low`, `fast`, `scalable`, `robust`, `performant`, `secure`, etc.) rejected as vague.
+- `constitution_anchor`: `--constitution-ref` required; helper greps `<install_root>/constitution.md` for `^### §<ref>` (or bare `^### <ref>`); rejects on miss.
+- `external_system`: at least one of `--protocol` OR `--contract-doc-ref` required.
+
+**DO NOT** encode architecture choice in §7. `--kind nfr --content "must use microservice architecture"` is wrong — that's a `/plan` decision sourced from CBM-indexed prior plans + constitution. If you're tempted to record architecture here, identify the underlying NFR that drives it and record that instead.
+
+**`use` removed.** Invocations with `--kind use` now exit 2 with a migration message naming the three replacement kinds. Legacy entries in pre-existing state JSON surface a stderr warning at load time (non-blocking) and are silently dropped at render — re-record under the correct new kind.
+
+**Known limitation — `constitution_anchor` validates location, not body match.** The helper confirms the cited section EXISTS in `<install_root>/constitution.md`; it does NOT confirm the citation's body matches the framework canonical text. If the consumer's `constitution.md` has drifted from framework `src/constitution.md` (e.g. consumer was `/constitute`'d before a strengthening patch landed), the anchor citation passes the structural gate while referencing stale body text. Maintainers run `constitute_helper forge-internal:verify-universal-defaults --consumer-path <dir>` periodically to detect this; consumer-side resync stays manual.
 
 ### Step 4.7 — §8 Open Questions
 
@@ -631,6 +672,24 @@ mkdir -p "specs/<NNN>-<feature-name>"
 ```
 
 Use Write with the captured bytes as the file content. Do NOT edit the rendered markdown — any change goes back through the relevant setter + a fresh `render`.
+
+After Write, verify the on-disk bytes match the helper render in canonical form:
+
+```bash
+.devforge/lib/specify_helper verify-rendered --path "specs/<NNN>-<feature-name>/spec.md"
+```
+
+Exit 0 = on-disk file matches helper render in canonical form (LF line endings, no trailing whitespace, single trailing newline). Exit 2 = real content drift between rendered + written bytes; re-render + re-write before proceeding to Phase 5. Cosmetic editor mutations (CRLF, trailing whitespace, extra trailing newlines) are tolerated; content changes are not.
+
+Stamp the spec at the current repo HEAD so downstream commands can detect drift:
+
+```bash
+.devforge/lib/cbm_sync_helper stamp-spec "specs/<NNN>-<feature-name>/spec.md"
+```
+
+Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (append-only). Downstream `/plan` and `/execute-task` invoke `check-spec` to surface drift: `current` = no §4-cited file changed since the stamp; `drift <a>..<b> <files>` = at least one cited file changed; `missing` = no stamp.
+
+**Known limitation — drift detection precision is bounded by §4 Affected Areas completeness.** If a cited file is missing from §4, drift on that file is silent. `/breakdown` already pressures §4 completeness for task partitioning, so the same pressure benefits drift detection — but it is a known ceiling. A future Stage 2 enhancement may expand the cited set via CBM `trace_path` outbound from §4-cited files; deferred until empirical miss-rate justifies the cost.
 
 ## Phase 5 — Approval + manual next step
 

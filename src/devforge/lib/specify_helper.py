@@ -36,7 +36,8 @@ Subcommand summary (Phase 0 / 1 / 1.5 / 2 / 3 / 4 / 5 + downstream
                record-open-question, record-risk, verify-coverage,
                verify-numerical-consistency,
                verify-ac-subsection-coverage, verify-ac-shape,
-               check-constitution-compliance, render
+               check-constitution-compliance, render,
+               verify-rendered
   Phase 5      render-summary, set-status, render-plan-handoff,
                check-constitution-compliance (re-runs)
   Downstream   resolve-open-question
@@ -170,7 +171,13 @@ LIKELIHOOD_ENUM: Tuple[str, ...] = ("Low", "Med", "High")
 IMPACT_ENUM: Tuple[str, ...] = ("Low", "Med", "High")
 
 # Constraint kind enum (Phase 4 §7).
-CONSTRAINT_KIND_ENUM: Tuple[str, ...] = ("follow", "not_break", "use")
+CONSTRAINT_KIND_ENUM: Tuple[str, ...] = (
+    "follow",
+    "not_break",
+    "nfr",
+    "constitution_anchor",
+    "external_system",
+)
 
 # Mode-detection signals (Variance rule #8, Open Question #8 C-strict).
 AUTO_MODE_ENV_VAR = "DEVFORGE_AUTO_MODE"
@@ -216,10 +223,41 @@ COVERAGE_RULE_BANNER = (
 
 # Phase 4 §7 — constraint-kind render labels (v3 verbatim).
 CONSTRAINT_KIND_LABEL: Dict[str, str] = {
-    "follow":    "Must follow",
-    "not_break": "Must not break",
-    "use":       "Must use",
+    "follow":              "Must follow",
+    "not_break":           "Must not break",
+    "nfr":                 "Must satisfy NFR",
+    "constitution_anchor": "Must follow constitution",
+    "external_system":     "Must integrate with external system",
 }
+
+# Per-kind required flag set for argparse-side validation.
+CONSTRAINT_KIND_REQUIRED_FLAGS: Dict[str, Tuple[str, ...]] = {
+    "follow":              (),
+    "not_break":           (),
+    "nfr":                 ("quantifier",),
+    "constitution_anchor": ("constitution_ref",),
+    # external_system requires --protocol OR --contract-doc-ref (special-cased
+    # below in the validator; the tuple here is only the strict-must-have set,
+    # not the either-or pair).
+    "external_system":     (),
+}
+
+# NFR quantifier validator — closes "vague adjective" escape hatch.
+NFR_NUMERIC_THRESHOLD_RE: "re.Pattern[str]" = re.compile(
+    r"\d+\s*(ms|s|sec|min|hr|users?|req/s|rps|qps|tps|GB|MB|KB|TB|%|\$|connections?|rows?|records?)\b",
+    re.IGNORECASE,
+)
+NFR_VAGUE_BLOCKLIST: frozenset = frozenset({
+    "high", "low", "fast", "slow", "scalable", "good", "acceptable",
+    "reasonable", "robust", "performant", "efficient", "secure", "reliable",
+})
+# Named-class quantifier whitelist — compliance / standard citations are OK
+# even without numeric thresholds (e.g. "PCI-DSS Level 1", "SOC 2 Type II",
+# "ISO 27001"). Validator accepts any quantifier matching this regex.
+NFR_NAMED_CLASS_RE: "re.Pattern[str]" = re.compile(
+    r"\b(PCI-DSS|SOC\s*2|ISO\s*\d{4,5}|GDPR|HIPAA|FedRAMP|FIPS|NIST)\b",
+    re.IGNORECASE,
+)
 
 # Phase 4 — numerical-verification regexes.
 # Conservative seed: a digit run followed by one whitespace + an alpha
@@ -394,7 +432,8 @@ def default_state() -> Dict[str, Any]:
         "ac_subsection_na": {},
         # [{content, finding_ref}]
         "out_of_scope": [],
-        # [{kind, content}]  kind ∈ CONSTRAINT_KIND_ENUM
+        # [{kind, content, ...kind-specific}]  kind ∈ CONSTRAINT_KIND_ENUM
+        # (extra fields per kind: quantifier|constitution_ref|protocol|contract_doc_ref)
         "constraints": [],
         # [{question_id, content, category_no_dp_reason}]
         "open_questions": [],
@@ -449,7 +488,20 @@ def _load_state(devforge_dir: Union[str, "os.PathLike[str]"]) -> Dict[str, Any]:
     path = _state_path(devforge_dir)
     if not path.exists():
         return default_state()
-    return json.loads(path.read_text(encoding="utf-8"))
+    state = json.loads(path.read_text(encoding="utf-8"))
+    # Legacy migration warning: --kind=use entries are silently skipped by
+    # the new render loop; emit a one-time warning per entry so the drop is
+    # visible. Does NOT change exit code or block parsing.
+    for c in state.get("constraints", []):
+        if c.get("kind") == "use":
+            sys.stderr.write(
+                "specify_helper: legacy --kind=use constraint found in state"
+                " — content: {0!r}\n"
+                "  Action: re-record via /specify Step 4.6 using"
+                " nfr / constitution_anchor / external_system.\n"
+                .format(c.get("content", ""))
+            )
+    return state
 
 
 def _lock_path(state_path: Path) -> Path:
@@ -506,6 +558,99 @@ def _validate_enum(
             )
         )
     return value
+
+
+def _validate_nfr_quantifier(quantifier: str) -> Tuple[bool, str]:
+    """Validate an NFR --quantifier value.
+
+    Accept: numeric threshold + unit (e.g. "10K users @ p95 < 200ms")
+            OR named-class compliance citation (e.g. "PCI-DSS Level 1").
+    Reject: empty, vague adjective alone ("high"/"fast"/"scalable"/etc.),
+            or anything that satisfies neither shape.
+
+    Returns (ok, error_message).
+    """
+    qstripped = (quantifier or "").strip()
+    if not qstripped:
+        return False, "nfr: --quantifier required and non-empty"
+    if qstripped.lower() in NFR_VAGUE_BLOCKLIST:
+        return False, (
+            "nfr: vague quantifier {0!r} rejected. "
+            "Use numeric threshold + unit (e.g. '10K users @ p95 < 200ms') "
+            "OR named-class citation (e.g. 'PCI-DSS Level 1', 'SOC 2 Type II')."
+            .format(quantifier)
+        )
+    if NFR_NUMERIC_THRESHOLD_RE.search(qstripped):
+        return True, ""
+    if NFR_NAMED_CLASS_RE.search(qstripped):
+        return True, ""
+    return False, (
+        "nfr: quantifier requires numeric threshold with unit "
+        "(ms/s/users/req/rps/GB/%/$/connections/rows/etc.) "
+        "OR named-class citation (PCI-DSS / SOC 2 / ISO XXXXX / GDPR / etc.). "
+        "Bare adjective rejected as vague."
+    )
+
+
+def _validate_constitution_anchor_ref(
+    ref: str,
+    devforge_dir: str,
+) -> Tuple[bool, str]:
+    """Validate that `ref` points at a real section in <install_root>/constitution.md.
+
+    install_root is the parent of `.devforge/`. `ref` is e.g. "§3.6" or "3.6"
+    — both accepted; the grep matches `^### §<N.M>` OR `^### <N.M>`.
+
+    Returns (ok, error_message). If constitution.md does not exist at the
+    expected location, returns False with a message naming the path so the
+    failure mode is unambiguous.
+    """
+    raw = (ref or "").strip()
+    if not raw:
+        return False, "constitution_anchor: --constitution-ref required and non-empty"
+    # Strip a leading § for grep convenience; we'll grep both forms.
+    bare = raw.lstrip("§").strip()
+    install_root = Path(devforge_dir).resolve().parent
+    constitution = install_root / "constitution.md"
+    if not constitution.is_file():
+        return False, (
+            "constitution_anchor: constitution.md not found at {0} — run /constitute first"
+            .format(constitution)
+        )
+    pattern = re.compile(
+        r"^###\s+§?{0}\b".format(re.escape(bare)),
+        re.MULTILINE,
+    )
+    try:
+        text = constitution.read_text(encoding="utf-8")
+    except OSError as err:
+        return False, (
+            "constitution_anchor: cannot read {0}: {1}".format(constitution, err)
+        )
+    if not pattern.search(text):
+        return False, (
+            "constitution_anchor: §{0} not found in constitution.md".format(bare)
+        )
+    return True, ""
+
+
+def _validate_external_system(
+    protocol: str,
+    contract_doc_ref: str,
+) -> Tuple[bool, str]:
+    """Validate that an external_system constraint cites a contract.
+
+    Either --protocol OR --contract-doc-ref must be non-empty. Both is OK.
+    Neither is a violation.
+    """
+    has_protocol = bool((protocol or "").strip())
+    has_contract = bool((contract_doc_ref or "").strip())
+    if not has_protocol and not has_contract:
+        return False, (
+            "external_system: requires --protocol (e.g. 'REST', 'gRPC', 'SAML 2.0') "
+            "OR --contract-doc-ref (path to OpenAPI / proto file)"
+        )
+    return True, ""
 
 
 def _utc_timestamp() -> str:
@@ -1720,18 +1865,58 @@ def cmd_record_out_of_scope(args: argparse.Namespace) -> int:
 
 
 def cmd_record_constraint(args: argparse.Namespace) -> int:
-    """Append a §7 Constraint entry {kind, content}."""
+    """Append a §7 Constraint entry — kind-specific shape.
+
+    All five kinds share `content`. Additional fields land per-kind:
+    - nfr: `quantifier`
+    - constitution_anchor: `constitution_ref`
+    - external_system: `protocol`, `contract_doc_ref` (one required)
+    """
+    # Hard-reject legacy --kind use with explicit migration message.
+    if args.kind == "use":
+        sys.stderr.write(
+            "record-constraint: --kind use removed. Use --kind nfr (scale/latency),\n"
+            "  --kind constitution_anchor (code-pattern rules), or\n"
+            "  --kind external_system (integrations). Architecture choices belong\n"
+            "  in /plan, not /specify §7.\n"
+        )
+        return 2
     try:
         kind = _validate_enum(args.kind, "kind", CONSTRAINT_KIND_ENUM)
         content = _validate_scalar(args.content, "content")
     except ValueError as err:
         return _die(str(err), code=2)
+
+    record: Dict[str, Any] = {"kind": kind, "content": content}
+
+    if kind == "nfr":
+        ok, msg = _validate_nfr_quantifier(args.quantifier or "")
+        if not ok:
+            return _die(msg, code=2)
+        record["quantifier"] = args.quantifier.strip()
+    elif kind == "constitution_anchor":
+        ok, msg = _validate_constitution_anchor_ref(
+            args.constitution_ref or "",
+            args.devforge_dir,
+        )
+        if not ok:
+            return _die(msg, code=2)
+        record["constitution_ref"] = (args.constitution_ref or "").strip()
+    elif kind == "external_system":
+        ok, msg = _validate_external_system(
+            args.protocol or "",
+            args.contract_doc_ref or "",
+        )
+        if not ok:
+            return _die(msg, code=2)
+        if (args.protocol or "").strip():
+            record["protocol"] = args.protocol.strip()
+        if (args.contract_doc_ref or "").strip():
+            record["contract_doc_ref"] = args.contract_doc_ref.strip()
+
     try:
         with _state_transaction(args.devforge_dir) as state:
-            state["constraints"].append({
-                "kind": kind,
-                "content": content,
-            })
+            state["constraints"].append(record)
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-constraint: {0}".format(err))
     return 0
@@ -2296,11 +2481,33 @@ def render_spec(state: Dict[str, Any]) -> str:
     has_constraint = False
     for kind in CONSTRAINT_KIND_ENUM:
         for c in state["constraints"]:
-            if c.get("kind") == kind:
-                has_constraint = True
-                out.append("- {0}: {1}".format(
-                    CONSTRAINT_KIND_LABEL[kind], c.get("content", ""),
-                ))
+            if c.get("kind") != kind:
+                continue
+            has_constraint = True
+            label = CONSTRAINT_KIND_LABEL[kind]
+            content = c.get("content", "")
+            if kind == "nfr":
+                quant = c.get("quantifier", "")
+                if quant:
+                    out.append("- {0} ({1}): {2}".format(label, quant, content))
+                else:
+                    out.append("- {0}: {1}".format(label, content))
+            elif kind == "constitution_anchor":
+                ref = c.get("constitution_ref", "")
+                if ref:
+                    out.append("- {0} §{1}: {2}".format(
+                        label, ref.lstrip("§"), content,
+                    ))
+                else:
+                    out.append("- {0}: {1}".format(label, content))
+            elif kind == "external_system":
+                via = c.get("protocol") or c.get("contract_doc_ref") or ""
+                if via:
+                    out.append("- {0} ({1}): {2}".format(label, via, content))
+                else:
+                    out.append("- {0}: {1}".format(label, content))
+            else:
+                out.append("- {0}: {1}".format(label, content))
     if not has_constraint:
         out.append("- _(no constraints recorded)_")
     out.append("")
@@ -2326,6 +2533,23 @@ def render_spec(state: Dict[str, Any]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def _canonicalize_for_compare(b: bytes) -> bytes:
+    """Normalize rendered bytes for tamper-detection comparison.
+
+    Normalization rules (cosmetic-only):
+    - CRLF / CR line endings collapsed to LF.
+    - Trailing whitespace stripped from each line.
+    - Single trailing newline at EOF (no extra blank lines beyond).
+
+    Content changes (added/removed lines, character substitutions inside
+    a line) survive normalization and surface as drift.
+    """
+    text = b.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.rstrip() for line in text.split("\n")]
+    text = "\n".join(lines).rstrip("\n") + "\n"
+    return text.encode("utf-8")
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """Emit spec markdown to stdout. Pure read — no state mutation."""
     try:
@@ -2334,6 +2558,54 @@ def cmd_render(args: argparse.Namespace) -> int:
         return _die("render: {0}".format(err))
     sys.stdout.write(render_spec(state))
     return 0
+
+
+def cmd_verify_rendered(args: argparse.Namespace) -> int:
+    """Post-write integrity check: on-disk spec.md vs helper render.
+
+    Reads `--path` bytes, re-renders from current state, compares
+    canonical forms.  Exit 0 = match.  Exit 2 = real content drift
+    OR missing file; stderr cites the divergence.
+    """
+    path = Path(args.path)
+    if not path.is_file():
+        sys.stderr.write(
+            "verify-rendered: path not found: {0}\n".format(path)
+        )
+        return 2
+    try:
+        disk_bytes = path.read_bytes()
+    except OSError as err:
+        sys.stderr.write(
+            "verify-rendered: cannot read {0}: {1}\n".format(path, err)
+        )
+        return 2
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("verify-rendered: cannot load state: {0}".format(err))
+    rendered = render_spec(state).encode("utf-8")
+    canonical_disk = _canonicalize_for_compare(disk_bytes)
+    canonical_rendered = _canonicalize_for_compare(rendered)
+    if canonical_disk == canonical_rendered:
+        return 0
+    # Find first divergent line on canonical forms.
+    disk_lines = canonical_disk.decode("utf-8").split("\n")
+    rendered_lines = canonical_rendered.decode("utf-8").split("\n")
+    first_diff_line = None
+    for idx in range(min(len(disk_lines), len(rendered_lines))):
+        if disk_lines[idx] != rendered_lines[idx]:
+            first_diff_line = idx + 1
+            break
+    if first_diff_line is None:
+        # Lines match up to min(len); divergence is trailing content.
+        first_diff_line = min(len(disk_lines), len(rendered_lines)) + 1
+    sys.stderr.write(
+        "verify-rendered: drift at line {0} (disk {1} bytes vs rendered"
+        " {2} bytes after canonicalization)\n"
+        .format(first_diff_line, len(canonical_disk), len(canonical_rendered))
+    )
+    return 2
 
 
 # ---------------------------------------------------------------------------
@@ -2882,12 +3154,41 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "record-constraint",
-        help="Append §7 Constraint entry {kind, content}.",
+        help="Append §7 Constraint entry — kind-specific shape.",
     )
     sp.add_argument(
-        "--kind", required=True, choices=list(CONSTRAINT_KIND_ENUM),
+        "--kind",
+        required=True,
+        choices=list(CONSTRAINT_KIND_ENUM) + ["use"],
+        help=(
+            "Constraint kind. `use` is reserved + rejected at runtime "
+            "to surface a migration message; new code must pick one of "
+            "follow / not_break / nfr / constitution_anchor / external_system."
+        ),
     )
     sp.add_argument("--content", required=True)
+    sp.add_argument(
+        "--quantifier",
+        default=None,
+        help="REQUIRED for --kind nfr. Numeric threshold + unit OR named-class citation.",
+    )
+    sp.add_argument(
+        "--constitution-ref",
+        default=None,
+        dest="constitution_ref",
+        help="REQUIRED for --kind constitution_anchor (e.g. '§3.6'). Helper greps constitution.md.",
+    )
+    sp.add_argument(
+        "--protocol",
+        default=None,
+        help="EITHER --protocol OR --contract-doc-ref required for --kind external_system.",
+    )
+    sp.add_argument(
+        "--contract-doc-ref",
+        default=None,
+        dest="contract_doc_ref",
+        help="EITHER --protocol OR --contract-doc-ref required for --kind external_system.",
+    )
     sp.set_defaults(func=cmd_record_constraint)
 
     sp = sub.add_parser(
@@ -2958,6 +3259,17 @@ def build_parser() -> argparse.ArgumentParser:
         "render", help="Emit 9-section spec markdown to stdout.",
     )
     sp.set_defaults(func=cmd_render)
+
+    sp = sub.add_parser(
+        "verify-rendered",
+        help="Post-write integrity check: on-disk spec.md vs helper render"
+             " (canonical-form compare).",
+    )
+    sp.add_argument(
+        "--path", required=True,
+        help="Path to the rendered spec.md to verify.",
+    )
+    sp.set_defaults(func=cmd_verify_rendered)
 
     # ----- Phase 5 ---------------------------------------------------------
 
