@@ -4006,6 +4006,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer; no cross-layer trace needed.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4037,6 +4038,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to BLoC; OldFetchOrderMethod was already removed.",
                 "--cites", json.dumps(["OldFetchOrderMethod"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4074,6 +4076,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "fetchId is a BLoC-internal counter; bug is layer-local.",
                 "--cites", json.dumps(["fetchId"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4110,6 +4113,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "fetchId is a BLoC-internal counter scoped to OrderBLoC.",
                 "--cites", json.dumps(["lib/blocs/order_bloc.dart:42"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4289,6 +4293,7 @@ class TestVerifyCheck13(unittest.TestCase):
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to BLoC layer; consumer chain confirms layer-locality.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             v = _run(["--devforge-dir", str(devforge), "verify"])
@@ -6028,6 +6033,456 @@ class TestRenderPatch8(unittest.TestCase):
             _run(["--devforge-dir", str(devforge), "reset-report"])
             output = self._render(devforge)
             self.assertNotIn("Literal Archaeology", output)
+
+
+# ---------------------------------------------------------------------------
+# Patch 9 (V3) — argument-duplication shape-check (Gap 9)
+# ---------------------------------------------------------------------------
+
+
+class TestSplitTopLevelArgs(unittest.TestCase):
+    """Tests for _split_top_level_args module-level helper."""
+
+    def test_split_top_level_args_simple(self):
+        """'a, b, c' splits into ['a', 'b', 'c']."""
+        result = research_helper._split_top_level_args("a, b, c")
+        self.assertEqual(result, ["a", "b", "c"])
+
+    def test_split_top_level_args_handles_nested_parens(self):
+        """'a, f(b, c), d' — nested parens don't count as split points."""
+        result = research_helper._split_top_level_args("a, f(b, c), d")
+        self.assertEqual(result, ["a", "f(b, c)", "d"])
+
+    def test_split_top_level_args_returns_none_on_imbalanced(self):
+        """'a, f(b, c' (unclosed paren) → None (parser failure)."""
+        result = research_helper._split_top_level_args("a, f(b, c")
+        self.assertIsNone(result)
+
+    def test_split_top_level_args_empty_string(self):
+        """'' → [] (no args)."""
+        result = research_helper._split_top_level_args("")
+        self.assertEqual(result, [])
+
+
+class TestDetectArgDuplication(unittest.TestCase):
+    """Tests for _detect_arg_duplication module-level helper."""
+
+    def test_detect_arg_duplication_finds_simple_dup(self):
+        """f(x, y, x) → ('x', 2)."""
+        result = research_helper._detect_arg_duplication("f(x, y, x)")
+        self.assertEqual(result, ("x", 2))
+
+    def test_detect_arg_duplication_finds_dotted_dup(self):
+        """f(isExternalUser.value, q, isExternalUser.value) → ('isExternalUser.value', 2)."""
+        result = research_helper._detect_arg_duplication(
+            "f(isExternalUser.value, q, isExternalUser.value)"
+        )
+        self.assertEqual(result, ("isExternalUser.value", 2))
+
+    def test_detect_arg_duplication_finds_optional_chain_dup(self):
+        """f(a?.b, c, a?.b) → ('a?.b', 2)."""
+        result = research_helper._detect_arg_duplication("f(a?.b, c, a?.b)")
+        self.assertEqual(result, ("a?.b", 2))
+
+    def test_detect_arg_duplication_finds_method_call_target_dup(self):
+        """Empirical splitOnSNA case: isExternalUser.value passed twice."""
+        result = research_helper._detect_arg_duplication(
+            "orderBLoC.fetchOrder(quoteId, isExternalUser.value, isExternalUser.value, getQuoteType, isEmeaUser.value)"
+        )
+        self.assertEqual(result, ("isExternalUser.value", 2))
+
+    def test_detect_arg_duplication_returns_none_on_no_dup(self):
+        """f(a, b, c) — no duplicate identifiers → None."""
+        result = research_helper._detect_arg_duplication("f(a, b, c)")
+        self.assertIsNone(result)
+
+    def test_detect_arg_duplication_returns_none_on_parser_failure(self):
+        """Non-call shapes and imbalanced parens → None (fail-soft)."""
+        self.assertIsNone(research_helper._detect_arg_duplication("not a call"))
+        self.assertIsNone(research_helper._detect_arg_duplication("f(a, b"))
+
+    def test_detect_arg_duplication_ignores_literal_duplication(self):
+        """f(0, 0) — literals don't match IDENT_CHAIN_RE → None."""
+        result = research_helper._detect_arg_duplication("f(0, 0)")
+        self.assertIsNone(result)
+
+    def test_detect_arg_duplication_ignores_function_call_duplication(self):
+        """f(g(), g()) — 'g()' doesn't match IDENT_CHAIN_RE → None."""
+        result = research_helper._detect_arg_duplication("f(g(), g())")
+        self.assertIsNone(result)
+
+    def test_detect_arg_duplication_handles_multiline(self):
+        """Multi-line call shape is normalized before match → ('a', 2)."""
+        result = research_helper._detect_arg_duplication("f(\n  a,\n  b,\n  a\n)")
+        self.assertEqual(result, ("a", 2))
+
+    def test_detect_arg_duplication_returns_none_on_nested_call(self):
+        """CALL_SHAPE_RE's inner `[^)]*` stops at the first `)`, so any shape
+        with a nested function call in its arg list fails to match and returns
+        None (fail-soft, no block). Documented limitation per CALL_SHAPE_RE
+        comment block. Pinned to prevent silent regression of the documented
+        nested-call fail-soft behavior.
+        """
+        result = research_helper._detect_arg_duplication("f(g(x), y)")
+        self.assertIsNone(result)
+        # Even when the nested-call shape WOULD contain duplication if parsed:
+        result_dup = research_helper._detect_arg_duplication("fetchOrder(makeId(user), value, value)")
+        self.assertIsNone(result_dup)
+
+
+class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
+    """Patch 9 — proposed-call-shape gate on set-recommended-approach.
+
+    When bug mode AND (--single-layer-justification set OR rationale /
+    linked approach description contains literal-replacement prose),
+    --proposed-call-shape is required and checked for argument duplication.
+    """
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _add_consumer_chain(self, devforge):
+        """Record a consumer_chain row so valid cites exist for single-layer scenarios."""
+        _run([
+            "--devforge-dir", str(devforge),
+            "record-consumer-chain",
+            "--value", "fetchId",
+            "--consumer-qn", "FetchConsumer.handleResult",
+            "--file-line", "lib/blocs/order_bloc.dart:80",
+            "--role", "drives sink emission",
+        ])
+
+    def test_set_recommended_approach_requires_proposed_call_shape_when_single_layer(self):
+        """Single-layer bug mode WITHOUT --proposed-call-shape → exit 2 demanding it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                # --proposed-call-shape deliberately omitted
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("--proposed-call-shape is required", r.stderr)
+
+    def test_set_recommended_approach_requires_proposed_call_shape_when_literal_replacement_in_rationale(self):
+        """Bug mode + literal-replacement rationale + NO --proposed-call-shape → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Use cross-layer bug state (no single-layer gate) so only literal-replacement
+            # prose in rationale triggers the Patch 9 gate.
+            _build_bug_state(devforge)
+            # Overwrite recommended_approach with literal-replacement rationale via direct
+            # JSON write (simulates the multi-layer path where Patch 4 gate doesn't fire).
+            # We call set-recommended-approach directly with literal-replacement rationale.
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option B: Move sort to derived computed + stabilize comparator",
+                "--rationale", "replace false with isExternalUser.value",
+                "--hypotheses-addressed", json.dumps([
+                    "unstable comparator in inline sort",
+                    "race between fetch and watch",
+                ]),
+                "--hypotheses-not-covered", json.dumps([]),
+                # --proposed-call-shape deliberately omitted
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("--proposed-call-shape is required", r.stderr)
+
+    def test_set_recommended_approach_rejects_duplicating_shape(self):
+        """Single-layer + all required args + duplicating shape → exit 2 with duplication message."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape",
+                "orderBLoC.fetchOrder(quoteId, isExternalUser.value, isExternalUser.value, getQuoteType, isEmeaUser.value)",
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("argument duplication", r.stderr)
+            self.assertIn("isExternalUser.value", r.stderr)
+            self.assertIn("appears 2 times", r.stderr)
+
+    def test_set_recommended_approach_accepts_non_duplicating_shape(self):
+        """Single-layer + non-duplicating shape → exit 0; state has proposed_call_shape."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            rec = data.get("recommended_approach") or {}
+            self.assertEqual(rec.get("proposed_call_shape"), "fetchOrder(quoteId, fetchId)")
+
+    def test_set_recommended_approach_accepts_when_no_shape_required(self):
+        """Bug mode + multi-layer + rationale WITHOUT literal-replacement → no shape required; exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            # Overwrite recommended_approach to ensure no literal-replacement prose in rationale.
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option B: Move sort to derived computed + stabilize comparator",
+                "--rationale", "add wrapper function to centralize policy",
+                "--hypotheses-addressed", json.dumps([
+                    "unstable comparator in inline sort",
+                    "race between fetch and watch",
+                ]),
+                "--hypotheses-not-covered", json.dumps([]),
+                # --proposed-call-shape NOT provided
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_set_recommended_approach_stores_shape_even_on_parser_failure(self):
+        """Parser fails (not a parseable call) → fail-soft → exit 0; shape stored verbatim."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "not a parseable call shape",
+            ])
+            # Parser failure is advisory — no block; exit 0.
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            rec = data.get("recommended_approach") or {}
+            self.assertEqual(rec.get("proposed_call_shape"), "not a parseable call shape")
+            # Patch 9 plan §Argue: parser failure emits stderr advisory.
+            self.assertIn("could not be fully parsed", r.stderr)
+            self.assertIn("argument-duplication check skipped", r.stderr)
+
+    def test_set_recommended_approach_emits_no_advisory_on_clean_parse(self):
+        """Successful parse (no dup) → no stderr advisory (silent success)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            self._add_consumer_chain(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("could not be fully parsed", r.stderr)
+
+    def test_set_recommended_approach_skips_shape_gate_in_enhancement_mode(self):
+        """Enhancement mode + literal-replacement rationale → Patch 9 gate is bug-mode only; exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Enhancement state needs an approach to set recommended_approach against.
+            data["approaches"] = [
+                {
+                    "name": "Option A: Export speed boost",
+                    "description": "replace false with isExternalUser.value",
+                    "addresses_hypotheses": ["export speed"],
+                    "does_not_cover": [],
+                    "pros": [],
+                    "cons": [],
+                    "complexity": "Low",
+                }
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: Export speed boost",
+                "--rationale", "replace false with isExternalUser.value",
+                "--hypotheses-addressed", json.dumps(["export speed"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                # --proposed-call-shape NOT provided — enhancement mode, gate should not fire
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestVerifyCheck18(unittest.TestCase):
+    """Tests for verify check 18: argument-duplication shape check at verify time.
+
+    Mirrors the setter gate; catches state-mutation bypass where someone
+    wrote proposed_call_shape directly to JSON without going through
+    set-recommended-approach.
+    """
+
+    def _build_check18_state(self, devforge, proposed_call_shape=None, mode="bug"):
+        """Build a minimal bug/enhancement state with a recommended approach.
+
+        Uses _build_check17_state pattern but writes proposed_call_shape directly
+        to simulate state-mutation bypass (the gap check 18 defends against).
+        """
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+
+        data["approaches"] = [
+            {
+                "name": "Fix literal",
+                "description": "update the call",
+                "addresses_hypotheses": ["unstable comparator in inline sort"],
+                "does_not_cover": [],
+                "pros": [],
+                "cons": [],
+                "complexity": "Low",
+            }
+        ]
+        rec = {
+            "name": "Fix literal",
+            "rationale": "apply fix",
+            "hypotheses_addressed": ["unstable comparator in inline sort"],
+            "hypotheses_not_covered": [],
+        }
+        if proposed_call_shape is not None:
+            rec["proposed_call_shape"] = proposed_call_shape
+        data["recommended_approach"] = rec
+        if mode == "enhancement":
+            data["mode"] = "enhancement"
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_verify_check_18_fires_when_shape_has_dup(self):
+        """Bug mode + proposed_call_shape with dup written directly to JSON → check 18 fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check18_state(
+                devforge,
+                proposed_call_shape=(
+                    "orderBLoC.fetchOrder(quoteId, isExternalUser.value, "
+                    "isExternalUser.value, getQuoteType, isEmeaUser.value)"
+                ),
+            )
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 18", r.stderr)
+
+    def test_verify_check_18_silent_when_no_proposed_call_shape(self):
+        """Bug mode + no proposed_call_shape → check 18 does NOT fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check18_state(devforge, proposed_call_shape=None)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 18", r.stderr)
+
+    def test_verify_check_18_silent_when_shape_has_no_dup(self):
+        """Bug mode + proposed_call_shape without dup → check 18 NOT fired."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_check18_state(devforge, proposed_call_shape="fetchOrder(quoteId, fetchId)")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 18", r.stderr)
+
+    def test_verify_check_18_silent_in_enhancement_mode(self):
+        """Enhancement mode + duplicating shape → check 18 NOT fired (bug-mode only)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Use _build_enhancement_state so BOTH memo and report are in enhancement mode.
+            _build_enhancement_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["approaches"] = [
+                {
+                    "name": "Option A: Export speed boost",
+                    "description": "update the call",
+                    "addresses_hypotheses": ["export speed"],
+                    "does_not_cover": [],
+                    "pros": [],
+                    "cons": [],
+                    "complexity": "Low",
+                }
+            ]
+            data["recommended_approach"] = {
+                "name": "Option A: Export speed boost",
+                "rationale": "apply fix",
+                "hypotheses_addressed": ["export speed"],
+                "hypotheses_not_covered": [],
+                "proposed_call_shape": "f(x, x)",  # duplicating — but enhancement mode, gate must not fire
+            }
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            # Enhancement mode — check 18 must not fire.
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 18", r.stderr)
+
+
+class TestRenderPatch9(unittest.TestCase):
+    """Tests for the Patch 9 render extension: proposed_call_shape sub-block."""
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        return r.stdout
+
+    def test_render_surfaces_proposed_call_shape(self):
+        """When proposed_call_shape is present, render includes it under Recommended approach."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            # Record consumer_chain for valid cite.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "fetchId",
+                "--consumer-qn", "FetchConsumer.handleResult",
+                "--file-line", "lib/blocs/order_bloc.dart:80",
+                "--role", "drives sink emission",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Bug is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn("**Proposed call shape:**", output)
+            self.assertIn("fetchOrder(quoteId, fetchId)", output)
+
+    def test_render_omits_proposed_call_shape_when_absent(self):
+        """When proposed_call_shape is absent from state, render omits the sub-block."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            output = self._render(devforge)
+            self.assertNotIn("Proposed call shape", output)
 
 
 if __name__ == "__main__":
