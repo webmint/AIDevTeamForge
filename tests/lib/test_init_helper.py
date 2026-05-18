@@ -1141,5 +1141,275 @@ class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
                         "output should start with header, no leading blank line")
 
 
+# ---------------------------------------------------------------------------
+# VerifyTests
+# ---------------------------------------------------------------------------
+
+
+class VerifyTests(unittest.TestCase):
+    """verify subcommand — state-integrity gate for /init-forge.
+
+    Setup mirrors FindNestedGitTests: DEVFORGE_DIR is a child of the
+    install_root so `_output_file_path().parent.parent` resolves to a
+    stable temp directory. Real setter helpers build the YAML (real-producer
+    pattern); hand-authored YAML is used only for failure-injection cases
+    that the setters cannot produce (e.g. empty field, invalid enum).
+    """
+
+    def setUp(self):
+        self._saved_env = os.environ.pop("DEVFORGE_DIR", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.install_root = Path(self._tmp.name)
+        # DEVFORGE_DIR must be a child of install_root so the verify
+        # handler resolves project_root relative to install_root correctly.
+        self.devforge_dir = self.install_root / ".devforge"
+        self.devforge_dir.mkdir()
+        self.output_file = self.devforge_dir / init_helper.OUTPUT_FILE_NAME
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        if self._saved_env is None:
+            os.environ.pop("DEVFORGE_DIR", None)
+        else:
+            os.environ["DEVFORGE_DIR"] = self._saved_env
+
+    # --- helpers ---
+
+    def _populate_valid_state(self, project_root_rel="."):
+        """Build a fully-valid init.yaml via real setters.
+
+        project_root_rel should be a relative path that actually exists
+        under self.install_root (the caller is responsible for creating it).
+        """
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_cli(self.devforge_dir, "set-project-root", project_root_rel)
+        _run_cli(self.devforge_dir, "set-project-state", "empty")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+        # packages_detected stays [] — valid per schema
+
+    def _write_yaml(self, text):
+        """Directly write hand-authored YAML to the output file."""
+        self.output_file.write_text(text, encoding="utf-8")
+
+    def _make_index_artifacts(self):
+        """Create the two index artifacts that Step 6 produces."""
+        index_json = self.devforge_dir / "index.json"
+        index_json.write_text("{}", encoding="utf-8")
+        docs_dir = self.install_root / "docs"
+        docs_dir.mkdir(exist_ok=True)
+        (docs_dir / "structure.md").write_text("# Structure\n", encoding="utf-8")
+
+    # --- test cases ---
+
+    def test_verify_happy_path(self):
+        """All fields valid, both index artifacts present → exit 0, no stderr."""
+        self._populate_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8"))
+        self.assertEqual(proc.stderr, b"")
+
+    def test_verify_missing_workspace_mode(self):
+        """workspace_mode empty → exit 2, stderr names the field."""
+        self._populate_valid_state()
+        self._make_index_artifacts()
+        # Inject empty workspace_mode by hand-writing YAML (setters reject empty).
+        self._write_yaml(
+            "workspace_mode: null\n"
+            "project_root: .\n"
+            "project_state: empty\n"
+            "default_branch: main\n"
+            "packages_detected: []\n"
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"workspace_mode", proc.stderr)
+
+    def test_verify_invalid_workspace_mode(self):
+        """workspace_mode set to an invalid value → exit 2, stderr names the field."""
+        self._populate_valid_state()
+        self._make_index_artifacts()
+        self._write_yaml(
+            "workspace_mode: garbage\n"
+            "project_root: .\n"
+            "project_state: empty\n"
+            "default_branch: main\n"
+            "packages_detected: []\n"
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"workspace_mode", proc.stderr)
+
+    def test_verify_project_root_does_not_exist(self):
+        """project_root points at a path that doesn't exist → exit 2, stderr names it."""
+        self._populate_valid_state()
+        self._make_index_artifacts()
+        self._write_yaml(
+            "workspace_mode: standalone\n"
+            "project_root: nonexistent-dir-xyz\n"
+            "project_state: empty\n"
+            "default_branch: main\n"
+            "packages_detected: []\n"
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project_root", proc.stderr)
+
+    def test_verify_missing_default_branch(self):
+        """default_branch null → exit 2, stderr names the field."""
+        self._populate_valid_state()
+        self._make_index_artifacts()
+        self._write_yaml(
+            "workspace_mode: standalone\n"
+            "project_root: .\n"
+            "project_state: empty\n"
+            "default_branch: null\n"
+            "packages_detected: []\n"
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"default_branch", proc.stderr)
+
+    def test_verify_packages_detected_empty_but_manifest_found(self):
+        """packages_detected [] but a manifest exists at depth ≤2 → exit 2."""
+        # project_root = "." means install_root; place a manifest at depth 2.
+        self._populate_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        # packages_detected is already [] from _populate_valid_state.
+        # Create a package.json at depth 2 (foo/package.json).
+        sub = self.install_root / "foo"
+        sub.mkdir()
+        (sub / "package.json").write_text('{"name": "foo"}', encoding="utf-8")
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"packages_detected", proc.stderr)
+
+    def test_verify_missing_index_json(self):
+        """.devforge/index.json absent → exit 2."""
+        self._populate_valid_state()
+        # Only create structure.md; leave index.json absent.
+        docs_dir = self.install_root / "docs"
+        docs_dir.mkdir(exist_ok=True)
+        (docs_dir / "structure.md").write_text("# Structure\n", encoding="utf-8")
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"index.json", proc.stderr)
+
+    def test_verify_missing_structure_md(self):
+        """docs/structure.md absent → exit 2."""
+        self._populate_valid_state()
+        # Only create index.json; leave structure.md absent.
+        (self.devforge_dir / "index.json").write_text("{}", encoding="utf-8")
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"structure.md", proc.stderr)
+
+    def test_verify_missing_init_yaml(self):
+        """init.yaml absent → exit 2 immediately with unreadable message."""
+        # Don't call reset — no init.yaml at all.
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"init.yaml", proc.stderr)
+
+    def test_verify_all_violations_enumerated(self):
+        """Multiple violations in one run — all field names appear on stderr."""
+        self._make_index_artifacts()
+        self._write_yaml(
+            "workspace_mode: null\n"
+            "project_root: null\n"
+            "project_state: null\n"
+            "default_branch: null\n"
+            "packages_detected: []\n"
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        stderr = proc.stderr.decode("utf-8")
+        for field in ("workspace_mode", "project_root", "project_state", "default_branch"):
+            self.assertIn(field, stderr, "expected {0} in stderr".format(field))
+
+    def test_verify_stderr_format(self):
+        """Each violation line must start with 'verify: '."""
+        self._make_index_artifacts()
+        self._write_yaml(
+            "workspace_mode: null\n"
+            "project_root: .\n"
+            "project_state: empty\n"
+            "default_branch: main\n"
+            "packages_detected: []\n"
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        lines = proc.stderr.decode("utf-8").strip().splitlines()
+        for line in lines:
+            self.assertTrue(
+                line.startswith("verify: "),
+                "violation line does not start with 'verify: ': {0!r}".format(line),
+            )
+
+    def test_verify_is_readonly(self):
+        """verify must not mutate init.yaml."""
+        self._populate_valid_state()
+        self._make_index_artifacts()
+        before = self.output_file.read_bytes()
+        _run_cli(self.devforge_dir, "verify")
+        after = self.output_file.read_bytes()
+        self.assertEqual(before, after)
+
+    def test_verify_subcommand_listed_in_help(self):
+        """'verify' must appear in the top-level --help output."""
+        proc = _run_cli(self.devforge_dir, "--help")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(b"verify", proc.stdout)
+
+    def test_verify_manifest_at_depth_1_triggers_anticorruption(self):
+        """A manifest directly under project_root (depth 1) also triggers violation."""
+        self._populate_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        # Place manifest directly under install_root (depth 1).
+        (self.install_root / "package.json").write_text('{}', encoding="utf-8")
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"packages_detected", proc.stderr)
+
+    def test_verify_manifest_at_depth_3_does_not_trigger(self):
+        """A manifest deeper than depth 2 must NOT trigger the anti-corruption check."""
+        self._populate_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        # Place manifest at depth 3 (a/b/package.json) — beyond the scan limit.
+        deep = self.install_root / "a" / "b"
+        deep.mkdir(parents=True)
+        (deep / "package.json").write_text('{}', encoding="utf-8")
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8"))
+
+    def test_verify_packages_detected_nonempty_with_manifest_passes(self):
+        """packages_detected populated AND manifest found → no anti-corruption violation."""
+        self._populate_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        sub = self.install_root / "foo"
+        sub.mkdir()
+        (sub / "package.json").write_text('{}', encoding="utf-8")
+        # Register the package so packages_detected is non-empty.
+        _run_cli(self.devforge_dir, "add-package", "--path", "foo", "--manifest", "package.json")
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8"))
+
+    def test_verify_invalid_project_state_enum(self):
+        """project_state with invalid enum value → exit 2."""
+        self._populate_valid_state()
+        self._make_index_artifacts()
+        self._write_yaml(
+            "workspace_mode: standalone\n"
+            "project_root: .\n"
+            "project_state: legacy\n"
+            "default_branch: main\n"
+            "packages_detected: []\n"
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"project_state", proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -141,6 +141,14 @@ test -f .devforge/index.json && echo "index.json exists" || echo "MISSING"
 test -f docs/structure.md && echo "structure.md exists" || echo "MISSING"
 ```
 
+## Step 7: Verify
+
+```bash
+.devforge/lib/init_helper verify
+```
+
+Cross-checks `.devforge/init.yaml` + `.devforge/index.json` + `docs/structure.md`: required fields populated, `packages_detected` consistent with on-disk manifests at depth ≤2 under `project_root`, both index artifacts present. Exit 0 = pass; exit 2 = stderr enumerates violations (`verify: <field>: <reason>` per line). On exit 2, surface stderr verbatim and re-run the corresponding setter (`set-workspace-mode` / `set-project-root` / etc.) before re-attempting; if `packages_detected` is the issue, re-walk Step 4.
+
 ## Closing
 
 `/init-forge` is complete. The five structural fields are persisted in `.devforge/init.yaml`, and the structural index is materialized at `.devforge/index.json` + `docs/structure.md`. Tell the user: "Run `/generate-docs` next."

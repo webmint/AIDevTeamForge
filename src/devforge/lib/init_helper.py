@@ -88,6 +88,21 @@ NESTED_GIT_SKIP = {
     ".git",
 }
 
+# Manifest filenames recognized for the anti-corruption check in `verify`.
+# Closed enum — do not expand at runtime.
+_MANIFEST_FILENAMES = (
+    "package.json",
+    "pyproject.toml",
+    "setup.py",
+    "Cargo.toml",
+    "go.mod",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "Gemfile",
+    "composer.json",
+)
+
 # YAML reserved words (case-insensitive); a bare scalar matching one of
 # these would be ambiguous, so it must be quoted.
 YAML_RESERVED_WORDS = {
@@ -674,6 +689,174 @@ def cmd_summary(args):
     return 0
 
 
+def _resolve_project_root(value, install_root):
+    """Resolve a stored project_root value to an absolute Path.
+
+    Honors absolute paths verbatim; treats anything else as relative to
+    install_root (parent of `.devforge/`).  Returns the candidate path
+    without checking existence — callers verify existence themselves.
+    """
+    if value is None:
+        return None
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return (install_root / value).resolve()
+
+
+def _scan_for_manifests(project_root, max_depth=2):
+    """Return the first manifest path found at depth <= max_depth, or None.
+
+    Depth 1 = direct child of project_root.  Depth 2 = grandchild.
+    Hidden directories (names starting with '.') and common skip-dirs
+    (NESTED_GIT_SKIP) are pruned at every level to avoid false positives
+    in `.git`, `node_modules`, `__pycache__`, etc.
+    """
+    if not project_root or not project_root.is_dir():
+        return None
+    def _walk(directory, current_depth):
+        if current_depth > max_depth:
+            return None
+        try:
+            entries = sorted(directory.iterdir())
+        except OSError:
+            return None
+        # Manifest scan at this level first (BFS-ish: same-depth before deeper).
+        for entry in entries:
+            if entry.is_file() and entry.name in _MANIFEST_FILENAMES:
+                return entry
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith("."):
+                continue
+            if entry.name in NESTED_GIT_SKIP:
+                continue
+            found = _walk(entry, current_depth + 1)
+            if found is not None:
+                return found
+        return None
+    return _walk(project_root, 1)
+
+
+def cmd_verify(args):
+    """State-integrity gate for /init-forge — read-only.
+
+    Cross-checks `.devforge/init.yaml` + `.devforge/index.json` +
+    `<install_root>/docs/structure.md`.  Exit 0 if every invariant holds;
+    exit 2 with one stderr line per violation (`verify: <field>: <reason>`).
+    """
+    path = _output_file_path()
+    if not path.exists():
+        sys.stderr.write(
+            "verify: init.yaml: not found at {0}\n".format(path)
+        )
+        return 2
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as err:
+        sys.stderr.write(
+            "verify: init.yaml: cannot read {0}: {1}\n".format(path, err)
+        )
+        return 2
+    try:
+        state = parse_yaml(text)
+    except YamlParseError as err:
+        sys.stderr.write(
+            "verify: init.yaml: cannot parse {0}: {1}\n".format(path, err)
+        )
+        return 2
+
+    install_root = path.parent.parent  # <install>/.devforge/init.yaml -> <install>
+
+    violations = []
+
+    workspace_mode = state.get("workspace_mode")
+    if workspace_mode is None or (
+        isinstance(workspace_mode, str) and not workspace_mode.strip()
+    ):
+        violations.append("workspace_mode: required, was empty")
+    elif workspace_mode not in ENUM_FIELDS["workspace_mode"]:
+        violations.append(
+            "workspace_mode: invalid value {0!r} (allowed: {1})".format(
+                workspace_mode,
+                sorted(ENUM_FIELDS["workspace_mode"]),
+            )
+        )
+
+    project_root_value = state.get("project_root")
+    project_root_path = None
+    if project_root_value is None or (
+        isinstance(project_root_value, str) and not project_root_value.strip()
+    ):
+        violations.append("project_root: required, was empty")
+    else:
+        project_root_path = _resolve_project_root(project_root_value, install_root)
+        if not project_root_path or not project_root_path.exists():
+            violations.append(
+                "project_root: path {0!r} does not exist (resolved to {1})".format(
+                    project_root_value, project_root_path
+                )
+            )
+
+    project_state = state.get("project_state")
+    if project_state is None or (
+        isinstance(project_state, str) and not project_state.strip()
+    ):
+        violations.append("project_state: required, was empty")
+    elif project_state not in ENUM_FIELDS["project_state"]:
+        violations.append(
+            "project_state: invalid value {0!r} (allowed: {1})".format(
+                project_state,
+                sorted(ENUM_FIELDS["project_state"]),
+            )
+        )
+
+    default_branch = state.get("default_branch")
+    if default_branch is None or (
+        isinstance(default_branch, str) and not default_branch.strip()
+    ):
+        violations.append("default_branch: required, was empty")
+
+    packages_detected = state.get("packages_detected", [])
+    if not isinstance(packages_detected, list):
+        violations.append(
+            "packages_detected: must be a list, got {0}".format(
+                type(packages_detected).__name__
+            )
+        )
+    elif (
+        len(packages_detected) == 0
+        and project_root_path
+        and project_root_path.is_dir()
+    ):
+        found = _scan_for_manifests(project_root_path, max_depth=2)
+        if found is not None:
+            violations.append(
+                "packages_detected: empty but on-disk manifest found at {0}".format(
+                    found
+                )
+            )
+
+    index_json = install_root / ".devforge" / "index.json"
+    if not index_json.is_file():
+        violations.append(
+            "index.json: missing at {0}".format(index_json)
+        )
+
+    structure_md = install_root / "docs" / "structure.md"
+    if not structure_md.is_file():
+        violations.append(
+            "structure.md: missing at {0}".format(structure_md)
+        )
+
+    if not violations:
+        return 0
+    for v in violations:
+        sys.stderr.write("verify: {0}\n".format(v))
+    return 2
+
+
 def cmd_find_nested_git(args):
     """List depth-1 directories under the install root that contain `.git/`.
 
@@ -743,6 +926,12 @@ def build_parser():
 
     sp = subparsers.add_parser("summary", help="Render the init report to stdout.")
     sp.set_defaults(func=cmd_summary)
+
+    sp = subparsers.add_parser(
+        "verify",
+        help="State-integrity gate: cross-check init.yaml + index.json + docs/structure.md.",
+    )
+    sp.set_defaults(func=cmd_verify)
 
     return parser
 
