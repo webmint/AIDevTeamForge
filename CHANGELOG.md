@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- feat(constitute): add `forge-internal:verify-universal-defaults` drift detector for consumer constitute.json vs canonical src/constitution.md (read-only; maintainer-side)
+
 ### Changed
 - **`/research` redesigned** — replaces the prior "quick feasibility check" with a structured bug + enhancement investigation flow grounded in the 4-command setup chain. Hard-gated on `.devforge/init.yaml` + `docs/architecture.md` + `.devforge/configure.yaml` + `constitution.md` (refuses to run when any artefact is missing). 4-phase orchestrator:
   - **Phase 0 — Preflight + topic.** Helper-side artefact check + CBM index-stamp refresh.

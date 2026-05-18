@@ -3142,5 +3142,529 @@ class TestStep4CompositeAndExitCode(unittest.TestCase):
         self.assertAlmostEqual(result, expected, places=6)
 
 
+# ---------------------------------------------------------------------------
+# TestParseUniversalBlocks — _parse_universal_blocks
+# ---------------------------------------------------------------------------
+
+
+class TestParseUniversalBlocks(unittest.TestCase):
+    """Tests for _parse_universal_blocks(constitution_md_path).
+
+    Uses the real on-disk src/constitution.md as the only fixture — no
+    hand-authored markdown bypasses the real producer (the constitution IS
+    the producer for this parser).
+
+    NOTE on §3.6 rule count: the brief's example shows 4 sub-rules and the
+    inline sanity check uses `== 4`.  The actual constitution has 5 SOLID
+    sub-principles (Single Responsibility + OCP + LSP + ISP + DIP) plus DRY
+    and KISS = 7 total.  The implementation is faithful to the real file.
+    Tests check for presence of the 4 labels named in the brief and assert
+    ``>= 4`` (not ``== 4``) to avoid brittleness when the constitution is
+    extended.
+    """
+
+    _CONSTITUTION_PATH = _REPO_ROOT / "src" / "constitution.md"
+
+    def test_happy_path_all_10_sections_present(self):
+        """Real constitution.md → all 10 universal sections in result dict."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        expected_keys = {
+            "§3.5", "§3.6", "§3.7",
+            "§4.1", "§4.2", "§4.3",
+            "§6.1", "§6.2", "§6.3", "§6.4",
+        }
+        self.assertEqual(set(d.keys()), expected_keys)
+
+    def test_happy_path_each_section_has_heading(self):
+        """Every returned section has a non-empty heading string."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        for key, val in d.items():
+            self.assertIn("heading", val, msg=key)
+            self.assertIsInstance(val["heading"], str, msg=key)
+            self.assertTrue(val["heading"].strip(), msg="{0} heading is empty".format(key))
+
+    def test_happy_path_each_section_has_rules_list(self):
+        """Every returned section has a non-empty rules list."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        for key, val in d.items():
+            self.assertIn("rules", val, msg=key)
+            self.assertIsInstance(val["rules"], list, msg=key)
+            self.assertGreater(len(val["rules"]), 0,
+                               msg="{0} rules list is empty".format(key))
+
+    def test_happy_path_every_rule_has_nonempty_body(self):
+        """Every rule in every section has a non-empty stripped body."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        for sect_key, val in d.items():
+            for i, rule in enumerate(val["rules"]):
+                self.assertIn("body", rule, msg="{0}[{1}]".format(sect_key, i))
+                self.assertTrue(
+                    rule["body"].strip(),
+                    msg="{0}[{1}] body is empty".format(sect_key, i),
+                )
+
+    def test_happy_path_every_rule_has_nonempty_tag_or_label(self):
+        """Every rule in every section has a non-empty tag_or_label."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        for sect_key, val in d.items():
+            for i, rule in enumerate(val["rules"]):
+                self.assertIn("tag_or_label", rule,
+                              msg="{0}[{1}]".format(sect_key, i))
+                self.assertTrue(
+                    rule["tag_or_label"].strip(),
+                    msg="{0}[{1}] tag_or_label is empty".format(sect_key, i),
+                )
+
+    def test_section_36_solid_sub_rules_present(self):
+        """§3.6 rules contain at least 4 entries including the 4 SOLID OCP/LSP/ISP/DIP sub-rules.
+
+        The brief example shows 4 labels (Open/Closed, LSP, ISP, Dependency
+        Inversion).  The real constitution also includes Single Responsibility,
+        DRY, and KISS, giving >= 4 total (currently 7).  We assert >= 4 and
+        check all 4 named labels are present.
+        """
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        self.assertIn("§3.6", d)
+        rules = d["§3.6"]["rules"]
+        self.assertGreaterEqual(len(rules), 4)
+        labels = {r["tag_or_label"] for r in rules}
+        # The four SOLID sub-rules explicitly named in the brief spec.
+        for expected_label in ("Open/Closed", "Liskov Substitution",
+                               "Interface Segregation", "Dependency Inversion"):
+            self.assertIn(expected_label, labels,
+                          msg="Missing SOLID sub-rule: {0!r}".format(expected_label))
+
+    def test_section_43_prefer_bullets_split(self):
+        """§4.3 rules contain >= 1 PREFER bullet entry with non-empty body."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        self.assertIn("§4.3", d)
+        rules = d["§4.3"]["rules"]
+        self.assertGreaterEqual(len(rules), 1)
+        for rule in rules:
+            self.assertTrue(rule["body"].strip(),
+                            msg="§4.3 rule {0!r} has empty body".format(
+                                rule.get("tag_or_label")))
+
+    def test_missing_file_raises_file_not_found(self):
+        """Non-existent path raises FileNotFoundError (clear failure signal)."""
+        missing = Path("/nonexistent/path/to/constitution.md")
+        with self.assertRaises(FileNotFoundError):
+            constitute_helper._parse_universal_blocks(missing)
+
+    def test_section_35_single_rule_entry(self):
+        """§3.5 has no sub-rule splitting; emits exactly one rule with heading as label."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        self.assertIn("§3.5", d)
+        rules = d["§3.5"]["rules"]
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["tag_or_label"], d["§3.5"]["heading"])
+
+    def test_workflow_sections_have_single_rule(self):
+        """§6.1-§6.4 (plain prose sections) each emit exactly one rule entry."""
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        for sect_key in ("§6.1", "§6.2", "§6.3", "§6.4"):
+            self.assertIn(sect_key, d, msg=sect_key)
+            rules = d[sect_key]["rules"]
+            self.assertEqual(
+                len(rules), 1,
+                msg="{0} should emit 1 rule, got {1}".format(sect_key, len(rules)),
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestExtractUniversalRulesFromState — _extract_universal_rules_from_state
+# ---------------------------------------------------------------------------
+
+
+def _build_real_constitute_state(devforge_dir: Path) -> None:
+    """Use the real constitute_helper CLI to populate a state file.
+
+    Adds one universal section (3.5) + one project-specific section (3.1)
+    to code_quality_standards, and one universal pattern rule (always) +
+    one project-specific pattern rule, to exercise filtering.
+    """
+    helper = str(_HELPER_PY)
+    base = [sys.executable, helper, "--devforge-dir", str(devforge_dir)]
+
+    def run(*args):
+        r = subprocess.run(base + list(args), capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(
+                "constitute_helper {0} failed (exit {1}): {2}".format(
+                    args[0], r.returncode, r.stderr
+                )
+            )
+
+    run("reset")
+    # Universal section in code_quality_standards.
+    run("add-section", "--bucket", "code-quality", "--number", "3.5",
+        "--title", "Universal Code Quality", "--tag", "universal")
+    run("add-rule", "--section", "3.5", "--tag", "universal",
+        "--text", "No dead code. Delete unused functions.")
+    # Project-specific section (should be filtered out).
+    run("add-section", "--bucket", "code-quality", "--number", "3.1",
+        "--title", "Type Safety", "--tag", "project-specific")
+    run("add-rule", "--section", "3.1", "--tag", "project-specific",
+        "--text", "Use strict TypeScript settings.")
+    # Universal always-pattern.
+    run("add-pattern-rule", "--bucket", "always", "--scope", "universal",
+        "--tag", "universal", "--text", "Read before write.")
+    # Project-specific always-pattern (should be filtered out).
+    run("add-pattern-rule", "--bucket", "always", "--scope", "project-specific",
+        "--tag", "project-specific", "--text", "Always use the API client.")
+
+
+class TestExtractUniversalRulesFromState(unittest.TestCase):
+    """Tests for _extract_universal_rules_from_state(constitute_json_path).
+
+    Real-producer principle: fixture states are built via the actual
+    constitute_helper CLI (reset + add-section + add-rule + add-pattern-rule)
+    rather than hand-authored JSON.
+    """
+
+    def test_happy_path_real_producer(self):
+        """Round-trip via real producer: universal sections extracted, non-empty rules."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_real_constitute_state(devforge)
+            state_path = devforge / "constitute.json"
+
+            result = constitute_helper._extract_universal_rules_from_state(
+                state_path
+            )
+
+            # §3.5 came from code_quality_standards with tag=universal.
+            self.assertIn("§3.5", result)
+            self.assertEqual(result["§3.5"]["heading"], "Universal Code Quality")
+            self.assertGreater(len(result["§3.5"]["rules"]), 0)
+            # §4.1 came from patterns_and_antipatterns.always_universal.
+            self.assertIn("§4.1", result)
+            self.assertGreater(len(result["§4.1"]["rules"]), 0)
+            # All rule bodies non-empty.
+            for sect_key, val in result.items():
+                for rule in val["rules"]:
+                    self.assertTrue(
+                        rule["body"].strip(),
+                        msg="{0} has empty body".format(sect_key),
+                    )
+
+    def test_filters_non_universal_sections(self):
+        """Project-specific sections do NOT appear in the result."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_real_constitute_state(devforge)
+            state_path = devforge / "constitute.json"
+
+            result = constitute_helper._extract_universal_rules_from_state(
+                state_path
+            )
+
+            # §3.1 has tag=project-specific and must be excluded.
+            self.assertNotIn("§3.1", result)
+            # §4.1 should be present (always_universal), but always_project_specific
+            # rules must NOT be merged into it.
+            if "§4.1" in result:
+                bodies = [r["body"] for r in result["§4.1"]["rules"]]
+                self.assertNotIn("Always use the API client.", bodies)
+
+    def test_empty_state_returns_empty_dict(self):
+        """Freshly-reset state (no sections populated) returns {} cleanly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            helper = str(_HELPER_PY)
+            subprocess.run(
+                [sys.executable, helper, "--devforge-dir", str(devforge), "reset"],
+                check=True, capture_output=True,
+            )
+            state_path = devforge / "constitute.json"
+            result = constitute_helper._extract_universal_rules_from_state(
+                state_path
+            )
+            # Default state has no sections and no pattern rules populated.
+            self.assertEqual(result, {})
+
+    def test_missing_file_raises_file_not_found(self):
+        """Non-existent path raises FileNotFoundError."""
+        missing = Path("/nonexistent/path/constitute.json")
+        with self.assertRaises(FileNotFoundError):
+            constitute_helper._extract_universal_rules_from_state(missing)
+
+    def test_malformed_json_raises_decode_error(self):
+        """Malformed JSON raises json.JSONDecodeError."""
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_path = Path(tmp) / "constitute.json"
+            bad_path.write_text("{not valid json", encoding="utf-8")
+            with self.assertRaises(json.JSONDecodeError):
+                constitute_helper._extract_universal_rules_from_state(bad_path)
+
+    def test_workflow_section_universal_is_extracted(self):
+        """Universal sections in workflow_rules bucket are extracted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            helper = str(_HELPER_PY)
+            base = [sys.executable, helper, "--devforge-dir", str(devforge)]
+
+            def run(*args):
+                r = subprocess.run(base + list(args), capture_output=True, text=True)
+                if r.returncode != 0:
+                    raise RuntimeError(r.stderr)
+
+            run("reset")
+            run("add-section", "--bucket", "workflow", "--number", "6.1",
+                "--title", "Minimal Changes", "--tag", "universal")
+            run("add-rule", "--section", "6.1", "--tag", "universal",
+                "--text", "Every code change MUST impact as little code as possible.")
+
+            state_path = devforge / "constitute.json"
+            result = constitute_helper._extract_universal_rules_from_state(
+                state_path
+            )
+
+            self.assertIn("§6.1", result)
+            self.assertEqual(result["§6.1"]["heading"], "Minimal Changes")
+            self.assertEqual(len(result["§6.1"]["rules"]), 1)
+            self.assertEqual(
+                result["§6.1"]["rules"][0]["body"],
+                "Every code change MUST impact as little code as possible.",
+            )
+
+
+# ---------------------------------------------------------------------------
+# forge-internal:verify-universal-defaults.
+# ---------------------------------------------------------------------------
+
+
+def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
+    """Write a constitute.json whose universal-rule bodies match the canonical
+    src/constitution.md exactly for ALL universal sections.
+
+    The fixture is hand-authored (not via setters) because:
+    - ``add-rule --tag`` is constrained to enum values (extracted | enforced |
+      universal | project-specific), so principle names like "Single
+      Responsibility" cannot be stored as the rule tag via the CLI.
+    - ``_extract_universal_rules_from_state`` maps rule.tag → tag_or_label, so
+      for the canonical and consumer tag_or_label keys to match, the JSON rule
+      records must carry the principle name as the ``tag`` field.
+    - Hand-authored JSON is explicitly permitted by the real-producer principle
+      where setters can't naturally produce the required shape.
+
+    Body text is sourced directly from ``_parse_universal_blocks`` output on the
+    real ``src/constitution.md`` — no body values are invented.
+
+    Sections populated:
+    - code_quality_standards: §3.5, §3.6, §3.7
+    - patterns_and_antipatterns universal buckets: §4.1, §4.2, §4.3
+    - workflow_rules: §6.1, §6.2, §6.3, §6.4
+    """
+    canonical = constitute_helper._parse_universal_blocks(
+        _REPO_ROOT / "src" / "constitution.md"
+    )
+
+    state = constitute_helper.default_state()
+
+    # --- code_quality_standards sections: §3.5, §3.6, §3.7 ---
+    for number in ("3.5", "3.6", "3.7"):
+        sect_key = "§" + number
+        sec = canonical.get(sect_key, {})
+        rules = [
+            {"tag": r["tag_or_label"], "text": r["body"]}
+            for r in sec.get("rules", [])
+        ]
+        state["code_quality_standards"].append(
+            {
+                "number": number,
+                "title": sec.get("heading", number),
+                "tag": "universal",
+                "description": None,
+                "rules": rules,
+                "tables": [],
+                "code_examples": [],
+            }
+        )
+
+    # --- patterns_and_antipatterns universal buckets: §4.1, §4.2, §4.3 ---
+    _SECT_TO_BUCKET = {"§4.1": "always_universal", "§4.2": "never_universal",
+                       "§4.3": "prefer_universal"}
+    for sect_key, bucket_name in _SECT_TO_BUCKET.items():
+        sec = canonical.get(sect_key, {})
+        rules = [
+            {"tag": r["tag_or_label"], "text": r["body"]}
+            for r in sec.get("rules", [])
+        ]
+        state["patterns_and_antipatterns"][bucket_name] = rules
+
+    # --- workflow_rules sections: §6.1, §6.2, §6.3, §6.4 ---
+    for number in ("6.1", "6.2", "6.3", "6.4"):
+        sect_key = "§" + number
+        sec = canonical.get(sect_key, {})
+        rules = [
+            {"tag": r["tag_or_label"], "text": r["body"]}
+            for r in sec.get("rules", [])
+        ]
+        state["workflow_rules"].append(
+            {
+                "number": number,
+                "title": sec.get("heading", number),
+                "tag": "universal",
+                "description": None,
+                "rules": rules,
+                "tables": [],
+                "code_examples": [],
+            }
+        )
+
+    devforge_dir.mkdir(parents=True, exist_ok=True)
+    out = devforge_dir / "constitute.json"
+    out.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
+    """Tests for forge-internal:verify-universal-defaults subcommand.
+
+    Fixture strategy:
+    - All 3 tests use hand-authored constitute.json fixtures because the
+      ``add-rule`` setter constrains ``--tag`` to enum values, so principle
+      names like "Single Responsibility" cannot be stored via the CLI.
+      Body text is always sourced from the real canonical parser output.
+    - test_verify_universal_defaults_in_sync: fixture bodies match canonical
+      (exit 0, zero findings).
+    - test_verify_universal_defaults_missing_section: §3.6 entirely absent
+      (exit 2, MISSING §3.6 finding).
+    - test_verify_universal_defaults_drift_one_rule: §3.6 present but one
+      rule body differs (exit 2, DRIFT §3.6 finding).
+    """
+
+    def _invoke(self, consumer_path: Path, canonical_path: Path):
+        """Invoke forge-internal:verify-universal-defaults via subprocess."""
+        return subprocess.run(
+            [
+                sys.executable,
+                str(_HELPER_PY),
+                "forge-internal:verify-universal-defaults",
+                "--consumer-path", str(consumer_path),
+                "--canonical-path", str(canonical_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_verify_universal_defaults_in_sync(self):
+        """In-sync fixture: bodies match canonical → exit 0, empty findings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer_root = Path(tmp)
+            devforge = consumer_root / ".devforge"
+            _build_in_sync_constitute_json(devforge)
+
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
+            result = self._invoke(consumer_root, canonical_path)
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(
+                result.stderr.strip(), "",
+                msg="Expected empty stderr on in-sync fixture"
+            )
+
+            report = json.loads(result.stdout)
+            self.assertIn("findings", report)
+            self.assertEqual(
+                report["findings"], [],
+                msg="Expected zero findings on in-sync fixture"
+            )
+
+    def test_verify_universal_defaults_missing_section(self):
+        """§3.6 absent in consumer → exit 2, MISSING §3.6 in findings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer_root = Path(tmp)
+            devforge = consumer_root / ".devforge"
+
+            # Build a state with §3.6 INTENTIONALLY absent.
+            state = constitute_helper.default_state()
+            devforge.mkdir(parents=True, exist_ok=True)
+            out = devforge / "constitute.json"
+            out.write_text(
+                json.dumps(state, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
+            result = self._invoke(consumer_root, canonical_path)
+
+            self.assertEqual(result.returncode, 2, msg=result.stderr)
+            self.assertIn("MISSING", result.stderr)
+            self.assertIn("§3.6", result.stderr)
+
+            report = json.loads(result.stdout)
+            missing_entries = [
+                f for f in report["findings"]
+                if f.get("kind") == "MISSING" and f.get("section") == "§3.6"
+            ]
+            self.assertGreater(
+                len(missing_entries), 0,
+                msg="Expected at least one MISSING entry for §3.6 in JSON findings"
+            )
+
+    def test_verify_universal_defaults_drift_one_rule(self):
+        """§3.6 present but one rule body differs → exit 2, DRIFT §3.6 finding."""
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer_root = Path(tmp)
+            devforge = consumer_root / ".devforge"
+
+            canonical = constitute_helper._parse_universal_blocks(
+                _REPO_ROOT / "src" / "constitution.md"
+            )
+            sec36 = canonical.get("§3.6", {})
+
+            # Build rules identical to canonical EXCEPT for the first rule,
+            # whose body is replaced with pre-strengthening generic text.
+            rules_36 = [
+                {"tag": r["tag_or_label"], "text": r["body"]}
+                for r in sec36.get("rules", [])
+            ]
+            if rules_36:
+                rules_36[0] = {
+                    "tag": rules_36[0]["tag"],
+                    "text": "Depend on abstractions, not on concretions.",
+                }
+
+            state = constitute_helper.default_state()
+            state["code_quality_standards"].append(
+                {
+                    "number": "3.6",
+                    "title": sec36.get("heading", "Design Principles"),
+                    "tag": "universal",
+                    "description": None,
+                    "rules": rules_36,
+                    "tables": [],
+                    "code_examples": [],
+                }
+            )
+
+            devforge.mkdir(parents=True, exist_ok=True)
+            out = devforge / "constitute.json"
+            out.write_text(
+                json.dumps(state, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
+            result = self._invoke(consumer_root, canonical_path)
+
+            self.assertEqual(result.returncode, 2, msg=result.stderr)
+            self.assertIn("DRIFT", result.stderr)
+            self.assertIn("§3.6", result.stderr)
+
+            report = json.loads(result.stdout)
+            drift_entries = [
+                f for f in report["findings"]
+                if f.get("kind") == "DRIFT" and f.get("section") == "§3.6"
+            ]
+            self.assertGreater(
+                len(drift_entries), 0,
+                msg="Expected at least one DRIFT entry for §3.6 in JSON findings"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
