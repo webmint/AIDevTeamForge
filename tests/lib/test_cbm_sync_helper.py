@@ -415,5 +415,190 @@ class LauncherShimTests(_CwdIsolation):
         self.assertEqual(data["git_sha"], head)
 
 
+# ---------------------------------------------------------------------------
+# spec-stamp lifecycle (stamp-spec + check-spec subcommands).
+# ---------------------------------------------------------------------------
+
+
+def _add_commit_nested(repo_dir, rel_path, content):
+    """Create a file at `rel_path` (may be nested), commit it. Returns HEAD sha.
+
+    Creates intermediate directories as needed. Follows the same git-env
+    pattern as `_add_commit`.
+    """
+    env = os.environ.copy()
+    env["GIT_AUTHOR_NAME"] = "Test"
+    env["GIT_AUTHOR_EMAIL"] = "test@example.com"
+    env["GIT_COMMITTER_NAME"] = "Test"
+    env["GIT_COMMITTER_EMAIL"] = "test@example.com"
+    full = Path(repo_dir) / rel_path
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text(content, encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "add", rel_path],
+        check=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo_dir), "commit", "-q", "-m", "add " + rel_path],
+        check=True,
+        env=env,
+    )
+    result = subprocess.run(
+        ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return result.stdout.strip()
+
+
+def _make_spec_md(spec_dir, affected_files):
+    """Write a minimal spec.md with §4 Affected Areas citing `affected_files`.
+
+    `affected_files` is a list of path strings — each will be rendered in a
+    backtick pair inside the §4 section so `_parse_affected_areas` can find
+    them.  The file is written at `spec_dir/spec.md` and its path is returned.
+    """
+    spec_dir = Path(spec_dir)
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    rows = "\n".join(
+        "| `{f}` | modified | reason |".format(f=f) for f in affected_files
+    )
+    content = """\
+# Spec: Test Feature
+
+## 1. Overview
+
+Test spec.
+
+## 2. Current State
+
+n/a
+
+## 3. Desired State
+
+n/a
+
+## 4. Affected Areas
+
+| File | Impact | Reason |
+|------|--------|--------|
+{rows}
+
+## 5. Acceptance Criteria
+
+n/a
+
+## 6. Out of Scope
+
+n/a
+
+## 7. Technical Constraints
+
+n/a
+
+## 8. Open Questions
+
+n/a
+
+## 9. Risks
+
+n/a
+""".format(rows=rows)
+    path = spec_dir / "spec.md"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+class TestSpecStampLifecycle(_CwdIsolation):
+    """Four test cases covering the stamp-spec / check-spec subcommand pair.
+
+    Each test uses a real git repo (no mocked git) per the real-producer
+    principle in feedback_test_first_python_helpers.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Each test gets its own repo + devforge dir under tmp_path.
+        self.repo = self.tmp_path / "repo"
+        self.repo.mkdir()
+        self.devforge = self.tmp_path / "df"
+        # Note: DEVFORGE_DIR must point at the .devforge dir, not a file.
+        # The helper appends the stamp filename to it. Do NOT pre-create
+        # the dir here — let the helper create it (tests idempotency).
+
+    def test_stamp_spec_then_check_returns_current(self):
+        """stamp-spec at HEAD A → check-spec at same HEAD → 'current'."""
+        _init_repo(self.repo)
+        spec_path = _make_spec_md(self.repo / "specs" / "001-foo", [])
+        # stamp-spec with no §4 cited files.
+        result = _run_cli(self.repo, self.devforge, "stamp-spec", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # check-spec on same HEAD → current.
+        check = _run_cli(self.repo, self.devforge, "check-spec", str(spec_path))
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertEqual(check.stdout.strip(), "current")
+
+    def test_check_spec_returns_drift_when_cited_file_changed(self):
+        """stamp at HEAD A; modify cited file; commit → check-spec → 'drift ...'."""
+        _init_repo(self.repo)
+        # Create cited file in baseline commit.
+        _add_commit_nested(self.repo, "src/auth/login.py", "# v1\n")
+        spec_path = _make_spec_md(
+            self.repo / "specs" / "001-auth",
+            ["src/auth/login.py"],
+        )
+        _add_commit_nested(self.repo, "specs/001-auth/spec.md",
+                           spec_path.read_text(encoding="utf-8"))
+        # Stamp at this HEAD.
+        stamp_result = _run_cli(
+            self.repo, self.devforge, "stamp-spec", str(spec_path)
+        )
+        self.assertEqual(stamp_result.returncode, 0, stamp_result.stderr)
+        # Now modify the cited file and commit.
+        _add_commit_nested(self.repo, "src/auth/login.py", "# v2\n")
+        # check-spec → drift with the cited file named.
+        check = _run_cli(self.repo, self.devforge, "check-spec", str(spec_path))
+        self.assertEqual(check.returncode, 0, check.stderr)
+        line = check.stdout.strip()
+        self.assertTrue(line.startswith("drift "), repr(line))
+        self.assertIn("src/auth/login.py", line)
+
+    def test_check_spec_returns_current_when_unrelated_file_changed(self):
+        """stamp at HEAD A; modify uncited file; commit → check-spec → 'current'."""
+        _init_repo(self.repo)
+        _add_commit_nested(self.repo, "src/auth/login.py", "# login\n")
+        _add_commit_nested(self.repo, "src/billing/charge.py", "# charge v1\n")
+        spec_path = _make_spec_md(
+            self.repo / "specs" / "001-auth",
+            ["src/auth/login.py"],
+        )
+        _add_commit_nested(self.repo, "specs/001-auth/spec.md",
+                           spec_path.read_text(encoding="utf-8"))
+        stamp_result = _run_cli(
+            self.repo, self.devforge, "stamp-spec", str(spec_path)
+        )
+        self.assertEqual(stamp_result.returncode, 0, stamp_result.stderr)
+        # Modify billing/charge.py (not cited in §4) and commit.
+        _add_commit_nested(self.repo, "src/billing/charge.py", "# charge v2\n")
+        # check-spec → current (HEAD advanced but spec's §4 surface didn't).
+        check = _run_cli(self.repo, self.devforge, "check-spec", str(spec_path))
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertEqual(check.stdout.strip(), "current")
+
+    def test_check_spec_returns_missing_for_unstamped_spec(self):
+        """No stamp written at all → check-spec → 'missing'."""
+        _init_repo(self.repo)
+        spec_path = _make_spec_md(self.repo / "specs" / "002-bar", [])
+        _add_commit_nested(self.repo, "specs/002-bar/spec.md",
+                           spec_path.read_text(encoding="utf-8"))
+        # No stamp-spec call.
+        check = _run_cli(self.repo, self.devforge, "check-spec", str(spec_path))
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertEqual(check.stdout.strip(), "missing")
+
+
 if __name__ == "__main__":
     unittest.main()
