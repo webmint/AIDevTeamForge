@@ -80,6 +80,12 @@ def default_state() -> Dict[str, Any]:
 
         # --- Misalignment log ----------------------------------------------
         "conflicts": [],
+
+        # --- Pre-phase — handoff source -----------------------------------
+        "source": {
+            "handoff_path": None,
+            "research_completed_at": None,
+        },
     }
 
 

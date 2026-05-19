@@ -4351,5 +4351,619 @@ class TestVerifyRendered(unittest.TestCase):
             self.assertIn("path not found", r.stderr)
 
 
+# ---------------------------------------------------------------------------
+# Handoff integration tests — import-handoff + find-handoffs.
+# ---------------------------------------------------------------------------
+
+# Path to research_helper.py (to build real handoff.json fixtures).
+_RESEARCH_HELPER = ROOT / "src" / "devforge" / "lib" / "research_helper.py"
+
+
+def _run_research(argv, cwd=None):
+    """Run research_helper.py with argv; capture stdout/stderr/exit."""
+    cmd = [sys.executable, str(_RESEARCH_HELPER)] + list(argv)
+    return subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _build_minimal_handoff(devforge: Path, handoff_out: Path) -> subprocess.CompletedProcess:
+    """Build a minimal feature_addition handoff.json via real research_helper setters.
+
+    Non-presentation-layer files → no data_flow_chain required.
+    Produces a valid schema handoff.json at handoff_out.
+    Returns the finalize-handoff subprocess result (caller asserts returncode).
+    """
+    df = str(devforge)
+    _run_research(["--devforge-dir", df, "reset-memo"])
+    _run_research(["--devforge-dir", df, "reset-report"])
+
+    # Phase 0 — 6 dimensions.
+    for d, val in (
+        ("symptom", "Auth token not refreshed on expiry"),
+        ("affected-area", "services/auth/token_manager.py"),
+        ("repro-or-current", "Log in; wait 1 hour; next request fails 401"),
+        ("desired", "Token refreshed transparently before expiry"),
+        ("scope", "one module"),
+        ("unchanged-behavior", "logout flow unchanged"),
+    ):
+        _run_research([
+            "--devforge-dir", df,
+            "set-" + d, "--value", val, "--state", "Clear",
+        ])
+
+    _run_research(["--devforge-dir", df, "detect-mode", "--override", "enhancement"])
+    _run_research(["--devforge-dir", df, "set-topic", "--value", "auth-token-refresh"])
+    _run_research(["--devforge-dir", df, "set-date", "--value", "2026-05-19"])
+
+    # Phase 1 — 2 findings + 2 hypotheses + required fields.
+    for surface, file_line, relevance in (
+        ("token manager", "services/auth/token_manager.py:55", "no refresh on expiry"),
+        ("refresh client", "services/auth/refresh_client.py:12", "client code present"),
+    ):
+        _run_research([
+            "--devforge-dir", df, "record-finding",
+            "--surface", surface,
+            "--file-line", file_line,
+            "--relevance", relevance,
+        ])
+
+    for cause, falsifier, probe in (
+        ("expiry timer missing", "add logging before request; verify timer", "yes"),
+        ("refresh endpoint wrong URL", "check API docs vs code", "no"),
+    ):
+        _run_research([
+            "--devforge-dir", df, "record-hypothesis",
+            "--cause", cause,
+            "--falsifier", falsifier,
+            "--runtime-probe-needed", probe,
+        ])
+
+    _run_research([
+        "--devforge-dir", df, "set-verify-step",
+        "--probe", "add print before token check",
+        "--reproduction", "run server; wait expiry; call API",
+        "--discriminator", "if 401 = timer missing; if 200 = something else",
+    ])
+
+    # Phase 2 — approaches + recommended.
+    for name, desc, complexity in (
+        ("Option A: add refresh timer", "Add background timer to refresh token", "Low"),
+        ("Option B: check on request", "Check expiry before each request", "Med"),
+    ):
+        _run_research([
+            "--devforge-dir", df, "set-approach",
+            "--name", name,
+            "--description", desc,
+            "--addresses-hypotheses", "[]",
+            "--does-not-cover", "[]",
+            "--pros", "[]",
+            "--cons", "[]",
+            "--complexity", complexity,
+        ])
+
+    _run_research([
+        "--devforge-dir", df, "set-recommended-approach",
+        "--name", "Option B: check on request",
+        "--rationale", "Simpler; avoids background timer complexity",
+        "--hypotheses-addressed", "[]",
+        "--hypotheses-not-covered", "[]",
+    ])
+    _run_research([
+        "--devforge-dir", df, "set-constitution-constraints",
+        "--rule", "Auth must be deterministic",
+        "--impact", "No silent token failures",
+    ])
+    _run_research([
+        "--devforge-dir", df, "set-complexity",
+        "--codebase-changes", "Low", "--codebase-notes", "1 file",
+        "--risk", "Low", "--risk-notes", "narrow",
+        "--verify-cost", "Low", "--verify-notes", "unit test",
+    ])
+    _run_research([
+        "--devforge-dir", df, "set-verdict",
+        "--value", "Feasible",
+    ])
+    _run_research([
+        "--devforge-dir", df, "set-summary",
+        "--value", "Token refresh missing. Add expiry check before request.",
+    ])
+    _run_research([
+        "--devforge-dir", df, "record-runner-up-framing",
+        "--frame", "refresh endpoint wrong URL",
+        "--falsifier", "check docs vs code",
+        "--confidence-vs-primary", "lower",
+    ])
+
+    # record-fix-path-helper and record-inbound-caller for verify checks.
+    _run_research([
+        "--devforge-dir", df, "record-fix-path-helper",
+        "--helper-qn", "token_manager.refresh",
+        "--file-line", "services/auth/token_manager.py:55",
+    ])
+    _run_research([
+        "--devforge-dir", df, "record-inbound-caller",
+        "--helper-qn", "token_manager.refresh",
+        "--caller-qn", "request_interceptor.before_request",
+        "--file-line", "services/auth/interceptor.py:10",
+    ])
+    _run_research([
+        "--devforge-dir", df, "record-finding",
+        "--surface", "runner-up cross-ref",
+        "--file-line", "services/auth/refresh_client.py:1",
+        "--relevance", "URL config key",
+        "--framing", "runner-up",
+    ])
+
+    # set-probe-feasibility — all False → tier=3 (no test framework required).
+    _run_research([
+        "--devforge-dir", df, "set-probe-feasibility",
+        "--data-shape-only", "false",
+        "--auth-required", "false",
+        "--network-dependent", "false",
+        "--timing-dependent", "false",
+        "--is-test-code", "false",
+    ])
+
+    # Finalize handoff.
+    return _run_research([
+        "--devforge-dir", df,
+        "finalize-handoff",
+        "--emit-handoff-json", str(handoff_out),
+    ])
+
+
+class TestImportHandoff(unittest.TestCase):
+    """Tests for specify_helper import-handoff subcommand."""
+
+    def _make_devforge(self, tmp: str) -> Path:
+        """Create a minimal .devforge dir inside tmp."""
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_import(self, devforge: Path, handoff_path: Path, extra: list = None):
+        argv = [
+            "--devforge-dir", str(devforge),
+            "import-handoff",
+            "--handoff-path", str(handoff_path),
+        ]
+        if extra:
+            argv += extra
+        return _run(argv)
+
+    # ------------------------------------------------------------------
+
+    def test_import_handoff_round_trip(self):
+        """Valid handoff.json → import → all 5 fields + source populated.
+
+        Also verifies open_question shape (F1): question_id, content, category_no_dp_reason.
+        Blocking OQ gets '[blocking]' suffix in content.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0,
+                             "finalize-handoff failed: " + r.stderr)
+            self.assertTrue(handoff_out.exists())
+
+            # Patch handoff.json to inject one blocking open_question so we
+            # can assert the specify-state dict shape (question_id, content,
+            # category_no_dp_reason) produced by the updated emitter.
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            handoff_data["spec_seeds"]["open_questions"] = [
+                {"question": "Is the token refresh idempotent?", "blocking": True},
+            ]
+            handoff_out.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("imported:", r2.stdout)
+            self.assertIn("downstream_links.spec_path set to", r2.stdout)
+
+            state_path = devforge / "specify-state.json"
+            self.assertTrue(state_path.exists())
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+
+            # spec_type must be seeded.
+            self.assertIsNotNone(state.get("spec_type"))
+            # source fields populated (resolve both paths to handle /private/var symlink on macOS).
+            self.assertEqual(
+                Path(state["source"]["handoff_path"]).resolve(),
+                handoff_out.resolve(),
+            )
+            self.assertIsNotNone(state["source"]["research_completed_at"])
+            # Pre-seeded lists set.
+            self.assertIsInstance(state["constraints"], list)
+            self.assertIsInstance(state["affected_areas"], list)
+            self.assertIsInstance(state["risks"], list)
+            self.assertIsInstance(state["open_questions"], list)
+
+            # F1 — open_question shape: {question_id, content, category_no_dp_reason}.
+            oqs = state["open_questions"]
+            self.assertEqual(len(oqs), 1, "Expected 1 open_question, got: " + repr(oqs))
+            oq = oqs[0]
+            self.assertEqual(oq["question_id"], "hq-1")
+            self.assertTrue(oq["content"], "content must be non-empty")
+            # Blocking OQ gets '[blocking]' suffix.
+            self.assertIn("[blocking]", oq["content"])
+            self.assertIn("category_no_dp_reason", oq)
+
+    def test_import_handoff_rejects_missing_file(self):
+        """--handoff-path /nonexistent → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            r = self._run_import(devforge, Path(tmp) / "nonexistent.json")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("not found", r.stderr)
+
+    def test_import_handoff_rejects_invalid_json(self):
+        """Corrupt file → exit 2 + stderr cite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            corrupt = Path(tmp) / "bad.json"
+            corrupt.write_text("{ not json }", encoding="utf-8")
+            r = self._run_import(devforge, corrupt)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("invalid JSON", r.stderr)
+
+    def test_import_handoff_rejects_schema_validation_fail(self):
+        """Handoff.json with bad SHA in literal_archaeology → exit 2 + stderr cite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            # Build a technically valid JSON but break schema: bad schema_version.
+            bad_data = {
+                "schema_version": "9.9",   # wrong version
+                "research_path": "research/2026-05-19-test.md",
+                "research_completed_at": "2026-05-19T10:00:00Z",
+                "mode": "feature_addition",
+                "intent": {
+                    "symptom_summary": "some bug",
+                    "desired_summary": "it works",
+                    "scope": "file-local",
+                },
+                "spec_seeds": {
+                    "spec_type_hint": "feature_addition",
+                    "constraints": [],
+                    "affected_areas": [],
+                    "risks": [],
+                    "open_questions": [],
+                },
+                "plan_seeds": {
+                    "recommended_approach_id": "A",
+                    "recommended_approach_summary": "Fix it",
+                    "layer_destination": "service layer",
+                    "layer_justification": "business logic",
+                    "complexity": {"changes": "Low", "risk": "Low", "verify_cost": "Low"},
+                },
+                "probe": {
+                    "tier": "3",
+                    "actor": "user",
+                    "discriminator": {
+                        "primary_confirms_if": "X",
+                        "runner_up_confirms_if": "Y",
+                        "both_disproved_if": "Z",
+                        "production_site_check": None,
+                    },
+                    "feasibility_check": {
+                        "data_shape_only": False,
+                        "auth_required": False,
+                        "network_dependent": False,
+                        "timing_dependent": False,
+                        "is_test_code": False,
+                    },
+                    "test_framework": None,
+                    "test_path": None,
+                    "script_path": None,
+                    "is_first_test_for_file": False,
+                },
+                "downstream_links": {},
+            }
+            bad_path = Path(tmp) / "bad_schema.json"
+            bad_path.write_text(json.dumps(bad_data), encoding="utf-8")
+            r = self._run_import(devforge, bad_path)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("schema validation failed", r.stderr)
+
+    def test_import_handoff_idempotent_re_import_overwrites_pre_seeds(self):
+        """Second import succeeds + pre-seed blocks overwritten."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            # First import.
+            r1 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+
+            state1 = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            spec_type_1 = state1["spec_type"]
+
+            # Second import — same file, must succeed.
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state2 = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            # Pre-seeded spec_type still same value (re-seeded from same handoff).
+            self.assertEqual(state2["spec_type"], spec_type_1)
+            # source still set (resolve both for /private/var macOS symlink).
+            self.assertEqual(
+                Path(state2["source"]["handoff_path"]).resolve(),
+                handoff_out.resolve(),
+            )
+
+    def test_import_handoff_warns_when_user_content_present(self):
+        """Re-import after user sets overview → WARNING on stderr; overview preserved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            # First import.
+            r1 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+
+            # User sets overview after first import.
+            _run([
+                "--devforge-dir", str(devforge),
+                "set-overview",
+                "--content", "User-composed overview text",
+            ])
+
+            # Second import should succeed + warn.
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("warning", r2.stderr.lower())
+            self.assertIn("user-composed content", r2.stderr)
+
+            # User content preserved.
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["overview"], "User-composed overview text")
+
+    def test_import_handoff_computes_spec_path_first_slot(self):
+        """Empty specs/ dir → spec_path NNN=001."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            # No specs/ dir exists → NNN = 001.
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            # Reload handoff.json — downstream_links.spec_path must start with 001.
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            spec_path = handoff_data["downstream_links"]["spec_path"]
+            self.assertTrue(
+                spec_path.startswith("specs/001-"),
+                "Expected spec_path to start with 'specs/001-', got: " + spec_path,
+            )
+
+    def test_import_handoff_computes_spec_path_next_slot(self):
+        """Existing specs/001-foo/ + specs/002-bar/ → spec_path NNN=003."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            # Create 2 existing spec dirs.
+            (Path(tmp) / "specs" / "001-foo").mkdir(parents=True)
+            (Path(tmp) / "specs" / "002-bar").mkdir(parents=True)
+
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            spec_path = handoff_data["downstream_links"]["spec_path"]
+            self.assertTrue(
+                spec_path.startswith("specs/003-"),
+                "Expected spec_path to start with 'specs/003-', got: " + spec_path,
+            )
+
+    def test_import_handoff_constraint_shapes_preserved(self):
+        """Handoff follow constraints arrive in specify state with kind field intact."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            # Build minimal handoff (has follow-kind constraints from constitution).
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            # Patch the handoff.json to inject multiple constraint kinds.
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            handoff_data["spec_seeds"]["constraints"] = [
+                {"kind": "nfr", "content": "p99 < 200ms", "quantifier": "< 200ms"},
+                {
+                    "kind": "constitution_anchor",
+                    "content": "Follow §3.6 error handling",
+                    "constitution_ref": "§3.6",
+                },
+                {"kind": "follow", "content": "Follow existing logging pattern"},
+            ]
+            handoff_out.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            kinds = {c["kind"] for c in state["constraints"]}
+            self.assertIn("nfr", kinds)
+            self.assertIn("constitution_anchor", kinds)
+            self.assertIn("follow", kinds)
+
+            # Check nfr quantifier preserved.
+            nfr_rows = [c for c in state["constraints"] if c["kind"] == "nfr"]
+            self.assertTrue(len(nfr_rows) >= 1)
+            self.assertEqual(nfr_rows[0].get("quantifier"), "< 200ms")
+
+            # Check constitution_anchor ref preserved.
+            ca_rows = [c for c in state["constraints"] if c["kind"] == "constitution_anchor"]
+            self.assertTrue(len(ca_rows) >= 1)
+            self.assertEqual(ca_rows[0].get("constitution_ref"), "§3.6")
+
+    def test_import_handoff_sets_spec_type_seeded_by_upstream(self):
+        """import-handoff sets spec_type_seeded_by_upstream=True in state (F4)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIs(state.get("spec_type_seeded_by_upstream"), True)
+
+
+class TestFindHandoffs(unittest.TestCase):
+    """Tests for specify_helper find-handoffs subcommand."""
+
+    def _make_devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_find(self, devforge: Path, since: str):
+        return _run([
+            "--devforge-dir", str(devforge),
+            "find-handoffs",
+            "--since", since,
+        ])
+
+    def _build_handoff_at(self, tmp: Path, research_df: Path, filename: str) -> Path:
+        """Build a handoff.json at tmp/research/<filename> via real setters."""
+        research_dir = tmp / "research"
+        research_dir.mkdir(exist_ok=True)
+        sub_dir = research_dir / filename
+        sub_dir.mkdir(exist_ok=True)
+        handoff_out = sub_dir / "handoff.json"
+        r = _build_minimal_handoff(research_df, handoff_out)
+        if r.returncode != 0:
+            raise RuntimeError("finalize-handoff failed: " + r.stderr)
+        return handoff_out
+
+    # ------------------------------------------------------------------
+
+    def test_find_handoffs_globs_recent_only(self):
+        """2 handoffs: 1hr old + 8 days old; --since '7 days' → only 1hr in output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+
+            # Build 2 handoffs using separate devforge dirs.
+            df_a = tmp_path / "df_a"
+            df_a.mkdir()
+            df_b = tmp_path / "df_b"
+            df_b.mkdir()
+
+            h_recent = self._build_handoff_at(tmp_path, df_a, "2026-05-19-auth-token-refresh")
+            h_old = self._build_handoff_at(tmp_path, df_b, "2026-05-11-old-feature")
+
+            import time
+            # Set mtime: recent = 1hr ago, old = 8 days ago.
+            now = time.time()
+            os.utime(str(h_recent), (now - 3600, now - 3600))
+            os.utime(str(h_old), (now - 8 * 86400, now - 8 * 86400))
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            # Recent handoff should appear; old should not.
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("auth-token-refresh", lines[0])
+
+    def test_find_handoffs_zero_hits(self):
+        """No handoffs → exit 0, empty stdout."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            # No research/ dir → zero hits.
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
+
+    def test_find_handoffs_invalid_since_rejected(self):
+        """--since 'foo' → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            r = self._run_find(devforge, "foo")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("--since", r.stderr)
+
+    def test_find_handoffs_skips_corrupt_handoff_silently(self):
+        """One valid + one corrupt → only valid in output, exit 0.
+
+        The valid handoff is built via real research_helper setters; its
+        research_path contains the topic slug 'auth-token-refresh'. The corrupt
+        handoff is raw JSON that will fail schema parsing. Only 1 line in output.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_dir = tmp_path / "research"
+            research_dir.mkdir()
+
+            # Build one valid handoff.
+            df_a = tmp_path / "df_a"
+            df_a.mkdir()
+            h_valid = self._build_handoff_at(tmp_path, df_a, "2026-05-19-valid-feature")
+
+            # Create a corrupt handoff in the same research/ directory.
+            corrupt_dir = research_dir / "2026-05-19-corrupt"
+            corrupt_dir.mkdir()
+            corrupt = corrupt_dir / "handoff.json"
+            corrupt.write_text("{ not json }", encoding="utf-8")
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            # Only the valid handoff should appear; corrupt is skipped silently.
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            # The valid handoff's output line contains the mode and summary fields.
+            self.assertIn("feature_addition", lines[0])
+
+
 if __name__ == "__main__":
     unittest.main()

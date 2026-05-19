@@ -61,6 +61,10 @@ from ._cmds_phase4_verify import (
     cmd_verify_numerical_consistency,
     cmd_verify_rendered,
 )
+from ._cmds_handoff import (
+    cmd_find_handoffs,
+    cmd_import_handoff,
+)
 from ._cmds_phase5 import (
     cmd_render_plan_handoff,
     cmd_render_summary,
@@ -573,6 +577,28 @@ def build_parser() -> argparse.ArgumentParser:
         choices=list(RESOLUTION_PHASE_ENUM),
     )
     sp.set_defaults(func=cmd_resolve_open_question)
+
+    # ----- Pre-phase — handoff import + discovery -------------------------
+
+    sp = sub.add_parser(
+        "import-handoff",
+        help="Pre-seed specify state from a research handoff.json.",
+    )
+    sp.add_argument(
+        "--handoff-path", required=True, dest="handoff_path",
+        help="Path to handoff.json (absolute or relative to cwd).",
+    )
+    sp.set_defaults(func=cmd_import_handoff)
+
+    sp = sub.add_parser(
+        "find-handoffs",
+        help="Glob research/**/handoff.json; filter by mtime within --since window.",
+    )
+    sp.add_argument(
+        "--since", required=True,
+        help="Duration window, e.g. '7 days', '24 hours', '1 hour'.",
+    )
+    sp.set_defaults(func=cmd_find_handoffs)
 
     # ----- Cross-phase -----------------------------------------------------
 

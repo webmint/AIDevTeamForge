@@ -1,6 +1,6 @@
 # RESEARCH-HANDOFF-PLAN
 
-**Status**: Steps 1-5 SHIPPED 2026-05-19 (schema lock 50 + test_infra 144 + finalize-handoff 343 + probe-tier 361 + probe-script 372 tests); Steps 6-10 pending
+**Status**: Steps 1-6 SHIPPED 2026-05-19 (schema lock 50 + test_infra 144 + finalize-handoff 343 + probe-tier 361 + probe-script 372 + import-handoff 268 specify tests); Steps 7-10 pending
 **Date**: 2026-05-17 (Step 1 landed 2026-05-19)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -520,6 +520,8 @@ pytest tests/lib/test_research_helper.py -k "probe_script" -v
 ---
 
 ## Step 6 — `specify_helper import-handoff`
+
+**Status**: SHIPPED 2026-05-19. NEW `src/devforge/lib/_specify/_cmds_handoff.py` (~480 lines): `cmd_import_handoff` validates handoff.json via recursive `_dict_to_dataclass(handoff_schema.Handoff, dict)` (handles Optional/List/Dict + init=False guard), pre-seeds 5 fields (spec_type + constraints + affected_areas + risks + open_questions) into specify-state via `_state_transaction`, sets `state["spec_type_seeded_by_upstream"] = True`, records `state["source"]={handoff_path, research_completed_at}`. Mutates handoff.json: `downstream_links.spec_path` set to deterministic `specs/<next-NNN>-<slug>/spec.md` (slug extracted from handoff.research_path). Idempotent re-import overwrites pre-seeds + emits `"import-handoff: warning:"` to stderr if user-composed content (overview/desired_behavior/AC) exists. Open-question shape mapped `{question, blocking}` → `{question_id: "hq-<N>", content: <body+[blocking] suffix>, category_no_dp_reason: ""}` to match specify-state renderer. `cmd_find_handoffs` parses `--since "<N> day(s)|hour(s)|minute(s)"` via regex, globs `research/**/handoff.json`, filters by mtime, emits `<mtime ISO>|<research_path>|<mode>|<truncated approach summary>` newest-first; exit 0 always; skips corrupt JSON silently. State extension in `_state.py`: `default_state` gains `source: {handoff_path, research_completed_at}` block. `_atomic_write_json` reused from `_state.py` (no duplicate). Tests: 17 new (TestImportHandoff×10 + TestFindHandoffs×4 + 3 pre-existing) → 268 file-total green. Fixture uses real `research_helper finalize-handoff` to generate handoff.json (round-trip per `feedback_test_first_python_helpers`). Reviewer cycles: python-reviewer 5 (1H/2M/1L/1N) ALL applied (F1 open_question shape, F2 init=False guard, F3 _atomic_write_json dedup, F4 spec_type_seeded_by_upstream flag, F5 dead _build_constraint_heavy_handoff removed). instruction-reviewer 3 (2M/1L) ALL applied (F1 lowercase `warning:` casing fix, F2 Phase 3 Step 1 precondition for handoff-seeded spec_type via AskUserQuestion accept/override prompt, F3 cite `plan_seeds.recommended_approach_summary` field source). `src/commands/specify/main.md` Phase 0 expanded from "Three preflight steps" → "Four preflight steps"; new `### Phase 0.4 — Handoff discovery` between Phase 0.3 and Phase 1 (find-handoffs → AskUserQuestion 3-way [yes-most-recent / pick-other / cold] → import-handoff invocation with verbatim-echo + exit-2 + warning-line handling); Phase 3 Step 1 gains handoff-seeded-spec-type precondition.
 
 **Owner**: python-engineer + instruction-author.
 

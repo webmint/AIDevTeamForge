@@ -19,9 +19,9 @@ Usage: `/specify "<feature description>"` (e.g. `/specify "migrate the monorepo 
 
 The LLM does NOT edit `.devforge/specify-state.json` or the rendered `spec.md` via Write or Edit at any point. The helper's setters + `render` are the only writers; this preserves the helper-owns-shape invariant.
 
-## Phase 0 — Preflight + branch detection + session-state reset
+## Phase 0 — Preflight + branch detection + session-state reset + handoff discovery
 
-Three preflight steps run in order. All must pass before Phase 1 begins.
+Four preflight steps run in order. All must pass before Phase 1 begins.
 
 ### Phase 0.1 — Setup-chain artefact check
 
@@ -89,6 +89,26 @@ Then reset helper state for this run:
 ```
 
 `reset-state` writes a fresh defaults JSON at `.devforge/specify-state.json`. Fresh-every-run: any prior state is overwritten. `/specify` does not resume mid-flight prior runs — every invocation starts clean.
+
+### Phase 0.4 — Handoff discovery
+
+```bash
+.devforge/lib/specify_helper find-handoffs --since "7 days"
+```
+
+Helper globs `research/*/handoff.json` modified within the window; emits one summary line per finding to stdout (`<mtime ISO> | <research_path> | <mode> | <truncated approach summary>` (from `plan_seeds.recommended_approach_summary`, truncated to 80 chars), newest first). Exit 0 always — zero hits is not a failure.
+
+On zero hits: emit `"No recent research handoff found; proceeding cold"` as plain prose to the user and continue to Phase 1.
+
+On one or more hits: AskUserQuestion: `"Found research handoff(s). Pre-seed spec from one?"` with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
+
+- **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the first line of the `find-handoffs` stdout (newest-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
+- **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line, then ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
+- **`cold`** → skip import. Continue to Phase 1 with no pre-seed.
+
+On `import-handoff` exit 2 (missing file / invalid JSON / schema validation failure): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT proceed to Phase 1 — end the turn. The user fixes the upstream handoff and re-runs `/specify`.
+
+On `import-handoff` exit 0 with a `warning:` line on stderr (prefixed `import-handoff: warning:`) (re-import would overwrite user-composed `state.overview` / `state.desired_behavior` / AC content): surface the stderr warning text to the user as plain prose alongside the verbatim stdout block, then continue to Phase 1. The helper has already overwritten pre-seeds; the warning is informational so the user knows downstream sections may need re-review at Phase 5 approval.
 
 ## Phase 1 — Input reads (7 sources)
 
@@ -341,6 +361,14 @@ Helper runs `verify-decision-coverage` then stamps `dp_finalized=true`. Exit 0 �
 Goal: classify the spec type, read the mandatory per-type files, supplement with CBM / Glob / Grep exploration.
 
 ### Step 1 — Classify the spec type
+
+**Handoff-seeded spec_type check (precondition).** If Phase 0.4 ran `import-handoff` (state has `spec_type_seeded_by_upstream == true` AND `spec_type` is set AND `source.handoff_path` is non-null pointing at `research/...`), surface the pre-seeded value to the user before classifying:
+
+- AskUserQuestion `"Research handoff pre-seeded spec_type=<value>; accept or override?"` with options `["accept", "override"]`.
+- On `accept`: call `.devforge/lib/specify_helper classify-spec-type --spec-type <pre-seeded-value> --rationale "pre-seeded from research handoff at <handoff_path>" --seeded-by-upstream`. Lock in the value.
+- On `override`: proceed with normal LLM-driven `classify-spec-type` flow described below.
+
+Skip this precondition entirely when Phase 0.4 did not import (spec_type_seeded_by_upstream is false OR spec_type is null).
 
 Choose one of five spec types based on `$ARGUMENTS` + Phase 1.5 findings:
 
