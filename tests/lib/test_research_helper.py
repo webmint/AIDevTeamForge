@@ -6651,6 +6651,16 @@ def _build_minimal_bug_state_for_handoff(devforge):
         "--framing", "runner-up",
     ])
 
+    # Step 4: set-probe-feasibility (all False → no-signal fallback → tier=3, actor=user).
+    _run([
+        "--devforge-dir", str(devforge), "set-probe-feasibility",
+        "--data-shape-only", "false",
+        "--auth-required", "false",
+        "--network-dependent", "false",
+        "--timing-dependent", "false",
+        "--is-test-code", "false",
+    ])
+
 
 def _run_finalize(devforge, emit_path, research_md_path=None):
     """Run finalize-handoff and return subprocess result."""
@@ -6793,6 +6803,15 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--codebase-changes", "Low", "--codebase-notes", "1 endpoint",
                 "--risk", "Low", "--risk-notes", "no existing deps",
                 "--verify-cost", "Low", "--verify-notes", "unit test",
+            ])
+            # Step 4: set-probe-feasibility required before finalize-handoff.
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
             ])
             out = Path(tmp) / "handoff.json"
             r = _run_finalize(devforge, out)
@@ -7120,6 +7139,16 @@ class TestFinalizeHandoff(unittest.TestCase):
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
 
+            # Step 4: set-probe-feasibility required before finalize-handoff.
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+
             out = Path(tmp) / "handoff.json"
             r = _run_finalize(devforge, out)
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -7142,6 +7171,460 @@ class TestFinalizeHandoff(unittest.TestCase):
             r = _run_finalize(devforge, Path(tmp) / "handoff.json")
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("report.date not set", r.stderr)
+
+
+_INIT_HELPER_PY = _LIB_DIR / "init_helper.py"
+
+
+def _run_init(argv, cwd=None):
+    """Run init_helper.py with argv; capture stdout/stderr/exit."""
+    return subprocess.run(
+        [sys.executable, str(_INIT_HELPER_PY)] + list(argv),
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _write_init_yaml_with_test_infra(devforge_dir, frontend=None, backend=None, e2e=None, status="present"):
+    """Write .devforge/init.yaml with a given test_infra shape via init_helper CLI.
+
+    Round-trips through the real producer (init_helper CLI) per
+    feedback_test_first_python_helpers: tests must not hand-craft fixtures that
+    bypass the producer. Uses DEVFORGE_DIR env var (init_helper's redirect
+    mechanism) + set-test-infra subcommand to write the correct YAML shape.
+    """
+    devforge_path = Path(devforge_dir)
+    devforge_path.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["DEVFORGE_DIR"] = str(devforge_path)
+
+    def _run_init_env(argv):
+        return subprocess.run(
+            [sys.executable, str(_INIT_HELPER_PY)] + list(argv),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    # Reset to fresh init state.
+    r = _run_init_env(["reset"])
+    if r.returncode != 0:
+        raise RuntimeError("init_helper reset failed: {0}".format(r.stderr))
+    # Set test_infra via the set-test-infra subcommand.
+    argv = [
+        "set-test-infra",
+        "--status", status,
+        "--frontend", frontend if frontend else "null",
+        "--backend", backend if backend else "null",
+        "--e2e", e2e if e2e else "null",
+    ]
+    r = _run_init_env(argv)
+    if r.returncode != 0:
+        raise RuntimeError("init_helper set-test-infra failed: {0}".format(r.stderr))
+    return devforge_path / "init.yaml"
+
+
+class TestSetProbeFeasibility(unittest.TestCase):
+    """Step 4 — set-probe-feasibility subcommand tests."""
+
+    def test_set_probe_feasibility_round_trip(self):
+        """All five flags accepted, state populated correctly as Python bools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "true",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # Verify state via read-report.
+            r2 = _run(["--devforge-dir", str(devforge), "read-report"])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            data = json.loads(r2.stdout)
+            feas = data["probe_feasibility"]
+            self.assertIs(feas["data_shape_only"], True)
+            self.assertIs(feas["auth_required"], False)
+            self.assertIs(feas["network_dependent"], False)
+            self.assertIs(feas["timing_dependent"], False)
+            self.assertIs(feas["is_test_code"], False)
+
+    def test_set_probe_feasibility_rejects_non_boolean_string(self):
+        """--data-shape-only maybe → exit 2 + enum cite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "maybe",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # argparse choices validation fires before handler, exit 2.
+            self.assertNotEqual(r.returncode, 0, "should have failed")
+            # The error should mention the invalid choice.
+            self.assertTrue(
+                "maybe" in r.stderr or "invalid choice" in r.stderr,
+                "stderr: {0}".format(r.stderr)
+            )
+
+    def test_set_probe_feasibility_accepts_lowercase_canonical(self):
+        """Argparse choices are exact match; only lowercase 'true' / 'false' accepted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            # argparse choices are exact match; "True" won't match "true".
+            # Test with lowercase (canonical).
+            r = _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "true",
+                "--network-dependent", "false",
+                "--timing-dependent", "true",
+                "--is-test-code", "false",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r2 = _run(["--devforge-dir", str(devforge), "read-report"])
+            data = json.loads(r2.stdout)
+            feas = data["probe_feasibility"]
+            self.assertIs(feas["auth_required"], True)
+            self.assertIs(feas["timing_dependent"], True)
+
+    def test_default_report_state_has_probe_feasibility_all_none(self):
+        """default_report_state() includes probe_feasibility with all-None defaults."""
+        state = research_helper.default_report_state()
+        feas = state.get("probe_feasibility")
+        self.assertIsInstance(feas, dict)
+        for key in ("data_shape_only", "auth_required", "network_dependent",
+                    "timing_dependent", "is_test_code"):
+            self.assertIn(key, feas)
+            self.assertIsNone(feas[key])
+
+
+class TestProbeTierClassifier(unittest.TestCase):
+    """Step 4 — _classify_probe_tier() + full finalize-handoff pipeline tests."""
+
+    def test_finalize_rejects_when_probe_feasibility_missing(self):
+        """Full bug-mode state minus set-probe-feasibility → exit 2 + stderr 'probe_feasibility incomplete'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Corrupt the probe_feasibility back to all-None to simulate missing set.
+            report_path = devforge / "research-report.json"
+            data = json.loads(report_path.read_text())
+            data["probe_feasibility"] = {
+                "data_shape_only": None,
+                "auth_required": None,
+                "network_dependent": None,
+                "timing_dependent": None,
+                "is_test_code": None,
+            }
+            report_path.write_text(json.dumps(data))
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("probe_feasibility incomplete", r.stderr)
+            self.assertIn("set-probe-feasibility", r.stderr)
+
+    def test_probe_tier_3_when_is_test_code(self):
+        """feasibility.is_test_code=True → tier='3', actor='user' (circular-test-code gate)."""
+        result = research_helper._classify_probe_tier(
+            feasibility={"data_shape_only": False, "auth_required": False,
+                         "network_dependent": False, "timing_dependent": False,
+                         "is_test_code": True},
+            test_infra_status="present",
+            chrome_mcp=True,  # even with chrome_mcp, test_code forces tier=3
+            test_infra={"frontend": "vitest", "backend": None, "e2e": None, "status": "present"},
+            topic_slug="my-probe",
+            research_date="2026-05-19",
+        )
+        self.assertEqual(result["tier"], "3")
+        self.assertEqual(result["actor"], "user")
+        self.assertIsNone(result["test_framework"])
+        self.assertIsNone(result["test_path"])
+
+    def test_probe_tier_1_when_data_shape_only_and_test_infra_present(self):
+        """data_shape_only=True + test_infra.status=present + vitest in frontend → tier='1', test_framework='vitest', test_path includes '.spec.ts'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Override feasibility to data_shape_only=True, others False.
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "true",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # Write init.yaml with vitest as frontend framework.
+            _write_init_yaml_with_test_infra(devforge, frontend="vitest", status="present")
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            probe = data["probe"]
+            self.assertEqual(probe["tier"], "1")
+            self.assertEqual(probe["actor"], "llm")
+            self.assertEqual(probe["test_framework"], "vitest")
+            self.assertIn(".spec.ts", probe["test_path"])
+            self.assertIn("config-not-applied", probe["test_path"])
+            self.assertTrue(probe["is_first_test_for_file"])
+
+    def test_probe_tier_1_5_when_data_shape_only_and_test_infra_absent(self):
+        """data_shape_only=True + test_infra.status=absent → tier='1.5', script_path populated, test_framework=None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Override feasibility to data_shape_only=True.
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "true",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # Write init.yaml with status=absent (no frameworks).
+            _write_init_yaml_with_test_infra(devforge, status="absent")
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            probe = data["probe"]
+            self.assertEqual(probe["tier"], "1.5")
+            self.assertEqual(probe["actor"], "llm")
+            self.assertIsNone(probe["test_framework"])
+            self.assertIsNone(probe["test_path"])
+            self.assertIn("probe-script.mjs", probe["script_path"])
+            self.assertIn("config-not-applied", probe["script_path"])
+
+    def test_probe_tier_2_when_auth_required_and_chrome_mcp(self):
+        """feasibility.auth_required=True + env DEVFORGE_CHROME_MCP_AVAILABLE=1 → tier='2', actor='llm'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "true",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            env = os.environ.copy()
+            env["DEVFORGE_CHROME_MCP_AVAILABLE"] = "1"
+            r = subprocess.run(
+                [sys.executable, str(_HELPER_PY),
+                 "--devforge-dir", str(devforge),
+                 "finalize-handoff",
+                 "--emit-handoff-json", str(out)],
+                capture_output=True, text=True, check=False, env=env,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            probe = data["probe"]
+            self.assertEqual(probe["tier"], "2")
+            self.assertEqual(probe["actor"], "llm")
+
+    def test_probe_tier_3_when_auth_required_and_no_chrome_mcp(self):
+        """feasibility.auth_required=True + no env var → tier='3', actor='user'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "true",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            env = os.environ.copy()
+            env.pop("DEVFORGE_CHROME_MCP_AVAILABLE", None)
+            r = subprocess.run(
+                [sys.executable, str(_HELPER_PY),
+                 "--devforge-dir", str(devforge),
+                 "finalize-handoff",
+                 "--emit-handoff-json", str(out)],
+                capture_output=True, text=True, check=False, env=env,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            probe = data["probe"]
+            self.assertEqual(probe["tier"], "3")
+            self.assertEqual(probe["actor"], "user")
+
+    def test_probe_tier_3_when_no_feasibility_signal(self):
+        """All five booleans False (no specific signal) → tier='3', actor='user' (fallback)."""
+        result = research_helper._classify_probe_tier(
+            feasibility={"data_shape_only": False, "auth_required": False,
+                         "network_dependent": False, "timing_dependent": False,
+                         "is_test_code": False},
+            test_infra_status=None,
+            chrome_mcp=False,
+            test_infra=None,
+            topic_slug="no-signal",
+            research_date="2026-05-19",
+        )
+        self.assertEqual(result["tier"], "3")
+        self.assertEqual(result["actor"], "user")
+        self.assertIsNone(result["test_framework"])
+        self.assertIsNone(result["test_path"])
+        self.assertIsNone(result["script_path"])
+
+    def test_probe_tier_1_demotes_to_1_5_when_test_infra_present_but_empty_buckets(self):
+        """test_infra.status=present but all buckets None → demotes to tier='1.5' (inconsistent state)."""
+        result = research_helper._classify_probe_tier(
+            feasibility={"data_shape_only": True, "auth_required": False,
+                         "network_dependent": False, "timing_dependent": False,
+                         "is_test_code": False},
+            test_infra_status="present",
+            chrome_mcp=False,
+            test_infra={"frontend": None, "backend": None, "e2e": None, "status": "present"},
+            topic_slug="empty-buckets",
+            research_date="2026-05-19",
+        )
+        # Demoted because no recognizable framework found.
+        self.assertEqual(result["tier"], "1.5")
+        self.assertIn("probe-script.mjs", result["script_path"])
+        self.assertIsNone(result["test_framework"])
+
+    def test_finalize_writes_classified_probe_to_handoff_json(self):
+        """Full pipeline: set-probe-feasibility (all False) + finalize → output JSON has probe.tier='3'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            probe = data["probe"]
+            self.assertEqual(probe["tier"], "3")
+            self.assertEqual(probe["actor"], "user")
+            # feasibility_check should have all booleans set.
+            fc = probe["feasibility_check"]
+            self.assertIs(fc["data_shape_only"], False)
+            self.assertIs(fc["auth_required"], False)
+            self.assertIs(fc["network_dependent"], False)
+            self.assertIs(fc["timing_dependent"], False)
+            self.assertIs(fc["is_test_code"], False)
+
+    def test_chrome_mcp_default_false_when_env_unset(self):
+        """env var absent → tier-2-eligible feasibility downgrades to tier=3."""
+        # Direct function call with chrome_mcp=False (simulates no env var).
+        result = research_helper._classify_probe_tier(
+            feasibility={"data_shape_only": False, "auth_required": True,
+                         "network_dependent": False, "timing_dependent": False,
+                         "is_test_code": False},
+            test_infra_status=None,
+            chrome_mcp=False,  # no env var
+            test_infra=None,
+            topic_slug="auth-probe",
+            research_date="2026-05-19",
+        )
+        self.assertEqual(result["tier"], "3")
+        self.assertEqual(result["actor"], "user")
+
+    def test_test_path_extension_maps_per_framework(self):
+        """Parametrized over 6 schema-valid frameworks: vitest→.spec.ts, pytest→.py,
+        cargo-test→.rs, go-test→_test.go, rspec→_spec.rb, jest→.spec.ts."""
+        cases = [
+            ("vitest", "present", "frontend", ".spec.ts"),
+            ("pytest", "present", "backend", ".py"),
+            ("cargo-test", "present", "backend", ".rs"),
+            ("go-test", "present", "backend", "_test.go"),
+            ("rspec", "present", "backend", "_spec.rb"),
+            ("jest", "present", "frontend", ".spec.ts"),
+        ]
+        for framework, status, bucket, expected_ext in cases:
+            test_infra = {"frontend": None, "backend": None, "e2e": None, "status": status}
+            test_infra[bucket] = framework
+            result = research_helper._classify_probe_tier(
+                feasibility={"data_shape_only": True, "auth_required": False,
+                             "network_dependent": False, "timing_dependent": False,
+                             "is_test_code": False},
+                test_infra_status=status,
+                chrome_mcp=False,
+                test_infra=test_infra,
+                topic_slug="my-feature",
+                research_date="2026-05-19",
+            )
+            self.assertEqual(result["tier"], "1", "framework={0}".format(framework))
+            self.assertIn(
+                expected_ext, result["test_path"],
+                "framework={0} expected ext={1} in path={2}".format(
+                    framework, expected_ext, result["test_path"]
+                ),
+            )
+
+    def test_probe_feasibility_round_trip_via_finalize(self):
+        """feasibility flags set, finalize emits, output handoff.json.probe.feasibility_check has same boolean values."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Override just data_shape_only and timing_dependent to True.
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "true",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "true",
+                "--is-test-code", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            fc = data["probe"]["feasibility_check"]
+            self.assertIs(fc["data_shape_only"], True)
+            self.assertIs(fc["auth_required"], False)
+            self.assertIs(fc["network_dependent"], False)
+            self.assertIs(fc["timing_dependent"], True)
+            self.assertIs(fc["is_test_code"], False)
+            # timing_dependent=True prevents clean tier=1 classification → tier=3 fallback.
+            self.assertEqual(data["probe"]["tier"], "3")
+
+    def test_discriminator_runner_up_populated_for_tier_1_5(self):
+        """tier=1.5 → runner_up_confirms_if cites LLM evaluation, both_disproved_if cites test passes."""
+        result = research_helper._classify_probe_tier(
+            feasibility={"data_shape_only": True, "auth_required": False,
+                         "network_dependent": False, "timing_dependent": False,
+                         "is_test_code": False},
+            test_infra_status="absent",
+            chrome_mcp=False,
+            test_infra=None,
+            topic_slug="slug",
+            research_date="2026-05-19",
+        )
+        self.assertEqual(result["tier"], "1.5")
+        self.assertIn("LLM", result["runner_up_confirms_if"])
+        self.assertIn("PASSES", result["both_disproved_if"])
+
+    def test_discriminator_runner_up_tbd_for_tier_3(self):
+        """tier=3 → runner_up_confirms_if='tbd — manual observation required'."""
+        result = research_helper._classify_probe_tier(
+            feasibility={"data_shape_only": False, "auth_required": False,
+                         "network_dependent": False, "timing_dependent": False,
+                         "is_test_code": False},
+            test_infra_status=None,
+            chrome_mcp=False,
+            test_infra=None,
+            topic_slug="slug",
+            research_date="2026-05-19",
+        )
+        self.assertEqual(result["tier"], "3")
+        self.assertIn("manual observation", result["runner_up_confirms_if"])
 
 
 if __name__ == "__main__":

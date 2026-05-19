@@ -635,6 +635,27 @@ Bug-mode structured root cause (only when `memo.mode == "bug"` AND `confidence �
 # repeat record-contributing-factor up to 3 times
 ```
 
+**Probe feasibility classification (MANDATORY — all modes).** Before the verify-step block below, classify the probe's feasibility along five boolean axes. These flags feed the downstream `finalize-handoff` probe-tier classifier (tier 1 = LLM unit test, tier 1.5 = LLM standalone script, tier 2 = LLM via chrome MCP, tier 3 = user manual). Call:
+
+```bash
+.devforge/lib/research_helper set-probe-feasibility \
+    --data-shape-only <true|false> \
+    --auth-required <true|false> \
+    --network-dependent <true|false> \
+    --timing-dependent <true|false> \
+    --is-test-code <true|false>
+```
+
+Flag semantics:
+
+- `--data-shape-only` — verification depends only on data shapes / function outputs / state values, with no auth, network, or timing dependencies.
+- `--auth-required` — verification needs an authenticated session (logged-in user, API token, etc.).
+- `--network-dependent` — verification needs real network calls or external services (not stubbable).
+- `--timing-dependent` — verification depends on race conditions, lifecycle ordering, or async timing.
+- `--is-test-code` — the bug is in test code itself; probing the test would be circular, so the classifier forces tier 3 (user manual).
+
+All five flags are required in one call. Each accepts exact lowercase `true` or `false` only (argparse exact-match; `True` / `TRUE` are rejected; on rejection, stderr will read `invalid choice` — verify lowercase and retry without JSON-escaping). `finalize-handoff` in Phase 4 rejects with exit 2 + `"finalize-handoff: probe_feasibility incomplete; missing flags: [...]"` when any flag is unset. Call `set-probe-feasibility` immediately after the structured root-cause block (before the verify-step) — the classifier must run before finalize-handoff, and early placement avoids accidental omission.
+
 If any hypothesis carries `runtime_probe_needed=yes`, set the verify step (all three sub-fields required in one call):
 
 ```bash
