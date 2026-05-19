@@ -155,6 +155,8 @@ class TestSchemas(unittest.TestCase):
             "value_production_sites",
             # Patch 8 literal archaeology
             "literal_archaeology",
+            # Step 5 probe scripts
+            "probe_scripts",
         ):
             self.assertEqual(rep[arr_field], [], "field {0} default".format(arr_field))
         self.assertEqual(
@@ -7625,6 +7627,453 @@ class TestProbeTierClassifier(unittest.TestCase):
         )
         self.assertEqual(result["tier"], "3")
         self.assertIn("manual observation", result["runner_up_confirms_if"])
+
+
+class TestRecordProbeScript(unittest.TestCase):
+    """Step 5 — record-probe-script subcommand tests."""
+
+    # ------------------------------------------------------------------
+    # Fixture helpers
+    # ------------------------------------------------------------------
+
+    def _setup_state_for_probe_script(self, devforge):
+        """Build minimal state (date + topic_slug) needed for record-probe-script."""
+        _run(["--devforge-dir", str(devforge), "reset-memo"])
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        _run(["--devforge-dir", str(devforge), "set-topic", "--value", "probe-test-bug"])
+        _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
+
+    def _make_script_file(self, research_dir, filename="probe-script.mjs"):
+        """Create the research/<date>-<slug>/ directory and a script file in it."""
+        research_dir.mkdir(parents=True, exist_ok=True)
+        script = research_dir / filename
+        script.write_text("// probe script\nconsole.log('hello');\n")
+        return script
+
+    # ------------------------------------------------------------------
+    # Test 1: happy path round-trip
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_round_trip(self):
+        """Script exists under research/<date>-<slug>/, runtime=node on PATH, valid inlines-from
+        → exit 0, probe_scripts populated with correct fields."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH — skipping round-trip test")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "node",
+                "--inlines-from", '["src/foo.ts:42", "src/bar.ts:7"]',
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # Verify state persisted.
+            r2 = _run(["--devforge-dir", str(devforge), "read-report"])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            report = json.loads(r2.stdout)
+            self.assertEqual(len(report["probe_scripts"]), 1)
+            entry = report["probe_scripts"][0]
+            self.assertEqual(entry["script_path"], str(script))
+            self.assertEqual(entry["runtime"], "node")
+            self.assertEqual(entry["inlines_from"], ["src/foo.ts:42", "src/bar.ts:7"])
+            self.assertIn("recorded_at", entry)
+            # recorded_at should be an ISO-format timestamp ending in 'Z' or '+00:00'
+            self.assertRegex(entry["recorded_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+
+    # ------------------------------------------------------------------
+    # Test 2: script outside research dir
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_script_outside_research_dir(self):
+        """Script at /tmp path → exit 2, stderr cites 'script-path must exist'."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            # Create a script OUTSIDE the research dir.
+            outside_script = Path(tmp) / "probe-script.mjs"
+            outside_script.write_text("// outside\n")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(outside_script),
+                "--runtime", "node",
+                "--inlines-from", '["src/foo.ts:1"]',
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("script-path must exist", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 3: missing script file (correct dir prefix, file absent)
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_missing_script_file(self):
+        """script-path under correct dir but file does not exist → exit 2, stderr
+        cites 'file does not exist' (distinct from the structural-rejection message)."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            # Build the path prefix but don't create the file.
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            research_dir.mkdir(parents=True, exist_ok=True)
+            nonexistent = research_dir / "probe-script.mjs"
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(nonexistent),
+                "--runtime", "node",
+                "--inlines-from", '["src/foo.ts:1"]',
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("file does not exist", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 4: runtime not on PATH (bogus value within argparse choices)
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_runtime_not_on_path(self):
+        """Runtime 'bun' assumed not on PATH in CI — if it IS on PATH, skip gracefully."""
+        import shutil as _shutil
+        # 'bun' is the least-likely runtime to be installed.
+        if _shutil.which("bun") is not None:
+            self.skipTest("bun is on PATH on this machine — skip not-on-PATH test")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "bun",
+                "--inlines-from", '["src/foo.ts:1"]',
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("not found on PATH", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 5: invalid --inlines-from JSON
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_invalid_inlines_from_json(self):
+        """--inlines-from 'not json' → exit 2, stderr cites format requirement."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "node",
+                "--inlines-from", "not json",
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("path:line", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 6: empty --inlines-from array
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_empty_inlines_from(self):
+        """--inlines-from '[]' → exit 2."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "node",
+                "--inlines-from", "[]",
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("non-empty", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 7: --inlines-from contains non-path:line token
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_inlines_from_non_path_line(self):
+        """--inlines-from '["just a string"]' → exit 2 (no colon+digit suffix)."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "node",
+                "--inlines-from", '["just a string"]',
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("path:line", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 8: idempotent — same script_path is a no-op
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_idempotent_same_path(self):
+        """Two calls with identical script_path + runtime + inlines_from → second call
+        no-op (exit 0), stderr contains '(exact match)', probe_scripts has exactly one
+        entry (strict-match idempotency)."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir)
+            argv = [
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "node",
+                "--inlines-from", '["src/foo.ts:1"]',
+            ]
+            r1 = _run(argv)
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run(argv)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("already recorded", r2.stderr)
+            self.assertIn("(exact match)", r2.stderr)
+            # Only one entry.
+            r3 = _run(["--devforge-dir", str(devforge), "read-report"])
+            report = json.loads(r3.stdout)
+            self.assertEqual(len(report["probe_scripts"]), 1)
+
+    # ------------------------------------------------------------------
+    # Test 9: append distinct paths
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_appends_distinct_paths(self):
+        """Two calls with different script_path → both entries in probe_scripts list."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script_a = self._make_script_file(research_dir, "probe-script-a.mjs")
+            script_b = self._make_script_file(research_dir, "probe-script-b.mjs")
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script_a),
+                "--runtime", "node",
+                "--inlines-from", '["src/foo.ts:1"]',
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script_b),
+                "--runtime", "node",
+                "--inlines-from", '["src/bar.ts:99"]',
+            ])
+            r = _run(["--devforge-dir", str(devforge), "read-report"])
+            report = json.loads(r.stdout)
+            self.assertEqual(len(report["probe_scripts"]), 2)
+            paths = [e["script_path"] for e in report["probe_scripts"]]
+            self.assertIn(str(script_a), paths)
+            self.assertIn(str(script_b), paths)
+
+    # ------------------------------------------------------------------
+    # Test 10: finalize-handoff uses recorded script_path when tier=1.5
+    # ------------------------------------------------------------------
+
+    def test_finalize_handoff_uses_recorded_script_path_when_tier_1_5(self):
+        """tier=1.5 feasibility + record-probe-script → finalize-handoff output
+        probe.script_path matches the recorded value (not the deterministic default)."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Override feasibility to data_shape_only=True → tier=1.5 (no test infra).
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "true",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # Ensure test_infra is absent so tier=1.5 is chosen.
+            _write_init_yaml_with_test_infra(devforge, status="absent")
+            # Create the probe script file in the research dir.
+            # _build_minimal_bug_state_for_handoff uses date=2026-05-19, slug=config-not-applied.
+            research_dir = Path(tmp) / "research" / "2026-05-19-config-not-applied"
+            research_dir.mkdir(parents=True, exist_ok=True)
+            custom_script = research_dir / "my-custom-probe.mjs"
+            custom_script.write_text("// custom probe\n")
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(custom_script),
+                "--runtime", "node",
+                "--inlines-from", '["services/api/config.py:42"]',
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            probe = data["probe"]
+            self.assertEqual(probe["tier"], "1.5")
+            self.assertEqual(probe["script_path"], str(custom_script),
+                             "script_path should be the recorded value, not the deterministic default")
+
+    # ------------------------------------------------------------------
+    # Test 11: finalize-handoff defaults script_path when no probe_script recorded
+    # ------------------------------------------------------------------
+
+    def test_finalize_handoff_defaults_script_path_when_no_recorded(self):
+        """tier=1.5 feasibility + NO record-probe-script → finalize-handoff output
+        probe.script_path uses deterministic default 'research/<date>-<slug>/probe-script.mjs'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Override feasibility to data_shape_only=True.
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "true",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # Ensure test_infra is absent so tier=1.5 is chosen.
+            _write_init_yaml_with_test_infra(devforge, status="absent")
+            # Do NOT call record-probe-script.
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            probe = data["probe"]
+            self.assertEqual(probe["tier"], "1.5")
+            self.assertIn("probe-script.mjs", probe["script_path"])
+            self.assertIn("config-not-applied", probe["script_path"])
+
+    # ------------------------------------------------------------------
+    # Test 12: accepts python runtime (skips gracefully if python absent)
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_accepts_python_runtime(self):
+        """runtime=python → exit 0 if python is on PATH; skip gracefully otherwise."""
+        import shutil as _shutil
+        if _shutil.which("python") is None:
+            self.skipTest("python not on PATH — skipping python-runtime test")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir, "probe-script.py")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "python",
+                "--inlines-from", '["src/module.py:10"]',
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r2 = _run(["--devforge-dir", str(devforge), "read-report"])
+            report = json.loads(r2.stdout)
+            self.assertEqual(len(report["probe_scripts"]), 1)
+            self.assertEqual(report["probe_scripts"][0]["runtime"], "python")
+
+    # ------------------------------------------------------------------
+    # Test 13: F2 — subdir path rejected (direct-child-only enforcement)
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_subdir_path(self):
+        """script-path file exists but lives in research/<date>-<slug>/subdir/
+        (not a direct child of the date-slug dir) → exit 2, stderr 'script-path must'.
+        Locks the 'direct child only' structural invariant."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            # Create file inside a *subdir* of the date-slug dir.
+            subdir = (
+                Path(tmp) / "research" / "2026-05-19-probe-test-bug" / "subdir"
+            )
+            subdir.mkdir(parents=True, exist_ok=True)
+            script = subdir / "probe.mjs"
+            script.write_text("// nested probe\n")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--runtime", "node",
+                "--inlines-from", '["src/foo.ts:1"]',
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("script-path must", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 14: F3 — same path, different runtime → error (strict-match)
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_same_path_different_runtime(self):
+        """First call records script_path with runtime=node; second call with same
+        script_path but runtime=python → exit 2, stderr 'different runtime'.
+        Strict-match idempotency prevents silent overwrite."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        if _shutil.which("python") is None:
+            self.skipTest("python not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
+            script = self._make_script_file(research_dir)
+            base_argv = [
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(script),
+                "--inlines-from", '["src/foo.ts:1"]',
+            ]
+            r1 = _run(base_argv + ["--runtime", "node"])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run(base_argv + ["--runtime", "python"])
+            self.assertEqual(r2.returncode, 2, r2.stderr)
+            self.assertIn("different runtime", r2.stderr)
+            # State must be unchanged: exactly one entry with runtime=node.
+            r3 = _run(["--devforge-dir", str(devforge), "read-report"])
+            report = json.loads(r3.stdout)
+            self.assertEqual(len(report["probe_scripts"]), 1)
+            self.assertEqual(report["probe_scripts"][0]["runtime"], "node")
 
 
 if __name__ == "__main__":

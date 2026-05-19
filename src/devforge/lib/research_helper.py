@@ -30,7 +30,7 @@ Phases (target order per REDESIGN-RESEARCH-PLAN.md)
   PHASE 3  Save + recommend          — render artifact + ask-to-save handled
                                        by orchestrator; helper renders + verifies.
 
-Subcommand summary (46)
+Subcommand summary (47)
 -----------------------
 
   Plumbing (8)   reset-memo, reset-report, read-memo, read-report,
@@ -47,6 +47,7 @@ Subcommand summary (46)
   Phase 2.4d (1) record-data-flow-chain
   Phase 2.5  (1) record-value-production-site
   Phase 2.5b (1) record-literal-archaeology
+  Step 5     (1) record-probe-script
   Phase 1  (8)   record-finding, record-hypothesis,
                  set-root-cause-hypothesis, set-confidence,
                  set-trigger, set-root-cause-systemic,
@@ -68,6 +69,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -443,6 +445,11 @@ def default_report_state() -> dict:
             "timing_dependent": None,
             "is_test_code": None,
         },
+        # Step 5 — Tier-1.5 standalone probe scripts. Each entry:
+        # {script_path, runtime, inlines_from: [list], recorded_at: ISO-UTC}.
+        # Append-only; deduped by script_path (same path is no-op).
+        # finalize-handoff uses probe_scripts[-1]["script_path"] when tier=1.5.
+        "probe_scripts": [],
     }
 
 
@@ -670,6 +677,102 @@ def _validate_file_line(value: str, field_name: str) -> str:
             )
         )
     return stripped
+
+
+# ---------------------------------------------------------------------------
+# Step 5 — probe-script validators.
+# ---------------------------------------------------------------------------
+
+_PROBE_SCRIPT_INLINES_TOKEN_RE = re.compile(r"^[^:]+:\d+$")
+
+
+def _validate_script_within_research_dir(script_path, research_date, topic_slug):
+    # type: (str, str, str) -> None
+    """Validate script_path exists on disk AND lives under research/<date>-<slug>/.
+
+    Accepts both absolute and relative paths. The check inspects the path's
+    directory parts: the immediate parent must be named '<date>-<slug>' and
+    that parent's parent must be named 'research'.
+
+    Raises ValueError with a caller-ready message on any violation.
+    """
+    expected_dir = "{0}-{1}".format(research_date, topic_slug)
+    p = Path(script_path)
+    # Check structural containment via path parts.
+    # p.parent.name == expected_dir  AND  p.parent.parent.name == "research"
+    structurally_valid = (
+        p.parent.name == expected_dir
+        and p.parent.parent.name == "research"
+    )
+    if not structurally_valid:
+        raise ValueError(
+            "record-probe-script: script-path must exist and live under "
+            "research/{0}-{1}/ dir; got {2}".format(
+                research_date, topic_slug, script_path
+            )
+        )
+    if not p.is_file():
+        raise ValueError(
+            "record-probe-script: --script-path file does not exist: {0}".format(
+                script_path
+            )
+        )
+
+
+def _validate_runtime_on_path(runtime):
+    # type: (str) -> None
+    """Validate runtime is resolvable via shutil.which.
+
+    Raises ValueError if not found on PATH.
+    """
+    if shutil.which(runtime) is None:
+        raise ValueError(
+            "record-probe-script: --runtime {0} not found on PATH".format(runtime)
+        )
+
+
+def _validate_inlines_from_tokens(json_string):
+    # type: (str) -> List[str]
+    """Parse --inlines-from as JSON array of path:line tokens.
+
+    Raises ValueError with a caller-ready message if:
+    - json_string is not valid JSON
+    - decoded value is not a list
+    - list is empty
+    - any item does not match <non-empty-path>:<digits>
+    Returns the list of validated token strings on success.
+    """
+    try:
+        decoded = json.loads(json_string)
+    except (ValueError, TypeError) as err:
+        raise ValueError(
+            "record-probe-script: --inlines-from must be non-empty JSON array of "
+            '"path:line" tokens; got {0}'.format(err)
+        )
+    if not isinstance(decoded, list):
+        raise ValueError(
+            "record-probe-script: --inlines-from must be non-empty JSON array of "
+            '"path:line" tokens; got non-list {0}'.format(type(decoded).__name__)
+        )
+    if not decoded:
+        raise ValueError(
+            "record-probe-script: --inlines-from must be non-empty JSON array of "
+            '"path:line" tokens; got empty list'
+        )
+    validated = []
+    for item in decoded:
+        if not isinstance(item, str):
+            raise ValueError(
+                "record-probe-script: --inlines-from must be non-empty JSON array of "
+                '"path:line" tokens; got non-string item {0!r}'.format(item)
+            )
+        if not _PROBE_SCRIPT_INLINES_TOKEN_RE.match(item):
+            raise ValueError(
+                "record-probe-script: --inlines-from must be non-empty JSON array of "
+                '"path:line" tokens; got {0!r} (expected <path>:<line-number>)'.format(item)
+            )
+        validated.append(item)
+    return validated
 
 
 # ---------------------------------------------------------------------------
@@ -1632,6 +1735,24 @@ def _register_subcommands(subparsers) -> None:
         help="Classification of the literal's historical intent.",
     )
     sp.set_defaults(func=cmd_record_literal_archaeology)
+
+    sp = subparsers.add_parser(
+        "record-probe-script",
+        help="Record a Tier-1.5 standalone probe script path + runtime + inlined-from sources.",
+    )
+    sp.add_argument("--script-path", required=True, dest="script_path")
+    sp.add_argument(
+        "--runtime",
+        required=True,
+        choices=("node", "python", "ruby", "deno", "bun"),
+    )
+    sp.add_argument(
+        "--inlines-from",
+        required=True,
+        dest="inlines_from",
+        help='JSON array of "path:line" tokens whose code the script inlines verbatim.',
+    )
+    sp.set_defaults(func=cmd_record_probe_script)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -3081,6 +3202,113 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
             })
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-literal-archaeology: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Step 5 — record-probe-script command.
+# ---------------------------------------------------------------------------
+
+
+def cmd_record_probe_script(args: argparse.Namespace) -> int:
+    """Append {script_path, runtime, inlines_from, recorded_at} to probe_scripts.
+
+    Validates:
+      - script_path exists on disk AND lives under research/<date>-<slug>/
+      - runtime resolves via shutil.which
+      - inlines_from is a non-empty JSON array of path:line tokens
+    Idempotent: same script_path is a no-op (exit 0 + stderr notice).
+    """
+    devforge_dir = args.devforge_dir
+
+    # Load report to read date + topic_slug for path validation.
+    try:
+        report_snapshot = _load_report(devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-probe-script: cannot load report state: {0}".format(err))
+
+    research_date = (report_snapshot.get("date") or "").strip()
+    if not research_date:
+        return _die(
+            "record-probe-script: report.date not set; run set-date first",
+            code=2,
+        )
+
+    try:
+        memo_snapshot = _load_memo(devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-probe-script: cannot load memo state: {0}".format(err))
+
+    topic_slug = (memo_snapshot.get("topic_slug") or "").strip()
+    if not topic_slug:
+        return _die(
+            "record-probe-script: memo.topic_slug not set; run set-topic first",
+            code=2,
+        )
+
+    script_path = args.script_path
+
+    # Validate script_path is within the research dir and exists on disk.
+    try:
+        _validate_script_within_research_dir(script_path, research_date, topic_slug)
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # Validate runtime on PATH.
+    try:
+        _validate_runtime_on_path(args.runtime)
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    # Validate --inlines-from JSON tokens.
+    try:
+        inlines_from = _validate_inlines_from_tokens(args.inlines_from)
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    runtime = args.runtime
+
+    # F5: Pre-check idempotency BEFORE entering the transaction (avoids no-op fsync).
+    try:
+        report_preread = _load_report(devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-probe-script: cannot load report state: {0}".format(err))
+
+    existing = next(
+        (e for e in report_preread.get("probe_scripts", [])
+         if e.get("script_path") == script_path),
+        None,
+    )
+    if existing is not None:
+        # F3: Strict-match idempotency — same path must carry same runtime + inlines_from.
+        if existing.get("runtime") != runtime or existing.get("inlines_from") != inlines_from:
+            return _die(
+                "record-probe-script: script_path {0!r} already recorded with "
+                "different runtime/inlines_from; remove via reset-report and re-record"
+                .format(script_path),
+                code=2,
+            )
+        # Exact match → no-op (true idempotent).
+        sys.stderr.write(
+            "record-probe-script: script_path already recorded (exact match); no-op\n"
+        )
+        return 0
+
+    recorded_at = datetime.datetime.now(datetime.timezone.utc).isoformat(
+        timespec="seconds"
+    )
+
+    # Append path — real work needs transaction.
+    try:
+        with _state_transaction(devforge_dir, "report") as report:
+            report.setdefault("probe_scripts", []).append({
+                "script_path": script_path,
+                "runtime": runtime,
+                "inlines_from": inlines_from,
+                "recorded_at": recorded_at,
+            })
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-probe-script: {0}".format(err))
     return 0
 
 
@@ -4742,6 +4970,15 @@ def _build_handoff_from_state(memo, report, research_md_path, devforge_dir=None)
         research_date=date,
     )
 
+    # Step 5 — override script_path when tier=1.5 and probe_scripts recorded.
+    # record-probe-script is the source-of-truth for the actual script path;
+    # the deterministic default from _classify_probe_tier is only a fallback.
+    effective_script_path = classified["script_path"]
+    if classified["tier"] == "1.5":
+        probe_scripts = report.get("probe_scripts") or []
+        if probe_scripts:
+            effective_script_path = probe_scripts[-1]["script_path"]
+
     discriminator = handoff_schema.Discriminator(
         primary_confirms_if=primary_confirms_if,
         runner_up_confirms_if=classified["runner_up_confirms_if"],
@@ -4762,7 +4999,7 @@ def _build_handoff_from_state(memo, report, research_md_path, devforge_dir=None)
         feasibility_check=feasibility_check,
         test_framework=classified["test_framework"],
         test_path=classified["test_path"],
-        script_path=classified["script_path"],
+        script_path=effective_script_path,
         is_first_test_for_file=classified["is_first_test_for_file"],
     )
 

@@ -665,6 +665,38 @@ If any hypothesis carries `runtime_probe_needed=yes`, set the verify step (all t
     --discriminator "<if X → H_n confirmed; if Y → H_m confirmed>"
 ```
 
+**Probe-script (CONDITIONAL — fires when tier resolves to 1.5).** Run this sub-step ONLY when ALL of the following hold based on flags you just set + a one-line state read:
+
+- `set-probe-feasibility` flags above: `data_shape_only=true` AND `auth_required=false` AND `network_dependent=false` AND `timing_dependent=false` AND `is_test_code=false`.
+- `.devforge/init.yaml`'s `test_infra.status` is `"absent"` OR the `test_infra` block is missing entirely. Read via:
+
+  ```bash
+  grep -E "^  status:" .devforge/init.yaml || echo "(no test_infra block)"
+  ```
+
+  Interpret: a line `  status: absent` (or empty/missing output) satisfies the condition; `  status: present` does not.
+
+If ALL conditions hold → tier will resolve to 1.5 in Phase 4 `finalize-handoff`; proceed with steps 1-4 below. Otherwise SKIP this entire sub-step.
+
+1. Create a script file at `research/<report.date>-<memo.topic_slug>/probe-script.<ext>` (directly under that directory — no subdirs). Extension matches the chosen runtime:
+   - `node` / `deno` / `bun` → `.mjs`
+   - `python` → `.py`
+   - `ruby` → `.rb`
+2. Inline the buggy logic VERBATIM from the cited `file:line` locations recorded as findings in Phase 2.4d / 2.5. Do NOT reconstruct from memory — copy the source bytes. Prepend each inlined block with a `// SOURCE: <file>:<line>` comment (use the runtime's comment syntax — `#` for python/ruby) so the inlined-from contract is auditable.
+3. The script's pass/fail assertion must map to the `--discriminator` set in the verify-step block above (one observable outcome per hypothesis).
+4. Record the script:
+
+   ```bash
+   .devforge/lib/research_helper record-probe-script \
+       --script-path "research/<report.date>-<memo.topic_slug>/probe-script.<ext>" \
+       --runtime <node|python|ruby|deno|bun> \
+       --inlines-from '["<path>:<line>", "<path>:<line>", ...]'
+   ```
+
+Validators (all rejected with exit 2 + stderr message prefixed `record-probe-script: ...`): `--script-path` file must exist on disk AND live DIRECTLY under `research/<report.date>-<memo.topic_slug>/` (no subdirs); `--runtime` must resolve via `shutil.which`; `--inlines-from` must be a non-empty JSON array of `<path>:<line>` tokens (each `<line>` must be digits-only). Strict-match idempotency: re-recording the same `--script-path` with a different `--runtime` or different `--inlines-from` is rejected exit 2 — to revise an entry, run `reset-report` and re-record from scratch, or choose a different `--script-path`. Exact re-record of the same triple is a no-op (exit 0 + stderr "already recorded" notice).
+
+Skip-clause consequences. If you skip this sub-step but tier later resolves to 1.5 in Phase 4 `finalize-handoff`, the handoff.json will fall back to the deterministic default `research/<date>-<slug>/probe-script.mjs` — but no file exists at that path, leaving a dangling reference. If you record a probe script but tier resolves to ≠ 1.5, the recorded entry is silently ignored — `finalize-handoff` only reads `probe_scripts` when it classifies tier 1.5, so the entry stays in `research-report.json` unused and the written script file lingers on disk. Skip only when the trigger conditions above clearly don't hold; recording speculatively wastes work and leaves an unreferenced file behind.
+
 Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string), retry up to 3 times. On the 4th failure, copy stderr VERBATIM to the user and end the turn; user must re-run `/research` from scratch — prior partial state will be overwritten.
 
 ## Phase 3 — Report drafting + render

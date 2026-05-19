@@ -1,6 +1,6 @@
 # RESEARCH-HANDOFF-PLAN
 
-**Status**: Steps 1+2+3+4 SHIPPED 2026-05-19 (schema lock 50 tests + test_infra detection 144 tests + finalize-handoff 343 tests + probe-tier classifier 361 tests); Steps 5-10 pending
+**Status**: Steps 1-5 SHIPPED 2026-05-19 (schema lock 50 + test_infra 144 + finalize-handoff 343 + probe-tier 361 + probe-script 372 tests); Steps 6-10 pending
 **Date**: 2026-05-17 (Step 1 landed 2026-05-19)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -478,6 +478,8 @@ pytest tests/lib/test_research_helper.py -k "probe_tier" -v
 ---
 
 ## Step 5 — Tier 1.5 standalone probe-script support
+
+**Status**: SHIPPED 2026-05-19. `src/devforge/lib/research_helper.py` (+~218 lines): `cmd_record_probe_script` validates script-path lives DIRECTLY under `research/<date>-<slug>/` (no subdirs) + file exists + runtime resolves via `shutil.which` (enum: node/python/ruby/deno/bun) + `--inlines-from` non-empty JSON array of `path:line` tokens. State extension: `report["probe_scripts"]` append-only with strict-match idempotency (same script_path with different runtime/inlines_from rejected exit 2; exact match no-op). Pre-check moved outside `_state_transaction` to avoid no-op fsync. `_build_handoff_from_state` overrides tier=1.5 `probe.script_path` from `probe_scripts[-1]` if recorded; falls back to deterministic `research/<date>-<slug>/probe-script.mjs`. Distinct error messages for structural-fail vs file-missing. Tests: 14 new in `TestRecordProbeScript` (round-trip + subdir-reject + missing-file + runtime-not-on-PATH + invalid/empty/non-token inlines + idempotent-exact-match + idempotent-strict-mismatch + integration-uses-recorded-path + integration-defaults-when-not-recorded + python/bun-runtime-skip-if-missing) → 372 file-total green (2 platform-conditional skips). Reviewer cycles: python-reviewer 5 (4M/1L) — F1+F2+F3+F5 applied (distinct error msgs, subdir-pin test, strict-match idempotency, pre-check outside transaction); F4 → instruction-author. instruction-reviewer 2 (1H/1M) all applied (F1 unresolvable-classifier trigger → LLM-derivable 5-flag conjunction + .devforge/init.yaml grep, F2 misleading "correct shape" → honest dangling-reference + silent-ignore consequences). `src/commands/research/main.md` Phase 2.6 gains "Probe-script (CONDITIONAL — fires when tier resolves to 1.5)" sub-step AFTER set-verify-step block, with deterministic LLM-side trigger check + numbered 4-step procedural sequence (file creation with verbatim source inlining + `// SOURCE: <file>:<line>` comments + record-probe-script invocation).
 
 **Owner**: python-engineer + python-reviewer.
 
