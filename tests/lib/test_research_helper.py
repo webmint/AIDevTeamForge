@@ -8076,5 +8076,511 @@ class TestRecordProbeScript(unittest.TestCase):
             self.assertEqual(report["probe_scripts"][0]["runtime"], "node")
 
 
+# ---------------------------------------------------------------------------
+# Step 7 — append-outcome + check-outcome tests.
+# ---------------------------------------------------------------------------
+
+
+def _build_tier1_handoff(devforge, tmp_root):
+    # type: (Path, str) -> Path
+    """Produce a tier-1 handoff.json via real CLI producers.
+
+    Requires:
+    - _build_minimal_bug_state_for_handoff (full bug state)
+    - set-probe-feasibility with data_shape_only=true
+    - _write_init_yaml_with_test_infra with frontend=vitest, status=present
+
+    Returns the path to the written handoff.json.
+    """
+    _build_minimal_bug_state_for_handoff(devforge)
+    _run([
+        "--devforge-dir", str(devforge), "set-probe-feasibility",
+        "--data-shape-only", "true",
+        "--auth-required", "false",
+        "--network-dependent", "false",
+        "--timing-dependent", "false",
+        "--is-test-code", "false",
+    ])
+    _write_init_yaml_with_test_infra(devforge, frontend="vitest", status="present")
+    out = Path(tmp_root) / "handoff.json"
+    r = _run_finalize(devforge, out)
+    if r.returncode != 0:
+        raise RuntimeError("finalize-handoff failed: {0}".format(r.stderr))
+    return out
+
+
+def _build_tier3_handoff(devforge, tmp_root):
+    # type: (Path, str) -> Path
+    """Produce a tier-3 handoff.json via real CLI producers (default feasibility flags).
+
+    Returns the path to the written handoff.json.
+    """
+    _build_minimal_bug_state_for_handoff(devforge)
+    # _build_minimal_bug_state_for_handoff already sets all-false probe feasibility → tier=3.
+    out = Path(tmp_root) / "handoff.json"
+    r = _run_finalize(devforge, out)
+    if r.returncode != 0:
+        raise RuntimeError("finalize-handoff failed: {0}".format(r.stderr))
+    return out
+
+
+def _run_append_outcome(handoff_path, hypothesis_confirmed, evidence_source, evidence_cite,
+                        actual_fix_path, delta=None, commit_sha=None):
+    # type: (str, str, str, str, str, str, str) -> object
+    """Run append-outcome and return subprocess result."""
+    argv = [
+        "append-outcome",
+        "--handoff-path", handoff_path,
+        "--hypothesis-confirmed", hypothesis_confirmed,
+        "--evidence-source", evidence_source,
+        "--evidence-cite", evidence_cite,
+        "--actual-fix-path", actual_fix_path,
+    ]
+    if delta is not None:
+        argv += ["--delta-from-recommendation", delta]
+    if commit_sha is not None:
+        argv += ["--confirmed-commit-sha", commit_sha]
+    return _run(argv)
+
+
+def _run_check_outcome(handoff_path):
+    # type: (str) -> object
+    """Run check-outcome and return subprocess result."""
+    return _run(["check-outcome", "--handoff-path", handoff_path])
+
+
+class TestAppendOutcome(unittest.TestCase):
+    """Tests for research_helper append-outcome subcommand (Step 7)."""
+
+    def test_append_outcome_round_trip_high_confidence_tier_1(self):
+        """tier=1 + evidence-source=test-result + hypothesis=primary → confidence_grade=HIGH.
+
+        Real-producer fixture: finalize-handoff with data_shape_only=true + vitest → tier=1.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier1_handoff(devforge, tmp)
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="test-result",
+                evidence_cite="tests/research/config-not-applied.probe.spec.ts:42",
+                actual_fix_path="services/api/main.py",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("HIGH", r.stdout)
+            data = json.loads(handoff_path.read_text())
+            outcome = data["outcome"]
+            self.assertIsNotNone(outcome)
+            self.assertEqual(outcome["hypothesis_confirmed"], "primary")
+            self.assertEqual(outcome["evidence_source"], "test-result")
+            self.assertEqual(outcome["confidence_grade"], "HIGH")
+
+    def test_append_outcome_low_confidence_tier_3(self):
+        """tier=3 + evidence-source=user-observation → confidence_grade=LOW.
+
+        Real-producer fixture: default all-false feasibility → tier=3.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="User confirmed fix in browser",
+                actual_fix_path="services/api/config.py:42",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("LOW", r.stdout)
+            data = json.loads(handoff_path.read_text())
+            self.assertEqual(data["outcome"]["confidence_grade"], "LOW")
+
+    def test_append_outcome_inconclusive_tier_1_5_yields_medium(self):
+        """tier=1.5 + test-result + hypothesis=inconclusive → MEDIUM.
+
+        Real-producer: data_shape_only=true + test_infra absent → tier=1.5.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "true",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # No init.yaml → test_infra absent → tier=1.5.
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # Verify tier is actually 1.5.
+            probe_tier = json.loads(out.read_text())["probe"]["tier"]
+            self.assertEqual(probe_tier, "1.5")
+
+            r = _run_append_outcome(
+                str(out),
+                hypothesis_confirmed="inconclusive",
+                evidence_source="test-result",
+                evidence_cite="tests/probe-script-output.txt",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("MEDIUM", r.stdout)
+            data = json.loads(out.read_text())
+            self.assertEqual(data["outcome"]["confidence_grade"], "MEDIUM")
+
+    def test_append_outcome_idempotent_overwrites_handoff_block(self):
+        """First append; second append with different evidence-source → handoff.outcome reflects 2nd call."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            # First append.
+            r1 = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="First observation",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            data1 = json.loads(handoff_path.read_text())
+            self.assertEqual(data1["outcome"]["evidence_source"], "user-observation")
+
+            # Second append with different evidence-source.
+            r2 = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="runner_up",
+                evidence_source="llm-ui-session-log",
+                evidence_cite="session-log-2026-05-19.txt",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            data2 = json.loads(handoff_path.read_text())
+            # Second call overwrites; evidence_source is from 2nd call.
+            self.assertEqual(data2["outcome"]["evidence_source"], "llm-ui-session-log")
+            self.assertEqual(data2["outcome"]["hypothesis_confirmed"], "runner_up")
+
+    def test_append_outcome_appends_md_outcome_section(self):
+        """Create md file at handoff.research_path; append-outcome → md gets '## Outcome' section."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            data = json.loads(handoff_path.read_text())
+
+            # Create the md file at research_path, resolved relative to the handoff dir.
+            # append-outcome resolves research_path against handoff dir (F4), so we must
+            # create the file at the same resolved location.
+            research_path = data.get("research_path")
+            if research_path:
+                md_path = (handoff_path.parent / research_path).resolve()
+            else:
+                # If research_path is None in the handoff, inject one so we can test.
+                # Use a sibling .md file in the same dir.
+                md_path = handoff_path.parent / "research.md"
+                data["research_path"] = "research.md"
+                handoff_path.write_text(json.dumps(data, indent=2) + "\n")
+            md_path.parent.mkdir(parents=True, exist_ok=True)
+            md_path.write_text("# Research Report\n\nContent here.\n")
+
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="Verified manually",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            md_content = md_path.read_text()
+            self.assertIn("## Outcome", md_content)
+            self.assertIn("hypothesis_confirmed", md_content)
+            self.assertIn("confidence_grade", md_content)
+
+    def test_append_outcome_skips_md_when_md_missing(self):
+        """No md file at research_path → outcome still written to handoff.json + exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            # Ensure no md file exists for the research_path.
+            data = json.loads(handoff_path.read_text())
+            # Set research_path to a non-existent file.
+            data["research_path"] = str(Path(tmp) / "nonexistent" / "research.md")
+            handoff_path.write_text(json.dumps(data, indent=2) + "\n")
+
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="none",
+                evidence_source="user-observation",
+                evidence_cite="No evidence found",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # handoff.json has outcome.
+            data_after = json.loads(handoff_path.read_text())
+            self.assertIsNotNone(data_after.get("outcome"))
+            # No md file was created.
+            self.assertFalse(Path(data["research_path"]).exists())
+
+    def test_append_outcome_rejects_invalid_evidence_source_enum(self):
+        """--evidence-source bogus → argparse choices reject → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            r = _run([
+                "append-outcome",
+                "--handoff-path", str(handoff_path),
+                "--hypothesis-confirmed", "primary",
+                "--evidence-source", "bogus-source",
+                "--evidence-cite", "some cite",
+                "--actual-fix-path", "some/path.py",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+            # argparse emits 'invalid choice' or the value name.
+            self.assertTrue(
+                "bogus-source" in r.stderr or "invalid choice" in r.stderr,
+                "stderr: {0}".format(r.stderr)
+            )
+
+    def test_append_outcome_rejects_invalid_hypothesis_confirmed_enum(self):
+        """--hypothesis-confirmed bogus → argparse choices reject → exit non-0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            r = _run([
+                "append-outcome",
+                "--handoff-path", str(handoff_path),
+                "--hypothesis-confirmed", "definitely",
+                "--evidence-source", "user-observation",
+                "--evidence-cite", "some cite",
+                "--actual-fix-path", "some/path.py",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+            self.assertTrue(
+                "definitely" in r.stderr or "invalid choice" in r.stderr,
+                "stderr: {0}".format(r.stderr)
+            )
+
+    def test_append_outcome_rejects_bad_commit_sha(self):
+        """--confirmed-commit-sha 'NOTHEX' → Outcome schema validator rejects (hex 7-40 char)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="Verified manually",
+                actual_fix_path="services/api/config.py",
+                commit_sha="NOTHEX",
+            )
+            self.assertEqual(r.returncode, 2, "expected exit 2, got {0}: {1}".format(
+                r.returncode, r.stderr))
+            self.assertIn("sha", r.stderr.lower())
+
+    def test_append_outcome_writes_confirmed_date_iso_utc(self):
+        """outcome.confirmed_date is a parseable ISO-8601 datetime."""
+        import datetime as _dt
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="User saw fix work",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(handoff_path.read_text())
+            confirmed_date = data["outcome"]["confirmed_date"]
+            # Must parse as ISO-8601; strptime with UTC suffix.
+            try:
+                _dt.datetime.strptime(confirmed_date, "%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                self.fail(
+                    "confirmed_date {0!r} is not ISO-8601 UTC format".format(confirmed_date)
+                )
+
+    def test_append_outcome_medium_grade_production_site_check_with_user_observation(self):
+        """tier=3 + is_stable=False + hypothesis=primary + user-observation → MEDIUM.
+
+        Grade rule: production_site_check present + primary confirmed + non-test-result → MEDIUM.
+        Real-producer fixture: _build_minimal_bug_state_for_handoff + record-value-production-site
+        (is_stable=false) → finalize-handoff populates probe.discriminator.production_site_check
+        non-None → append-outcome computes MEDIUM.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Record unstable production site before finalize → production_site_check non-None.
+            # Use a non-presentation-layer path (no .ts/.tsx/.vue/.jsx/.svelte/.html) so
+            # data_flow_chain is not required by the schema invariant.
+            _run([
+                "--devforge-dir", str(devforge), "record-value-production-site",
+                "--value", "request_id",
+                "--file-line", "services/api/config.py:55",
+                "--is-stable", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # Confirm production_site_check is non-None in the produced handoff.
+            data = json.loads(out.read_text())
+            self.assertIsNotNone(
+                data["probe"]["discriminator"]["production_site_check"],
+                "precondition: finalize-handoff must set production_site_check",
+            )
+            r = _run_append_outcome(
+                str(out),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="User confirmed fix in browser",
+                actual_fix_path="src/x.ts",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("MEDIUM", r.stdout)
+            data = json.loads(out.read_text())
+            self.assertEqual(data["outcome"]["confidence_grade"], "MEDIUM")
+
+    def test_append_outcome_md_gets_two_sections_on_double_call(self):
+        """Two sequential append-outcome calls each append '## Outcome' to the md file.
+
+        After two calls, the md file must contain exactly two '## Outcome' headings.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            data = json.loads(handoff_path.read_text())
+
+            # Inject a research_path pointing to a file we control.
+            md_path = handoff_path.parent / "research.md"
+            md_path.write_text("# Research Report\n\nContent here.\n")
+            data["research_path"] = str(md_path)
+            handoff_path.write_text(json.dumps(data, indent=2) + "\n")
+
+            # First append-outcome call.
+            r1 = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="First observation",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+
+            # Second append-outcome call (overwrites handoff.json block; appends to md).
+            r2 = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="runner_up",
+                evidence_source="user-observation",
+                evidence_cite="Second observation",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            md_content = md_path.read_text()
+            count = md_content.count("## Outcome")
+            self.assertEqual(
+                count, 2,
+                "Expected 2 '## Outcome' sections in md, got {0}. Content:\n{1}".format(
+                    count, md_content
+                ),
+            )
+
+    def test_append_outcome_resolves_relative_research_md_path(self):
+        """research_path stored as relative name → resolved against handoff dir, not cwd.
+
+        Build handoff at /tmp/test/handoff.json with research_path='report.md'.
+        Create file at /tmp/test/report.md.
+        chdir to a DIFFERENT dir and invoke append-outcome.
+        Assert md was found and appended.
+        """
+        import subprocess as _sp
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            data = json.loads(handoff_path.read_text())
+
+            # Store a relative research_path (just a filename, no directory component).
+            md_path = handoff_path.parent / "report.md"
+            md_path.write_text("# Report\n\nBody.\n")
+            data["research_path"] = "report.md"
+            handoff_path.write_text(json.dumps(data, indent=2) + "\n")
+
+            # Run from a completely different directory (the system tmp root).
+            other_cwd = tempfile.gettempdir()
+            result = _sp.run(
+                [
+                    sys.executable, str(_HELPER_PY),
+                    "append-outcome",
+                    "--handoff-path", str(handoff_path),
+                    "--hypothesis-confirmed", "primary",
+                    "--evidence-source", "user-observation",
+                    "--evidence-cite", "Verified in browser",
+                    "--actual-fix-path", "services/api/config.py",
+                ],
+                cwd=other_cwd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            md_content = md_path.read_text()
+            self.assertIn("## Outcome", md_content,
+                          "md file should have been found + appended via relative path resolution")
+
+
+class TestCheckOutcome(unittest.TestCase):
+    """Tests for research_helper check-outcome subcommand (Step 7)."""
+
+    def test_check_outcome_returns_unmarked_when_outcome_null(self):
+        """Fresh handoff.json (outcome=None) → stdout 'unmarked'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            # Fresh handoff has no outcome.
+            data = json.loads(handoff_path.read_text())
+            self.assertIsNone(data.get("outcome"))
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("unmarked", r.stdout)
+
+    def test_check_outcome_returns_marked_when_filled(self):
+        """After append-outcome → stdout matches 'marked: primary (confidence=HIGH, evidence=test-result)'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier1_handoff(devforge, tmp)
+            r_append = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="test-result",
+                evidence_cite="tests/research/config-not-applied.probe.spec.ts:42",
+                actual_fix_path="services/api/main.py",
+            )
+            self.assertEqual(r_append.returncode, 0, r_append.stderr)
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("marked:", r.stdout)
+            self.assertIn("primary", r.stdout)
+            self.assertIn("HIGH", r.stdout)
+            self.assertIn("test-result", r.stdout)
+
+    def test_check_outcome_rejects_missing_file(self):
+        """Missing handoff.json → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            missing_path = Path(tmp) / "nonexistent" / "handoff.json"
+            r = _run_check_outcome(str(missing_path))
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertTrue(
+                "not found" in r.stderr or "cannot" in r.stderr,
+                "stderr: {0}".format(r.stderr)
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

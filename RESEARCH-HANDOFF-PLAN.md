@@ -1,6 +1,6 @@
 # RESEARCH-HANDOFF-PLAN
 
-**Status**: Steps 1-6 SHIPPED 2026-05-19 (schema lock 50 + test_infra 144 + finalize-handoff 343 + probe-tier 361 + probe-script 372 + import-handoff 268 specify tests); Steps 7-10 pending
+**Status**: Steps 1-7+9 SHIPPED 2026-05-19 (schema 50 + test_infra 144 + finalize 343 + probe-tier 361 + probe-script 372 + import-handoff 268 specify + append-outcome 389 research tests + CLAUDE.md handoff row + emitter check clean); Step 8 DEFERRED (no /execute-task command); Step 10 = manual testForge20 verification
 **Date**: 2026-05-17 (Step 1 landed 2026-05-19)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -577,6 +577,8 @@ pytest tests/lib/test_specify_helper.py -k "handoff" -v
 
 ## Step 7 — `research_helper append-outcome`
 
+**Status**: SHIPPED 2026-05-19. `src/devforge/lib/research_helper.py`: `cmd_append_outcome` reads handoff.json + computes `confidence_grade` via `handoff_schema.compute_confidence_grade(tier, evidence_source, hypothesis_confirmed, has_production_site_check)` where `has_production_site_check = discriminator.get("production_site_check") is not None` (matches schema `_validate_grade` semantic exactly). Builds Outcome dataclass → schema validation catches enum/format errors → atomic write of `handoff["outcome"]` via reused `_atomic_write_json`. ALSO appends `## Outcome` section to parallel `.md` file at `(handoff_path.parent / research_path).resolve()` (relative paths resolve against handoff dir); non-fatal skip if md absent. Idempotent overwrite of handoff.outcome + append-only audit trail in md (each call produces new section). `cmd_check_outcome` reads handoff → stdout `"unmarked"` or `"marked: <hypothesis> (confidence=<grade>, evidence=<source>)"`. Schema additions: `Outcome.__post_init__` validates `confirmed_commit_sha` via `_COMMIT_SHA_RE` (7-40 hex chars). Tests: 16 new (TestAppendOutcome×13 + TestCheckOutcome×3) → 389 file-total green. Reviewer cycles: python-reviewer 4 (1H/2M/1L) ALL applied (F1 `bool(psc)` → `is not None` semantic alignment, F2 V2 downgrade path test added, F3 md double-append test, F4 relative-path resolve fix + test).
+
 **Owner**: python-engineer + instruction-author.
 
 ### Files
@@ -622,6 +624,8 @@ pytest tests/lib/test_research_helper.py -k "append_outcome" -v
 
 ## Step 8 — `/execute-task` outcome reminder
 
+**Status**: DEFERRED 2026-05-19. `/execute-task` command does not exist (`ls src/commands/` shows only init-forge/generate-docs/configure/constitute/research/specify/discover/plan/setup-wizard/onboard). Per plan body: "if not, defer this step to when execute-task lands". Helper `check-outcome` already shipped in Step 7; wire-in deferred until `/execute-task` command exists.
+
 **Owner**: instruction-author.
 
 ### Files
@@ -662,6 +666,8 @@ grep -n "check-outcome" src/commands/execute-task/main.md
 ---
 
 ## Step 9 — Cross-grep + emitter check
+
+**Status**: SHIPPED 2026-05-19. Emitter check: `scripts/emitters/claude.py` `_PROMOTED` tuple already lists research/specify/init helpers (no new helper files added by Steps 1-7 — only subcommands on existing helpers per `feedback_emitter_promoted_cross_check`). Cross-grep result: 315 hits across new verbs in src/ tests/ scripts/ (`handoff.json|finalize-handoff|import-handoff|append-outcome|probe.tier|set-probe-feasibility|record-probe-script|check-outcome`) — well exceeds plan's "≥15 hits" threshold. Gap A `"use"` kind remains only in hard-reject migration paths in `_cmds_phase4_setters.py:224-228` + `_cli.py:428` (expected — legacy taxonomy is rejected, not reintroduced). CLAUDE.md "Where to find what" table gains "Pipeline handoff" row pointing to handoff.json schema location + producer/consumer/outcome helpers.
 
 **Owner**: orchestrator.
 

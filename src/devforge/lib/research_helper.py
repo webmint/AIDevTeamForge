@@ -30,7 +30,7 @@ Phases (target order per REDESIGN-RESEARCH-PLAN.md)
   PHASE 3  Save + recommend          — render artifact + ask-to-save handled
                                        by orchestrator; helper renders + verifies.
 
-Subcommand summary (47)
+Subcommand summary (49)
 -----------------------
 
   Plumbing (8)   reset-memo, reset-report, read-memo, read-report,
@@ -48,6 +48,7 @@ Subcommand summary (47)
   Phase 2.5  (1) record-value-production-site
   Phase 2.5b (1) record-literal-archaeology
   Step 5     (1) record-probe-script
+  Step 7     (2) append-outcome, check-outcome
   Phase 1  (8)   record-finding, record-hypothesis,
                  set-root-cause-hypothesis, set-confidence,
                  set-trigger, set-root-cause-systemic,
@@ -1753,6 +1754,46 @@ def _register_subcommands(subparsers) -> None:
         help='JSON array of "path:line" tokens whose code the script inlines verbatim.',
     )
     sp.set_defaults(func=cmd_record_probe_script)
+
+    # Step 7 — append-outcome.
+    sp = subparsers.add_parser(
+        "append-outcome",
+        help="Record the post-probe outcome into handoff.json (Step 7).",
+    )
+    sp.add_argument("--handoff-path", required=True, dest="handoff_path",
+                    help="Path to the handoff.json file (e.g. research/<NNN>/handoff.json).")
+    sp.add_argument(
+        "--hypothesis-confirmed",
+        required=True,
+        dest="hypothesis_confirmed",
+        choices=("primary", "runner_up", "none", "inconclusive"),
+        help="Which hypothesis the evidence confirmed.",
+    )
+    sp.add_argument(
+        "--evidence-source",
+        required=True,
+        dest="evidence_source",
+        choices=("test-result", "llm-ui-session-log", "user-observation"),
+        help="Source of the evidence.",
+    )
+    sp.add_argument("--evidence-cite", required=True, dest="evidence_cite",
+                    help="Path, SHA, or verbatim observation that evidences the outcome.")
+    sp.add_argument("--actual-fix-path", required=True, dest="actual_fix_path",
+                    help="Path(s) actually modified by the fix.")
+    sp.add_argument("--delta-from-recommendation", default=None, dest="delta_from_recommendation",
+                    help="Optional: how the actual fix diverged from the recommendation.")
+    sp.add_argument("--confirmed-commit-sha", default=None, dest="confirmed_commit_sha",
+                    help="Optional: 7-40 char hex SHA of the commit that applied the fix.")
+    sp.set_defaults(func=cmd_append_outcome)
+
+    # Step 7 — check-outcome.
+    sp = subparsers.add_parser(
+        "check-outcome",
+        help="Print 'unmarked' or 'marked: <details>' for a handoff.json outcome block.",
+    )
+    sp.add_argument("--handoff-path", required=True, dest="handoff_path",
+                    help="Path to the handoff.json file.")
+    sp.set_defaults(func=cmd_check_outcome)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -5098,6 +5139,193 @@ def cmd_finalize_handoff(args):
         )
 
     sys.stdout.write("wrote: {0}\n".format(target))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Step 7 — append-outcome + check-outcome.
+# ---------------------------------------------------------------------------
+
+
+def _load_handoff_json(handoff_path):
+    # type: (str) -> Tuple[Optional[dict], Optional[str]]
+    """Load and JSON-parse handoff.json at handoff_path.
+
+    Returns (data_dict, None) on success, (None, error_message) on failure.
+    """
+    p = Path(handoff_path)
+    if not p.is_file():
+        return None, "handoff.json not found: {0}".format(handoff_path)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as err:
+        return None, "cannot read handoff.json: {0}".format(err)
+    if not isinstance(data, dict):
+        return None, "handoff.json must be a JSON object"
+    return data, None
+
+
+def _build_outcome_md_section(outcome):
+    # type: (dict) -> str
+    """Render a markdown '## Outcome' section from an outcome dict.
+
+    Used by append-outcome to append to the parallel .md file.
+    """
+    lines = [
+        "## Outcome",
+        "",
+        "- **hypothesis_confirmed**: {0}".format(outcome["hypothesis_confirmed"]),
+        "- **evidence_source**: {0}".format(outcome["evidence_source"]),
+        "- **evidence_cite**: {0}".format(outcome["evidence_cite"]),
+        "- **actual_fix_path**: {0}".format(outcome["actual_fix_path"]),
+        "- **confidence_grade**: {0}".format(outcome["confidence_grade"]),
+        "- **confirmed_date**: {0}".format(outcome["confirmed_date"]),
+    ]
+    if outcome.get("delta_from_recommendation"):
+        lines.append("- **delta_from_recommendation**: {0}".format(
+            outcome["delta_from_recommendation"]
+        ))
+    if outcome.get("confirmed_commit_sha"):
+        lines.append("- **confirmed_commit_sha**: {0}".format(
+            outcome["confirmed_commit_sha"]
+        ))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def cmd_append_outcome(args):
+    # type: (argparse.Namespace) -> int
+    """Record post-probe outcome into handoff.json and optionally its parallel .md.
+
+    Idempotency: re-running OVERWRITES the existing outcome block in handoff.json
+    (last-write-wins). The parallel .md file gets a NEW '## Outcome' section appended
+    each time (append-only audit trail — no de-dup).
+
+    Steps:
+    1. Read and validate handoff.json schema (must be parseable dict with 'probe' block).
+    2. Compute confidence_grade via handoff_schema.compute_confidence_grade().
+    3. Build outcome dict; validate via handoff_schema.Outcome(**...) for enum/format errors.
+    4. Mutate handoff.json: set handoff["outcome"] = outcome dict. Atomic write.
+    5. If research_path is set and the parallel .md exists, append '## Outcome' section.
+    6. Print confirmation with confidence_grade. Exit 0.
+    """
+    handoff_path_str = args.handoff_path
+    data, err = _load_handoff_json(handoff_path_str)
+    if err is not None:
+        return _die("append-outcome: handoff.json schema validation failed: {0}".format(err), code=2)
+
+    # Validate minimum structure: must have 'probe' with 'tier' and 'discriminator'.
+    probe = data.get("probe")
+    if not isinstance(probe, dict):
+        return _die(
+            "append-outcome: handoff.json schema validation failed: "
+            "missing or non-dict 'probe' block",
+            code=2,
+        )
+    tier = probe.get("tier")
+    if not isinstance(tier, str):
+        return _die(
+            "append-outcome: handoff.json schema validation failed: "
+            "probe.tier must be a string",
+            code=2,
+        )
+    discriminator = probe.get("discriminator")
+    if not isinstance(discriminator, dict):
+        return _die(
+            "append-outcome: handoff.json schema validation failed: "
+            "probe.discriminator must be a dict",
+            code=2,
+        )
+
+    # Compute has_production_site_check from probe.discriminator.production_site_check.
+    has_production_site_check = discriminator.get("production_site_check") is not None
+
+    # Compute confidence_grade via the schema function.
+    confidence_grade = handoff_schema.compute_confidence_grade(
+        tier=tier,
+        evidence_source=args.evidence_source,
+        hypothesis_confirmed=args.hypothesis_confirmed,
+        has_production_site_check=has_production_site_check,
+    )
+
+    # Build outcome dict.
+    confirmed_date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    outcome_dict = {
+        "hypothesis_confirmed": args.hypothesis_confirmed,
+        "evidence_source": args.evidence_source,
+        "evidence_cite": args.evidence_cite,
+        "actual_fix_path": args.actual_fix_path,
+        "delta_from_recommendation": args.delta_from_recommendation,
+        "confirmed_date": confirmed_date,
+        "confirmed_commit_sha": args.confirmed_commit_sha,
+        "confidence_grade": confidence_grade,
+    }
+
+    # Validate outcome via schema dataclass (catches enum / format errors).
+    try:
+        handoff_schema.Outcome(**outcome_dict)
+    except (TypeError, ValueError) as err:
+        return _die(
+            "append-outcome: handoff.json schema validation failed: {0}".format(err), code=2
+        )
+
+    # Mutate and atomically write handoff.json.
+    data["outcome"] = outcome_dict
+    target = Path(handoff_path_str).resolve()
+    try:
+        _atomic_write_json(data, target)
+    except OSError as err:
+        return _die("append-outcome: cannot write {0}: {1}".format(target, err))
+
+    # Optionally append '## Outcome' section to the parallel .md file.
+    research_path = data.get("research_path")
+    if research_path and isinstance(research_path, str):
+        md_path = (Path(handoff_path_str).parent / research_path).resolve()
+        if md_path.is_file():
+            md_section = _build_outcome_md_section(outcome_dict)
+            try:
+                with open(str(md_path), "a", encoding="utf-8") as f:
+                    f.write("\n")
+                    f.write(md_section)
+            except OSError:
+                # Non-fatal: handoff.json is source of truth.
+                pass
+
+    sys.stdout.write(
+        "appended outcome to {0} (confidence_grade={1})\n".format(
+            handoff_path_str, confidence_grade
+        )
+    )
+    return 0
+
+
+def cmd_check_outcome(args):
+    # type: (argparse.Namespace) -> int
+    """Print 'unmarked' or 'marked: <details>' for the outcome block in handoff.json.
+
+    Non-blocking: always exits 0 unless the file is missing (exit 2).
+
+    Steps:
+    1. Read handoff.json. Missing → exit 2.
+    2. If outcome is None/absent → stdout "unmarked", exit 0.
+    3. If outcome is present → stdout "marked: <hypothesis_confirmed> (confidence=<grade>,
+       evidence=<source>)", exit 0.
+    """
+    data, err = _load_handoff_json(args.handoff_path)
+    if err is not None:
+        return _die("check-outcome: {0}".format(err), code=2)
+
+    outcome = data.get("outcome")
+    if outcome is None:
+        sys.stdout.write("unmarked\n")
+        return 0
+
+    hypothesis = outcome.get("hypothesis_confirmed", "unknown")
+    grade = outcome.get("confidence_grade", "unknown")
+    evidence = outcome.get("evidence_source", "unknown")
+    sys.stdout.write(
+        "marked: {0} (confidence={1}, evidence={2})\n".format(hypothesis, grade, evidence)
+    )
     return 0
 
 

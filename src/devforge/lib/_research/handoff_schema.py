@@ -883,6 +883,13 @@ class Outcome:
             raise ValueError(
                 f"Outcome.confirmed_date must be an ISO-8601 date, got {self.confirmed_date!r}"
             )
+        # Commit SHA format: 7-40 hex chars, lowercase only.
+        if self.confirmed_commit_sha is not None:
+            if not _COMMIT_SHA_RE.match(self.confirmed_commit_sha):
+                raise ValueError(
+                    f"Outcome.confirmed_commit_sha must be 7-40 lowercase hex chars, "
+                    f"got {self.confirmed_commit_sha!r}"
+                )
 
     def _validate_grade(self, tier, has_production_site_check):
         # type: (str, bool) -> None

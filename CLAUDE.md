@@ -8,8 +8,12 @@ When picking up work mid-stream, check the repo root for active plan files. **Re
 
 Currently active:
 
+- `COMMAND-VERIFY-GATES-PLAN.md` — DRAFTED 2026-05-17. Converts 3 done-commands' `## Verify` blocks from prose to shell-fact (generate-docs Phase 5, init-forge step 7, specify Step 4.10). No code landed yet.
+- `CONSTITUTION-DRIFT-DETECTOR-PLAN.md` — DRAFTED 2026-05-17. Adds `constitute_helper forge-internal:verify-universal-defaults` to detect drift between `src/constitution.md` canonical universal blocks and consumer `.devforge/constitute.json`. Forge-internal scope (read-only detector). No code landed yet.
+- `REFACTOR-MONOLITHIC-HELPERS-PLAN.md` — DRAFTED 2026-05-18. Splits 5 monolithic `*_helper.py` files (research 4011L / configure 3312L / constitute 3105L / specify 3020L / discover 2123L) into `_<name>/` subpackages mirroring proven `_generate_docs/` template. Phase A (configure + discover) ready now; Phases C/D blocked on in-flight plans + research HOW-extraction. No code landed yet.
 - ~~`ARCHITECTURE-PIVOT-PLAN.md`, `CONFIGURE-PLAN.md`, `CONSTITUTE-PLAN.md`~~ — all DONE 2026-05-10/11. 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) shipped. Re-read only if maintaining the named feature.
 - ~~`CBM-SYNC-PLAN.md`~~ — DELIVERED 2026-05-11. CBM stamp helper (`.devforge/lib/cbm_sync_helper`) + SessionStart hook (`cbm-sync-session-start`) + `/generate-docs` preamble shipped on `develop-2.0-init`. Phase 5 manual `/cbm-sync` slash command YAGNI-deferred.
+- ~~`CONSTITUTION-STRENGTHENING-PLAN.md`~~ — DONE 2026-05-16. 6 strengthening patches applied to `src/constitution.md`; iterative review loop clean. Propagation gap (drift detector) split out into `CONSTITUTION-DRIFT-DETECTOR-PLAN.md`.
 
 ## Conventions for ongoing work
 
@@ -32,6 +36,7 @@ Currently active:
 | Spec sources | `src/commands/`, `src/agents/`, `src/files/` |
 | Generators / emitters | `scripts/emitters/`, `scripts/generate*.py`, `scripts/generate.sh` |
 | Runtime helpers (4-command sequence) | `src/devforge/lib/{init_helper,configure_helper,constitute_helper}.py` + `src/devforge/lib/_generate_docs/` |
+| Pipeline handoff (research → specify → plan → execute-task) | `research/<date>-<slug>/handoff.json` (schema: `src/devforge/lib/_research/handoff_schema.py`); producer `research_helper finalize-handoff`; consumer `specify_helper import-handoff` (Phase 0.4); outcome marker `research_helper append-outcome` + `check-outcome` |
 | Helper review-and-fix pipeline | `/review-helper <path>` — see `.claude/commands/review-helper.md` |
 | Install / update logic | `install.sh`, `update.sh` |
 | Investigation rationale | Obsidian: `20 Projects/AIDevTeamForge/` |
