@@ -6485,5 +6485,664 @@ class TestRenderPatch9(unittest.TestCase):
             self.assertNotIn("Proposed call shape", output)
 
 
+# ---------------------------------------------------------------------------
+# finalize-handoff tests.
+# ---------------------------------------------------------------------------
+
+
+def _build_minimal_bug_state_for_handoff(devforge):
+    """Populate minimal valid bug-mode state for finalize-handoff round-trip tests.
+
+    Uses real CLI setters (round-trip discipline). Produces enough state to
+    satisfy all required-field guards in cmd_finalize_handoff. State uses
+    non-presentation-layer files so data_flow_chain is NOT required.
+    """
+    _run(["--devforge-dir", str(devforge), "reset-memo"])
+    _run(["--devforge-dir", str(devforge), "reset-report"])
+
+    # Phase 0: set all 6 dimensions.
+    for d, val in (
+        ("symptom", "Config value not applied at startup"),
+        ("affected-area", "services/api/config.py"),
+        ("repro-or-current", "Run server; config default used"),
+        ("desired", "env var applied on startup"),
+        ("scope", "one function"),
+        ("unchanged-behavior", "other config keys remain unchanged"),
+    ):
+        _run([
+            "--devforge-dir", str(devforge),
+            "set-" + d, "--value", val, "--state", "Clear",
+        ])
+
+    _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+    _run(["--devforge-dir", str(devforge), "set-topic", "--value", "config-not-applied"])
+    _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
+
+    # Phase 1: findings, hypotheses, root cause, verify-step.
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "config loader",
+        "--file-line", "services/api/config.py:42",
+        "--relevance", "reads env var but ignores None guard",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "startup init",
+        "--file-line", "services/api/main.py:15",
+        "--relevance", "config.load() called before env is set",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "env var read before process env is populated",
+        "--falsifier", "add print before config.load(); verify env present",
+        "--runtime-probe-needed", "yes",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-hypothesis",
+        "--cause", "config key name mismatch in .env file",
+        "--falsifier", "check .env key names vs config loader keys",
+        "--runtime-probe-needed", "no",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-hypothesis",
+        "--value", "env var read before process env is populated on startup",
+    ])
+    _run(["--devforge-dir", str(devforge), "set-confidence", "--value", "Hypothesis"])
+    _run(["--devforge-dir", str(devforge), "set-trigger", "--value", "server startup sequence"])
+    _run([
+        "--devforge-dir", str(devforge), "set-root-cause-systemic",
+        "--value", "No startup-order guard for env var loading",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-verify-step",
+        "--probe", "add print(os.environ.get('CONFIG_KEY')) before config.load()",
+        "--reproduction", "Run server; check stdout for env value",
+        "--discriminator", "if None then env not set at read time; if correct value then ordering ok",
+    ])
+
+    # Phase 2: approaches + recommended.
+    _run([
+        "--devforge-dir", str(devforge), "set-approach",
+        "--name", "Option A: lazy load config",
+        "--description", "Defer config loading until first use",
+        "--addresses-hypotheses", json.dumps(["env var read before process env is populated"]),
+        "--does-not-cover", json.dumps(["config key name mismatch in .env file"]),
+        "--pros", json.dumps(["simple"]),
+        "--cons", json.dumps(["deferred errors"]),
+        "--complexity", "Low",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-approach",
+        "--name", "Option B: move load to after env init",
+        "--description", "Ensure env is initialized before config.load()",
+        "--addresses-hypotheses", json.dumps([
+            "env var read before process env is populated",
+            "config key name mismatch in .env file",
+        ]),
+        "--does-not-cover", json.dumps([]),
+        "--pros", json.dumps(["covers both", "explicit ordering"]),
+        "--cons", json.dumps(["requires startup refactor"]),
+        "--complexity", "Med",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-recommended-approach",
+        "--name", "Option B: move load to after env init",
+        "--rationale", "Explicit startup ordering prevents env-before-config race",
+        "--hypotheses-addressed", json.dumps([
+            "env var read before process env is populated",
+        ]),
+        "--hypotheses-not-covered", json.dumps(["config key name mismatch in .env file"]),
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-constitution-constraints",
+        "--rule", "Config loading must be deterministic at startup",
+        "--impact", "Prevents silent env var misses",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-complexity",
+        "--codebase-changes", "Low", "--codebase-notes", "1 file",
+        "--risk", "Low", "--risk-notes", "narrow change",
+        "--verify-cost", "Low", "--verify-notes", "unit test suffices",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-verdict",
+        "--value", "Root cause hypothesis (needs repro)",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-summary",
+        "--value", "Config not applied because env is read before population. Fix: move load after env init.",
+    ])
+
+    # Phase 2.4c: fix-path-helpers for verify checks.
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "cross-layer helper",
+        "--file-line", "services/core/env_loader.py:10",
+        "--relevance", "canonical env loading helper",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "config.load",
+        "--file-line", "services/api/config.py:42",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-fix-path-helper",
+        "--helper-qn", "env_loader.init",
+        "--file-line", "services/core/env_loader.py:10",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-inbound-caller",
+        "--helper-qn", "config.load",
+        "--caller-qn", "main.startup",
+        "--file-line", "services/api/main.py:15",
+    ])
+    # Phase 2.3b: runner-up framing for check 12.
+    _run([
+        "--devforge-dir", str(devforge), "record-runner-up-framing",
+        "--frame", "config key name mismatch",
+        "--falsifier", "check .env key names",
+        "--confidence-vs-primary", "lower",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "record-finding",
+        "--surface", "env config key",
+        "--file-line", "services/api/config.py:10",
+        "--relevance", "key name cross-check for runner-up",
+        "--framing", "runner-up",
+    ])
+
+
+def _run_finalize(devforge, emit_path, research_md_path=None):
+    """Run finalize-handoff and return subprocess result."""
+    argv = [
+        "--devforge-dir", str(devforge),
+        "finalize-handoff",
+        "--emit-handoff-json", str(emit_path),
+    ]
+    if research_md_path is not None:
+        argv += ["--research-md-path", research_md_path]
+    return _run(argv)
+
+
+class TestFinalizeHandoff(unittest.TestCase):
+    """Tests for research_helper finalize-handoff subcommand."""
+
+    def test_finalize_handoff_rejects_missing_mode(self):
+        """Bare state (no detect-mode) → exit 2 with stderr memo.mode not set."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            r = _run_finalize(devforge, Path(tmp) / "handoff.json")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("memo.mode not set", r.stderr)
+
+    def test_finalize_handoff_rejects_missing_topic_slug(self):
+        """State with mode but no topic_slug → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            # Set mode but no topic
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+            r = _run_finalize(devforge, Path(tmp) / "handoff.json")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("topic_slug not set", r.stderr)
+
+    def test_finalize_handoff_rejects_missing_recommended_approach(self):
+        """State with mode + slug but no recommended_approach → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "test-topic"])
+            _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
+            r = _run_finalize(devforge, Path(tmp) / "handoff.json")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("recommended_approach not set", r.stderr)
+
+    def test_finalize_handoff_rejects_missing_complexity(self):
+        """State with recommended_approach but no complexity → exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "test-topic"])
+            _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
+            # Add minimal approach + recommended.
+            _run([
+                "--devforge-dir", str(devforge), "set-approach",
+                "--name", "Option A",
+                "--description", "fix it",
+                "--addresses-hypotheses", "[]",
+                "--does-not-cover", "[]",
+                "--pros", "[]",
+                "--cons", "[]",
+                "--complexity", "Low",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A",
+                "--rationale", "best option",
+                "--hypotheses-addressed", "[]",
+                "--hypotheses-not-covered", "[]",
+            ])
+            r = _run_finalize(devforge, Path(tmp) / "handoff.json")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("complexity not set", r.stderr)
+
+    def test_finalize_handoff_round_trip_bug_mode(self):
+        """Write full bug-mode state via setters; run finalize-handoff; parse output JSON.
+
+        Asserts all 7 top-level keys present and types match schema.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("wrote:", r.stdout)
+            data = json.loads(out.read_text())
+            # All 7 top-level keys must be present.
+            for key in ("schema_version", "research_path", "research_completed_at",
+                        "mode", "intent", "spec_seeds", "plan_seeds",
+                        "probe", "downstream_links"):
+                self.assertIn(key, data, "missing top-level key: {0}".format(key))
+            self.assertEqual(data["schema_version"], "1.0")
+            self.assertEqual(data["mode"], "bug")
+            self.assertIsInstance(data["intent"], dict)
+            self.assertIsInstance(data["spec_seeds"], dict)
+            self.assertIsInstance(data["plan_seeds"], dict)
+            self.assertIsInstance(data["probe"], dict)
+            self.assertIsInstance(data["downstream_links"], dict)
+            self.assertIsNone(data.get("outcome"))
+
+    def test_finalize_handoff_feature_addition_mode(self):
+        """Non-bug mode (enhancement) populates spec_type_hint as feature_addition.
+
+        research_helper MODE_ENUM uses "enhancement"; the handoff schema maps
+        it to "feature_addition" (closest schema equivalent).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            # Use "enhancement" (actual MODE_ENUM value; "feature_addition" is schema-only).
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "enhancement"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "add-export"])
+            _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
+            _run([
+                "--devforge-dir", str(devforge), "set-approach",
+                "--name", "Option A",
+                "--description", "add export endpoint",
+                "--addresses-hypotheses", "[]",
+                "--does-not-cover", "[]",
+                "--pros", "[]",
+                "--cons", "[]",
+                "--complexity", "Low",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A",
+                "--rationale", "minimal implementation",
+                "--hypotheses-addressed", "[]",
+                "--hypotheses-not-covered", "[]",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-complexity",
+                "--codebase-changes", "Low", "--codebase-notes", "1 endpoint",
+                "--risk", "Low", "--risk-notes", "no existing deps",
+                "--verify-cost", "Low", "--verify-notes", "unit test",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            self.assertEqual(data["spec_seeds"]["spec_type_hint"], "feature_addition")
+
+    def test_finalize_handoff_writes_atomically(self):
+        """Emit to pre-existing file; on success file is fully replaced."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            # Write sentinel content before finalize.
+            out.write_text('{"old": true}')
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            # New content replaces old.
+            self.assertNotIn("old", data)
+            self.assertIn("schema_version", data)
+
+    def test_finalize_handoff_creates_parent_dirs(self):
+        """--emit-handoff-json with nested path → parent dirs created."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "nested" / "sub" / "handoff.json"
+            self.assertFalse(out.parent.exists())
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue(out.exists())
+            data = json.loads(out.read_text())
+            self.assertIn("schema_version", data)
+
+    def test_finalize_handoff_research_md_path_defaults(self):
+        """Omit --research-md-path → derived as research/<date>-<slug>.md."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            # date=2026-05-19, slug=config-not-applied
+            self.assertEqual(data["research_path"], "research/2026-05-19-config-not-applied.md")
+
+    def test_finalize_handoff_research_md_path_explicit(self):
+        """When --research-md-path is set, it's used verbatim."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out, research_md_path="research/custom-path.md")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            self.assertEqual(data["research_path"], "research/custom-path.md")
+
+    def test_finalize_handoff_probe_defaults_to_tier_3(self):
+        """Output probe.tier == '3', actor == 'user'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            self.assertEqual(data["probe"]["tier"], "3")
+            self.assertEqual(data["probe"]["actor"], "user")
+            self.assertIsNone(data["probe"]["test_framework"])
+            self.assertIsNone(data["probe"]["test_path"])
+            self.assertIsNone(data["probe"]["script_path"])
+            self.assertFalse(data["probe"]["is_first_test_for_file"])
+
+    def test_finalize_handoff_primary_confirms_if_from_discriminator(self):
+        """verify_step discriminator string → probe.discriminator.primary_confirms_if.
+
+        The discriminator field is the PASS/FAIL criterion (what result confirms
+        primary). primary_confirms_if matches discriminator semantics, NOT probe
+        (which is the action to perform). This test asserts that the discriminator
+        string is carried through, not the probe string.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            disc = data["probe"]["discriminator"]
+            # The discriminator set in _build_minimal_bug_state_for_handoff is:
+            # "if None then env not set at read time; if correct value then ordering ok"
+            primary = disc["primary_confirms_if"]
+            self.assertIn("if None then env not set at read time", primary)
+            # The probe string must NOT appear in primary_confirms_if.
+            probe_action = "add print(os.environ.get"
+            self.assertNotIn(probe_action, primary)
+
+    def test_finalize_handoff_primary_confirms_if_fallback_when_no_discriminator(self):
+        """When verify_step has no discriminator value, primary_confirms_if falls back to tbd sentinel.
+
+        Exercises the branch where verify_step is absent (report default is None).
+        Written by injecting state JSON directly because the setter requires --discriminator;
+        if the field is cleared post-set, the fallback path is triggered.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Clear verify_step.discriminator by writing null directly to state.
+            report_path = devforge / "research-report.json"
+            data = json.loads(report_path.read_text())
+            vs = data.get("verify_step") or {}
+            vs["discriminator"] = ""
+            data["verify_step"] = vs
+            report_path.write_text(json.dumps(data))
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out_data = json.loads(out.read_text())
+            primary = out_data["probe"]["discriminator"]["primary_confirms_if"]
+            self.assertEqual(primary, "tbd — populated by Step 4 probe-tier classifier")
+
+    def test_finalize_handoff_constraints_all_follow_kind(self):
+        """constitution_constraints rows with no anchor → mapped to follow kind."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            constraints = data["spec_seeds"]["constraints"]
+            self.assertEqual(len(constraints), 1)
+            self.assertEqual(constraints[0]["kind"], "follow")
+            self.assertIn("deterministic", constraints[0]["content"])
+
+    def test_finalize_handoff_alternatives_excludes_recommended(self):
+        """3 approaches with one recommended → alternatives_considered has only the 2 non-recommended."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Add a third approach.
+            _run([
+                "--devforge-dir", str(devforge), "set-approach",
+                "--name", "Option C: config validation layer",
+                "--description", "Add validation at load time",
+                "--addresses-hypotheses", "[]",
+                "--does-not-cover", "[]",
+                "--pros", "[]",
+                "--cons", "[]",
+                "--complexity", "High",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            alts = data["plan_seeds"]["alternatives_considered"]
+            # 2 non-recommended (Option A + Option C).
+            self.assertEqual(len(alts), 2)
+            alt_ids = [a["id"] for a in alts]
+            self.assertNotIn("option_b_move_load_to_after_env_init", alt_ids)
+            self.assertIn("option_a_lazy_load_config", alt_ids)
+            self.assertIn("option_c_config_validation_layer", alt_ids)
+
+    def test_finalize_handoff_v2_fields_propagate(self):
+        """Write state with value_production_sites set → handoff.json has field populated."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Add value production site.
+            _run([
+                "--devforge-dir", str(devforge), "record-value-production-site",
+                "--value", "config_value",
+                "--file-line", "services/api/config.py:42",
+                "--is-stable", "true",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            sites = data["spec_seeds"]["value_production_sites"]
+            self.assertEqual(len(sites), 1)
+            self.assertEqual(sites[0]["value"], "config_value")
+            self.assertEqual(sites[0]["file_line"], "services/api/config.py:42")
+            self.assertTrue(sites[0]["is_stable"])
+
+    def test_finalize_handoff_v3_fields_propagate(self):
+        """Write state with literal_archaeology set → output preserves it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Record literal archaeology.
+            _run([
+                "--devforge-dir", str(devforge), "record-literal-archaeology",
+                "--literal", "42",
+                "--file-line", "services/api/config.py:42",
+                "--introduced-by", "abc1234",
+                "--introduced-when", "2024-01-15",
+                "--commit-subject", "add config loader",
+                "--intent", "deliberate",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            la = data["spec_seeds"]["literal_archaeology"]
+            self.assertEqual(len(la), 1)
+            self.assertEqual(la[0]["literal"], "42")
+            self.assertEqual(la[0]["intent"], "deliberate")
+            self.assertEqual(la[0]["introduced_by"], "abc1234")
+
+    def test_finalize_handoff_production_site_check_when_unstable(self):
+        """value_production_sites with is_stable=False → probe.discriminator.production_site_check non-null."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Record unstable production site.
+            _run([
+                "--devforge-dir", str(devforge), "record-value-production-site",
+                "--value", "request_id",
+                "--file-line", "services/api/config.py:55",
+                "--is-stable", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            check = data["probe"]["discriminator"]["production_site_check"]
+            self.assertIsNotNone(check)
+            self.assertIn("services/api/config.py:55", check)
+
+    def test_finalize_handoff_validates_via_schema(self):
+        """Corrupt literal_archaeology (bad SHA) → exit 2 + stderr cites schema error.
+
+        Also verifies atomicity: pre-existing file content is preserved when
+        validation fails (the write is never committed).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Directly corrupt the report state to inject a bad SHA.
+            report_path = devforge / "research-report.json"
+            data = json.loads(report_path.read_text())
+            data["literal_archaeology"] = [{
+                "literal": "42",
+                "file_line": "services/api/config.py:42",
+                "introduced_by": "NOTASHA",  # invalid SHA
+                "introduced_when": "2024-01-15",
+                "commit_subject": "add config",
+                "intent": "deliberate",
+            }]
+            report_path.write_text(json.dumps(data))
+            out = Path(tmp) / "handoff.json"
+            # Write sentinel content so we can verify it's preserved on failure.
+            out.write_text('{"old_sentinel": true}\n')
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("schema validation failed", r.stderr)
+            self.assertEqual(json.loads(out.read_text()), {"old_sentinel": True})
+
+    def test_finalize_handoff_downstream_links_empty(self):
+        """downstream_links has all None/empty fields on fresh output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            dl = data["downstream_links"]
+            self.assertIsNone(dl["spec_path"])
+            self.assertIsNone(dl["plan_path"])
+            self.assertEqual(dl["execute_task_commit_shas"], [])
+
+    def test_finalize_handoff_rejects_partial_recommended_approach(self):
+        """recommended_approach dict missing 'name' key → exit 2 + stderr names the fields."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Mutate report: replace recommended_approach with one missing 'name'.
+            report_path = devforge / "research-report.json"
+            data = json.loads(report_path.read_text())
+            data["recommended_approach"] = {"rationale": "x"}
+            report_path.write_text(json.dumps(data))
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("missing 'name' or 'rationale'", r.stderr)
+
+    def test_finalize_handoff_cited_patterns_resolves_to_file_line(self):
+        """cite token matching a consumer_chain.consumer_qn → file_line resolves to that row's path:line.
+
+        Uses the single-layer Dart BLoC fixture so that --cites is accepted by
+        set-recommended-approach. Records a consumer_chain row with
+        consumer_qn='FetchConsumer.handleResult' + file_line='lib/blocs/order_bloc.dart:80'.
+        Uses 'FetchConsumer.handleResult' as the cite token. Finalize must carry
+        the resolved file_line through to cited_canonical_patterns[].file_line.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Build single-layer bug state (all helpers in lib/blocs — non-presentation).
+            _build_domain_single_layer_bug_state(devforge)
+
+            # Record a consumer_chain row so the cite token resolves to a real file_line.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-consumer-chain",
+                "--value", "fetchId",
+                "--consumer-qn", "FetchConsumer.handleResult",
+                "--file-line", "lib/blocs/order_bloc.dart:80",
+                "--role", "drives sink emission",
+            ])
+
+            # Set recommended approach with single-layer-justification + cite pointing
+            # to the consumer_chain row. proposed-call-shape required in bug mode + justification.
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard closes the race",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-not-covered", json.dumps(["subscription resubscribed mid-stream"]),
+                "--single-layer-justification", "Bug is local to the BLoC layer; FetchConsumer confirms layer boundary.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            patterns = data["plan_seeds"]["cited_canonical_patterns"]
+            self.assertEqual(len(patterns), 1)
+            self.assertEqual(patterns[0]["qn"], "FetchConsumer.handleResult")
+            # file_line must resolve to the consumer_chain row's file_line, not the cite token.
+            self.assertEqual(patterns[0]["file_line"], "lib/blocs/order_bloc.dart:80")
+
+    def test_finalize_handoff_rejects_missing_date(self):
+        """State with mode + topic but no date → exit 2 + stderr names the field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "test-topic"])
+            # No set-date call → date guard fires.
+            r = _run_finalize(devforge, Path(tmp) / "handoff.json")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("report.date not set", r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

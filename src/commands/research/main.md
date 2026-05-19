@@ -799,14 +799,31 @@ Compute the filename from helper state: `research/<report.date>-<memo.topic_slug
 
 Write the rendered text captured in Phase 3 (the same bytes printed there) to the chosen path. Use the helper-rendered bytes verbatim — do not re-format or re-shape.
 
+### Emit handoff.json (mandatory on save)
+
+After the rendered `.md` is written:
+
+1. Compute the handoff.json path: `research/<report.date>-<memo.topic_slug>/handoff.json` — nested inside a per-research subdirectory that sits alongside the flat `.md` file.
+2. If the handoff path already exists (same-date, same-slug re-run), overwrite it — the prior artefact is stale for the same research session.
+3. Create the per-research directory if it does not exist.
+4. Invoke:
+
+   ```bash
+   .devforge/lib/research_helper finalize-handoff \
+       --emit-handoff-json <computed path>
+   ```
+
+5. If the helper exits non-zero, tell the user `"Research .md saved at <abs md path> but handoff.json failed: <stderr>. Re-run finalize-handoff manually after fixing the missing state."` and end the turn.
+6. If the helper exits 0, capture the stdout `wrote: <abs path>` for the closing message.
+
 ### On skip
 
-The rendered report stays in the assistant message only. No file is written. `.devforge/research-state.json` and `.devforge/research-report.json` remain on disk until the next `/research` invocation overwrites them.
+The rendered report stays in the assistant message only. No file is written. `.devforge/research-state.json` and `.devforge/research-report.json` remain on disk until the next `/research` invocation overwrites them. No handoff.json fires on skip — re-run `/research` and save to produce both `.md` and handoff.json.
 
 ### Closing message
 
-If a save happened AND the verdict is in the proceeding-set, the rendered report already contains a `## Next Step` section with a copy-pasteable `/specify "..."` block. Tell the user: `"/research is done. Open <path> to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new /specify session — copy it manually when you're ready."`
+If a save happened AND the verdict is in the proceeding-set, the rendered report already contains a `## Next Step` section with a copy-pasteable `/specify "..."` block. Tell the user: `"/research is done. Open <path> to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new /specify session — copy it manually when you're ready. Handoff schema artefact at <handoff path> — a future /specify Phase 0.4 will auto-discover and import it via `specify_helper import-handoff` (Step 6 of RESEARCH-HANDOFF-PLAN)."`
 
-If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/research is done. Open <path> to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix."`
+If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/research is done. Open <path> to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix. Handoff artefact at <handoff path> records the research state for downstream tooling."`
 
-If the user chose `skip`, tell the user: `"/research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /research invocation."`
+If the user chose `skip`, tell the user: `"/research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /research invocation. No handoff.json was written — re-run /research and save to produce both .md and handoff.json."`

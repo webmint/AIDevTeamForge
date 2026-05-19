@@ -1,6 +1,6 @@
 # RESEARCH-HANDOFF-PLAN
 
-**Status**: Steps 1+2 SHIPPED 2026-05-19 (schema lock 50 tests + test_infra detection 144 tests); Steps 3-10 pending
+**Status**: Steps 1+2+3 SHIPPED 2026-05-19 (schema lock 50 tests + test_infra detection 144 tests + finalize-handoff 343 tests); Steps 4-10 pending
 **Date**: 2026-05-17 (Step 1 landed 2026-05-19)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -390,6 +390,8 @@ pytest tests/lib/test_init_helper.py -k "test_detect_test_infra" -v
 ---
 
 ## Step 3 — `research_helper finalize-handoff`
+
+**Status**: SHIPPED 2026-05-19. `src/devforge/lib/research_helper.py` (+~530 lines): `cmd_finalize_handoff` subcommand loads research-state.json (memo) + research-report.json (report), maps via `_build_handoff_from_state` to `Handoff` dataclass per Step 1 schema, atomic-writes JSON via reused `_atomic_write_json`. Required-field guards reject incomplete state (memo.mode / memo.topic_slug / report.date / report.recommended_approach / report.complexity → exit 2 + stderr cite). Schema validation surfaces as exit 2 + `"finalize-handoff: schema validation failed: <message>"`. `_resolve_cite_to_file_line` walks fix_path_helpers / consumer_chain / value_semantics / dead_siblings to populate `cited_canonical_patterns[].file_line` from real path:line (not QN fallback). `verify_step.discriminator` → `probe.discriminator.primary_confirms_if` (semantic-correct mapping; `.probe` is the ACTION not the criterion). Probe block STUB DEFAULTS (tier=3 / actor=user / discriminator placeholders) — Step 4 replaces with smart classifier. Acknowledged limitations: constitution_constraints all map to `kind="follow"` (setter shape lacks anchor); `data_flow_chain.trace_mode` defaults `"calls"` (state lacks axis); `enhancement` → `feature_addition` translation via `_MEMO_MODE_TO_HANDOFF_MODE`. Tests: 23 new in `TestFinalizeHandoff` (round-trip + 4 missing-field guards + atomicity + creates-parent-dirs + path-defaults + V2/V3 propagate + production_site_check + tier-3-default + alternatives-exclude-recommended + constraints-all-follow + schema-validation + cited-patterns-resolve + sentinel-preservation + missing-date) → 343 total green. Reviewer audits: python-reviewer 4 (1H/2M/1L) all applied (F1 KeyError guard, F2 cited_patterns resolver, F3 atomicity sentinel test, F4 missing-date test); instruction-reviewer 4 (1H/1M/1L/1N) all applied (F1 `--from-handoff` hallucination → `specify_helper import-handoff` Step 6 ref, F2 path-geometry "sibling" → "nested inside subdirectory", F3 `<md path>` → `<abs md path>`, F4 collision policy added); claude-code-guide clean. `src/commands/research/main.md` Phase 4 gains `### Emit handoff.json (mandatory on save)` sub-section (path = `research/<date>-<slug>/handoff.json` per-research subdir; .md stays flat at `research/<date>-<slug>.md`) + closing-message branches updated for proceed/non-proceed/skip paths.
 
 **Owner**: python-engineer + instruction-author.
 
