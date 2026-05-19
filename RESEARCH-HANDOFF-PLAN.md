@@ -1,6 +1,6 @@
 # RESEARCH-HANDOFF-PLAN
 
-**Status**: Step 1 SHIPPED 2026-05-19 (schema lock + 50 tests green); Steps 2-10 pending
+**Status**: Steps 1+2 SHIPPED 2026-05-19 (schema lock 50 tests + test_infra detection 144 tests); Steps 3-10 pending
 **Date**: 2026-05-17 (Step 1 landed 2026-05-19)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -347,6 +347,8 @@ pytest tests/lib/test_research_handoff_schema.py -v
 ---
 
 ## Step 2 — `init_helper` test_infra detection
+
+**Status**: SHIPPED 2026-05-19. `src/devforge/lib/init_helper.py` (+~500 lines): `_detect_test_infra` walker spans 5 languages (JS/TS `package.json` devDeps depth ≤2 incl. `packages/*/`; Python `pyproject.toml` + `requirements*.txt` line-bounded scan; Go `**/*_test.go` depth ≤3; Rust `src/**/*.rs` `#[cfg(test)]` with `//` comment-strip; Ruby `Gemfile`); status derives `absent`/`partial`/`present` from populated bucket count. New CLI: `detect-test-infra` + `set-test-infra` (framework→bucket mismatch + status enum validators). YAML `test_infra_record` field-kind round-trips via emit/parse; `_load_state` backfills default block on legacy yaml. `cmd_verify` gains soft-warning channel (`verify: WARN: ...` to stderr, exit 0) when packages_detected populated + test_infra absent + on-disk detector finds something. Tests: 33 new (5 classes: `TestDetectTestInfra` × 16 + `TestSetTestInfra` × 5 + `TestTestInfraYamlRoundTrip` × 4 + `TestVerifyTestInfra` × 5 + `TestDetectTestInfraCLI` × 3) → 144 total green. Reviewer audit: 5 findings (1H/2M/1L/1N) — ALL applied (F1 dead double-validator removed, F2+F3 pyproject/rust comment false-positives closed via line-bounded scan, F4 unreachable dict-type branch + dead test removed, F5 stale subcommand-count test renamed/extended). testForge20 integration verified: `frontend=vitest, status=partial` from `packages/pkg-cse-core/package.json`; `cmd_verify` exits 0.
 
 **Owner**: python-engineer.
 

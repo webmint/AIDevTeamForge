@@ -18,6 +18,7 @@ fixtures) — the parser sees only what the emitter emits.
 Stdlib only.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -142,6 +143,12 @@ class DefaultStateTests(unittest.TestCase):
                 "project_state": None,
                 "default_branch": None,
                 "packages_detected": [],
+                "test_infra": {
+                    "frontend": None,
+                    "backend": None,
+                    "e2e": None,
+                    "status": "absent",
+                },
             },
         )
 
@@ -155,6 +162,7 @@ class DefaultStateTests(unittest.TestCase):
                 "project_state",
                 "default_branch",
                 "packages_detected",
+                "test_infra",
             ],
         )
 
@@ -181,6 +189,12 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertEqual(lines[2], "project_state: null")
         self.assertEqual(lines[3], "default_branch: null")
         self.assertEqual(lines[4], "packages_detected: []")
+        # test_infra block follows.
+        self.assertEqual(lines[5], "test_infra:")
+        self.assertEqual(lines[6], "  frontend: null")
+        self.assertEqual(lines[7], "  backend: null")
+        self.assertEqual(lines[8], "  e2e: null")
+        self.assertEqual(lines[9], "  status: absent")
 
     def test_emit_ends_with_newline(self):
         text = init_helper.emit_yaml(init_helper.default_state())
@@ -196,6 +210,12 @@ class EmitParseRoundTripTests(unittest.TestCase):
                 {"path": ".", "manifest": "package.json"},
                 {"path": "apps/web", "manifest": "package.json"},
             ],
+            "test_infra": {
+                "frontend": "vitest",
+                "backend": "pytest",
+                "e2e": "playwright",
+                "status": "present",
+            },
         }
         text = init_helper.emit_yaml(s)
         s2 = init_helper.parse_yaml(text)
@@ -837,7 +857,7 @@ class FindNestedGitTests(unittest.TestCase):
 
 class CLISurfaceTests(_EnvIsolationMixin, unittest.TestCase):
 
-    def test_help_lists_eight_subcommands(self):
+    def test_help_lists_core_subcommands(self):
         proc = _run_cli(self.devforge_dir, "--help")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         out = proc.stdout
@@ -850,6 +870,9 @@ class CLISurfaceTests(_EnvIsolationMixin, unittest.TestCase):
             b"add-package",
             b"find-nested-git",
             b"summary",
+            b"verify",
+            b"detect-test-infra",
+            b"set-test-infra",
         ):
             self.assertIn(sub, out)
 
@@ -1409,6 +1432,602 @@ class VerifyTests(unittest.TestCase):
         proc = _run_cli(self.devforge_dir, "verify")
         self.assertEqual(proc.returncode, 2)
         self.assertIn(b"project_state", proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# TestDetectTestInfra — unit tests for _detect_test_infra walker.
+# ---------------------------------------------------------------------------
+
+
+class TestDetectTestInfra(unittest.TestCase):
+    """Tests for the _detect_test_infra(project_root) pure walker.
+
+    Each test constructs a minimal filesystem layout in a temp dir and
+    calls the function directly (no subprocess) to verify detection logic.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, rel_path, content):
+        """Write a file at root/rel_path, creating parent dirs as needed."""
+        target = self.root / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+    # --- 1: JS vitest in devDependencies ---
+
+    def test_detect_test_infra_js_vitest(self):
+        self._write(
+            "package.json",
+            '{"devDependencies": {"vitest": "^1.0.0", "vite": "^4.0.0"}}',
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["frontend"], "vitest")
+        self.assertIsNone(result["backend"])
+        self.assertIsNone(result["e2e"])
+        self.assertEqual(result["status"], "partial")  # 1/3 buckets
+
+    # --- 2: JS jest + playwright ---
+
+    def test_detect_test_infra_js_jest_playwright(self):
+        self._write(
+            "package.json",
+            '{"devDependencies": {"jest": "^29.0.0", "playwright": "^1.30.0"}}',
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["frontend"], "jest")
+        self.assertEqual(result["e2e"], "playwright")
+        self.assertIsNone(result["backend"])
+        self.assertEqual(result["status"], "partial")  # 2/3 buckets
+
+    # --- 3: Python pyproject.toml with pytest ---
+
+    def test_detect_test_infra_py_pytest(self):
+        self._write(
+            "pyproject.toml",
+            "[tool.poetry.dev-dependencies]\npytest = \"^7.0\"\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["backend"], "pytest")
+        self.assertIsNone(result["frontend"])
+        self.assertIsNone(result["e2e"])
+        self.assertEqual(result["status"], "partial")
+
+    # --- 4: Python requirements-dev.txt with pytest>=7 ---
+
+    def test_detect_test_infra_py_requirements_pytest(self):
+        self._write("requirements-dev.txt", "pytest>=7\nrequests>=2.28\n")
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["backend"], "pytest")
+
+    # --- 5: Go *_test.go file ---
+
+    def test_detect_test_infra_go(self):
+        self._write("pkg/foo_test.go", "package foo\n\nfunc TestFoo(t *testing.T) {}\n")
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["backend"], "go-test")
+        self.assertEqual(result["status"], "partial")
+
+    # --- 6: Rust #[cfg(test)] in src/lib.rs ---
+
+    def test_detect_test_infra_rust(self):
+        self._write(
+            "src/lib.rs",
+            "#[cfg(test)]\nmod tests {\n    #[test]\n    fn it_works() {}\n}\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["backend"], "cargo-test")
+        self.assertEqual(result["status"], "partial")
+
+    # --- F2a: pyproject.toml skips comment lines mentioning pytest ---
+
+    def test_detect_python_skips_pytest_in_comment(self):
+        """pyproject.toml with pytest only in a comment → backend=None."""
+        self._write(
+            "pyproject.toml",
+            "# pytest mentioned but not used\n[tool.poetry]\nname = \"myapp\"\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertIsNone(result["backend"])
+
+    # --- F2b: pyproject.toml skips pytest_plugin identifier (boundary check) ---
+
+    def test_detect_python_skips_pytest_substring_in_other_identifier(self):
+        """pytest_plugin starts with 'pytest' but next char is '_' → no match."""
+        self._write(
+            "pyproject.toml",
+            "[tool.poetry.dev-dependencies]\npytest_plugin = \"1.0\"\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertIsNone(result["backend"])
+
+    # --- F3: Rust skips #[cfg(test)] in // comment lines ---
+
+    def test_detect_rust_skips_cfg_test_in_comment(self):
+        """src/lib.rs with #[cfg(test)] only in // comments → backend=None."""
+        self._write(
+            "src/lib.rs",
+            "// #[cfg(test)]\n// mod tests {}\n\npub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertIsNone(result["backend"])
+
+    # --- 7: Ruby Gemfile with rspec ---
+
+    def test_detect_test_infra_ruby(self):
+        self._write("Gemfile", "source 'https://rubygems.org'\ngem 'rspec', '~> 3.0'\n")
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["backend"], "rspec")
+        self.assertEqual(result["status"], "partial")
+
+    # --- 8: Empty project (bare tempdir) ---
+
+    def test_detect_test_infra_empty_project(self):
+        result = init_helper._detect_test_infra(self.root)
+        self.assertIsNone(result["frontend"])
+        self.assertIsNone(result["backend"])
+        self.assertIsNone(result["e2e"])
+        self.assertEqual(result["status"], "absent")
+
+    # --- 9: Mixed monorepo (JS root + Python pyproject + e2e) ---
+
+    def test_detect_test_infra_mixed_monorepo(self):
+        # Root package.json for the monorepo with vitest.
+        self._write(
+            "package.json",
+            '{"devDependencies": {"vitest": "^1.0.0", "playwright": "^1.30.0"}}',
+        )
+        # Python backend uses pytest.
+        self._write(
+            "pyproject.toml",
+            "[tool.poetry.dev-dependencies]\npytest = \"^7.0\"\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["frontend"], "vitest")
+        self.assertEqual(result["backend"], "pytest")
+        self.assertEqual(result["e2e"], "playwright")
+        self.assertEqual(result["status"], "present")  # all 3 buckets
+
+    # --- 10: vitest inside node_modules MUST NOT be detected ---
+
+    def test_detect_test_infra_skips_node_modules(self):
+        # Place vitest only inside node_modules — must be ignored.
+        self._write(
+            "node_modules/foo/package.json",
+            '{"devDependencies": {"vitest": "^1.0.0"}}',
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertIsNone(result["frontend"])
+        self.assertEqual(result["status"], "absent")
+
+    # --- Extra edge cases ---
+
+    def test_detect_test_infra_monorepo_packages_dir(self):
+        """vitest in packages/app/package.json (depth 2) should be detected."""
+        self._write(
+            "packages/app/package.json",
+            '{"devDependencies": {"vitest": "^1.0.0"}}',
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["frontend"], "vitest")
+
+    def test_detect_test_infra_first_match_wins_per_bucket(self):
+        """vitest takes priority over jest (bucket=frontend, vitest listed first)."""
+        self._write(
+            "package.json",
+            '{"devDependencies": {"jest": "^29.0.0", "vitest": "^1.0.0"}}',
+        )
+        result = init_helper._detect_test_infra(self.root)
+        # _TEST_INFRA_BUCKETS iteration order: vitest before jest → vitest wins.
+        self.assertEqual(result["frontend"], "vitest")
+
+    def test_detect_test_infra_rust_inside_src_subdir(self):
+        """#[cfg(test)] in src/submod/tests.rs (depth 2 from src/) is detected."""
+        self._write(
+            "src/submod/tests.rs",
+            "#[cfg(test)]\nmod tests {}\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["backend"], "cargo-test")
+
+    def test_detect_test_infra_go_depth_cap(self):
+        """*_test.go at depth 4 should NOT be detected (cap is depth 3)."""
+        self._write(
+            "a/b/c/d/foo_test.go",
+            "package d\n",
+        )
+        result = init_helper._detect_test_infra(self.root)
+        # a(1) / b(2) / c(3) / d(4) — depth 4 is beyond the cap.
+        self.assertIsNone(result["backend"])
+
+    def test_detect_test_infra_malformed_package_json_skipped(self):
+        """A malformed package.json must be skipped without aborting detection."""
+        self._write("package.json", "this is not json{{{")
+        result = init_helper._detect_test_infra(self.root)
+        self.assertEqual(result["status"], "absent")
+
+    def test_detect_test_infra_requirements_txt_line_boundary(self):
+        """'pytestification' must NOT trigger 'pytest' detection (prefix-match boundary)."""
+        self._write("requirements.txt", "pytestification>=1.0\n")
+        result = init_helper._detect_test_infra(self.root)
+        self.assertIsNone(result["backend"])
+
+
+# ---------------------------------------------------------------------------
+# TestSetTestInfra — CLI subcommand tests.
+# ---------------------------------------------------------------------------
+
+
+class TestSetTestInfra(_EnvIsolationMixin, unittest.TestCase):
+    """Tests for the set-test-infra subcommand."""
+
+    # --- 11: set-test-infra round-trip via init.yaml ---
+
+    def test_set_test_infra_override_writes_yaml(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-test-infra",
+            "--frontend", "vitest",
+            "--backend", "pytest",
+            "--e2e", "playwright",
+            "--status", "present",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        ti = state["test_infra"]
+        self.assertEqual(ti["frontend"], "vitest")
+        self.assertEqual(ti["backend"], "pytest")
+        self.assertEqual(ti["e2e"], "playwright")
+        self.assertEqual(ti["status"], "present")
+
+    # --- 12: set-test-infra rejects wrong-bucket framework ---
+
+    def test_set_test_infra_rejects_framework_bucket_mismatch(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-test-infra",
+            "--frontend", "pytest",   # pytest is backend, not frontend
+            "--backend", "null",
+            "--e2e", "null",
+            "--status", "absent",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"pytest", proc.stderr)
+        # New: error names both the framework's actual bucket and the rejected bucket.
+        self.assertIn(b"backend", proc.stderr)
+        self.assertIn(b"frontend", proc.stderr)
+
+    # --- 13: set-test-infra rejects invalid status ---
+
+    def test_set_test_infra_rejects_invalid_status(self):
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-test-infra",
+            "--frontend", "null",
+            "--backend", "null",
+            "--e2e", "null",
+            "--status", "maybe",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"maybe", proc.stderr)
+
+    def test_set_test_infra_accepts_null_for_all_frameworks(self):
+        """All frameworks set to null with status=absent is valid."""
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-test-infra",
+            "--frontend", "null",
+            "--backend", "null",
+            "--e2e", "null",
+            "--status", "absent",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = self._read_state()
+        ti = state["test_infra"]
+        self.assertIsNone(ti["frontend"])
+        self.assertIsNone(ti["backend"])
+        self.assertIsNone(ti["e2e"])
+        self.assertEqual(ti["status"], "absent")
+
+    def test_set_test_infra_rejects_e2e_framework_as_backend(self):
+        """cypress is an e2e framework, not backend."""
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "set-test-infra",
+            "--frontend", "null",
+            "--backend", "cypress",
+            "--e2e", "null",
+            "--status", "absent",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"cypress", proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# TestTestInfraYamlRoundTrip — YAML emit+parse round-trip for test_infra.
+# ---------------------------------------------------------------------------
+
+
+class TestTestInfraYamlRoundTrip(unittest.TestCase):
+    """YAML round-trip tests specific to the test_infra_record kind."""
+
+    # --- 14: emit_yaml + parse_yaml preserves test_infra block ---
+
+    def test_test_infra_yaml_round_trip(self):
+        state = init_helper.default_state()
+        state["test_infra"] = {
+            "frontend": "jest",
+            "backend": "pytest",
+            "e2e": "cypress",
+            "status": "present",
+        }
+        text = init_helper.emit_yaml(state)
+        state2 = init_helper.parse_yaml(text)
+        self.assertEqual(state["test_infra"], state2["test_infra"])
+
+    def test_test_infra_yaml_round_trip_all_null(self):
+        state = init_helper.default_state()
+        # Defaults: all None except status=absent.
+        text = init_helper.emit_yaml(state)
+        state2 = init_helper.parse_yaml(text)
+        self.assertEqual(state["test_infra"], state2["test_infra"])
+        self.assertIsNone(state2["test_infra"]["frontend"])
+        self.assertEqual(state2["test_infra"]["status"], "absent")
+
+    def test_test_infra_emit_block_format(self):
+        """test_infra block must use 2-space indent, no dash prefix."""
+        state = init_helper.default_state()
+        state["test_infra"] = {
+            "frontend": "vitest",
+            "backend": None,
+            "e2e": None,
+            "status": "partial",
+        }
+        text = init_helper.emit_yaml(state)
+        self.assertIn("test_infra:\n", text)
+        self.assertIn("  frontend: vitest\n", text)
+        self.assertIn("  backend: null\n", text)
+        self.assertIn("  status: partial\n", text)
+
+    # --- 15: legacy init.yaml (no test_infra key) loads with default injected ---
+
+    def test_legacy_init_yaml_loads_with_default_test_infra(self):
+        """Old-shape yaml without test_infra key → _load_state injects default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge_dir = Path(tmp)
+            init_yaml = devforge_dir / init_helper.OUTPUT_FILE_NAME
+            # Write old-shape YAML without test_infra.
+            init_yaml.write_text(
+                "workspace_mode: standalone\n"
+                "project_root: .\n"
+                "project_state: brownfield\n"
+                "default_branch: main\n"
+                "packages_detected: []\n",
+                encoding="utf-8",
+            )
+            saved = os.environ.get("DEVFORGE_DIR")
+            os.environ["DEVFORGE_DIR"] = str(devforge_dir)
+            try:
+                state = init_helper._load_state()
+            finally:
+                if saved is None:
+                    os.environ.pop("DEVFORGE_DIR", None)
+                else:
+                    os.environ["DEVFORGE_DIR"] = saved
+
+            # Default test_infra must be injected.
+            self.assertIn("test_infra", state)
+            ti = state["test_infra"]
+            self.assertIsNone(ti["frontend"])
+            self.assertIsNone(ti["backend"])
+            self.assertIsNone(ti["e2e"])
+            self.assertEqual(ti["status"], "absent")
+
+
+# ---------------------------------------------------------------------------
+# TestVerifyTestInfra — soft-warning and hard-fail integration with cmd_verify.
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyTestInfra(unittest.TestCase):
+    """Tests for the test_infra check added to cmd_verify.
+
+    These tests extend the existing VerifyTests fixture pattern:
+    DEVFORGE_DIR is a child of install_root.
+    """
+
+    def setUp(self):
+        self._saved_env = os.environ.pop("DEVFORGE_DIR", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.install_root = Path(self._tmp.name)
+        self.devforge_dir = self.install_root / ".devforge"
+        self.devforge_dir.mkdir()
+        self.output_file = self.devforge_dir / init_helper.OUTPUT_FILE_NAME
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        if self._saved_env is None:
+            os.environ.pop("DEVFORGE_DIR", None)
+        else:
+            os.environ["DEVFORGE_DIR"] = self._saved_env
+
+    def _make_index_artifacts(self):
+        index_json = self.devforge_dir / "index.json"
+        index_json.write_text("{}", encoding="utf-8")
+        docs_dir = self.install_root / "docs"
+        docs_dir.mkdir(exist_ok=True)
+        (docs_dir / "structure.md").write_text("# Structure\n", encoding="utf-8")
+
+    def _build_valid_state(self, project_root_rel="."):
+        """Write a fully-valid init.yaml via real setters."""
+        _run_cli(self.devforge_dir, "reset")
+        _run_cli(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_cli(self.devforge_dir, "set-project-root", project_root_rel)
+        _run_cli(self.devforge_dir, "set-project-state", "empty")
+        _run_cli(self.devforge_dir, "set-default-branch", "main")
+
+    # --- 16: soft-warns when test_infra.status=absent but detector finds something ---
+
+    def test_verify_soft_warns_when_packages_present_test_infra_absent_and_detected(self):
+        """Fixture: packages_detected populated + test_infra absent + vitest on disk
+        → exit 0 + stderr contains WARN: test_infra."""
+        self._build_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        # Add a package so packages_detected is non-empty.
+        _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", ".", "--manifest", "package.json",
+        )
+        # Ensure test_infra is absent (reset writes absent by default).
+        # Place vitest package.json at project_root (=install_root=`.`).
+        (self.install_root / "package.json").write_text(
+            '{"devDependencies": {"vitest": "^1.0.0"}}',
+            encoding="utf-8",
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8"))
+        stderr = proc.stderr.decode("utf-8")
+        self.assertIn("WARN: test_infra", stderr)
+
+    # --- 17: no warn when test_infra already populated ---
+
+    def test_verify_no_warn_when_test_infra_already_populated(self):
+        """When test_infra is populated, no WARN line is emitted."""
+        self._build_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        # Place vitest package.json on disk at install_root so the
+        # packages_detected scanner also sees it — register it so no
+        # packages_detected violation fires.
+        (self.install_root / "package.json").write_text(
+            '{"devDependencies": {"vitest": "^1.0.0"}}',
+            encoding="utf-8",
+        )
+        _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", ".", "--manifest", "package.json",
+        )
+        # Override test_infra to populated state.
+        _run_cli(
+            self.devforge_dir,
+            "set-test-infra",
+            "--frontend", "vitest",
+            "--backend", "null",
+            "--e2e", "null",
+            "--status", "partial",
+        )
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8"))
+        stderr = proc.stderr.decode("utf-8")
+        self.assertNotIn("WARN: test_infra", stderr)
+
+    # --- 18: no warn when no detection hit ---
+
+    def test_verify_no_warn_when_no_detection_hit(self):
+        """packages_detected populated but no test files on disk → exit 0, no WARN."""
+        self._build_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        _run_cli(
+            self.devforge_dir,
+            "add-package", "--path", ".", "--manifest", "package.json",
+        )
+        # No test framework files at all in the temp dir.
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8"))
+        self.assertNotIn(b"WARN: test_infra", proc.stderr)
+
+    def test_verify_existing_happy_path_still_passes_after_test_infra_extension(self):
+        """Regression: existing happy-path with test_infra.status=absent,
+        no detection hit → exit 0, empty stderr (no warnings, no violations)."""
+        self._build_valid_state(project_root_rel=".")
+        self._make_index_artifacts()
+        # No test files in temp dir.
+        proc = _run_cli(self.devforge_dir, "verify")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode("utf-8"))
+        self.assertEqual(proc.stderr, b"")
+
+
+# ---------------------------------------------------------------------------
+# TestDetectTestInfraCLI — CLI subcommand round-trip for detect-test-infra.
+# ---------------------------------------------------------------------------
+
+
+class TestDetectTestInfraCLI(_EnvIsolationMixin, unittest.TestCase):
+    """CLI-level tests for the detect-test-infra subcommand."""
+
+    def setUp(self):
+        super().setUp()
+        # Set up install_root layout so DEVFORGE_DIR is a child.
+        self._tmp2 = tempfile.TemporaryDirectory()
+        self.install_root = Path(self._tmp2.name)
+        self.devforge_dir = self.install_root / ".devforge"
+        self.devforge_dir.mkdir()
+        self.output_file = self.devforge_dir / init_helper.OUTPUT_FILE_NAME
+
+    def tearDown(self):
+        self._tmp2.cleanup()
+        super().tearDown()
+
+    def test_detect_test_infra_cli_writes_json_to_stdout(self):
+        """detect-test-infra echoes compact JSON to stdout."""
+        # Project root = a subdirectory with vitest.
+        project_root = self.install_root / "app"
+        project_root.mkdir()
+        (project_root / "package.json").write_text(
+            '{"devDependencies": {"vitest": "^1.0.0"}}',
+            encoding="utf-8",
+        )
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "detect-test-infra",
+            "--project-root", str(project_root),
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # Stdout must be valid JSON.
+        out = json.loads(proc.stdout.decode("utf-8").strip())
+        self.assertEqual(out["frontend"], "vitest")
+        self.assertEqual(out["status"], "partial")
+
+    def test_detect_test_infra_cli_writes_to_init_yaml(self):
+        """detect-test-infra updates test_infra in init.yaml."""
+        project_root = self.install_root / "app"
+        project_root.mkdir()
+        (project_root / "package.json").write_text(
+            '{"devDependencies": {"playwright": "^1.30.0"}}',
+            encoding="utf-8",
+        )
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "detect-test-infra",
+            "--project-root", str(project_root),
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        state = init_helper.parse_yaml(
+            self.output_file.read_text(encoding="utf-8")
+        )
+        self.assertEqual(state["test_infra"]["e2e"], "playwright")
+
+    def test_detect_test_infra_cli_missing_project_root_exits_2(self):
+        """--project-root pointing at a non-existent dir → exit 2."""
+        _run_cli(self.devforge_dir, "reset")
+        proc = _run_cli(
+            self.devforge_dir,
+            "detect-test-infra",
+            "--project-root", "/nonexistent/path/xyz123",
+        )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"does not exist", proc.stderr)
 
 
 if __name__ == "__main__":
