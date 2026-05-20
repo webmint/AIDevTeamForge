@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) shipped through 2026-05-21; Steps 9-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) + 9 (finalize-output + append-to-replay-corpus) shipped through 2026-05-21; ALL 11 HELPER VERBS IMPLEMENTED (zero stubs); Steps 10-12 pending (slash command spec + PR #304 replay + testForge20 manual verify). Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -346,9 +346,12 @@ verbs:
 
 **Verify**:
 
-- `pr_review_helper finalize-output --findings findings.json` writes `pr-review-<PR#>.md` + `pr-review-bundle.json`
-- Output markdown human-readable + scannable
-- Replay corpus entry created in `tests/fixtures/pr_review_replay_corpus/<PR#>/`
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper finalize-output --pr <N> --target <path>` renders `<target>/.devforge/pr-reviews/<N>/findings.md` (severity-sorted + summary header with slop/blast/drift scores) + outputs summary JSON
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper append-to-replay-corpus --pr <N> --target <path>` writes `<target>/.devforge/pr-reviews/<N>/pr-review-bundle.json` + upserts `<target>/.devforge/pr-reviews/_corpus_index.json`
+- Idempotent: re-running append-to-replay-corpus updates last_reviewed_at + review_count++, preserves first_reviewed_at
+- Test coverage: render + summary + sort + score computation + upsert (created/updated) + fail-soft on missing/malformed index
+
+**Status (2026-05-21)**: COMPLETE — `_output.py` (312L) + `_replay.py` (281L) shipped via python-engineer; 1068 tests green (919 prior + 149 new — 145 step-9 + 4 from F3 title-persistence cross-file fix). python-reviewer audit yielded 4 findings (F1 medium `_sort_findings` docstring lied about sort order — fixed, F2 low `utcnow` deprecation — migrated 2 files to `datetime.now(timezone.utc)`, F3 low PR title never persisted to state — added `pr_title` field to PRReviewState + intake populates + output reads, F4 nit metrics double-computation — DEFERRED); F1/F2/F3 applied. ZERO stubs remain in `_cli.py`; all 11 verbs implemented. findings.md schema + corpus_index.json schema (`schema_version: "1"`) canonical. NO LLM/MCP/git-mutating/run-in-background invocations.
 
 ### Step 10 — Slash command spec + emitter wire-in
 

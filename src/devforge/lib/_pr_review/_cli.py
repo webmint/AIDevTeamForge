@@ -1,7 +1,7 @@
 """argparse parser + dispatch + main entry for pr_review_helper.
 
 build_parser composes the top-level + subparsers.
-_register_subcommands attaches every cmd_* handler (real or stub).
+_register_subcommands attaches every cmd_* handler.
 main parses argv + dispatches.
 
 Step 2 verbs (ensure-cbm-index, detect-forge-state) are fully implemented.
@@ -11,8 +11,8 @@ Step 5 verb (compute-blast-radius) is fully implemented.
 Step 6 verbs (bundle-context, import-handoffs) are fully implemented.
 Step 7 verb (check-scope-drift) is fully implemented.
 Step 8 verb (dispatch-review) is fully implemented.
-The remaining 2 verb stubs return exit 1 with a "not yet implemented"
-message; concrete behavior lands in PR-REVIEW-PLAN Step 9.
+Step 9 verbs (finalize-output, append-to-replay-corpus) are fully implemented.
+All 11 verbs are implemented; zero stubs remain.
 """
 
 from __future__ import annotations
@@ -445,19 +445,90 @@ def cmd_dispatch_review(args: argparse.Namespace) -> int:
 
 
 def cmd_finalize_output(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper finalize-output: not yet implemented"
-        " (PR-REVIEW-PLAN Step 9 pending)\n"
-    )
-    return 1
+    """Phase 7: render state.findings to findings.md.
+
+    Reads state.json (populated by Step 8 dispatch-review), renders a Markdown
+    findings report sorted by severity then location, writes it atomically to
+    <target>/.devforge/pr-reviews/<pr>/findings.md, and emits a summary JSON
+    dict to stdout.
+
+    Returns 0 on success, 1 on error.
+    """
+    from ._output import run as _run_output
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper finalize-output: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    try:
+        result = _run_output(
+            target=target,
+            pr_number=pr_number,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write("pr_review_helper finalize-output: {0}\n".format(exc))
+        return 1
+    except OSError as exc:
+        sys.stderr.write(
+            "pr_review_helper finalize-output: I/O error: {0}\n".format(exc)
+        )
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_append_to_replay_corpus(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper append-to-replay-corpus: not yet implemented"
-        " (PR-REVIEW-PLAN Step 9 pending)\n"
-    )
-    return 1
+    """Phase 7: write bundle snapshot + upsert corpus index.
+
+    Reads state.json, writes a full state snapshot to
+    <target>/.devforge/pr-reviews/<pr>/pr-review-bundle.json, and upserts an
+    entry in the corpus-wide index at
+    <target>/.devforge/pr-reviews/_corpus_index.json.
+
+    Both files are written atomically.  Re-running increments review_count;
+    first_reviewed_at is preserved.
+
+    Returns 0 on success, 1 on error.
+    """
+    from ._replay import run as _run_replay
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper append-to-replay-corpus: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    try:
+        result = _run_replay(
+            target=target,
+            pr_number=pr_number,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write(
+            "pr_review_helper append-to-replay-corpus: {0}\n".format(exc)
+        )
+        return 1
+    except OSError as exc:
+        sys.stderr.write(
+            "pr_review_helper append-to-replay-corpus: I/O error: {0}\n".format(exc)
+        )
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -564,6 +635,8 @@ def _register_subcommands(subparsers) -> None:
         "import-handoffs",
         "check-scope-drift",
         "dispatch-review",
+        "finalize-output",
+        "append-to-replay-corpus",
     ])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
         sp = subparsers.add_parser(verb, help=help_text)

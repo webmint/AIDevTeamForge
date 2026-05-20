@@ -28,6 +28,7 @@ class PRReviewState:
     # Step 3 (intake) populates.
     pr_number: int = 0
     repo: str = ""
+    pr_title: str = ""
     # Runtime-injected by _cli (cmd_detect_smells); written to state.json but
     # always overwritten from --target args at run time — do not rely on the
     # persisted value across machines (it is machine-local). Declared here

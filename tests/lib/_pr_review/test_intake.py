@@ -640,6 +640,15 @@ class TestRun(unittest.TestCase):
             data = json.load(f)
         self.assertEqual(data["pr_body"], _SAMPLE_PR_VIEW["body"])
 
+    def test_state_file_contains_pr_title(self):
+        """F3: pr_title from gh pr view is persisted to state.json."""
+        with patch("_pr_review._intake.subprocess.run", side_effect=_make_run_mocks()):
+            run(target=self._tmp, pr_number=42, repo="acme/app")
+        sp = state_path(os.path.join(self._tmp, ".devforge"), 42)
+        with open(sp, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["pr_title"], "Add spinner component")
+
     def test_forge_tier_left_at_default(self):
         """intake does NOT populate forge_tier; it stays at default 'none'."""
         with patch("_pr_review._intake.subprocess.run", side_effect=_make_run_mocks()):

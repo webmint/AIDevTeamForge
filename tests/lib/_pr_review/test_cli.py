@@ -10,7 +10,8 @@ Coverage:
   Step 6 verbs (bundle-context, import-handoffs): args registered, smoke tests.
   Step 7 verb (check-scope-drift): args registered, smoke tests.
   Step 8 verb (dispatch-review): args registered, smoke tests.
-  The 2 remaining stub verbs: exit 1 + correct "not yet implemented" message.
+  Step 9 verbs (finalize-output, append-to-replay-corpus): args registered, smoke tests.
+  All 11 verbs implemented; zero stubs remain.
 """
 
 import argparse
@@ -47,13 +48,8 @@ _VERB_STEP = [
     ("append-to-replay-corpus", 9),
 ]
 
-# The 2 still-stub verbs (Step 9); intake (Step 3), detect-smells (Step 4),
-# compute-blast-radius (Step 5), bundle-context + import-handoffs (Step 6),
-# check-scope-drift (Step 7), dispatch-review (Step 8) are now implemented.
-_STUB_VERB_STEP = [
-    ("finalize-output", 9),
-    ("append-to-replay-corpus", 9),
-]
+# All verbs are implemented; zero stubs remain.
+_STUB_VERB_STEP = []
 
 
 def _run_helper(argv):
@@ -74,8 +70,7 @@ class TestBuildParser(unittest.TestCase):
     def test_all_11_verbs_registered(self):
         """Each verb can be parsed without argparse raising SystemExit.
 
-        intake requires --pr and --repo; detect-smells and compute-blast-radius
-        require --pr; supply minimal valid values for those.
+        intake requires --pr and --repo; all other verbs with --pr supply it.
         """
         _PR_REQUIRED = frozenset([
             "detect-smells",
@@ -84,6 +79,8 @@ class TestBuildParser(unittest.TestCase):
             "import-handoffs",
             "check-scope-drift",
             "dispatch-review",
+            "finalize-output",
+            "append-to-replay-corpus",
         ])
         parser = build_parser()
         for verb, _ in _VERB_STEP:
@@ -123,13 +120,14 @@ class TestBuildParser(unittest.TestCase):
                 args = parser.parse_args([verb, "--target", "/some/path"])
                 self.assertEqual(args.target, "/some/path")
 
-    def test_stub_verbs_do_not_have_target_arg(self):
-        """Stub verbs (step 9) do not accept --target yet."""
+    def test_step9_verbs_accept_target_and_pr_arg(self):
+        """finalize-output and append-to-replay-corpus accept --pr and --target."""
         parser = build_parser()
-        for verb, _ in _STUB_VERB_STEP:
+        for verb in ("finalize-output", "append-to-replay-corpus"):
             with self.subTest(verb=verb):
-                with self.assertRaises(SystemExit):
-                    parser.parse_args([verb, "--target", "/x"])
+                args = parser.parse_args([verb, "--pr", "42", "--target", "/x"])
+                self.assertEqual(args.pr, 42)
+                self.assertEqual(args.target, "/x")
 
     def test_detect_smells_has_pr_arg(self):
         """detect-smells accepts --pr (int, required)."""
@@ -211,10 +209,11 @@ class TestMainDispatch(unittest.TestCase):
         code = main([])
         self.assertEqual(code, 2)
 
-    def test_stub_verb_returns_1(self):
-        """Any remaining stub verb (finalize-output) returns 1 (not yet implemented)."""
-        code = main(["finalize-output"])
-        self.assertEqual(code, 1)
+    def test_finalize_output_missing_pr_exits_nonzero(self):
+        """finalize-output without --pr exits non-zero (argparse SystemExit)."""
+        with self.assertRaises(SystemExit) as ctx:
+            main(["finalize-output"])
+        self.assertNotEqual(ctx.exception.code, 0)
 
 
 class TestStep2VerbsViaCLI(unittest.TestCase):
@@ -284,38 +283,22 @@ class TestStep2VerbsViaCLI(unittest.TestCase):
         self.assertEqual(data["tier"], "none")
 
 
-class TestSubprocessStubs(unittest.TestCase):
-    """Each of the 2 remaining stub verbs (Step 9): exit 1 + 'not yet implemented'."""
+class TestNoStubsRemaining(unittest.TestCase):
+    """Verify zero stubs remain — all 11 verbs fully implemented."""
 
-    def _assert_stub(self, verb, step):
-        result = _run_helper([verb])
-        self.assertEqual(
-            result.returncode,
-            1,
-            "verb={0}: expected exit 1, got {1}\nstderr={2}".format(
-                verb, result.returncode, result.stderr
-            ),
-        )
-        self.assertIn(
-            "pr_review_helper {0}: not yet implemented".format(verb),
-            result.stderr,
-            "verb={0}: stub message not in stderr\nstderr={1}".format(
-                verb, result.stderr
-            ),
-        )
-        self.assertIn(
-            "PR-REVIEW-PLAN Step {0} pending".format(step),
-            result.stderr,
-            "verb={0}: step number not in stderr\nstderr={1}".format(
-                verb, result.stderr
-            ),
-        )
+    def test_stub_verb_list_empty(self):
+        """_STUB_VERB_STEP should be empty after Step 9 implementation."""
+        self.assertEqual(_STUB_VERB_STEP, [])
 
-    def test_finalize_output_stub(self):
-        self._assert_stub("finalize-output", 9)
+    def test_finalize_output_no_stub_message(self):
+        """finalize-output without --pr exits via argparse, not stub message."""
+        result = _run_helper(["finalize-output"])
+        self.assertNotIn("not yet implemented", result.stderr)
 
-    def test_append_to_replay_corpus_stub(self):
-        self._assert_stub("append-to-replay-corpus", 9)
+    def test_append_to_replay_corpus_no_stub_message(self):
+        """append-to-replay-corpus without --pr exits via argparse, not stub message."""
+        result = _run_helper(["append-to-replay-corpus"])
+        self.assertNotIn("not yet implemented", result.stderr)
 
 
 class TestDetectSmellsVerb(unittest.TestCase):
@@ -1018,6 +1001,325 @@ class TestDispatchReviewVerb(unittest.TestCase):
         argv = [
             "--devforge-dir", self._tmp + "/.devforge",
             "dispatch-review",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ]
+        result1 = _run_helper(argv)
+        result2 = _run_helper(argv)
+        self.assertEqual(result1.returncode, 0)
+        self.assertEqual(result2.returncode, 0)
+
+
+class TestFinalizeOutputVerb(unittest.TestCase):
+    """finalize-output verb: argparse + smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses as _dc
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 77
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os as _os
+        _os.makedirs(_os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="acme/app",
+            findings=[
+                {
+                    "severity": "high",
+                    "location": "src/x.py:10",
+                    "category": "smell",
+                    "evidence": "test evidence",
+                    "fix_hint": "test fix",
+                    "source_heuristic": "hedge-defensive",
+                },
+                {
+                    "severity": "low",
+                    "location": "src/y.py:5",
+                    "category": "drift",
+                    "evidence": "drift evidence",
+                    "fix_hint": "",
+                    "source_heuristic": "",
+                },
+            ],
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(_dc.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_finalize_output_has_pr_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["finalize-output", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_finalize_output_has_target_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["finalize-output", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_finalize_output_requires_pr(self):
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["finalize-output"])
+
+    def test_finalize_output_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "finalize-output",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "finalize-output: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_finalize_output_stdout_is_valid_json(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "finalize-output",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("findings_path", data)
+        self.assertIn("findings_total", data)
+        self.assertIn("by_severity", data)
+        self.assertIn("slop_score", data)
+        self.assertIn("blast_risk_score", data)
+        self.assertIn("drift_summary", data)
+        self.assertIn("state_path", data)
+
+    def test_finalize_output_without_state_exits_1(self):
+        result = _run_helper([
+            "finalize-output",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("intake", result.stderr)
+
+    def test_finalize_output_writes_findings_md(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "finalize-output",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        import os as _os
+        self.assertTrue(
+            _os.path.isfile(data["findings_path"]),
+            "findings.md not found at {0}".format(data["findings_path"]),
+        )
+
+    def test_finalize_output_correct_findings_total(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "finalize-output",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["findings_total"], 2)
+
+    def test_finalize_output_idempotent(self):
+        argv = [
+            "--devforge-dir", self._tmp + "/.devforge",
+            "finalize-output",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ]
+        result1 = _run_helper(argv)
+        result2 = _run_helper(argv)
+        self.assertEqual(result1.returncode, 0)
+        self.assertEqual(result2.returncode, 0)
+
+
+class TestAppendToReplayCorpusVerb(unittest.TestCase):
+    """append-to-replay-corpus verb: argparse + smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses as _dc
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 304
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os as _os
+        _os.makedirs(_os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="DoosanICA/db-cse-ui-strata",
+            findings=[{"severity": "medium", "location": "x.vue:1", "category": "smell",
+                        "evidence": "e", "fix_hint": "f", "source_heuristic": ""}],
+            smells=[{"name": "s"}],
+            blast=[{"symbol": "compute"}],
+            drift={"bullets": [{"id": "B1"}], "coverage_matrix": []},
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(_dc.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_append_to_replay_corpus_has_pr_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["append-to-replay-corpus", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_append_to_replay_corpus_has_target_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["append-to-replay-corpus", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_append_to_replay_corpus_requires_pr(self):
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["append-to-replay-corpus"])
+
+    def test_append_to_replay_corpus_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "append-to-replay-corpus: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_append_to_replay_corpus_stdout_is_valid_json(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("bundle_path", data)
+        self.assertIn("corpus_index_path", data)
+        self.assertIn("entry_action", data)
+        self.assertIn("review_count", data)
+        self.assertIn("findings_count", data)
+
+    def test_append_to_replay_corpus_without_state_exits_1(self):
+        result = _run_helper([
+            "append-to-replay-corpus",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("intake", result.stderr)
+
+    def test_append_to_replay_corpus_writes_bundle(self):
+        import os as _os
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        self.assertTrue(
+            _os.path.isfile(data["bundle_path"]),
+            "bundle not found at {0}".format(data["bundle_path"]),
+        )
+
+    def test_append_to_replay_corpus_writes_index(self):
+        import os as _os
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        self.assertTrue(
+            _os.path.isfile(data["corpus_index_path"]),
+            "corpus index not found at {0}".format(data["corpus_index_path"]),
+        )
+
+    def test_append_to_replay_corpus_entry_action_created_on_first_run(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["entry_action"], "created")
+
+    def test_append_to_replay_corpus_entry_action_updated_on_second_run(self):
+        argv = [
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ]
+        _run_helper(argv)
+        result2 = _run_helper(argv)
+        self.assertEqual(result2.returncode, 0)
+        data = json.loads(result2.stdout)
+        self.assertEqual(data["entry_action"], "updated")
+
+    def test_append_to_replay_corpus_review_count_increments(self):
+        argv = [
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ]
+        _run_helper(argv)
+        result2 = _run_helper(argv)
+        data = json.loads(result2.stdout)
+        self.assertEqual(data["review_count"], 2)
+
+    def test_append_to_replay_corpus_idempotent(self):
+        argv = [
+            "--devforge-dir", self._tmp + "/.devforge",
+            "append-to-replay-corpus",
             "--pr", str(self._pr_number),
             "--target", self._tmp,
         ]

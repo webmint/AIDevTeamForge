@@ -69,6 +69,11 @@ class TestPRReviewStateDefaults(unittest.TestCase):
         self.assertIsInstance(self.state.commit_subjects, list)
         self.assertEqual(self.state.commit_subjects, [])
 
+    def test_pr_title_default_is_empty_string(self):
+        """F3: pr_title must be a declared field defaulting to empty string."""
+        self.assertIsInstance(self.state.pr_title, str)
+        self.assertEqual(self.state.pr_title, "")
+
     def test_target_default_is_empty_string(self):
         """F5: target must be a declared field defaulting to empty string."""
         self.assertIsInstance(self.state.target, str)

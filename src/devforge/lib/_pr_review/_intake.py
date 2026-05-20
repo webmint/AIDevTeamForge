@@ -397,9 +397,11 @@ def run(
     commit_subjects = _extract_commit_subjects(commits)
 
     # Build state.
+    title = pr_view.get("title") or ""
     state = PRReviewState(
         pr_number=pr_number,
         repo=repo,
+        pr_title=title,
         diff=diff,
         pr_body=pr_view.get("body") or "",
         linked_issues=linked_issues,
@@ -416,7 +418,6 @@ def run(
     files_changed = len(pr_view.get("files") or [])
     additions = pr_view.get("additions") or 0
     deletions = pr_view.get("deletions") or 0
-    title = pr_view.get("title") or ""
 
     return {
         "status": "ok",
