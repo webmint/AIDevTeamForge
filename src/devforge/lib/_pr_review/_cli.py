@@ -8,8 +8,9 @@ Step 2 verbs (ensure-cbm-index, detect-forge-state) are fully implemented.
 Step 3 verb (intake) is fully implemented.
 Step 4 verb (detect-smells) is fully implemented.
 Step 5 verb (compute-blast-radius) is fully implemented.
-The remaining 6 verb stubs return exit 1 with a "not yet implemented"
-message; concrete behavior lands in PR-REVIEW-PLAN Steps 6-9.
+Step 6 verbs (bundle-context, import-handoffs) are fully implemented.
+The remaining 4 verb stubs return exit 1 with a "not yet implemented"
+message; concrete behavior lands in PR-REVIEW-PLAN Steps 7-9.
 """
 
 from __future__ import annotations
@@ -269,19 +270,87 @@ def cmd_compute_blast_radius(args: argparse.Namespace) -> int:
 
 
 def cmd_bundle_context(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper bundle-context: not yet implemented"
-        " (PR-REVIEW-PLAN Step 6 pending)\n"
-    )
-    return 1
+    """Phase 4a: aggregate filesystem context sources into state.bundle.
+
+    Reads state.json (written by Step 3 intake), assembles constitution,
+    constitute.json, concern docs, ADRs, and *-PLAN.md files from the
+    local filesystem, and writes the bundle to state.bundle.
+
+    Returns 0 on success, 1 on any error.
+    """
+    from ._bundle import run as _run_bundle
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper bundle-context: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    try:
+        result = _run_bundle(
+            target=target,
+            pr_number=pr_number,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write(
+            "pr_review_helper bundle-context: {0}\n".format(exc)
+        )
+        return 1
+    except OSError as exc:
+        sys.stderr.write(
+            "pr_review_helper bundle-context: I/O error: {0}\n".format(exc)
+        )
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_import_handoffs(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper import-handoffs: not yet implemented"
-        " (PR-REVIEW-PLAN Step 6 pending)\n"
-    )
-    return 1
+    """Phase 4b: scan research/ for relevant handoffs and write to state.bundle.
+
+    Reads state.json (written by Step 3 intake), discovers handoff.json
+    files under <target>/research/, filters by relevance to state.ticket_text
+    and PR title, and writes the filtered set to state.bundle["research_handoffs"].
+
+    Returns 0 on success, 1 on any error.
+    """
+    from ._handoff_import import run as _run_handoff_import
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper import-handoffs: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    try:
+        result = _run_handoff_import(
+            target=target,
+            pr_number=pr_number,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write(
+            "pr_review_helper import-handoffs: {0}\n".format(exc)
+        )
+        return 1
+    except OSError as exc:
+        sys.stderr.write(
+            "pr_review_helper import-handoffs: I/O error: {0}\n".format(exc)
+        )
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_check_scope_drift(args: argparse.Namespace) -> int:
@@ -413,7 +482,12 @@ def _register_subcommands(subparsers) -> None:
     until their step lands.
     """
     _STEP2_VERBS = frozenset(["ensure-cbm-index", "detect-forge-state"])
-    _PR_REQUIRED_VERBS = frozenset(["detect-smells", "compute-blast-radius"])
+    _PR_REQUIRED_VERBS = frozenset([
+        "detect-smells",
+        "compute-blast-radius",
+        "bundle-context",
+        "import-handoffs",
+    ])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
         sp = subparsers.add_parser(verb, help=help_text)
         if verb in _STEP2_VERBS:

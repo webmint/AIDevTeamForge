@@ -7,7 +7,8 @@ Coverage:
   Step 3 verb (intake): args registered, no-longer-stub smoke test.
   Step 4 verb (detect-smells): args registered, smoke test with synthetic state.
   Step 5 verb (compute-blast-radius): args registered, smoke test with synthetic state.
-  The 6 remaining stub verbs: exit 1 + correct "not yet implemented" message.
+  Step 6 verbs (bundle-context, import-handoffs): args registered, smoke tests.
+  The 4 remaining stub verbs: exit 1 + correct "not yet implemented" message.
 """
 
 import argparse
@@ -44,11 +45,10 @@ _VERB_STEP = [
     ("append-to-replay-corpus", 9),
 ]
 
-# The 6 still-stub verbs (Steps 6-9); intake (Step 3), detect-smells (Step 4),
-# and compute-blast-radius (Step 5) are now implemented.
+# The 4 still-stub verbs (Steps 7-9); intake (Step 3), detect-smells (Step 4),
+# compute-blast-radius (Step 5), bundle-context + import-handoffs (Step 6)
+# are now implemented.
 _STUB_VERB_STEP = [
-    ("bundle-context", 6),
-    ("import-handoffs", 6),
     ("check-scope-drift", 7),
     ("dispatch-review", 8),
     ("finalize-output", 9),
@@ -77,7 +77,12 @@ class TestBuildParser(unittest.TestCase):
         intake requires --pr and --repo; detect-smells and compute-blast-radius
         require --pr; supply minimal valid values for those.
         """
-        _PR_REQUIRED = frozenset(["detect-smells", "compute-blast-radius"])
+        _PR_REQUIRED = frozenset([
+            "detect-smells",
+            "compute-blast-radius",
+            "bundle-context",
+            "import-handoffs",
+        ])
         parser = build_parser()
         for verb, _ in _VERB_STEP:
             with self.subTest(verb=verb):
@@ -117,7 +122,7 @@ class TestBuildParser(unittest.TestCase):
                 self.assertEqual(args.target, "/some/path")
 
     def test_stub_verbs_do_not_have_target_arg(self):
-        """Stub verbs (steps 6-9) do not accept --target yet."""
+        """Stub verbs (steps 7-9) do not accept --target yet."""
         parser = build_parser()
         for verb, _ in _STUB_VERB_STEP:
             with self.subTest(verb=verb):
@@ -206,7 +211,7 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_stub_verb_returns_1(self):
         """Any remaining stub verb returns 1 (not yet implemented)."""
-        code = main(["bundle-context"])
+        code = main(["check-scope-drift"])
         self.assertEqual(code, 1)
 
 
@@ -278,7 +283,7 @@ class TestStep2VerbsViaCLI(unittest.TestCase):
 
 
 class TestSubprocessStubs(unittest.TestCase):
-    """Each of the 6 remaining stub verbs (Steps 6-9): exit 1 + 'not yet implemented'."""
+    """Each of the 4 remaining stub verbs (Steps 7-9): exit 1 + 'not yet implemented'."""
 
     def _assert_stub(self, verb, step):
         result = _run_helper([verb])
@@ -303,12 +308,6 @@ class TestSubprocessStubs(unittest.TestCase):
                 verb, result.stderr
             ),
         )
-
-    def test_bundle_context_stub(self):
-        self._assert_stub("bundle-context", 6)
-
-    def test_import_handoffs_stub(self):
-        self._assert_stub("import-handoffs", 6)
 
     def test_check_scope_drift_stub(self):
         self._assert_stub("check-scope-drift", 7)
@@ -538,6 +537,216 @@ class TestComputeBlastRadiusVerb(unittest.TestCase):
             state_data = _json.load(fh)
         self.assertIsInstance(state_data["blast"], list)
         self.assertGreater(len(state_data["blast"]), 0)
+
+
+class TestBundleContextVerb(unittest.TestCase):
+    """bundle-context verb: argparse + smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses as _dc
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 88
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os as _os
+        _os.makedirs(_os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="acme/app",
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(_dc.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_bundle_context_has_pr_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["bundle-context", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_bundle_context_has_target_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["bundle-context", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_bundle_context_requires_pr(self):
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["bundle-context"])
+
+    def test_bundle_context_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "bundle-context",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "bundle-context: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_bundle_context_stdout_is_valid_json(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "bundle-context",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("sources_gathered", data)
+        self.assertIn("state_path", data)
+
+    def test_bundle_context_without_state_exits_1(self):
+        result = _run_helper([
+            "bundle-context",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("intake", result.stderr)
+
+    def test_bundle_context_writes_bundle_to_state(self):
+        import json as _json
+        _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "bundle-context",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            state_data = _json.load(fh)
+        self.assertIsInstance(state_data["bundle"], dict)
+        self.assertIn("constitution_md", state_data["bundle"])
+        self.assertIn("concern_docs", state_data["bundle"])
+        self.assertIn("adrs", state_data["bundle"])
+        self.assertIn("plan_files", state_data["bundle"])
+
+
+class TestImportHandoffsVerb(unittest.TestCase):
+    """import-handoffs verb: argparse + smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses as _dc
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 99
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os as _os
+        _os.makedirs(_os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="acme/app",
+            ticket_text="auth login fix",
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(_dc.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_import_handoffs_has_pr_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["import-handoffs", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_import_handoffs_has_target_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["import-handoffs", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_import_handoffs_requires_pr(self):
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["import-handoffs"])
+
+    def test_import_handoffs_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "import-handoffs",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "import-handoffs: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_import_handoffs_stdout_is_valid_json(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "import-handoffs",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("handoffs_found", data)
+        self.assertIn("handoffs_matched", data)
+        self.assertIn("filter_applied", data)
+
+    def test_import_handoffs_without_state_exits_1(self):
+        result = _run_helper([
+            "import-handoffs",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("intake", result.stderr)
+
+    def test_import_handoffs_writes_research_handoffs_to_state(self):
+        import json as _json
+        # Create a handoff.
+        research_dir = self._tmp + "/research/2026-05-01-auth-fix"
+        import os as _os
+        _os.makedirs(research_dir, exist_ok=True)
+        with open(research_dir + "/handoff.json", "w") as fh:
+            _json.dump({"mode": "bug", "verdict": "proceed"}, fh)
+
+        _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "import-handoffs",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            state_data = _json.load(fh)
+        self.assertIn("research_handoffs", state_data["bundle"])
+        self.assertIsInstance(state_data["bundle"]["research_handoffs"], list)
 
 
 class TestHelpOutput(unittest.TestCase):

@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) shipped same day; Steps 6-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) shipped same day; Steps 7-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -281,9 +281,11 @@ verbs:
 
 **Verify**:
 
-- `pr_review_helper bundle-context --intake intake.json --blast blast.json` outputs `context.json`
-- PR #304 replay: bundle includes order-flow concern docs (if .devforge/order-flow/ existed) + universal SOLID/DRY constitution sections + any matching research handoff
-- Test coverage: tier-full / tier-partial / tier-none / handoff-match-found / handoff-no-match
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper bundle-context --pr <N> --target <path>` populates `state.bundle.{constitution_md, constitute_json, concern_docs, adrs, plan_files}` + outputs summary JSON (sources_gathered counts)
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper import-handoffs --pr <N> --target <path>` appends `state.bundle.research_handoffs` + outputs summary (matched count + total scanned)
+- Test coverage: tier-full / tier-partial / tier-none / handoff-match-found / handoff-no-match / token-too-short fallback / caps tripped
+
+**Status (2026-05-20)**: COMPLETE — `_bundle.py` (486L) + `_handoff_import.py` (406L) shipped via python-engineer; 721 tests green (592 prior + 129 new). python-reviewer audit yielded 4 findings (F1 medium docstring vs code mismatch on unreadable-file semantics, F2 low `_excerpt_handoff` duplicate inline impl, F3 low undocumented verdict→mode fallback, F4 nit `_write_state` duplicated across 4 modules); F1/F2/F3 applied; F4 DEFERRED to future consolidation step with TODO markers added to all 4 copies (`_intake.py`, `_blast.py`, `_bundle.py`, `_handoff_import.py`). NO state-mutating git ops; NO `run_in_background` subprocesses. Bundle schema canonical in `_bundle.py` module docstring.
 
 ### Step 7 — Phase 5: Scope-drift check
 
