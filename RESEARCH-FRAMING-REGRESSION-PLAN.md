@@ -1,6 +1,10 @@
 # RESEARCH-FRAMING-REGRESSION-PLAN
 
-**Status**: All 5 patches applied + tests green (231/231). **EMPIRICAL VERIFY FAILED 2026-05-17**: fresh /research on testForge20 duplicate-options topic scored **1.5 of 3 causes** — BELOW the pre-patch 04-30 baseline of 2 of 3. Patches enforced structural gates (framing competition, layer-boundary, scope evidence, single-layer justification, fix-path anchor) but did NOT close the actual observed failure mode: adapter file `strataFamilyToItemAdapters.ts:5` (indexed by CBM, visible in `MenuItemInfo.vue:193` as `strataFamilycharacteristicOptionAdapter(...)`) was never opened, so its `Math.random()-based bqItemId/id rewrite went undetected. Real Gap 6 = symbol-on-screen-but-unfollowed (no rule forces end-to-end read of intermediate transformers/adapters/mappers between user-action handler and write-boundary call); real Gap 7 = hypothesis enumeration biased toward identifier KIND (id vs bqItemId), not identifier STABILITY (stable id vs randomized-per-call). Actual fix shipped as commits `74adb5b17` + `df231933a` on `bugfix/MIG-2642` in `db-cse-ui-strata` — added `partNo` fallback param + recursive `findMatchingConfigurationLine` + `isSingleInstance` static. Patches 1-5 remain VALID structural improvements; they're necessary but not sufficient. Follow-up: draft Gap 6 (adapter-trace forcing function) + Gap 7 (id-stability hypothesis axis) as separate plan.
+**Status**: **9 patches applied + EMPIRICAL VERIFY PASSED 2026-05-18**. After 5-17 fail-verify (1.5/3 causes, below 04-30 baseline of 2/3), Patches 6-9 landed (Patch 6 = Phase 2.4d data-flow chain trace / adapter-follow forcing function; Patch 7 = Phase 2.5 id-stability hypothesis axis; Patch 8 = literal-archaeology gate; Patch 9 = argument-duplication shape check). Plus refactor: `research_helper.py` split into `src/devforge/lib/_research/` package per `REFACTOR-MONOLITHIC-HELPERS-PLAN.md` Phase D (commit `6c8545c`); shim at `research_helper.py` forwards to `_research/`.
+
+5-18 verify run (`testForge20/research/2026-05-18-restriction-on-adding-the.md`, 24.9K) caught **3.5/3 real-ship causes** vs commits `74adb5b17` + `df231933a`: (a) shallow `Array#find` + recursive-walk recommendation ✅; (b) Strata adapter `Math.random()` rewrite at `strataFamilyToItemAdapters.ts:5` ✅ (Patch 6/7/8 paid off); (c) `partNo` fallback for stable id ✅; (d) extra defense-in-depth domain guard at `AddActiveQuoteLineUseCase` ⚠️ overshoot (real ship didn't add but architecturally correct). Beats old 5-16 caught-it baseline which had (a)+(missing classifier) but missed Strata randomization entirely.
+
+**Coupling note (2026-05-20)**: `CONSTITUTION-STRENGTHENING-PLAN.md` work rolled back in `src/constitution.md` (0 matches for `Concrete pattern:` / `module-scope named function` / `module-boundary abstraction`; §3.6 DI reverted to generic; §3.7 reverted to Grep/Glob). /research now carries pattern-correctness alone — downstream PATTERN backstop gone, but 5-18 verify shows /research handles it without the backstop.
 **Date**: 2026-05-16
 **Branch**: `develop-2.0-init`
 **File**: `src/commands/research/main.md` (~554 lines) + `src/devforge/lib/research_helper.py` setters + verify checks
@@ -27,7 +31,7 @@ Compare both research runs side-by-side. Both ran on the same machine, same day,
 
 Real-ship evidence (commit `74adb5b17` in `db-cse-ui-strata`): keeps `subLine.item?.id === candidateBqItemId` comparator unchanged inside the recursive walker; adds `CoreQuoteLine.isSingleInstance` + `CoreQuoteLine.findMatchingConfigurationLine` statics; adds module-scope named function exports (`export const isSingleInstance = …`); rewires `MenuSection.vue:117` to `import { findMatchingConfigurationLine, isSingleInstance }` (NOT `import { CoreQuoteLine }`). Confirms old research was right + fresh research wrong-rooted.
 
-## Diagnosis — four structural gaps in /research that allowed the regression
+## Diagnosis — nine structural gaps in /research that allowed the regression
 
 ### Gap 1 — Phase 2.3 framing lock-in propagates with no adversarial challenge
 
@@ -61,9 +65,33 @@ Effect: 2-layer trace from a wrong starting point lands 2 layers from wrong. Con
 
 Distinction from Gap 2: Gap 2 controls how far Phase 2.4c traces (stopping rule). Gap 5 controls where Phase 2.4c starts (anchor rule). Different gates.
 
+### Gap 6 — Symbol-on-screen-but-unfollowed (adapter-hidden mutation)
+
+Phase 2.3 CBM discovery surfaces a click-handler file (e.g., `MenuItemInfo.vue`) and the write-boundary call (e.g., `quoteBloc.addLine`), but the chain in between — adapters / transformers / mappers (`strataFamilycharacteristicOptionAdapter`, etc.) — are visible as call-site symbols but never opened. LLM can read the handler + write-boundary endpoints AND STILL miss a `Math.random()` / `Date.now()` / `uuid()` id-rewrite hiding in the adapter body two hops away.
+
+Effect: empirical 5-17 verify failure. Real bug = `Math.floor(10000 + Math.random() * 90000)` at `strataFamilyToItemAdapters.ts:5` rewriting `bqItemId / id / baseInfo.id` per call. Adapter file was indexed by CBM, referenced by symbol at `MenuItemInfo.vue:193`, never read end-to-end. /research scored 1.5/3 on duplicate-options topic — below 04-30 baseline.
+
+### Gap 7 — Hypothesis enumeration biased toward identifier KIND, not STABILITY
+
+Phase 2.5 ≥2 hypothesis rule competes hypotheses within a single semantic axis. For identifier bugs, the axis defaults to KIND (id-A vs id-B field name) — same-axis competition. The STABILITY axis (stable id vs randomized-per-call) never surfaces unless the LLM independently considers it.
+
+Effect: paired with Gap 6 — 5-17 verify's hypotheses all probed comparator-typo / id-field-mismatch (KIND axis). Production-site randomization (STABILITY axis) ungathered. Required Gap 6's adapter-follow AND Gap 7's STABILITY-axis hypothesis to converge on the real Math.random root cause.
+
+### Gap 8 — Literal-replacement prose without git-blame archaeology
+
+Phase 3 `recommended_approach` can propose "replace literal X with Y" without classifying whether X is a placeholder / migrated-from-legacy / deliberate-business-value / forgotten-TODO / inherited-refactor / generated-by-tool. Each intent demands a different fix scope. "Replace `Math.random()` with stable id" reads identical to "replace `MAX_RETRIES=3` with `5`" but the former is a bug, the latter a config decision. Without classification, fix lands at wrong layer.
+
+Effect: orthogonal failure class to Gaps 1-7 — surfaced during V3 plan iteration before 5-18 verify. Closing it pre-emptively (Patch 8) gave 5-18 verify the literal-archaeology table that anchored the Math.random recommendation to "placeholder" intent.
+
+### Gap 9 — Proposed call-shape passing same identifier twice
+
+Phase 3 `recommended_approach` can propose a fix at a call site that passes the same identifier as multiple arguments (e.g., `addLine(id, ..., id, ...)`). Argument-duplication is a signal the fix layer is wrong — duplication means the call-site is patching around an upstream defect that should be fixed at the wrapper signature / state initialization / use-case default.
+
+Effect: orthogonal failure class — surfaced during V3 iteration. Patch 9 forces literalized call-shape commit + duplication detection, signaling fix-layer escalation.
+
 ## Patches
 
-Five patches, in dependency order. Each leaves /research in a buildable, verifiable state. Apply sequentially.
+Nine patches, in dependency order. All applied + empirically verified (5-18 pass: 3.5/3 causes vs real-ship commits `74adb5b17` + `df231933a`). Each leaves /research in a buildable, verifiable state.
 
 > **Rejected patch — prior-art input source (recorded for posterity).** An earlier draft proposed a Phase 1.5 step that walked `research/*.md` + `specs/*/spec.md` for topic-slug match + recorded them via `record-prior-art`. **Rejected** because (a) /research is `Fresh-every-run` by contract (main.md:66) — prior-art read contradicts that invariant; (b) prior LLM outputs propagate stale framing — old run's cited `specs/008` itself missed the wrapper-export step that the real ship corrected at code review, so transcribing it would propagate the same half-correct framing; (c) pollution scales with project age — N stale entries per fresh run anchor LLM toward older constitution + older code state; (d) /research's contract is independent investigation from CBM + docs + constitution, NOT consensus with prior LLM outputs. Patches 1 + 2 (renumbered below) make the framing-luck delta irrelevant without LLM-to-LLM transcription.
 
@@ -139,6 +167,38 @@ New verify check (sequential — wherever it lands in the numbered list): each `
 
 Independent of Patches 1-4 — Patch 5 closes the target-selection blind spot constitution can't see. Constitution strengthens **wrapper-export pattern** for cross-layer fixes; Patch 5 strengthens **which code region** the fix targets. Both layers needed.
 
+### Patch 6 — Phase 2.4d data-flow chain trace (Gap 6)
+
+**Where**: New phase `Phase 2.4d` between `Phase 2.4c` and `Phase 2.5`. Helper additions in `_research/_state.py` (`data_flow_chain` field) + new `record-data-flow-chain` setter + verify check 15. Commit `7a82a87`.
+
+**Change**: Five-step procedural sequence: (1) identify click handler; (2) identify write-boundary call; (3) `trace_path mode=calls` from handler to write-boundary; (4) read each first-party intermediate adapter/transformer/mapper end-to-end (filter by file-path heuristics + shape-conversion name heuristics); (5) persist via `record-data-flow-chain --handler-qn ... --write-boundary-qn ... --intermediate-qns <JSON>`. Setter validates every intermediate substring-matches an existing Finding's relevance OR surface — forces `record-finding` per intermediate BEFORE chain-record call. Verify check 15: bug mode + presentation-layer primary symptom → `data_flow_chain` must be non-null.
+
+**Verify**: 5-18 testForge20 run surfaced `Data-flow intermediate: strataFamilycharacteristicOptionAdapter` finding row + `data_flow_chain` populated with both `itemWithQuotePrice` + `strataFamilycharacteristicOptionAdapter` intermediates. Adapter file opened, Math.random rewrite detected.
+
+### Patch 7 — Phase 2.5 id-stability hypothesis axis (Gap 7)
+
+**Where**: Phase 2.5 setter `set-value-semantics` extended with `--stable-across-calls true|false|unknown`. New `record-value-production-site` setter + `value_production_sites` field on report. Verify check 16. Commit `73ef728`.
+
+**Change**: `--stable-across-calls` 4 evaluation-ordered gates — required when classification = invariant; `unknown` rejected on presentation-layer; `consumer_chain` row required to commit `false`; `false` requires at least one prior `record-value-production-site` row. New setter records `{value, file_line, is_stable}` with dedupe on `(value, file_line)` — multi-site support (same value at different lines append). Verify check 16: bug mode + any value_semantics row with `stable_across_calls=false` → at least one hypothesis cause must cite a `value_production_sites.file_line` (word-boundary regex `(?!\d)` prevents `:5` matching `:50`). Render adds Stability column + Value Production Sites section.
+
+**Verify**: 5-18 run rendered `Value Semantics` table with `bqItemId | invariant | … | false` + `Value Production Sites` table with `bqItemId | strataFamilyToItemAdapters.ts:5 | false`. Hypothesis H2 cites `Math.floor(10000 + Math.random() * 90000)` per call as identity-stability violation — STABILITY axis competition, not KIND.
+
+### Patch 8 — Literal-archaeology gate (Gap 8)
+
+**Where**: New Phase 2.5b between Phase 2.5 and Phase 2.6. `record-literal-archaeology` setter with 6-value `--intent` enum (`placeholder | migrated | deliberate | forgotten | inherited-refactor | generated`). Verify check 17 + render section. Commit `ef3cff2`.
+
+**Change**: `record-literal-archaeology` requires 6 args (literal, file_line, intent, git log -S evidence, git blame author/date, git show context). Verify check 17: bug-mode + recommended approach rationale (or linked approach description) contains literal-replacement prose (`"replace X with Y"` / `"X -> Y"`) → at least one `literal_archaeology` row for X at a finding's file_line. Spec adds `git log -S <literal>` + `git show` + `git blame` steps + per-intent recovery rules + shallow-clone fallback.
+
+**Verify**: 5-18 run classified `Math.random(...)` literal as `placeholder` intent + cited git blame surface. Recommended approach "replace with partNo fallback" anchored to placeholder classification rather than treated as deliberate business value.
+
+### Patch 9 — Argument-duplication shape check (Gap 9)
+
+**Where**: `set-recommended-approach` gains `--proposed-call-shape` arg. Helper additions: `CALL_SHAPE_RE` / `IDENT_CHAIN_RE` + `_split_top_level_args` + `_detect_arg_duplication` (paren/bracket/brace-depth aware). Verify check 18 mirrors duplication check. Render surfaces shape as fenced code block. Commit `fcc860b`.
+
+**Change**: `--proposed-call-shape` REQUIRED in bug mode when `--single-layer-justification` is set OR when rationale (or linked approach description) contains literal-replacement prose (reuses Patch 8 `_detect_literal_replacement`). Setter rejects when the literalized call passes the same identifier (bare / dotted / optional-chained) more than once; fail-soft on parser failure (stores shape verbatim + advisory stderr). Verify check 18 mirrors at verify time. Rationale: argument duplication signals fix layer belongs upstream (wrapper signature / state initialization / use-case default) rather than at the call site.
+
+**Verify**: 5-18 run committed proposed call-shape for `quoteBloc.addLine(item, options.lineConfigId)` — no duplication, no rejection. Gate didn't fire (correctly) on this topic but cross-validated against 28 new tests.
+
 ## Out of scope (this plan)
 
 - **Re-run testForge20 /research on the duplicate-options topic AFTER patches** — that's the empirical verification step, runs once patches land.
@@ -177,7 +237,7 @@ Resume RESEARCH-FRAMING-REGRESSION-PLAN.md at repo root. Read the plan top-to-bo
    wc -l /Users/mykolakudlyk/Projects/ai-dev-team-forge/src/commands/research/main.md
    ```
 4. Apply patches in order. Each patch = one commit. Do not bundle.
-5. After Patch 5 lands, run the empirical verify: fresh testForge20 /research on the duplicate-options topic. Diff against `testForge20/tmp/2026-05-16-restriction-on-adding-the.md` to confirm framing parity AND target parity (fix-path helpers anchor to findings at `QuoteLine.ts:97` / `MenuSection.vue:206`, not invented elsewhere).
+5. ~~After Patch 5 lands, run the empirical verify~~ — DONE 2026-05-18 (after Patches 6-9 added). Fresh testForge20 /research at `testForge20/research/2026-05-18-restriction-on-adding-the.md` (24.9K) caught 3.5/3 real-ship causes vs commits `74adb5b17` + `df231933a`. Framing parity + target parity + adapter-trace + STABILITY-axis hypothesis all passed.
 6. Update this plan's Status: **Patches applied + empirically verified** OR list which patches landed and which deferred.
 
 ## Notes for engineer / reviewer
