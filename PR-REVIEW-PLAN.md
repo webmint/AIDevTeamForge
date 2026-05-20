@@ -293,19 +293,19 @@ verbs:
 
 **Changes**:
 
-- `_pr_review/_scope_drift.py`:
-  - Extract ticket bullets via LLM (Haiku — cheap; cost surfaced)
-  - For each bullet: locate diff evidence (file/line matching the requirement)
-  - Coverage matrix: bullet → satisfied | partial | missing | scope-creep-elsewhere
-  - Flag: bullets-missing list + diff-files-outside-bullets list
-- Confidence flag per bullet (LLM-extracted requirements vary in quality)
-- Tests with PR #304 ticket text + diff
+- `_pr_review/_scope_drift.py` (helper-side, deterministic — same split as Step 5 blast probe-spec):
+  - Extract ticket bullets via 5-strategy regex chain in priority order: markdown_bullet → numbered_list → ac_marker → gwt → sentence_fallback (last-resort, only when other 4 yield 0 for the text block)
+  - Scan `state.ticket_text` (primary) + `state.pr_body` (secondary); dedupe by lowercased+stripped; cap `_MAX_BULLETS = 50`
+  - Emit `state.drift = {bullets, coverage_matrix=[], scope_creep_files=[], filled=False}` — coverage_matrix + scope_creep_files are LLM-filled at Step 8 dispatch-review
+- LLM-side coverage assessment + scope-creep file detection deferred to Step 8 reviewer brief (consistent with Step 5 blast-radius CBM-fill split)
 
 **Verify**:
 
-- `pr_review_helper check-scope-drift --intake intake.json` outputs `drift.json`
-- PR #304 replay: surfaces "AC-7 format on Ordered-By + Deliver-To missing", "AC-9 Strata env gate missing", "scope-creep: built internal picker not requested by ticket"
-- Test coverage: full-coverage / partial / scope-creep / no-ticket-text-bail
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper check-scope-drift --pr <N> --target <path>` writes `state.drift` + outputs summary JSON (bullets_extracted, by_source, by_extracted_via, capped, next_action)
+- Test coverage: each extractor (markdown/numbered/AC/GWT/sentence-fallback) positive + negative; dedup + cap; REPLACE semantics; empty-input no-crash
+- PR #304 replay (Step 11): ≥9 AC bullets extracted from ticket_text via ac_marker; LLM-side coverage assessment at Step 8/11 surfaces gaps (`AC-7 Ordered-By/Deliver-To format missing`, `AC-9 Strata gate missing`, `scope-creep: internal picker built`)
+
+**Status (2026-05-20)**: COMPLETE — `_scope_drift.py` (~280L) + `test_scope_drift.py` (~450L) shipped via python-engineer; 807 tests green (721 prior + 86 new). Original plan draft proposed LLM-driven extraction (Haiku); revised design split work LLM-side at Step 8 to keep helper deterministic + zero-cost. python-reviewer audit yielded 4 findings (F1 medium plan-vs-impl drift on LLM extraction — fixed by this Status block + Changes rewrite, F2 low pr_body sentence-fallback lacks integration test, F3 low GWT "AND" prose false-positive — documented as known design choice, F4 nit `_write_state` TODO comment count); all 4 applied. NO LLM calls; NO MCP; NO state-mutating git; NO `run_in_background` subprocesses.
 
 ### Step 8 — Phase 6: Reviewer dispatch (FAT brief)
 

@@ -9,8 +9,9 @@ Step 3 verb (intake) is fully implemented.
 Step 4 verb (detect-smells) is fully implemented.
 Step 5 verb (compute-blast-radius) is fully implemented.
 Step 6 verbs (bundle-context, import-handoffs) are fully implemented.
-The remaining 4 verb stubs return exit 1 with a "not yet implemented"
-message; concrete behavior lands in PR-REVIEW-PLAN Steps 7-9.
+Step 7 verb (check-scope-drift) is fully implemented.
+The remaining 3 verb stubs return exit 1 with a "not yet implemented"
+message; concrete behavior lands in PR-REVIEW-PLAN Steps 8-9.
 """
 
 from __future__ import annotations
@@ -354,11 +355,47 @@ def cmd_import_handoffs(args: argparse.Namespace) -> int:
 
 
 def cmd_check_scope_drift(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper check-scope-drift: not yet implemented"
-        " (PR-REVIEW-PLAN Step 7 pending)\n"
-    )
-    return 1
+    """Phase 5: extract ticket bullets and write drift scaffold to state.drift.
+
+    Reads state.json (written by Step 3 intake), applies regex-based bullet
+    extraction strategies to state.ticket_text and state.pr_body, deduplicates,
+    and REPLACES state.drift with a scaffold for LLM-fill at Step 8.
+
+    Does NOT call LLM or MCP tools. Extraction is fully deterministic.
+
+    Returns 0 on success, 1 on any error.
+    """
+    from ._scope_drift import run as _run_scope_drift
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper check-scope-drift: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    try:
+        result = _run_scope_drift(
+            target=target,
+            pr_number=pr_number,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write(
+            "pr_review_helper check-scope-drift: {0}\n".format(exc)
+        )
+        return 1
+    except OSError as exc:
+        sys.stderr.write(
+            "pr_review_helper check-scope-drift: I/O error: {0}\n".format(exc)
+        )
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_dispatch_review(args: argparse.Namespace) -> int:
@@ -487,6 +524,7 @@ def _register_subcommands(subparsers) -> None:
         "compute-blast-radius",
         "bundle-context",
         "import-handoffs",
+        "check-scope-drift",
     ])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
         sp = subparsers.add_parser(verb, help=help_text)

@@ -8,7 +8,8 @@ Coverage:
   Step 4 verb (detect-smells): args registered, smoke test with synthetic state.
   Step 5 verb (compute-blast-radius): args registered, smoke test with synthetic state.
   Step 6 verbs (bundle-context, import-handoffs): args registered, smoke tests.
-  The 4 remaining stub verbs: exit 1 + correct "not yet implemented" message.
+  Step 7 verb (check-scope-drift): args registered, smoke tests.
+  The 3 remaining stub verbs: exit 1 + correct "not yet implemented" message.
 """
 
 import argparse
@@ -45,11 +46,10 @@ _VERB_STEP = [
     ("append-to-replay-corpus", 9),
 ]
 
-# The 4 still-stub verbs (Steps 7-9); intake (Step 3), detect-smells (Step 4),
-# compute-blast-radius (Step 5), bundle-context + import-handoffs (Step 6)
-# are now implemented.
+# The 3 still-stub verbs (Steps 8-9); intake (Step 3), detect-smells (Step 4),
+# compute-blast-radius (Step 5), bundle-context + import-handoffs (Step 6),
+# check-scope-drift (Step 7) are now implemented.
 _STUB_VERB_STEP = [
-    ("check-scope-drift", 7),
     ("dispatch-review", 8),
     ("finalize-output", 9),
     ("append-to-replay-corpus", 9),
@@ -82,6 +82,7 @@ class TestBuildParser(unittest.TestCase):
             "compute-blast-radius",
             "bundle-context",
             "import-handoffs",
+            "check-scope-drift",
         ])
         parser = build_parser()
         for verb, _ in _VERB_STEP:
@@ -122,7 +123,7 @@ class TestBuildParser(unittest.TestCase):
                 self.assertEqual(args.target, "/some/path")
 
     def test_stub_verbs_do_not_have_target_arg(self):
-        """Stub verbs (steps 7-9) do not accept --target yet."""
+        """Stub verbs (steps 8-9) do not accept --target yet."""
         parser = build_parser()
         for verb, _ in _STUB_VERB_STEP:
             with self.subTest(verb=verb):
@@ -210,8 +211,8 @@ class TestMainDispatch(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_stub_verb_returns_1(self):
-        """Any remaining stub verb returns 1 (not yet implemented)."""
-        code = main(["check-scope-drift"])
+        """Any remaining stub verb (dispatch-review) returns 1 (not yet implemented)."""
+        code = main(["dispatch-review"])
         self.assertEqual(code, 1)
 
 
@@ -283,7 +284,7 @@ class TestStep2VerbsViaCLI(unittest.TestCase):
 
 
 class TestSubprocessStubs(unittest.TestCase):
-    """Each of the 4 remaining stub verbs (Steps 7-9): exit 1 + 'not yet implemented'."""
+    """Each of the 3 remaining stub verbs (Steps 8-9): exit 1 + 'not yet implemented'."""
 
     def _assert_stub(self, verb, step):
         result = _run_helper([verb])
@@ -308,9 +309,6 @@ class TestSubprocessStubs(unittest.TestCase):
                 verb, result.stderr
             ),
         )
-
-    def test_check_scope_drift_stub(self):
-        self._assert_stub("check-scope-drift", 7)
 
     def test_dispatch_review_stub(self):
         self._assert_stub("dispatch-review", 8)
@@ -747,6 +745,149 @@ class TestImportHandoffsVerb(unittest.TestCase):
             state_data = _json.load(fh)
         self.assertIn("research_handoffs", state_data["bundle"])
         self.assertIsInstance(state_data["bundle"]["research_handoffs"], list)
+
+
+class TestCheckScopeDriftVerb(unittest.TestCase):
+    """check-scope-drift verb: argparse + smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses as _dc
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 304
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os as _os
+        _os.makedirs(_os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="acme/app",
+            ticket_text=(
+                "Update SHIP-TO-ADDRESS label to include red asterisk\n"
+                "AC-1: The label shows a red asterisk.\n"
+                "AC-2: Existing tests pass.\n"
+                "AC-3: No regression on print layout.\n"
+            ),
+            pr_body="- Added asterisk to label\n- Updated CSS\n",
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(_dc.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_check_scope_drift_has_pr_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["check-scope-drift", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_check_scope_drift_has_target_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["check-scope-drift", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_check_scope_drift_requires_pr(self):
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["check-scope-drift"])
+
+    def test_check_scope_drift_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "check-scope-drift",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "check-scope-drift: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_check_scope_drift_stdout_is_valid_json(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "check-scope-drift",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("bullets_extracted", data)
+        self.assertIn("by_source", data)
+        self.assertIn("by_extracted_via", data)
+        self.assertIn("capped", data)
+        self.assertIn("state_path", data)
+
+    def test_check_scope_drift_without_state_exits_1(self):
+        result = _run_helper([
+            "check-scope-drift",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("intake", result.stderr)
+
+    def test_check_scope_drift_extracts_bullets(self):
+        import json as _json
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "check-scope-drift",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = _json.loads(result.stdout)
+        # AC-1, AC-2, AC-3 from ticket_text + 2 markdown bullets from pr_body.
+        self.assertGreaterEqual(data["bullets_extracted"], 4)
+
+    def test_check_scope_drift_writes_drift_to_state(self):
+        import json as _json
+        _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "check-scope-drift",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            state_data = _json.load(fh)
+        self.assertIsInstance(state_data["drift"], dict)
+        self.assertIn("bullets", state_data["drift"])
+        self.assertIn("coverage_matrix", state_data["drift"])
+        self.assertIn("scope_creep_files", state_data["drift"])
+        self.assertFalse(state_data["drift"]["filled"])
+
+    def test_check_scope_drift_replaces_prior_drift(self):
+        """Running twice replaces drift (not appended)."""
+        import json as _json
+        argv = [
+            "--devforge-dir", self._tmp + "/.devforge",
+            "check-scope-drift",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ]
+        _run_helper(argv)
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            count_first = len(_json.load(fh)["drift"]["bullets"])
+        _run_helper(argv)
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            count_second = len(_json.load(fh)["drift"]["bullets"])
+        # Idempotent replace — not append.
+        self.assertEqual(count_first, count_second)
 
 
 class TestHelpOutput(unittest.TestCase):

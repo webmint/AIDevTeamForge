@@ -301,9 +301,9 @@ def _read_ticket_file(path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-# TODO(Step 7+): consolidate this with _intake.py / _blast.py / _bundle.py / _handoff_import.py
-# _write_state — currently 4 verbatim copies. Extract to _state.py.write_state when next verb
-# would otherwise create a 5th copy.
+# TODO(Step 7+): consolidate _write_state across _intake.py / _blast.py /
+# _bundle.py / _handoff_import.py / _scope_drift.py (5 copies). Extract to
+# _state.py.write_state when next verb would otherwise create a 6th copy.
 def _write_state(target_path: str, state: PRReviewState) -> None:
     """Write PRReviewState as JSON to target_path atomically.
 
