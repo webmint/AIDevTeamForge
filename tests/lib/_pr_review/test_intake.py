@@ -28,6 +28,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from _pr_review._intake import (  # noqa: E402
+    _extract_commit_subjects,
     _extract_linked_issues,
     _fetch_pr_diff,
     _fetch_pr_view,
@@ -69,6 +70,10 @@ _SAMPLE_PR_VIEW = {
     "url": "https://github.com/acme/app/pull/42",
     "number": 42,
     "closingIssuesReferences": [],
+    "commits": [
+        {"messageHeadline": "feat(spinner): add spinner component", "messageBody": ""},
+        {"messageHeadline": "fix: correct animation timing", "messageBody": ""},
+    ],
 }
 
 _SAMPLE_DIFF = (
@@ -303,6 +308,55 @@ class TestIssuesFromClosingRefs(unittest.TestCase):
     def test_missing_url_field_skipped(self):
         refs = [{"number": 10}]  # no 'url' key
         result = _issues_from_closing_refs(refs, "acme/app")
+        self.assertEqual(result, [])
+
+
+# ---------------------------------------------------------------------------
+# _extract_commit_subjects
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCommitSubjects(unittest.TestCase):
+    def test_empty_list_returns_empty(self):
+        self.assertEqual(_extract_commit_subjects([]), [])
+
+    def test_single_commit_returns_subject(self):
+        commits = [{"messageHeadline": "feat: add spinner", "messageBody": ""}]
+        result = _extract_commit_subjects(commits)
+        self.assertEqual(result, ["feat: add spinner"])
+
+    def test_multiple_commits_preserves_order(self):
+        commits = [
+            {"messageHeadline": "feat: first", "messageBody": ""},
+            {"messageHeadline": "fix: second", "messageBody": ""},
+            {"messageHeadline": "chore: third", "messageBody": ""},
+        ]
+        result = _extract_commit_subjects(commits)
+        self.assertEqual(result, ["feat: first", "fix: second", "chore: third"])
+
+    def test_fallback_to_message_field_when_headline_absent(self):
+        """If messageHeadline is absent, fall back to first line of message."""
+        commits = [{"message": "fix: spinner on refresh\n\nMore details here."}]
+        result = _extract_commit_subjects(commits)
+        self.assertEqual(result, ["fix: spinner on refresh"])
+
+    def test_empty_messageHeadline_uses_message_fallback(self):
+        commits = [{"messageHeadline": "", "message": "docs: update README\n"}]
+        result = _extract_commit_subjects(commits)
+        self.assertEqual(result, ["docs: update README"])
+
+    def test_commit_with_no_subject_skipped(self):
+        """Commits with no messageHeadline AND no message are excluded."""
+        commits = [
+            {"messageHeadline": "feat: real commit"},
+            {},  # No subject fields at all.
+        ]
+        result = _extract_commit_subjects(commits)
+        self.assertEqual(result, ["feat: real commit"])
+
+    def test_empty_string_both_fields_skipped(self):
+        commits = [{"messageHeadline": "", "message": ""}]
+        result = _extract_commit_subjects(commits)
         self.assertEqual(result, [])
 
 
@@ -594,6 +648,31 @@ class TestRun(unittest.TestCase):
         with open(sp, "r", encoding="utf-8") as f:
             data = json.load(f)
         self.assertEqual(data["forge_tier"], "none")
+
+    def test_commit_subjects_populated_from_commits_field(self):
+        """commit_subjects is populated from the commits list in gh pr view output."""
+        with patch("_pr_review._intake.subprocess.run", side_effect=_make_run_mocks()):
+            run(target=self._tmp, pr_number=42, repo="acme/app")
+        sp = state_path(os.path.join(self._tmp, ".devforge"), 42)
+        with open(sp, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # _SAMPLE_PR_VIEW has 2 commits.
+        self.assertEqual(data["commit_subjects"], [
+            "feat(spinner): add spinner component",
+            "fix: correct animation timing",
+        ])
+
+    def test_commit_subjects_empty_when_no_commits_field(self):
+        """When the gh response has no commits field, commit_subjects is []."""
+        view = dict(_SAMPLE_PR_VIEW)
+        del view["commits"]
+        with patch("_pr_review._intake.subprocess.run",
+                   side_effect=_make_run_mocks(view_payload=view)):
+            run(target=self._tmp, pr_number=42, repo="acme/app")
+        sp = state_path(os.path.join(self._tmp, ".devforge"), 42)
+        with open(sp, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["commit_subjects"], [])
 
     def test_no_stale_tmp_file_after_write(self):
         """No .tmp.json file remains after successful run."""

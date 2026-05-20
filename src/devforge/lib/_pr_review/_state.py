@@ -32,6 +32,7 @@ class PRReviewState:
     pr_body: str = ""
     linked_issues: List[str] = field(default_factory=list)
     ticket_text: str = ""
+    commit_subjects: List[str] = field(default_factory=list)
 
     # Step 2 (detect-forge-state) populates.
     forge_tier: str = "none"  # one of: full / partial / none

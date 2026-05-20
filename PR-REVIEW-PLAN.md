@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) shipped same day; Steps 4-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4a (4 text-pattern smell heuristics + catalog + detect-smells verb) shipped same day; Steps 4b + 5-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -208,25 +208,36 @@ verbs:
 
 **Why**: Core differentiator. Detects AI-slop + code-smell agnostic of author seniority. Replay-validated against PR #304.
 
+**Split into 4a (text-pattern, ship-first) + 4b (advanced cross-file / git-blame / CBM-driven)** to keep commits reviewable.
+
+#### Step 4a — Text-pattern heuristics + catalog + verb (ship-first)
+
 **Changes**:
 
-- `_pr_review/_smells/__init__.py` + per-heuristic modules:
-  - `empty_pr_body.py`
-  - `atomic_dump.py` (single-commit, large-file additions)
-  - `duplication_ratio.py` (compares new file content vs existing files via CBM `search_code` or python `difflib`)
-  - `hedge_defensive.py` (regex/AST scan for `|| ''` chains, triple-assignment)
-  - `verbose_commit_msg.py` (commit-msg pattern matching)
-  - `literal_archaeology_adapter.py` (calls `_shared/literal_archaeology` on diff-introduced literals)
-  - `argument_duplication.py` (CBM trace_path on new args vs existing call-chain args)
-  - `hallucinated_api.py` (referenced symbols not in CBM graph)
-- `_pr_review/_smells/_catalog.py` — registry + tier classification (port from RESEARCH-HANDOFF probe-tier pattern)
-- Test per heuristic: hand-authored fixtures + PR #304 diff replay
+- `_pr_review/_smells/__init__.py` — package init
+- `_pr_review/_smells/_catalog.py` — heuristic registry + dispatch loop; each entry has `(name, severity, run_fn)`; heuristic interface `run(state: PRReviewState) -> list[dict]`
+- `_pr_review/_smells/empty_pr_body.py` — fires when `pr_body` is empty / ≤30 chars after whitespace strip; severity `low`
+- `_pr_review/_smells/atomic_dump.py` — fires when diff additions exceed thresholds (defaults: >300 lines OR >4 new files in one commit); severity `medium`
+- `_pr_review/_smells/hedge_defensive.py` — regex scan over diff additions for `|| ''`, `|| 0`, `|| []`, `|| {}` patterns + triple-assignment `a = b = c = value`; severity `low`
+- `_pr_review/_smells/verbose_commit_msg.py` — commit-msg pattern matching ("Refactor X to improve Y and Z", "Update X to handle Y", > 12 words); severity `nit`
+- `cmd_detect_smells` in `_cli.py` — reads `state.json` (from intake); runs all catalog entries; appends findings to `state.smells`; writes back atomically
 
-**Verify**:
+#### Step 4b — Advanced heuristics (ship-second)
 
-- `pr_review_helper detect-smells --intake intake.json` outputs `smells.json` (list of detections, each with: heuristic, severity, location, evidence)
-- PR #304 replay surfaces ≥6 of: empty body / duplication 80% / hedge-defensive triple-assign / atomic dump / verbose commit msg / hallucinated-or-magic literals
-- Per-heuristic test coverage ≥1 positive + ≥1 negative case
+**Changes**:
+
+- `_pr_review/_smells/duplication_ratio.py` — file-vs-file similarity via `difflib` (Python stdlib) — compares each new file's content against existing files in target repo
+- `_pr_review/_smells/literal_archaeology_adapter.py` — git-blame on diff-introduced literals; classifies via 6-value intent set per V3 lesson
+- `_pr_review/_smells/argument_duplication.py` — extracts function-call shapes from diff (regex-based); consumes `_shared/literal_call_shape._detect_arg_duplication`
+- `_pr_review/_smells/hallucinated_api.py` — extracts referenced symbol names from diff additions; checks against CBM graph via subprocess (where available); flags symbols with no graph hits
+
+**Verify (both waves combined)**:
+
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper detect-smells --pr <N> --target <path>` mutates `state.smells` + outputs summary JSON (count + by-severity bucket)
+- Per-heuristic test: ≥1 positive (fires) + ≥1 negative (doesn't fire) fixture
+- PR #304 replay (after Step 11 fixture in place): ≥6 of 9 expected gap-class smells fire (empty body, atomic dump, hedge-defensive triple-assign, verbose commit msg, duplication 80%, hallucinated-or-magic literals, argument duplication if call shape extractable)
+
+**Status (2026-05-20)**: 4a COMPLETE — 4 heuristics (empty_pr_body / atomic_dump / hedge_defensive / verbose_commit_msg) + catalog (register / run_all / clear_registry) + detect-smells verb shipped via python-engineer; PRReviewState extended with `commit_subjects: List[str]`; intake now fetches `commits` field from gh; 323 tests green (193 prior + 130 new — 129 step-4a + 1 F2 regression); python-reviewer audit yielded 4 findings (F1 medium vacuous idempotency test, F2 low `_ADDED_LINE_RE` blank-line bleed, F3 low indexing 1-based vs 0-based inconsistency, F4 nit unused `Optional` import); all 4 applied; post-fix re-audit clean. All `location` values use 0-based indexing universally per `_catalog.py` schema docstring. 4b deferred — advanced heuristics ship next.
 
 ### Step 5 — Phase 3: Blast radius
 

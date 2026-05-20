@@ -65,6 +65,10 @@ class TestPRReviewStateDefaults(unittest.TestCase):
         self.assertIsInstance(self.state.findings, list)
         self.assertEqual(self.state.findings, [])
 
+    def test_commit_subjects_default_is_empty_list(self):
+        self.assertIsInstance(self.state.commit_subjects, list)
+        self.assertEqual(self.state.commit_subjects, [])
+
     def test_mutable_defaults_are_independent(self):
         """Each instance has its own list/dict objects (no shared default)."""
         s1 = PRReviewState()
@@ -73,6 +77,8 @@ class TestPRReviewStateDefaults(unittest.TestCase):
         self.assertEqual(s2.smells, [])
         s1.bundle["k"] = "v"
         self.assertEqual(s2.bundle, {})
+        s1.commit_subjects.append("feat: something")
+        self.assertEqual(s2.commit_subjects, [])
 
 
 class TestStatePath(unittest.TestCase):

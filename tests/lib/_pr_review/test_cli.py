@@ -5,7 +5,8 @@ Coverage:
   main — no subcommand → exit 2.
   Step 2 verbs (ensure-cbm-index, detect-forge-state): exit 0, valid JSON.
   Step 3 verb (intake): args registered, no-longer-stub smoke test.
-  The 8 remaining stub verbs: exit 1 + correct "not yet implemented" message.
+  Step 4 verb (detect-smells): args registered, smoke test with synthetic state.
+  The 7 remaining stub verbs: exit 1 + correct "not yet implemented" message.
 """
 
 import argparse
@@ -42,9 +43,9 @@ _VERB_STEP = [
     ("append-to-replay-corpus", 9),
 ]
 
-# Only the 8 still-stub verbs (Steps 4-9); intake (Step 3) is now implemented.
+# The 7 still-stub verbs (Steps 5-9); intake (Step 3) + detect-smells (Step 4)
+# are now implemented.
 _STUB_VERB_STEP = [
-    ("detect-smells", 4),
     ("compute-blast-radius", 5),
     ("bundle-context", 6),
     ("import-handoffs", 6),
@@ -73,13 +74,16 @@ class TestBuildParser(unittest.TestCase):
     def test_all_11_verbs_registered(self):
         """Each verb can be parsed without argparse raising SystemExit.
 
-        intake requires --pr and --repo; supply minimal valid values.
+        intake requires --pr and --repo; detect-smells requires --pr; supply
+        minimal valid values for those.
         """
         parser = build_parser()
         for verb, _ in _VERB_STEP:
             with self.subTest(verb=verb):
                 if verb == "intake":
                     argv = [verb, "--pr", "1", "--repo", "foo/bar"]
+                elif verb == "detect-smells":
+                    argv = [verb, "--pr", "1"]
                 else:
                     argv = [verb]
                 args = parser.parse_args(argv)
@@ -112,12 +116,32 @@ class TestBuildParser(unittest.TestCase):
                 self.assertEqual(args.target, "/some/path")
 
     def test_stub_verbs_do_not_have_target_arg(self):
-        """Stub verbs (steps 4-9) do not accept --target yet."""
+        """Stub verbs (steps 5-9) do not accept --target yet."""
         parser = build_parser()
         for verb, _ in _STUB_VERB_STEP:
             with self.subTest(verb=verb):
                 with self.assertRaises(SystemExit):
                     parser.parse_args([verb, "--target", "/x"])
+
+    def test_detect_smells_has_pr_arg(self):
+        """detect-smells accepts --pr (int, required)."""
+        parser = build_parser()
+        args = parser.parse_args(["detect-smells", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_detect_smells_has_target_arg(self):
+        """detect-smells accepts --target."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["detect-smells", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_detect_smells_requires_pr(self):
+        """detect-smells without --pr exits non-zero."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["detect-smells"])
 
     def test_intake_has_required_args(self):
         """intake accepts --pr (int, required) and --repo (required)."""
@@ -180,8 +204,8 @@ class TestMainDispatch(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_stub_verb_returns_1(self):
-        """Any stub verb returns 1 (not yet implemented)."""
-        code = main(["detect-smells"])
+        """Any remaining stub verb returns 1 (not yet implemented)."""
+        code = main(["compute-blast-radius"])
         self.assertEqual(code, 1)
 
 
@@ -253,7 +277,7 @@ class TestStep2VerbsViaCLI(unittest.TestCase):
 
 
 class TestSubprocessStubs(unittest.TestCase):
-    """Each of the 8 stub verbs: exit 1 + stderr contains the 'not yet implemented' message."""
+    """Each of the 7 remaining stub verbs (Steps 5-9): exit 1 + 'not yet implemented'."""
 
     def _assert_stub(self, verb, step):
         result = _run_helper([verb])
@@ -279,9 +303,6 @@ class TestSubprocessStubs(unittest.TestCase):
             ),
         )
 
-    def test_detect_smells_stub(self):
-        self._assert_stub("detect-smells", 4)
-
     def test_compute_blast_radius_stub(self):
         self._assert_stub("compute-blast-radius", 5)
 
@@ -302,6 +323,115 @@ class TestSubprocessStubs(unittest.TestCase):
 
     def test_append_to_replay_corpus_stub(self):
         self._assert_stub("append-to-replay-corpus", 9)
+
+
+class TestDetectSmellsVerb(unittest.TestCase):
+    """detect-smells verb: integration smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        # Build a minimal state.json in the expected location.
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 99
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os
+        os.makedirs(os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="acme/app",
+            diff="diff --git a/foo.py b/foo.py\n+line1\n+line2\n",
+            pr_body="",  # empty body triggers empty_pr_body finding on every run
+            commit_subjects=["fix: concise commit"],
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(dataclasses.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_detect_smells_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "detect-smells",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "detect-smells: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_detect_smells_stdout_is_valid_json(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "detect-smells",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("smells_count", data)
+        self.assertIn("by_severity", data)
+        self.assertIn("state_path", data)
+
+    def test_detect_smells_without_state_exits_1(self):
+        """When no state.json exists, detect-smells exits 1."""
+        result = _run_helper([
+            "detect-smells",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("run `intake` first", result.stderr)
+
+    def test_detect_smells_appends_to_state_smells(self):
+        """After detect-smells, state.json smells list is updated."""
+        import json as _json
+        _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "detect-smells",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            state_data = _json.load(fh)
+        # smells is a list (may be empty if no heuristics fire on clean state).
+        self.assertIsInstance(state_data["smells"], list)
+
+    def test_detect_smells_idempotent_run_appends(self):
+        """Running detect-smells twice accumulates findings (append semantics)."""
+        import json as _json
+        argv = [
+            "--devforge-dir", self._tmp + "/.devforge",
+            "detect-smells",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ]
+        # First run.
+        _run_helper(argv)
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            count_after_first = len(_json.load(fh)["smells"])
+        # Second run appends.
+        _run_helper(argv)
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            count_after_second = len(_json.load(fh)["smells"])
+        self.assertGreaterEqual(count_after_first, 1, "test fixture must produce >=1 finding")
+        self.assertEqual(count_after_second, count_after_first * 2)
 
 
 class TestHelpOutput(unittest.TestCase):

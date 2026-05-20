@@ -6,16 +6,19 @@ main parses argv + dispatches.
 
 Step 2 verbs (ensure-cbm-index, detect-forge-state) are fully implemented.
 Step 3 verb (intake) is fully implemented.
-The remaining 8 verb stubs return exit 1 with a "not yet implemented"
-message; concrete behavior lands in PR-REVIEW-PLAN Steps 4-9.
+Step 4 verb (detect-smells) is fully implemented.
+The remaining 7 verb stubs return exit 1 with a "not yet implemented"
+message; concrete behavior lands in PR-REVIEW-PLAN Steps 5-9.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
+import tempfile
 
 
 # ---------------------------------------------------------------------------
@@ -123,11 +126,91 @@ def cmd_intake(args: argparse.Namespace) -> int:
 
 
 def cmd_detect_smells(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper detect-smells: not yet implemented"
-        " (PR-REVIEW-PLAN Step 4 pending)\n"
-    )
-    return 1
+    """Phase 4: run all registered smell heuristics and persist findings to state.
+
+    Reads existing state.json (written by Step 3 intake), runs each heuristic
+    in registration order, appends findings to state.smells, writes state back
+    atomically, and outputs a summary JSON dict to stdout.
+
+    Returns 0 on success, 1 on error.
+    """
+    from ._state import PRReviewState, state_path
+    from ._validators import _validate_pr_number
+    from . import _smells
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper detect-smells: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+    abs_devforge = os.path.join(target, devforge_dir)
+    sp = state_path(abs_devforge, pr_number)
+
+    if not os.path.exists(sp):
+        sys.stderr.write(
+            "pr_review_helper detect-smells: no state.json at {path};"
+            " run `intake` first\n".format(path=sp)
+        )
+        return 1
+
+    try:
+        with open(sp, "r", encoding="utf-8") as fh:
+            state_dict = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        sys.stderr.write(
+            "pr_review_helper detect-smells: cannot read state: {0}\n".format(exc)
+        )
+        return 1
+
+    try:
+        state = PRReviewState(**state_dict)
+    except TypeError as exc:
+        sys.stderr.write(
+            "pr_review_helper detect-smells: state schema error: {0}\n".format(exc)
+        )
+        return 1
+
+    # Run all heuristics.  Each may emit multiple findings.
+    findings = _smells._catalog.run_all(state)
+
+    # Append (don't replace — preserves findings from any prior runs).
+    state.smells.extend(findings)
+
+    # Atomic write: temp file in the same directory, then os.replace.
+    state_dir = os.path.dirname(sp)
+    fd, tmp_path = tempfile.mkstemp(prefix="state-", suffix=".tmp.json", dir=state_dir)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(dataclasses.asdict(state), fh, indent=2, sort_keys=True)
+            fh.write("\n")
+        os.replace(tmp_path, sp)
+    except Exception as exc:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        sys.stderr.write(
+            "pr_review_helper detect-smells: write error: {0}\n".format(exc)
+        )
+        return 1
+
+    # Summary JSON to stdout.
+    by_severity = {"nit": 0, "low": 0, "medium": 0, "high": 0}
+    for finding in findings:
+        sev = finding.get("severity", "low")
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+
+    output = {
+        "status": "ok",
+        "state_path": sp,
+        "smells_count": len(findings),
+        "by_severity": by_severity,
+    }
+    sys.stdout.write(json.dumps(output, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_compute_blast_radius(args: argparse.Namespace) -> int:
@@ -277,8 +360,9 @@ def _register_subcommands(subparsers) -> None:
 
     Step 2 verbs (ensure-cbm-index, detect-forge-state) receive a --target
     argument.  Step 3 verb (intake) receives --pr, --repo, mutually exclusive
-    --ticket-text / --ticket-file, and --target.  All other verbs get no extra
-    arguments until their step lands.
+    --ticket-text / --ticket-file, and --target.  Step 4 verb (detect-smells)
+    receives --pr and --target.  All other verbs get no extra arguments until
+    their step lands.
     """
     _STEP2_VERBS = frozenset(["ensure-cbm-index", "detect-forge-state"])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
@@ -314,6 +398,21 @@ def _register_subcommands(subparsers) -> None:
                 "--ticket-file",
                 default=None,
                 help="Path to a UTF-8 text file containing the ticket body.",
+            )
+            sp.add_argument(
+                "--target",
+                default=os.getcwd(),
+                help=(
+                    "Path to the reviewer's local repo root where .devforge/ "
+                    "lives (default: current working directory)."
+                ),
+            )
+        elif verb == "detect-smells":
+            sp.add_argument(
+                "--pr",
+                type=int,
+                required=True,
+                help="PR number whose state.json to load (e.g. 42).",
             )
             sp.add_argument(
                 "--target",

@@ -56,7 +56,7 @@ from ._state import PRReviewState, state_path
 
 _GH_PR_VIEW_FIELDS = (
     "title,body,additions,deletions,baseRefName,headRefName,"
-    "files,state,author,url,number,closingIssuesReferences"
+    "files,state,author,url,number,closingIssuesReferences,commits"
 )
 
 
@@ -233,6 +233,40 @@ def _issues_from_closing_refs(closing_refs: List[dict], repo: str) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Commit subject extraction.
+# ---------------------------------------------------------------------------
+
+
+def _extract_commit_subjects(commits: List[dict]) -> List[str]:
+    """Extract the subject line (first line) from each commit in the commits list.
+
+    The `commits` field from `gh pr view --json commits` returns a list of
+    objects. Each object has a `messageHeadline` key containing the commit
+    subject, and a `messageBody` key for the rest. We use `messageHeadline`
+    directly since that is the subject line; fall back to the first line of
+    `message` if `messageHeadline` is absent.
+
+    Args:
+        commits: List of commit dicts from gh pr view JSON output.
+
+    Returns:
+        List of commit subject strings (one per commit), preserving order.
+        Empty strings are excluded — a commit with no subject is skipped.
+    """
+    subjects: List[str] = []
+    for entry in commits:
+        # gh returns messageHeadline as the subject.
+        subject = entry.get("messageHeadline", "")
+        if not subject:
+            # Fallback: first line of the full message field.
+            message = entry.get("message", "")
+            subject = message.split("\n", 1)[0] if message else ""
+        if subject:
+            subjects.append(subject)
+    return subjects
+
+
+# ---------------------------------------------------------------------------
 # Ticket file reader.
 # ---------------------------------------------------------------------------
 
@@ -355,6 +389,10 @@ def run(
         pr_body_text = pr_view.get("body") or ""
         linked_issues = _extract_linked_issues(pr_body_text, repo)
 
+    # Extract commit subjects.
+    commits = pr_view.get("commits") or []
+    commit_subjects = _extract_commit_subjects(commits)
+
     # Build state.
     state = PRReviewState(
         pr_number=pr_number,
@@ -363,6 +401,7 @@ def run(
         pr_body=pr_view.get("body") or "",
         linked_issues=linked_issues,
         ticket_text=ticket_text,
+        commit_subjects=commit_subjects,
     )
 
     # Compute and create state file path.
