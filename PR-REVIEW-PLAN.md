@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) + 9 (finalize-output + append-to-replay-corpus) shipped through 2026-05-21; ALL 11 HELPER VERBS IMPLEMENTED (zero stubs); Steps 10-12 pending (slash command spec + PR #304 replay + testForge20 manual verify). Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) + 9 (finalize-output + append-to-replay-corpus) + 10 (slash command spec + emitter `_PROMOTED` wire-in) shipped through 2026-05-21; ALL 11 HELPER VERBS IMPLEMENTED + slash command spec live; Steps 11-12 pending (PR #304 replay fixture + testForge20 manual verify). Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -359,18 +359,19 @@ verbs:
 
 **Changes**:
 
-- New: `src/commands/pr-review/main.md` (slash command spec)
-- New: `src/commands/pr-review/references/pr_review_helper-api.md` (verb API reference)
-- Modified: `scripts/emitters/claude.py` — add `pr-review` to `_PROMOTED` list
-- Spec authored via `instruction-author` agent (per `feedback_claude_code_authoring_best_practices`)
-- Spec reviewed via `instruction-reviewer` + `claude-code-guide` (per `feedback_dual_agent_verify_command_statements`)
+- New: `src/commands/pr-review/main.md` (331L slash command spec) — 13 phases: -1 / 0 / 1 / 2 / 3 / 3.5 (LLM blast-fill via CBM trace_path) / 4 / 4.5 / 5 / 6 / 6.5 (LLM cavecrew dispatch + findings append) / 7 / 7.5; frontmatter uses `disable-model-invocation: true` + `arguments: [pr_number]` per claude-code-guide consultation; allowed-tools restricted to `Bash(gh pr *|gh issue *|git rev-parse *|git blame *|git log *|grep *|.venv-test/bin/python *|python *|python3 *)` + `Read(.)`; NO `model:` override, NO `context: fork`
+- Modified: `scripts/emitters/claude.py` — added `pr-review` to `_PROMOTED` tuple (per `feedback_emitter_promoted_cross_check`)
+- Spec authored via `instruction-author` agent + claude-code-guide consultation (per `feedback_claude_code_authoring_best_practices` + `feedback_dual_agent_verify_command_statements`)
+- Spec reviewed via `instruction-reviewer` agent
 
 **Verify**:
 
-- `bash scripts/generate.sh` produces `.claude/commands/pr-review.md` in target install
-- Install on `testForge20`: `/pr-review` slash command appears + runs through to helper invocation
-- `instruction-reviewer` finds no logic gaps in spec
-- `claude-code-guide` confirms frontmatter + structure compliant with Claude Code conventions
+- `bash scripts/generate.sh` produces `.claude/commands/pr-review.md` in target install (Step 12 manual gate)
+- Install on `testForge20`: `/pr-review` slash command appears + runs through to helper invocation (Step 12)
+- `instruction-reviewer` audit clean (post-fix re-audit deferred — orchestrator applied all 7 findings inline)
+- `claude-code-guide` confirmed frontmatter + structure compliant with Claude Code conventions per docs.claude.com/docs/en/slash-commands
+
+**Status (2026-05-21)**: COMPLETE — `src/commands/pr-review/main.md` (331L) shipped via instruction-author (claude-code-guide consulted for slash-command frontmatter + structure conventions); 1068 pytest still green (no helper code touched). instruction-reviewer audit yielded 7 findings (F1 high Phase 7 stdout `findings_count`→`findings_total`, F2 high Phase 7.5 stdout key list diverged from `_replay.py` schema, F3 medium `coverage_matrix` status values `covered/unclear` → canonical `satisfied/unknown`, F4 medium corpus_index.json keyed-by-PR-number claim wrong — it's `entries` array, F5 medium `state.smells` vs `state.findings` confusion in Phase 6.5 prose, F6 low Phase -1 dict key enumeration incomplete, F7 low blast-risk-score formula wrong); all 7 applied via instruction-author. Emitter `_PROMOTED` tuple in `scripts/emitters/claude.py` updated.
 
 ### Step 11 — PR #304 replay validation gate
 
