@@ -5,8 +5,9 @@ _register_subcommands attaches every cmd_* handler (real or stub).
 main parses argv + dispatches.
 
 Step 2 verbs (ensure-cbm-index, detect-forge-state) are fully implemented.
-The remaining 9 verb stubs return exit 1 with a "not yet implemented"
-message; concrete behavior lands in PR-REVIEW-PLAN Steps 3-9.
+Step 3 verb (intake) is fully implemented.
+The remaining 8 verb stubs return exit 1 with a "not yet implemented"
+message; concrete behavior lands in PR-REVIEW-PLAN Steps 4-9.
 """
 
 from __future__ import annotations
@@ -70,11 +71,55 @@ def cmd_detect_forge_state(args: argparse.Namespace) -> int:
 
 
 def cmd_intake(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper intake: not yet implemented"
-        " (PR-REVIEW-PLAN Step 3 pending)\n"
-    )
-    return 1
+    """Phase 1: fetch PR metadata + diff and write initial state.
+
+    Invokes `gh pr view` and `gh pr diff`, builds a PRReviewState, and
+    writes it to <target>/.devforge/pr-reviews/<pr>/state.json.
+
+    Returns 0 on success, 1 on any error.
+    """
+    from ._intake import run as _run_intake
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper intake: {0}\n".format(exc))
+        return 1
+
+    repo = args.repo
+    target = getattr(args, "target", None) or os.getcwd()
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    # Resolve ticket text (mutually exclusive group enforced by argparse).
+    ticket_text = ""
+    if getattr(args, "ticket_text", None) is not None:
+        ticket_text = args.ticket_text
+    elif getattr(args, "ticket_file", None) is not None:
+        from ._intake import _read_ticket_file
+        try:
+            ticket_text = _read_ticket_file(args.ticket_file)
+        except ValueError as exc:
+            sys.stderr.write("pr_review_helper intake: {0}\n".format(exc))
+            return 1
+
+    try:
+        result = _run_intake(
+            target=target,
+            pr_number=pr_number,
+            repo=repo,
+            ticket_text=ticket_text,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write("pr_review_helper intake: {0}\n".format(exc))
+        return 1
+    except OSError as exc:
+        sys.stderr.write("pr_review_helper intake: I/O error: {0}\n".format(exc))
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_detect_smells(args: argparse.Namespace) -> int:
@@ -230,9 +275,10 @@ def build_parser() -> argparse.ArgumentParser:
 def _register_subcommands(subparsers) -> None:
     """Attach all handlers from _SUBCOMMAND_REGISTRY.
 
-    Step 2 verbs (ensure-cbm-index, detect-forge-state) also receive a
-    --target argument. All other verbs get no extra arguments until their
-    step lands.
+    Step 2 verbs (ensure-cbm-index, detect-forge-state) receive a --target
+    argument.  Step 3 verb (intake) receives --pr, --repo, mutually exclusive
+    --ticket-text / --ticket-file, and --target.  All other verbs get no extra
+    arguments until their step lands.
     """
     _STEP2_VERBS = frozenset(["ensure-cbm-index", "detect-forge-state"])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
@@ -244,6 +290,37 @@ def _register_subcommands(subparsers) -> None:
                 help=(
                     "Absolute path to the repository root to inspect "
                     "(default: current working directory)."
+                ),
+            )
+        elif verb == "intake":
+            sp.add_argument(
+                "--pr",
+                type=int,
+                required=True,
+                help="PR number to intake (e.g. 42).",
+            )
+            sp.add_argument(
+                "--repo",
+                required=True,
+                help="GitHub repository in owner/name format (e.g. acme/myapp).",
+            )
+            ticket_group = sp.add_mutually_exclusive_group()
+            ticket_group.add_argument(
+                "--ticket-text",
+                default=None,
+                help="Inline ticket text (JIRA / Linear prose) as a string.",
+            )
+            ticket_group.add_argument(
+                "--ticket-file",
+                default=None,
+                help="Path to a UTF-8 text file containing the ticket body.",
+            )
+            sp.add_argument(
+                "--target",
+                default=os.getcwd(),
+                help=(
+                    "Path to the reviewer's local repo root where .devforge/ "
+                    "lives (default: current working directory)."
                 ),
             )
         sp.set_defaults(func=handler)

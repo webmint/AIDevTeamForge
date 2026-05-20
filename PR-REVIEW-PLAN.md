@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) shipped same day; Steps 3-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) shipped same day; Steps 4-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -190,15 +190,19 @@ verbs:
 
 **Changes**:
 
-- `_pr_review/_intake.py` — wraps `gh pr view --json` + `gh pr diff`; accepts `--ticket-text` flag (raw paste) OR `--ticket-file` (path to text file); populates `PRReviewState.diff`, `.pr_body`, `.linked_issues`, `.ticket_text`
-- Error handling: PR not found, gh not authenticated, network failure
-- Tests with `gh` mocked via `subprocess.run` patching
+- `_pr_review/_intake.py` — wraps `gh pr view --json` + `gh pr diff`; accepts mutually-exclusive `--ticket-text` (raw paste) | `--ticket-file` (path to UTF-8 file) via argparse group; populates `PRReviewState.{pr_number, repo, diff, pr_body, linked_issues, ticket_text}`; writes to `state_path` (`.devforge/pr-reviews/<PR#>/state.json`) via atomic temp-file + rename
+- Linked-issue extraction: `closingIssuesReferences` from `gh pr view --json` as primary; body-regex fallback (matches both `#<N>` short refs + full GitHub URLs); deduped by full URL string; sorted by issue number
+- Error handling: PR not found, gh not authenticated, JSON parse failures, missing ticket file
+- Tests with `gh` mocked via `subprocess.run` patching + `tmp_path` for state-file fixtures
 
 **Verify**:
 
-- `pr_review_helper intake --pr 304 --repo DoosanICA/db-cse-ui-strata --ticket-text "..."` outputs intake.json (structured)
-- Error cases produce non-zero exit with clear message
-- Test coverage: happy path / PR not found / no ticket text
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper intake --pr <N> --repo <owner>/<repo> [--ticket-text "..." | --ticket-file <path>] --target <path>` writes `state.json` + prints output JSON to stdout
+- Output JSON keys: `status`, `state_path`, `pr_number`, `repo`, `files_changed`, `additions`, `deletions`, `title`, `ticket_text_length`
+- Error cases produce non-zero exit with descriptive stderr (gh exit code propagated)
+- Test coverage: happy path / PR not found / no auth / linked-issue dedup-by-URL / mutually-exclusive ticket args / atomic state write
+
+**Status (2026-05-20)**: COMPLETE — `_intake.py` (266L) shipped via python-engineer; 193 tests green (131 prior + 62 new — 55 for intake + 7 cli updates); python-reviewer audit yielded 5 findings (F1 medium dedup-by-number drops cross-repo same-number issues, F2 low stale docstring, F3 low unused `_die` import, F4 nit unused `sys` import, F5 nit "9 stub verbs" claim stale); all 5 applied; re-audit found 1 trailing nit (docstring order swap) applied inline. Linked-issue format: full URLs (`https://github.com/<owner>/<repo>/issues/<N>`).
 
 ### Step 4 — Phase 2: Code-smell + slop heuristics
 

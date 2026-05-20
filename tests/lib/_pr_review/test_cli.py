@@ -4,7 +4,8 @@ Coverage:
   build_parser — returns ArgumentParser; all 11 subcommands registered.
   main — no subcommand → exit 2.
   Step 2 verbs (ensure-cbm-index, detect-forge-state): exit 0, valid JSON.
-  The 9 remaining stub verbs: exit 1 + correct "not yet implemented" message.
+  Step 3 verb (intake): args registered, no-longer-stub smoke test.
+  The 8 remaining stub verbs: exit 1 + correct "not yet implemented" message.
 """
 
 import argparse
@@ -41,9 +42,8 @@ _VERB_STEP = [
     ("append-to-replay-corpus", 9),
 ]
 
-# Only the 9 still-stub verbs (Steps 3-9).
+# Only the 8 still-stub verbs (Steps 4-9); intake (Step 3) is now implemented.
 _STUB_VERB_STEP = [
-    ("intake", 3),
     ("detect-smells", 4),
     ("compute-blast-radius", 5),
     ("bundle-context", 6),
@@ -71,21 +71,30 @@ class TestBuildParser(unittest.TestCase):
         self.assertIsInstance(parser, argparse.ArgumentParser)
 
     def test_all_11_verbs_registered(self):
-        """Each verb can be parsed without argparse raising SystemExit."""
+        """Each verb can be parsed without argparse raising SystemExit.
+
+        intake requires --pr and --repo; supply minimal valid values.
+        """
         parser = build_parser()
         for verb, _ in _VERB_STEP:
             with self.subTest(verb=verb):
-                args = parser.parse_args([verb])
+                if verb == "intake":
+                    argv = [verb, "--pr", "1", "--repo", "foo/bar"]
+                else:
+                    argv = [verb]
+                args = parser.parse_args(argv)
                 self.assertEqual(args.subcommand, verb)
 
     def test_devforge_dir_default(self):
         parser = build_parser()
-        args = parser.parse_args(["intake"])
+        args = parser.parse_args(["intake", "--pr", "1", "--repo", "foo/bar"])
         self.assertEqual(args.devforge_dir, ".devforge")
 
     def test_devforge_dir_override(self):
         parser = build_parser()
-        args = parser.parse_args(["--devforge-dir", "/tmp/forge", "intake"])
+        args = parser.parse_args(
+            ["--devforge-dir", "/tmp/forge", "intake", "--pr", "1", "--repo", "foo/bar"]
+        )
         self.assertEqual(args.devforge_dir, "/tmp/forge")
 
     def test_no_subcommand_sets_no_func(self):
@@ -103,12 +112,66 @@ class TestBuildParser(unittest.TestCase):
                 self.assertEqual(args.target, "/some/path")
 
     def test_stub_verbs_do_not_have_target_arg(self):
-        """Stub verbs (steps 3-9) do not accept --target yet."""
+        """Stub verbs (steps 4-9) do not accept --target yet."""
         parser = build_parser()
         for verb, _ in _STUB_VERB_STEP:
             with self.subTest(verb=verb):
                 with self.assertRaises(SystemExit):
                     parser.parse_args([verb, "--target", "/x"])
+
+    def test_intake_has_required_args(self):
+        """intake accepts --pr (int, required) and --repo (required)."""
+        parser = build_parser()
+        args = parser.parse_args(["intake", "--pr", "42", "--repo", "acme/app"])
+        self.assertEqual(args.pr, 42)
+        self.assertEqual(args.repo, "acme/app")
+
+    def test_intake_has_target_arg(self):
+        """intake accepts --target."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["intake", "--pr", "1", "--repo", "foo/bar", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_intake_ticket_text_arg(self):
+        """intake accepts --ticket-text."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["intake", "--pr", "1", "--repo", "foo/bar", "--ticket-text", "Fix spinner"]
+        )
+        self.assertEqual(args.ticket_text, "Fix spinner")
+        self.assertIsNone(args.ticket_file)
+
+    def test_intake_ticket_file_arg(self):
+        """intake accepts --ticket-file."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["intake", "--pr", "1", "--repo", "foo/bar", "--ticket-file", "/tmp/ticket.txt"]
+        )
+        self.assertEqual(args.ticket_file, "/tmp/ticket.txt")
+        self.assertIsNone(args.ticket_text)
+
+    def test_intake_ticket_text_and_file_mutually_exclusive(self):
+        """--ticket-text and --ticket-file are mutually exclusive."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args([
+                "intake", "--pr", "1", "--repo", "foo/bar",
+                "--ticket-text", "x", "--ticket-file", "/tmp/t.txt",
+            ])
+
+    def test_intake_requires_pr(self):
+        """intake without --pr exits non-zero."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["intake", "--repo", "foo/bar"])
+
+    def test_intake_requires_repo(self):
+        """intake without --repo exits non-zero."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["intake", "--pr", "1"])
 
 
 class TestMainDispatch(unittest.TestCase):
@@ -118,7 +181,7 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_stub_verb_returns_1(self):
         """Any stub verb returns 1 (not yet implemented)."""
-        code = main(["intake"])
+        code = main(["detect-smells"])
         self.assertEqual(code, 1)
 
 
@@ -190,7 +253,7 @@ class TestStep2VerbsViaCLI(unittest.TestCase):
 
 
 class TestSubprocessStubs(unittest.TestCase):
-    """Each of the 9 stub verbs: exit 1 + stderr contains the 'not yet implemented' message."""
+    """Each of the 8 stub verbs: exit 1 + stderr contains the 'not yet implemented' message."""
 
     def _assert_stub(self, verb, step):
         result = _run_helper([verb])
@@ -215,9 +278,6 @@ class TestSubprocessStubs(unittest.TestCase):
                 verb, result.stderr
             ),
         )
-
-    def test_intake_stub(self):
-        self._assert_stub("intake", 3)
 
     def test_detect_smells_stub(self):
         self._assert_stub("detect-smells", 4)
