@@ -1,38 +1,72 @@
 """argparse parser + dispatch + main entry for pr_review_helper.
 
 build_parser composes the top-level + subparsers.
-_register_subcommands attaches every cmd_* stub handler.
+_register_subcommands attaches every cmd_* handler (real or stub).
 main parses argv + dispatches.
 
-All 11 verb stubs return exit 1 with a "not yet implemented" message;
-concrete behavior lands in PR-REVIEW-PLAN Steps 2-9.
+Step 2 verbs (ensure-cbm-index, detect-forge-state) are fully implemented.
+The remaining 9 verb stubs return exit 1 with a "not yet implemented"
+message; concrete behavior lands in PR-REVIEW-PLAN Steps 3-9.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 
 
 # ---------------------------------------------------------------------------
-# Stub handlers — 11 verbs, each returning exit 1 until their step lands.
+# Step 2 handlers — real implementations replacing stubs.
 # ---------------------------------------------------------------------------
 
 
 def cmd_ensure_cbm_index(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper ensure-cbm-index: not yet implemented"
-        " (PR-REVIEW-PLAN Step 2 pending)\n"
-    )
-    return 1
+    """Phase -1: ensure CBM index is current before review.
+
+    Invokes cbm_sync_helper check and emits a structured JSON dict to
+    stdout. The LLM reads the JSON to decide whether to run detect_changes
+    or index_repository before proceeding.
+
+    Returns 0 on success, 1 on subprocess / I/O error.
+    """
+    from ._ensure_cbm import run as _run_ensure_cbm
+
+    target = getattr(args, "target", None) or os.getcwd()
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+    try:
+        result = _run_ensure_cbm(target=target, devforge_dir=devforge_dir)
+    except Exception as exc:  # noqa: BLE001
+        sys.stderr.write(
+            "pr_review_helper ensure-cbm-index: error: {0}\n".format(exc)
+        )
+        return 1
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_detect_forge_state(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper detect-forge-state: not yet implemented"
-        " (PR-REVIEW-PLAN Step 2 pending)\n"
-    )
-    return 1
+    """Phase 0: detect forge-tier (full/partial/none) for the target repo.
+
+    Pure filesystem scan — no subprocess, no network. Emits a structured
+    JSON dict to stdout classifying the repo's forge state.
+
+    Returns 0 on success, 1 on I/O error.
+    """
+    from ._detect_tier import run as _run_detect_tier
+
+    target = getattr(args, "target", None) or os.getcwd()
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+    try:
+        result = _run_detect_tier(target=target, devforge_dir=devforge_dir)
+    except Exception as exc:  # noqa: BLE001
+        sys.stderr.write(
+            "pr_review_helper detect-forge-state: error: {0}\n".format(exc)
+        )
+        return 1
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_intake(args: argparse.Namespace) -> int:
@@ -194,9 +228,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _register_subcommands(subparsers) -> None:
-    """Attach all stub handlers from _SUBCOMMAND_REGISTRY."""
+    """Attach all handlers from _SUBCOMMAND_REGISTRY.
+
+    Step 2 verbs (ensure-cbm-index, detect-forge-state) also receive a
+    --target argument. All other verbs get no extra arguments until their
+    step lands.
+    """
+    _STEP2_VERBS = frozenset(["ensure-cbm-index", "detect-forge-state"])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
         sp = subparsers.add_parser(verb, help=help_text)
+        if verb in _STEP2_VERBS:
+            sp.add_argument(
+                "--target",
+                default=os.getcwd(),
+                help=(
+                    "Absolute path to the repository root to inspect "
+                    "(default: current working directory)."
+                ),
+            )
         sp.set_defaults(func=handler)
 
 

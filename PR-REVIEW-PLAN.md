@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) shipped same day; Steps 2-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) shipped same day; Steps 3-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -172,15 +172,17 @@ verbs:
 
 **Changes**:
 
-- `_pr_review/_ensure_cbm.py` — calls `index_status` MCP; if absent, surfaces install instructions + cost estimate; if stale, calls `detect_changes`
-- `_pr_review/_detect_tier.py` — scans for `.devforge/constitute.json`, `.devforge/<concern>/` folders, `src/constitution.md`, ADR folder; returns tier=`full|partial|none` with manifest
-- Tests with mock CBM responses + temp filesystem fixtures
+- `_pr_review/_ensure_cbm.py` — wraps `cbm_sync_helper check` subprocess (NOT direct MCP call — helpers can't invoke MCP tools); emits structured JSON with `status` (`ok|stale|absent|not-a-git-repo`) + `next_action` + `mcp_tool_hint` + cost estimate for LLM consumption
+- `_pr_review/_detect_tier.py` — pure-filesystem scan for `.devforge/constitute.json`, `src/constitution.md`, `.devforge/<concern>/` dirs (filters infra subdirs: `lib`, `template`, `pr-reviews`), ADR dir (priority order); returns tier=`full|partial|none` with manifest JSON
+- Tests with `subprocess.run` mocked for CBM check + `tmp_path` fixtures for filesystem detection
 
 **Verify**:
 
-- `pr_review_helper ensure-cbm-index --target <path>` prints status (ok / stale / absent + cost estimate)
-- `pr_review_helper detect-forge-state --target <path>` prints tier + manifest JSON
-- Test matrix covers: indexed+full / indexed+partial / indexed+none / not-indexed / stale-index
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper ensure-cbm-index --target <path>` outputs JSON with `status` / `cbm_state_token` / `next_action` / `mcp_tool_hint` / `cost_estimate_usd` / `target_path`
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper detect-forge-state --target <path>` outputs JSON with `tier` / `manifest` / `target_path`
+- Test matrix: `current` / `drift` / `missing` / `not-a-git-repo` CBM states + tier-full / tier-partial / tier-none with infra-dir filter coverage
+
+**Status (2026-05-20)**: COMPLETE — `_ensure_cbm.py` (160L) + `_detect_tier.py` (119L) shipped via python-engineer; 131 tests green (123 prior + 8 new); python-reviewer audit yielded 4 findings (F1 high cwd missing from subprocess, F2 medium infra-dirs leaking into concern list, F3 low subprocess crash misclassified, F4 nit dead vars); all 4 applied; post-fix re-audit clean. Smoke against forge meta-repo: `tier="partial"` (constitution.md only; .devforge/lib filtered correctly).
 
 ### Step 3 — Phase 1: Intake helper
 
