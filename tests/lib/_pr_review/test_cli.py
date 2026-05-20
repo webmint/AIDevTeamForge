@@ -9,7 +9,8 @@ Coverage:
   Step 5 verb (compute-blast-radius): args registered, smoke test with synthetic state.
   Step 6 verbs (bundle-context, import-handoffs): args registered, smoke tests.
   Step 7 verb (check-scope-drift): args registered, smoke tests.
-  The 3 remaining stub verbs: exit 1 + correct "not yet implemented" message.
+  Step 8 verb (dispatch-review): args registered, smoke tests.
+  The 2 remaining stub verbs: exit 1 + correct "not yet implemented" message.
 """
 
 import argparse
@@ -46,11 +47,10 @@ _VERB_STEP = [
     ("append-to-replay-corpus", 9),
 ]
 
-# The 3 still-stub verbs (Steps 8-9); intake (Step 3), detect-smells (Step 4),
+# The 2 still-stub verbs (Step 9); intake (Step 3), detect-smells (Step 4),
 # compute-blast-radius (Step 5), bundle-context + import-handoffs (Step 6),
-# check-scope-drift (Step 7) are now implemented.
+# check-scope-drift (Step 7), dispatch-review (Step 8) are now implemented.
 _STUB_VERB_STEP = [
-    ("dispatch-review", 8),
     ("finalize-output", 9),
     ("append-to-replay-corpus", 9),
 ]
@@ -83,6 +83,7 @@ class TestBuildParser(unittest.TestCase):
             "bundle-context",
             "import-handoffs",
             "check-scope-drift",
+            "dispatch-review",
         ])
         parser = build_parser()
         for verb, _ in _VERB_STEP:
@@ -123,7 +124,7 @@ class TestBuildParser(unittest.TestCase):
                 self.assertEqual(args.target, "/some/path")
 
     def test_stub_verbs_do_not_have_target_arg(self):
-        """Stub verbs (steps 8-9) do not accept --target yet."""
+        """Stub verbs (step 9) do not accept --target yet."""
         parser = build_parser()
         for verb, _ in _STUB_VERB_STEP:
             with self.subTest(verb=verb):
@@ -211,8 +212,8 @@ class TestMainDispatch(unittest.TestCase):
         self.assertEqual(code, 2)
 
     def test_stub_verb_returns_1(self):
-        """Any remaining stub verb (dispatch-review) returns 1 (not yet implemented)."""
-        code = main(["dispatch-review"])
+        """Any remaining stub verb (finalize-output) returns 1 (not yet implemented)."""
+        code = main(["finalize-output"])
         self.assertEqual(code, 1)
 
 
@@ -284,7 +285,7 @@ class TestStep2VerbsViaCLI(unittest.TestCase):
 
 
 class TestSubprocessStubs(unittest.TestCase):
-    """Each of the 3 remaining stub verbs (Steps 8-9): exit 1 + 'not yet implemented'."""
+    """Each of the 2 remaining stub verbs (Step 9): exit 1 + 'not yet implemented'."""
 
     def _assert_stub(self, verb, step):
         result = _run_helper([verb])
@@ -309,9 +310,6 @@ class TestSubprocessStubs(unittest.TestCase):
                 verb, result.stderr
             ),
         )
-
-    def test_dispatch_review_stub(self):
-        self._assert_stub("dispatch-review", 8)
 
     def test_finalize_output_stub(self):
         self._assert_stub("finalize-output", 9)
@@ -888,6 +886,145 @@ class TestCheckScopeDriftVerb(unittest.TestCase):
             count_second = len(_json.load(fh)["drift"]["bullets"])
         # Idempotent replace — not append.
         self.assertEqual(count_first, count_second)
+
+
+class TestDispatchReviewVerb(unittest.TestCase):
+    """dispatch-review verb: argparse + smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses as _dc
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 42
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os as _os
+        _os.makedirs(_os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="acme/app",
+            diff="diff --git a/src/foo.py b/src/foo.py\n+def bar():\n+    pass\n",
+            ticket_text="AC-1: bar should be defined.",
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(_dc.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_dispatch_review_has_pr_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["dispatch-review", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_dispatch_review_has_target_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["dispatch-review", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_dispatch_review_requires_pr(self):
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["dispatch-review"])
+
+    def test_dispatch_review_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "dispatch-review",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "dispatch-review: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_dispatch_review_stdout_is_valid_json(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "dispatch-review",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("brief_path", data)
+        self.assertIn("brief_size_chars", data)
+        self.assertIn("sections_included", data)
+        self.assertIn("smells_count", data)
+        self.assertIn("blast_probes_count", data)
+        self.assertIn("drift_bullets_count", data)
+        self.assertIn("bundle_sources_count", data)
+        self.assertIn("next_action", data)
+
+    def test_dispatch_review_without_state_exits_1(self):
+        result = _run_helper([
+            "dispatch-review",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("intake", result.stderr)
+
+    def test_dispatch_review_writes_brief_md(self):
+        import json as _json
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "dispatch-review",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = _json.loads(result.stdout)
+        import os as _os
+        self.assertTrue(
+            _os.path.isfile(data["brief_path"]),
+            "brief.md not found at {0}".format(data["brief_path"]),
+        )
+
+    def test_dispatch_review_brief_path_under_pr_dir(self):
+        import json as _json
+        import os as _os
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "dispatch-review",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        data = _json.loads(result.stdout)
+        expected_dir = _os.path.join(
+            self._tmp, ".devforge", "pr-reviews", str(self._pr_number)
+        )
+        self.assertTrue(data["brief_path"].startswith(expected_dir))
+
+    def test_dispatch_review_idempotent(self):
+        """Running dispatch-review twice returns exit 0 both times."""
+        argv = [
+            "--devforge-dir", self._tmp + "/.devforge",
+            "dispatch-review",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ]
+        result1 = _run_helper(argv)
+        result2 = _run_helper(argv)
+        self.assertEqual(result1.returncode, 0)
+        self.assertEqual(result2.returncode, 0)
 
 
 class TestHelpOutput(unittest.TestCase):

@@ -10,8 +10,9 @@ Step 4 verb (detect-smells) is fully implemented.
 Step 5 verb (compute-blast-radius) is fully implemented.
 Step 6 verbs (bundle-context, import-handoffs) are fully implemented.
 Step 7 verb (check-scope-drift) is fully implemented.
-The remaining 3 verb stubs return exit 1 with a "not yet implemented"
-message; concrete behavior lands in PR-REVIEW-PLAN Steps 8-9.
+Step 8 verb (dispatch-review) is fully implemented.
+The remaining 2 verb stubs return exit 1 with a "not yet implemented"
+message; concrete behavior lands in PR-REVIEW-PLAN Step 9.
 """
 
 from __future__ import annotations
@@ -399,11 +400,48 @@ def cmd_check_scope_drift(args: argparse.Namespace) -> int:
 
 
 def cmd_dispatch_review(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper dispatch-review: not yet implemented"
-        " (PR-REVIEW-PLAN Step 8 pending)\n"
-    )
-    return 1
+    """Phase 6: assemble reviewer brief and write to brief.md.
+
+    Reads state.json (populated by Steps 3-7), assembles a fat Markdown brief
+    at <target>/.devforge/pr-reviews/<pr>/brief.md, and outputs a summary JSON
+    dict to stdout.
+
+    Does NOT invoke cavecrew-reviewer or any LLM/MCP tool — that is the
+    orchestrator's responsibility after reading this module's JSON output.
+
+    Returns 0 on success, 1 on error.
+    """
+    from ._dispatch import run as _run_dispatch
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper dispatch-review: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    try:
+        result = _run_dispatch(
+            target=target,
+            pr_number=pr_number,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write(
+            "pr_review_helper dispatch-review: {0}\n".format(exc)
+        )
+        return 1
+    except OSError as exc:
+        sys.stderr.write(
+            "pr_review_helper dispatch-review: I/O error: {0}\n".format(exc)
+        )
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_finalize_output(args: argparse.Namespace) -> int:
@@ -525,6 +563,7 @@ def _register_subcommands(subparsers) -> None:
         "bundle-context",
         "import-handoffs",
         "check-scope-drift",
+        "dispatch-review",
     ])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
         sp = subparsers.add_parser(verb, help=help_text)

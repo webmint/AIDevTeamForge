@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) shipped same day; Steps 7-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) shipped through 2026-05-21; Steps 9-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -313,19 +313,22 @@ verbs:
 
 **Changes**:
 
-- `_pr_review/_dispatch.py`:
-  - Assembles FAT brief from intake + smells + blast + bundle + drift
-  - Brief framing: "Author is unaware of forge standards. Treat as time-constrained author + LLM-assisted possible. Flag slop + drift + blast risk. Cite source per finding (constitution / overlay / plan / ADR). Skip nits."
-  - Invokes `cavecrew-reviewer` agent via Task tool
-  - Captures findings per `feedback_audit_format` (severity / location / issue / why / fix)
-- Citation discipline: each finding must name its source layer
-- Tests verify brief assembly (not LLM output) — input → expected brief string
+- `_pr_review/_dispatch.py` (helper-side; NO Task-tool / agent invocation):
+  - Assembles FAT brief.md as 10 canonical sections: metadata, ticket text, linked issues, diff (with mid-excerpt strategy when over cap), code-smell findings (Step 4), blast-radius probe specs (Step 5 — TODO renderings for unfilled + resolved for filled), scope-drift bullets (Step 7), context bundle (Step 6), reviewer instructions, notes
+  - Brief framing in instructions section: "Author unaware of forge standards. Time-constrained + LLM-assisted possible. Flag slop + drift + blast. Cite source per finding (constitution / overlay / plan / ADR / smells-heuristic / blast-data). Skip nits unless meaning-changing."
+  - Finding schema documented in instructions section: `{severity, location, category, evidence, fix_hint, source_heuristic}`
+  - LLM (orchestrator) reads brief.md, dispatches `cavecrew-reviewer` via Task tool, parses findings, appends to `state.findings` directly
+- Caps: diff 80000, constitution 30000, concern docs 5000, handoffs 2000, plans inline 300, ADRs inline 200, total brief target ≤100000 chars
+- Tests verify section assemblers + cap truncation + state-load path + output JSON shape
 
 **Verify**:
 
-- `pr_review_helper dispatch-review --intake intake.json --smells smells.json --blast blast.json --context context.json --drift drift.json` outputs `findings.json`
-- Brief includes all input artifacts (verify via string assertions)
-- Manual smoke: dispatch on PR #304 yields ≥10 findings spanning smell/blast/drift categories
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper dispatch-review --pr <N> --target <path>` writes `.devforge/pr-reviews/<N>/brief.md` + outputs summary JSON (brief_path, brief_size_chars, sections_included, counts)
+- Brief size <100000 chars; sections_included lists all 10
+- Smoke: synthetic state with intake+smells+blast+drift+bundle → brief.md generated
+- LLM-side cavecrew dispatch + findings append: Step 11 PR #304 replay + Step 12 testForge20 manual verify
+
+**Status (2026-05-21)**: COMPLETE — `_dispatch.py` (833L) + `test_dispatch.py` (1202L, 100 tests) shipped via python-engineer; 919 tests green (807 prior + 112 new). python-reviewer audit yielded 4 findings (F1 HIGH `float(None)` crash when LLM fills `confidence: null` — fixed via `entry.get("confidence") or 0.0`, F2 medium `_ADR_CAP`/`_PLAN_CAP` constants ineffective due to inline slices — renamed to `_ADR_INLINE_CAP=200`/`_PLAN_INLINE_CAP=300` + dead `_truncate` calls removed, F3 low `_write_state` dead code copy in `_dispatch.py` — removed + TODO count reverted to 5 across remaining modules, F4 low `sections_included` missed `"notes"` — added); all 4 applied; re-audit needed. NO LLM/MCP/git-mutating/run-in-background calls.
 
 ### Step 9 — Phase 7: Output + replay corpus
 
