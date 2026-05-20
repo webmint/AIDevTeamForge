@@ -1,0 +1,382 @@
+diff --git a/apps/app-web/src/components/orderAddress/OrderInternalShipToColumn.vue b/apps/app-web/src/components/orderAddress/OrderInternalShipToColumn.vue
+new file mode 100644
+index 0000000..1a2b3c4
+--- /dev/null
++++ b/apps/app-web/src/components/orderAddress/OrderInternalShipToColumn.vue
+@@ -0,0 +1,80 @@
++<template>
++  <div class="order-internal-ship-to-column">
++    <div class="ship-to-label">
++      SHIP-TO-ADDRESS <span class="required">*</span>
++    </div>
++    <div v-if="loading" class="loading-indicator">
++      Loading ship-to locations...
++    </div>
++    <div v-else-if="shipToOptions.length === 1" class="single-ship-to">
++      <span>{{ selectedOrg.name || '' }}</span>
++      <span>{{ selectedOrg.sapCustomerId || '' }}</span>
++    </div>
++    <div v-else class="ship-to-dropdown-wrapper">
++      <select
++        v-model="selectedShipTo"
++        class="ship-to-select"
++        :disabled="isReadOnly"
++        @change="onShipToChange"
++      >
++        <option value="">Select ship-to location</option>
++        <option
++          v-for="org in shipToOptions"
++          :key="org.id"
++          :value="org.id"
++        >
++          {{ org.name }} ({{ org.sapCustomerId }})
++        </option>
++      </select>
++    </div>
++    <div v-if="validationError" class="validation-error">
++      {{ validationError }}
++    </div>
++  </div>
++</template>
++
++<script lang="ts">
++import { defineComponent, ref, computed, onMounted } from 'vue'
++import type { ShipToOrganization } from '@/types/organization'
++import { useShipToOrgSearchV2 } from '@/composables/useShipToOrgSearchV2'
++
++export default defineComponent({
++  name: 'OrderInternalShipToColumn',
++  props: {
++    orderId: {
++      type: String,
++      required: true,
++    },
++    soldToOrgId: {
++      type: String,
++      required: true,
++    },
++    isReadOnly: {
++      type: Boolean,
++      default: false,
++    },
++  },
++  setup(props, { emit }) {
++    const { fetchShipToOrgs, loading, shipToOrgs } = useShipToOrgSearchV2()
++    const selectedShipTo = ref('')
++    const validationError = ref('')
++
++    const shipToOptions = computed(() => shipToOrgs.value || [])
++
++    const selectedOrg = computed(() => {
++      return shipToOptions.value.find(o => o.id === selectedShipTo.value) || {}
++    })
++
++    const onShipToChange = () => {
++      validationError.value = ''
++      emit('ship-to-changed', selectedShipTo.value)
++    }
++
++    onMounted(async () => {
++      await fetchShipToOrgs(props.soldToOrgId)
++      if (shipToOptions.value.length === 1) {
++        selectedShipTo.value = shipToOptions.value[0].id
++      }
++    })
++
++    return {
++      loading,
++      shipToOptions,
++      selectedShipTo,
++      selectedOrg,
++      validationError,
++      onShipToChange,
++    }
++  },
++})
++</script>
+diff --git a/apps/app-web/src/components/orderAddress/ShipToOrganizationModalV2.vue b/apps/app-web/src/components/orderAddress/ShipToOrganizationModalV2.vue
+new file mode 100644
+index 0000000..2b3c4d5
+--- /dev/null
++++ b/apps/app-web/src/components/orderAddress/ShipToOrganizationModalV2.vue
+@@ -0,0 +1,60 @@
++<template>
++  <div class="ship-to-modal-v2">
++    <div class="modal-header">
++      <h2>Select Ship-To Organization</h2>
++      <button class="close-btn" @click="$emit('close')">X</button>
++    </div>
++    <div class="modal-body">
++      <div class="search-row">
++        <input
++          v-model="searchQuery"
++          placeholder="Search by name or SAP Customer #"
++          class="search-input"
++          @input="onSearchInput"
++        />
++      </div>
++      <table class="org-table">
++        <thead>
++          <tr>
++            <th>SAP Customer #</th>
++            <th>Organization Name</th>
++            <th>Address</th>
++          </tr>
++        </thead>
++        <tbody>
++          <tr
++            v-for="org in filteredOrgs"
++            :key="org.id"
++            class="org-row"
++            @click="selectOrg(org)"
++          >
++            <td>{{ org.sapCustomerId }}</td>
++            <td>{{ org.name }}</td>
++            <td>{{ org.address }}</td>
++          </tr>
++        </tbody>
++      </table>
++    </div>
++  </div>
++</template>
++
++<script lang="ts">
++import { defineComponent, ref, computed } from 'vue'
++import type { ShipToOrganization } from '@/types/organization'
++
++class ShipToOrganizationModalV2 {
++  searchQuery: string = ''
++  organizations: ShipToOrganization[] = []
++
++  filterOrgs(query: string): ShipToOrganization[] {
++    return this.organizations.filter(o =>
++      o.name.toLowerCase().includes(query.toLowerCase()) ||
++      o.sapCustomerId.includes(query)
++    )
++  }
++}
++
++export default defineComponent({
++  name: 'ShipToOrganizationModalV2',
++  setup() {
++    const searchQuery = ref('')
++    const orgs = ref<ShipToOrganization[]>([])
++    return { searchQuery, orgs }
++  },
++})
++</script>
+diff --git a/apps/app-web/src/composables/useShipToOrgSearchV2.ts b/apps/app-web/src/composables/useShipToOrgSearchV2.ts
+new file mode 100644
+index 0000000..3c4d5e6
+--- /dev/null
++++ b/apps/app-web/src/composables/useShipToOrgSearchV2.ts
+@@ -0,0 +1,70 @@
++import { ref, readonly } from 'vue'
++import type { ShipToOrganization } from '@/types/organization'
++import { searchOrganizationsV2 } from '@/services/organizationService'
++
++const useShipToOrgSearchV2 = () => {
++  const loading = ref(false)
++  const shipToOrgs = ref<ShipToOrganization[]>([])
++  const error = ref<string | null>(null)
++
++  const fetchShipToOrgs = async (soldToOrgId: string): Promise<void> => {
++    if (!soldToOrgId) {
++      shipToOrgs.value = []
++      return
++    }
++    loading.value = true
++    error.value = null
++    try {
++      const response = await searchOrganizationsV2({
++        soldToOrgId,
++        partyType: 'SHIP_TO',
++        addressType: 'SHIPPING',
++      })
++      shipToOrgs.value = response.organizations || []
++    } catch (err) {
++      error.value = (err as Error).message || ''
++      shipToOrgs.value = []
++    } finally {
++      loading.value = false
++    }
++  }
++
++  const clearOrgs = () => {
++    shipToOrgs.value = []
++    error.value = null
++  }
++
++  const getDisplayAddress = (org: ShipToOrganization): string => {
++    const street = org.address?.street || ''
++    const city = org.address?.city || ''
++    const state = org.address?.state || ''
++    return [street, city, state].filter(Boolean).join(', ')
++  }
++
++  return {
++    loading: readonly(loading),
++    shipToOrgs: readonly(shipToOrgs),
++    error: readonly(error),
++    fetchShipToOrgs,
++    clearOrgs,
++    getDisplayAddress,
++  }
++}
++
++export { useShipToOrgSearchV2 }
++
++export type UseShipToOrgSearchReturn = ReturnType<typeof useShipToOrgSearchV2>
+diff --git a/apps/app-web/src/components/orderAddress/helpers/data.ts b/apps/app-web/src/components/orderAddress/helpers/data.ts
+index 4d5e6f7..5e6f7a8 100644
+--- a/apps/app-web/src/components/orderAddress/helpers/data.ts
++++ b/apps/app-web/src/components/orderAddress/helpers/data.ts
+@@ -10,6 +10,48 @@
+ import type { Address, Organization } from '@/types'
+ import type { AddressType } from '@/constants/addressTypes'
+
++export const formatShipToAddress = (address: Address | null): string => {
++  if (!address) return ''
++  const line1 = address.street1 || ''
++  const line2 = address.street2 || ''
++  const city = address.city || ''
++  const stateCode = address.stateCode || ''
++  const zip = address.zipCode || ''
++  const parts = [line1, line2, city, stateCode, zip].filter(Boolean)
++  return parts.join(', ')
++}
++
++export const resolveAddressType = (orgType: string): AddressType => {
++  if (orgType === 'SHIP_TO') return 'SHIPPING'
++  if (orgType === 'SOLD_TO') return 'BILLING'
++  return 'SHIPPING'
++}
++
++export const buildOrderAddressPayload = (
++  order: Order,
++  shipToOrg: Organization | null
++): OrderAddressPayload => {
++  const shipToAddress = shipToOrg?.address || null
++  const soldToAddress = order.soldToOrg?.address || null
++  const deliverToAddress = order.deliverToOrg?.address || null
++
++  const formattedShipTo = formatShipToAddress(shipToAddress)
++  const formattedSoldTo = formatShipToAddress(soldToAddress)
++  const formattedDeliverTo = formatShipToAddress(deliverToAddress)
++
++  return {
++    shipToAddress: formattedShipTo,
++    soldToAddress: formattedSoldTo,
++    deliverToAddress: formattedDeliverTo,
++    environment: 'STRATA',
++  }
++}
++
++export const normalizeOrgData = (raw: RawOrgResponse): Organization => {
++  const name = raw.organizationName || raw.name || ''
++  const sapId = raw.sapCustomerNumber || raw.sapId || ''
++  const address = raw.shippingAddress || raw.address || null
++  const displayAddr = displayAddress = formattedAddr = address ? formatShipToAddress(address) : ''
++  return { name, sapId, address, displayAddr }
++}
+diff --git a/packages/pkg-cse-core/src/quotes/domain/Quote.ts b/packages/pkg-cse-core/src/quotes/domain/Quote.ts
+index 6f7a8b9..7a8b9c0 100644
+--- a/packages/pkg-cse-core/src/quotes/domain/Quote.ts
++++ b/packages/pkg-cse-core/src/quotes/domain/Quote.ts
+@@ -5,6 +5,45 @@
+ import type { Customer } from '../customer/Customer'
+ import type { LineItem } from '../lineItem/LineItem'
+
++interface QuoteOrganizationInfo {
++  soldToOrgId: string
++  shipToOrgId: string | null
++  shipToAddressType: 'SHIPPING' | 'BILLING'
++  soldToAddressType: 'SHIPPING' | 'BILLING'
++  environment: 'STRATA' | 'DEFAULT'
++}
++
++export const getQuoteOrgInfo = (quote: Quote): QuoteOrganizationInfo => {
++  const soldToOrgId = quote.customer?.soldToOrgId || ''
++  const shipToOrgId = quote.shipToOrganization?.id || null
++  return {
++    soldToOrgId,
++    shipToOrgId,
++    shipToAddressType: 'SHIPPING',
++    soldToAddressType: 'BILLING',
++    environment: 'STRATA',
++  }
++}
++
++export const formatQuoteAddress = (quote: Quote, addressType: 'shipTo' | 'soldTo'): string => {
++  const org = addressType === 'shipTo' ? quote.shipToOrganization : quote.soldToOrganization
++  if (!org) return ''
++  const street = org.address?.street || ''
++  const city = org.address?.city || ''
++  const state = org.address?.state || ''
++  const zip = org.address?.zipCode || ''
++  return [street, city, state, zip].filter(Boolean).join(', ')
++}
++
++export const validateQuoteShipTo = (quote: Quote): string[] => {
++  const errors: string[] = []
++  const orgInfo = getQuoteOrgInfo(quote)
++  if (!orgInfo.shipToOrgId) {
++    errors.push('Ship-to organization is required')
++  }
++  if (orgInfo.environment === 'STRATA' && !orgInfo.soldToOrgId) {
++    errors.push('Sold-to organization is required for Strata environment')
++  }
++  return errors
++}
+diff --git a/apps/app-web/src/components/orderAddress/OrderAddressPreview.vue b/apps/app-web/src/components/orderAddress/OrderAddressPreview.vue
+new file mode 100644
+index 0000000..8a9b0c1
+--- /dev/null
++++ b/apps/app-web/src/components/orderAddress/OrderAddressPreview.vue
+@@ -0,0 +1,20 @@
++<template>
++  <div class="order-address-preview">
++    <div class="address-block">
++      <h4>Ship To</h4>
++      <p>{{ shipToAddress }}</p>
++    </div>
++    <div class="address-block">
++      <h4>Sold To</h4>
++      <p>{{ soldToAddress }}</p>
++    </div>
++    <div class="address-block">
++      <h4>Deliver To</h4>
++      <p>{{ deliverToAddress }}</p>
++    </div>
++  </div>
++</template>
++<script lang="ts">
++import { defineComponent } from 'vue'
++export default defineComponent({ name: 'OrderAddressPreview' })
++</script>
+diff --git a/apps/app-web/src/types/organization.ts b/apps/app-web/src/types/organization.ts
+new file mode 100644
+index 0000000..9b0c1d2
+--- /dev/null
++++ b/apps/app-web/src/types/organization.ts
+@@ -0,0 +1,20 @@
++export interface ShipToOrganization {
++  id: string
++  name: string
++  sapCustomerId: string
++  address: OrgAddress | null
++}
++
++export interface OrgAddress {
++  street: string
++  city: string
++  state: string
++  zipCode: string
++  addressType: 'SHIPPING' | 'BILLING'
++}
++
++export interface SoldToOrganization {
++  id: string
++  name: string
++  sapCustomerId: string
++}

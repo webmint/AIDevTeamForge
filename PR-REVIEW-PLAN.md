@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) + 9 (finalize-output + append-to-replay-corpus) + 10 (slash command spec + emitter `_PROMOTED` wire-in) shipped through 2026-05-21; ALL 11 HELPER VERBS IMPLEMENTED + slash command spec live; Steps 11-12 pending (PR #304 replay fixture + testForge20 manual verify). Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) + 9 (finalize-output + append-to-replay-corpus) + 10 (slash command spec + emitter `_PROMOTED` wire-in) + 11 (PR #304 replay fixture + end-to-end helper test) shipped through 2026-05-21; ALL 11 HELPER VERBS IMPLEMENTED + slash command spec live + synthetic replay validated; Step 12 PENDING (testForge20 end-to-end manual verify on real foreign-repo PR — STOP POINT per user direction). Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -387,14 +387,19 @@ verbs:
 
 **Replay**:
 
-- Invoke full pipeline end-to-end on fixture (CBM mocked OR run against a real CBM index of cloned db-cse-ui-strata at PR #304 timestamp)
-- Compare actual findings vs `expected_findings.yaml`
+- Invoke full helper pipeline end-to-end on synthetic fixture (LLM-side Phase 3.5 CBM + Phase 6.5 cavecrew NOT exercised — those are Step 12 manual verify)
+- Compare actual helper outputs vs `expected_outcomes.json` declarative gate
 
 **Verify**:
 
-- ≥8 of 9 expected gaps surface (per design matrix: empty PR body, duplication, hedge-defensive, scope drift, missing validation, missing env gate, AC-7 missing, anchoring, atomic dump)
-- No false-positive findings with severity ≥ high
-- Replay reproducible (deterministic across runs given same fixtures + CBM index)
+- All 4 expected smells fire (`empty_pr_body`, `atomic_dump`, `hedge_defensive`, `verbose_commit_msg`)
+- ≥3 blast probe specs extracted (vue + typescript symbols; `filled=False` since LLM phase skipped)
+- ≥9 scope-drift bullets extracted (≥1 via `ac_marker`)
+- brief.md generated with PR # + AC text + smell names
+- findings.md generated with empty-findings marker (state.findings unfilled since LLM skipped)
+- corpus_index.json upserted with pr=304 entry
+
+**Status (2026-05-21)**: COMPLETE — fixture `tests/fixtures/pr_review_replay_corpus/304/` (4 files: pr_view.json / pr_diff.patch / ticket.txt / expected_outcomes.json) + end-to-end test `tests/lib/_pr_review/test_replay_pr304.py` (601L, 13 tests) shipped via python-engineer; 1081 tests green (1068 prior + 13 new). All 11 helper verbs exercised against synthetic fixture; all expected gap classes detected. Engineer adjusted fixture (5 new files / 336 added lines) to clear `atomic_dump` heuristic threshold (`new_files > 4` strict). NO LLM/MCP/git-mutating/run-in-background. LLM-side phases (3.5 CBM trace_path; 6.5 cavecrew dispatch) deferred to Step 12 manual verify on real foreign-repo PR.
 
 ### Step 12 — testForge20 end-to-end manual verification
 

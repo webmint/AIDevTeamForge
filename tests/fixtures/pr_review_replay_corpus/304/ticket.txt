@@ -1,0 +1,11 @@
+Ticket: Update the Draft Order screen in CSE to allow users to select a ship to location for their draft orders.
+
+AC-1: Update the SHIP-TO-ADDRESS label to include a red asterisk to indicate it is a required field.
+AC-2: The ship to location drop down will be populated by making a searchOrganizationsV2 call to retrieve descendant ship to party values for the sold to organization on the order.
+AC-3: If only one ship to party exists, that org should be selected in the drop down automatically.
+AC-4: If multiple ship to parties exist, the field should be blank by default.
+AC-5: If ship to party is not selected and the INCLUDE WITH SUBMISSION checkbox is still marked, the user should be blocked from continuing.
+AC-6: The modal that opens to display the list of ship to organizations should be updated to show the correct fields (SAP Customer # should replace AR#).
+AC-7: This formatting for customer should be applied to Ship To, Ordered By, and Deliver To addresses on the preview screen.
+AC-8: Use SHIPPING address type for Ship To. Use BILLING address type for Sold To.
+AC-9: Change is only for Strata environment.

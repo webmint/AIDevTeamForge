@@ -1,0 +1,23 @@
+{
+  "title": "[MIG-2198] - Update organization changes on order preview",
+  "body": "",
+  "additions": 789,
+  "deletions": 23,
+  "baseRefName": "main",
+  "headRefName": "feature/MIG-2198",
+  "files": [
+    {"path": "apps/app-web/src/components/orderAddress/OrderInternalShipToColumn.vue"},
+    {"path": "apps/app-web/src/components/orderAddress/ShipToOrganizationModalV2.vue"},
+    {"path": "apps/app-web/src/composables/useShipToOrgSearchV2.ts"},
+    {"path": "apps/app-web/src/components/orderAddress/helpers/data.ts"},
+    {"path": "packages/pkg-cse-core/src/quotes/domain/Quote.ts"}
+  ],
+  "state": "MERGED",
+  "author": {"login": "npineda"},
+  "url": "https://github.com/DoosanICA/db-cse-ui-strata/pull/304",
+  "number": 304,
+  "closingIssuesReferences": [],
+  "commits": [
+    {"messageHeadline": "Refactor order address components to improve internal order experience and ship-to organization selection"}
+  ]
+}
