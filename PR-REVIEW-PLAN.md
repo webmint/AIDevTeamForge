@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) shipped same day; Steps 2-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -160,9 +160,11 @@ verbs:
 
 **Verify**:
 
-- `python -m src.devforge.lib.pr_review_helper --help` lists all 11 verbs
-- Each verb stub returns exit 1 with "not implemented" message
-- `pytest tests/lib/_pr_review/` discovers (no tests yet but suite resolves)
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper --help` lists all 11 verbs
+- Each verb stub returns exit 1 with `pr_review_helper <verb>: not yet implemented (PR-REVIEW-PLAN Step <N> pending)` stderr
+- `./.venv-test/bin/pytest tests/lib/_pr_review/` green — 60 tests passing
+
+**Status (2026-05-20)**: COMPLETE — scaffold shipped via python-engineer; 60 tests green (test_cli + test_state + test_validators); python-reviewer audit yielded 4 findings (F1 medium STATE_DIR_PATTERN dead code, F2 low _VERB_STEP dead dict, F3 low this Verify clause stale, F4 nit _die missing helper-prefix); all 4 applied.
 
 ### Step 2 — Phase -1 + Phase 0: CBM ensure + forge-state detect
 
