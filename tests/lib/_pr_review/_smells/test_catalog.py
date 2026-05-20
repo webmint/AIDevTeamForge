@@ -147,21 +147,32 @@ class TestRunAll(unittest.TestCase):
 
 
 class TestDefaultRegistration(unittest.TestCase):
-    """The default catalog (populated by _smells/__init__.py) has 4 heuristics."""
+    """The default catalog (populated by _smells/__init__.py) has 8 heuristics.
+
+    Step 4a Wave 1: empty_pr_body, atomic_dump, hedge_defensive, verbose_commit_msg
+    Step 4b Wave 2: duplication_ratio, literal_archaeology_adapter,
+                    argument_duplication, hallucinated_api
+    """
 
     def setUp(self):
         # Ensure we are using the production catalog by reloading defaults.
         _reload_smells_defaults()
 
-    def test_four_heuristics_registered_by_default(self):
-        self.assertEqual(len(_CATALOG), 4)
+    def test_eight_heuristics_registered_by_default(self):
+        self.assertEqual(len(_CATALOG), 8)
 
     def test_default_heuristic_names(self):
         names = [entry[0] for entry in _CATALOG]
+        # Step 4a Wave 1.
         self.assertIn("empty_pr_body", names)
         self.assertIn("atomic_dump", names)
         self.assertIn("hedge_defensive", names)
         self.assertIn("verbose_commit_msg", names)
+        # Step 4b Wave 2.
+        self.assertIn("duplication_ratio", names)
+        self.assertIn("literal_archaeology_adapter", names)
+        self.assertIn("argument_duplication", names)
+        self.assertIn("hallucinated_api", names)
 
     def test_registration_order(self):
         names = [entry[0] for entry in _CATALOG]
@@ -170,6 +181,10 @@ class TestDefaultRegistration(unittest.TestCase):
             "atomic_dump",
             "hedge_defensive",
             "verbose_commit_msg",
+            "duplication_ratio",
+            "literal_archaeology_adapter",
+            "argument_duplication",
+            "hallucinated_api",
         ])
 
 

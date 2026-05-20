@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4a (4 text-pattern smell heuristics + catalog + detect-smells verb) shipped same day; Steps 4b + 5-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) shipped same day; Steps 5-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -226,10 +226,10 @@ verbs:
 
 **Changes**:
 
-- `_pr_review/_smells/duplication_ratio.py` — file-vs-file similarity via `difflib` (Python stdlib) — compares each new file's content against existing files in target repo
-- `_pr_review/_smells/literal_archaeology_adapter.py` — git-blame on diff-introduced literals; classifies via 6-value intent set per V3 lesson
-- `_pr_review/_smells/argument_duplication.py` — extracts function-call shapes from diff (regex-based); consumes `_shared/literal_call_shape._detect_arg_duplication`
-- `_pr_review/_smells/hallucinated_api.py` — extracts referenced symbol names from diff additions; checks against CBM graph via subprocess (where available); flags symbols with no graph hits
+- `_pr_review/_smells/duplication_ratio.py` — file-vs-file similarity via `difflib` (Python stdlib); compares new-file content reconstructed from diff `+` lines against existing files in target repo (sorted by basename similarity, capped 200 candidates, ≥0.80 ratio threshold, ≥50-line minimum); single highest-ratio match cited
+- `_pr_review/_smells/literal_archaeology_adapter.py` — git blame on diff-introduced literals (read-only `git blame -L`, `git log -1`); classifies intent via 6-value pattern set (placeholder / migrated / deliberate / forgotten / inherited-refactor / generated); cap 50 literals per PR; fail-soft when target not a git repo or git binary unavailable
+- `_pr_review/_smells/argument_duplication.py` — extracts function-call shapes from diff via local `_FUNCTION_CALL_RE` (word-boundary anchored, excludes numeric-prefix shapes); passes full call-shape string to canonical `_shared/literal_call_shape._detect_arg_duplication`; cap 100 shapes per PR
+- `_pr_review/_smells/hallucinated_api.py` — extracts IMPORT statements (Python / TS / JS / Vue) from diff additions; subprocess grep over target repo for module references; stdlib allowlist (~50 Python modules) prevents trivial false positives; cap 30 imports per PR; fail-soft when grep unavailable
 
 **Verify (both waves combined)**:
 
@@ -237,7 +237,9 @@ verbs:
 - Per-heuristic test: ≥1 positive (fires) + ≥1 negative (doesn't fire) fixture
 - PR #304 replay (after Step 11 fixture in place): ≥6 of 9 expected gap-class smells fire (empty body, atomic dump, hedge-defensive triple-assign, verbose commit msg, duplication 80%, hallucinated-or-magic literals, argument duplication if call shape extractable)
 
-**Status (2026-05-20)**: 4a COMPLETE — 4 heuristics (empty_pr_body / atomic_dump / hedge_defensive / verbose_commit_msg) + catalog (register / run_all / clear_registry) + detect-smells verb shipped via python-engineer; PRReviewState extended with `commit_subjects: List[str]`; intake now fetches `commits` field from gh; 323 tests green (193 prior + 130 new — 129 step-4a + 1 F2 regression); python-reviewer audit yielded 4 findings (F1 medium vacuous idempotency test, F2 low `_ADDED_LINE_RE` blank-line bleed, F3 low indexing 1-based vs 0-based inconsistency, F4 nit unused `Optional` import); all 4 applied; post-fix re-audit clean. All `location` values use 0-based indexing universally per `_catalog.py` schema docstring. 4b deferred — advanced heuristics ship next.
+**Status (2026-05-20)**: 4a + 4b COMPLETE.
+- 4a: 4 text-pattern heuristics + catalog (`register` / `run_all` / `clear_registry`) + `detect-smells` verb shipped; PRReviewState extended with `commit_subjects: List[str]`; intake fetches `commits` from gh; 323 tests green. python-reviewer found 4 findings (F1 medium vacuous idempotency, F2 low `_ADDED_LINE_RE` blank-line bleed, F3 low indexing inconsistency, F4 nit unused `Optional`); all applied; re-audit clean. All `location` values 0-indexed universally.
+- 4b: 4 advanced heuristics shipped consuming canonical `_shared/literal_call_shape` (Phase D); PRReviewState extended with `target: str` (runtime-injected, persisted-but-overwritten); 459 tests green (323 prior + 136 new). python-reviewer found 6 findings (F1 high duplicate `_pr_review/_shared/` created by accident — deleted + retargeted to canonical, F2 medium `os.walk` hidden-dir filter bypass, F3 medium `[^+]` blank-line cross in 2 modules, F4 low `forgotten` pattern too narrow + reordering, F5 low dynamic-attribute injection → declared field, F6 nit "Step 4b" stale citation); all applied; re-audit found 1 follow-up medium (target-field comment factually wrong about persistence) applied inline. ALL git ops in heuristics READ-ONLY (`git blame` / `git log` / `git show`).
 
 ### Step 5 — Phase 3: Blast radius
 

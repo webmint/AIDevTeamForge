@@ -28,6 +28,12 @@ class PRReviewState:
     # Step 3 (intake) populates.
     pr_number: int = 0
     repo: str = ""
+    # Runtime-injected by _cli (cmd_detect_smells); written to state.json but
+    # always overwritten from --target args at run time — do not rely on the
+    # persisted value across machines (it is machine-local). Declared here
+    # rather than via dynamic-attribute injection so heuristics can access
+    # state.target without a getattr defensive fallback.
+    target: str = ""
     diff: str = ""
     pr_body: str = ""
     linked_issues: List[str] = field(default_factory=list)

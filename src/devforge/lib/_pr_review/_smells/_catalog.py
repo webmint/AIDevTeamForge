@@ -7,7 +7,7 @@ Heuristic modules register themselves by calling register() at import time
 Finding schema — every heuristic emits dicts with these keys:
     name     : str  — heuristic name, e.g. "empty_pr_body"
     severity : str  — one of: "nit", "low", "medium"
-                      ("high" reserved for Step 4b blast-radius-driven heuristics)
+                      ("high" reserved for Step 5 blast-radius-driven heuristics)
     location : str  — diff location if applicable; "*" for whole-PR; "N/A" for non-code.
                       All `location` values use 0-based indexing for both diff line
                       offsets (e.g. "diff:line+0" for the first added line) and commit

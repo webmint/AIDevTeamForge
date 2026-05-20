@@ -173,6 +173,14 @@ def cmd_detect_smells(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # Inject target into state for heuristics that need filesystem access
+    # (duplication_ratio, literal_archaeology_adapter, hallucinated_api).
+    # target is a declared PRReviewState field (default ""); set here at
+    # run time. The value IS persisted to state.json via asdict() but is
+    # always overwritten from --target args on the next invocation —
+    # so the persisted value is irrelevant across machines.
+    state.target = target
+
     # Run all heuristics.  Each may emit multiple findings.
     findings = _smells._catalog.run_all(state)
 

@@ -69,6 +69,11 @@ class TestPRReviewStateDefaults(unittest.TestCase):
         self.assertIsInstance(self.state.commit_subjects, list)
         self.assertEqual(self.state.commit_subjects, [])
 
+    def test_target_default_is_empty_string(self):
+        """F5: target must be a declared field defaulting to empty string."""
+        self.assertIsInstance(self.state.target, str)
+        self.assertEqual(self.state.target, "")
+
     def test_mutable_defaults_are_independent(self):
         """Each instance has its own list/dict objects (no shared default)."""
         s1 = PRReviewState()
@@ -79,6 +84,14 @@ class TestPRReviewStateDefaults(unittest.TestCase):
         self.assertEqual(s2.bundle, {})
         s1.commit_subjects.append("feat: something")
         self.assertEqual(s2.commit_subjects, [])
+
+    def test_target_field_in_asdict(self):
+        """F5: dataclasses.asdict must include target field (serialization check)."""
+        import dataclasses
+        state = PRReviewState(target="/some/path")
+        d = dataclasses.asdict(state)
+        self.assertIn("target", d)
+        self.assertEqual(d["target"], "/some/path")
 
 
 class TestStatePath(unittest.TestCase):
