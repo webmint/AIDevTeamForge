@@ -467,6 +467,16 @@ The LLM does NOT edit the rendered report via Write or Edit at any point. The he
 
 ## Phase 4 — Save + recommend
 
+### Phase 4.0 — Finalize handoff artefact
+
+After Phase 3 `verify` exits 0 AND BEFORE the "Save this discovery report?" prompt:
+
+```bash
+.devforge/lib/discover_helper finalize-handoff
+```
+
+Helper writes `discover/<report.date>-<memo.topic_slug>.handoff.json` (sibling to the eventual rendered report). On exit 0: surface the path to the user in your next user-facing message as a fenced code block, then proceed to the save prompt. On non-zero exit: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) and end the turn; the user must address the cited verify violation (likely a missing setter call from Phase 3) and re-invoke `/discover`.
+
 ### Ask to save
 
 After echoing the rendered report, ask via AskUserQuestion `"Save this discovery report to a file?"` with options `["save", "skip"]`.

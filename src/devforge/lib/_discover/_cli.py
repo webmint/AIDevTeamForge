@@ -92,6 +92,10 @@ from ._cmds_fit import (  # noqa: E402
     cmd_set_fit_rationale,
     cmd_set_overall_fit,
 )
+from ._cmds_handoff import (  # noqa: E402
+    cmd_append_outcome,
+    cmd_finalize_handoff,
+)
 from ._cmds_scope import (  # noqa: E402
     _make_scope_dim_setter,
     cmd_check_conflicts,
@@ -473,6 +477,76 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_verify)
+
+    # Step 3 -- finalize-handoff.
+    sp = subparsers.add_parser(
+        "finalize-handoff",
+        help="Emit handoff.json from discover state (terminal phase).",
+    )
+    sp.add_argument(
+        "--emit-handoff-json",
+        default=None,
+        dest="emit_handoff_json",
+        help=(
+            "Override output path. Default: discover/<report.date>-<memo.topic_slug>.handoff.json"
+        ),
+    )
+    sp.set_defaults(func=cmd_finalize_handoff)
+
+    # Step 5 -- append-outcome.
+    sp = subparsers.add_parser(
+        "append-outcome",
+        help="Record post-discovery outcome into handoff.json (Step 5).",
+    )
+    sp.add_argument(
+        "--handoff-path",
+        required=True,
+        dest="handoff_path",
+        help="Path to the handoff.json file (e.g. discover/<date>-<slug>.handoff.json).",
+    )
+    sp.add_argument(
+        "--design-option-shipped-id",
+        required=True,
+        dest="design_option_shipped_id",
+        choices=("A", "B", "C", "D", "E", "F", "G", "H", "hybrid", "none"),
+        help="Which design option actually shipped.",
+    )
+    sp.add_argument(
+        "--design-option-shipped-summary",
+        required=True,
+        dest="design_option_shipped_summary",
+        help="1-3 sentence description of what shipped.",
+    )
+    sp.add_argument(
+        "--build-vs-buy-actual",
+        required=True,
+        dest="build_vs_buy_actual",
+        choices=("Build", "Buy", "Hybrid", "none"),
+        help="Actual build-vs-buy path taken.",
+    )
+    sp.add_argument(
+        "--shipped-commit-sha",
+        default=None,
+        dest="shipped_commit_sha",
+        help="Optional: 7-40 char hex SHA of the commit that shipped the feature.",
+    )
+    sp.add_argument(
+        "--delta-from-recommendation",
+        default=None,
+        dest="delta_from_recommendation",
+        help="Required when any match flag is False: how reality diverged from recommendation.",
+    )
+    sp.add_argument(
+        "--internal-extension-followed",
+        default=None,
+        dest="internal_extension_followed",
+        choices=("true", "false"),
+        help=(
+            "Required when handoff has internal prior-art entries: "
+            "whether the internal canonical-pattern extension was followed."
+        ),
+    )
+    sp.set_defaults(func=cmd_append_outcome)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
