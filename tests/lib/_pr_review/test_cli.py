@@ -6,7 +6,8 @@ Coverage:
   Step 2 verbs (ensure-cbm-index, detect-forge-state): exit 0, valid JSON.
   Step 3 verb (intake): args registered, no-longer-stub smoke test.
   Step 4 verb (detect-smells): args registered, smoke test with synthetic state.
-  The 7 remaining stub verbs: exit 1 + correct "not yet implemented" message.
+  Step 5 verb (compute-blast-radius): args registered, smoke test with synthetic state.
+  The 6 remaining stub verbs: exit 1 + correct "not yet implemented" message.
 """
 
 import argparse
@@ -43,10 +44,9 @@ _VERB_STEP = [
     ("append-to-replay-corpus", 9),
 ]
 
-# The 7 still-stub verbs (Steps 5-9); intake (Step 3) + detect-smells (Step 4)
-# are now implemented.
+# The 6 still-stub verbs (Steps 6-9); intake (Step 3), detect-smells (Step 4),
+# and compute-blast-radius (Step 5) are now implemented.
 _STUB_VERB_STEP = [
-    ("compute-blast-radius", 5),
     ("bundle-context", 6),
     ("import-handoffs", 6),
     ("check-scope-drift", 7),
@@ -74,15 +74,16 @@ class TestBuildParser(unittest.TestCase):
     def test_all_11_verbs_registered(self):
         """Each verb can be parsed without argparse raising SystemExit.
 
-        intake requires --pr and --repo; detect-smells requires --pr; supply
-        minimal valid values for those.
+        intake requires --pr and --repo; detect-smells and compute-blast-radius
+        require --pr; supply minimal valid values for those.
         """
+        _PR_REQUIRED = frozenset(["detect-smells", "compute-blast-radius"])
         parser = build_parser()
         for verb, _ in _VERB_STEP:
             with self.subTest(verb=verb):
                 if verb == "intake":
                     argv = [verb, "--pr", "1", "--repo", "foo/bar"]
-                elif verb == "detect-smells":
+                elif verb in _PR_REQUIRED:
                     argv = [verb, "--pr", "1"]
                 else:
                     argv = [verb]
@@ -116,7 +117,7 @@ class TestBuildParser(unittest.TestCase):
                 self.assertEqual(args.target, "/some/path")
 
     def test_stub_verbs_do_not_have_target_arg(self):
-        """Stub verbs (steps 5-9) do not accept --target yet."""
+        """Stub verbs (steps 6-9) do not accept --target yet."""
         parser = build_parser()
         for verb, _ in _STUB_VERB_STEP:
             with self.subTest(verb=verb):
@@ -205,7 +206,7 @@ class TestMainDispatch(unittest.TestCase):
 
     def test_stub_verb_returns_1(self):
         """Any remaining stub verb returns 1 (not yet implemented)."""
-        code = main(["compute-blast-radius"])
+        code = main(["bundle-context"])
         self.assertEqual(code, 1)
 
 
@@ -277,7 +278,7 @@ class TestStep2VerbsViaCLI(unittest.TestCase):
 
 
 class TestSubprocessStubs(unittest.TestCase):
-    """Each of the 7 remaining stub verbs (Steps 5-9): exit 1 + 'not yet implemented'."""
+    """Each of the 6 remaining stub verbs (Steps 6-9): exit 1 + 'not yet implemented'."""
 
     def _assert_stub(self, verb, step):
         result = _run_helper([verb])
@@ -302,9 +303,6 @@ class TestSubprocessStubs(unittest.TestCase):
                 verb, result.stderr
             ),
         )
-
-    def test_compute_blast_radius_stub(self):
-        self._assert_stub("compute-blast-radius", 5)
 
     def test_bundle_context_stub(self):
         self._assert_stub("bundle-context", 6)
@@ -432,6 +430,114 @@ class TestDetectSmellsVerb(unittest.TestCase):
             count_after_second = len(_json.load(fh)["smells"])
         self.assertGreaterEqual(count_after_first, 1, "test fixture must produce >=1 finding")
         self.assertEqual(count_after_second, count_after_first * 2)
+
+
+class TestComputeBlastRadiusVerb(unittest.TestCase):
+    """compute-blast-radius verb: CLI smoke tests using synthetic state.json."""
+
+    def setUp(self):
+        import dataclasses
+        import json as _json
+        self._tmp = tempfile.mkdtemp()
+        from _pr_review._state import PRReviewState, state_path
+        self._pr_number = 55
+        sp = state_path(
+            self._tmp + "/.devforge",
+            self._pr_number,
+        )
+        import os
+        os.makedirs(os.path.dirname(sp), exist_ok=True)
+        state = PRReviewState(
+            pr_number=self._pr_number,
+            repo="acme/app",
+            diff=(
+                "diff --git a/svc.py b/svc.py\n"
+                "+def compute(x):\n"
+                "+    return x\n"
+            ),
+        )
+        with open(sp, "w", encoding="utf-8") as fh:
+            _json.dump(dataclasses.asdict(state), fh, indent=2)
+            fh.write("\n")
+        self._state_path = sp
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_compute_blast_radius_exits_0_with_valid_state(self):
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "compute-blast-radius",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(
+            result.returncode,
+            0,
+            "compute-blast-radius: expected 0, got {0}\nstderr={1}".format(
+                result.returncode, result.stderr
+            ),
+        )
+
+    def test_compute_blast_radius_stdout_is_valid_json(self):
+        import json as _json
+        result = _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "compute-blast-radius",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 0)
+        try:
+            data = _json.loads(result.stdout)
+        except _json.JSONDecodeError as exc:
+            self.fail("stdout not valid JSON: {0}\nstdout={1!r}".format(exc, result.stdout))
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("symbols_extracted", data)
+        self.assertIn("by_language", data)
+        self.assertIn("by_kind", data)
+        self.assertIn("capped", data)
+        self.assertIn("state_path", data)
+
+    def test_compute_blast_radius_without_state_exits_1(self):
+        result = _run_helper([
+            "compute-blast-radius",
+            "--pr", "9999",
+            "--target", self._tmp,
+        ])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("intake", result.stderr)
+
+    def test_compute_blast_radius_has_pr_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(["compute-blast-radius", "--pr", "42"])
+        self.assertEqual(args.pr, 42)
+
+    def test_compute_blast_radius_has_target_arg(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["compute-blast-radius", "--pr", "1", "--target", "/some/path"]
+        )
+        self.assertEqual(args.target, "/some/path")
+
+    def test_compute_blast_radius_requires_pr(self):
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["compute-blast-radius"])
+
+    def test_compute_blast_radius_writes_blast_to_state(self):
+        import json as _json
+        _run_helper([
+            "--devforge-dir", self._tmp + "/.devforge",
+            "compute-blast-radius",
+            "--pr", str(self._pr_number),
+            "--target", self._tmp,
+        ])
+        with open(self._state_path, "r", encoding="utf-8") as fh:
+            state_data = _json.load(fh)
+        self.assertIsInstance(state_data["blast"], list)
+        self.assertGreater(len(state_data["blast"]), 0)
 
 
 class TestHelpOutput(unittest.TestCase):

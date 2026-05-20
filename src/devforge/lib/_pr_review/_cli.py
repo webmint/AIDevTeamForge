@@ -7,8 +7,9 @@ main parses argv + dispatches.
 Step 2 verbs (ensure-cbm-index, detect-forge-state) are fully implemented.
 Step 3 verb (intake) is fully implemented.
 Step 4 verb (detect-smells) is fully implemented.
-The remaining 7 verb stubs return exit 1 with a "not yet implemented"
-message; concrete behavior lands in PR-REVIEW-PLAN Steps 5-9.
+Step 5 verb (compute-blast-radius) is fully implemented.
+The remaining 6 verb stubs return exit 1 with a "not yet implemented"
+message; concrete behavior lands in PR-REVIEW-PLAN Steps 6-9.
 """
 
 from __future__ import annotations
@@ -222,11 +223,49 @@ def cmd_detect_smells(args: argparse.Namespace) -> int:
 
 
 def cmd_compute_blast_radius(args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        "pr_review_helper compute-blast-radius: not yet implemented"
-        " (PR-REVIEW-PLAN Step 5 pending)\n"
-    )
-    return 1
+    """Phase 3: parse diff to extract changed symbols; write probe-spec list to state.blast.
+
+    Reads state.json (written by Step 3 intake), identifies NEW or MODIFIED
+    symbols (functions, classes, methods, components, exported types) via
+    per-language regex patterns applied to added lines in the diff, and
+    REPLACES state.blast with one probe-spec entry per unique (symbol, file).
+
+    Does NOT call CBM / MCP tools. The mcp_hints field in each probe spec
+    carries the symbol name for the LLM to pass to CBM trace_path at Step 8.
+
+    Returns 0 on success, 1 on error.
+    """
+    from ._blast import run as _run_blast
+    from ._validators import _validate_pr_number
+
+    try:
+        pr_number = _validate_pr_number(args.pr)
+    except (TypeError, ValueError) as exc:
+        sys.stderr.write("pr_review_helper compute-blast-radius: {0}\n".format(exc))
+        return 1
+
+    target = os.path.abspath(getattr(args, "target", None) or os.getcwd())
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+
+    try:
+        result = _run_blast(
+            target=target,
+            pr_number=pr_number,
+            devforge_dir=devforge_dir,
+        )
+    except ValueError as exc:
+        sys.stderr.write(
+            "pr_review_helper compute-blast-radius: {0}\n".format(exc)
+        )
+        return 1
+    except OSError as exc:
+        sys.stderr.write(
+            "pr_review_helper compute-blast-radius: I/O error: {0}\n".format(exc)
+        )
+        return 1
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
 
 
 def cmd_bundle_context(args: argparse.Namespace) -> int:
@@ -369,10 +408,12 @@ def _register_subcommands(subparsers) -> None:
     Step 2 verbs (ensure-cbm-index, detect-forge-state) receive a --target
     argument.  Step 3 verb (intake) receives --pr, --repo, mutually exclusive
     --ticket-text / --ticket-file, and --target.  Step 4 verb (detect-smells)
-    receives --pr and --target.  All other verbs get no extra arguments until
-    their step lands.
+    and Step 5 verb (compute-blast-radius) both receive --pr (int, required)
+    and --target (str, default cwd).  All other verbs get no extra arguments
+    until their step lands.
     """
     _STEP2_VERBS = frozenset(["ensure-cbm-index", "detect-forge-state"])
+    _PR_REQUIRED_VERBS = frozenset(["detect-smells", "compute-blast-radius"])
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
         sp = subparsers.add_parser(verb, help=help_text)
         if verb in _STEP2_VERBS:
@@ -415,20 +456,17 @@ def _register_subcommands(subparsers) -> None:
                     "lives (default: current working directory)."
                 ),
             )
-        elif verb == "detect-smells":
+        elif verb in _PR_REQUIRED_VERBS:
             sp.add_argument(
                 "--pr",
-                type=int,
                 required=True,
-                help="PR number whose state.json to load (e.g. 42).",
+                type=int,
+                help="PR number (the state file for this PR must already exist)",
             )
             sp.add_argument(
                 "--target",
                 default=os.getcwd(),
-                help=(
-                    "Path to the reviewer's local repo root where .devforge/ "
-                    "lives (default: current working directory)."
-                ),
+                help="Path to the reviewer's local repo (default: CWD)",
             )
         sp.set_defaults(func=handler)
 

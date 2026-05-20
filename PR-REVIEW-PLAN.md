@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) shipped same day; Steps 5-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) shipped same day; Steps 6-12 pending. Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -243,26 +243,24 @@ verbs:
 
 ### Step 5 — Phase 3: Blast radius
 
-**Why**: User's stated #2 differentiator after smell detection. CBM-driven matrix of changed-symbol fan-out.
+**Why**: User's stated #2 differentiator after smell detection. Helper extracts changed symbols + emits probe specs; LLM fills callers/callees/data-flow via CBM `trace_path` at Step 8 dispatch-review time (helpers can't call MCP directly — clean split per `feedback_helper_owns_shape_principle`).
 
 **Changes**:
 
-- `_pr_review/_blast.py`:
-  - Parse diff → identify changed symbols (functions, classes, exported types)
-  - For each: CBM `trace_path(symbol, mode=calls, direction=in)` → callers
-  - CBM `trace_path(symbol, mode=calls, direction=out)` → callees
-  - CBM `trace_path(symbol, mode=data_flow)` → reach
-  - Cross-concern detection: callers in concerns not touched by diff = surprise blast
-  - Test-coverage check: CBM `search_graph` for test files referencing each caller
-  - Produces blast matrix per symbol
-- Text-search fallback when CBM returns 0 hits (per `feedback_cbm_discovery_chain_search_graph_then_code`)
-- Tests with mock CBM responses + small real-world fixture (forge repo itself)
+- `_pr_review/_blast.py` (helper-side):
+  - Parse diff → identify changed symbols per language (Python `def`/`class`/`async def`; TS/JS `function`/`class`/`interface`/`type`/typed-or-untyped `const = fn`; Vue implicit component from basename + script-block scan; Go `func`/`type ... struct/interface`; Java method/class; Ruby `def`/`class`; Rust `fn`/`struct`/`enum`/`trait`)
+  - Build canonical probe-spec entry per symbol (helper-owns-shape): `{symbol, file, kind, language, diff_line_hint, mcp_hints, callers=[], callees=[], data_flow_targets=[], tests_referencing=[], filled=False}`
+  - Dedup by `(symbol, file)`; sort by `(file, symbol)`; cap `_MAX_SYMBOLS_PER_PR = 100`
+  - REPLACE `state.blast` entirely on re-run (not append) — fresh probe spec each invocation
+- Step 8 dispatch-review (deferred): LLM consumes probe specs, runs CBM `trace_path` per symbol, fills caller/callee/data_flow_targets/tests_referencing, sets `filled=True`. Text-search fallback when CBM returns 0 hits (per `feedback_cbm_discovery_chain_search_graph_then_code`) handled at that layer.
 
 **Verify**:
 
-- `pr_review_helper compute-blast-radius --intake intake.json` outputs `blast.json`
-- PR #304 replay surfaces high-risk symbols: `QuoteOrganizationInfo` (20+ callers across packages), `hasEmptyFields` (2 callers including Bulk button)
-- Test coverage: single-caller / multi-caller / cross-concern / data-flow chain / CBM-miss-with-text-fallback
+- `PYTHONPATH=src python -m devforge.lib.pr_review_helper compute-blast-radius --pr <N> --target <path>` populates `state.blast` + outputs summary JSON (`status`, `state_path`, `pr_number`, `symbols_extracted`, `by_language`, `by_kind`, `next_action`, `capped`)
+- Per-language regex test coverage (positive + negative) + Vue implicit-component + dedup + cap + REPLACE semantics + shape validation
+- PR #304 replay (Step 11): probe specs emitted for `QuoteOrganizationInfo` (extended interface — TS) + `hasEmptyFields` (Vue method) + `OrderInternalShipToColumn` (Vue component); Step 8 LLM later fills caller matrix
+
+**Status (2026-05-20)**: COMPLETE — `_blast.py` (577L) + `test_blast.py` (516L) shipped via python-engineer; 592 tests green (459 prior + 133 new). python-reviewer audit yielded 4 findings (F1 medium typed-const arrow regex missed React/TS idiom, F2 low `continue`→`break` pattern-skip semantics, F3 low dead test guard, F4 nit subparser duplication + stale docstring); all 4 applied; re-audit clean. `_PR_REQUIRED_VERBS` frozenset extracted; Step 4+5 verbs share arg-registration block. NO state-mutating git ops; NO `run_in_background` subprocesses. Probe specs await Step 8 LLM-side CBM population.
 
 ### Step 6 — Phase 4: Context bundle + handoff import
 
