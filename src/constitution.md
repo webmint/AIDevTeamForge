@@ -93,6 +93,10 @@ function process(input) {
 
 **Consistent style within a file.** If a file uses one pattern (arrow functions, single quotes, specific import style), follow that pattern. Do not introduce a different style.
 
+*Backed by* `constitute_helper verify-magic-enum` when `forcing_functions.magic_enum_duplication.enabled = true` in `.devforge/constitute.json` — inline literals where a same-module enum-like declaration (TS `enum` / `as const` map / Python `Enum`) covers the same value surface as exit-2 findings when `constitute_helper verify-magic-enum` is run directly or via the optional `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` hook.
+
+*Backed by* `constitute_helper verify-any-leak` when `forcing_functions.any_with_generated_available.enabled = true` — `any` annotations (TypeScript) / `Any` (Python) in files importing from declared generated-types dirs surface as exit-2 findings when `constitute_helper verify-any-leak` is run directly or via the pre-commit hook.
+
 ### 3.6 Design Principles [universal]
 
 **SOLID:**
@@ -111,6 +115,8 @@ function process(input) {
 - Choose the simplest solution that works correctly.
 - Don't add abstractions, patterns, or layers "in case we need them later."
 - If a junior developer can't understand the code in 30 seconds, it's too complex.
+
+*Backed by* `constitute_helper verify-cross-layer-imports` when `forcing_functions.cross_layer_imports.enabled = true` in `.devforge/constitute.json` — import edges that cross declared layer boundaries (per the user-supplied DAG + per-layer dir mapping in the rule config) surface as exit-2 findings when `constitute_helper verify-cross-layer-imports` is run directly or via the optional `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` hook.
 
 ### 3.7 Check Before You Build [universal]
 

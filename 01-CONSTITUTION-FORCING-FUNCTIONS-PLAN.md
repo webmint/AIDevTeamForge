@@ -286,7 +286,7 @@ Phase 5 originally bundled two integration surfaces. Mid-stream split (2026-05-2
 
 #### Files
 
-- `src/files/git-hooks/pre-commit-forcing-functions.sh` (new template) — installable pre-commit hook script. Iterates each `forcing_functions.<rule>` block with `enabled: true` in `.devforge/constitute.json`; invokes `constitute_helper verify-<rule>` on the consumer root; on any exit 2, prints the rule's stdout JSON report and aborts the commit with non-zero. Skips silently if `forcing_functions` block absent. POSIX shell; mirrors `constitute_helper`'s shell-launcher style.
+- `src/git-hooks/pre-commit-forcing-functions.sh` (new template) — installable pre-commit hook script. Iterates each `forcing_functions.<rule>` block with `enabled: true` in `.devforge/constitute.json`; invokes `constitute_helper verify-<rule>` on the consumer root; on any exit 2, prints the rule's stdout JSON report and aborts the commit with non-zero. Skips silently if `forcing_functions` block absent. POSIX shell; mirrors `constitute_helper`'s shell-launcher style.
 - `src/commands/init-forge/main.md` — extend STEP 0 to surface the pre-commit option after the wizard captures `forcing_functions` config. Single AskUserQuestion: "Install pre-commit-forcing-functions hook now? (recommended for repos with the verify-gate workflow)". Default = Yes. Per `feedback_askuserquestion_single_line_only.md` — single-line question; multi-line context falls through to prose prompt only if engineer determines the single-line shape is insufficient.
 - `src/commands/constitute/main.md` (or wizard-side helper) — extend the `/constitute` wizard with a new step that captures `forcing_functions` config interactively (per-rule `enabled` flag + `generated_types_dirs` / `layer_graph` / `allowlist_paths` per-detector). Replaces hand-edited JSON for early adopters. **Note**: scope may be deferred to a follow-up sub-phase if the wizard-edit surface is non-trivial; surface as open question to user before starting.
 - `install.sh` / `update.sh` — verify the hook template ships to `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` (or similar; engineer decides exact path). Hook is NOT auto-installed into `.git/hooks/` by `install.sh` — that requires user opt-in via the wizard.
@@ -295,14 +295,14 @@ Phase 5 originally bundled two integration surfaces. Mid-stream split (2026-05-2
 
 ```bash
 # Pre-commit hook artifacts present:
-ls src/files/git-hooks/pre-commit-forcing-functions.sh
-chmod +x src/files/git-hooks/pre-commit-forcing-functions.sh
+ls src/git-hooks/pre-commit-forcing-functions.sh
+chmod +x src/git-hooks/pre-commit-forcing-functions.sh
 # Wizard wire-in:
 grep -nE "pre-commit-forcing-functions" src/commands/init-forge/main.md
 grep -nE "forcing_functions" src/commands/constitute/main.md
 # End-to-end smoke against testForge20 — install hook, attempt a commit that
 # introduces a magic-enum violation, observe hook abort + JSON relay:
-cp src/files/git-hooks/pre-commit-forcing-functions.sh ~/Projects/testForge20/.git/hooks/pre-commit
+cp src/git-hooks/pre-commit-forcing-functions.sh ~/Projects/testForge20/.git/hooks/pre-commit
 chmod +x ~/Projects/testForge20/.git/hooks/pre-commit
 # (orchestrator drives the violation-introduction + commit-attempt manually)
 ```
@@ -355,9 +355,9 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
 | 2 — empirical verify | SHIPPED (gate-relaxation decision recorded) | `aae5a02` + `EMPIRICAL-VERIFY-MAGIC-ENUM-2026-05-21.md` |
 | 3 — cross-layer | SHIPPED | `a370229` |
 | 4 — any-leak | SHIPPED | `4b058da` |
-| **5a — pre-commit hook + wizard wire-in** | **TODO (next-session pickup)** | — |
+| 5a — pre-commit hook + wizard wire-in | SHIPPED | `f999a88` |
 | 5b — `/execute-task` verify-gate | DEFERRED → ABSORBED INTO `07-EXECUTE-TASK-REDESIGN-PLAN.md` Phase 7 | n/a |
-| 6 — documentation propagation | TODO (follows 5a) | — |
+| **6 — documentation propagation** | **IN-FLIGHT (next-session pickup if interrupted)** | — |
 
 ### Next-session pickup — exact next action
 
@@ -398,7 +398,7 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
      && grep -lE "false.positive.rate" EMPIRICAL-VERIFY-ANY-LEAK-*.md
 
    # Phase 5a — pre-commit hook template + /init-forge wizard wire-in + /constitute wizard extension:
-   ls src/files/git-hooks/pre-commit-forcing-functions.sh 2>/dev/null \
+   ls src/git-hooks/pre-commit-forcing-functions.sh 2>/dev/null \
      && grep -nE "pre-commit-forcing-functions" src/commands/init-forge/main.md \
      && grep -nE "forcing_functions" src/commands/constitute/main.md
 

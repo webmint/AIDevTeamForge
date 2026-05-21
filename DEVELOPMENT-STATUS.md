@@ -77,6 +77,12 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - CLAUDE.md template has conditional `{{WRAPPER_MODE_SECTION}}` (omitted for standalone)
 - Memory template tracks `{{WORKSPACE_MODE}}` (standalone/wrapper) and `{{SOURCE_ROOT}}`
 
+### Forcing Functions (consumer-side detectors backing constitution rules)
+- `constitute_helper verify-magic-enum` / `verify-cross-layer-imports` / `verify-any-leak` — mechanical detectors that back `src/constitution.md` §3.5 (Universal Code Quality — magic-enum + `any`-annotation rules) + §3.6 (Design Principles — layer-boundary rule). Substrate at `src/devforge/lib/_constitute/_forcing_functions/`; each rule gated by its `forcing_functions.<rule>.enabled` block in `.devforge/constitute.json`. Exit 2 on findings.
+- `constitute_helper set-forcing-functions --rule <name> --enabled true|false [per-rule flags]` — writes/updates a `forcing_functions.<rule>` block; called three times during `/constitute` Section 3.5 (one per rule). `list-forcing-functions [--enabled] [--format key|verb]` — machine-readable rule enumeration consumed by the pre-commit hook.
+- `cmd_verify` (the existing `/constitute` verify step) validates each enabled `forcing_functions.<rule>` block against per-rule required-fields in `_constitute/_schema.py`.
+- Optional pre-commit hook template at `src/git-hooks/pre-commit-forcing-functions.sh` — `install.sh` copies it to `.devforge/templates/git-hooks/`; `/constitute` Phase 6.4 prompts the user to opt in (copy to `.git/hooks/pre-commit` + `chmod +x`). Silently no-ops when config or helper is absent.
+
 ## Key Design Decisions
 
 1. **User's workflow is primary** — spec-kit ideas adapted to serve hard gates + agents, not replace them
