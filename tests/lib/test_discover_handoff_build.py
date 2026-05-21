@@ -1,6 +1,6 @@
 """Pure-function tests for src/devforge/lib/_discover/_handoff_build.py.
 
-Covers all 9 cases specified in DISCOVER-HANDOFF-PLAN.md:
+Covers all 9 cases specified in 03-DISCOVER-HANDOFF-PLAN.md:
 - test_build_handoff_worth_pursuing_full
 - test_build_handoff_reconsider_minimal
 - test_build_handoff_override_recorded

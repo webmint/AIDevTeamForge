@@ -1,6 +1,6 @@
 """Tests for src/devforge/lib/_discover/handoff_schema.py.
 
-Covers all 21 test cases enumerated in DISCOVER-HANDOFF-PLAN.md Step 1 Verify block.
+Covers all 21 test cases enumerated in 03-DISCOVER-HANDOFF-PLAN.md Step 1 Verify block.
 Grouped into logical sections:
 
 - TestHappyPath (3 cases): worth_pursuing, reconsider_verdict, override_recorded

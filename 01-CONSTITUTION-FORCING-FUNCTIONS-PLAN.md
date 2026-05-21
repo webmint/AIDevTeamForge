@@ -18,7 +18,7 @@ Three deferred (med/low confidence; queued behind empirical evidence):
 
 4. Schema/contract drift (openapi-typescript handrolled-DTO mismatch) — needs schema parser per stack; not yet pulled by a real violation.
 5. Test-presence for new exports — high false-positive risk on type-only exports and refactors.
-6. Literal-archaeology / 6-value intent classification — already queued in `PR-REVIEW-PLAN.md`; lives at PR-review surface, not pre-commit.
+6. Literal-archaeology / 6-value intent classification — already queued in `04-PR-REVIEW-PLAN.md`; lives at PR-review surface, not pre-commit.
 
 ## Design
 
@@ -376,7 +376,7 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
 - **Automatic fix application** — every detector is read-only. Findings carry a `fix_hint` field for human / LLM triage; no in-place rewrite.
 - **Schema/contract drift detector** (openapi-typescript handrolled-DTO mismatch) — deferred. Needs per-stack schema parser. Pull when a real violation surfaces.
 - **Test-presence detector** — deferred. High false-positive risk on type-only exports.
-- **Literal-archaeology / 6-value intent classification** — lives in `PR-REVIEW-PLAN.md` at the PR-review surface, not this plan's pre-commit / verify-gate surface.
+- **Literal-archaeology / 6-value intent classification** — lives in `04-PR-REVIEW-PLAN.md` at the PR-review surface, not this plan's pre-commit / verify-gate surface.
 - **Stale JSDoc detector** — deferred; high false-positive on TS where types carry the contract.
 - **CBM-graph-based detectors** (e.g., "dead exports", "unused functions") — out of scope; CBM has its own query verbs and runs at a different cadence than verify-gate.
 - **Cross-language / non-TS support** — Phases 1-4 are TS-centric (the seed §3.5 magic-value violation surfaced in TS code touching a generated enum). Python / Go / Rust support is future-work driven by an actual cross-language consumer pulling it.
@@ -386,5 +386,5 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
 - `CONSTITUTION-DRIFT-DETECTOR-PLAN.md` — sibling. Forge-internal one-shot template drift check. Established the helper-subcommand + exit-2 + stderr-findings + stdout-JSON pattern this plan extends.
 - `CONSTITUTION-STRENGTHENING-PLAN.md` — closed 2026-05-16. Strengthened the canonical universal-rule bodies. Detectors in this plan are the mechanical backing for those strengthened rules.
 - `COMMAND-VERIFY-GATES-PLAN.md` — sibling. Converts `## Verify` blocks in done-commands from prose to shell-fact. Same facts-first philosophy applied to command specs instead of constitution rules.
-- `PR-REVIEW-PLAN.md` — sibling. Literal-archaeology / scope-drift / blast-radius live there at the PR-review surface; complementary to the verify-gate surface this plan targets.
+- `04-PR-REVIEW-PLAN.md` — sibling. Literal-archaeology / scope-drift / blast-radius live there at the PR-review surface; complementary to the verify-gate surface this plan targets.
 - `PLAN-COMMAND-REDESIGN` (referenced by `feedback_18_may_patches_delivered.md` as the parity gate for Gap B/C) — Phase 5 of this plan touches `/execute-task` spec; coordinate with whatever execute-task version that redesign produces.

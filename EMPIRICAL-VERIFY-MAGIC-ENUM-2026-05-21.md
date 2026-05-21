@@ -1,6 +1,6 @@
 # EMPIRICAL-VERIFY-MAGIC-ENUM — 2026-05-21
 
-Phase 2 ledger for `CONSTITUTION-FORCING-FUNCTIONS-PLAN.md`. Empirical verify of `verify-magic-enum` (Phase 1 pilot) against the testForge20 consumer to validate the FP rate gate before extending the detector family.
+Phase 2 ledger for `01-CONSTITUTION-FORCING-FUNCTIONS-PLAN.md`. Empirical verify of `verify-magic-enum` (Phase 1 pilot) against the testForge20 consumer to validate the FP rate gate before extending the detector family.
 
 ## Procedure
 

@@ -719,7 +719,7 @@ grep -RnE 'spec_type_hint.*greenfield_feature' src/devforge/lib/_discover/handof
 - `RESEARCH-HANDOFF-PLAN.md` — **PRECEDES this plan**. Steps 1-7+9 SHIPPED 2026-05-19 (Step 8 deferred, Step 10 manual). Provides dataclass schema pattern (Step 1), `_research/_cmds_handoff.py` + `_handoff_build.py` split (Step 3), `_specify/_cmds_handoff.py` import/find infrastructure (Step 6), `check-outcome` subcommand (Step 7). This plan extends each.
 - `THREE-LAYER-SEPARATION-PLAN.md` Gap A — provides `--kind` taxonomy this plan's handoff schema consumes (already shipped 2026-05-18).
 - `COMMAND-VERIFY-GATES-PLAN.md` Steps 2+3 — `init_helper verify` + `specify_helper verify-rendered` (already shipped 2026-05-18).
-- `PLAN-COMMAND-REDESIGN-PLAN.md` — orthogonal until parity 4-run gate clears; future step (handoff-aware /plan) gates on parity completion. Discover-handoff fields (`plan_seeds.design_options`, `build_vs_buy`, `cited_canonical_patterns`) feed naturally into a redesigned /plan.
+- `02-PLAN-COMMAND-REDESIGN-PLAN.md` — orthogonal until parity 4-run gate clears; future step (handoff-aware /plan) gates on parity completion. Discover-handoff fields (`plan_seeds.design_options`, `build_vs_buy`, `cited_canonical_patterns`) feed naturally into a redesigned /plan.
 - `REFACTOR-MONOLITHIC-HELPERS-PLAN.md` — **FULLY SHIPPED** 2026-05-20 (commit `9264ab1`). All 5 helpers split into `_<name>/` subpackages. This plan adds new files (`handoff_schema.py` / `_cmds_handoff.py` / `_handoff_build.py`) under the existing `_discover/` subpackage following the established three-file split pattern from `_research/`.
 
 ## L3-scoring delta after this plan ships

@@ -482,7 +482,7 @@ Added by reviewer as new PRs trigger heuristic-catalog extensions. Each entry: `
 2. Check git log for plan-step commits since last session: `git log --oneline --grep="pr-review"`.
 3. Verify RESEARCH-HANDOFF status — if Step 10 still pending, defer Step 6 implementation (Phase 4 handoff import depends on Step 6 of that plan).
 4. Run `pytest tests/lib/_pr_review/ tests/lib/_shared/` to confirm prior steps still green.
-5. Find next undone step (`grep -n "Verify" PR-REVIEW-PLAN.md` + cross-ref to git log).
+5. Find next undone step (`grep -n "Verify" 04-PR-REVIEW-PLAN.md` + cross-ref to git log).
 6. Execute step per CLAUDE.md "Working process" — draft change list, argue, align, implement, verify, commit.
 7. Per-step commit format: `feat(pr-review): step N — <short>` for code; `docs(pr-review-plan): <revision note>` for plan edits.
 

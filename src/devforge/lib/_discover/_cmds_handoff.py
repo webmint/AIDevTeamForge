@@ -1,4 +1,4 @@
-"""DISCOVER-HANDOFF-PLAN subcommands.
+"""03-DISCOVER-HANDOFF-PLAN subcommands.
 
 finalize-handoff (Step 3 -- memo+report -> handoff.json),
 append-outcome (Step 5 -- record post-discovery outcome).
