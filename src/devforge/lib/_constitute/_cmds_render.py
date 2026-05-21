@@ -15,7 +15,7 @@ from ._render import (
     _render_constitution,
     _write_constitution_atomic,
 )
-from ._schema import ENUM_FIELDS, _PATTERNS_BUCKETS
+from ._schema import ENUM_FIELDS, _PATTERNS_BUCKETS, validate_forcing_functions
 from ._state import _load
 from ._summary import _render_constitute_summary
 
@@ -71,7 +71,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
     4. ScaffoldingGuide: when mode==greenfield, scaffolding_guide must be
        non-null; when non-null, starter_directories is a list of strings;
        sample_files is a list of {path, language, content} dicts.
-    5. Round-trip identity: render to string; re-parse project_name + section
+    5. forcing_functions block (when present): validated by
+       validate_forcing_functions(); absent block is a no-op.
+    6. Round-trip identity: render to string; re-parse project_name + section
        count; compare to state.
 
     Exit 0 = all checks pass.
@@ -218,7 +220,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
                         "{0}: missing keys {1}".format(sf_prefix, sorted(missing_keys))
                     )
 
-    # --- Check 5: Round-trip identity (minimal) ---
+    # --- Check 5: forcing_functions block (when present) ---
+    ff_block = state.get("forcing_functions")  # None when key absent
+    ff_errors = validate_forcing_functions(ff_block)
+    violations.extend(ff_errors)
+
+    # --- Check 6: Round-trip identity (minimal) ---
     if not violations:
         try:
             rendered_text = _render_constitution(state)

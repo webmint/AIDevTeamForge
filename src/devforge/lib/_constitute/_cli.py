@@ -17,6 +17,10 @@ from ._cmds_quality import cmd_validate, cmd_verify_universal_defaults
 from ._forcing_functions._magic_enum._cmd import cmd_verify_magic_enum
 from ._forcing_functions._cross_layer._cmd import cmd_verify_cross_layer_imports
 from ._forcing_functions._any_leak._cmd import cmd_verify_any_leak
+from ._forcing_functions._cmds_forcing_functions import (
+    cmd_set_forcing_functions,
+    cmd_list_forcing_functions,
+)
 from ._cmds_read import (
     cmd_read_configure,
     cmd_read_docs,
@@ -347,6 +351,116 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_verify_any_leak)
+
+    # -----------------------------------------------------------------------
+    # Forcing-functions config setters.
+    # -----------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "set-forcing-functions",
+        help=(
+            "Write or update a forcing_functions.<rule> block in "
+            ".devforge/constitute.json. "
+            "Validates per-rule required fields."
+        ),
+    )
+    from ._schema import FORCING_FUNCTION_RULES as _FF_RULES
+    sp.add_argument(
+        "--rule",
+        required=True,
+        choices=sorted(_FF_RULES),
+        help=(
+            "Rule to configure: magic_enum_duplication | cross_layer_imports | "
+            "any_with_generated_available."
+        ),
+    )
+    sp.add_argument(
+        "--enabled",
+        required=True,
+        choices=["true", "false"],
+        help="Enable or disable the rule.",
+    )
+    sp.add_argument(
+        "--generated-types-dirs",
+        default=None,
+        dest="generated_types_dirs",
+        help=(
+            "Comma-separated list of generated-types source dirs (relative to "
+            "project root). Required when --enabled=true for "
+            "magic_enum_duplication and any_with_generated_available."
+        ),
+    )
+    sp.add_argument(
+        "--allowlist-paths",
+        default=None,
+        dest="allowlist_paths",
+        help="Comma-separated list of glob patterns for path-level exemptions.",
+    )
+    sp.add_argument(
+        "--layer-graph-json",
+        default=None,
+        dest="layer_graph_json",
+        help=(
+            "JSON object: layer name → list of layer names it may import from. "
+            "Required when --enabled=true for cross_layer_imports."
+        ),
+    )
+    sp.add_argument(
+        "--layer-dirs-json",
+        default=None,
+        dest="layer_dirs_json",
+        help=(
+            "JSON object: layer name → glob pattern for that layer's source dirs. "
+            "Keys must match --layer-graph-json. "
+            "Required when --enabled=true for cross_layer_imports."
+        ),
+    )
+    sp.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Path to constitute.json "
+            "(default: <cwd>/.devforge/constitute.json)."
+        ),
+    )
+    sp.set_defaults(func=cmd_set_forcing_functions)
+
+    sp = subparsers.add_parser(
+        "list-forcing-functions",
+        help=(
+            "List configured forcing-function rule names, one per line. "
+            "Machine-readable for use by the pre-commit hook. "
+            "Exit 0 = success (zero or more lines). "
+            "Exit 1 = config present but unreadable."
+        ),
+    )
+    sp.add_argument(
+        "--enabled",
+        action="store_true",
+        dest="enabled_only",
+        default=False,
+        help="Print only rules with enabled: true.",
+    )
+    sp.add_argument(
+        "--format",
+        default="key",
+        choices=["key", "verb"],
+        dest="format",
+        help=(
+            "Output format: 'key' (config key, default) or 'verb' "
+            "(CLI verb accepted by constitute_helper, e.g. verify-magic-enum). "
+            "Used by the pre-commit hook."
+        ),
+    )
+    sp.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Path to constitute.json "
+            "(default: <cwd>/.devforge/constitute.json)."
+        ),
+    )
+    sp.set_defaults(func=cmd_list_forcing_functions)
 
     # -----------------------------------------------------------------------
     # forge-internal subcommands.

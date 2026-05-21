@@ -224,6 +224,53 @@ For string-array fields whose values contain literal commas (e.g., TypeScript ge
 
 For `add-table` calls with cell content containing internal commas (TS generics, multi-clause sentences), use the JSON-array form for `--columns` and `--rows-json` — see `references/empirical-bugs.md` § "JSON-array setter form" for the escape mechanism.
 
+### Section 3.5 echo template (Forcing Functions — config block, not a constitution.md sub-section)
+
+Section 3.5 captures the consumer's `forcing_functions` config block in `.devforge/constitute.json`. It is emitted as a **separate echo block in its own turn** — only AFTER Section 3's reply is parsed and Section 3's `add-section` / `add-rule` / `add-table` / `add-code-example` setters apply. Stop discipline applies per Phase 3 (end the assistant turn after emitting; wait for the user reply). The three rules (`magic_enum_duplication`, `cross_layer_imports`, `any_with_generated_available`) are mechanical detectors backing universal §3.5 ("No magic values") and §3.6 ("Design Principles") of `src/constitution.md`; each rule is independently opt-in. This block targets the top-level `forcing_functions` key in `.devforge/constitute.json` and does NOT add a numbered sub-section to the rendered `constitution.md` — the config is read by `constitute_helper verify-magic-enum` / `verify-cross-layer-imports` / `verify-any-leak` (each rule's `enabled` flag gates whether its detector runs).
+
+Pre-fill defaults before echo:
+
+- `generated_types_dirs` for `magic_enum_duplication` and `any_with_generated_available` — scan `INIT_JSON.packages_detected[]` for package roots that contain `.d.ts` or generated-types subdirectories; the populated default is the list of detected dirs (repo-relative). If detection yields zero candidates, default to `[]`.
+- `allowlist_paths` for `magic_enum_duplication` — default `[]`. The user supplies project-specific exemptions (fixtures, logs, scripts).
+- `layer_graph` and `layer_dirs` for `cross_layer_imports` — default `{}` (empty). Cross-layer enforcement has no safe default; the user supplies the explicit layer graph when enabling.
+- `enabled` for all three rules — default `false` on first-time runs.
+
+Echo template:
+
+````
+Here's what /constitute proposes for Section 3.5 — Forcing Functions [config-block]:
+
+magic_enum_duplication:
+- enabled:              <true|false>
+- generated_types_dirs: <comma-separated dirs>
+- allowlist_paths:      <comma-separated globs>
+
+cross_layer_imports:
+- enabled:              <true|false>
+- layer_graph:          <JSON object or '{}'>
+- layer_dirs:           <JSON object or '{}'>
+
+any_with_generated_available:
+- enabled:              <true|false>
+- generated_types_dirs: <comma-separated dirs>
+
+Allowlist glob behavior: fnmatch does NOT expand '**' across directory separators. Pair every '**/<x>' glob with its top-level twin '<x>' or '<x>/**' to cover both nested and top-level matches.
+
+Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line as '<rule>.<field>: <value>':
+  - 'magic_enum_duplication.enabled: true'
+  - 'magic_enum_duplication.generated_types_dirs: packages/cse-types/src, packages/api-types/src'
+  - 'magic_enum_duplication.allowlist_paths: **/*.fixture.ts, *.fixture.ts, scripts/**, scripts'
+  - 'cross_layer_imports.enabled: true'
+  - 'cross_layer_imports.layer_graph: {"domain": [], "infra": ["domain"], "ui": ["domain", "infra"]}'
+  - 'cross_layer_imports.layer_dirs: {"domain": "packages/*/domain/**", "infra": "packages/*/infra/**", "ui": "packages/*/ui/**"}'
+  - 'any_with_generated_available.enabled: true'
+  - 'any_with_generated_available.generated_types_dirs: packages/cse-types/src'
+
+Field-shape contract: generated_types_dirs and allowlist_paths require comma-separated values; layer_graph and layer_dirs require JSON-object form. See the flag-omission rule paragraph immediately after this echo template for when each field is passed to the setter.
+````
+
+Per the stop discipline above (Phase 3 § stop discipline mandatory paragraph), end the assistant turn after emitting this echo block and wait for the user's reply. Apply parsed values via `set-forcing-functions` (one call per rule — three calls total) per the setter mapping below. Flag-omission rule: `--enabled` is required on every call; each bracketed flag (`--generated-types-dirs`, `--allowlist-paths`, `--layer-graph-json`, `--layer-dirs-json`) is passed only when both (a) the rule resolves to `--enabled true` AND (b) the field has a non-empty value. When `enabled` resolves to `false` for a rule, **or** when an optional field has no non-empty value, omit that flag from the setter call. Reply equals `yes` applies the pre-filled defaults; reply equals `cancel` aborts cleanly leaving `.devforge/constitute.json` in its post-Section-3 state. The reply-parsing rules in "Parsing the user reply (per-section)" above apply uniformly (3-attempt retry cap; on the third invalid reply, proceed with proposed values and warn the user).
+
 ### Section 7 echo template (greenfield only)
 
 If Phase 4 resolved `mode == "greenfield"`, after Section 6 confirms, echo Section 7:
@@ -257,6 +304,7 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line:
 After parsing each section's reply, apply the resulting setter calls IN ORDER per section type:
 - Section 1: one `set-project-identity` call.
 - Sections 2, 3, 5, 6: `add-section` first (creates the sub-section record), then `add-rule` / `add-table` / `add-code-example` referencing that section's `--number`.
+- Section 3.5 (Forcing Functions): three `set-forcing-functions` calls (one per rule). Runs after Section 3's setters apply, before the next section's echo. Does NOT issue `add-section` — `forcing_functions` is a top-level config block, not a numbered constitution.md sub-section.
 - Section 4: `add-pattern-rule` per accepted pattern (no `add-section` prerequisite — Section 4 has no numbered sub-sections).
 - Section 7: one `set-scaffolding-guide` call (greenfield only).
 
@@ -331,6 +379,32 @@ Section 7 (Scaffolding Guide; greenfield only) uses a single setter:
 .devforge/lib/constitute_helper set-scaffolding-guide \
     --starter-dirs '["src", "tests", "docs"]' \
     --sample-files-json '[{"path": "package.json", "language": "json", "content": "..."}, ...]'
+```
+
+Section 3.5 (Forcing Functions; config block) uses three `set-forcing-functions` calls — one per rule:
+
+```bash
+.devforge/lib/constitute_helper set-forcing-functions \
+    --rule magic_enum_duplication \
+    --enabled <true|false> \
+    [--generated-types-dirs "packages/cse-types/src,packages/api-types/src"] \
+    [--allowlist-paths "**/*.fixture.ts,*.fixture.ts,scripts/**,scripts"]
+
+.devforge/lib/constitute_helper set-forcing-functions \
+    --rule cross_layer_imports \
+    --enabled <true|false> \
+    [--layer-graph-json '{"domain": [], "infra": ["domain"], "ui": ["domain", "infra"]}'] \
+    [--layer-dirs-json '{"domain": "packages/*/domain/**", "infra": "packages/*/infra/**", "ui": "packages/*/ui/**"}']
+
+.devforge/lib/constitute_helper set-forcing-functions \
+    --rule any_with_generated_available \
+    --enabled <true|false> \
+    [--generated-types-dirs "packages/cse-types/src"]
+# --enabled is required on every call. See Section 3.5 echo template footer
+# for the flag-omission rule (when each bracketed flag is passed).
+# --generated-types-dirs and --allowlist-paths accept comma-separated values.
+# --layer-graph-json and --layer-dirs-json require JSON-object form.
+# layer_dirs keys MUST match layer_graph keys; mismatched keys exit non-zero.
 ```
 
 If any setter exits non-zero, capture its stderr, fix the input value, and retry the same setter (cap at 3 retries per setter). On the 4th failure, surface the failure to the user and ABORT — `.devforge/constitute.json` is left in a partial state and the user must re-run `/constitute`.
@@ -444,6 +518,29 @@ On exit 2, surface stderr verbatim, then ask the user via plain prose: "validate
 ```
 
 `summary` is read-only; it prints a deterministic field-by-field report to stdout (mirrors `init_helper summary` + `configure_helper summary`). After the helper runs, copy its stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
+
+### Phase 6.4 — Pre-commit hook opt-in (conditional)
+
+Skip this phase entirely when no `forcing_functions.<rule>` has `enabled: true` in `.devforge/constitute.json` — a pre-commit hook that has no enabled rules to run is a no-op install. Determine the enabled set by reading `.devforge/constitute.json` directly and inspecting each `forcing_functions.<rule>.enabled` value (the same three rules captured in Phase 3 § Section 3.5 echo template). If the `forcing_functions` key is absent from the JSON (older state file from a prior `/constitute` run), treat all three rules as `enabled: false` and skip this phase.
+
+When at least one rule has `enabled: true`, ask via AskUserQuestion:
+
+- Question: `Install pre-commit-forcing-functions hook now into .git/hooks/pre-commit?`
+- Options: `Yes (recommended)` and `No, skip for now`. Do NOT list "Other" — the AskUserQuestion tool auto-injects it.
+- Default selection: `Yes (recommended)`.
+
+On `Yes`: in your next user-facing message, display the following bash block as a fenced code block (copy VERBATIM; do not summarize or paraphrase). **In the same turn**, invoke the Bash tool to execute it:
+
+```bash
+cp .devforge/templates/git-hooks/pre-commit-forcing-functions.sh .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+If either `cp` or `chmod` exits non-zero, surface stderr verbatim and tell the user: "Pre-commit hook install failed — see stderr above. Re-run the two commands manually after resolving the failure."
+
+On `No, skip for now`: emit one line of plain prose: "Pre-commit hook skipped. Install later by running the two commands shown in `/constitute` Phase 6.4 against the same `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` source."
+
+On `Other`: treat the free-text answer as a "No" with the user's text recorded inline in the closing message; do not attempt to interpret the free text as a partial install.
 
 ## Closing
 

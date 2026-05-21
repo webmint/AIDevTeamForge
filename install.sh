@@ -168,6 +168,14 @@ mkdir -p "$TARGET_DIR/.claude/hooks"
 cp -R "$TEMPLATE_DIR/src/hooks/." "$TARGET_DIR/.claude/hooks/"
 chmod +x "$TARGET_DIR/.claude/hooks/"*
 
+# ── Copy pre-commit hook templates ───────────────────────────────────────────
+#   Shipped to .devforge/templates/git-hooks/ so the user can opt in via the
+#   /constitute wizard.  NOT auto-installed into .git/hooks/ — requires
+#   explicit user opt-in.
+mkdir -p "$TARGET_DIR/.devforge/templates/git-hooks"
+cp -R "$TEMPLATE_DIR/src/git-hooks/." "$TARGET_DIR/.devforge/templates/git-hooks/"
+chmod +x "$TARGET_DIR/.devforge/templates/git-hooks/"*.sh
+
 echo ""
 echo "Done. AIDevTeamForge installed."
 echo "CBM sync: SessionStart hook (cbm-sync-session-start) compares .devforge/cbm-last-indexed-sha to parent HEAD on every session boot and prompts Claude to call detect_changes / index_repository when stale."

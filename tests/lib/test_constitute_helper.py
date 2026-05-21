@@ -2516,6 +2516,50 @@ class TestStep3Verify(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("verify: ok", result.stderr)
 
+    def test_verify_clean_forcing_functions_exits_0(self):
+        """Fully populated state with valid forcing_functions → verify exits 0."""
+        state = _fully_populated_state()
+        state["forcing_functions"] = {
+            "magic_enum_duplication": {
+                "enabled": True,
+                "generated_types_dirs": ["packages/types/src"],
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("verify: ok", result.stderr)
+
+    def test_verify_absent_forcing_functions_exits_0(self):
+        """State without forcing_functions key → verify exits 0 (block is optional)."""
+        state = _fully_populated_state()
+        # forcing_functions key entirely absent — validate_forcing_functions(None) = []
+        state.pop("forcing_functions", None)
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("verify: ok", result.stderr)
+
+    def test_verify_malformed_forcing_functions_exits_2(self):
+        """State with malformed forcing_functions block → verify exits 2, stderr names the field."""
+        state = _fully_populated_state()
+        state["forcing_functions"] = {
+            "magic_enum_duplication": {
+                "enabled": True,
+                # missing generated_types_dirs → validate_forcing_functions raises error
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_verify(devforge)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("generated_types_dirs", result.stderr)
+
 
 # ---------------------------------------------------------------------------
 # Step 3 — summary tests.
