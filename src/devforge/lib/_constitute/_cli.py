@@ -15,6 +15,7 @@ from typing import List, Optional
 
 from ._cmds_quality import cmd_validate, cmd_verify_universal_defaults
 from ._forcing_functions._magic_enum._cmd import cmd_verify_magic_enum
+from ._forcing_functions._cross_layer._cmd import cmd_verify_cross_layer_imports
 from ._cmds_read import (
     cmd_read_configure,
     cmd_read_docs,
@@ -301,6 +302,28 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_verify_magic_enum)
+
+    sp = subparsers.add_parser(
+        "verify-cross-layer-imports",
+        help=(
+            "Scan consumer source for import statements that cross declared layer "
+            "boundaries. Exit 0 = clean or disabled. Exit 2 = violations found or "
+            "malformed layer_graph config."
+        ),
+    )
+    sp.add_argument(
+        "--root",
+        default=None,
+        help="Consumer project root (default: current working directory).",
+    )
+    sp.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Path to constitute.json (default: <root>/.devforge/constitute.json)."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_cross_layer_imports)
 
     # -----------------------------------------------------------------------
     # forge-internal subcommands.
