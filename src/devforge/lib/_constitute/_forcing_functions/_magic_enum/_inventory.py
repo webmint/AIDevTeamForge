@@ -158,6 +158,19 @@ def _parse_type_unions(source: str) -> Dict[str, List[str]]:
                     break
             i = j  # advance past the consumed lines
             rhs = " ".join(rhs_parts)
+            # A true string-literal union has RHS made of literal alternatives
+            # joined by `|` (optionally interspersed with bare type names like
+            # ``string`` or ``number``).  Reject object-typed aliases (RHS
+            # contains `{` — object/property type), function types (contains
+            # `=>`), and generic / array / index types.  Phase 2 empirical
+            # verify on testForge20 surfaced GraphQL codegen pattern
+            # ``type X = { __typename: 'Y' }`` flooding the inventory with
+            # property-typed string literals that should NOT be treated as
+            # enum members.  Reject any RHS that looks like an object/function
+            # type so only bona-fide string-literal unions land in inventory.
+            if "{" in rhs or "=>" in rhs:
+                # Skip this alias entirely; i already advanced to j above.
+                continue
             # Per-quote alternation: group(1) = single-quoted; group(2) =
             # double-quoted.  Exactly one is non-None per match.
             values = [

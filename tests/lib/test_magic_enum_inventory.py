@@ -106,6 +106,43 @@ class TestInventoryStringUnion(unittest.TestCase):
         self.assertIn("X", result)
         self.assertEqual(sorted(result["X"]), ["a", "b", "c"])
 
+    def test_inventory_rejects_object_typed_alias(self):
+        """``type X = { __typename?: 'Y' }`` is NOT a string-literal union.
+
+        Regression guard from Phase 2 empirical verify on testForge20: the
+        GraphQL codegen pattern ``type CopyQuoteMutation = { __typename?:
+        'Mutation', copyQuote: { __typename?: 'Quote', id: number } }``
+        was flooding inventory with property-typed string literals.  These
+        are object/property types, not enum-equivalent unions.  Parser
+        must skip any RHS containing ``{`` so these do not pollute the
+        inventory used by the scanner.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(
+                tmp,
+                "types.ts",
+                "export type CopyQuoteMutation = "
+                "{ __typename?: 'Mutation', copyQuote: "
+                "{ __typename?: 'Quote', id: number } };\n",
+            )
+            result = extract_enum_inventory([Path(tmp)])
+        self.assertNotIn("CopyQuoteMutation", result)
+
+    def test_inventory_rejects_function_typed_alias(self):
+        """``type X = (args) => 'a' | 'b'`` is a function type, not a union.
+
+        ``=>`` in the RHS signals a function type; reject these from the
+        string-literal union inventory.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(
+                tmp,
+                "types.ts",
+                "export type X = (a: string) => 'a' | 'b';\n",
+            )
+            result = extract_enum_inventory([Path(tmp)])
+        self.assertNotIn("X", result)
+
     def test_inventory_mixed_union(self):
         """type X = string | 'a' | 'b' -> only string literals recorded."""
         with tempfile.TemporaryDirectory() as tmp:
