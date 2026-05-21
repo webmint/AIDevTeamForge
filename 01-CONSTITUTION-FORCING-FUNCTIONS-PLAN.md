@@ -357,7 +357,7 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
 | 4 — any-leak | SHIPPED | `4b058da` |
 | 5a — pre-commit hook + wizard wire-in | SHIPPED | `f999a88` |
 | 5b — `/execute-task` verify-gate | DEFERRED → ABSORBED INTO `07-EXECUTE-TASK-REDESIGN-PLAN.md` Phase 7 | n/a |
-| **6 — documentation propagation** | **IN-FLIGHT (next-session pickup if interrupted)** | — |
+| 6 — documentation propagation | SHIPPED | `986138e` |
 
 ### Next-session pickup — exact next action
 
