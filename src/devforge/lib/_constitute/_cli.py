@@ -14,6 +14,7 @@ import sys
 from typing import List, Optional
 
 from ._cmds_quality import cmd_validate, cmd_verify_universal_defaults
+from ._forcing_functions._magic_enum._cmd import cmd_verify_magic_enum
 from ._cmds_read import (
     cmd_read_configure,
     cmd_read_docs,
@@ -274,6 +275,32 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_validate)
+
+    # -----------------------------------------------------------------------
+    # Consumer-facing forcing-function verbs.
+    # -----------------------------------------------------------------------
+
+    sp = subparsers.add_parser(
+        "verify-magic-enum",
+        help=(
+            "Scan consumer source for string literals that duplicate generated "
+            "enum member values instead of importing the enum. "
+            "Exit 0 = clean or disabled. Exit 2 = violations found."
+        ),
+    )
+    sp.add_argument(
+        "--root",
+        default=None,
+        help="Consumer project root (default: current working directory).",
+    )
+    sp.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Path to constitute.json (default: <root>/.devforge/constitute.json)."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_magic_enum)
 
     # -----------------------------------------------------------------------
     # forge-internal subcommands.
