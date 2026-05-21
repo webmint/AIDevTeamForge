@@ -1,7 +1,7 @@
 # DISCOVER-HANDOFF-PLAN
 
-**Status**: Draft — pending user approval. Path-fix patches applied 2026-05-20 after research-handoff Steps 1-7+9 shipped and research/specify helpers split into `_research/` + `_specify/` subpackages.
-**Date**: 2026-05-19 (drafted) / 2026-05-20 (path-fix revision)
+**Status**: IN-FLIGHT 2026-05-20. Steps 1+3+4+5+6+7 SHIPPED on `develop-2.0-init` (commits `895eb80` schema, `067c09d` finalize+append-outcome, `8e4c8e9` specify+research kind-dispatch). Step 2 N/A (research-side reuse). Step 8 = manual testForge20 e2e pending. 786 tests pass + 2 skipped + 13 subtests. Iterative review loops all clean (Step 1: 2 iters 5→1→0; Step 3+5: 2 iters 5→2→0; Step 4+6: 2 iters 4→0).
+**Date**: 2026-05-19 (drafted) / 2026-05-20 (path-fix revision + 6-of-8 steps shipped)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
 **Driver**: Parallel of RESEARCH-HANDOFF-PLAN for the greenfield-feature track. `/discover` produces a structurally rich report (8-dim memo + prior-art + fit-assessment + 2-3 design options + build-vs-buy + derisk plan + verdict) that today hands off to `/specify` via the same manual paste-block bridge `/research` uses. Same two structural gaps apply: (1) ~90% of memo+report content is lost across the command boundary; (2) verdict + recommended-option speculation is never marked against what actually shipped. This plan introduces a helper-owned `<topic-slug>.handoff.json` artefact for `/discover` that bridges into the same `specify_helper import-handoff` infra introduced by RESEARCH-HANDOFF, plus a discover-shaped outcome marker (design-option-shipped + build-vs-buy-actual + internal-extension-followed).
