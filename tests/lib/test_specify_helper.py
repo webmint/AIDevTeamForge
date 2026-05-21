@@ -4965,5 +4965,541 @@ class TestFindHandoffs(unittest.TestCase):
             self.assertIn("feature_addition", lines[0])
 
 
+# ---------------------------------------------------------------------------
+# Discover handoff integration tests — import-handoff (discover kind) +
+# find-handoffs cross-kind.
+# ---------------------------------------------------------------------------
+
+_DISCOVER_HELPER = ROOT / "src" / "devforge" / "lib" / "discover_helper.py"
+_DISCOVER_LIB = ROOT / "src" / "devforge" / "lib"
+
+
+def _run_discover(argv, cwd=None):
+    """Run discover_helper.py with argv; capture stdout/stderr/exit."""
+    cmd = [sys.executable, str(_DISCOVER_HELPER)] + list(argv)
+    return subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _build_minimal_discover_handoff(devforge: Path, handoff_out: Path) -> subprocess.CompletedProcess:
+    """Build a minimal 'Worth pursuing' discover handoff.json via real discover_helper setters.
+
+    Uses flat discover/<slug>.handoff.json naming (discover schema).
+    Returns the finalize-handoff subprocess result (caller asserts returncode).
+    """
+    df = str(devforge)
+    # Reset state.
+    _run_discover(["--devforge-dir", df, "reset-memo"])
+    _run_discover(["--devforge-dir", df, "reset-report"])
+
+    # Set topic.
+    _run_discover(["--devforge-dir", df, "set-topic", "--value", "audit-log-persistence"])
+    _run_discover(["--devforge-dir", df, "set-date", "--value", "2026-05-20"])
+
+    # Set all 8 rubric dimensions to Clear.
+    for dim, val in (
+        ("functional-scope", "Persist audit events to DB"),
+        ("users", "Backend services"),
+        ("inputs-outputs", "AuditEvent -> DB"),
+        ("integration-points", "ORM layer"),
+        ("constraints", "100ms p99 write latency"),
+        ("non-goals", "No real-time alerting"),
+        ("success-criteria", "All state changes logged"),
+        ("edge-cases", "DB down: queue and retry"),
+    ):
+        _run_discover([
+            "--devforge-dir", df,
+            "set-scope-" + dim, "--value", val, "--state", "Clear",
+        ])
+
+    # Set report fields.
+    _run_discover([
+        "--devforge-dir", df, "set-summary",
+        "--value", "Audit log persistence system",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-overall-fit",
+        "--value", "Good",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-effort-estimate",
+        "--value", "Low",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-fit-rationale",
+        "--value", "Straightforward ORM extension",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-verdict",
+        "--value", "Worth pursuing",
+    ])
+    # Record one integration touchpoint (required by discover verify).
+    _run_discover([
+        "--devforge-dir", df, "record-integration-touchpoint",
+        "--name", "ORM layer",
+        "--module-path", "src/db/orm.py",
+        "--reason", "Audit writes through ORM",
+    ])
+    # Add one design option.
+    _run_discover([
+        "--devforge-dir", df, "set-design-option",
+        "--name", "PostgreSQL table",
+        "--shape", "ORM table",
+        "--pros", '["Simple"]',
+        "--cons", '["Single DB"]',
+        "--complexity", "Low",
+    ])
+    # Set recommended option.
+    _run_discover([
+        "--devforge-dir", df, "set-recommended-option",
+        "--name", "PostgreSQL table",
+        "--rationale", "Lowest complexity for current scale",
+    ])
+    # Set build-vs-buy.
+    _run_discover([
+        "--devforge-dir", df, "set-build-vs-buy",
+        "--recommendation", "Build",
+        "--build", "Extend ORM with new table",
+        "--buy", "Third-party audit library",
+        "--reasoning", "ORM already in place; avoid external dependency",
+    ])
+    # Set derisk plan (must be a JSON array of strings).
+    _run_discover([
+        "--devforge-dir", df, "set-derisk-plan",
+        "--items", '["Spike: write load test against ORM layer before committing"]',
+    ])
+    # Set recommendation.
+    _run_discover([
+        "--devforge-dir", df, "set-recommendation",
+        "--action", "Proceed with PostgreSQL table approach",
+        "--next", "Run /specify audit-log-persistence",
+    ])
+    # set-next-step-text auto-composes from memo + report state.
+    _run_discover(["--devforge-dir", df, "set-next-step-text"])
+
+    # Finalize handoff.
+    return _run_discover([
+        "--devforge-dir", df,
+        "finalize-handoff",
+        "--emit-handoff-json", str(handoff_out),
+    ])
+
+
+class TestImportHandoffDiscover(unittest.TestCase):
+    """Tests for specify_helper import-handoff with kind=discover dispatch."""
+
+    def _make_devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_import(self, devforge: Path, handoff_path: Path):
+        return _run([
+            "--devforge-dir", str(devforge),
+            "import-handoff",
+            "--handoff-path", str(handoff_path),
+        ])
+
+    def _build_discover_handoff(self, tmp: Path) -> Path:
+        devforge_d = tmp / "discover_df"
+        devforge_d.mkdir(exist_ok=True)
+        discover_dir = tmp / "discover"
+        discover_dir.mkdir(exist_ok=True)
+        handoff_out = discover_dir / "2026-05-20-audit-log-persistence.handoff.json"
+        r = _build_minimal_discover_handoff(devforge_d, handoff_out)
+        if r.returncode != 0:
+            raise RuntimeError(
+                "_build_minimal_discover_handoff failed: " + r.stderr
+            )
+        return handoff_out
+
+    # ------------------------------------------------------------------
+
+    def test_import_handoff_discover_round_trip(self):
+        """Discover handoff.json -> import -> state pre-seeded correctly.
+
+        Verifies: spec_type=greenfield_feature, source.handoff_kind='discover',
+        source.discover_completed_at non-None, constraints/areas/risks/open_questions
+        populated (lists exist).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            r = self._run_import(devforge, handoff_out)
+            self.assertEqual(r.returncode, 0, "import failed: " + r.stderr)
+            self.assertIn("imported:", r.stdout)
+            self.assertIn("kind=discover", r.stdout)
+            self.assertIn("downstream_links.spec_path set to", r.stdout)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["spec_type"], "greenfield_feature")
+            self.assertIs(state["spec_type_seeded_by_upstream"], True)
+            self.assertEqual(state["source"]["handoff_kind"], "discover")
+            self.assertIsNotNone(state["source"]["discover_completed_at"])
+            self.assertIsNone(state["source"]["research_completed_at"])
+            self.assertIsInstance(state["constraints"], list)
+            self.assertIsInstance(state["affected_areas"], list)
+            self.assertIsInstance(state["risks"], list)
+            self.assertIsInstance(state["open_questions"], list)
+
+    def test_import_handoff_discover_rejects_unknown_kind(self):
+        """handoff_kind='bogus' -> exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            bad_path = Path(tmp) / "bogus.handoff.json"
+            bad_path.write_text(
+                json.dumps({"handoff_kind": "bogus", "schema_version": "1.0"}),
+                encoding="utf-8",
+            )
+            r = self._run_import(devforge, bad_path)
+            self.assertEqual(r.returncode, 2, "expected exit 2, stderr: " + r.stderr)
+            self.assertIn("unknown handoff_kind", r.stderr)
+
+    def test_import_handoff_research_default_when_kind_field_absent(self):
+        """Research handoff (no handoff_kind field) -> dispatch to research branch -> exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            # Verify no handoff_kind field in the produced file.
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            self.assertNotIn("handoff_kind", data)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, "research import failed: " + r2.stderr)
+            self.assertIn("imported:", r2.stdout)
+            # Research branch uses kind=research in stdout.
+            self.assertIn("kind=research", r2.stdout)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["source"]["handoff_kind"], "research")
+
+    def test_import_handoff_discover_preserves_is_internal_extension_candidate(self):
+        """Discover AffectedArea.is_internal_extension_candidate flows through to state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            # Patch handoff.json to inject an affected area with is_internal_extension_candidate=true.
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            data["spec_seeds"]["affected_areas"] = [
+                {
+                    "area": "ORM persistence layer",
+                    "files": ["src/db/orm.py"],
+                    "impact": "Major write path",
+                    "is_internal_extension_candidate": True,
+                }
+            ]
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            r = self._run_import(devforge, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            areas = state["affected_areas"]
+            self.assertEqual(len(areas), 1)
+            self.assertIs(areas[0]["is_internal_extension_candidate"], True)
+
+    def test_import_handoff_discover_rejects_spec_type_override(self):
+        """Discover handoff with spec_type_hint != 'greenfield_feature' -> exit 2.
+
+        The discover schema already enforces this at construction, so the
+        schema validation itself fires before the helper's extra guard.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            tmp_path = Path(tmp)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            # Corrupt spec_type_hint to something invalid.
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            data["spec_seeds"]["spec_type_hint"] = "bug_fix"
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            r = self._run_import(devforge, handoff_out)
+            self.assertEqual(r.returncode, 2, "expected exit 2, got: " + r.stdout)
+            self.assertIn("schema validation failed", r.stderr)
+
+    def test_import_handoff_discover_records_recommended_summary(self):
+        """source.discover_recommended_summary is populated with rationale | bvb-rec."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            r = self._run_import(devforge, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            summary = state["source"]["discover_recommended_summary"]
+            self.assertIsNotNone(summary)
+            # Format: "<rationale> | <build_vs_buy.recommendation>"
+            self.assertIn("|", summary)
+            # Must contain the bvb recommendation.
+            self.assertIn("Build", summary)
+
+    def test_import_handoff_research_unchanged_behavior(self):
+        """Regression anchor: research handoff (kind absent) still populates all 5 pre-seed fields + source."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNotNone(state["spec_type"])
+            self.assertIsInstance(state["constraints"], list)
+            self.assertIsInstance(state["affected_areas"], list)
+            self.assertIsInstance(state["risks"], list)
+            self.assertIsInstance(state["open_questions"], list)
+            self.assertIsNotNone(state["source"]["handoff_path"])
+            self.assertIsNotNone(state["source"]["research_completed_at"])
+            self.assertIs(state["spec_type_seeded_by_upstream"], True)
+
+
+class TestFindHandoffsCrossKind(unittest.TestCase):
+    """Tests for specify_helper find-handoffs with both research and discover handoffs."""
+
+    def _make_devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_find(self, devforge: Path, since: str):
+        return _run([
+            "--devforge-dir", str(devforge),
+            "find-handoffs",
+            "--since", since,
+        ])
+
+    def _build_research_handoff_at(self, tmp: Path, research_df: Path, dirname: str) -> Path:
+        """Build a research handoff.json at tmp/research/<dirname>/handoff.json."""
+        research_dir = tmp / "research"
+        research_dir.mkdir(exist_ok=True)
+        sub_dir = research_dir / dirname
+        sub_dir.mkdir(exist_ok=True)
+        handoff_out = sub_dir / "handoff.json"
+        r = _build_minimal_handoff(research_df, handoff_out)
+        if r.returncode != 0:
+            raise RuntimeError("finalize-handoff (research) failed: " + r.stderr)
+        return handoff_out
+
+    def _build_discover_handoff_at(self, tmp: Path, discover_df: Path, filename: str) -> Path:
+        """Build a discover handoff.json at tmp/discover/<filename>."""
+        discover_dir = tmp / "discover"
+        discover_dir.mkdir(exist_ok=True)
+        handoff_out = discover_dir / filename
+        r = _build_minimal_discover_handoff(discover_df, handoff_out)
+        if r.returncode != 0:
+            raise RuntimeError("finalize-handoff (discover) failed: " + r.stderr)
+        return handoff_out
+
+    # ------------------------------------------------------------------
+
+    def test_find_handoffs_globs_both_research_and_discover(self):
+        """One research + one discover handoff -> both appear in output."""
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+
+            h_research = self._build_research_handoff_at(
+                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+            )
+            h_discover = self._build_discover_handoff_at(
+                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+            )
+
+            now = time.time()
+            os.utime(str(h_research), (now - 3600, now - 3600))
+            os.utime(str(h_discover), (now - 7200, now - 7200))
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 2, "Expected 2 hits, got: " + r.stdout)
+
+    def test_find_handoffs_emits_kind_discriminator(self):
+        """Output lines contain 'kind=research' and 'kind=discover' tags."""
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+
+            h_research = self._build_research_handoff_at(
+                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+            )
+            h_discover = self._build_discover_handoff_at(
+                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+            )
+
+            now = time.time()
+            os.utime(str(h_research), (now - 3600, now - 3600))
+            os.utime(str(h_discover), (now - 7200, now - 7200))
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            kinds = set()
+            for line in r.stdout.strip().split("\n"):
+                if "kind=research" in line:
+                    kinds.add("research")
+                if "kind=discover" in line:
+                    kinds.add("discover")
+            self.assertIn("research", kinds, "No research line: " + r.stdout)
+            self.assertIn("discover", kinds, "No discover line: " + r.stdout)
+
+    def test_find_handoffs_research_uses_mode_discriminator_value(self):
+        """Research output lines contain 'mode=<mode>'."""
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+
+            h_research = self._build_research_handoff_at(
+                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+            )
+            now = time.time()
+            os.utime(str(h_research), (now - 3600, now - 3600))
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1)
+            self.assertIn("mode=", lines[0])
+            self.assertIn("kind=research", lines[0])
+
+    def test_find_handoffs_discover_uses_verdict_discriminator_value(self):
+        """Discover output lines contain 'verdict=<verdict>'."""
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+
+            h_discover = self._build_discover_handoff_at(
+                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+            )
+            now = time.time()
+            os.utime(str(h_discover), (now - 3600, now - 3600))
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("verdict=", lines[0])
+            self.assertIn("kind=discover", lines[0])
+
+    def test_find_handoffs_sorts_newest_first_across_kinds(self):
+        """Research (newest) + discover (older) -> research appears first."""
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+
+            h_research = self._build_research_handoff_at(
+                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+            )
+            h_discover = self._build_discover_handoff_at(
+                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+            )
+
+            now = time.time()
+            # Research is 1hr old (newest); discover is 2hr old (older).
+            os.utime(str(h_research), (now - 3600, now - 3600))
+            os.utime(str(h_discover), (now - 7200, now - 7200))
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 2, "Expected 2 hits, got: " + r.stdout)
+            # First line should be research (newest).
+            self.assertIn("kind=research", lines[0])
+            # Second line should be discover (older).
+            self.assertIn("kind=discover", lines[1])
+
+    def test_find_handoffs_skips_invalid_discover_silently(self):
+        """Invalid discover .handoff.json file skipped silently; valid research appears."""
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+
+            # One valid research handoff.
+            h_research = self._build_research_handoff_at(
+                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+            )
+
+            # One corrupt discover handoff.
+            discover_dir = tmp_path / "discover"
+            discover_dir.mkdir(exist_ok=True)
+            corrupt = discover_dir / "2026-05-20-corrupt.handoff.json"
+            corrupt.write_text("{ not json }", encoding="utf-8")
+
+            now = time.time()
+            os.utime(str(h_research), (now - 3600, now - 3600))
+            os.utime(str(corrupt), (now - 1800, now - 1800))
+
+            r = self._run_find(devforge, "7 days")
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            # Only the valid research handoff should appear.
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("kind=research", lines[0])
+
+
 if __name__ == "__main__":
     unittest.main()

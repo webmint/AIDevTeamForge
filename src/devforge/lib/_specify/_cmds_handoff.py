@@ -1,19 +1,23 @@
 """Handoff subcommands: import-handoff + find-handoffs.
 
 Pre-phase (Phase 0.4) helpers that bridge research_helper finalize-handoff
-output into specify-state.json pre-seeded fields.
+and discover_helper finalize-handoff output into specify-state.json
+pre-seeded fields.
 
 import-handoff:
-  Reads a handoff.json produced by research_helper finalize-handoff, validates
-  it via handoff_schema (schema dataclasses), and pre-seeds specify state with
-  spec_type, constraints, affected_areas, risks, open_questions. Records
-  source.handoff_path + source.research_completed_at. Mutates downstream_links
-  in the handoff.json itself with the computed future spec_path.
+  Reads a handoff.json produced by research_helper or discover_helper
+  finalize-handoff, validates it via handoff_schema (schema dataclasses),
+  and pre-seeds specify state with spec_type, constraints, affected_areas,
+  risks, open_questions.  Dispatch is on handoff_kind field:
+    "discover"           -> discover branch (source has handoff_kind + discover_completed_at).
+    absent / "research"  -> research branch (existing behaviour).
+  Unknown explicit handoff_kind -> exit 2.
 
 find-handoffs:
-  Glob research/**/handoff.json under the repo root (parent of .devforge dir).
-  Filter by mtime within a --since window. Emit one line per hit; skip corrupt
-  or schema-invalid files silently. Exit 0 even on zero hits.
+  Glob research/**/handoff.json AND discover/*.handoff.json under the repo
+  root (parent of .devforge dir).  Filter by mtime within a --since window.
+  Emit one line per hit; skip corrupt or schema-invalid files silently.
+  Exit 0 even on zero hits.
 
 Stdlib only. Python 3.8+.
 """
@@ -34,13 +38,20 @@ from ._state import _atomic_write_json, _load_state, _state_path, _state_transac
 from ._validators import _die
 
 # ---------------------------------------------------------------------------
-# handoff_schema import — path injection mirrors research_helper.py line 82.
+# handoff_schema imports — both research and discover schemas.
+# Use package-qualified imports to avoid polluting sys.modules['handoff_schema']
+# with either schema (which would break test_discover_handoff_schema when run
+# in combined pytest invocations).
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve().parent.parent  # src/devforge/lib/
-_RESEARCH_DIR = _HERE / "_research"
-if str(_RESEARCH_DIR) not in sys.path:
-    sys.path.insert(0, str(_RESEARCH_DIR))
-import handoff_schema  # noqa: E402  type: ignore[import]
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+from _research import handoff_schema as research_handoff_schema  # noqa: E402  type: ignore[import]
+from _discover import handoff_schema as discover_handoff_schema  # noqa: E402  type: ignore[import]
+
+# Legacy alias used by the existing function signatures that reference
+# handoff_schema.Handoff, handoff_schema.Constraint, etc.
+handoff_schema = research_handoff_schema  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -164,18 +175,6 @@ def _dict_to_dataclass(cls: Any, d: Any) -> Any:
     return cls(**field_map)
 
 
-def _load_and_validate_handoff(handoff_path: Path) -> handoff_schema.Handoff:
-    """Read handoff.json, parse JSON, validate via schema dataclasses.
-
-    Raises:
-      FileNotFoundError if path does not exist.
-      json.JSONDecodeError if not valid JSON.
-      ValueError / TypeError if schema validation fails.
-    """
-    raw = handoff_path.read_text(encoding="utf-8")
-    data = json.loads(raw)
-    return _dict_to_dataclass(handoff_schema.Handoff, data)
-
 
 def _extract_slug_from_research_path(research_path: str) -> str:
     """Derive a feature slug from the research_path field in handoff.json.
@@ -233,8 +232,23 @@ def _constraint_to_dict(c: handoff_schema.Constraint) -> Dict[str, Any]:
 
 
 def _affected_area_to_dict(a: handoff_schema.AffectedArea) -> Dict[str, Any]:
-    """Serialize a handoff_schema.AffectedArea to the specify-state dict shape."""
+    """Serialize a research handoff_schema.AffectedArea to the specify-state dict shape."""
     return {"area": a.area, "files": list(a.files), "impact": a.impact}
+
+
+def _discover_affected_area_to_dict(
+    a: discover_handoff_schema.AffectedArea,
+) -> Dict[str, Any]:
+    """Serialize a discover handoff_schema.AffectedArea to the specify-state dict shape.
+
+    Preserves is_internal_extension_candidate (discover-only field).
+    """
+    return {
+        "area": a.area,
+        "files": list(a.files),
+        "impact": a.impact,
+        "is_internal_extension_candidate": a.is_internal_extension_candidate,
+    }
 
 
 def _risk_to_dict(r: handoff_schema.Risk) -> Dict[str, Any]:
@@ -270,9 +284,10 @@ def _open_question_to_dict(q: handoff_schema.OpenQuestion, idx: int) -> Dict[str
 
 
 def cmd_import_handoff(args: argparse.Namespace) -> int:
-    """Pre-seed specify state from a research handoff.json.
+    """Pre-seed specify state from a handoff.json (research or discover — dispatch on handoff_kind field).
 
     Steps:
+    0. Detect kind via handoff_kind field; dispatch to _import_handoff_research or _import_handoff_discover.
     1. Resolve + validate handoff-path.
     2. Read JSON and validate via handoff_schema dataclasses.
     3. Pre-seed state via _state_transaction.
@@ -312,6 +327,27 @@ def cmd_import_handoff(args: argparse.Namespace) -> int:
         )
         return 2
 
+    # Detect kind and dispatch.
+    kind = raw_data.get("handoff_kind", "research")
+    if kind not in ("research", "discover"):
+        sys.stderr.write(
+            "import-handoff: unknown handoff_kind={0!r};"
+            " expected 'research' or 'discover'\n".format(kind)
+        )
+        return 2
+
+    if kind == "discover":
+        return _import_handoff_discover(args, handoff_path, raw_data)
+    else:
+        return _import_handoff_research(args, handoff_path, raw_data)
+
+
+def _import_handoff_research(
+    args: argparse.Namespace,
+    handoff_path: Path,
+    raw_data: Dict[str, Any],
+) -> int:
+    """Import a research handoff.json into specify state."""
     try:
         handoff = _dict_to_dataclass(handoff_schema.Handoff, raw_data)
     except (ValueError, TypeError) as err:
@@ -353,7 +389,13 @@ def cmd_import_handoff(args: argparse.Namespace) -> int:
 
             # Ensure "source" key exists (may be missing in old state).
             if "source" not in state:
-                state["source"] = {"handoff_path": None, "research_completed_at": None}
+                state["source"] = {
+                    "handoff_path": None,
+                    "handoff_kind": None,
+                    "research_completed_at": None,
+                    "discover_completed_at": None,
+                    "discover_recommended_summary": None,
+                }
 
             # Pre-seed fields (overwrite pre-seeded blocks; user content preserved).
             state["spec_type"] = spec_type
@@ -363,6 +405,7 @@ def cmd_import_handoff(args: argparse.Namespace) -> int:
             state["risks"] = risks
             state["open_questions"] = open_questions
             state["source"]["handoff_path"] = str(handoff_path)
+            state["source"]["handoff_kind"] = "research"
             state["source"]["research_completed_at"] = research_completed_at
     except (OSError, json.JSONDecodeError) as err:
         sys.stderr.write("import-handoff: state error: {0}\n".format(err))
@@ -388,7 +431,167 @@ def cmd_import_handoff(args: argparse.Namespace) -> int:
 
     sys.stdout.write(
         "imported: {0} → pre-seeded spec state"
-        " (spec_type={1}, constraints={2}, areas={3}, risks={4},"
+        " (kind=research, spec_type={1}, constraints={2}, areas={3}, risks={4},"
+        " open_questions={5}); downstream_links.spec_path set to {6}\n".format(
+            handoff_path,
+            spec_type,
+            len(constraints),
+            len(affected_areas),
+            len(risks),
+            len(open_questions),
+            future_spec_path,
+        )
+    )
+    return 0
+
+
+def _inject_plan_seeds_internal_fields(raw_data: Dict[str, Any]) -> None:
+    """Inject plan_seeds internal fields stripped by _asdict_handoff back before parsing.
+
+    discover_handoff_schema.PlanSeeds has three constructor-required fields
+    (_effort_estimate, _overall_fit, _derisk_count) that are stripped from the
+    JSON by the handoff builder.  These must be re-injected from discovery_block
+    for _dict_to_dataclass to construct PlanSeeds successfully.
+
+    Mutates raw_data in-place.  Partial-injection: injects each field only when
+    its source key is present.  When complexity exists but verify_cost is absent,
+    defaults _derisk_count to 6 (High).  For fully valid handoff.json files
+    (schema enforced at finalize-handoff time), all three fields are always
+    present; partial-injection is fallback for corrupt/incomplete files surfaced
+    via find-handoffs (which suppresses errors).
+    """
+    db = raw_data.get("discovery_block")
+    ps = raw_data.get("plan_seeds")
+    if not isinstance(db, dict) or not isinstance(ps, dict):
+        return
+
+    effort_estimate = db.get("effort_estimate")
+    overall_fit = db.get("overall_fit")
+    if effort_estimate is not None:
+        ps["_effort_estimate"] = effort_estimate
+    if overall_fit is not None:
+        ps["_overall_fit"] = overall_fit
+
+    # Derive a _derisk_count compatible with the stored complexity.verify_cost.
+    complexity = ps.get("complexity")
+    if isinstance(complexity, dict):
+        verify_cost = complexity.get("verify_cost")
+        if verify_cost == "Low":
+            ps["_derisk_count"] = 1   # any value <= 2
+        elif verify_cost == "Med":
+            ps["_derisk_count"] = 3   # any value in 3-5
+        else:
+            ps["_derisk_count"] = 6   # any value > 5
+
+
+def _import_handoff_discover(
+    args: argparse.Namespace,
+    handoff_path: Path,
+    raw_data: Dict[str, Any],
+) -> int:
+    """Import a discover handoff.json into specify state."""
+    # Inject plan_seeds internal fields stripped by the builder before parsing.
+    _inject_plan_seeds_internal_fields(raw_data)
+    try:
+        handoff = _dict_to_dataclass(discover_handoff_schema.Handoff, raw_data)
+    except (ValueError, TypeError) as err:
+        sys.stderr.write(
+            "import-handoff: schema validation failed: {0}\n".format(err)
+        )
+        return 2
+
+    # Enforce spec_type_hint == "greenfield_feature" (schema already enforces this,
+    # but guard here so the error is user-facing rather than a schema crash).
+    seeds = handoff.spec_seeds
+    if seeds.spec_type_hint != "greenfield_feature":
+        sys.stderr.write(
+            "import-handoff: discover handoff spec_type_hint must be"
+            " 'greenfield_feature', got {0!r}\n".format(seeds.spec_type_hint)
+        )
+        return 2
+
+    # Extract spec seeds.  Converters are compatible (same field names).
+    constraints = [_constraint_to_dict(c) for c in seeds.constraints]
+    affected_areas = [_discover_affected_area_to_dict(a) for a in seeds.affected_areas]
+    risks = [_risk_to_dict(r) for r in seeds.risks]
+    open_questions = [_open_question_to_dict(q, i) for i, q in enumerate(seeds.open_questions)]
+    spec_type = seeds.spec_type_hint
+
+    # Discover-specific source fields.
+    discover_completed_at = handoff.discover_completed_at
+    plan_seeds = handoff.plan_seeds
+    rationale = plan_seeds.recommended_option_rationale or ""
+    bvb_rec = plan_seeds.build_vs_buy.recommendation
+    discover_recommended_summary = "{0} | {1}".format(rationale, bvb_rec)
+
+    # Compute future spec_path using intent.topic_slug (discover has no research_path).
+    devforge_dir = Path(args.devforge_dir).resolve()
+    nnn = _next_spec_number(devforge_dir)
+    slug = handoff.intent.topic_slug
+    nnn_str = str(nnn).zfill(SPEC_NUMBER_WIDTH)
+    future_spec_path = "specs/{0}-{1}/spec.md".format(nnn_str, slug)
+
+    # Pre-seed state; check for re-import.
+    warn_user_content = False
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            # Idempotency: check if source.handoff_path already set.
+            source = state.get("source", {})
+            existing_handoff = source.get("handoff_path") if source else None
+
+            # Check user-composed content for warning.
+            if existing_handoff is not None:
+                if (state.get("overview")
+                        or state.get("desired_behavior")
+                        or state.get("acceptance_criteria")):
+                    warn_user_content = True
+
+            # Ensure "source" key exists (may be missing in old state).
+            if "source" not in state:
+                state["source"] = {
+                    "handoff_path": None,
+                    "handoff_kind": None,
+                    "research_completed_at": None,
+                    "discover_completed_at": None,
+                    "discover_recommended_summary": None,
+                }
+
+            # Pre-seed fields.
+            state["spec_type"] = spec_type
+            state["spec_type_seeded_by_upstream"] = True
+            state["constraints"] = constraints
+            state["affected_areas"] = affected_areas
+            state["risks"] = risks
+            state["open_questions"] = open_questions
+            state["source"]["handoff_path"] = str(handoff_path)
+            state["source"]["handoff_kind"] = "discover"
+            state["source"]["discover_completed_at"] = discover_completed_at
+            state["source"]["discover_recommended_summary"] = discover_recommended_summary
+    except (OSError, json.JSONDecodeError) as err:
+        sys.stderr.write("import-handoff: state error: {0}\n".format(err))
+        return 2
+
+    if warn_user_content:
+        sys.stderr.write(
+            "import-handoff: warning: state has user-composed content"
+            " (overview / desired_behavior / acceptance_criteria);"
+            " pre-seeded blocks overwritten but user content preserved\n"
+        )
+
+    # Mutate handoff.json downstream_links.spec_path and write atomically.
+    raw_data.setdefault("downstream_links", {})
+    raw_data["downstream_links"]["spec_path"] = future_spec_path
+    try:
+        _atomic_write_json(raw_data, handoff_path)
+    except OSError as err:
+        sys.stderr.write(
+            "import-handoff: failed to write handoff.json: {0}\n".format(err)
+        )
+        return 2
+
+    sys.stdout.write(
+        "imported: {0} → pre-seeded spec state"
+        " (kind=discover, spec_type={1}, constraints={2}, areas={3}, risks={4},"
         " open_questions={5}); downstream_links.spec_path set to {6}\n".format(
             handoff_path,
             spec_type,
@@ -408,11 +611,14 @@ def cmd_import_handoff(args: argparse.Namespace) -> int:
 
 
 def cmd_find_handoffs(args: argparse.Namespace) -> int:
-    """Glob research/**/handoff.json; filter by mtime; emit one line per hit.
+    """Glob research/**/handoff.json and discover/*.handoff.json; filter by mtime.
 
     --since accepts: "<N> day(s)", "<N> hour(s)", "<N> minute(s)".
     Output format (newest first):
-      <mtime ISO> | <research_path> | <mode> | <summary truncated to 80 chars>
+      <mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <summary>
+    For research: mode_or_verdict = "mode=<mode>", summary from plan_seeds.recommended_approach_summary.
+    For discover: mode_or_verdict = "verdict=<verdict>", summary from plan_seeds.recommended_option_rationale.
+    Summary truncated to 80 chars.
     Skips corrupt or schema-invalid files silently.
     Exit 0 even on zero hits.
     """
@@ -428,23 +634,64 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
     devforge_dir = Path(args.devforge_dir).resolve()
     repo_root = devforge_dir.parent
 
-    research_dir = repo_root / "research"
-    if not research_dir.exists():
-        # Zero hits — no research dir at all.
-        return 0
-
     now_ts = datetime.now(timezone.utc).timestamp()
     cutoff_ts = now_ts - since_seconds
 
     hits: List[Dict[str, Any]] = []
 
-    # Walk research/**/handoff.json.
-    for root_dir, dirs, files in os.walk(str(research_dir)):
-        dirs.sort()  # deterministic traversal
-        for fname in files:
-            if fname != "handoff.json":
+    # --- Walk research/**/handoff.json ---
+    research_dir = repo_root / "research"
+    if research_dir.exists():
+        for root_dir, dirs, files in os.walk(str(research_dir)):
+            dirs.sort()  # deterministic traversal
+            for fname in files:
+                if fname != "handoff.json":
+                    continue
+                fpath = Path(root_dir) / fname
+                try:
+                    mtime = fpath.stat().st_mtime
+                except OSError:
+                    continue  # skip inaccessible files
+
+                if mtime < cutoff_ts:
+                    continue
+
+                # Try to parse and validate — skip silently on failure.
+                try:
+                    raw = json.loads(fpath.read_text(encoding="utf-8"))
+                    # Guard: only accept files without handoff_kind or with kind=="research".
+                    raw_kind = raw.get("handoff_kind", "research")
+                    if raw_kind != "research":
+                        continue
+                    handoff = _dict_to_dataclass(handoff_schema.Handoff, raw)
+                except Exception:
+                    continue  # corrupt or invalid — skip silently
+
+                mtime_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+                mtime_iso = mtime_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+                summary = handoff.plan_seeds.recommended_approach_summary
+                if len(summary) > 80:
+                    summary = summary[:77] + "..."
+
+                hits.append({
+                    "mtime_ts": mtime,
+                    "mtime_iso": mtime_iso,
+                    "handoff_path": str(fpath),
+                    "kind": "research",
+                    "mode_or_verdict": "mode={0}".format(handoff.mode),
+                    "summary": summary,
+                })
+
+    # --- Walk discover/*.handoff.json ---
+    discover_dir = repo_root / "discover"
+    if discover_dir.exists():
+        for fpath in sorted(discover_dir.iterdir()):
+            if not fpath.is_file():
                 continue
-            fpath = Path(root_dir) / fname
+            if not fpath.name.endswith(".handoff.json"):
+                continue
+
             try:
                 mtime = fpath.stat().st_mtime
             except OSError:
@@ -456,35 +703,41 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
             # Try to parse and validate — skip silently on failure.
             try:
                 raw = json.loads(fpath.read_text(encoding="utf-8"))
-                handoff = _dict_to_dataclass(handoff_schema.Handoff, raw)
+                _inject_plan_seeds_internal_fields(raw)
+                handoff = _dict_to_dataclass(discover_handoff_schema.Handoff, raw)
             except Exception:
                 continue  # corrupt or invalid — skip silently
 
-            # Convert mtime to ISO string.
             mtime_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
             mtime_iso = mtime_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            summary = handoff.plan_seeds.recommended_approach_summary
+            summary = handoff.plan_seeds.recommended_option_rationale
+            if not summary:
+                summary = handoff.intent.feature_concept
             if len(summary) > 80:
                 summary = summary[:77] + "..."
 
             hits.append({
                 "mtime_ts": mtime,
                 "mtime_iso": mtime_iso,
-                "research_path": handoff.research_path,
-                "mode": handoff.mode,
+                "handoff_path": str(fpath),
+                "kind": "discover",
+                "mode_or_verdict": "verdict={0}".format(
+                    handoff.discovery_block.verdict
+                ),
                 "summary": summary,
             })
 
-    # Sort newest first.
+    # Sort newest first (across both lists merged).
     hits.sort(key=lambda h: h["mtime_ts"], reverse=True)
 
     for h in hits:
         sys.stdout.write(
-            "{0} | {1} | {2} | {3}\n".format(
+            "{0} | {1} | kind={2} | {3} | {4}\n".format(
                 h["mtime_iso"],
-                h["research_path"],
-                h["mode"],
+                h["handoff_path"],
+                h["kind"],
+                h["mode_or_verdict"],
                 h["summary"],
             )
         )

@@ -303,27 +303,66 @@ def cmd_check_outcome(args):
     # type: (argparse.Namespace) -> int
     """Print 'unmarked' or 'marked: <details>' for the outcome block in handoff.json.
 
-    Non-blocking: always exits 0 unless the file is missing (exit 2).
+    Dispatches on handoff_kind:
+    - absent / "research" -> research branch: "marked: <hypothesis_confirmed> (confidence=<grade>, evidence=<source>)"
+    - "discover"          -> discover branch: "marked: shipped=<id> (confidence=<grade>, build_vs_buy=<val>, internal_extension=<true|false|n/a>)"
+    - any other value     -> exit 2
+
+    Non-blocking: always exits 0 unless the file is missing or unknown kind (exit 2).
 
     Steps:
     1. Read handoff.json. Missing → exit 2.
-    2. If outcome is None/absent → stdout "unmarked", exit 0.
-    3. If outcome is present → stdout "marked: <hypothesis_confirmed> (confidence=<grade>,
-       evidence=<source>)", exit 0.
+    2. Detect kind. Unknown kind → exit 2.
+    3. If outcome is None/absent → stdout "unmarked", exit 0.
+    4. If outcome is present → stdout "marked: <details>", exit 0.
     """
     data, err = _load_handoff_json(args.handoff_path)
     if err is not None:
         return _die("check-outcome: {0}".format(err), code=2)
 
+    kind = data.get("handoff_kind", "research")
+    if kind not in ("research", "discover"):
+        return _die(
+            "check-outcome: unknown handoff_kind={0!r};"
+            " expected 'research' or 'discover'".format(kind),
+            code=2,
+        )
+
     outcome = data.get("outcome")
     if outcome is None:
-        sys.stdout.write("unmarked\n")
+        if kind == "discover":
+            sys.stdout.write(
+                "unmarked\n"
+                "  Task shipped? Linked discovery handoff has no outcome marker.\n"
+                "  Run .devforge/lib/discover_helper append-outcome to record:\n"
+                "    - which design option (A/B/C/hybrid/none) actually shipped\n"
+                "    - whether the recommended build-vs-buy direction held\n"
+                "    - whether the internal-canonical-pattern extension was followed\n"
+                "  Skipping leaves the discovery report as speculation in empirical-memory corpus.\n"
+            )
+        else:
+            sys.stdout.write("unmarked\n")
         return 0
 
-    hypothesis = outcome.get("hypothesis_confirmed", "unknown")
-    grade = outcome.get("confidence_grade", "unknown")
-    evidence = outcome.get("evidence_source", "unknown")
-    sys.stdout.write(
-        "marked: {0} (confidence={1}, evidence={2})\n".format(hypothesis, grade, evidence)
-    )
+    if kind == "discover":
+        shipped_id = outcome.get("design_option_shipped_id", "unknown")
+        grade = outcome.get("confidence_grade", "unknown")
+        bvb = outcome.get("build_vs_buy_actual", "unknown")
+        internal_raw = outcome.get("internal_extension_followed")
+        if internal_raw is None:
+            internal_str = "n/a"
+        else:
+            internal_str = "true" if internal_raw else "false"
+        sys.stdout.write(
+            "marked: shipped={0} (confidence={1}, build_vs_buy={2},"
+            " internal_extension={3})\n".format(shipped_id, grade, bvb, internal_str)
+        )
+    else:
+        # research branch
+        hypothesis = outcome.get("hypothesis_confirmed", "unknown")
+        grade = outcome.get("confidence_grade", "unknown")
+        evidence = outcome.get("evidence_source", "unknown")
+        sys.stdout.write(
+            "marked: {0} (confidence={1}, evidence={2})\n".format(hypothesis, grade, evidence)
+        )
     return 0

@@ -8582,5 +8582,270 @@ class TestCheckOutcome(unittest.TestCase):
             )
 
 
+# ---------------------------------------------------------------------------
+# check-outcome dispatch on handoff_kind — research_helper check-outcome
+# must dispatch to research or discover branch based on handoff_kind field.
+# ---------------------------------------------------------------------------
+
+_DISCOVER_HELPER_PY = _LIB_DIR / "discover_helper.py"
+
+
+def _run_discover(argv, cwd=None):
+    # type: (list, object) -> object
+    """Run discover_helper.py with argv; capture stdout/stderr/exit."""
+    cmd = [sys.executable, str(_DISCOVER_HELPER_PY)] + list(argv)
+    return subprocess.run(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _build_minimal_discover_handoff_for_check_outcome(tmp_root):
+    # type: (str) -> Path
+    """Build a minimal discover handoff.json using real discover_helper setters.
+
+    Returns the path to the written discover handoff.json.
+    """
+    tmp_path = Path(tmp_root)
+    devforge = tmp_path / ".devforge_discover"
+    devforge.mkdir(parents=True, exist_ok=True)
+    df = str(devforge)
+
+    _run_discover(["--devforge-dir", df, "reset-memo"])
+    _run_discover(["--devforge-dir", df, "reset-report"])
+
+    _run_discover(["--devforge-dir", df, "set-topic", "--value", "audit-log-persistence"])
+    _run_discover(["--devforge-dir", df, "set-date", "--value", "2026-05-20"])
+
+    for dim, val in (
+        ("functional-scope", "Persist audit events to DB"),
+        ("users", "Backend services"),
+        ("inputs-outputs", "AuditEvent -> DB"),
+        ("integration-points", "ORM layer"),
+        ("constraints", "100ms p99 write latency"),
+        ("non-goals", "No real-time alerting"),
+        ("success-criteria", "All state changes logged"),
+        ("edge-cases", "DB down: queue and retry"),
+    ):
+        _run_discover([
+            "--devforge-dir", df,
+            "set-scope-" + dim, "--value", val, "--state", "Clear",
+        ])
+
+    _run_discover(["--devforge-dir", df, "set-summary", "--value", "Audit log system"])
+    _run_discover(["--devforge-dir", df, "set-overall-fit", "--value", "Good"])
+    _run_discover(["--devforge-dir", df, "set-effort-estimate", "--value", "Low"])
+    _run_discover(["--devforge-dir", df, "set-fit-rationale", "--value", "ORM extension"])
+    _run_discover(["--devforge-dir", df, "set-verdict", "--value", "Worth pursuing"])
+    _run_discover([
+        "--devforge-dir", df, "record-integration-touchpoint",
+        "--name", "ORM layer", "--module-path", "src/db/orm.py",
+        "--reason", "Audit writes through ORM",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-design-option",
+        "--name", "PostgreSQL table", "--shape", "ORM table",
+        "--pros", '["Simple"]', "--cons", '["Single DB"]', "--complexity", "Low",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-recommended-option",
+        "--name", "PostgreSQL table", "--rationale", "Lowest complexity",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-build-vs-buy",
+        "--recommendation", "Build",
+        "--build", "Extend ORM with new table",
+        "--buy", "Third-party audit library",
+        "--reasoning", "ORM already in place",
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-derisk-plan",
+        "--items", '["Spike: write load test against ORM layer before committing"]',
+    ])
+    _run_discover([
+        "--devforge-dir", df, "set-recommendation",
+        "--action", "Proceed with PostgreSQL table approach",
+        "--next", "Run /specify audit-log-persistence",
+    ])
+    _run_discover(["--devforge-dir", df, "set-next-step-text"])
+
+    discover_dir = tmp_path / "discover"
+    discover_dir.mkdir(exist_ok=True)
+    out = discover_dir / "2026-05-20-audit-log-persistence.handoff.json"
+
+    r = _run_discover([
+        "--devforge-dir", df,
+        "finalize-handoff",
+        "--emit-handoff-json", str(out),
+    ])
+    if r.returncode != 0:
+        raise RuntimeError(
+            "_build_minimal_discover_handoff_for_check_outcome failed: " + r.stderr
+        )
+    return out
+
+
+class TestCheckOutcomeDispatch(unittest.TestCase):
+    """Tests for research_helper check-outcome dispatch on handoff_kind."""
+
+    def test_check_outcome_dispatches_to_research_kind_when_handoff_kind_field_absent(self):
+        """Research handoff (no handoff_kind) -> research branch -> marked: hypothesis..."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier1_handoff(devforge, tmp)
+
+            # Verify no handoff_kind field in research handoff.
+            data = json.loads(handoff_path.read_text())
+            self.assertNotIn("handoff_kind", data)
+
+            # Append a research outcome.
+            r_append = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="test-result",
+                evidence_cite="tests/research/config-not-applied.probe.spec.ts:42",
+                actual_fix_path="services/api/main.py",
+            )
+            self.assertEqual(r_append.returncode, 0, r_append.stderr)
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # Research branch output: marked: <hypothesis> (confidence=..., evidence=...)
+            self.assertIn("marked:", r.stdout)
+            self.assertIn("primary", r.stdout)
+            self.assertIn("confidence=", r.stdout)
+            self.assertIn("evidence=", r.stdout)
+
+    def test_check_outcome_dispatches_to_discover_kind_when_handoff_kind_field_present(self):
+        """Discover handoff (handoff_kind='discover') -> discover branch -> marked: shipped=..."""
+        with tempfile.TemporaryDirectory() as tmp:
+            handoff_path = _build_minimal_discover_handoff_for_check_outcome(tmp)
+
+            # Verify handoff_kind='discover' is present.
+            data = json.loads(handoff_path.read_text())
+            self.assertEqual(data.get("handoff_kind"), "discover")
+
+            # Append a discover outcome via discover_helper.
+            r_append = _run_discover([
+                "append-outcome",
+                "--handoff-path", str(handoff_path),
+                "--design-option-shipped-id", "A",
+                "--design-option-shipped-summary", "Shipped PostgreSQL table approach",
+                "--build-vs-buy-actual", "Build",
+            ])
+            self.assertEqual(r_append.returncode, 0, r_append.stderr)
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # Discover branch output: marked: shipped=<id> (confidence=..., build_vs_buy=..., ...)
+            self.assertIn("marked:", r.stdout)
+            self.assertIn("shipped=A", r.stdout)
+            self.assertIn("confidence=", r.stdout)
+            self.assertIn("build_vs_buy=Build", r.stdout)
+            self.assertIn("internal_extension=", r.stdout)
+
+    def test_check_outcome_rejects_unknown_handoff_kind(self):
+        """handoff_kind='bogus' -> exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_path = Path(tmp) / "bad.handoff.json"
+            bad_path.write_text(
+                json.dumps({"handoff_kind": "bogus", "schema_version": "1.0"}),
+                encoding="utf-8",
+            )
+            r = _run_check_outcome(str(bad_path))
+            self.assertEqual(r.returncode, 2, "expected exit 2, stderr: " + r.stderr)
+            self.assertIn("unknown handoff_kind", r.stderr)
+
+    def test_check_outcome_discover_marked_format(self):
+        """Discover outcome present -> emits 'marked: shipped=<id> (...)'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            handoff_path = _build_minimal_discover_handoff_for_check_outcome(tmp)
+            r_append = _run_discover([
+                "append-outcome",
+                "--handoff-path", str(handoff_path),
+                "--design-option-shipped-id", "A",
+                "--design-option-shipped-summary", "Shipped PostgreSQL table approach",
+                "--build-vs-buy-actual", "Build",
+            ])
+            self.assertEqual(r_append.returncode, 0, r_append.stderr)
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            out = r.stdout.strip()
+            self.assertTrue(out.startswith("marked: shipped="), out)
+            self.assertIn("confidence=", out)
+
+    def test_check_outcome_discover_internal_extension_na_when_no_internal_prior_art(self):
+        """Discover handoff with no internal prior-art -> internal_extension=n/a."""
+        with tempfile.TemporaryDirectory() as tmp:
+            handoff_path = _build_minimal_discover_handoff_for_check_outcome(tmp)
+
+            # Verify no internal prior-art in the handoff (minimal fixture has none).
+            data = json.loads(handoff_path.read_text())
+            cited = data.get("plan_seeds", {}).get("cited_canonical_patterns", [])
+            internal_entries = [c for c in cited if c.get("is_internal")]
+            self.assertEqual(
+                len(internal_entries), 0,
+                "Fixture should have no internal prior-art entries"
+            )
+
+            r_append = _run_discover([
+                "append-outcome",
+                "--handoff-path", str(handoff_path),
+                "--design-option-shipped-id", "A",
+                "--design-option-shipped-summary", "Shipped PostgreSQL table approach",
+                "--build-vs-buy-actual", "Build",
+            ])
+            self.assertEqual(r_append.returncode, 0, r_append.stderr)
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("internal_extension=n/a", r.stdout)
+
+    def test_check_outcome_discover_unmarked_emits_reminder(self):
+        """Discover handoff with outcome=None -> stdout starts with 'unmarked' and contains reminder."""
+        with tempfile.TemporaryDirectory() as tmp:
+            handoff_path = _build_minimal_discover_handoff_for_check_outcome(tmp)
+
+            # Do NOT append-outcome — leave outcome absent.
+            data = json.loads(handoff_path.read_text())
+            self.assertIsNone(data.get("outcome"), "Fixture must have no outcome for this test")
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue(
+                r.stdout.startswith("unmarked"),
+                "stdout must start with 'unmarked', got: " + repr(r.stdout),
+            )
+            self.assertIn(
+                "discover_helper append-outcome",
+                r.stdout,
+                "stdout must contain reminder text with discover_helper command",
+            )
+
+    def test_check_outcome_research_unmarked_unchanged(self):
+        """Research handoff (no handoff_kind) with outcome=None -> stdout == 'unmarked\\n' exactly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier1_handoff(devforge, tmp)
+
+            # Do NOT append-outcome — leave outcome absent.
+            data = json.loads(handoff_path.read_text())
+            self.assertIsNone(data.get("outcome"), "Fixture must have no outcome for this test")
+            self.assertNotIn("handoff_kind", data, "Research fixture must lack handoff_kind field")
+
+            r = _run_check_outcome(str(handoff_path))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(
+                r.stdout,
+                "unmarked\n",
+                "Research unmarked must be exactly 'unmarked\\n', got: " + repr(r.stdout),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

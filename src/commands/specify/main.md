@@ -96,17 +96,19 @@ Then reset helper state for this run:
 .devforge/lib/specify_helper find-handoffs --since "7 days"
 ```
 
-Helper globs `research/*/handoff.json` modified within the window; emits one summary line per finding to stdout (`<mtime ISO> | <research_path> | <mode> | <truncated approach summary>` (from `plan_seeds.recommended_approach_summary`, truncated to 80 chars), newest first). Exit 0 always — zero hits is not a failure.
+Helper globs `research/**/handoff.json` AND `discover/*.handoff.json` modified within the window; emits one summary line per finding to stdout (newest first). Output format per line: `<mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <truncated summary>`. For research handoffs `mode_or_verdict` is `mode=<mode>` (summary from `plan_seeds.recommended_approach_summary`); for discover handoffs it is `verdict=<verdict>` (summary from `plan_seeds.recommended_option_rationale`). Summary truncated to 80 chars. Exit 0 always — zero hits is not a failure.
 
-On zero hits: emit `"No recent research handoff found; proceeding cold"` as plain prose to the user and continue to Phase 1.
+On zero hits: emit `"No recent handoff found; proceeding cold"` as plain prose to the user and continue to Phase 1.
 
-On one or more hits: AskUserQuestion: `"Found research handoff(s). Pre-seed spec from one?"` with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
+On one or more hits: count R research and D discover handoffs from the output lines. AskUserQuestion: `"Found handoff(s) — R research, D discover. Pre-seed spec from one?"` (substitute actual counts for R and D) with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
 
-- **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the first line of the `find-handoffs` stdout (newest-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
-- **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line, then ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
+- **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the second field (the handoff path) from the first line of the `find-handoffs` stdout (newest-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
+- **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line. Each line is prefixed with `[research]` or `[discover]` as the kind tag (derived from the `kind=<kind>` field in the output line). Ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
 - **`cold`** → skip import. Continue to Phase 1 with no pre-seed.
 
-On `import-handoff` exit 2 (missing file / invalid JSON / schema validation failure): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT proceed to Phase 1 — end the turn. The user fixes the upstream handoff and re-runs `/specify`.
+`import-handoff` dispatches on `handoff_kind` automatically; no separate subcommand is needed for research vs discover handoffs.
+
+On `import-handoff` exit 2 (missing file / invalid JSON / schema validation failure / unknown kind): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT proceed to Phase 1 — end the turn. The user fixes the upstream handoff and re-runs `/specify`.
 
 On `import-handoff` exit 0 with a `warning:` line on stderr (prefixed `import-handoff: warning:`) (re-import would overwrite user-composed `state.overview` / `state.desired_behavior` / AC content): surface the stderr warning text to the user as plain prose alongside the verbatim stdout block, then continue to Phase 1. The helper has already overwritten pre-seeds; the warning is informational so the user knows downstream sections may need re-review at Phase 5 approval.
 

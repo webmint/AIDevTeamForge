@@ -84,7 +84,10 @@ def default_state() -> Dict[str, Any]:
         # --- Pre-phase — handoff source -----------------------------------
         "source": {
             "handoff_path": None,
+            "handoff_kind": None,
             "research_completed_at": None,
+            "discover_completed_at": None,
+            "discover_recommended_summary": None,
         },
     }
 
