@@ -271,39 +271,52 @@ Same ≤ 5% false-positive threshold as Phase 2.
 
 ---
 
-## Phase 5 — Integration with /execute-task + optional pre-commit hook
+## Phase 5 — Integration surfaces (split 5a + 5b)
+
+Phase 5 originally bundled two integration surfaces. Mid-stream split (2026-05-21) after `src/commands/` audit confirmed `/execute-task` source spec does NOT exist in forge 2.0 and `07-EXECUTE-TASK-REDESIGN-PLAN.md` is the canonical home for that command's design. Split:
+
+- **Phase 5a (pre-commit hook + wizard wire-in) — TO DO. Unblocked.** No dependency on `/execute-task`. Pre-commit hook is the load-bearing integration surface (catches all commits regardless of agent workflow). Detail below.
+- **Phase 5b (`/execute-task` verify-gate wire-in) — DEFERRED. ABSORBED INTO `07-EXECUTE-TASK-REDESIGN-PLAN.md` Phase 7.** Do not implement here. When 07- ships Phase 7, the verify-gate lands inside `/execute-task` source spec as Phase 7 of that plan, not as a patch on top of an existing command.
+
+### Phase 5a — Pre-commit hook template + /init-forge wizard wire-in
 
 **Owner**: instruction-author + python-engineer.
 
-**Do not start until Phase 1 passes its Verify block AND Phase 2 empirical verify records a false-positive rate ≤ 5%.** Subsequent detectors (Phases 3, 4) extend the gate as they land, but Phase 5 wiring is bounded by the Phase 1+2 gate alone — runtime opt-in via config is a property of the helper, not justification for softening the implementation gate.
+**Do not start until** all three detectors (Phases 1, 3, 4) have shipped + the Phase 2 empirical-verify gate-relaxation decision is recorded in `EMPIRICAL-VERIFY-MAGIC-ENUM-2026-05-21.md`. All four preconditions met as of commits `ccc25b8` (Phase 1), `aae5a02` (Phase 2), `a370229` (Phase 3), `4b058da` (Phase 4).
 
-**Precondition check (run before Phase 5 begins):**
+#### Files
 
-```bash
-# Confirm execute-task spec location — PLAN-COMMAND-REDESIGN (memory-only reference;
-# no file-level plan in repo root as of plan draft) may have moved or renamed it.
-ls src/commands/execute-task/main.md 2>/dev/null || ls src/commands/execute-task/*.md 2>/dev/null
-# If neither resolves: check repo-root CLAUDE.md active-plans table for the canonical
-# execute-task spec path post-redesign. Do not assume src/commands/execute-task/main.md.
-```
+- `src/files/git-hooks/pre-commit-forcing-functions.sh` (new template) — installable pre-commit hook script. Iterates each `forcing_functions.<rule>` block with `enabled: true` in `.devforge/constitute.json`; invokes `constitute_helper verify-<rule>` on the consumer root; on any exit 2, prints the rule's stdout JSON report and aborts the commit with non-zero. Skips silently if `forcing_functions` block absent. POSIX shell; mirrors `constitute_helper`'s shell-launcher style.
+- `src/commands/init-forge/main.md` — extend STEP 0 to surface the pre-commit option after the wizard captures `forcing_functions` config. Single AskUserQuestion: "Install pre-commit-forcing-functions hook now? (recommended for repos with the verify-gate workflow)". Default = Yes. Per `feedback_askuserquestion_single_line_only.md` — single-line question; multi-line context falls through to prose prompt only if engineer determines the single-line shape is insufficient.
+- `src/commands/constitute/main.md` (or wizard-side helper) — extend the `/constitute` wizard with a new step that captures `forcing_functions` config interactively (per-rule `enabled` flag + `generated_types_dirs` / `layer_graph` / `allowlist_paths` per-detector). Replaces hand-edited JSON for early adopters. **Note**: scope may be deferred to a follow-up sub-phase if the wizard-edit surface is non-trivial; surface as open question to user before starting.
+- `install.sh` / `update.sh` — verify the hook template ships to `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` (or similar; engineer decides exact path). Hook is NOT auto-installed into `.git/hooks/` by `install.sh` — that requires user opt-in via the wizard.
 
-### Files
-
-- `src/commands/execute-task/main.md` (or whichever current execute-task spec is canonical post-PLAN-COMMAND-REDESIGN) — append a verify-gate step after agent-edit completion + before user-presentation. Step invokes `constitute_helper verify-<rule>` for each rule with `enabled: true` in `.devforge/constitute.json`. Exit 2 = STOP; capture the helper's **stdout JSON** (the programmatic finding report — `{rule, findings: [...]}`) and relay it to the user as a fenced JSON code block; stderr lines are human-readable supplementary output and MUST NOT be the source of relayed findings (the `path:line: KIND` prefix is ambiguous when `path` contains `:`, per `_shared.emit_findings` Known limitations). Do not declare task complete.
-- `src/commands/execute-task/references/forcing-functions-gate.md` — reference doc explaining the gate, the verbs, the exit semantics, and how to triage findings.
-- `src/files/git-hooks/pre-commit-forcing-functions.sh` (new template) — installable pre-commit hook script. `install.sh` / `update.sh` does NOT auto-install it; `/init-forge` STEP 0 offers it after the wizard captures `forcing_functions` config.
-- `src/commands/init-forge/main.md` — extend STEP 0 to surface the pre-commit option with a single AskUserQuestion (per `feedback_askuserquestion_single_line_only.md` single-line constraint).
-
-### Verify
+#### Verify
 
 ```bash
-# Helper-side cross-check:
-grep -nE "forcing.functions" src/commands/execute-task/main.md
+# Pre-commit hook artifacts present:
+ls src/files/git-hooks/pre-commit-forcing-functions.sh
+chmod +x src/files/git-hooks/pre-commit-forcing-functions.sh
+# Wizard wire-in:
 grep -nE "pre-commit-forcing-functions" src/commands/init-forge/main.md
-grep -nE "forcing_functions" src/devforge/lib/_constitute/_schema.py
-# Real integration: re-run /execute-task on a testForge20 task that touches an enum-known surface;
-# verify the gate fires when the agent writes a magic-string and STOPs before user-presentation.
+grep -nE "forcing_functions" src/commands/constitute/main.md
+# End-to-end smoke against testForge20 — install hook, attempt a commit that
+# introduces a magic-enum violation, observe hook abort + JSON relay:
+cp src/files/git-hooks/pre-commit-forcing-functions.sh ~/Projects/testForge20/.git/hooks/pre-commit
+chmod +x ~/Projects/testForge20/.git/hooks/pre-commit
+# (orchestrator drives the violation-introduction + commit-attempt manually)
 ```
+
+### Phase 5b — `/execute-task` verify-gate wire-in (DEFERRED; ABSORBED INTO 07-)
+
+**Status**: DO NOT IMPLEMENT HERE.
+
+The verify-gate inside `/execute-task` is now Phase 7 of `07-EXECUTE-TASK-REDESIGN-PLAN.md`. That plan owns the `/execute-task` source spec creation; the gate lands as a built-in step of the new command, not as a patch on top of a non-existent command.
+
+When `07-` Phase 7 ships:
+- Edit this plan's Phase 5b section to mark ABSORBED + SHIPPED with the SHA of the 07- commit.
+- Update repo-root `CLAUDE.md` active-plans rows for both `01-` and `07-` to reflect the absorption.
+- No code lands in this plan for 5b.
 
 ---
 
@@ -333,9 +346,34 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
 
 ## When resuming work
 
+### Handoff state — 2026-05-21
+
+| Phase | Status | Commit |
+|---|---|---|
+| 0 — substrate | SHIPPED | `ea18cd1` |
+| 1 — magic-enum pilot | SHIPPED | `ccc25b8` |
+| 2 — empirical verify | SHIPPED (gate-relaxation decision recorded) | `aae5a02` + `EMPIRICAL-VERIFY-MAGIC-ENUM-2026-05-21.md` |
+| 3 — cross-layer | SHIPPED | `a370229` |
+| 4 — any-leak | SHIPPED | `4b058da` |
+| **5a — pre-commit hook + wizard wire-in** | **TODO (next-session pickup)** | — |
+| 5b — `/execute-task` verify-gate | DEFERRED → ABSORBED INTO `07-EXECUTE-TASK-REDESIGN-PLAN.md` Phase 7 | n/a |
+| 6 — documentation propagation | TODO (follows 5a) | — |
+
+### Next-session pickup — exact next action
+
+1. Read this plan's Phase 5a section in full.
+2. Confirm preconditions: all 4 detector commits landed (Phase 0/1/3/4 wired; Phase 2 ledger present). Run the on-disk verify block below.
+3. Dispatch python-engineer on Phase 5a (pre-commit hook template + helper-side hook generator if needed). Per `feedback_dual_agent_verify_command_statements.md`, follow with python-reviewer + iter-loop until clean.
+4. Dispatch instruction-author on Phase 5a's wizard-wire-in pieces (`/init-forge` STEP 0 + `/constitute` wizard extension). Follow with instruction-reviewer + iter-loop until clean.
+5. After Phase 5a lands clean, proceed to Phase 6 (documentation propagation across `CHANGELOG.md`, repo-root `CLAUDE.md`, `src/constitution.md`, `DEVELOPMENT-STATUS.md`).
+6. **Phase 5b stays DEFERRED** — do NOT implement here. When `07-EXECUTE-TASK-REDESIGN-PLAN.md` Phase 7 ships the `/execute-task` verify-gate, return to this plan, update the 5b row above with the 07- commit SHA + mark ABSORBED-AND-SHIPPED, and update repo-root `CLAUDE.md` for both plans to reflect the absorption.
+
+### Re-read context
+
 1. Read this plan top-to-bottom.
 2. Cross-read `CONSTITUTION-DRIFT-DETECTOR-PLAN.md` (pattern parent) + `CONSTITUTION-STRENGTHENING-PLAN.md` (the canonical rule bodies these detectors back).
-3. Verify state of each phase on-disk. Each check below mirrors the corresponding phase's `### Verify` block; a phase is "done" only when its check returns the success signal (not merely when a directory or file exists).
+3. Cross-read `07-EXECUTE-TASK-REDESIGN-PLAN.md` Phase 7 — that is where Phase 5b lives now.
+4. Verify state of each phase on-disk. Each check below mirrors the corresponding phase's `### Verify` block; a phase is "done" only when its check returns the success signal (not merely when a directory or file exists).
 
    ```bash
    # Phase 0 — substrate importable:
@@ -359,17 +397,23 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
    ls EMPIRICAL-VERIFY-ANY-LEAK-*.md 2>/dev/null \
      && grep -lE "false.positive.rate" EMPIRICAL-VERIFY-ANY-LEAK-*.md
 
-   # Phase 5 — execute-task gate + init-forge wizard + schema validator all present:
-   grep -nE "forcing.functions" src/commands/execute-task/main.md \
+   # Phase 5a — pre-commit hook template + /init-forge wizard wire-in + /constitute wizard extension:
+   ls src/files/git-hooks/pre-commit-forcing-functions.sh 2>/dev/null \
      && grep -nE "pre-commit-forcing-functions" src/commands/init-forge/main.md \
-     && grep -nE "forcing_functions" src/devforge/lib/_constitute/_schema.py
+     && grep -nE "forcing_functions" src/commands/constitute/main.md
+
+   # Phase 5b — DEFERRED (ABSORBED INTO 07-EXECUTE-TASK-REDESIGN-PLAN.md Phase 7).
+   # Check 07-'s state instead:
+   ls src/commands/execute-task/references/forcing-functions-gate.md 2>/dev/null \
+     && grep -nE "verify-magic-enum|verify-cross-layer-imports|verify-any-leak" src/commands/execute-task/main.md
 
    # Phase 6 — docs landed across all four surfaces (matches Phase 6 Verify block exactly):
    grep -nE "verify-magic-enum|verify-cross-layer-imports|verify-any-leak" CLAUDE.md CHANGELOG.md src/constitution.md DEVELOPMENT-STATUS.md
    ```
 4. For each unfinished phase, dispatch the named owner with a complete brief per `feedback_no_underspecification_when_delegating.md`. Follow every python-engineer dispatch with a python-reviewer dispatch per `feedback_dual_agent_verify_command_statements.md`. Follow every instruction-author dispatch with an instruction-reviewer dispatch.
-5. **Phase 2 gates Phases 3-4**. Do not implement cross-layer or any-leak before magic-enum passes empirical verify on at least one real consumer (testForge20 ideally; cse-strata-ws-forge wrapper as a second confirm).
-6. **Phase 5 is opt-in per detector**. A consumer that only enables magic-enum gets the magic-enum gate wired; the others stay inactive. Helper-owns-shape ensures the gate iterates only the enabled rules.
+5. **Phase 2 gates Phases 3-4** (already MET). Phases 3+4 shipped on the gate-relaxation decision recorded in `EMPIRICAL-VERIFY-MAGIC-ENUM-2026-05-21.md`.
+6. **Phase 5a is opt-in per detector**. A consumer that only enables magic-enum gets only that rule's pre-commit check; the others stay inactive. Helper-owns-shape ensures the pre-commit script iterates only the enabled rules.
+7. **Phase 5b is NOT scope here** — landed inside `07-EXECUTE-TASK-REDESIGN-PLAN.md` Phase 7 as the `/execute-task` verify-gate step. When 07- Phase 7 ships, return to update the handoff table at the top of this section.
 
 ## Out of scope (this plan)
 
@@ -387,4 +431,5 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
 - `CONSTITUTION-STRENGTHENING-PLAN.md` — closed 2026-05-16. Strengthened the canonical universal-rule bodies. Detectors in this plan are the mechanical backing for those strengthened rules.
 - `COMMAND-VERIFY-GATES-PLAN.md` — sibling. Converts `## Verify` blocks in done-commands from prose to shell-fact. Same facts-first philosophy applied to command specs instead of constitution rules.
 - `04-PR-REVIEW-PLAN.md` — sibling. Literal-archaeology / scope-drift / blast-radius live there at the PR-review surface; complementary to the verify-gate surface this plan targets.
-- `PLAN-COMMAND-REDESIGN` (referenced by `feedback_18_may_patches_delivered.md` as the parity gate for Gap B/C) — Phase 5 of this plan touches `/execute-task` spec; coordinate with whatever execute-task version that redesign produces.
+- `02-PLAN-COMMAND-REDESIGN-PLAN.md` — sibling redesign for `/plan` command. Orthogonal to this plan; no shared scope.
+- `07-EXECUTE-TASK-REDESIGN-PLAN.md` — **owns Phase 5b of this plan now.** Builds `/execute-task` source spec + helper subpackage; Phase 7 of 07- is the verify-gate wire-in (absorbed from this plan's Phase 5b). When 07- Phase 7 ships, update this plan's handoff table for 5b row + repo-root `CLAUDE.md` for both plans.
