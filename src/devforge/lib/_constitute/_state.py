@@ -53,7 +53,8 @@ def default_state() -> dict:
     """
     state = {}  # type: Dict[str, object]
     for name, kind in FIELD_SCHEMA:
-        if kind in ("scalar", "date_scalar", "enum_scalar", "nullable_record"):
+        if kind in ("scalar", "date_scalar", "enum_scalar", "nullable_record",
+                    "optional_dict"):
             state[name] = None
         elif kind == "section_array":
             state[name] = []

@@ -29,6 +29,14 @@ FIELD_SCHEMA = (
     ("domain_rules",              "section_array"),
     ("workflow_rules",            "section_array"),
     ("scaffolding_guide",         "nullable_record"),
+    # Optional forcing-functions detector config.  Future: will be populated
+    # by a ``set-forcing-function`` setter verb (unscheduled) or by the
+    # /constitute wizard (Phase 5 extension per
+    # CONSTITUTION-FORCING-FUNCTIONS-PLAN.md).  For now, consumers hand-edit
+    # this block into .devforge/constitute.json directly.  Phase 0 accepts
+    # any dict value here; per-rule schema validation lands with each
+    # detector in Phases 1-4.
+    ("forcing_functions",         "optional_dict"),
 )
 
 # Closed enum sets. Step 2 setters enforce these at set-time.

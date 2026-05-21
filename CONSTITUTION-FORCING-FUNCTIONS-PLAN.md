@@ -38,7 +38,7 @@ Helper-owns-shape (per `feedback_helper_owns_shape_principle.md`). Add `forcing_
     "magic_enum_duplication": {
       "enabled": true,
       "generated_types_dirs": ["packages/cse-types/src"],
-      "allowlist_paths": ["**/*.log.ts", "**/scripts/**", "**/*.fixture.ts"]
+      "allowlist_paths": ["*.log.ts", "**/*.log.ts", "scripts/**", "**/scripts/**", "*.fixture.ts", "**/*.fixture.ts"]
     },
     "cross_layer_imports": {
       "enabled": true,
@@ -61,7 +61,9 @@ Helper-owns-shape (per `feedback_helper_owns_shape_principle.md`). Add `forcing_
 }
 ```
 
-Populated by `/constitute` wizard (new step) or by `constitute_helper set-forcing-function <rule> <key> <value>` for incremental adoption. Schema validated by `_constitute/_schema.py`.
+Populated by `/constitute` wizard (Phase 5 extension — unscheduled until then) or hand-edited into `.devforge/constitute.json` directly for early adoption. Schema validated by `_constitute/_schema.py` (Phase 0 accepts the top-level key; per-rule validation lands with each detector in Phases 1-4).
+
+**Allowlist glob behavior** — `path_in_allowlist` uses `fnmatch.fnmatch`, which does NOT expand `**` recursively across directory separators (unlike shell-glob `**` or `pathlib.Path.match` in Python 3.13+). Always pair a `**/<x>` glob with its top-level twin (`<x>` or `<x>/**`) to cover both nested and top-level matches. The example above lists both forms intentionally. Phase 1 magic-enum scanner doc must repeat this guidance for consumer config-authoring.
 
 ### Integration surfaces
 
@@ -106,10 +108,10 @@ Sister plan, complementary scope. Drift-detector is forge-internal one-shot diff
 - `src/devforge/lib/_constitute/_forcing_functions/_shared.py` — substrate:
   - `Finding` dataclass: `rule: str, path: str, line: int, kind: Literal["VIOLATION"], summary: str, fix_hint: str | None`. **Scope**: this `Finding` type is forcing-functions-only. Drift-detector (sibling plan `CONSTITUTION-DRIFT-DETECTOR-PLAN.md`) emits its own findings with `DRIFT` / `MISSING` kinds against a different comparison axis (template canonical vs consumer state). The two finding types do NOT merge — if drift-detector lands first with its own `Finding` shape, leave both distinct; do not retrofit a shared `kind` enum that conflates rule-violation-in-code (this plan) with template-vs-state-drift (sibling plan).
   - `EXIT_CLEAN = 0`, `EXIT_FINDINGS = 2`.
-  - `emit_findings(findings: list[Finding]) -> int` — prints each finding to stderr in `path:line: <KIND> [<rule>] <summary>` format; prints JSON report `{rule: ..., findings: [...]}` to stdout; returns exit code.
+  - `emit_findings(rule: str, findings: list[Finding]) -> int` — prints each finding to stderr in `path:line: <KIND> [<rule>] <summary>` format; prints JSON report `{rule: ..., findings: [...]}` to stdout; returns exit code. The `rule` argument is the top-level JSON grouping key (callers ensure all `Finding.rule` per-element values match; the function does not enforce coherence). On empty findings list: no output, return `EXIT_CLEAN`.
   - `has_inline_escape(file_path: Path, line_number: int) -> bool` — greps for `// forcing-fn-ok:` or `# forcing-fn-ok:` on the same line.
   - `path_in_allowlist(file_path: Path, allowlist_globs: list[str]) -> bool` — fnmatch against config globs.
-- `src/devforge/lib/_constitute/_schema.py` — extend with `forcing_functions` block validator. Each rule's config validates against a per-rule schema declared in `_forcing_functions/_schemas.py`.
+- `src/devforge/lib/_constitute/_schema.py` — extend with `forcing_functions` top-level key acceptance only (Phase 0 accepts any dict value; no per-rule validation). Per-rule schema validation is deferred to Phases 1-4: each detector defines + validates its own block alongside its implementation. No `_schemas.py` module created in Phase 0.
 - `tests/lib/test_constitute_forcing_functions_shared.py` — unit tests:
   - `test_finding_serializes_to_json` (round-trip).
   - `test_emit_findings_exit_code_clean` (empty list → exit 0, no stderr).
@@ -287,7 +289,7 @@ ls src/commands/execute-task/main.md 2>/dev/null || ls src/commands/execute-task
 
 ### Files
 
-- `src/commands/execute-task/main.md` (or whichever current execute-task spec is canonical post-PLAN-COMMAND-REDESIGN) — append a verify-gate step after agent-edit completion + before user-presentation. Step invokes `constitute_helper verify-<rule>` for each rule with `enabled: true` in `.devforge/constitute.json`. Exit 2 = STOP; relay findings to user verbatim; do not declare task complete.
+- `src/commands/execute-task/main.md` (or whichever current execute-task spec is canonical post-PLAN-COMMAND-REDESIGN) — append a verify-gate step after agent-edit completion + before user-presentation. Step invokes `constitute_helper verify-<rule>` for each rule with `enabled: true` in `.devforge/constitute.json`. Exit 2 = STOP; capture the helper's **stdout JSON** (the programmatic finding report — `{rule, findings: [...]}`) and relay it to the user as a fenced JSON code block; stderr lines are human-readable supplementary output and MUST NOT be the source of relayed findings (the `path:line: KIND` prefix is ambiguous when `path` contains `:`, per `_shared.emit_findings` Known limitations). Do not declare task complete.
 - `src/commands/execute-task/references/forcing-functions-gate.md` — reference doc explaining the gate, the verbs, the exit semantics, and how to triage findings.
 - `src/files/git-hooks/pre-commit-forcing-functions.sh` (new template) — installable pre-commit hook script. `install.sh` / `update.sh` does NOT auto-install it; `/init-forge` STEP 0 offers it after the wizard captures `forcing_functions` config.
 - `src/commands/init-forge/main.md` — extend STEP 0 to surface the pre-commit option with a single AskUserQuestion (per `feedback_askuserquestion_single_line_only.md` single-line constraint).

@@ -61,7 +61,7 @@ Step 0 coverage (preserved):
   shape. Idempotent: byte-identical re-runs.
 
 Step 1 coverage:
-  FIELD_SCHEMA — 11 keys, locked order, correct kinds.
+  FIELD_SCHEMA — 12 keys (includes forcing_functions), locked order, correct kinds.
   ENUM_FIELDS  — 4 closed enums accessible by name; known values present.
   default_state() — top-level keys + types, patterns_and_antipatterns 6-bucket
     struct, project_identity + scaffolding_guide default to None.
@@ -228,9 +228,9 @@ class TestStep0Scaffolding(unittest.TestCase):
 
 
 class TestStep1Schema(unittest.TestCase):
-    def test_field_schema_has_11_keys(self):
-        """FIELD_SCHEMA defines exactly 11 top-level fields."""
-        self.assertEqual(len(constitute_helper.FIELD_SCHEMA), 11)
+    def test_field_schema_has_12_keys(self):
+        """FIELD_SCHEMA defines exactly 12 top-level fields (includes forcing_functions)."""
+        self.assertEqual(len(constitute_helper.FIELD_SCHEMA), 12)
 
     def test_field_schema_key_order(self):
         """FIELD_SCHEMA preserves the locked key order."""
@@ -247,6 +247,7 @@ class TestStep1Schema(unittest.TestCase):
             "domain_rules",
             "workflow_rules",
             "scaffolding_guide",
+            "forcing_functions",
         ]
         self.assertEqual(names, expected)
 
@@ -283,9 +284,9 @@ class TestStep1Schema(unittest.TestCase):
         )
 
     def test_default_state_top_level_key_count(self):
-        """default_state() returns a dict with exactly 11 top-level keys."""
+        """default_state() returns a dict with exactly 12 top-level keys."""
         state = constitute_helper.default_state()
-        self.assertEqual(len(state), 11)
+        self.assertEqual(len(state), 12)
 
     def test_default_state_section_arrays_empty(self):
         """Section array fields default to []."""
