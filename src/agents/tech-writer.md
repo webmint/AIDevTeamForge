@@ -287,9 +287,9 @@ When invoked by `/generate-docs`, you receive ONE package assignment from the or
 **Orchestrator provides** in the dispatch brief:
 
 - **Mode**: `SKELETON-FILL`
-- **Package path**: relative to project root (e.g., `db-cse-ui-strata/apps/app-web`)
-- **Package name**: the human-readable name from the manifest (e.g., `app-web`)
-- **Skeleton path**: where the `.skeleton` file lives (e.g., `docs/db-cse-ui-strata/apps/app-web/index.md.skeleton`)
+- **Package path**: relative to project root (e.g., `module/web`)
+- **Package name**: the human-readable name from the manifest (e.g., `web`)
+- **Skeleton path**: where the `.skeleton` file lives (e.g., `docs/module/web/index.md.skeleton`)
 - **Helper path**: e.g., `.devforge/lib/generate_docs_helper`
 - **Source root**: per ecosystem convention — JS/TS → `src/`, Rust → `src/`, Python → `src/<pkg>/` or `<pkg>/`, Go → unit root, Ruby → `lib/`, Java/Kotlin → `src/main/...`, C#/.NET → project folder
 - **Iteration scope reminder**: always one package per dispatch; never touch sibling packages

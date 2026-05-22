@@ -769,13 +769,13 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 
    ```bash
    .devforge/lib/research_helper set-recommended-approach \
-       --name "Wrapper default-param for splitOnSNA" \
+       --name "Wrapper default-param for flag" \
        --rationale "<why>" \
        --hypotheses-addressed '["A"]' \
        --hypotheses-not-covered '[]' \
        --single-layer-justification "<prose>" \
        --cites '["<token>"]' \
-       --proposed-call-shape "fetchOrder()"
+       --proposed-call-shape "loadData()"
    ```
 
    On argument duplication, the helper exits with code 2 and stderr `set-recommended-approach: --proposed-call-shape "<shape>" contains argument duplication ("<ident>" appears N times in the arg list). Same value passed multiple times in one call indicates the default-source belongs at a different layer (wrapper signature / state initialization / use-case default). Reconsider the fix layer and re-draft.` Recovery: escalate the default-source one layer up (wrapper signature, state-init factory, or use-case default), re-draft the approach so the call site no longer needs the duplicated arg, then re-call `set-recommended-approach` with a non-duplicating `--proposed-call-shape`. Parser failure (nested calls, unsupported syntax) is fail-soft: helper emits a stderr advisory `research_helper: set-recommended-approach: --proposed-call-shape "<shape>" could not be fully parsed (nested calls / unsupported syntax); argument-duplication check skipped, shape stored verbatim.` and proceeds to exit 0. Check 18 mirrors the duplication check at verify time (catches state-mutation bypass) — same recovery applies.

@@ -4,16 +4,16 @@ Phase 2 ledger for `01-CONSTITUTION-FORCING-FUNCTIONS-PLAN.md`. Empirical verify
 
 ## Procedure
 
-- Consumer: `~/Projects/testForge20` (wraps `db-cse-ui-strata`).
+- Consumer: `~/Projects/testForge20` (wraps `module`).
 - Forge build: `develop-2.0-init` @ `ccc25b8` (Phase 1 commit) + one in-flight parser tightening (`_parse_type_unions` rejects object/function types in RHS).
-- Config: ad-hoc `/tmp/phase2-magic-enum-verify/config.json` pointing `--root /Users/mykolakudlyk/Projects/testForge20`; generated_types_dirs at `db-cse-ui-strata/packages/pkg-cse-types/src/generated` + `db-cse-ui-strata/packages/pkg-cse-core/src/generated`; allowlist excludes `node_modules`, `.git`, `.devforge`, `dist`, `build`, test/mock/spec/fixture files, `scripts/`.
-- Generated-types inventory: `index.d.ts` (587 KB) with 32 `export enum X { ... }` declarations including the seed case `OrgV2AddressType.Shipping = 'SHIPPING'` at line 2561.
+- Config: ad-hoc `/tmp/phase2-magic-enum-verify/config.json` pointing `--root /Users/mykolakudlyk/Projects/testForge20`; generated_types_dirs at `module/packages/pkg-foo-types/src/generated` + `module/packages/pkg-foo-core/src/generated`; allowlist excludes `node_modules`, `.git`, `.devforge`, `dist`, `build`, test/mock/spec/fixture files, `scripts/`.
+- Generated-types inventory: `index.d.ts` (587 KB) with 32 `export enum X { ... }` declarations including the seed case `Color.Red = 'RED'` at line 2561.
 
 ## Round 1 — verbatim Phase 1 detector
 
 - Findings: **496** across 225 files.
 - Distribution by literal:
-  - `'id'` (71), `'name'` (36), `'SLP'` (27), `'DNET'` (26), `'Quote'` (25), `'ID'` (14), `'BILLING'` (14), `'STOCK'` (14), `'DRAFT'` (13), `'Quote'` matched 22 ambiguous enums.
+  - `'id'` (71), `'name'` (36), `'AAA'` (27), `'BBB'` (26), `'Foo'` (25), `'ID'` (14), `'BILLING'` (14), `'STOCK'` (14), `'DRAFT'` (13), `'Foo'` matched 22 ambiguous enums.
 - Multi-enum-match (literal collides with members of multiple distinct enums): 143 / 496 = **28.8%** ambiguous.
 - Rough manual triage (LIKELY_FP-list + LIKELY_TP-list classification):
   - Lower-bound FP rate: 191 / 496 = **38.5%**.
@@ -25,10 +25,10 @@ Phase 2 ledger for `01-CONSTITUTION-FORCING-FUNCTIONS-PLAN.md`. Empirical verify
 GraphQL-codegen-style `type X = { __typename?: 'Y', ... }` aliases were caught by `_parse_type_unions` as if they were string-literal unions. Example from `index.d.ts:4509`:
 
 ```ts
-export type CopyQuoteMutation = { __typename?: 'Mutation', copyQuote: { __typename?: 'Quote', id: number } };
+export type FooMutation = { __typename?: 'Mutation', fooField: { __typename?: 'Foo', id: number } };
 ```
 
-Parser extracted `'Mutation'` + `'Quote'` as union members of `CopyQuoteMutation`, flooding inventory with property-typed string literals. Every consumer reference to `'Quote'` in unrelated context — route name, log message, identifier — got flagged.
+Parser extracted `'Mutation'` + `'Foo'` as union members of `FooMutation`, flooding inventory with property-typed string literals. Every consumer reference to `'Foo'` in unrelated context — route name, log message, identifier — got flagged.
 
 ## Round 2 — parser tightening
 
@@ -36,16 +36,16 @@ Patch applied to `_inventory.py:_parse_type_unions`: reject RHS containing `{` (
 
 - Findings: **429** across 209 files (-67 vs Round 1; -13.5%).
 - Top literals (same distribution, GraphQL `__typename` discriminators gone):
-  - `'id'` (71), `'name'` (36), `'SLP'` (27), `'DNET'` (26), `'ID'` (14), `'BILLING'` (14), `'STOCK'` (14), `'DRAFT'` (13), `'type'` (11), `'ACTIVE'` (10), `'RETAIL'` (10), `'SHIPPING'` (9), `'INTERNAL'` (9).
+  - `'id'` (71), `'name'` (36), `'AAA'` (27), `'BBB'` (26), `'ID'` (14), `'BILLING'` (14), `'STOCK'` (14), `'DRAFT'` (13), `'type'` (11), `'ACTIVE'` (10), `'RETAIL'` (10), `'SHIPPING'` (9), `'INTERNAL'` (9).
 - Multi-enum-match: 81 / 429 = **18.9%** (-9.9 pp).
 
 ### Round 2 quality
 
 Remaining literals split into two qualitatively distinct buckets:
 
-1. **High-actionable, semantic uppercase enum values** (truly magic strings duplicating enum members): `BILLING`, `SHIPPING`, `DRAFT`, `ACTIVE`, `RETAIL`, `STOCK`, `INTERNAL`, `CUSTOM`, `SLP`, `DNET`, `CITY`, `STATE`, `COUNTRY`, `CSE_ORDER_TYPE` — ~158 findings. These are textbook §3.5 violations the detector is designed to catch (the seed `OrgV2AddressType.Shipping` is here).
+1. **High-actionable, semantic uppercase enum values** (truly magic strings duplicating enum members): `BILLING`, `SHIPPING`, `DRAFT`, `ACTIVE`, `RETAIL`, `STOCK`, `INTERNAL`, `CUSTOM`, `CITY`, `STATE`, `COUNTRY`, `ORDER_TYPE` — ~158 findings. These are textbook §3.5 violations the detector is designed to catch (the seed `Color.Red` is here).
 
-2. **Low-actionable, generic lowercase enum values** (real enum members, but the literal collides with general property names): `id` (71), `name` (36), `ID` (14), `type` (11), `NAME` (7), `User` (10), `Order` (6), `Item` (6) — ~155 findings. Source: enums like `OrgV2SortingField { Id = 'id', Name = 'name', ... }` are codegen sort-field enums. Consumer code constantly uses `'id'` / `'name'` as property keys, query parameters, route names, fixture identifiers. The scanner cannot distinguish "magic-string dup of enum" from "general property-name string" without semantic / AST analysis it does not perform.
+2. **Low-actionable, generic lowercase enum values** (real enum members, but the literal collides with general property names): `id` (71), `name` (36), `ID` (14), `type` (11), `NAME` (7), `User` (10), `Order` (6), `Item` (6) — ~155 findings. Source: enums like `SortField { Id = 'id', Name = 'name', ... }` are codegen sort-field enums. Consumer code constantly uses `'id'` / `'name'` as property keys, query parameters, route names, fixture identifiers. The scanner cannot distinguish "magic-string dup of enum" from "general property-name string" without semantic / AST analysis it does not perform.
 
 Net: ~37% of Round 2 findings are precision-bounded by the regex-only parser's lack of context awareness, not by parser bugs. **Round 2 still fails the 5% gate** by the same magnitude (low-actionable bucket is too noisy regardless of regex tightness).
 
@@ -55,7 +55,7 @@ The plan's ≤5% FP threshold was set without empirical data. testForge20 reveal
 
 - **GraphQL sort-field enums** typically declare lowercase property-name members (`Id = 'id'`, `Name = 'name'`, ...). Every consumer use of those generic strings as property keys triggers a finding.
 - **`__typename` discriminators** (Round 1 cause) — fixed in Round 2 parser tightening.
-- **Type-discriminator names** (`'Quote'`, `'User'`, `'Order'`) — fixed in Round 2.
+- **Type-discriminator names** (`'Foo'`, `'User'`, `'Order'`) — fixed in Round 2.
 
 Round 2's ~38% rate is concentrated in the lowercase-enum-value bucket. Further regex tightening cannot fix this without semantic analysis (AST-based tree-sitter parsing of property-key context vs string-literal-value context).
 
@@ -87,5 +87,5 @@ Test suite: 305 pass (303 → 305).
 
 - Per-consumer custom inventory filter (e.g., "skip enums matching `*SortingField`"). Future-work; surface as detector config knob if Path 2 chosen.
 - Tree-sitter upgrade. Future-work; large change requiring a separate dispatch + review loop.
-- cse-strata-ws-forge wrapper second-consumer verify. Plan §"Phase 2" lists it; defer until first-consumer decision lands.
+- Second wrapper-consumer verify. Plan §"Phase 2" lists it; defer until first-consumer decision lands.
 - Actual triage of every Round 2 finding to a definitive TP/FP. Rubric-based classification is sufficient for the decision; full triage requires consumer-developer review.

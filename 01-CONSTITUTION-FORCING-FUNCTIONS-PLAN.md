@@ -2,7 +2,7 @@
 
 **Status**: Drafted 2026-05-21.
 **Branch**: `develop-2.0-init`
-**Driver**: 2026-05-21 conversation — Sonnet 1.28 generated a duplicate magic string `'SHIPPING'` for `OrgV2AddressType.Shipping = 'SHIPPING'` (member of a generated enum in `pkg-cse-types/index.d.ts:2569`) in target code. Direct violation of universal §3.5 ("No magic values"); the per-consumer §3.1 ("Type Safety", project-specific) would also typically encode a "generated types are source of truth" rule for a TS stack and was equally bypassed. Prose-only constitution rules are insufficient: the model reads them but does not ground them against the codebase. Pattern matches the rationale of `CONSTITUTION-DRIFT-DETECTOR-PLAN.md` ("shell-fact instead of by-eye"). This plan extends the same shape into a family of mechanical detectors that catch the rule classes LLMs systematically violate.
+**Driver**: 2026-05-21 conversation — Sonnet 1.28 generated a duplicate magic string `'RED'` for `Color.Red = 'RED'` (member of a generated enum in `pkg-foo-types/index.d.ts`) in target code. Direct violation of universal §3.5 ("No magic values"); the per-consumer §3.1 ("Type Safety", project-specific) would also typically encode a "generated types are source of truth" rule for a TS stack and was equally bypassed. Prose-only constitution rules are insufficient: the model reads them but does not ground them against the codebase. Pattern matches the rationale of `CONSTITUTION-DRIFT-DETECTOR-PLAN.md` ("shell-fact instead of by-eye"). This plan extends the same shape into a family of mechanical detectors that catch the rule classes LLMs systematically violate.
 
 ## Context for next session
 
@@ -37,7 +37,7 @@ Helper-owns-shape (per `feedback_helper_owns_shape_principle.md`). Add `forcing_
   "forcing_functions": {
     "magic_enum_duplication": {
       "enabled": true,
-      "generated_types_dirs": ["packages/cse-types/src"],
+      "generated_types_dirs": ["packages/foo-types/src"],
       "allowlist_paths": ["*.log.ts", "**/*.log.ts", "scripts/**", "**/scripts/**", "*.fixture.ts", "**/*.fixture.ts"]
     },
     "cross_layer_imports": {
@@ -55,7 +55,7 @@ Helper-owns-shape (per `feedback_helper_owns_shape_principle.md`). Add `forcing_
     },
     "any_with_generated_available": {
       "enabled": true,
-      "generated_types_dirs": ["packages/cse-types/src"]
+      "generated_types_dirs": ["packages/foo-types/src"]
     }
   }
 }
@@ -90,7 +90,7 @@ No third escape (no env-var bypass, no "skip if CI" flag). Zero-escape-hatch per
 
 **Argument for family-shape now**: drift-detector already established the helper-subcommand + exit-semantics + finding-shape pattern. Designing the shared substrate once (config namespace `forcing_functions.<rule>`, shared exit-code constants, shared allowlist machinery, shared JSON report serializer) costs ~20% over a standalone magic-enum implementation and prevents 3× rework if detectors 2+3 ship later.
 
-**Decision**: ship magic-enum first **with family-aware shape**. Phase 0 lays the shared substrate. Phase 1 implements magic-enum on that substrate. Phases 3-4 (cross-layer, `any`-leak) are sketched but **do not implement until magic-enum passes empirical verify on testForge20 + cse-strata-ws-forge wrapper** (Phase 2). Closes YAGNI without painting into corner.
+**Decision**: ship magic-enum first **with family-aware shape**. Phase 0 lays the shared substrate. Phase 1 implements magic-enum on that substrate. Phases 3-4 (cross-layer, `any`-leak) are sketched but **do not implement until magic-enum passes empirical verify on testForge20 wrapper** (Phase 2). Closes YAGNI without painting into corner.
 
 ### Relationship to drift-detector
 
@@ -158,10 +158,10 @@ print(f)
   - Else emit `Finding(rule='magic_enum_duplication', kind='VIOLATION', summary="literal 'X' matches <EnumName>.<Member> from <generated-path>; import the enum", fix_hint="import { <EnumName> } from '<generated-path>'; use <EnumName>.<Member>")`.
 
 - `tests/lib/test_magic_enum_scanner.py` fixtures:
-  - Violation: file uses `const role = 'SHIPPING'` where `OrgV2AddressType.Shipping = 'SHIPPING'` exists in inventory. Expect 1 finding.
-  - Legitimate import: file imports `OrgV2AddressType` and uses `OrgV2AddressType.Shipping`. Expect 0 findings.
-  - Legitimate log: file logs `console.log('SHIPPING started')` (string position is non-RHS). Expect 0 findings.
-  - Escape: file has `const role = 'SHIPPING'; // forcing-fn-ok: legacy contract`. Expect 0 findings.
+  - Violation: file uses `const role = 'RED'` where `Color.Red = 'RED'` exists in inventory. Expect 1 finding.
+  - Legitimate import: file imports `Color` and uses `Color.Red`. Expect 0 findings.
+  - Legitimate log: file logs `console.log('RED started')` (string position is non-RHS). Expect 0 findings.
+  - Escape: file has `const role = 'RED'; // forcing-fn-ok: legacy contract`. Expect 0 findings.
   - Allowlist: file `scripts/seed.ts` matches allowlist glob. Expect 0 findings.
 
 ### Step 1.3 — Subcommand `verify-magic-enum`
@@ -186,18 +186,18 @@ pytest tests/lib/test_magic_enum_inventory.py tests/lib/test_magic_enum_scanner.
 
 ---
 
-## Phase 2 — Empirical verify on testForge20 + cse-strata-ws-forge wrapper
+## Phase 2 — Empirical verify on testForge20 wrapper
 
 **Owner**: orchestrator (manual triage).
 
 ### Procedure
 
-1. Run `verify-magic-enum` against `~/Projects/testForge20` after seeding its `.devforge/constitute.json` with a `forcing_functions.magic_enum_duplication` block pointing at its `pkg-cse-types/` (or equivalent generated dir).
+1. Run `verify-magic-enum` against `~/Projects/testForge20` after seeding its `.devforge/constitute.json` with a `forcing_functions.magic_enum_duplication` block pointing at its `pkg-foo-types/` (or equivalent generated dir).
 2. Capture findings. Triage each:
    - **True positive** (real magic-string duplication) — keep.
    - **False positive** — categorize: (a) detector bug → patch Phase 1; (b) legitimate exception → add to allowlist or document the inline-escape pattern.
 3. Stop criterion: false-positive rate ≤ 5% on the triaged sample. If above, patch detector before extending family.
-4. Repeat against `cse-strata-ws-forge` wrapper project.
+4. Repeat against a second wrapper project.
 5. Land conclusions in `EMPIRICAL-VERIFY-MAGIC-ENUM-<date>.md` (one-shot log; auto-memory-able after).
 
 ### Verify
@@ -206,7 +206,7 @@ pytest tests/lib/test_magic_enum_inventory.py tests/lib/test_magic_enum_scanner.
 # Ledger exists + records the FP rate + records the seed-violation capture:
 ls EMPIRICAL-VERIFY-MAGIC-ENUM-*.md
 grep -E "false.positive.rate" EMPIRICAL-VERIFY-MAGIC-ENUM-*.md
-grep -E "OrgV2AddressType\.Shipping|SHIPPING.*caught" EMPIRICAL-VERIFY-MAGIC-ENUM-*.md
+grep -E "Color\.Red|RED.*caught" EMPIRICAL-VERIFY-MAGIC-ENUM-*.md
 # Re-run the detector against testForge20 to reproduce a clean / known finding set:
 ./src/devforge/lib/constitute_helper verify-magic-enum --root ~/Projects/testForge20
 # Expect exit 2 + the violations recorded in the ledger.
@@ -215,7 +215,7 @@ grep -E "OrgV2AddressType\.Shipping|SHIPPING.*caught" EMPIRICAL-VERIFY-MAGIC-ENU
 Assertion thresholds (all required to pass Phase 2):
 - Ledger committed at `EMPIRICAL-VERIFY-MAGIC-ENUM-<date>.md`.
 - False-positive rate ≤ 5% recorded in ledger.
-- Seed violation (`OrgV2AddressType.Shipping = 'SHIPPING'`) confirmed caught.
+- Seed violation (`Color.Red = 'RED'`) confirmed caught.
 
 ---
 
@@ -385,7 +385,7 @@ Cross-check per `feedback_cross_check_after_every_change.md`: grep for every hel
    # Phase 2 — ledger exists AND records FP rate AND records seed-violation capture:
    ls EMPIRICAL-VERIFY-MAGIC-ENUM-*.md 2>/dev/null \
      && grep -lE "false.positive.rate" EMPIRICAL-VERIFY-MAGIC-ENUM-*.md \
-     && grep -lE "OrgV2AddressType\.Shipping|SHIPPING.*caught" EMPIRICAL-VERIFY-MAGIC-ENUM-*.md
+     && grep -lE "Color\.Red|RED.*caught" EMPIRICAL-VERIFY-MAGIC-ENUM-*.md
 
    # Phase 3 — cross-layer verb CLI-wired AND empirical ledger records FP rate:
    ./src/devforge/lib/constitute_helper verify-cross-layer-imports --help >/dev/null 2>&1 && echo "Phase 3 wired" || echo "Phase 3 not wired"

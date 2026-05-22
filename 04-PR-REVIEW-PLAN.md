@@ -1,6 +1,6 @@
 # PR-REVIEW-PLAN
 
-**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) + 9 (finalize-output + append-to-replay-corpus) + 10 (slash command spec + emitter `_PROMOTED` wire-in) + 11 (PR #304 replay fixture + end-to-end helper test) shipped through 2026-05-21; ALL 11 HELPER VERBS IMPLEMENTED + slash command spec live + synthetic replay validated; Step 12 PENDING (testForge20 end-to-end manual verify on real foreign-repo PR — STOP POINT per user direction). Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. Doosan monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
+**Status**: DRAFTED 2026-05-20 — Steps 0 (PRECONDITION MET) + 1 (scaffold) + 2 (CBM ensure + forge-state detect) + 3 (intake) + 4 (4a text-pattern + 4b advanced smells; detect-smells verb wired with full 8-heuristic catalog) + 5 (compute-blast-radius probe-spec extraction) + 6 (bundle-context + import-handoffs) + 7 (check-scope-drift bullet-extraction scaffold) + 8 (dispatch-review FAT brief assembly) + 9 (finalize-output + append-to-replay-corpus) + 10 (slash command spec + emitter `_PROMOTED` wire-in) + 11 (synthetic replay fixture + end-to-end helper test) shipped through 2026-05-21; ALL 11 HELPER VERBS IMPLEMENTED + slash command spec live. The original real-PR replay fixture was later removed to keep third-party code out of the repo (see `## Replay corpus`); Step 12 PENDING (testForge20 end-to-end manual verify on real foreign-repo PR — STOP POINT per user direction). Multi-session execution plan for `/pr-review <PR#>` slash command + `pr_review_helper` subpackage. Personal-overlay tool: reviewer's local forge install reviews foreign-repo PRs (e.g. a large monorepo) where authoring team is unaware of forge. Output stays private to reviewer; reviewer manually re-translates findings into PR comments.
 
 **Queued behind**: RESEARCH-HANDOFF-PLAN Step 10 (testForge20 manual verify). Steps 1-9 shipped; reuse surfaces stable.
 
@@ -22,7 +22,7 @@
 - `cavecrew-reviewer` — terse + read-only enforced, but blind without brief
 - `/pr-review` (this plan) — **forge-overlay-aware**, AI-slop-detecting, blast-radius-computing, scope-drift-checking. Differentiators: code-smell heuristics (Phase 2), CBM blast (Phase 3), scope-drift matrix (Phase 5).
 
-**Canonical replay case**: PR #304 (DoosanICA/db-cse-ui-strata, MIG-2198, merged 2026-04-21). Built parallel internal Ship-To picker instead of refactoring external one per ticket. 80% file duplication, missing validation gate for external users, no Strata env gate, AC-7 format missing on Ordered-By + Deliver-To. Triggered 4+ follow-up tickets over 1 month. Full gap analysis in design session transcript. See `## Replay corpus`.
+**Canonical replay case** (synthetic): a PR that builds a parallel internal component instead of refactoring the existing external one per the ticket. ~80% file duplication, missing validation gate for one user class, no environment gate, required display-format AC missing on two of three panels. Triggered multiple follow-up tickets. See `## Replay corpus` for the generalized detector-catalog this seeds.
 
 **Reuse from RESEARCH-HANDOFF + RESEARCH-V3**:
 
@@ -56,7 +56,7 @@
 - AI-slop heuristic catalog (extensible per-project)
 - Tier-degradation: full / partial / none forge-overlay support
 - CBM index prerequisite check + prompt
-- Replay corpus seeded with PR #304
+- Replay corpus seeded with a synthetic detector-catalog scenario
 
 **Out**:
 
@@ -80,7 +80,7 @@
 │             ├── argument-duplication (consumes `_detect_arg_duplication` from `_shared/literal_call_shape.py`)
 │             ├── duplication-ratio, hedge-defensive, atomic-dump,
 │             │   empty PR body, hallucinated APIs, etc.
-│             └── replay catalog (PR #304 corpus + extensions)
+│             └── replay catalog (synthetic seed corpus + extensions)
 ├── Phase 3:  Blast radius (CBM trace_path: callers / callees / data-flow)
 ├── Phase 4:  Context bundle
 │             ├── universal src/constitution.md sections
@@ -235,7 +235,7 @@ verbs:
 
 - `PYTHONPATH=src python -m devforge.lib.pr_review_helper detect-smells --pr <N> --target <path>` mutates `state.smells` + outputs summary JSON (count + by-severity bucket)
 - Per-heuristic test: ≥1 positive (fires) + ≥1 negative (doesn't fire) fixture
-- PR #304 replay (after Step 11 fixture in place): ≥6 of 9 expected gap-class smells fire (empty body, atomic dump, hedge-defensive triple-assign, verbose commit msg, duplication 80%, hallucinated-or-magic literals, argument duplication if call shape extractable)
+- Replay scenario (after Step 11 fixture in place): ≥6 of 9 expected gap-class smells fire (empty body, atomic dump, hedge-defensive triple-assign, verbose commit msg, duplication, hallucinated-or-magic literals, argument duplication if call shape extractable)
 
 **Status (2026-05-20)**: 4a + 4b COMPLETE.
 - 4a: 4 text-pattern heuristics + catalog (`register` / `run_all` / `clear_registry`) + `detect-smells` verb shipped; PRReviewState extended with `commit_subjects: List[str]`; intake fetches `commits` from gh; 323 tests green. python-reviewer found 4 findings (F1 medium vacuous idempotency, F2 low `_ADDED_LINE_RE` blank-line bleed, F3 low indexing inconsistency, F4 nit unused `Optional`); all applied; re-audit clean. All `location` values 0-indexed universally.
@@ -258,7 +258,7 @@ verbs:
 
 - `PYTHONPATH=src python -m devforge.lib.pr_review_helper compute-blast-radius --pr <N> --target <path>` populates `state.blast` + outputs summary JSON (`status`, `state_path`, `pr_number`, `symbols_extracted`, `by_language`, `by_kind`, `next_action`, `capped`)
 - Per-language regex test coverage (positive + negative) + Vue implicit-component + dedup + cap + REPLACE semantics + shape validation
-- PR #304 replay (Step 11): probe specs emitted for `QuoteOrganizationInfo` (extended interface — TS) + `hasEmptyFields` (Vue method) + `OrderInternalShipToColumn` (Vue component); Step 8 LLM later fills caller matrix
+- Replay scenario (Step 11): probe specs emitted for an extended TS interface + a Vue method + a Vue component; Step 8 LLM later fills caller matrix
 
 **Status (2026-05-20)**: COMPLETE — `_blast.py` (577L) + `test_blast.py` (516L) shipped via python-engineer; 592 tests green (459 prior + 133 new). python-reviewer audit yielded 4 findings (F1 medium typed-const arrow regex missed React/TS idiom, F2 low `continue`→`break` pattern-skip semantics, F3 low dead test guard, F4 nit subparser duplication + stale docstring); all 4 applied; re-audit clean. `_PR_REQUIRED_VERBS` frozenset extracted; Step 4+5 verbs share arg-registration block. NO state-mutating git ops; NO `run_in_background` subprocesses. Probe specs await Step 8 LLM-side CBM population.
 
@@ -289,7 +289,7 @@ verbs:
 
 ### Step 7 — Phase 5: Scope-drift check
 
-**Why**: Did the diff build what the ticket asked? PR #304 failed this hard. Single highest-signal Phase for AI-slop divergence.
+**Why**: Did the diff build what the ticket asked? The seed scenario failed this hard. Single highest-signal Phase for AI-slop divergence.
 
 **Changes**:
 
@@ -303,7 +303,7 @@ verbs:
 
 - `PYTHONPATH=src python -m devforge.lib.pr_review_helper check-scope-drift --pr <N> --target <path>` writes `state.drift` + outputs summary JSON (bullets_extracted, by_source, by_extracted_via, capped, next_action)
 - Test coverage: each extractor (markdown/numbered/AC/GWT/sentence-fallback) positive + negative; dedup + cap; REPLACE semantics; empty-input no-crash
-- PR #304 replay (Step 11): ≥9 AC bullets extracted from ticket_text via ac_marker; LLM-side coverage assessment at Step 8/11 surfaces gaps (`AC-7 Ordered-By/Deliver-To format missing`, `AC-9 Strata gate missing`, `scope-creep: internal picker built`)
+- Replay scenario (Step 11): ≥9 AC bullets extracted from ticket_text via ac_marker; LLM-side coverage assessment at Step 8/11 surfaces gaps (`display-format AC missing on two panels`, `env-gate AC missing`, `scope-creep: parallel component built`)
 
 **Status (2026-05-20)**: COMPLETE — `_scope_drift.py` (~280L) + `test_scope_drift.py` (~450L) shipped via python-engineer; 807 tests green (721 prior + 86 new). Original plan draft proposed LLM-driven extraction (Haiku); revised design split work LLM-side at Step 8 to keep helper deterministic + zero-cost. python-reviewer audit yielded 4 findings (F1 medium plan-vs-impl drift on LLM extraction — fixed by this Status block + Changes rewrite, F2 low pr_body sentence-fallback lacks integration test, F3 low GWT "AND" prose false-positive — documented as known design choice, F4 nit `_write_state` TODO comment count); all 4 applied. NO LLM calls; NO MCP; NO state-mutating git; NO `run_in_background` subprocesses.
 
@@ -326,7 +326,7 @@ verbs:
 - `PYTHONPATH=src python -m devforge.lib.pr_review_helper dispatch-review --pr <N> --target <path>` writes `.devforge/pr-reviews/<N>/brief.md` + outputs summary JSON (brief_path, brief_size_chars, sections_included, counts)
 - Brief size <100000 chars; sections_included lists all 10
 - Smoke: synthetic state with intake+smells+blast+drift+bundle → brief.md generated
-- LLM-side cavecrew dispatch + findings append: Step 11 PR #304 replay + Step 12 testForge20 manual verify
+- LLM-side cavecrew dispatch + findings append: Step 11 replay scenario + Step 12 testForge20 manual verify
 
 **Status (2026-05-21)**: COMPLETE — `_dispatch.py` (833L) + `test_dispatch.py` (1202L, 100 tests) shipped via python-engineer; 919 tests green (807 prior + 112 new). python-reviewer audit yielded 4 findings (F1 HIGH `float(None)` crash when LLM fills `confidence: null` — fixed via `entry.get("confidence") or 0.0`, F2 medium `_ADR_CAP`/`_PLAN_CAP` constants ineffective due to inline slices — renamed to `_ADR_INLINE_CAP=200`/`_PLAN_INLINE_CAP=300` + dead `_truncate` calls removed, F3 low `_write_state` dead code copy in `_dispatch.py` — removed + TODO count reverted to 5 across remaining modules, F4 low `sections_included` missed `"notes"` — added); all 4 applied; re-audit needed. NO LLM/MCP/git-mutating/run-in-background calls.
 
@@ -373,17 +373,17 @@ verbs:
 
 **Status (2026-05-21)**: COMPLETE — `src/commands/pr-review/main.md` (331L) shipped via instruction-author (claude-code-guide consulted for slash-command frontmatter + structure conventions); 1068 pytest still green (no helper code touched). instruction-reviewer audit yielded 7 findings (F1 high Phase 7 stdout `findings_count`→`findings_total`, F2 high Phase 7.5 stdout key list diverged from `_replay.py` schema, F3 medium `coverage_matrix` status values `covered/unclear` → canonical `satisfied/unknown`, F4 medium corpus_index.json keyed-by-PR-number claim wrong — it's `entries` array, F5 medium `state.smells` vs `state.findings` confusion in Phase 6.5 prose, F6 low Phase -1 dict key enumeration incomplete, F7 low blast-risk-score formula wrong); all 7 applied via instruction-author. Emitter `_PROMOTED` tuple in `scripts/emitters/claude.py` updated.
 
-### Step 11 — PR #304 replay validation gate
+### Step 11 — replay validation gate
 
 **Why**: Replay-the-failure principle (per `project_research_patches_1_5_empirical_failed`). Plan claims surface a defined gap set; replay confirms or invalidates.
 
 **Setup**:
 
-- Fixture: `tests/fixtures/pr_review_replay_corpus/304/` contains
+- Fixture: `tests/fixtures/pr_review_replay_corpus/<id>/` contains
   - `pr_view.json` (mock `gh pr view` output)
   - `pr_diff.patch` (full diff)
-  - `ticket.txt` (ticket text from design conversation transcript)
-  - `expected_findings.yaml` (9-gap list from design analysis)
+  - `ticket.txt` (ticket text)
+  - `expected_findings.yaml` (9-gap list from analysis)
 
 **Replay**:
 
@@ -397,9 +397,9 @@ verbs:
 - ≥9 scope-drift bullets extracted (≥1 via `ac_marker`)
 - brief.md generated with PR # + AC text + smell names
 - findings.md generated with empty-findings marker (state.findings unfilled since LLM skipped)
-- corpus_index.json upserted with pr=304 entry
+- corpus_index.json upserted with the replay entry
 
-**Status (2026-05-21)**: COMPLETE — fixture `tests/fixtures/pr_review_replay_corpus/304/` (4 files: pr_view.json / pr_diff.patch / ticket.txt / expected_outcomes.json) + end-to-end test `tests/lib/_pr_review/test_replay_pr304.py` (601L, 13 tests) shipped via python-engineer; 1081 tests green (1068 prior + 13 new). All 11 helper verbs exercised against synthetic fixture; all expected gap classes detected. Engineer adjusted fixture (5 new files / 336 added lines) to clear `atomic_dump` heuristic threshold (`new_files > 4` strict). NO LLM/MCP/git-mutating/run-in-background. LLM-side phases (3.5 CBM trace_path; 6.5 cavecrew dispatch) deferred to Step 12 manual verify on real foreign-repo PR.
+**Status (2026-05-21)**: SHIPPED then REMOVED. End-to-end replay test (601L, 13 tests) was shipped via python-engineer against a real-PR-derived fixture; all 11 helper verbs exercised, all expected gap classes detected. Both the fixture (`tests/fixtures/pr_review_replay_corpus/304/`) and the test (`tests/lib/_pr_review/test_replay_pr304.py`) were later DELETED to keep third-party code out of the repo. Automated replay coverage is currently absent — rebuild from a synthetic or self-authored PR if wanted. LLM-side phases (3.5 CBM trace_path; 6.5 cavecrew dispatch) were always deferred to Step 12 manual verify.
 
 ### Step 12 — testForge20 end-to-end manual verification
 
@@ -407,7 +407,7 @@ verbs:
 
 **Setup**:
 
-- Choose 2-3 real PRs from foreign repo (Doosan or other) reviewer has access to
+- Choose 2-3 real PRs from any foreign repo reviewer has access to
 - Forge installed on testForge20; `.devforge/` overlay populated on target repo via `/init-forge` chain
 - CBM index populated on target repo
 
@@ -424,7 +424,7 @@ verbs:
 
 ## Risks
 
-1. **CBM index staleness on monorepo** — Doosan + similar repos ship daily; overlay drifts. Mitigation: Phase -1 surfaces staleness; reviewer prompted to re-index before run.
+1. **CBM index staleness on monorepo** — large monorepos ship daily; overlay drifts. Mitigation: Phase -1 surfaces staleness; reviewer prompted to re-index before run.
 2. **Bundle-size explosion on broad PRs** — diff touches 8 concerns → 8 architecture docs → giant brief. Mitigation: per-concern injection threshold (>N% of concern's files touched OR explicit setter overlap).
 3. **LLM-extracted ticket bullets (Phase 5) low quality** — vague tickets → garbage matrix. Mitigation: confidence flag per bullet; reviewer can disregard low-confidence drift findings.
 4. **Smell-heuristic false positives** — valid code sometimes triple-assigns, etc. Mitigation: heuristic-catalog yaml with per-project override (`.devforge/local/smell-overrides.yaml`); start conservative.
@@ -439,40 +439,25 @@ verbs:
 
 ## Replay corpus (seed)
 
-### PR #304 — DoosanICA/db-cse-ui-strata, MIG-2198
+### Generalized detector catalog
 
-**Merged**: 2026-04-21. **Author**: npineda. **Branch**: ?→dev. **Files**: +789 lines, 5 new files, 4 modified.
+Seed scenario (synthetic): a PR that builds a NEW parallel component instead of refactoring the existing one per the ticket — large diff, single commit, empty PR body, one user-class validation gap, missing environment gate, required display-format AC delivered on only one of three panels. This shape exercises every detector category at once.
 
-**Ticket summary**: "Update Draft Order screen Ship-To selection for Strata orgs. Existing UI (external) updated with: red-asterisk required marker, V2 search API (descendant ship-to), auto-select-if-single, blank-if-multi, validation gate on Next-Preview, modal updated with SAP Customer # column + SHIPPING address + pagination, selected display in compact format `erpCustomer / name1 name2 / address / city, state postalCode` applied to Ship-To + Ordered-By + Deliver-To with correct address types. Strata env only."
-
-**Actual delivery**:
-
-- Built NEW parallel internal Ship-To picker (`OrderInternalShipToColumn.vue`) instead of refactoring external picker (`OrderAddressInfoExternal.vue`)
-- 80% file duplication: new component near-identical to existing external picker
-- Asterisk added to both panels (only correct delivery)
-- V2 search composable shipped (`useShipToOrgSearchV2.ts`)
-- Modal V2 shipped (`ShipToOrganizationModalV2.vue`) but only wired to internal picker
-- Validation gate (`hasEmptyFields`) extended for `isInternalUser` branch only — external users still pass with empty ship-to
-- AC-7 compact format applied to internal Ship-To column only; Ordered-By + Deliver-To still flat-list via legacy `OrderAddressView`
-- No explicit Strata env gate
-- PR body empty
-- Triggered follow-up tickets: MIG-2612, MIG-2613, MIG-2615, MIG-2616 (revert), current spec/009 branch
-
-**Expected /pr-review findings** (9-gap list, must surface ≥8):
+**Expected /pr-review findings** (9-category catalog, run must surface ≥8):
 
 1. **smell — empty-pr-body** — PR body empty; AC traceability impossible
-2. **smell — duplication-ratio (80%)** — `OrderInternalShipToColumn` ≈ existing `OrderAddressInfoExternal`; extract or justify
-3. **smell — hedge-defensive** — `useShipToOrgSearchV2.ts` mapper triple-assigns `shippingAddress = billingAddress = address`
-4. **smell — atomic-dump** — 789 lines / 5 new files / single commit
-5. **smell — verbose-commit-msg** — "Refactor X to improve Y and Z" pattern
-6. **blast — high-fan-out** — `QuoteOrganizationInfo` field additions ripple across pkg-cse-core (20+ consumers); no tests guarding callers
-7. **blast — cross-concern caller miss** — `hasEmptyFields` change affects both Next + Bulk buttons; review only verified one
-8. **drift — AC-7 missing on external** — ticket requires compact format on Ship-To + Ordered-By + Deliver-To both panels; only internal Ship-To delivered
-9. **drift — AC-9 env gate missing** — ticket specifies Strata-only; no detection gate in code
+2. **smell — duplication-ratio** — new component near-identical to an existing one; extract or justify
+3. **smell — hedge-defensive** — mapper triple-assigns distinct fields to the same source value
+4. **smell — atomic-dump** — hundreds of lines / several new files / single commit
+5. **smell — verbose-commit-msg** — "Refactor X to improve Y and Z" filler pattern
+6. **blast — high-fan-out** — shared-type field additions ripple across many consumers; no tests guarding callers
+7. **blast — cross-concern caller miss** — a shared predicate change affects multiple call sites; review verified only one
+8. **drift — AC-missing** — ticket requires a format on multiple panels; only one delivered
+9. **drift — env-gate-missing** — ticket specifies an environment restriction; no detection gate in code
 
 ### Future replay entries
 
-Added by reviewer as new PRs trigger heuristic-catalog extensions. Each entry: `pr_view.json` + `diff.patch` + `ticket.txt` + `expected_findings.yaml`. Stored under `tests/fixtures/pr_review_replay_corpus/<id>/`.
+Added by reviewer as new PRs trigger heuristic-catalog extensions. Each entry: `pr_view.json` + `diff.patch` + `ticket.txt` + `expected_findings.yaml`. Stored under `tests/fixtures/pr_review_replay_corpus/<id>/`. (No entries currently shipped — the original real-PR seed was removed to keep third-party code out of the repo; rebuild from a synthetic or self-authored PR when automated replay coverage is wanted.)
 
 ---
 
