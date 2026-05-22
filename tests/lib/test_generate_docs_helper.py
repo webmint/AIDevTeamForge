@@ -2870,7 +2870,7 @@ class InternalDepResolutionTests(_RenderTestBase):
 
     def test_synthetic_testforge20_shape_resolves_all_internal_deps(self):
         # Reproduces the exact scenario from the bug report: 19
-        # workspace-internal deps registered against `apps/app-web`,
+        # workspace-internal deps registered against `apps/app`,
         # all of which live inside `module/packages/<name>`
         # in init.yaml, none of which are registered as packages and
         # none of which exist as `<project_root>/<dep_name>`. Before
@@ -2910,9 +2910,9 @@ class InternalDepResolutionTests(_RenderTestBase):
                 "  - path: module/packages/{0}".format(name)
             )
             init_lines.append("    manifest: package.json")
-        # Plus app-web (the package being documented) lives under the
+        # Plus app (the package being documented) lives under the
         # workspace too — round out the fixture realistically.
-        init_lines.append("  - path: module/apps/app-web")
+        init_lines.append("  - path: module/apps/app")
         init_lines.append("    manifest: package.json")
         self._write_init_yaml("\n".join(init_lines) + "\n")
 
@@ -3437,10 +3437,10 @@ class Phase2SpecSequenceTests(_EnvIsolationMixin, unittest.TestCase):
         # can succeed; mirrors how the helper resolves the manifest.
         proot = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(proot, ignore_errors=True))
-        pkg_dir = proot / "module" / "apps" / "app-web"
+        pkg_dir = proot / "module" / "apps" / "app"
         pkg_dir.mkdir(parents=True)
         manifest = {
-            "name": "app-web",
+            "name": "app",
             "scripts": scripts,
             "dependencies": {"vue": "^3.3.4"},
             "devDependencies": {"vite": "^3.2.0", "typescript": "^5.0.0"},
@@ -3475,12 +3475,12 @@ class Phase2SpecSequenceTests(_EnvIsolationMixin, unittest.TestCase):
             "test": "vitest",
         }
         proot = self._project_root_with_manifest(scripts)
-        path = "module/apps/app-web"
+        path = "module/apps/app"
 
         # Step 1: add-package.
         proc = _run_cli(
             self.devforge_dir, "add-package",
-            "--path", path, "--name", "app-web",
+            "--path", path, "--name", "app",
             project_root=proot, cwd=proot,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -3551,10 +3551,10 @@ class Phase2SpecSequenceTests(_EnvIsolationMixin, unittest.TestCase):
         triggered the original investigation.
         """
         proot = self._project_root_with_manifest({"build": "vite build"})
-        path = "module/apps/app-web"
+        path = "module/apps/app"
 
         for args in (
-            ("add-package", "--path", path, "--name", "app-web"),
+            ("add-package", "--path", path, "--name", "app"),
             ("set-package-language", "--path", path, "--value", "typescript"),
             ("set-package-framework", "--path", path, "--value", "Vue 3"),
             ("set-package-build-tool", "--path", path, "--value", "vite"),

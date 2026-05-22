@@ -16,16 +16,16 @@ For this run, `/onboard` operates in single-unit verification mode:
 |---|---|
 | §1.0 Pre-scan baseline check | Run normally |
 | §1.1 Gather project knowledge | Run normally |
-| §1.2 Discover documentation units | **Override** — skip `packages[]` iteration. Hardcode unit = `apps/app-web` (path: `apps/app-web`, doc target: `docs/apps/app-web/index.md`). |
+| §1.2 Discover documentation units | **Override** — skip `packages[]` iteration. Hardcode unit = `apps/app` (path: `apps/app`, doc target: `docs/apps/app/index.md`). |
 | §1.3 Subagent strategy | **Override** — direct mode. No subagents. Orchestrator runs Pass 2A inline. |
-| Pass 2A (per-package) | Run **once** for `apps/app-web` only. Use the per-package subagent prompt as your own instruction set. |
+| Pass 2A (per-package) | Run **once** for `apps/app` only. Use the per-package subagent prompt as your own instruction set. |
 | Pass 2B (architecture) | **SKIPPED** — architecture observations need cross-package signal we won't have. |
 | Pass 2C (memory archaeology) | **SKIPPED** — cross-codebase pass; out of scope for single-unit verification. |
 | Pass 2D (compose-onboard) | **SKIPPED** — compose's per-package-coverage gate (gate 2.1) requires every detected package to have a registration. With 25+ unregistered packages, compose would reject. Instead: after Pass 2A registers content via `add-package-doc`, run `onboard_helper status` and report the registered content verbatim to the user for shape evaluation. |
 
 **Helper invocation in this mode:**
 
-1. `.devforge/lib/onboard_helper add-package-doc --unit app-web --path apps/app-web --content "..." --block-count N --ref-count N`
+1. `.devforge/lib/onboard_helper add-package-doc --unit app --path apps/app --content "..." --block-count N --ref-count N`
 2. `.devforge/lib/onboard_helper status`
 3. Read `.devforge/.onboard-state.json` and display the registered content to the user as a fenced markdown block. Do NOT invoke `compose-onboard`. Do NOT write to `docs/`.
 

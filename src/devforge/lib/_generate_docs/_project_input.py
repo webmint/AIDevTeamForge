@@ -321,7 +321,7 @@ def _resolve_effective_project_root(
       1. `<project_root>/package.json` exists → standalone mode, use project_root.
       2. `init.yaml project_root:` value → use that as relpath under project_root.
       3. Common first-segment across package_paths (when 2+ packages share
-         a parent dir, e.g. `module/apps/app-web` and
+         a parent dir, e.g. `module/apps/app` and
          `module/packages/foo` share `module`).
       4. Fallback: project_root.
     """
@@ -344,7 +344,7 @@ def _resolve_effective_project_root(
 def _common_path_prefix(packages: List[str]) -> Optional[str]:
     """Return the deepest common parent directory across all package paths.
 
-    `packages` are project-relative paths like `module/apps/app-web`
+    `packages` are project-relative paths like `module/apps/app`
     or `foo`. The returned value is the first path segment shared by
     every entry — used as a fall-back project label in wrapper-mode setups
     where the wrapper folder is structurally meaningless and every package

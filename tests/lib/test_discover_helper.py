@@ -1260,14 +1260,14 @@ class TestSetDesignOption(unittest.TestCase):
             self.assertEqual(r.returncode, 2)
 
     def test_rejects_letter_colon_prefix_in_name(self):
-        # Run 3 evidence: orchestrator passed --name "A: app-web composable...",
-        # producing rendered heading `### Option A: A: app-web composable...`
+        # Run 3 evidence: orchestrator passed --name "A: app composable...",
+        # producing rendered heading `### Option A: A: app composable...`
         # (double-prefix). Setter must reject the baked-in letter prefix.
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             r = self._run_opt(
                 devforge,
-                "A: app-web composable",
+                "A: app composable",
                 "Some shape",
                 '["Pro"]',
                 '["Con"]',

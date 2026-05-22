@@ -212,7 +212,7 @@ def _detect_language(file_path: str) -> Optional[str]:
 
     Args:
         file_path: Relative or absolute path to the file (as it appears in
-                   the diff header, e.g. "apps/app-web/src/foo.vue").
+                   the diff header, e.g. "apps/app/src/foo.vue").
 
     Returns:
         Language string ("python", "typescript", "javascript", "vue", "go",

@@ -1021,7 +1021,7 @@ class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
         _run_cli(self.devforge_dir, "set-default-branch", "dev")
         paths = [".", "scripts"] + [
             "packages/pkg-{0:02d}".format(i) for i in range(23)
-        ] + ["apps/app-web"]
+        ] + ["apps/app"]
         self.assertEqual(len(paths), 26)
         for p in paths:
             _run_cli(

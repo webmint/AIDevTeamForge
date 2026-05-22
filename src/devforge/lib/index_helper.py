@@ -83,7 +83,7 @@ _FILE_WALK_SKIP_DIRS = {
 # Maximum files listed per package. Above this, `files_truncated: true`.
 # Bumped 500 → 10000 (2026-05-07): Plan F doc generation reads index.json
 # as the canonical per-concern file list. Real Vue+TS monorepos hit the old
-# 500 cap on app-level packages (testForge20 app-web + foo both
+# 500 cap on app-level packages (testForge20 app + foo both
 # truncated at 500), making concerns past the cut invisible to /generate-docs.
 # 10000 covers any realistic monorepo package; the Linux kernel (75K files
 # total) is the only structurally larger codebase and its packages still fit.

@@ -564,11 +564,11 @@ class CmdProjectInputWrapperModeTests(unittest.TestCase):
             'project_root: "monorepo"\n', encoding="utf-8"
         )
         # One package overview so cmd_project_input can run.
-        path = self.root / "docs" / "monorepo/apps/app-web" / "overview.md"
+        path = self.root / "docs" / "monorepo/apps/app" / "overview.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             _PKG_OVERVIEW_TEMPLATE.format(
-                pkg="monorepo/apps/app-web", stamp="X", purpose="alpha"
+                pkg="monorepo/apps/app", stamp="X", purpose="alpha"
             ),
             encoding="utf-8",
         )

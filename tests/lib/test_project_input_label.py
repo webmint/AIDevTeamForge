@@ -39,7 +39,7 @@ from _generate_docs._project_input import (  # noqa: E402
 class CommonPathPrefixTests(unittest.TestCase):
     def test_all_share_first_segment(self):
         out = _common_path_prefix(
-            ["module/apps/app-web", "module/packages/pkg-a"]
+            ["module/apps/app", "module/packages/pkg-a"]
         )
         self.assertEqual(out, "module")
 
@@ -167,7 +167,7 @@ class ResolveProjectLabelTests(unittest.TestCase):
             "",
             self.devforge,
             self.root,
-            ["module/apps/app-web", "module/packages/pkg-a"],
+            ["module/apps/app", "module/packages/pkg-a"],
         )
         self.assertEqual(out, "module")
 

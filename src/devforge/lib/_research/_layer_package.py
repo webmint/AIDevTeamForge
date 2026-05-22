@@ -22,7 +22,7 @@ _PRESENTATION_EXTENSIONS = {".vue", ".tsx", ".jsx"}
 _PRESENTATION_PATH_FRAGMENTS = ("/views/", "/components/", "/pages/", "/screens/", "/ui/")
 
 # Presentation-layer path prefixes (normalized, no leading slash).
-_PRESENTATION_PATH_PREFIXES = ("apps/app-web/", "apps/web/", "apps/frontend/")
+_PRESENTATION_PATH_PREFIXES = ("apps/app/", "apps/web/", "apps/frontend/")
 
 
 def _is_presentation_layer(file_path: str) -> bool:
@@ -33,7 +33,7 @@ def _is_presentation_layer(file_path: str) -> bool:
     2. Normalized path contains a presentation fragment (/views/, /components/,
        /pages/, /screens/, /ui/) — the leading '/' guards against false matches
        on e.g. 'subviews/'.
-    3. Normalized path starts with a presentation prefix (apps/app-web/, etc.).
+    3. Normalized path starts with a presentation prefix (apps/app/, etc.).
 
     None or empty → False.
     """
@@ -71,7 +71,7 @@ def _extract_package(file_path: str) -> str:
     - None, empty, or whitespace-only → empty string.
 
     Examples:
-      'apps/app-web/src/foo.vue' → 'apps/app-web'
+      'apps/app/src/foo.vue' → 'apps/app'
       'foo/utils.ts'    → 'foo'  (file at index 1)
       'src/admin/Products.vue'   → 'src/admin'
       'foo.vue'                  → 'foo.vue'

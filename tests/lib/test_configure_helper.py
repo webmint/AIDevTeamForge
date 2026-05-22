@@ -325,7 +325,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         state = configure_helper.default_state()
         state["package_stacks"] = [
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "language": "TypeScript",
                 "framework": "Vue",
                 "build_tool": "Vite",
@@ -371,7 +371,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         carry verbatim multi-line content from docs/. A non-escaped newline
         produces broken yaml that splits across physical lines.
         """
-        tree_text = "apps/\n  app-web/\n    src/\n      main.ts\npackages/"
+        tree_text = "apps/\n  app/\n    src/\n      main.ts\npackages/"
         state = configure_helper.default_state()
         state["project_structure"] = tree_text
         state["dev_commands"] = "npm run dev\nnpm test"
@@ -418,7 +418,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "type_check_commands: []\n"
             "lint_commands: []\n"
             "package_stacks:\n"
-            "  - path: \"apps/app-web\"\n"
+            "  - path: \"apps/app\"\n"
             "    language: \"TypeScript\"\n"
             "    framework: \"Vue\"\n"
             "    build_tool: \"Vite\"\n"
@@ -450,7 +450,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "lint_commands": ["npm run lint"],
             "package_stacks": [
                 {
-                    "path": "apps/app-web",
+                    "path": "apps/app",
                     "language": "TypeScript",
                     "framework": "Vue",
                     "build_tool": "Vite",
@@ -621,7 +621,7 @@ class ReadInitTests(_EnvIsolationMixin, unittest.TestCase):
         )
         _run_init(
             self.devforge_dir, "add-package",
-            "--path", "apps/app-web", "--manifest", "package.json",
+            "--path", "apps/app", "--manifest", "package.json",
         )
 
     def test_read_init_real_producer_round_trip(self):
@@ -637,7 +637,7 @@ class ReadInitTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(data["default_branch"], "dev")
         self.assertEqual(len(data["packages_detected"]), 2)
         self.assertEqual(data["packages_detected"][0]["path"], ".")
-        self.assertEqual(data["packages_detected"][1]["path"], "apps/app-web")
+        self.assertEqual(data["packages_detected"][1]["path"], "apps/app")
 
     def test_read_init_missing_exits_1(self):
         """read-init with no init.yaml exits 1 with helpful stderr."""
@@ -681,7 +681,7 @@ A Vue 3 TypeScript monorepo for enterprise UI.
 
 ```
 apps/
-  app-web/      # main SPA
+  app/      # main SPA
 packages/
   pkg-core/     # shared logic
 ```
@@ -690,7 +690,7 @@ packages/
 
 | Entry Point | Path | Purpose |
 |---|---|---|
-| main SPA | apps/app-web/src/main.ts | bootstraps Vue app |
+| main SPA | apps/app/src/main.ts | bootstraps Vue app |
 
 ## Key Commands
 
@@ -737,12 +737,12 @@ pkg-domain → pkg-core → pkg-infra
 
 ## Test Files
 
-1. apps/app-web/src/tests/
+1. apps/app/src/tests/
 2. packages/pkg-core/tests/
 
 ## Packages
 
-- apps/app-web
+- apps/app
 - packages/pkg-core
 - packages/pkg-domain
 """
@@ -891,7 +891,7 @@ class ReadDocsBulletTests(unittest.TestCase):
         body = configure_helper._extract_section(_OVERVIEW_MD_FIXTURE, "Test Files")
         items = configure_helper._parse_md_bullets(body)
         self.assertEqual(len(items), 2)
-        self.assertIn("apps/app-web/src/tests/", items)
+        self.assertIn("apps/app/src/tests/", items)
 
 
 class ReadDocsModuleMapTests(unittest.TestCase):
@@ -1033,7 +1033,7 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
     def test_two_packages_emits_two_records(self):
         self._write_index([
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "manifest": "package.json",
                 "manifest_scripts": {"build": "vite build", "lint": "eslint ."},
                 "manifest_dependencies": {"vue": "^3.0.0"},
@@ -1053,13 +1053,13 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(proc.stdout.decode())
         self.assertEqual(len(data["packages"]), 2)
-        self.assertEqual(data["packages"][0]["path"], "apps/app-web")
+        self.assertEqual(data["packages"][0]["path"], "apps/app")
         self.assertEqual(data["packages"][0]["scripts"]["build"], "vite build")
 
     def test_build_tool_hint_vite(self):
         self._write_index([
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "manifest": "package.json",
                 "manifest_scripts": {},
                 "manifest_dependencies": {},
@@ -1074,7 +1074,7 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
     def test_build_tool_hint_webpack(self):
         self._write_index([
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "manifest": "package.json",
                 "manifest_scripts": {},
                 "manifest_dependencies": {},
@@ -1110,7 +1110,7 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
     def test_framework_hint_vue(self):
         self._write_index([
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "manifest": "package.json",
                 "manifest_scripts": {},
                 "manifest_dependencies": {"vue": "^3.0.0"},
@@ -1205,7 +1205,7 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
         index = {
             "version": 1,
             "packages": {
-                "apps/app-web": {
+                "apps/app": {
                     "manifest_file": "package.json",
                     "scripts": {"build": "vite build"},
                     "manifest_deps": [
@@ -1223,7 +1223,7 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(proc.stdout.decode())
         self.assertEqual(len(data["packages"]), 1)
-        self.assertEqual(data["packages"][0]["path"], "apps/app-web")
+        self.assertEqual(data["packages"][0]["path"], "apps/app")
         self.assertEqual(data["packages"][0]["scripts"]["build"], "vite build")
 
     def test_manifest_deps_list_normalized_to_dict(self):
@@ -1238,7 +1238,7 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
         index = {
             "version": 1,
             "packages": {
-                "apps/app-web": {
+                "apps/app": {
                     "manifest_file": "package.json",
                     "scripts": {},
                     "manifest_deps": [
@@ -1287,7 +1287,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
     def test_vite_config_matched_and_read(self):
         self._write_index([
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "manifest": "package.json",
                 "manifest_scripts": {},
                 "manifest_dependencies": {},
@@ -1296,7 +1296,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
             },
         ])
         vite_contents = "export default defineConfig({ server: { port: 3000 } })"
-        self._write_config_file("apps/app-web/vite.config.ts", vite_contents)
+        self._write_config_file("apps/app/vite.config.ts", vite_contents)
 
         proc = _run_configure(
             self.devforge_dir,
@@ -1340,7 +1340,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
         """No config files → emits {"matched_files": []}, exit 0."""
         self._write_index([
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "manifest": "package.json",
                 "manifest_scripts": {},
                 "manifest_dependencies": {},
@@ -1367,7 +1367,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
         index = {
             "version": 1,
             "packages": {
-                "apps/app-web": {
+                "apps/app": {
                     "manifest_file": "package.json",
                     "files": ["vite.config.ts", "src/main.ts"],
                 },
@@ -1377,7 +1377,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
             json.dumps(index), encoding="utf-8"
         )
         self._write_config_file(
-            "apps/app-web/vite.config.ts",
+            "apps/app/vite.config.ts",
             "export default { server: { port: 3000 } }",
         )
         proc = _run_configure(
@@ -1410,7 +1410,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
         index = {
             "version": 1,
             "packages": {
-                "apps/app-web": {
+                "apps/app": {
                     "manifest_file": "package.json",
                     "files": ["vite.config.ts"],
                 },
@@ -1419,9 +1419,9 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
         (self.devforge_dir / "index.json").write_text(
             json.dumps(index), encoding="utf-8"
         )
-        # File lives at install_root/src-tree/apps/app-web/vite.config.ts.
+        # File lives at install_root/src-tree/apps/app/vite.config.ts.
         self._write_config_file(
-            "src-tree/apps/app-web/vite.config.ts",
+            "src-tree/apps/app/vite.config.ts",
             "// wrapper-mode config",
         )
         proc = _run_configure(
@@ -1479,7 +1479,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
     def test_non_config_files_not_matched(self):
         self._write_index([
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "manifest": "package.json",
                 "manifest_scripts": {},
                 "manifest_dependencies": {},
@@ -1491,7 +1491,7 @@ class ReadConfigsTests(_EnvIsolationMixin, unittest.TestCase):
                 ],
             },
         ])
-        self._write_config_file("apps/app-web/vite.config.ts", "export default {}")
+        self._write_config_file("apps/app/vite.config.ts", "export default {}")
         proc = _run_configure(
             self.devforge_dir,
             "--install-root", str(self.install_root),
@@ -3174,7 +3174,7 @@ class SubstitutionMapTests(unittest.TestCase):
         """PACKAGE_STACKS_SECTION renders a 4-column markdown table."""
         stacks = [
             {
-                "path": "apps/app-web",
+                "path": "apps/app",
                 "language": "TypeScript",
                 "framework": "Vue",
                 "build_tool": "Vite",
@@ -3197,7 +3197,7 @@ class SubstitutionMapTests(unittest.TestCase):
         table = sub_map["PACKAGE_STACKS_SECTION"]
         self.assertIn("| Package | Language | Framework | Build Tool |", table)
         self.assertIn("|---------|----------|-----------|------------|", table)
-        self.assertIn("| apps/app-web | TypeScript | Vue | Vite |", table)
+        self.assertIn("| apps/app | TypeScript | Vue | Vite |", table)
         # None framework → empty cell (not the word "None").
         self.assertIn("| packages/pkg-core | TypeScript |  | Vite |", table)
         self.assertNotIn("None", table)

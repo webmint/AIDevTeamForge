@@ -369,24 +369,24 @@ class TestLoadIndexFiles(unittest.TestCase):
         """State pkg_path may carry a monorepo prefix not present in index.
 
         Regression: testForge20 registers package as
-        `module/apps/app-web` while init-forge writes index
-        keyed by `apps/app-web` (package-relative). Coverage gate must
+        `module/apps/app` while init-forge writes index
+        keyed by `apps/app` (package-relative). Coverage gate must
         find the files via progressive-suffix lookup, not silent skip.
         """
         files = ["src/components/a.ts", "src/components/b.ts"]
         index = {
             "version": 1,
             "packages": {
-                "apps/app-web": {"files": files, "files_truncated": False},
+                "apps/app": {"files": files, "files_truncated": False},
             },
         }
         (self.devforge_dir / "index.json").write_text(
             json.dumps(index), encoding="utf-8"
         )
         # Caller passes the monorepo-prefixed path; lookup must succeed
-        # by stripping `module/` and matching `apps/app-web`.
+        # by stripping `module/` and matching `apps/app`.
         result = _load_index_files(
-            self.devforge_dir, "module/apps/app-web",
+            self.devforge_dir, "module/apps/app",
         )
         self.assertEqual(result, files)
 
@@ -404,7 +404,7 @@ class TestLoadIndexFiles(unittest.TestCase):
             json.dumps(index), encoding="utf-8"
         )
         result = _load_index_files(
-            self.devforge_dir, "monorepo/apps/app-web",
+            self.devforge_dir, "monorepo/apps/app",
         )
         self.assertIsNone(result)
 

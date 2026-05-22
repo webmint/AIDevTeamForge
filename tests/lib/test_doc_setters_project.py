@@ -276,7 +276,7 @@ class CmdSetDocLayersProjectTests(unittest.TestCase):
             self.devforge,
             "project-architecture",
             layers=json.dumps(
-                [{"name": "presentation", "role": "Vue components in apps/app-web"}]
+                [{"name": "presentation", "role": "Vue components in apps/app"}]
             ),
         )
         code, _, _ = _run(cmd_set_doc_layers, args)
@@ -663,13 +663,13 @@ class CmdSetOverviewCrossModuleDepsTests(unittest.TestCase):
         args = _ns(
             self.devforge,
             "project-overview",
-            text="app-web\n  +-- pkg-core\n  +-- pkg-utils",
+            text="app\n  +-- pkg-core\n  +-- pkg-utils",
         )
         code, _, err = _run(cmd_set_overview_cross_module_deps, args)
         self.assertEqual(code, 0, msg=err)
         content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
         self.assertNotIn("<!-- TODO: cross-module-dependencies -->", content)
-        self.assertIn("```text\napp-web\n  +-- pkg-core\n  +-- pkg-utils\n```", content)
+        self.assertIn("```text\napp\n  +-- pkg-core\n  +-- pkg-utils\n```", content)
 
 
 class CmdSetOverviewProjectStructureTreeTests(unittest.TestCase):
@@ -760,7 +760,7 @@ class EndToEndPhase1OverviewPipelineTests(unittest.TestCase):
         )
         _run(
             cmd_set_overview_cross_module_deps,
-            _ns(self.devforge, "project-overview", text="app-web\n  +-- pkg-core"),
+            _ns(self.devforge, "project-overview", text="app\n  +-- pkg-core"),
         )
         _run(
             cmd_set_overview_test_files,
@@ -786,7 +786,7 @@ class EndToEndPhase1OverviewPipelineTests(unittest.TestCase):
         self.assertIn("| Framework | Vue 3 |", text)
         self.assertIn("```text\nmy-proj/", text)
         self.assertIn("| `npm run build` | turbo build |", text)
-        self.assertIn("```text\napp-web", text)
+        self.assertIn("```text\napp", text)
         self.assertIn("- `tests/` — unit tests", text)
         self.assertIn("- pkg-core — shared utilities", text)
         # Phase 1 setters leave Phase 2 placeholders untouched (Entry Points,
@@ -847,7 +847,7 @@ class EndToEndPhase2OverviewPipelineTests(unittest.TestCase):
         )
         _run(
             cmd_set_overview_cross_module_deps,
-            _ns(self.devforge, "project-overview", text="app-web\n  +-- pkg-core"),
+            _ns(self.devforge, "project-overview", text="app\n  +-- pkg-core"),
         )
         _run(
             cmd_set_overview_test_files,
@@ -925,7 +925,7 @@ class EndToEndPhase2OverviewPipelineTests(unittest.TestCase):
         self.assertIn("| `npm run build` | turbo build |", text)
         self.assertIn("### Infrastructure Packages", text)
         self.assertIn("| `pkg-common` | Base |", text)
-        self.assertIn("```text\napp-web", text)
+        self.assertIn("```text\napp", text)
         self.assertIn("| `/` | `PageHome.vue` | Home |", text)
         self.assertIn("1. **oktaGuard** — Auth", text)
         self.assertIn("- `tests/` — unit tests", text)
@@ -1182,7 +1182,7 @@ class CmdSetOverviewProjectStructureAnnotationsTests(unittest.TestCase):
             _ns(
                 self.devforge,
                 "project-overview",
-                text="my-proj/\n├── apps/\n│   └── app-web/\n└── packages/",
+                text="my-proj/\n├── apps/\n│   └── app/\n└── packages/",
             ),
         )
 
@@ -1192,7 +1192,7 @@ class CmdSetOverviewProjectStructureAnnotationsTests(unittest.TestCase):
             "project-overview",
             annotations=json.dumps({
                 "apps": "Application shells",
-                "app-web": "Vue 3 SPA",
+                "app": "Vue 3 SPA",
                 "packages": "Shared package monorepo",
             }),
         )
@@ -1200,7 +1200,7 @@ class CmdSetOverviewProjectStructureAnnotationsTests(unittest.TestCase):
         self.assertEqual(code, 0, msg=err)
         content = (self.root / "docs" / "overview.md.skeleton").read_text(encoding="utf-8")
         self.assertIn("├── apps/  # Application shells", content)
-        self.assertIn("└── app-web/  # Vue 3 SPA", content)
+        self.assertIn("└── app/  # Vue 3 SPA", content)
         self.assertIn("└── packages/  # Shared package monorepo", content)
 
     def test_unannotated_lines_unchanged(self):

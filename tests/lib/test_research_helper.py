@@ -2983,8 +2983,8 @@ class TestLayerBoundaryDetection(unittest.TestCase):
     def test_ui_fragment_is_presentation(self):
         self.assertTrue(research_helper._is_presentation_layer("src/ui/Button.ts"))
 
-    def test_apps_app_web_prefix_is_presentation(self):
-        self.assertTrue(research_helper._is_presentation_layer("apps/app-web/index.ts"))
+    def test_apps_app_prefix_is_presentation(self):
+        self.assertTrue(research_helper._is_presentation_layer("apps/app/index.ts"))
 
     def test_apps_web_prefix_is_presentation(self):
         self.assertTrue(research_helper._is_presentation_layer("apps/web/main.ts"))
@@ -3016,8 +3016,8 @@ class TestLayerBoundaryDetection(unittest.TestCase):
 
     def test_extract_deep_path(self):
         self.assertEqual(
-            research_helper._extract_package("apps/app-web/src/foo.vue"),
-            "apps/app-web",
+            research_helper._extract_package("apps/app/src/foo.vue"),
+            "apps/app",
         )
 
     def test_extract_two_component_path(self):
@@ -5041,7 +5041,7 @@ class TestVerifyCheck15(unittest.TestCase):
             # data_flow_chain is None by default in enhancement state.
             # Make the first finding a presentation-layer path.
             if data["findings"]:
-                data["findings"][0]["file_line"] = "apps/app-web/src/components/Foo.vue:5"
+                data["findings"][0]["file_line"] = "apps/app/src/components/Foo.vue:5"
             data["data_flow_chain"] = None
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
@@ -5110,7 +5110,7 @@ class TestSetValueSemanticsStability(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "record-finding",
                 "--surface", "item card component",
-                "--file-line", "apps/app-web/src/components/Foo.vue:5",
+                "--file-line", "apps/app/src/components/Foo.vue:5",
                 "--relevance", "renders item id",
             ])
             self._add_consumer_chain(devforge)

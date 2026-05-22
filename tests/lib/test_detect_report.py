@@ -1813,7 +1813,7 @@ class SummarySubcommandTests(_EnvIsolationMixin, unittest.TestCase):
             type_check_commands.append({"path": path, "value": "tsc --noEmit"})
             lint_commands.append({"path": path, "value": "eslint ."})
         # 1 web app with Vue.
-        path = "apps/app-web"
+        path = "apps/app"
         packages.append({"path": path, "manifest": "package.json"})
         languages.append({"path": path, "value": "TypeScript"})
         frameworks.append({"path": path, "value": "Vue"})

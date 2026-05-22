@@ -78,7 +78,7 @@ from ._trace import _trace_file_path
 
 DOOM_LOOP_THRESHOLD = 3
 # Bumped 500 → 5000 (2026-05-08) after V7 split-dispatch smoke hit the cap
-# mid-run on testForge20 app-web/components: 23 sub_concerns × ~6 helper
+# mid-run on testForge20 app/components: 23 sub_concerns × ~6 helper
 # calls per child + parent chain + preflight chain ≈ 150 calls per BIG
 # split concern alone. Full project run (63 concerns including ~15 split
 # parents) easily clears 500. 5000 = 10× headroom against runaway loops
