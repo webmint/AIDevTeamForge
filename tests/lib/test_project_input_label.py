@@ -39,9 +39,9 @@ from _generate_docs._project_input import (  # noqa: E402
 class CommonPathPrefixTests(unittest.TestCase):
     def test_all_share_first_segment(self):
         out = _common_path_prefix(
-            ["db-cse-ui-strata/apps/app-web", "db-cse-ui-strata/packages/pkg-a"]
+            ["module/apps/app-web", "module/packages/pkg-a"]
         )
-        self.assertEqual(out, "db-cse-ui-strata")
+        self.assertEqual(out, "module")
 
     def test_disagree_returns_none(self):
         out = _common_path_prefix(["a/b/c", "x/b/c"])
@@ -96,11 +96,11 @@ class ReadProjectRootFromInitYamlTests(unittest.TestCase):
 
     def test_wrapper_mode_returns_inner_dir(self):
         (self.devforge / "init.yaml").write_text(
-            "workspace_mode: wrapper\nproject_root: db-cse-ui-strata\n",
+            "workspace_mode: wrapper\nproject_root: module\n",
             encoding="utf-8",
         )
         self.assertEqual(
-            _read_project_root_from_init_yaml(self.devforge), "db-cse-ui-strata"
+            _read_project_root_from_init_yaml(self.devforge), "module"
         )
 
     def test_standalone_dot_returns_none(self):
@@ -167,9 +167,9 @@ class ResolveProjectLabelTests(unittest.TestCase):
             "",
             self.devforge,
             self.root,
-            ["db-cse-ui-strata/apps/app-web", "db-cse-ui-strata/packages/pkg-a"],
+            ["module/apps/app-web", "module/packages/pkg-a"],
         )
-        self.assertEqual(out, "db-cse-ui-strata")
+        self.assertEqual(out, "module")
 
     def test_root_name_fallback_when_nothing_resolves(self):
         out = _resolve_project_label("", self.devforge, self.root, [])

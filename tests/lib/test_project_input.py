@@ -768,17 +768,17 @@ class WalkNavGuardFilesTests(unittest.TestCase):
 
 class ClassifyPackagesTests(unittest.TestCase):
     def test_infrastructure_bucket(self):
-        result = _classify_packages(["pkg-cse-common", "pkg-cse-types", "pkg-cse-client", "pkg-cse-notifications"])
+        result = _classify_packages(["pkg-cse-common", "foo-types", "pkg-cse-client", "pkg-cse-notifications"])
         self.assertEqual(
             result["infrastructure"],
-            sorted(["pkg-cse-common", "pkg-cse-types", "pkg-cse-client", "pkg-cse-notifications"]),
+            sorted(["pkg-cse-common", "foo-types", "pkg-cse-client", "pkg-cse-notifications"]),
         )
         self.assertEqual(result["core"], [])
         self.assertEqual(result["domain"], [])
 
     def test_core_bucket(self):
-        result = _classify_packages(["pkg-cse-core"])
-        self.assertEqual(result["core"], ["pkg-cse-core"])
+        result = _classify_packages(["foo-core"])
+        self.assertEqual(result["core"], ["foo-core"])
 
     def test_domain_residual(self):
         result = _classify_packages(["pkg-cse-quote", "pkg-cse-order", "pkg-cse-catalog"])

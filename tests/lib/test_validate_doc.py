@@ -129,7 +129,7 @@ class ResolveCitePathTests(unittest.TestCase):
         self.assertTrue(path.is_file())
 
     def test_basename_resolves_for_nested_package_target(self):
-        # Multi-component package targets (db-cse-ui-strata/packages/pkg-x)
+        # Multi-component package targets (module/packages/pkg-x)
         # split correctly: last segment is concern, prior segments are pkg.
         nested_root = self.root / "ws" / "packages" / "pkg-x"
         (nested_root / "src" / "feature").mkdir(parents=True)

@@ -77,7 +77,7 @@ def _detect_literal_replacement(text: str) -> Optional[str]:
 #
 # Limitation: the inner arg-list match `[^)]*` stops at the first `)`,
 # so any shape containing a nested function call in its arg list
-# (e.g. `fetchOrder(makeId(user), value, value)`) fails to match and
+# (e.g. `loadData(makeId(user), value, value)`) fails to match and
 # `_detect_arg_duplication` returns None (fail-soft, no block). The
 # `_split_top_level_args` helper tracks `([{` depth correctly, but it
 # is unreachable for nested-call shapes — CALL_SHAPE_RE rejects them

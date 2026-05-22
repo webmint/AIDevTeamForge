@@ -555,7 +555,7 @@ class TestRunHappyPath(unittest.TestCase):
         self._pr_number = 304
         # Ticket with AC markers + intro prose + pr_body with markdown bullets.
         ticket_text = (
-            "MIG-2198: Update SHIP-TO-ADDRESS label\n\n"
+            "TICKET-2198: Update SHIP-TO-ADDRESS label\n\n"
             "AC-1: The SHIP-TO-ADDRESS label shows a red asterisk.\n"
             "AC-2: The asterisk is styled red (#cc0000) via CSS class.\n"
             "AC-3: Print layout is not affected.\n"

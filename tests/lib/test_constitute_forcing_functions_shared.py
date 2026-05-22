@@ -132,9 +132,9 @@ class TestEmitFindings(unittest.TestCase):
     def test_emit_findings_stderr_format(self):
         """Stderr line follows <path>:<line>: <KIND> [<rule>] <summary> format."""
         f = Finding(rule="magic_enum", path="src/order.ts", line=7,
-                    kind="VIOLATION", summary="literal 'SHIPPING' matches OrgV2AddressType")
+                    kind="VIOLATION", summary="literal 'RED' matches Color")
         _code, _out, err = _capture_emit("magic_enum", [f])
-        expected = "src/order.ts:7: VIOLATION [magic_enum] literal 'SHIPPING' matches OrgV2AddressType\n"
+        expected = "src/order.ts:7: VIOLATION [magic_enum] literal 'RED' matches Color\n"
         self.assertEqual(err, expected)
 
     def test_finding_to_json_via_emit_findings(self):
@@ -144,8 +144,8 @@ class TestEmitFindings(unittest.TestCase):
             path="src/order.ts",
             line=7,
             kind="VIOLATION",
-            summary="literal 'SHIPPING' matches OrgV2AddressType.Shipping",
-            fix_hint="import { OrgV2AddressType } from 'generated'",
+            summary="literal 'RED' matches Color.Red",
+            fix_hint="import { Color } from 'generated'",
         )
         _code, out, _err = _capture_emit("magic_enum", [f])
         parsed = json.loads(out)
@@ -157,9 +157,9 @@ class TestEmitFindings(unittest.TestCase):
         self.assertEqual(entry["line"], 7)
         self.assertEqual(entry["kind"], "VIOLATION")
         self.assertEqual(entry["summary"],
-                         "literal 'SHIPPING' matches OrgV2AddressType.Shipping")
+                         "literal 'RED' matches Color.Red")
         self.assertEqual(entry["fix_hint"],
-                         "import { OrgV2AddressType } from 'generated'")
+                         "import { Color } from 'generated'")
 
     def test_emit_findings_json_fix_hint_none(self):
         """fix_hint serializes to null when not set."""
@@ -203,7 +203,7 @@ class TestHasInlineEscape(unittest.TestCase):
         """TS-style // forcing-fn-ok: with reason text -> True."""
         path = _make_temp_file([
             "const x = 1;",
-            "const role = 'SHIPPING'; // forcing-fn-ok: legacy contract",
+            "const role = 'RED'; // forcing-fn-ok: legacy contract",
             "const y = 2;",
         ])
         try:
@@ -215,7 +215,7 @@ class TestHasInlineEscape(unittest.TestCase):
         """Python-style # forcing-fn-ok: with reason text -> True."""
         path = _make_temp_file([
             "def foo():",
-            "    x = 'SHIPPING'  # forcing-fn-ok: legacy",
+            "    x = 'RED'  # forcing-fn-ok: legacy",
         ])
         try:
             self.assertTrue(has_inline_escape(path, 2))
@@ -247,7 +247,7 @@ class TestHasInlineEscape(unittest.TestCase):
         path = _make_temp_file([
             "line1",
             "line2",
-            "const x = 'SHIPPING';",
+            "const x = 'RED';",
             "line4",
             "const y = 'OTHER'; // forcing-fn-ok: reason here",
         ])

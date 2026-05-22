@@ -2908,8 +2908,8 @@ class TestStep4CitationValidity(unittest.TestCase):
         """Wrapper-mode: citations resolve relative to install_root/project_root, not install_root."""
         with tempfile.TemporaryDirectory() as tmp:
             install_root = Path(tmp)
-            # Wrapper layout: install_root/db-cse-ui-strata/packages/.../BLoC.ts
-            inner_project = install_root / "db-cse-ui-strata"
+            # Wrapper layout: install_root/module/packages/.../BLoC.ts
+            inner_project = install_root / "module"
             pkg_dir = inner_project / "packages" / "pkg-cse-common" / "src" / "classes"
             pkg_dir.mkdir(parents=True)
             (pkg_dir / "BLoC.ts").write_text("export class BLoC {}", encoding="utf-8")
@@ -2919,7 +2919,7 @@ class TestStep4CitationValidity(unittest.TestCase):
             # init.yaml declares wrapper mode + project_root.
             (devforge / "init.yaml").write_text(
                 "workspace_mode: wrapper\n"
-                "project_root: db-cse-ui-strata\n"
+                "project_root: module\n"
                 "project_state: brownfield\n"
                 "default_branch: main\n"
                 "packages_detected: []\n",
@@ -2937,7 +2937,7 @@ class TestStep4CitationValidity(unittest.TestCase):
             )
             # Without wrapper-aware resolution, BLoC.ts would be unresolved
             # (install_root/BLoC.ts doesn't exist). With it, rglob inside
-            # install_root/db-cse-ui-strata finds the file.
+            # install_root/module finds the file.
             self.assertEqual(resolved, 1, "expected wrapper-mode rglob to resolve BLoC.ts; failed={0}".format(failed))
             self.assertEqual(unresolved, 0)
 

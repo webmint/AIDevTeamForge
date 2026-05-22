@@ -369,7 +369,7 @@ class TestLoadIndexFiles(unittest.TestCase):
         """State pkg_path may carry a monorepo prefix not present in index.
 
         Regression: testForge20 registers package as
-        `db-cse-ui-strata/apps/app-web` while init-forge writes index
+        `module/apps/app-web` while init-forge writes index
         keyed by `apps/app-web` (package-relative). Coverage gate must
         find the files via progressive-suffix lookup, not silent skip.
         """
@@ -384,9 +384,9 @@ class TestLoadIndexFiles(unittest.TestCase):
             json.dumps(index), encoding="utf-8"
         )
         # Caller passes the monorepo-prefixed path; lookup must succeed
-        # by stripping `db-cse-ui-strata/` and matching `apps/app-web`.
+        # by stripping `module/` and matching `apps/app-web`.
         result = _load_index_files(
-            self.devforge_dir, "db-cse-ui-strata/apps/app-web",
+            self.devforge_dir, "module/apps/app-web",
         )
         self.assertEqual(result, files)
 

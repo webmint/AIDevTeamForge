@@ -7,13 +7,13 @@
 
 ## Context for next session
 
-`/plan` exists today only in the legacy reference project `/Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/.claude/commands/plan.md` (v2, 15.3 KB). It has NOT been ported into the forge template tree (`src/commands/`). The forge ships an architect agent template (`src/agents/architect.md`, 10.1 KB) that claims `/plan` ownership in its prose, but no actual `/plan` slash command spec exists under `src/commands/`.
+`/plan` exists today only in the legacy reference project `<reference-project>/.claude/commands/plan.md` (v2, 15.3 KB). It has NOT been ported into the forge template tree (`src/commands/`). The forge ships an architect agent template (`src/agents/architect.md`, 10.1 KB) that claims `/plan` ownership in its prose, but no actual `/plan` slash command spec exists under `src/commands/`.
 
 This plan ports `/plan` into the forge as a templated command spec, builds the supporting Python helper, makes it consume the `/specify` output (most-recent `specs/NNN-*/spec.md` with user confirmation), and re-scopes the architect agent so the two artifacts don't contradict each other.
 
 ### Source-of-truth context (must preserve)
 
-`cse-strata-ws-forge/.claude/commands/plan.md` is the canonical `/plan` shape. Per the parity-test notes in Obsidian (`20 Projects/AIDevTeamForge/parityTest/`), this command was optimized through a v1→v2 patch sequence that dropped mean pairwise variance from ~11% to ~4.4–5% across 4-run replays. **v3 regressed and was reverted** — `cse-strata`'s on-disk copy is v2 and is load-bearing.
+`reference-project/.claude/commands/plan.md` is the canonical `/plan` shape. Per the parity-test notes in Obsidian (`20 Projects/AIDevTeamForge/parityTest/`), this command was optimized through a v1→v2 patch sequence that dropped mean pairwise variance from ~11% to ~4.4–5% across 4-run replays. **v3 regressed and was reverted** — `the reference project`'s on-disk copy is v2 and is load-bearing.
 
 The four v2 patches that any port MUST preserve verbatim:
 
@@ -39,7 +39,7 @@ The four v2 patches that any port MUST preserve verbatim:
 `/plan` command spec first, architect agent re-scope second. Reasoning:
 
 - Contract flows command → agent (command is the user-facing entry; agent is consumed). Command shape drives agent shape.
-- Forge's templated architect.md currently claims `/plan` ownership ("You own `/plan` and `/breakdown`") — this directly conflicts with cse-strata's command-driven shape. Doing architect first would lock a contract the /plan port must undo.
+- Forge's templated architect.md currently claims `/plan` ownership ("You own `/plan` and `/breakdown`") — this directly conflicts with the reference project's command-driven shape. Doing architect first would lock a contract the /plan port must undo.
 - Parity test concluded: "Anchor patches > procedural patches." Command-driven orchestration is the anchor; pushing logic INTO architect erodes anchors that drove variance from 11% → 4.4%.
 
 ---
@@ -48,16 +48,16 @@ The four v2 patches that any port MUST preserve verbatim:
 
 Each step leaves the framework in a buildable, verifiable state. **Verify** criteria are concrete commands or grep checks that must pass before moving to the next step.
 
-### Step 1 — Port `/plan` command spec from cse-strata to forge template tree
+### Step 1 — Port `/plan` command spec from the reference project to forge template tree
 
 **Goal**: create `src/commands/plan/main.md` + `src/commands/plan/references/*.md` carrying the v2 shape, parameterized with `{{PLACEHOLDERS}}` for multi-stack templating.
 
 **Tasks**:
 1.1 Create `src/commands/plan/` directory.
-1.2 Copy `cse-strata-ws-forge/.claude/commands/plan.md` → `src/commands/plan/main.md`.
+1.2 Copy `reference-project/.claude/commands/plan.md` → `src/commands/plan/main.md`.
 1.3 Parameterize hard-coded references for portability:
-   - Path examples mentioning `db-cse-ui-strata` → `{{PROJECT_ROOT}}` or per-package references using the `## Packages` table convention from `src/CLAUDE.md`.
-   - Documentation impact table rows with concrete `docs/db-cse-ui-strata/...` paths → generic `docs/<package>/<concern>.md` placeholders matching `/generate-docs` output layout.
+   - Path examples mentioning `module` → `{{PROJECT_ROOT}}` or per-package references using the `## Packages` table convention from `src/CLAUDE.md`.
+   - Documentation impact table rows with concrete `docs/module/...` paths → generic `docs/<package>/<concern>.md` placeholders matching `/generate-docs` output layout.
    - Constitution Section 7 references stay as-is (constitution.md is a per-project artifact, so the reference is generic).
 1.4 Add forge-specific Workflow context block at top (mirrors `/specify/main.md` prelude):
    - Reference the 4-command setup gate (`/init-forge → /generate-docs → /configure → /constitute`).
@@ -73,7 +73,7 @@ Each step leaves the framework in a buildable, verifiable state. **Verify** crit
 - `grep -c "Findings from Spec" src/commands/plan/main.md` ≥ 1 (Phase 1.5 heading present).
 - `grep -c "Research Output Rule" src/commands/plan/main.md` ≥ 1 (Patch 2 heading present).
 - `grep -c "auto mode\|interactive mode" src/commands/plan/main.md` ≥ 2 (Phase 3 mode disambiguation).
-- `grep -c "db-cse-ui-strata" src/commands/plan/main.md` == 0 (no project-specific paths leak through).
+- `grep -c "module" src/commands/plan/main.md` == 0 (no project-specific paths leak through).
 - Spawn `instruction-reviewer` agent on the file: must return no logical-flow / hallucination findings.
 
 ### Step 2 — Build `.devforge/lib/plan_helper` (Python, test-first)
@@ -116,7 +116,7 @@ Each step leaves the framework in a buildable, verifiable state. **Verify** crit
 - Run `python -m devforge.lib.plan_helper pick-spec` with no specs present → exits 2, stderr matches "no spec found".
 - Run `pick-spec` with a synthetic `specs/001-test/spec.md` (rendered via `specify_helper`) → exits 0, stdout names the path.
 - Run `check-status-and-flip` against a Draft spec → file mutates to `**Status**: Approved`, stdout reads `flipped`.
-- Run `render-findings-from-spec` on `specs/008-prevent-duplicate-config-options/spec.md` (port the fixture from cse-strata into a test fixtures dir) → output enumerates all 13 ACs from §5 + all 7 OOS bullets from §6 + all 6 risks from §9.
+- Run `render-findings-from-spec` on `specs/008-sample-feature/spec.md` (port the fixture from the reference project into a test fixtures dir) → output enumerates all 13 ACs from §5 + all 7 OOS bullets from §6 + all 6 risks from §9.
 
 ### Step 3 — Wire helper subcommands into `src/commands/plan/main.md`
 
@@ -205,26 +205,26 @@ Each step leaves the framework in a buildable, verifiable state. **Verify** crit
 
 ### Step 6 — Empirical parity check (PARTIAL: prep complete, 4-run gate open)
 
-**Goal**: confirm the redesigned `/plan` does not regress below the 4.4–5% mean variance baseline established by cse-strata v2.
+**Goal**: confirm the redesigned `/plan` does not regress below the 4.4–5% mean variance baseline established by the reference project v2.
 
 **Sandbox decision (2026-05-15)**: `testParity` has old/incomplete setup (no `init.yaml`/`configure.yaml` from the new 4-command chain). Re-using `testForge20` instead — it already passed Step 5 install + helper smoke and has the full setup chain populated.
 
-**Fixture decision (2026-05-15)**: parity target is the cse-strata 008 spec (`prevent-duplicate-config-options`) plus its referenced research doc (`2026-04-30-duplicate-machine-options.md`). This is the EXACT spec the v2 baseline was measured against — best apples-to-apples comparison.
+**Fixture decision (2026-05-15)**: parity target is the reference project 008 spec (`008-sample-feature`) plus its referenced research doc (`2026-04-30-sample-research.md`). This is the EXACT spec the v2 baseline was measured against — best apples-to-apples comparison.
 
 **Staged in testForge20** (2026-05-15):
-- `specs/008-prevent-duplicate-config-options/spec.md` (18.6KB, 22 ACs across 7 subsections, Status flipped to Draft so Phase 0b structural flip exercises uniformly across all 4 runs).
-- `research/2026-04-30-duplicate-machine-options.md` (8.8KB — exercises Patch 2 skip-with-reference path).
+- `specs/008-sample-feature/spec.md` (18.6KB, 22 ACs across 7 subsections, Status flipped to Draft so Phase 0b structural flip exercises uniformly across all 4 runs).
+- `research/2026-04-30-sample-research.md` (8.8KB — exercises Patch 2 skip-with-reference path).
 - testForge20's `/plan` + `plan_helper` + re-scoped architect agent all installed and Step-5-smoke-tested.
 
 **4-run procedure** (user-driven — orchestrator cannot run 4 clean Claude Code sessions from inside one):
 
 For each run (N=1..4):
 1. Open Claude Code in `~/Projects/testForge20` (fresh session boot — `/clear` is NOT enough; quit + relaunch).
-2. Run: `/plan specs/008-prevent-duplicate-config-options/spec.md`
+2. Run: `/plan specs/008-sample-feature/spec.md`
 3. Walk Phase 0a confirmation → Phase 0b status flip (helper-driven) → Phase 0 Research Eval → Phase 1.5 Findings → Phase 1 Tech Design → Phase 2 Plan rendering → Phase 2.5 cross-check → Phase 3 approval gate.
-4. **At Phase 3 approval gate**: select `cancel`. The rendered `specs/008-prevent-duplicate-config-options/plan.md` is the parity artifact. (Phase 4 handoff block is deterministic helper output; cancelling skips it without affecting variance measurement.)
-5. Save: `cp specs/008-prevent-duplicate-config-options/plan.md /tmp/plan-run-N.md` (N=1,2,3,4).
-6. **Reset between runs**: `sed -i.bak 's/^\*\*Status\*\*: Approved$/\*\*Status\*\*: Draft/' specs/008-prevent-duplicate-config-options/spec.md && rm specs/008-prevent-duplicate-config-options/spec.md.bak && rm specs/008-prevent-duplicate-config-options/plan.md`
+4. **At Phase 3 approval gate**: select `cancel`. The rendered `specs/008-sample-feature/plan.md` is the parity artifact. (Phase 4 handoff block is deterministic helper output; cancelling skips it without affecting variance measurement.)
+5. Save: `cp specs/008-sample-feature/plan.md /tmp/plan-run-N.md` (N=1,2,3,4).
+6. **Reset between runs**: `sed -i.bak 's/^\*\*Status\*\*: Approved$/\*\*Status\*\*: Draft/' specs/008-sample-feature/spec.md && rm specs/008-sample-feature/spec.md.bak && rm specs/008-sample-feature/plan.md`
 
 **Diff variance computation** (orchestrator-driven after the user provides the 4 plan.md outputs):
 - 6 pairwise comparisons: (1,2), (1,3), (1,4), (2,3), (2,4), (3,4).
@@ -247,9 +247,9 @@ For each run (N=1..4):
 
 1. Read this plan top-to-bottom before touching code.
 2. Check `git status` for `develop-2.0-init` — confirm working tree state matches `## Context for next session`.
-3. Confirm the four load-bearing patches in `cse-strata-ws-forge/.claude/commands/plan.md` are still intact (cse-strata is the source-of-truth; if it drifted, sync before porting):
+3. Confirm the four load-bearing patches in `reference-project/.claude/commands/plan.md` are still intact (the reference project is the source-of-truth; if it drifted, sync before porting):
    ```bash
-   grep -c "Context7\|Research Output Rule\|Findings from Spec\|MODE" /Users/mykolakudlyk/Projects/doosan/cse-strata-ws-forge/.claude/commands/plan.md
+   grep -c "Context7\|Research Output Rule\|Findings from Spec\|MODE" <reference-project>/.claude/commands/plan.md
    ```
    Expect ≥ 4 hits.
 4. Confirm Obsidian parity-test notes are unchanged at `20 Projects/AIDevTeamForge/parityTest/` (specifically: `Plan v2 4-run results - measured against predictions.md` and `Plan v2 reconfirmation - validates baseline at ~5%.md` are the load-bearing references).
@@ -257,14 +257,14 @@ For each run (N=1..4):
 
 ## Out of scope (this plan)
 
-- `/breakdown` port — separate plan. `/plan` redesign is a precondition (its Phase 4 handoff block targets `/breakdown`), but `/breakdown` itself stays in cse-strata-only until a separate redesign cycle.
+- `/breakdown` port — separate plan. `/plan` redesign is a precondition (its Phase 4 handoff block targets `/breakdown`), but `/breakdown` itself stays in reference-project-only until a separate redesign cycle.
 - Multi-spec planning (one `/plan` invocation covering N specs) — YAGNI; the existing one-spec-per-plan shape is the parity-validated contract.
 - `resolve-open-question` subcommand wiring (`/specify` Phase 5.4 references this for `/plan` to call when resolving §8 entries) — defer to a follow-up; current `/plan` v2 doesn't call it and parity holds.
 - ~~`/plan` → architect agent dispatch automation — kept manual (LLM decides when to consult).~~ **Superseded 2026-05-16**: Plan F (`/plan` main.md + `architect.md` edits, this branch) introduces **targeted mandatory invocation at two named hooks** (Phase 1.3 every run; Phase 0 alternatives when 2+ compared) — not full dispatch automation. Discretionary consultation remains the policy outside those hooks. See `memory/project_architect_role_scope.md` for the active rule.
 
 ## Open questions
 
-- **Q1**: Should `pick-spec` accept a partial feature name (e.g., `/plan duplicate-config`) and fuzzy-match against `specs/NNN-*/`? Current Step 2.1 design accepts only exact paths. Recommendation: defer until user friction observed; exact paths are unambiguous.
+- **Q1**: Should `pick-spec` accept a partial feature name (e.g., `/plan sample-feature`) and fuzzy-match against `specs/NNN-*/`? Current Step 2.1 design accepts only exact paths. Recommendation: defer until user friction observed; exact paths are unambiguous.
 - **Q2**: Should `check-status-and-flip` refuse to flip if the spec has any `[NEEDS CLARIFICATION]` markers from `/specify` Phase 1.5 accepted-partial-exit? Probable yes — running `/plan` against a spec with unresolved gaps undermines the contract. Recommend adding to Step 2.4 once the spec emission convention is finalized in `/specify`.
 - **Q3**: Phase 4 handoff — should it call `resolve-open-question` for any `/specify` §8 entries this plan resolves? Mentioned in `/specify/main.md:681`. Defer per "Out of scope" above; carry forward as a Step 7 follow-up.
 - **Q4** (surfaced during Step 4 iter 3 review, 2026-05-15): `src/_pending/commands/_agent-assignment.md` and its 3 callers (`fix.md:167`, `refactor.md:161`, `breakdown.md:118`) currently fall back to the `architect` agent as an **implementation executor** for domain/shared/unclear code. This directly contradicts the Step-4 re-scope which states the architect "NEVER writes implementation code." All four files are in `src/_pending/` (not shipped). Resolution: deferred to port time for `/breakdown`, `/fix`, `/refactor` — when each is ported into `src/commands/<name>/main.md` (Step-1-style), reconcile the assignment table to fall back to `backend-engineer` (or appropriate generalist implementer), not `architect`. The architect remains consultable for decision sub-questions in those commands. Closing this Q is a precondition for each of those ports.

@@ -183,21 +183,21 @@ class TestDetectArgDuplication(unittest.TestCase):
 
 class TestArgumentDuplicationRun(unittest.TestCase):
     def test_positive_duplicate_fires(self):
-        """fetchOrder(makeId, value, value) → finding."""
-        state = _make_state_from_added_lines("fetchOrder(makeId, value, value)")
+        """loadData(makeId, value, value) → finding."""
+        state = _make_state_from_added_lines("loadData(makeId, value, value)")
         findings = run(state)
         self.assertEqual(len(findings), 1)
         self.assertIn("value", findings[0]["evidence"])
         self.assertIn("2x", findings[0]["evidence"])
 
     def test_negative_no_duplicate_no_finding(self):
-        state = _make_state_from_added_lines("fetchOrder(makeId, value)")
+        state = _make_state_from_added_lines("loadData(makeId, value)")
         findings = run(state)
         self.assertEqual(findings, [])
 
     def test_multi_call_shapes_two_findings(self):
         state = _make_state_from_added_lines(
-            "fetchOrder(makeId, value, value)",
+            "loadData(makeId, value, value)",
             "buildUrl(host, host)",
         )
         findings = run(state)
@@ -251,7 +251,7 @@ class TestArgumentDuplicationRun(unittest.TestCase):
 
 class TestArgumentDuplicationFindingSchema(unittest.TestCase):
     def setUp(self):
-        state = _make_state_from_added_lines("fetchOrder(makeId, value, value)")
+        state = _make_state_from_added_lines("loadData(makeId, value, value)")
         self.findings = run(state)
 
     def test_one_finding(self):
@@ -271,7 +271,7 @@ class TestArgumentDuplicationFindingSchema(unittest.TestCase):
         self.assertEqual(self.findings[0]["location"], "diff:line+0")
 
     def test_evidence_contains_call_shape(self):
-        self.assertIn("fetchOrder", self.findings[0]["evidence"])
+        self.assertIn("loadData", self.findings[0]["evidence"])
 
     def test_evidence_contains_ident_and_count(self):
         ev = self.findings[0]["evidence"]

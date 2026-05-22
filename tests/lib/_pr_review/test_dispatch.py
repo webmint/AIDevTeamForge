@@ -79,7 +79,7 @@ def _make_full_state(tmp_devforge: str, pr_number: int = 42) -> PRReviewState:
         ),
         pr_body="## Summary\n- Added bar()\n",
         linked_issues=["https://github.com/acme/myapp/issues/10"],
-        ticket_text="MIG-100: Add bar function\nAC-1: bar returns 42.",
+        ticket_text="TICKET-100: Add bar function\nAC-1: bar returns 42.",
         commit_subjects=["feat: add bar function"],
         smells=[
             {

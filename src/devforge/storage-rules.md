@@ -189,7 +189,7 @@ Docs/ are LLM context source first, dev-greppable second. Density and structure 
 ### File Naming
 - Tier files use fixed names: `overview.md`, `architecture.md`
 - Concern dirs use the source-subfolder name verbatim (e.g., `docs/<package>/order/index.md` for `<package>/src/order/`)
-- Package dirs mirror the package's index.json key (e.g., `docs/db-cse-ui-strata/apps/app-web/`)
+- Package dirs mirror the package's index.json key (e.g., `docs/module/apps/app-web/`)
 
 ### When Docs Are Generated
 - /generate-docs (Plan F) walks all tiers bottom-up: concerns → packages → project

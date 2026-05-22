@@ -13,7 +13,7 @@ test_scanner_skips_inline_escape               -- // forcing-fn-ok: reason prese
 test_scanner_skips_allowlisted_path            -- scripts/seed.ts with scripts/**
 test_scanner_skips_allowlisted_path_paired_glob -- scripts/** + **/scripts/**
 test_scanner_skips_generated_dir               -- file inside a generated dir
-test_scanner_skips_line_comment                -- // const role = 'SHIPPING'
+test_scanner_skips_line_comment                -- // const role = 'RED'
 test_scanner_path_field_is_relative            -- Finding.path is project-relative
 test_scanner_finds_multiple_violations         -- two violations on different lines
 test_scanner_handles_vue_files                 -- .vue file with string literal
@@ -44,7 +44,7 @@ from _constitute._forcing_functions._shared import Finding  # noqa: E402
 # ---------------------------------------------------------------------------
 
 _INVENTORY = {
-    "OrgV2AddressType": ["SHIPPING", "BILLING", "HOME"],
+    "Color": ["RED", "BILLING", "HOME"],
     "OrderStatus": ["PENDING", "CONFIRMED", "CANCELLED"],
 }
 
@@ -60,9 +60,9 @@ def _write(tmpdir: str, rel_path: str, content: str) -> Path:
 class TestScannerViolation(unittest.TestCase):
 
     def test_scanner_finds_violation(self):
-        """File uses 'SHIPPING' (in inventory), no import -> 1 finding."""
+        """File uses 'RED' (in inventory), no import -> 1 finding."""
         with tempfile.TemporaryDirectory() as tmp:
-            _write(tmp, "src/order.ts", "const role = 'SHIPPING';\n")
+            _write(tmp, "src/order.ts", "const role = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory=_INVENTORY,
@@ -73,14 +73,14 @@ class TestScannerViolation(unittest.TestCase):
         f = findings[0]
         self.assertEqual(f.rule, "magic_enum_duplication")
         self.assertEqual(f.kind, "VIOLATION")
-        self.assertIn("SHIPPING", f.summary)
+        self.assertIn("RED", f.summary)
         self.assertIsInstance(f.fix_hint, str)
         self.assertGreater(len(f.fix_hint), 0)
 
     def test_scanner_path_field_is_relative(self):
         """Finding.path is relative to root (e.g., src/foo.ts, not absolute)."""
         with tempfile.TemporaryDirectory() as tmp:
-            _write(tmp, "src/foo.ts", "const x = 'SHIPPING';\n")
+            _write(tmp, "src/foo.ts", "const x = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory=_INVENTORY,
@@ -95,7 +95,7 @@ class TestScannerViolation(unittest.TestCase):
     def test_scanner_finds_multiple_violations(self):
         """Two matching literals on different lines -> two findings."""
         content = (
-            "const a = 'SHIPPING';\n"
+            "const a = 'RED';\n"
             "const b = 'BILLING';\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -114,12 +114,12 @@ class TestScannerViolation(unittest.TestCase):
 class TestScannerExemptions(unittest.TestCase):
 
     def test_scanner_skips_legitimate_import(self):
-        """File imports OrgV2AddressType AND uses OrgV2AddressType. -> 0 findings."""
+        """File imports Color AND uses Color. -> 0 findings."""
         content = (
-            "import { OrgV2AddressType } from '../generated/types';\n"
-            "const type = OrgV2AddressType.Shipping;\n"
-            "// even if 'SHIPPING' appears here it is exempted\n"
-            "const fallback = 'SHIPPING';\n"
+            "import { Color } from '../generated/types';\n"
+            "const type = Color.Red;\n"
+            "// even if 'RED' appears here it is exempted\n"
+            "const fallback = 'RED';\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/order.ts", content)
@@ -129,8 +129,8 @@ class TestScannerExemptions(unittest.TestCase):
                 allowlist_globs=[],
                 generated_dirs=[],
             )
-        # All OrgV2AddressType members are exempted because the import+member-access pair exists.
-        shipping_findings = [f for f in findings if "SHIPPING" in f.summary]
+        # All Color members are exempted because the import+member-access pair exists.
+        shipping_findings = [f for f in findings if "RED" in f.summary]
         self.assertEqual(len(shipping_findings), 0)
 
     def test_scanner_import_without_member_access_still_flags(self):
@@ -143,9 +143,9 @@ class TestScannerExemptions(unittest.TestCase):
         elsewhere.
         """
         content = (
-            "import { OrgV2AddressType } from '../generated/types';\n"
-            "function annotate(_t: OrgV2AddressType): void {}\n"
-            "const role = 'SHIPPING';\n"  # Magic-string violation here.
+            "import { Color } from '../generated/types';\n"
+            "function annotate(_t: Color): void {}\n"
+            "const role = 'RED';\n"  # Magic-string violation here.
         )
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/order.ts", content)
@@ -155,7 +155,7 @@ class TestScannerExemptions(unittest.TestCase):
                 allowlist_globs=[],
                 generated_dirs=[],
             )
-        shipping_findings = [f for f in findings if "SHIPPING" in f.summary]
+        shipping_findings = [f for f in findings if "RED" in f.summary]
         self.assertEqual(len(shipping_findings), 1)
 
     def test_scanner_member_access_in_comment_does_not_exempt(self):
@@ -163,14 +163,14 @@ class TestScannerExemptions(unittest.TestCase):
 
         Regression guard for the comment-aware ``_enum_used_via_member_access``
         helper.  Without comment-stripping, a comment like
-        ``// avoid OrgV2AddressType.X`` would falsely exempt the file's
+        ``// avoid Color.X`` would falsely exempt the file's
         magic-string literals from the violation report.
         """
         content = (
-            "import { OrgV2AddressType } from '../generated/types';\n"
-            "// avoid OrgV2AddressType.Shipping pattern; use string instead\n"
-            "function annotate(_t: OrgV2AddressType): void {}\n"
-            "const role = 'SHIPPING';\n"
+            "import { Color } from '../generated/types';\n"
+            "// avoid Color.Red pattern; use string instead\n"
+            "function annotate(_t: Color): void {}\n"
+            "const role = 'RED';\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/order.ts", content)
@@ -180,12 +180,12 @@ class TestScannerExemptions(unittest.TestCase):
                 allowlist_globs=[],
                 generated_dirs=[],
             )
-        shipping_findings = [f for f in findings if "SHIPPING" in f.summary]
+        shipping_findings = [f for f in findings if "RED" in f.summary]
         self.assertEqual(len(shipping_findings), 1)
 
     def test_scanner_skips_inline_escape(self):
         """Line with forcing-fn-ok: reason -> 0 findings for that line."""
-        content = "const role = 'SHIPPING'; // forcing-fn-ok: legacy contract\n"
+        content = "const role = 'RED'; // forcing-fn-ok: legacy contract\n"
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/legacy.ts", content)
             findings = scan_for_magic_enum_violations(
@@ -199,7 +199,7 @@ class TestScannerExemptions(unittest.TestCase):
     def test_scanner_skips_allowlisted_path(self):
         """File at scripts/seed.ts with allowlist scripts/** -> 0 findings."""
         with tempfile.TemporaryDirectory() as tmp:
-            _write(tmp, "scripts/seed.ts", "const role = 'SHIPPING';\n")
+            _write(tmp, "scripts/seed.ts", "const role = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory=_INVENTORY,
@@ -211,7 +211,7 @@ class TestScannerExemptions(unittest.TestCase):
     def test_scanner_skips_allowlisted_path_paired_glob(self):
         """Paired-pattern convention: scripts/** + **/scripts/** both cover the path."""
         with tempfile.TemporaryDirectory() as tmp:
-            _write(tmp, "scripts/seed.ts", "const role = 'SHIPPING';\n")
+            _write(tmp, "scripts/seed.ts", "const role = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory=_INVENTORY,
@@ -225,7 +225,7 @@ class TestScannerExemptions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             gen_dir = Path(tmp) / "packages" / "cse-types" / "src"
             gen_dir.mkdir(parents=True)
-            _write(tmp, "packages/cse-types/src/foo.ts", "const x = 'SHIPPING';\n")
+            _write(tmp, "packages/cse-types/src/foo.ts", "const x = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory=_INVENTORY,
@@ -235,8 +235,8 @@ class TestScannerExemptions(unittest.TestCase):
         self.assertEqual(len(findings), 0)
 
     def test_scanner_skips_line_comment(self):
-        """// const role = 'SHIPPING' (whole line is comment) -> 0 findings."""
-        content = "// const role = 'SHIPPING';\n"
+        """// const role = 'RED' (whole line is comment) -> 0 findings."""
+        content = "// const role = 'RED';\n"
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/disabled.ts", content)
             findings = scan_for_magic_enum_violations(
@@ -256,11 +256,11 @@ class TestScannerEdgeCases(unittest.TestCase):
         same-line magic-enum violation downstream of the backtick string.
 
         Original bug: _is_in_line_comment tracked only ', ", so http:// inside
-        a backtick literal looked like a comment start, hiding 'SHIPPING'
+        a backtick literal looked like a comment start, hiding 'RED'
         after it.
         """
         content = (
-            "const url = `http://example.com`; const role = 'SHIPPING';\n"
+            "const url = `http://example.com`; const role = 'RED';\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/order.ts", content)
@@ -271,16 +271,16 @@ class TestScannerEdgeCases(unittest.TestCase):
                 generated_dirs=[],
             )
         self.assertEqual(len(findings), 1)
-        self.assertIn("SHIPPING", findings[0].summary)
+        self.assertIn("RED", findings[0].summary)
 
     def test_scanner_embedded_opposite_quote_no_phantom_match(self):
         """Regression guard: a single-quoted string containing an unescaped
         double-quoted word must NOT produce a phantom match on the embedded
-        substring.  Without the fix, ``'address "SHIPPING" required'`` would
-        falsely emit a finding for the embedded "SHIPPING" token.
+        substring.  Without the fix, ``'address "RED" required'`` would
+        falsely emit a finding for the embedded "RED" token.
         """
         content = (
-            "function fail(): never { throw new Error('address \"SHIPPING\" required'); }\n"
+            "function fail(): never { throw new Error('address \"RED\" required'); }\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/err.ts", content)
@@ -290,14 +290,14 @@ class TestScannerEdgeCases(unittest.TestCase):
                 allowlist_globs=[],
                 generated_dirs=[],
             )
-        # The whole-string literal is 'address "SHIPPING" required' — not a
-        # bare 'SHIPPING' token — so no finding.
+        # The whole-string literal is 'address "RED" required' — not a
+        # bare 'RED' token — so no finding.
         self.assertEqual(len(findings), 0)
 
     def test_scanner_no_findings_on_no_inventory(self):
         """Empty inventory -> no findings regardless of source content."""
         with tempfile.TemporaryDirectory() as tmp:
-            _write(tmp, "src/foo.ts", "const x = 'SHIPPING';\n")
+            _write(tmp, "src/foo.ts", "const x = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory={},
@@ -334,7 +334,7 @@ class TestScannerEdgeCases(unittest.TestCase):
         content = (
             "<template><div>hello</div></template>\n"
             "<script>\n"
-            "const role = 'SHIPPING';\n"
+            "const role = 'RED';\n"
             "</script>\n"
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -346,13 +346,13 @@ class TestScannerEdgeCases(unittest.TestCase):
                 generated_dirs=[],
             )
         self.assertEqual(len(findings), 1)
-        self.assertIn("SHIPPING", findings[0].summary)
+        self.assertIn("RED", findings[0].summary)
 
     def test_scanner_finding_is_frozen_dataclass(self):
         """Findings are frozen Finding instances (cannot be mutated)."""
         import dataclasses
         with tempfile.TemporaryDirectory() as tmp:
-            _write(tmp, "src/foo.ts", "const x = 'SHIPPING';\n")
+            _write(tmp, "src/foo.ts", "const x = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory=_INVENTORY,
@@ -366,7 +366,7 @@ class TestScannerEdgeCases(unittest.TestCase):
     def test_scanner_allowlist_non_match_still_scanned(self):
         """File NOT in allowlist is scanned normally."""
         with tempfile.TemporaryDirectory() as tmp:
-            _write(tmp, "src/real.ts", "const x = 'SHIPPING';\n")
+            _write(tmp, "src/real.ts", "const x = 'RED';\n")
             findings = scan_for_magic_enum_violations(
                 root=Path(tmp),
                 inventory=_INVENTORY,
@@ -380,7 +380,7 @@ class TestScannerEdgeCases(unittest.TestCase):
         content = (
             "// line 1 comment\n"
             "const x = 1;\n"
-            "const role = 'SHIPPING';\n"  # line 3
+            "const role = 'RED';\n"  # line 3
         )
         with tempfile.TemporaryDirectory() as tmp:
             _write(tmp, "src/foo.ts", content)

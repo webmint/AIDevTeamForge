@@ -154,6 +154,6 @@ Each file's `content` is the full literal file content as a string (no placehold
 ## Common authoring mistakes
 
 - **Using a markdown table when a fenced code block fits better.** Module-structure trees, sample directory layouts, and ASCII flow diagrams render better as `add-code-example --label EXAMPLE --language text` than as `add-table`. Reserve tables for genuine tabular data with consistent columns.
-- **Mixing tag scope.** A rule tagged `universal` should NOT cite project-specific paths or names. If a rule mentions `pkg-cse-types`, it's `project-specific` or `extracted`, not `universal`.
+- **Mixing tag scope.** A rule tagged `universal` should NOT cite project-specific paths or names. If a rule mentions `foo-types`, it's `project-specific` or `extracted`, not `universal`.
 - **Sub-section count creep.** Sticking to the count expectations above keeps `constitution.md` in the 250-450 line range typical of a healthy reference shape. Adding a 9th Section 3 sub-section because "we have 9 quality dimensions" usually means three of them belong as bullet rules under existing sub-sections, not as standalone sub-sections.
 - **Overlapping numbers across buckets.** `2.1` is in the architecture bucket; `5.1` is in the domain bucket. Re-using `2.1` for a domain sub-section breaks the helper's `_find_section` first-match resolution.

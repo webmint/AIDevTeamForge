@@ -118,8 +118,8 @@ class TestClassifyIntent(unittest.TestCase):
         """F4: chore(scope): must match forgotten."""
         self.assertEqual(_classify_intent("chore(deps): bump version", "f.py", "3"), "forgotten")
 
-    def test_migrated_mig_pattern(self):
-        self.assertEqual(_classify_intent("MIG-1234 porting logic", "f.py", "7"), "migrated")
+    def test_migrated_port_pattern(self):
+        self.assertEqual(_classify_intent("TICKET-1234 porting logic", "f.py", "7"), "migrated")
 
     def test_migrated_migrate_word(self):
         self.assertEqual(_classify_intent("migrate users to new schema", "f.py", "3"), "migrated")

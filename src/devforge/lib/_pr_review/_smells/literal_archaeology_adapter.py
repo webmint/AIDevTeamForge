@@ -56,9 +56,9 @@ _INTENT_PATTERNS: Dict[str, List[str]] = {
         r"WIP",
     ],
     "migrated": [
-        r"MIG[-_]\d+",
         r"migration",
         r"migrate",
+        r"\bport(ing|ed)?\b",
     ],
     # 'forgotten' checked before 'deliberate' — forgotten patterns are anchored
     # at ^ (start of subject line) and would otherwise be shadowed by

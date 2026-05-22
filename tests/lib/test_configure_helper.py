@@ -433,7 +433,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
     def test_all_fields_set_round_trip(self):
         """All 28 fields populated — comprehensive round-trip."""
         state = {
-            "project_name": "db-cse-ui-strata",
+            "project_name": "module",
             "project_description": "A complex monorepo project",
             "project_type": "Web Application",
             "primary_language": "TypeScript",
@@ -612,7 +612,7 @@ class ReadInitTests(_EnvIsolationMixin, unittest.TestCase):
         """Use init_helper subprocess to create a real init.yaml."""
         _run_init(self.devforge_dir, "reset")
         _run_init(self.devforge_dir, "set-workspace-mode", "wrapper")
-        _run_init(self.devforge_dir, "set-project-root", "db-cse-ui-strata")
+        _run_init(self.devforge_dir, "set-project-root", "module")
         _run_init(self.devforge_dir, "set-project-state", "brownfield")
         _run_init(self.devforge_dir, "set-default-branch", "dev")
         _run_init(
@@ -632,7 +632,7 @@ class ReadInitTests(_EnvIsolationMixin, unittest.TestCase):
         data = json.loads(proc.stdout.decode())
         # Verify all 5 init.yaml fields are present.
         self.assertEqual(data["workspace_mode"], "wrapper")
-        self.assertEqual(data["project_root"], "db-cse-ui-strata")
+        self.assertEqual(data["project_root"], "module")
         self.assertEqual(data["project_state"], "brownfield")
         self.assertEqual(data["default_branch"], "dev")
         self.assertEqual(len(data["packages_detected"]), 2)
@@ -1146,13 +1146,13 @@ class ReadManifestsTests(_EnvIsolationMixin, unittest.TestCase):
     def test_framework_hint_null_when_no_framework_dep(self):
         """Pure TS domain package with no framework dep → framework_hint=null.
 
-        Regression on testForge20: pkg-cse-core has only workspace deps +
+        Regression on testForge20: foo has only workspace deps +
         purify-ts; previous LLM compose mis-attributed Vue. Helper now
         returns null so the spec's PACKAGE_STACKS rule emits null verbatim.
         """
         self._write_index([
             {
-                "path": "packages/pkg-cse-core",
+                "path": "packages/foo",
                 "manifest": "package.json",
                 "manifest_scripts": {},
                 "manifest_dependencies": {"purify-ts": "^2.0.0"},
@@ -2619,9 +2619,9 @@ class BuildProjectConfigTests(unittest.TestCase):
 
     def test_wrapper_mode_section_wrapper_contains_project_root(self):
         cfg = self._make_cfg()
-        init = self._make_init(workspace_mode="wrapper", project_root="db-cse-ui-strata")
+        init = self._make_init(workspace_mode="wrapper", project_root="module")
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertIn("db-cse-ui-strata", result["WRAPPER_MODE_SECTION"])
+        self.assertIn("module", result["WRAPPER_MODE_SECTION"])
         self.assertIn("## Wrapper Mode", result["WRAPPER_MODE_SECTION"])
 
     def test_commit_attribution_no(self):
@@ -2791,12 +2791,12 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(data["WRAPPER_MODE_SECTION"], "")
 
     def test_wrapper_mode_section_wrapper_contains_project_root(self):
-        self._write_init_yaml(workspace_mode="wrapper", project_root="db-cse-ui-strata")
+        self._write_init_yaml(workspace_mode="wrapper", project_root="module")
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertIn("db-cse-ui-strata", data["WRAPPER_MODE_SECTION"])
+        self.assertIn("module", data["WRAPPER_MODE_SECTION"])
         self.assertIn("## Wrapper Mode", data["WRAPPER_MODE_SECTION"])
 
     def test_commit_attribution_no_is_empty(self):

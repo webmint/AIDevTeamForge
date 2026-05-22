@@ -105,7 +105,7 @@ def _enum_used_via_member_access(source: str, enum_name: str) -> bool:
     """Return True if ``EnumName.`` appears in non-comment source.
 
     Line comments (``//`` to end-of-line) are stripped per line before the
-    pattern search so a comment like ``// avoid OrgV2AddressType.X`` does
+    pattern search so a comment like ``// avoid Color.X`` does
     NOT spuriously trigger the exemption rule.  Block comments
     (``/* ... */``) are NOT stripped — Phase 1 spec marks those out of
     scope; they remain a known false-positive source for the exemption

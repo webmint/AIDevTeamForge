@@ -126,7 +126,7 @@ class TestWriteBundle(unittest.TestCase):
         state_dict = dataclasses.asdict(_make_state(pr_number=304))
         bundle_path = _write_bundle(
             self._devforge, pr_number=304, state_dict=state_dict,
-            repo="DoosanICA/x", now_ts=_NOW
+            repo="org/x", now_ts=_NOW
         )
         with open(bundle_path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
@@ -443,7 +443,7 @@ class TestRunHappyPath(unittest.TestCase):
         self._pr_number = 304
         self._state = _make_state(
             pr_number=self._pr_number,
-            repo="DoosanICA/db-cse-ui-strata",
+            repo="org/module",
             findings=[{"severity": "high", "location": "x.py"}],
             smells=[{"name": "s"}],
             blast=[{"symbol": "foo"}],

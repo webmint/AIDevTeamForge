@@ -518,7 +518,7 @@ class TestV3LiteralArchaeology(unittest.TestCase):
             file_line="src/OrderViewer.vue:290",
             introduced_by="cca3514a1b2c3d4",
             introduced_when="2023-12-12",
-            commit_subject="DEAL-292 extract fetchOrder wrapper",
+            commit_subject="DEAL-292 extract loadData wrapper",
             intent="placeholder",
         )
         # For placeholder intent, escalation required in summary.
@@ -536,7 +536,7 @@ class TestV3LiteralArchaeology(unittest.TestCase):
     def test_require_literal_archaeology_when_bug_with_literal_replacement(self):
         """mode=bug + 'Replace `false` with `isExternal`' summary + empty literal_archaeology → ValueError."""
         ps = _plan_seeds(
-            recommended_approach_summary="Replace `false` with `isExternal` in fetchOrder call"
+            recommended_approach_summary="Replace `false` with `isExternal` in loadData call"
         )
         ss = _spec_seeds(
             affected_areas=[_affected_area()],
@@ -626,10 +626,10 @@ class TestV3CallShape(unittest.TestCase):
         self.assertIn("proposed_call_shape", str(ctx.exception))
 
     def test_reject_argument_duplication_in_proposed_call_shape(self):
-        """proposed_call_shape='fetchOrder(isExternalUser.value, isExternalUser.value)' → ValueError."""
+        """proposed_call_shape='loadData(isExternalUser.value, isExternalUser.value)' → ValueError."""
         with self.assertRaises(ValueError) as ctx:
             _plan_seeds(
-                proposed_call_shape="fetchOrder(isExternalUser.value, isExternalUser.value)"
+                proposed_call_shape="loadData(isExternalUser.value, isExternalUser.value)"
             )
         msg = str(ctx.exception)
         self.assertIn("isExternalUser", msg)
@@ -650,7 +650,7 @@ class TestV3CallShape(unittest.TestCase):
         la = _literal_archaeology(intent="inherited-refactor")
         ps = _plan_seeds(
             recommended_approach_summary="Replace `false` with `isExternal.value` at call site",
-            proposed_call_shape="fetchOrder(isExternal.value)",
+            proposed_call_shape="loadData(isExternal.value)",
         )
         ss = _spec_seeds(
             affected_areas=[_affected_area()],
@@ -668,7 +668,7 @@ class TestV3CallShape(unittest.TestCase):
         la = _literal_archaeology(intent="forgotten")
         ps = _plan_seeds(
             recommended_approach_summary="Replace `false` with `isExternal.value` at call site",
-            proposed_call_shape="fetchOrder(isExternal.value)",
+            proposed_call_shape="loadData(isExternal.value)",
         )
         ss = _spec_seeds(
             affected_areas=[_affected_area()],
@@ -685,7 +685,7 @@ class TestV3CallShape(unittest.TestCase):
         la = _literal_archaeology(intent="placeholder")
         ps = _plan_seeds(
             recommended_approach_summary="Replace `false` with `isExternal.value` at call site",
-            proposed_call_shape="fetchOrder(isExternal.value)",
+            proposed_call_shape="loadData(isExternal.value)",
         )
         ss = _spec_seeds(
             affected_areas=[_affected_area()],
@@ -702,7 +702,7 @@ class TestV3CallShape(unittest.TestCase):
         la = _literal_archaeology(intent="deliberate")
         ps = _plan_seeds(
             recommended_approach_summary="Replace `false` with `true` — the fix is intentional policy change",
-            proposed_call_shape="fetchOrder(true)",
+            proposed_call_shape="loadData(true)",
         )
         ss = _spec_seeds(
             affected_areas=[_affected_area()],
@@ -739,7 +739,7 @@ class TestV3CallShape(unittest.TestCase):
         la = _literal_archaeology(intent="migrated")
         ps = _plan_seeds(
             recommended_approach_summary="Replace `false` with `isLegacy` at migration boundary",
-            proposed_call_shape="fetchOrder(isLegacy)",
+            proposed_call_shape="loadData(isLegacy)",
         )
         ss = _spec_seeds(
             affected_areas=[_affected_area()],

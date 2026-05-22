@@ -130,9 +130,9 @@ class TestCmdViolations(unittest.TestCase):
         gen_dir = root / "generated"
         gen_dir.mkdir()
 
-        # Write a generated type file with OrgV2AddressType
+        # Write a generated type file with Color
         (gen_dir / "index.ts").write_text(
-            "export type OrgV2AddressType = 'SHIPPING' | 'BILLING';\n",
+            "export type Color = 'RED' | 'BILLING';\n",
             encoding="utf-8",
         )
 
@@ -140,7 +140,7 @@ class TestCmdViolations(unittest.TestCase):
         src_dir = root / "src"
         src_dir.mkdir()
         (src_dir / "order.ts").write_text(
-            "const addressType = 'SHIPPING';\n",
+            "const addressType = 'RED';\n",
             encoding="utf-8",
         )
 
@@ -161,7 +161,7 @@ class TestCmdViolations(unittest.TestCase):
             self._setup_violation_project(tmp)
             code, out, err = _run_cli(["verify-magic-enum", "--root", tmp])
         self.assertIn("VIOLATION", err)
-        self.assertIn("SHIPPING", err)
+        self.assertIn("RED", err)
 
     def test_cmd_stderr_format_contract(self):
         """Stderr line matches the full ``path:line: VIOLATION [rule] summary``

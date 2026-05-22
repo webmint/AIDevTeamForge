@@ -466,9 +466,9 @@ class TestRenderFindingsMd(unittest.TestCase):
         self.assertIn("PR #304", rendered)
 
     def test_header_contains_repo(self):
-        state = _make_state(repo="DoosanICA/db-cse-ui-strata")
+        state = _make_state(repo="org/module")
         rendered = _render_findings_md(state)
-        self.assertIn("DoosanICA/db-cse-ui-strata", rendered)
+        self.assertIn("org/module", rendered)
 
     def test_pr_url_derived_from_state(self):
         state = _make_state(pr_number=304, repo="org/repo")
@@ -521,9 +521,9 @@ class TestRenderFindingsMd(unittest.TestCase):
 
     def test_findings_md_uses_pr_title_when_set(self):
         """F3: pr_title populated in state appears in findings.md header."""
-        state = PRReviewState(pr_number=42, repo="org/app", pr_title="MIG-2198 fix")
+        state = PRReviewState(pr_number=42, repo="org/app", pr_title="TICKET-2198 fix")
         rendered = _render_findings_md(state)
-        self.assertIn("**PR title**: MIG-2198 fix", rendered)
+        self.assertIn("**PR title**: TICKET-2198 fix", rendered)
         self.assertNotIn("(not in state)", rendered.split("**PR title**:")[1].split("\n")[0])
 
     def test_findings_md_pr_title_placeholder_when_empty(self):

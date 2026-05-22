@@ -1174,7 +1174,7 @@ class TestAppendToReplayCorpusVerb(unittest.TestCase):
         _os.makedirs(_os.path.dirname(sp), exist_ok=True)
         state = PRReviewState(
             pr_number=self._pr_number,
-            repo="DoosanICA/db-cse-ui-strata",
+            repo="org/module",
             findings=[{"severity": "medium", "location": "x.vue:1", "category": "smell",
                         "evidence": "e", "fix_hint": "f", "source_heuristic": ""}],
             smells=[{"name": "s"}],

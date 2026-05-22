@@ -1016,7 +1016,7 @@ class SummaryTests(_EnvIsolationMixin, unittest.TestCase):
         # appear in output and the count line must be correct.
         _run_cli(self.devforge_dir, "reset")
         _run_cli(self.devforge_dir, "set-workspace-mode", "wrapper")
-        _run_cli(self.devforge_dir, "set-project-root", "db-cse-ui-strata")
+        _run_cli(self.devforge_dir, "set-project-root", "module")
         _run_cli(self.devforge_dir, "set-project-state", "brownfield")
         _run_cli(self.devforge_dir, "set-default-branch", "dev")
         paths = [".", "scripts"] + [

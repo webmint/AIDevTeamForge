@@ -2656,7 +2656,7 @@ class ValidatePackageTests(_RenderTestBase):
 # (2) on-disk dir at `<project_root>/<dep_name>`. Both fail when an LLM
 # is documenting one package at a time AND the monorepo nests packages
 # inside a workspace folder (e.g., testForge20's
-# `db-cse-ui-strata/packages/pkg-cse-core`). The new check uses the
+# `module/packages/foo`). The new check uses the
 # init.yaml that /init-forge already writes.
 #
 # Note: the validator's regex parser is BEST EFFORT — malformed init.yaml
@@ -2710,24 +2710,24 @@ class InternalDepResolutionTests(_RenderTestBase):
     # -- Happy-path resolution via init.yaml --------------------------
 
     def test_internal_dep_resolves_against_init_yaml_packages_detected_basename(self):
-        # Init.yaml has `db-cse-ui-strata/packages/pkg-cse-core`.
-        # Internal dep is registered with bare basename `pkg-cse-core`
+        # Init.yaml has `module/packages/foo`.
+        # Internal dep is registered with bare basename `foo`
         # and should resolve via init.yaml even though no directory
-        # exists at <project_root>/pkg-cse-core and no other package
+        # exists at <project_root>/foo and no other package
         # is registered.
         self._fill_minimum_valid()
         self._write_init_yaml(
             "version: 1\n"
             "workspace_mode: wrapper\n"
-            "project_root: db-cse-ui-strata\n"
+            "project_root: module\n"
             "project_state: brownfield\n"
             "default_branch: dev\n"
             "packages_detected:\n"
-            "  - path: db-cse-ui-strata/packages/pkg-cse-core\n"
+            "  - path: module/packages/foo\n"
             "    manifest: package.json\n"
         )
         self._run("add-package-dep",
-                  "--path", "apps/web", "--name", "pkg-cse-core",
+                  "--path", "apps/web", "--name", "foo",
                   "--kind", "internal", "--version", "",
                   "--purpose", "Core lib.")
         proc = self._run("validate-package", "--path", "apps/web")
@@ -2742,16 +2742,16 @@ class InternalDepResolutionTests(_RenderTestBase):
         self._write_init_yaml(
             "version: 1\n"
             "workspace_mode: wrapper\n"
-            "project_root: db-cse-ui-strata\n"
+            "project_root: module\n"
             "project_state: brownfield\n"
             "default_branch: dev\n"
             "packages_detected:\n"
-            "  - path: db-cse-ui-strata/packages/pkg-cse-core\n"
+            "  - path: module/packages/foo\n"
             "    manifest: package.json\n"
         )
         self._run("add-package-dep",
                   "--path", "apps/web",
-                  "--name", "db-cse-ui-strata/packages/pkg-cse-core",
+                  "--name", "module/packages/foo",
                   "--kind", "internal", "--version", "",
                   "--purpose", "Core lib.")
         proc = self._run("validate-package", "--path", "apps/web")
@@ -2777,27 +2777,27 @@ class InternalDepResolutionTests(_RenderTestBase):
         self.assertIn(b"pkg-no-match", proc.stderr)
 
     def test_internal_dep_unresolved_when_init_yaml_missing_path_doesnt_match(self):
-        # init.yaml present but no `pkg-cse-core` entry. Existing
+        # init.yaml present but no `foo` entry. Existing
         # checks also fail. The error must still surface.
         self._fill_minimum_valid()
         self._write_init_yaml(
             "version: 1\n"
             "workspace_mode: wrapper\n"
-            "project_root: db-cse-ui-strata\n"
+            "project_root: module\n"
             "project_state: brownfield\n"
             "default_branch: dev\n"
             "packages_detected:\n"
-            "  - path: db-cse-ui-strata/packages/pkg-something-else\n"
+            "  - path: module/packages/pkg-something-else\n"
             "    manifest: package.json\n"
         )
         self._run("add-package-dep",
-                  "--path", "apps/web", "--name", "pkg-cse-core",
+                  "--path", "apps/web", "--name", "foo",
                   "--kind", "internal", "--version", "",
                   "--purpose", "Should fail.")
         proc = self._run("validate-package", "--path", "apps/web")
         self.assertEqual(proc.returncode, 2)
         self.assertIn(b"internal-dep-unresolved", proc.stderr)
-        self.assertIn(b"pkg-cse-core", proc.stderr)
+        self.assertIn(b"foo", proc.stderr)
 
     def test_init_yaml_malformed_falls_back_to_existing_checks(self):
         # Garbage init.yaml (not even close to a yaml file). The
@@ -2812,7 +2812,7 @@ class InternalDepResolutionTests(_RenderTestBase):
             "{[(unmatched delimiters\n"
         )
         self._run("add-package-dep",
-                  "--path", "apps/web", "--name", "pkg-cse-core",
+                  "--path", "apps/web", "--name", "foo",
                   "--kind", "internal", "--version", "",
                   "--purpose", "Should fail.")
         proc = self._run("validate-package", "--path", "apps/web")
@@ -2871,13 +2871,13 @@ class InternalDepResolutionTests(_RenderTestBase):
     def test_synthetic_testforge20_shape_resolves_all_internal_deps(self):
         # Reproduces the exact scenario from the bug report: 19
         # workspace-internal deps registered against `apps/app-web`,
-        # all of which live inside `db-cse-ui-strata/packages/<name>`
+        # all of which live inside `module/packages/<name>`
         # in init.yaml, none of which are registered as packages and
         # none of which exist as `<project_root>/<dep_name>`. Before
         # the fix, this produced 19 errors. After the fix, 0 errors.
         self._fill_minimum_valid()
         nested_pkgs = [
-            "pkg-cse-core",
+            "foo",
             "pkg-cse-quote",
             "pkg-cse-identity",
             "pkg-cse-billing",
@@ -2900,19 +2900,19 @@ class InternalDepResolutionTests(_RenderTestBase):
         init_lines = [
             "version: 1",
             "workspace_mode: wrapper",
-            "project_root: db-cse-ui-strata",
+            "project_root: module",
             "project_state: brownfield",
             "default_branch: dev",
             "packages_detected:",
         ]
         for name in nested_pkgs:
             init_lines.append(
-                "  - path: db-cse-ui-strata/packages/{0}".format(name)
+                "  - path: module/packages/{0}".format(name)
             )
             init_lines.append("    manifest: package.json")
         # Plus app-web (the package being documented) lives under the
         # workspace too — round out the fixture realistically.
-        init_lines.append("  - path: db-cse-ui-strata/apps/app-web")
+        init_lines.append("  - path: module/apps/app-web")
         init_lines.append("    manifest: package.json")
         self._write_init_yaml("\n".join(init_lines) + "\n")
 
@@ -3437,7 +3437,7 @@ class Phase2SpecSequenceTests(_EnvIsolationMixin, unittest.TestCase):
         # can succeed; mirrors how the helper resolves the manifest.
         proot = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: __import__("shutil").rmtree(proot, ignore_errors=True))
-        pkg_dir = proot / "db-cse-ui-strata" / "apps" / "app-web"
+        pkg_dir = proot / "module" / "apps" / "app-web"
         pkg_dir.mkdir(parents=True)
         manifest = {
             "name": "app-web",
@@ -3475,7 +3475,7 @@ class Phase2SpecSequenceTests(_EnvIsolationMixin, unittest.TestCase):
             "test": "vitest",
         }
         proot = self._project_root_with_manifest(scripts)
-        path = "db-cse-ui-strata/apps/app-web"
+        path = "module/apps/app-web"
 
         # Step 1: add-package.
         proc = _run_cli(
@@ -3551,7 +3551,7 @@ class Phase2SpecSequenceTests(_EnvIsolationMixin, unittest.TestCase):
         triggered the original investigation.
         """
         proot = self._project_root_with_manifest({"build": "vite build"})
-        path = "db-cse-ui-strata/apps/app-web"
+        path = "module/apps/app-web"
 
         for args in (
             ("add-package", "--path", path, "--name", "app-web"),

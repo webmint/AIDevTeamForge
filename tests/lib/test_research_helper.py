@@ -1532,16 +1532,16 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--file-line", "lib/blocs/order_bloc.dart:42",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
             qns = [h["qn"] for h in rep["fix_path_helpers"]]
-            self.assertIn("OrderBLoC.fetchOrder", qns)
+            self.assertIn("Service.loadData", qns)
             # Verify full dict shape.
             entry = rep["fix_path_helpers"][0]
-            self.assertEqual(entry["qn"], "OrderBLoC.fetchOrder")
+            self.assertEqual(entry["qn"], "Service.loadData")
             self.assertEqual(entry["file_line"], "lib/blocs/order_bloc.dart:42")
         finally:
             tmp.cleanup()
@@ -1552,7 +1552,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r1 = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--file-line", "lib/blocs/order_bloc.dart:42",
             ])
             self.assertEqual(r1.returncode, 0, r1.stderr)
@@ -1561,7 +1561,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r2 = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--file-line", "lib/blocs/order_bloc.dart:44",  # Δ=2 vs finding at :42 → anchored; same qn → deduped
             ])
             self.assertEqual(r2.returncode, 0, r2.stderr)
@@ -1576,7 +1576,7 @@ class TestPhase24cSetters(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--file-line", "lib/blocs/order_bloc.dart:42",
             ])
             _run([
@@ -1596,7 +1596,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--file-line", "(none)",
             ])
             self.assertNotEqual(r.returncode, 0)
@@ -1610,7 +1610,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 # --file-line deliberately omitted
             ])
             # argparse must reject with exit 2.
@@ -1625,7 +1625,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--file-line", "no-colon-here",
             ])
             self.assertNotEqual(r.returncode, 0)
@@ -1641,7 +1641,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-inbound-caller",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--caller-qn", "OrderViewWidget.build",
                 "--file-line", "lib/order_view.dart:88",
             ])
@@ -1649,7 +1649,7 @@ class TestPhase24cSetters(unittest.TestCase):
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["inbound_callers"]), 1)
             row = rep["inbound_callers"][0]
-            self.assertEqual(row["helper_qn"], "OrderBLoC.fetchOrder")
+            self.assertEqual(row["helper_qn"], "Service.loadData")
             self.assertEqual(row["caller_qn"], "OrderViewWidget.build")
             self.assertEqual(row["file_line"], "lib/order_view.dart:88")
         finally:
@@ -1661,7 +1661,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-inbound-caller",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--caller-qn", "dynamic_dispatch",
                 "--file-line", "(none)",
             ])
@@ -1677,7 +1677,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-inbound-caller",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--caller-qn", "foo.bar",
                 "--file-line", "no-colon-here",
             ])
@@ -1694,16 +1694,16 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-dead-sibling",
-                "--class-qn", "OrderBLoC",
-                "--method-qn", "OrderBLoC.toggleSplit",
+                "--class-qn", "Service",
+                "--method-qn", "Service.toggle",
                 "--verified-via", "trace_path",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["dead_siblings"]), 1)
             row = rep["dead_siblings"][0]
-            self.assertEqual(row["class_qn"], "OrderBLoC")
-            self.assertEqual(row["method_qn"], "OrderBLoC.toggleSplit")
+            self.assertEqual(row["class_qn"], "Service")
+            self.assertEqual(row["method_qn"], "Service.toggle")
             self.assertEqual(row["verified_via"], "trace_path")
         finally:
             tmp.cleanup()
@@ -1714,8 +1714,8 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-dead-sibling",
-                "--class-qn", "OrderBLoC",
-                "--method-qn", "OrderBLoC.toggleSplit",
+                "--class-qn", "Service",
+                "--method-qn", "Service.toggle",
                 "--verified-via", "search_code",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -1728,8 +1728,8 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-dead-sibling",
-                "--class-qn", "OrderBLoC",
-                "--method-qn", "OrderBLoC.toggleSplit",
+                "--class-qn", "Service",
+                "--method-qn", "Service.toggle",
                 "--verified-via", "grep",
             ])
             # argparse will exit 2 with error about choices
@@ -1745,7 +1745,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-consumer-chain",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--consumer-qn", "OrderCreationUseCase.execute",
                 "--file-line", "lib/order_creation.dart:55",
                 "--role", "enforces Q&O parity at server boundary",
@@ -1754,7 +1754,7 @@ class TestPhase24cSetters(unittest.TestCase):
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["consumer_chain"]), 1)
             row = rep["consumer_chain"][0]
-            self.assertEqual(row["value"], "splitOnSNA")
+            self.assertEqual(row["value"], "flag")
             self.assertEqual(row["consumer_qn"], "OrderCreationUseCase.execute")
             self.assertEqual(row["file_line"], "lib/order_creation.dart:55")
             self.assertEqual(row["role"], "enforces Q&O parity at server boundary")
@@ -1767,7 +1767,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-consumer-chain",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--consumer-qn", "foo",
                 "--file-line", "bad-file-line",
                 "--role", "some role",
@@ -1784,7 +1784,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "preference",
                 "--evidence", "only set per user action",
             ])
@@ -1792,7 +1792,7 @@ class TestPhase24cSetters(unittest.TestCase):
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["value_semantics"]), 1)
             row = rep["value_semantics"][0]
-            self.assertEqual(row["value"], "splitOnSNA")
+            self.assertEqual(row["value"], "flag")
             self.assertEqual(row["classification"], "preference")
             self.assertEqual(row["evidence"], "only set per user action")
         finally:
@@ -1804,20 +1804,20 @@ class TestPhase24cSetters(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "preference",
                 "--evidence", "first evidence",
             ])
             _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "unclassified",
                 "--evidence", "second evidence",
             ])
             rep = self._read_report(devforge)
             # Only one row for the same value.
-            rows = [r for r in rep["value_semantics"] if r["value"] == "splitOnSNA"]
+            rows = [r for r in rep["value_semantics"] if r["value"] == "flag"]
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["classification"], "unclassified")
             self.assertEqual(rows[0]["evidence"], "second evidence")
@@ -1830,7 +1830,7 @@ class TestPhase24cSetters(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "preference",
                 "--evidence", "e1",
             ])
@@ -1854,7 +1854,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "invariant",
                 "--evidence", "Q&O parity rule",
                 "--stable-across-calls", "true",
@@ -1871,7 +1871,7 @@ class TestPhase24cSetters(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "record-consumer-chain",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--consumer-qn", "OrderCreationUseCase.execute",
                 "--file-line", "lib/order.dart:10",
                 "--role", "enforces invariant",
@@ -1880,14 +1880,14 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "invariant",
                 "--evidence", "OrderCreationUseCase.execute enforces Q&O parity",
                 "--stable-across-calls", "true",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
-            rows = [row for row in rep["value_semantics"] if row["value"] == "splitOnSNA"]
+            rows = [row for row in rep["value_semantics"] if row["value"] == "flag"]
             self.assertEqual(rows[0]["classification"], "invariant")
         finally:
             tmp.cleanup()
@@ -1898,7 +1898,7 @@ class TestPhase24cSetters(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "definitely-not-valid",
                 "--evidence", "e",
             ])
@@ -1978,13 +1978,13 @@ class TestVerifyCheck9(unittest.TestCase):
             # Add helper without a corresponding caller.
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = []
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 2)
             self.assertIn("inbound_callers", r.stderr)
-            self.assertIn("OrderBLoC.fetchOrder", r.stderr)
+            self.assertIn("Service.loadData", r.stderr)
 
     def test_check9_passes_when_all_helpers_have_callers(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1992,9 +1992,9 @@ class TestVerifyCheck9(unittest.TestCase):
             _build_bug_state(devforge)
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+                {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
             ]
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
@@ -2003,7 +2003,7 @@ class TestVerifyCheck9(unittest.TestCase):
             })
             # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
             data["consumer_chain"] = [
-                {"value": "fetchOrder", "consumer_qn": "View.build",
+                {"value": "loadData", "consumer_qn": "View.build",
                  "file_line": "src/v.dart:5", "role": "caller"}
             ]
             if data.get("recommended_approach"):
@@ -2024,9 +2024,9 @@ class TestVerifyCheck10(unittest.TestCase):
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
         # Satisfy checks 8 + 9.
-        data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+        data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
         data["inbound_callers"] = [
-            {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
@@ -2035,14 +2035,14 @@ class TestVerifyCheck10(unittest.TestCase):
         })
         # Set value_semantics with invariant + consumer_chain.
         data["consumer_chain"] = [
-            {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
+            {"value": "flag", "consumer_qn": "OrderCreationUseCase.execute",
              "file_line": "lib/order.dart:10", "role": "enforces parity"}
         ]
         data["value_semantics"] = [
-            {"value": "splitOnSNA", "classification": "invariant", "evidence": "Q&O rule"}
+            {"value": "flag", "classification": "invariant", "evidence": "Q&O rule"}
         ]
         data["dead_siblings"] = [
-            {"class_qn": "OrderBLoC", "method_qn": "OrderBLoC.toggleSplit", "verified_via": "trace_path"}
+            {"class_qn": "Service", "method_qn": "Service.toggle", "verified_via": "trace_path"}
         ]
         # Replace approach description.
         for ap in data["approaches"]:
@@ -2084,7 +2084,7 @@ class TestVerifyCheck10(unittest.TestCase):
             devforge = Path(tmp) / ".devforge"
             self._state_with_invariant_and_dead_sibling(
                 devforge,
-                "revive OrderBLoC.toggleSplit to enforce invariant",
+                "revive Service.toggle to enforce invariant",
             )
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -2096,9 +2096,9 @@ class TestVerifyCheck10(unittest.TestCase):
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
+                {"helper_qn": "Service.loadData", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
             ]
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
@@ -2134,9 +2134,9 @@ class TestVerifyCheck11(unittest.TestCase):
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
         # Satisfy checks 8 + 9.
-        data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+        data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
         data["inbound_callers"] = [
-            {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
@@ -2144,11 +2144,11 @@ class TestVerifyCheck11(unittest.TestCase):
             "relevance": "cross-layer helper candidate", "framing": "primary",
         })
         data["consumer_chain"] = [
-            {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
+            {"value": "flag", "consumer_qn": "OrderCreationUseCase.execute",
              "file_line": "lib/order.dart:10", "role": "enforces parity"}
         ]
         data["value_semantics"] = [
-            {"value": "splitOnSNA", "classification": "invariant", "evidence": "Q&O parity rule"}
+            {"value": "flag", "classification": "invariant", "evidence": "Q&O parity rule"}
         ]
         data["dead_siblings"] = []
         # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
@@ -2200,9 +2200,9 @@ class TestVerifyCheck11(unittest.TestCase):
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "s:1"}
+                {"helper_qn": "Service.loadData", "caller_qn": "V.build", "file_line": "s:1"}
             ]
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
@@ -2241,13 +2241,13 @@ class TestVerifyHappyPathWithPhase24c(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "record-fix-path-helper",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
             ])
             # Satisfy check 9: inbound caller for every helper.
             _run([
                 "--devforge-dir", str(devforge),
                 "record-inbound-caller",
-                "--helper-qn", "OrderBLoC.fetchOrder",
+                "--helper-qn", "Service.loadData",
                 "--caller-qn", "OrderViewWidget.build",
                 "--file-line", "lib/order_view.dart:88",
             ])
@@ -2255,7 +2255,7 @@ class TestVerifyHappyPathWithPhase24c(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "record-consumer-chain",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--consumer-qn", "OrderCreationUseCase.execute",
                 "--file-line", "lib/order_creation.dart:55",
                 "--role", "enforces Q&O parity at server boundary",
@@ -2265,7 +2265,7 @@ class TestVerifyHappyPathWithPhase24c(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "invariant",
                 "--evidence", "OrderCreationUseCase.execute enforces Q&O parity",
                 "--stable-across-calls", "true",
@@ -2274,8 +2274,8 @@ class TestVerifyHappyPathWithPhase24c(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "record-dead-sibling",
-                "--class-qn", "OrderBLoC",
-                "--method-qn", "OrderBLoC.toggleSplit",
+                "--class-qn", "Service",
+                "--method-qn", "Service.toggle",
                 "--verified-via", "trace_path",
             ])
 
@@ -2352,7 +2352,7 @@ class TestSetValueSemanticsTransactionEscape(unittest.TestCase):
             r = _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "invariant",
                 "--evidence", "Q&O parity rule",
                 "--stable-across-calls", "true",
@@ -2374,7 +2374,7 @@ class TestSetValueSemanticsTransactionEscape(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "set-value-semantics",
-                "--value", "splitOnSNA",
+                "--value", "flag",
                 "--classification", "invariant",
                 "--evidence", "Q&O parity rule",
                 "--stable-across-calls", "true",
@@ -2409,11 +2409,11 @@ class TestVerifyCheck11EmptyTokenList(unittest.TestCase):
             # src/admin (presentation) + lib/blocs (domain) = two packages → cross-layer.
             data["fix_path_helpers"] = [
                 {"qn": "ProductsHelper.sort", "file_line": "src/admin/helpers.ts:10"},
-                {"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"},
+                {"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"},
             ]
             data["inbound_callers"] = [
                 {"helper_qn": "ProductsHelper.sort", "caller_qn": "View.render", "file_line": "src/v.ts:5"},
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "V.build", "file_line": "src/v.dart:5"},
+                {"helper_qn": "Service.loadData", "caller_qn": "V.build", "file_line": "src/v.dart:5"},
             ]
             # Patch 5: add findings anchoring both helper file_lines (check 14 requires it).
             # src/admin/helpers.ts:45 is in the existing bug state but Δ=35 from :10 — add
@@ -2422,7 +2422,7 @@ class TestVerifyCheck11EmptyTokenList(unittest.TestCase):
                 {"surface": "helpers entry", "file_line": "src/admin/helpers.ts:10",
                  "relevance": "anchor for ProductsHelper.sort", "framing": "primary"},
                 {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                 "relevance": "anchor for OrderBLoC.fetchOrder", "framing": "primary"},
+                 "relevance": "anchor for Service.loadData", "framing": "primary"},
             ])
             # Invariant entry: empty evidence, no consumer_chain, no dead_siblings.
             # Hand-authored to bypass the setter's consumer_chain prerequisite.
@@ -2455,9 +2455,9 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
         # Satisfy checks 8 + 9.
-        data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+        data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
         data["inbound_callers"] = [
-            {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
         ]
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
@@ -2465,14 +2465,14 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
             "relevance": "cross-layer helper candidate", "framing": "primary",
         })
         data["consumer_chain"] = [
-            {"value": "splitOnSNA", "consumer_qn": "OrderCreationUseCase.execute",
+            {"value": "flag", "consumer_qn": "OrderCreationUseCase.execute",
              "file_line": "lib/order.dart:10", "role": "enforces parity"}
         ]
         data["value_semantics"] = [
-            {"value": "splitOnSNA", "classification": "invariant", "evidence": "Q&O rule"}
+            {"value": "flag", "classification": "invariant", "evidence": "Q&O rule"}
         ]
         data["dead_siblings"] = [
-            {"class_qn": "OrderBLoC", "method_qn": "OrderBLoC.toggleSplit", "verified_via": "trace_path"}
+            {"class_qn": "Service", "method_qn": "Service.toggle", "verified_via": "trace_path"}
         ]
         # Approach: dead-sibling QN only in name; description/pros/cons are generic.
         for ap in data["approaches"]:
@@ -2499,7 +2499,7 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
             devforge = Path(tmp) / ".devforge"
             self._state_with_invariant_dead_sibling_name_only(
                 devforge,
-                "Revive OrderBLoC.toggleSplit",
+                "Revive Service.toggle",
             )
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -2512,9 +2512,9 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Satisfy checks 8 + 9.
-            data["fix_path_helpers"] = [{"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
             data["inbound_callers"] = [
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "View.build",
+                {"helper_qn": "Service.loadData", "caller_qn": "View.build",
                  "file_line": "src/v.dart:5"}
             ]
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
@@ -2565,8 +2565,8 @@ class TestRecordDeadSiblingNoDedupe(unittest.TestCase):
                 _run([
                     "--devforge-dir", str(devforge),
                     "record-dead-sibling",
-                    "--class-qn", "OrderBLoC",
-                    "--method-qn", "OrderBLoC.toggleSplit",
+                    "--class-qn", "Service",
+                    "--method-qn", "Service.toggle",
                     "--verified-via", "trace_path",
                 ])
             data = json.loads((devforge / "research-report.json").read_text())
@@ -2996,7 +2996,7 @@ class TestLayerBoundaryDetection(unittest.TestCase):
         self.assertFalse(research_helper._is_presentation_layer("src/utils/helpers.ts"))
 
     def test_domain_package_is_not_presentation(self):
-        self.assertFalse(research_helper._is_presentation_layer("pkg-cse-core/QuoteLine.ts"))
+        self.assertFalse(research_helper._is_presentation_layer("foo/QuoteLine.ts"))
 
     def test_empty_string_is_not_presentation(self):
         self.assertFalse(research_helper._is_presentation_layer(""))
@@ -3023,8 +3023,8 @@ class TestLayerBoundaryDetection(unittest.TestCase):
     def test_extract_two_component_path(self):
         # File sits at second component slot — still returns first two components.
         self.assertEqual(
-            research_helper._extract_package("pkg-cse-core/utils.ts"),
-            "pkg-cse-core",
+            research_helper._extract_package("foo/utils.ts"),
+            "foo",
         )
 
     def test_extract_src_admin(self):
@@ -3237,43 +3237,43 @@ class TestVerifyCheck8b(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_bug_state(devforge)
-            # Rewrite findings + helpers so symptom is domain-layer (pkg-cse-core).
+            # Rewrite findings + helpers so symptom is domain-layer (foo).
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
             # Symptom finding → domain-layer file.
             data["findings"] = [
                 {
                     "surface": "core util",
-                    "file_line": "pkg-cse-core/utils.ts:10",
+                    "file_line": "foo/utils.ts:10",
                     "relevance": "comparison logic",
                     "framing": "primary",
                 },
                 {
                     "surface": "race probe",
-                    "file_line": "pkg-cse-core/utils.ts:20",
+                    "file_line": "foo/utils.ts:20",
                     "relevance": "runner-up probe",
                     "framing": "runner-up",
                 },
             ]
-            # All helpers also in pkg-cse-core — would trigger 8b for presentation
+            # All helpers also in foo — would trigger 8b for presentation
             # but domain symptom means 8b is skipped.
             # Check 13 still fires for single-layer, so add justification + cites.
-            data["fix_path_helpers"] = [{"qn": "CoreUtil.compare", "file_line": "pkg-cse-core/utils.ts:10"}]
+            data["fix_path_helpers"] = [{"qn": "CoreUtil.compare", "file_line": "foo/utils.ts:10"}]
             data["inbound_callers"] = [
                 {
                     "helper_qn": "CoreUtil.compare",
                     "caller_qn": "CoreUtil.sort",
-                    "file_line": "pkg-cse-core/sort.ts:5",
+                    "file_line": "foo/sort.ts:5",
                 },
             ]
             # Provide consumer_chain to anchor cites for check 13.
             data["consumer_chain"] = [
                 {"value": "compareResult", "consumer_qn": "CoreUtil.sort",
-                 "file_line": "pkg-cse-core/sort.ts:5", "role": "consumes compare result"}
+                 "file_line": "foo/sort.ts:5", "role": "consumes compare result"}
             ]
             if data.get("recommended_approach"):
                 data["recommended_approach"]["single_layer_justification"] = (
-                    "Symptom is domain-local (pkg-cse-core comparison logic); no cross-layer trace needed."
+                    "Symptom is domain-local (foo comparison logic); no cross-layer trace needed."
                 )
                 data["recommended_approach"]["cites"] = ["CoreUtil.sort"]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
@@ -3738,7 +3738,7 @@ def _build_domain_single_layer_bug_state(devforge):
 
     for d, val in (
         ("symptom", "Order BLoC fetch returns stale rows after refresh"),
-        ("affected_area", "OrderBLoC.fetchOrder"),
+        ("affected_area", "Service.loadData"),
         ("repro_or_current", "Trigger refresh while a fetch is in-flight"),
         ("desired", "Latest fetch's rows always emitted last"),
         ("scope", "One component"),
@@ -3769,7 +3769,7 @@ def _build_domain_single_layer_bug_state(devforge):
 
     _run([
         "--devforge-dir", str(devforge), "record-hypothesis",
-        "--cause", "last-fetch-wins racing in fetchOrder",
+        "--cause", "last-fetch-wins racing in loadData",
         "--falsifier", "serialize fetches; verify order stable",
         "--runtime-probe-needed", "no",
     ])
@@ -3781,7 +3781,7 @@ def _build_domain_single_layer_bug_state(devforge):
     ])
     _run([
         "--devforge-dir", str(devforge), "set-root-cause-hypothesis",
-        "--value", "OrderBLoC.fetchOrder lacks fetch-id guard.",
+        "--value", "Service.loadData lacks fetch-id guard.",
     ])
     _run(["--devforge-dir", str(devforge), "set-confidence", "--value", "Hypothesis"])
     _run([
@@ -3802,8 +3802,8 @@ def _build_domain_single_layer_bug_state(devforge):
     _run([
         "--devforge-dir", str(devforge), "set-approach",
         "--name", "Option A: fetch-id guard",
-        "--description", "Add fetch-id guard inside OrderBLoC.fetchOrder",
-        "--addresses-hypotheses", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+        "--description", "Add fetch-id guard inside Service.loadData",
+        "--addresses-hypotheses", json.dumps(["last-fetch-wins racing in loadData"]),
         "--does-not-cover", json.dumps(["subscription resubscribed mid-stream"]),
         "--pros", json.dumps(["small diff", "no public-API change"]),
         "--cons", json.dumps(["does not address resubscription"]),
@@ -3827,20 +3827,20 @@ def _build_domain_single_layer_bug_state(devforge):
     ])
     _run([
         "--devforge-dir", str(devforge), "set-summary",
-        "--value", "OrderBLoC.fetchOrder vulnerable to concurrent-fetch race.",
+        "--value", "Service.loadData vulnerable to concurrent-fetch race.",
     ])
 
     # BOTH helpers in lib/blocs — single-package AND non-presentation-layer.
     # Triggers check 13 single-layer gate; does NOT trigger check 8b suppression.
     _run([
         "--devforge-dir", str(devforge), "record-fix-path-helper",
-        "--helper-qn", "OrderBLoC.fetchOrder",
+        "--helper-qn", "Service.loadData",
         "--file-line", "lib/blocs/order_bloc.dart:42",
     ])
     _run([
         "--devforge-dir", str(devforge), "record-inbound-caller",
-        "--helper-qn", "OrderBLoC.fetchOrder",
-        "--caller-qn", "OrderBLoC.handleRefresh",
+        "--helper-qn", "Service.loadData",
+        "--caller-qn", "Service.handleRefresh",
         "--file-line", "lib/blocs/order_bloc.dart:5",
     ])
 
@@ -3925,7 +3925,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
             ])
             self.assertEqual(r.returncode, 2)
@@ -3944,7 +3944,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 # --cites deliberately omitted
@@ -3963,7 +3963,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", "[]",
@@ -3982,7 +3982,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["NotARecordedQN"]),
@@ -4004,11 +4004,11 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer; no cross-layer trace needed.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4028,7 +4028,7 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
             _run([
                 "--devforge-dir", str(devforge),
                 "record-dead-sibling",
-                "--class-qn", "OrderBLoC",
+                "--class-qn", "Service",
                 "--method-qn", "OldFetchOrderMethod",
                 "--verified-via", "search_code",
             ])
@@ -4036,11 +4036,11 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to BLoC; OldFetchOrderMethod was already removed.",
                 "--cites", json.dumps(["OldFetchOrderMethod"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4074,11 +4074,11 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "fetchId is a BLoC-internal counter; bug is layer-local.",
                 "--cites", json.dumps(["fetchId"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4111,11 +4111,11 @@ class TestRecommendedApproachSingleLayerGate(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
-                "--single-layer-justification", "fetchId is a BLoC-internal counter scoped to OrderBLoC.",
+                "--single-layer-justification", "fetchId is a BLoC-internal counter scoped to Service.",
                 "--cites", json.dumps(["lib/blocs/order_bloc.dart:42"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
@@ -4196,10 +4196,10 @@ class TestVerifyCheck13(unittest.TestCase):
                  "relevance": "runner-up", "framing": "runner-up"},
             ]
             data["fix_path_helpers"] = [
-                {"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"},
+                {"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"},
             ]
             data["inbound_callers"] = [
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "OrderBLoC.handleRefresh",
+                {"helper_qn": "Service.loadData", "caller_qn": "Service.handleRefresh",
                  "file_line": "lib/blocs/order_bloc.dart:5"},
             ]
             if data.get("recommended_approach"):
@@ -4225,16 +4225,16 @@ class TestVerifyCheck13(unittest.TestCase):
                  "relevance": "runner-up", "framing": "runner-up"},
             ]
             data["fix_path_helpers"] = [
-                {"qn": "OrderBLoC.fetchOrder", "file_line": "lib/blocs/order_bloc.dart:42"},
+                {"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"},
             ]
             data["inbound_callers"] = [
-                {"helper_qn": "OrderBLoC.fetchOrder", "caller_qn": "OrderBLoC.handleRefresh",
+                {"helper_qn": "Service.loadData", "caller_qn": "Service.handleRefresh",
                  "file_line": "lib/blocs/order_bloc.dart:5"},
             ]
             if data.get("recommended_approach"):
                 # Has justification but no cites.
                 data["recommended_approach"]["single_layer_justification"] = (
-                    "Bug is layer-local to OrderBLoC."
+                    "Bug is layer-local to Service."
                 )
                 data["recommended_approach"].pop("cites", None)
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
@@ -4291,11 +4291,11 @@ class TestVerifyCheck13(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to BLoC layer; consumer chain confirms layer-locality.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             v = _run(["--devforge-dir", str(devforge), "verify"])
@@ -5785,9 +5785,9 @@ class TestDetectLiteralReplacement(unittest.TestCase):
     """Tests for _detect_literal_replacement module-level helper."""
 
     def test_returns_source_literal_replace_in_call(self):
-        """'replace fetchOrder(false) with ...' → 'false'."""
+        """'replace loadData(false) with ...' → 'false'."""
         result = research_helper._detect_literal_replacement(
-            "replace fetchOrder(false) with fetchOrder(isExternalUser.value)"
+            "replace loadData(false) with loadData(isExternalUser.value)"
         )
         self.assertEqual(result, "false")
 
@@ -5848,14 +5848,14 @@ class TestVerifyCheck17(unittest.TestCase):
         data["findings"].append({
             "surface": "OrderViewer component",
             "file_line": "OrderViewer.vue:290",
-            "relevance": "hardcoded false literal for splitOnSNA",
+            "relevance": "hardcoded false literal for flag",
             "framing": "primary",
         })
 
         # Set approach with the given description.
         data["approaches"] = [
             {
-                "name": "Fix splitOnSNA literal",
+                "name": "Fix flag literal",
                 "description": approach_desc,
                 "addresses_hypotheses": ["unstable comparator in inline sort"],
                 "does_not_cover": [],
@@ -5865,7 +5865,7 @@ class TestVerifyCheck17(unittest.TestCase):
             }
         ]
         data["recommended_approach"] = {
-            "name": "Fix splitOnSNA literal",
+            "name": "Fix flag literal",
             "rationale": rationale,
             "hypotheses_addressed": ["unstable comparator in inline sort"],
             "hypotheses_not_covered": [],
@@ -6087,9 +6087,9 @@ class TestDetectArgDuplication(unittest.TestCase):
         self.assertEqual(result, ("a?.b", 2))
 
     def test_detect_arg_duplication_finds_method_call_target_dup(self):
-        """Empirical splitOnSNA case: isExternalUser.value passed twice."""
+        """Empirical flag case: isExternalUser.value passed twice."""
         result = research_helper._detect_arg_duplication(
-            "orderBLoC.fetchOrder(quoteId, isExternalUser.value, isExternalUser.value, getQuoteType, isEmeaUser.value)"
+            "orderBLoC.loadData(quoteId, isExternalUser.value, isExternalUser.value, getQuoteType, isEmeaUser.value)"
         )
         self.assertEqual(result, ("isExternalUser.value", 2))
 
@@ -6128,7 +6128,7 @@ class TestDetectArgDuplication(unittest.TestCase):
         result = research_helper._detect_arg_duplication("f(g(x), y)")
         self.assertIsNone(result)
         # Even when the nested-call shape WOULD contain duplication if parsed:
-        result_dup = research_helper._detect_arg_duplication("fetchOrder(makeId(user), value, value)")
+        result_dup = research_helper._detect_arg_duplication("loadData(makeId(user), value, value)")
         self.assertIsNone(result_dup)
 
 
@@ -6166,7 +6166,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -6209,12 +6209,12 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
                 "--proposed-call-shape",
-                "orderBLoC.fetchOrder(quoteId, isExternalUser.value, isExternalUser.value, getQuoteType, isEmeaUser.value)",
+                "orderBLoC.loadData(quoteId, isExternalUser.value, isExternalUser.value, getQuoteType, isEmeaUser.value)",
             ])
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("argument duplication", r.stderr)
@@ -6231,16 +6231,16 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             data = self._read_report(devforge)
             rec = data.get("recommended_approach") or {}
-            self.assertEqual(rec.get("proposed_call_shape"), "fetchOrder(quoteId, fetchId)")
+            self.assertEqual(rec.get("proposed_call_shape"), "loadData(quoteId, fetchId)")
 
     def test_set_recommended_approach_accepts_when_no_shape_required(self):
         """Bug mode + multi-layer + rationale WITHOUT literal-replacement → no shape required; exit 0."""
@@ -6271,7 +6271,7 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
@@ -6296,11 +6296,11 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("could not be fully parsed", r.stderr)
@@ -6385,7 +6385,7 @@ class TestVerifyCheck18(unittest.TestCase):
             self._build_check18_state(
                 devforge,
                 proposed_call_shape=(
-                    "orderBLoC.fetchOrder(quoteId, isExternalUser.value, "
+                    "orderBLoC.loadData(quoteId, isExternalUser.value, "
                     "isExternalUser.value, getQuoteType, isEmeaUser.value)"
                 ),
             )
@@ -6405,7 +6405,7 @@ class TestVerifyCheck18(unittest.TestCase):
         """Bug mode + proposed_call_shape without dup → check 18 NOT fired."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
-            self._build_check18_state(devforge, proposed_call_shape="fetchOrder(quoteId, fetchId)")
+            self._build_check18_state(devforge, proposed_call_shape="loadData(quoteId, fetchId)")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertNotIn("check 18", r.stderr)
 
@@ -6466,16 +6466,16 @@ class TestRenderPatch9(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard is the minimal fix",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps([]),
                 "--single-layer-justification", "Bug is local to the BLoC layer.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             output = self._render(devforge)
             self.assertIn("**Proposed call shape:**", output)
-            self.assertIn("fetchOrder(quoteId, fetchId)", output)
+            self.assertIn("loadData(quoteId, fetchId)", output)
 
     def test_render_omits_proposed_call_shape_when_absent(self):
         """When proposed_call_shape is absent from state, render omits the sub-block."""
@@ -7133,11 +7133,11 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--devforge-dir", str(devforge), "set-recommended-approach",
                 "--name", "Option A: fetch-id guard",
                 "--rationale", "Fetch-id guard closes the race",
-                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in fetchOrder"]),
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
                 "--hypotheses-not-covered", json.dumps(["subscription resubscribed mid-stream"]),
                 "--single-layer-justification", "Bug is local to the BLoC layer; FetchConsumer confirms layer boundary.",
                 "--cites", json.dumps(["FetchConsumer.handleResult"]),
-                "--proposed-call-shape", "fetchOrder(quoteId, fetchId)",
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
 
