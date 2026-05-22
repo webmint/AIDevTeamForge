@@ -125,7 +125,7 @@ def _load_index_files(devforge_dir: Path, pkg_path: str) -> Optional[List[str]]:
       - pkg_path not in index.json["packages"] (after progressive-suffix match)
 
     Progressive-suffix match: state may register a package with a monorepo
-    prefix (e.g., `db-cse-ui-strata/apps/app-web`) while index.json keys
+    prefix (e.g., `module/apps/app-web`) while index.json keys
     are package-relative (e.g., `apps/app-web`). Try the literal path
     first, then strip leading path components one at a time until a hit
     or exhaustion. First match wins.

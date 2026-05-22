@@ -227,7 +227,7 @@ def _resolve_internal_dep(
     current state, and the on-disk dir is nested below project_root
     inside a workspace folder rather than directly at
     `<project_root>/<dep_name>`. testForge20's
-    `db-cse-ui-strata/packages/pkg-cse-core` shape was the concrete
+    `module/packages/foo` shape was the concrete
     case that motivated this check.
     """
     # Check 1: registered packages in current state.

@@ -174,7 +174,7 @@ def _find_section(state: dict, number: str):
     route to the architecture copy and silently miss the workflow copy.
     The Phase 5 spec convention numbers each bucket non-overlappingly
     (2.x = architecture, 3.x = code-quality, 5.x = domain, 6.x = workflow,
-    matching cse-strata-ws-forge/constitution.md), so cross-bucket
+    matching wrapper/constitution.md), so cross-bucket
     duplicates are a caller bug to avoid, not a helper bug to enforce.
     """
     for bucket_key in ("architecture_rules", "code_quality_standards",

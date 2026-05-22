@@ -72,7 +72,7 @@ def _extract_package(file_path: str) -> str:
 
     Examples:
       'apps/app-web/src/foo.vue' → 'apps/app-web'
-      'pkg-cse-core/utils.ts'    → 'pkg-cse-core'  (file at index 1)
+      'foo/utils.ts'    → 'foo'  (file at index 1)
       'src/admin/Products.vue'   → 'src/admin'
       'foo.vue'                  → 'foo.vue'
       './apps/web/x.ts'          → 'apps/web'
@@ -95,7 +95,7 @@ def _extract_package(file_path: str) -> str:
         # Single component — no directory structure, return as-is.
         return parts[0]
     # Two components: if the second is a file (contains '.'), the first
-    # component IS the package (flat-package layout like pkg-cse-core/utils.ts).
+    # component IS the package (flat-package layout like foo/utils.ts).
     # If the second has no dot it's a directory → return both (src/admin).
     if len(parts) == 2 and "." in parts[1]:
         return parts[0]

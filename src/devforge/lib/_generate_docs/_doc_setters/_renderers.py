@@ -182,7 +182,7 @@ def _render_application_routes_table(entries: List[Dict[str, str]]) -> str:
 def _render_navigation_guards_list(entries: List[Dict[str, str]]) -> str:
     """Each entry: {name, role} → numbered list item.
 
-    Format: `1. **<name>** — <role>`. The `**bold**` matches cse-strata bar
+    Format: `1. **<name>** — <role>`. The `**bold**` matches reference bar
     convention. Numbering reflects guard chain order from input.
     """
     lines: List[str] = []
@@ -206,7 +206,7 @@ def _render_module_map_sections(entries: Dict[str, List[Dict[str, str]]]) -> str
     omitted entirely (cleaner render than empty headers).
 
     Sub-headings emit as `### Infrastructure Packages` etc., matching
-    cse-strata bar literal style.
+    reference bar literal style.
     """
     section_order = (
         ("infrastructure", "Infrastructure Packages"),
@@ -275,7 +275,7 @@ def _render_conventions_subsections(entries: Dict[str, List[str]]) -> str:
 
     Input dict: each key maps to list of bullet-point strings. Sub-sections
     with empty lists are omitted. Sub-headings use `**bold**` paragraph form
-    (cse-strata bar literal style: `**Naming**\\n- bullet\\n...`).
+    (reference bar literal style: `**Naming**\\n- bullet\\n...`).
     """
     section_order = (
         ("naming", "Naming"),

@@ -321,8 +321,8 @@ def _resolve_effective_project_root(
       1. `<project_root>/package.json` exists → standalone mode, use project_root.
       2. `init.yaml project_root:` value → use that as relpath under project_root.
       3. Common first-segment across package_paths (when 2+ packages share
-         a parent dir, e.g. `db-cse-ui-strata/apps/app-web` and
-         `db-cse-ui-strata/packages/pkg-cse-core` share `db-cse-ui-strata`).
+         a parent dir, e.g. `module/apps/app-web` and
+         `module/packages/foo` share `module`).
       4. Fallback: project_root.
     """
     project_root = project_root.resolve()
@@ -344,8 +344,8 @@ def _resolve_effective_project_root(
 def _common_path_prefix(packages: List[str]) -> Optional[str]:
     """Return the deepest common parent directory across all package paths.
 
-    `packages` are project-relative paths like `db-cse-ui-strata/apps/app-web`
-    or `pkg-cse-core`. The returned value is the first path segment shared by
+    `packages` are project-relative paths like `module/apps/app-web`
+    or `foo`. The returned value is the first path segment shared by
     every entry — used as a fall-back project label in wrapper-mode setups
     where the wrapper folder is structurally meaningless and every package
     sits under a single inner monorepo dir.
@@ -382,7 +382,7 @@ def _resolve_project_label(
       2. `PROJECT_NAME` in `.devforge/project-config.json` (populated by
          a future `/configure` command — null until then).
       3. `project_root` in `.devforge/init.yaml` (populated by `/init-forge`;
-         in wrapper mode this is the inner monorepo dir, e.g. `db-cse-ui-strata`;
+         in wrapper mode this is the inner monorepo dir, e.g. `module`;
          in standalone mode it's `.` and skipped).
       4. Common first-path-segment across all package paths (wrapper-mode
          monorepos: every package lives under the same inner dir).
@@ -912,7 +912,7 @@ def _extract_workspace_package_names(project_root: Path) -> List[str]:
 def _build_dep_graph_mermaid(project_root: Path) -> str:
     """Render `graph TD` mermaid syntax of cross-workspace internal deps.
 
-    Format mirrors the cse-strata bar reference:
+    Format mirrors the reference bar reference:
       graph TD
           a[pkg-a]
           b[pkg-b]
