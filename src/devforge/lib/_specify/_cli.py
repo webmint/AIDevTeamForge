@@ -63,6 +63,7 @@ from ._cmds_phase4_verify import (
 )
 from ._cmds_handoff import (
     cmd_find_handoffs,
+    cmd_finalize_handoff,
     cmd_import_handoff,
 )
 from ._cmds_phase5 import (
@@ -589,6 +590,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to handoff.json (absolute or relative to cwd).",
     )
     sp.set_defaults(func=cmd_import_handoff)
+
+    sp = sub.add_parser(
+        "finalize-handoff",
+        help="Emit specify->plan handoff.json from approved specify state.",
+    )
+    sp.add_argument(
+        "--emit-handoff-json", dest="emit_handoff_json", default=None,
+        help=(
+            "Override output path for handoff.json. "
+            "Defaults to {specs-root}/{spec_number}-{feature_slug}/handoff.json."
+        ),
+    )
+    sp.add_argument(
+        "--specs-root", dest="specs_root", default="specs",
+        help="Root directory for specs (default: 'specs').",
+    )
+    sp.add_argument(
+        "--completed-at", dest="completed_at", default=None,
+        help=(
+            "ISO-8601 UTC timestamp for specify_completed_at. "
+            "Defaults to current UTC time. Use for deterministic tests."
+        ),
+    )
+    sp.set_defaults(func=cmd_finalize_handoff)
 
     sp = sub.add_parser(
         "find-handoffs",

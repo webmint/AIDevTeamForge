@@ -3523,7 +3523,9 @@ class TestPhase5RenderPlanHandoff(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             for needle in (
                 "## Manual next step — run /plan",
-                "No automated handoff. Restart Claude Code",
+                "specs/001-test-spec/handoff.json) is written for /plan",
+                "auto-discovery reader is not yet wired",
+                "Restart Claude Code",
                 "/plan specs/001-test-spec/spec.md",
                 "Spec status: Approved",
                 "Spec type: feature_addition",

@@ -1,8 +1,13 @@
-"""Handoff subcommands: import-handoff + find-handoffs.
+"""Handoff subcommands: import-handoff + find-handoffs + finalize-handoff.
 
 Pre-phase (Phase 0.4) helpers that bridge research_helper finalize-handoff
 and discover_helper finalize-handoff output into specify-state.json
 pre-seeded fields.
+
+finalize-handoff (Phase 0.5 — specify -> plan producer):
+  Reads specify-state.json, builds the specify Handoff dataclass,
+  validates it, and writes handoff.json to specs/{N}-{slug}/ (or
+  --emit-handoff-json override).  State is read-only; no mutation.
 
 import-handoff:
   Reads a handoff.json produced by research_helper or discover_helper
@@ -25,6 +30,8 @@ Stdlib only. Python 3.8+.
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import datetime as _datetime_module
 import json
 import os
 import re
@@ -48,6 +55,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 from _research import handoff_schema as research_handoff_schema  # noqa: E402  type: ignore[import]
 from _discover import handoff_schema as discover_handoff_schema  # noqa: E402  type: ignore[import]
+from . import handoff_schema as specify_handoff_schema  # noqa: E402
 
 # Legacy alias used by the existing function signatures that reference
 # handoff_schema.Handoff, handoff_schema.Constraint, etc.
@@ -742,4 +750,210 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
             )
         )
 
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# cmd_finalize_handoff (specify -> plan producer).
+# ---------------------------------------------------------------------------
+
+
+def cmd_finalize_handoff(args):
+    # type: (argparse.Namespace) -> int
+    """Read specify state -> build specify Handoff -> validate -> write handoff.json.
+
+    State is read-only.  No mutation of specify-state.json.
+
+    Trust boundary: this verb does NOT verify the user approved the spec, and
+    does NOT re-run specify's content gates (verify-coverage /
+    verify-ac-subsection-coverage / verify-ac-shape). It cannot: /specify
+    leaves spec status "Draft" through approval (the Draft->Approved flip is
+    owned by /plan), so there is no state field that proves "approved". The
+    seam is the /specify Phase 5 command spec calling this verb ONLY on the
+    Phase 5.3 approve branch, after Phase 4 rendered + Phase 4.9 verifiers ran.
+    Re-running gates here would duplicate gate logic (a second source of
+    truth). Render-completeness is still enforced: missing spec_number /
+    feature_slug fails fast, and empty/partial section content fails schema
+    validation (e.g. empty overview).
+
+    Args exposed via CLI:
+      --devforge-dir     (required, inherited from parent parser)
+      --emit-handoff-json  (optional; default: {specs_root}/{number}-{slug}/handoff.json)
+      --specs-root         (optional; default: "specs")
+      --completed-at       (optional; ISO-8601 UTC string; defaults to now)
+    """
+    devforge_dir = args.devforge_dir
+    specs_root = getattr(args, "specs_root", None) or "specs"
+    completed_at_override = getattr(args, "completed_at", None)
+
+    # Load state (read-only).
+    try:
+        state = _load_state(devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("finalize-handoff: cannot load state: {0}".format(err))
+
+    # No status guard: /specify leaves status "Draft" through approval (the
+    # caller -- /specify Phase 5.3 approve branch -- is the gate). Render
+    # completeness is enforced below (spec_number/feature_slug) and by schema
+    # validation (e.g. empty overview fails).
+
+    # Resolve spec_path.
+    spec_number = state.get("spec_number") or ""
+    feature_slug = state.get("feature_slug") or ""
+    if not spec_number or not feature_slug:
+        return _die(
+            "finalize-handoff: spec_number and feature_slug must be set in state"
+            " (run assign-spec-number + assign-feature-name first)",
+            code=2,
+        )
+    spec_path = "{0}/{1}-{2}/spec.md".format(specs_root, spec_number, feature_slug)
+
+    # Resolve specify_completed_at.
+    if completed_at_override:
+        specify_completed_at = completed_at_override.strip()
+    else:
+        specify_completed_at = (
+            _datetime_module.datetime.now(_datetime_module.timezone.utc)
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
+
+    # Build Classification. Wrapped in try/except so a corrupt/legacy
+    # spec_type (not in SPEC_TYPE_ENUM) yields a clean error + exit code,
+    # not a raw traceback.
+    try:
+        classification = specify_handoff_schema.Classification(
+            spec_number=state.get("spec_number") or "",
+            feature_name=state.get("feature_name") or "",
+            feature_slug=state.get("feature_slug") or "",
+            spec_type=state.get("spec_type") or "",
+            spec_type_rationale=state.get("spec_type_rationale") or "",
+            status=state.get("status") or "",
+        )
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed building classification: {0}".format(err),
+            code=2,
+        )
+
+    # Build SpecSeeds — expand each list into its schema dataclass.
+    try:
+        acceptance_criteria = [
+            specify_handoff_schema.AcceptanceCriterion(**ac)
+            for ac in (state.get("acceptance_criteria") or [])
+        ]
+        constraints = [
+            specify_handoff_schema.Constraint(**c)
+            for c in (state.get("constraints") or [])
+        ]
+        # Whitelist to specify's AffectedArea fields. discover-seeded state
+        # (via import-handoff) carries the discover-only key
+        # is_internal_extension_candidate, which the specify AffectedArea
+        # dataclass does not accept; /plan does not need it. Dropping it here
+        # keeps the greenfield /discover -> /specify -> /plan path working.
+        affected_areas = [
+            specify_handoff_schema.AffectedArea(**{
+                k: v for k, v in a.items()
+                if k in ("area", "files", "impact")
+            })
+            for a in (state.get("affected_areas") or [])
+        ]
+        out_of_scope = [
+            specify_handoff_schema.OutOfScopeItem(**o)
+            for o in (state.get("out_of_scope") or [])
+        ]
+        open_questions = [
+            specify_handoff_schema.OpenQuestion(**q)
+            for q in (state.get("open_questions") or [])
+        ]
+        risks = [
+            specify_handoff_schema.Risk(**r)
+            for r in (state.get("risks") or [])
+        ]
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed building spec_seeds: {0}".format(err),
+            code=2,
+        )
+
+    try:
+        spec_seeds = specify_handoff_schema.SpecSeeds(
+            overview=state.get("overview") or "",
+            acceptance_criteria=acceptance_criteria,
+            ac_subsection_na=dict(state.get("ac_subsection_na") or {}),
+            constraints=constraints,
+            affected_areas=affected_areas,
+            out_of_scope=out_of_scope,
+            open_questions=open_questions,
+            risks=risks,
+        )
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed building SpecSeeds: {0}".format(err),
+            code=2,
+        )
+
+    # Build Provenance from state["source"].
+    source = state.get("source") or {}
+    upstream_handoff_path = source.get("handoff_path") or None
+    upstream_handoff_kind = source.get("handoff_kind") or None
+
+    # Map completed_at from the correct source key based on kind.
+    upstream_completed_at = None  # type: Optional[str]
+    if upstream_handoff_kind == "research":
+        upstream_completed_at = source.get("research_completed_at") or None
+    elif upstream_handoff_kind == "discover":
+        upstream_completed_at = source.get("discover_completed_at") or None
+
+    try:
+        provenance = specify_handoff_schema.Provenance(
+            upstream_handoff_path=upstream_handoff_path,
+            upstream_handoff_kind=upstream_handoff_kind,
+            upstream_completed_at=upstream_completed_at,
+        )
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed building Provenance: {0}".format(err),
+            code=2,
+        )
+
+    downstream_links = specify_handoff_schema.DownstreamLinks()
+
+    # Build top-level Handoff.
+    try:
+        handoff = specify_handoff_schema.Handoff(
+            schema_version=specify_handoff_schema.SCHEMA_VERSION,
+            handoff_kind=specify_handoff_schema.HANDOFF_KIND,
+            spec_path=spec_path,
+            specify_completed_at=specify_completed_at,
+            classification=classification,
+            spec_seeds=spec_seeds,
+            provenance=provenance,
+            downstream_links=downstream_links,
+        )
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed: {0}".format(err),
+            code=2,
+        )
+
+    # Determine emit path.
+    emit_path = getattr(args, "emit_handoff_json", None)
+    if not emit_path:
+        emit_path = "{0}/{1}-{2}/handoff.json".format(specs_root, spec_number, feature_slug)
+
+    target = Path(emit_path)
+    if not target.is_absolute():
+        target = Path.cwd() / target
+    target = target.resolve()
+
+    # Atomic write.
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(dataclasses.asdict(handoff), target)
+    except OSError as err:
+        return _die(
+            "finalize-handoff: cannot write {0}: {1}".format(target, err)
+        )
+
+    sys.stdout.write("wrote: {0}\n".format(target))
     return 0
