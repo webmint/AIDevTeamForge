@@ -4,7 +4,7 @@
 - **Step 6 (parity 4-run)** — user-driven offline; needs testForge20 re-install first (Step-5 install predates Step-7 wirings), then 4 `plan.md` outputs handed back for the variance verdict. This is the last gate to call plan-02 fully complete.
 - **Step 7.7 (render-findings reads structured `spec_seeds` vs re-parse `spec.md`)** — DEFERRED as YAGNI; spec.md parse works, pick up only if re-parse fragility is observed.
 
-Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline).
+Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ⏸ DRAFTED-NOT-STARTED** (orchestrator-mediated specialist consultation — fixes a latent bug: subagents can't spawn subagents, so architect.md's "invoke the specialist" is impossible; redesign to orchestrator-relayed + controlled-shape).
 **Date**: 2026-05-15 (status updated 2026-05-23)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -317,6 +317,40 @@ specs/NNN/spec.md                   → WHAT/WHERE
 - Cross-check: DONE 2026-05-23 (with the 7.1-7.3 core). Flipped the now-false "/plan's auto-discovery reader is not yet wired" claim at `/specify` main.md lines 19/773/781 → "auto-discovers"; also flipped the same claim in the helper string `_specify/_render.py` (+ its assertion in `test_specify_helper.py`), the consumer-overlay `src/CLAUDE.md` /specify entry, and the `CLAUDE.md` pipeline-handoff index row (NOT YET WIRED → WIRED). Historical "Shipped 2026-05-22" notes in `1.5-SPECIFY-PLAN-HANDOFF-PLAN.md` left as point-in-time record.
 
 **Depends on**: Step 1+2+3 (the command + helper must exist). Independent of Step 4 (architect) and orthogonal to Step 6 (parity) — though a fresh parity run after Step 7 should re-baseline, since the Phase 0a.5 insert changes the rendered plan for handoff-seeded specs.
+
+### Step 8 — Orchestrator-mediated specialist consultation (latent-bug fix + generalization)
+
+**Status**: DRAFTED 2026-05-23. NOT STARTED.
+
+**Trigger / root cause**: `claude-code-guide` confirmed (against docs.claude.com) that **subagents cannot spawn other subagents** — the Agent/Task tool is withheld from any agent running as a subagent, with no config override (*"prevents infinite nesting"*). Therefore `src/agents/architect.md`'s current "Consulting Specialists → How to consult: **invoke the specialist** with the sub-question" instructs an **impossible action** — the architect (a subagent) physically cannot invoke `db-engineer`/`security-reviewer`/etc. This is a latent correctness bug, not cosmetic.
+
+**Goal**: make all specialist consultation **orchestrator-mediated** and **controlled-shape**. The `/plan` orchestrator (the LLM following main.md) is the only actor that can invoke specialists; the architect becomes a pure decision/synthesis function that *requests* consults rather than performing them. `/plan` may consult **any** available specialist for expertise: `architect`, `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `mobile-engineer`, `devops-engineer`, `qa-engineer`.
+
+**Tasks**:
+
+8.1 **Fix `src/agents/architect.md` consultation model** (latent-bug fix; via `claude-code-guide` → `instruction-author` → `instruction-reviewer` loop):
+   - Rewrite "Consulting Specialists → How to consult" from "invoke the specialist" → the architect **emits a structured consultation request** (named specialist + specific sub-question + the context the orchestrator needs) in its output; it does NOT invoke anyone.
+   - Retain verbatim: the when-to-consult matrix (reframed as "flag these to the orchestrator"), the synthesis rule (architect synthesizes specialist input the **orchestrator relays back**), the termination rule, the never-consult-the-asker rule, the Output Format for Decisions.
+   - Affirm: architect NEVER writes implementation code and is NEVER assigned implementation work (no "architecture implementation" carve-out — zero-escape-hatch).
+
+8.2 **`/plan` orchestrator consultation loop** (`src/commands/plan/main.md`, Phase 1.3): define the relay — orchestrator invokes `architect` → architect returns decision + zero-or-more consultation requests → orchestrator invokes each named specialist with the architect's sub-question + context → orchestrator re-invokes `architect` with the specialists' input → architect synthesizes the final decision. Architect remains the decision-authority/synthesizer; the other specialists supply domain input only. The orchestrator may also consult a specialist directly when the command spec calls for it (not only on architect's request).
+
+8.3 **Controlled-shape consultation records** (helper-owns-shape, per `feedback_helper_owns_shape_principle`): each consult is recorded in a fixed shape — `(specialist, sub-question, input-summary, accepted | modified | rejected, cites)`. Generalize the existing prose-only plan.md "Architect Consultation" section into a structured **"Specialist Consultation"** block. DESIGN CHOICE (confirm before building): emit the block skeleton via a `plan_helper` verb (helper-owns-shape, preferred) vs a hand-authored main.md template. Lean: helper verb (`render-consultation-block` or extend an existing one) so the structure is mechanically owned, not prose-enforced.
+
+8.4 **Cross-check**: grep that no shipped agent/command file instructs a subagent to invoke another subagent (the same latent bug may exist in other `src/agents/*.md` consult sections — e.g. any agent whose prose says "invoke X agent"). Reconcile each to the orchestrator-mediated pattern or flag for its owning command.
+
+**Verify**:
+- `grep -c "invoke the specialist\|invoke .*agent" src/agents/architect.md` shows no instruction for the architect to spawn another agent.
+- `src/commands/plan/main.md` Phase 1.3 defines the orchestrator-relay loop (architect request → orchestrator invokes specialist → re-feed → synthesis).
+- Consultation records in plan.md follow the fixed `(specialist, sub-question, input, accepted/modified/rejected, cites)` shape.
+- `instruction-author` + `instruction-reviewer` clear on both files; `claude-code-guide` consulted for the consultation-coordination convention.
+
+**Depends on**: Step 1+3 (the command + main.md must exist — they do). Independent of Step 6/7. Touches `src/agents/architect.md` + `src/commands/plan/main.md` (+ possibly a new `plan_helper` verb for 8.3).
+
+### Handoff status (note — not a step)
+
+- **Inbound (specify → plan)**: WIRED 2026-05-23 (Step 7). `/plan` auto-discovers the sibling specify-handoff and consumes the upstream research/discover `plan_seeds`.
+- **Outbound (plan → breakdown)**: currently a **manual-next-step text block** only (`plan_helper render-breakdown-handoff`, Phase 4). A **structured `plan→breakdown handoff.json`** is intentionally **NOT built yet**. Rationale: building a producer before its consumer exists creates "not yet wired" debt (exactly what specify→plan incurred and Step 7's `2c2cad2` had to clean up). **Defer to the `/breakdown` refactor** — design the plan→breakdown structured handoff (architecture decisions + layer map + file impact + consultation records as breakdown-seeds) **together with `/breakdown`'s consumer**, producer+consumer in one cycle. Until then the text block is the bridge.
 
 ---
 
