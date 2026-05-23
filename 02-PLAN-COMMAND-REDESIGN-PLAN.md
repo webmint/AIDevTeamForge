@@ -4,7 +4,7 @@
 - **Step 6 (parity 4-run)** — user-driven offline; needs testForge20 re-install first (Step-5 install predates Step-7 wirings), then 4 `plan.md` outputs handed back for the variance verdict. This is the last gate to call plan-02 fully complete.
 - **Step 7.7 (render-findings reads structured `spec_seeds` vs re-parse `spec.md`)** — DEFERRED as YAGNI; spec.md parse works, pick up only if re-parse fragility is observed.
 
-Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ⏸ DRAFTED-NOT-STARTED** (orchestrator-mediated specialist consultation — fixes a latent bug: subagents can't spawn subagents, so architect.md's "invoke the specialist" is impossible; redesign to orchestrator-relayed + controlled-shape).
+Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ⏸ DRAFTED-NOT-STARTED** (orchestrator-mediated specialist consultation — fixes a latent bug: subagents can't spawn subagents, so architect.md's "invoke the specialist" is impossible; redesign to orchestrator-relayed + controlled-shape; consult any planning-relevant agent incl. FE/BE for expertise) · **Step 9 ⏸ DRAFTED-NOT-STARTED** (plan→breakdown structured handoff, producer-side now per "consumer obeys producer"; `/breakdown` consumer pending).
 **Date**: 2026-05-15 (status updated 2026-05-23)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -324,7 +324,7 @@ specs/NNN/spec.md                   → WHAT/WHERE
 
 **Trigger / root cause**: `claude-code-guide` confirmed (against docs.claude.com) that **subagents cannot spawn other subagents** — the Agent/Task tool is withheld from any agent running as a subagent, with no config override (*"prevents infinite nesting"*). Therefore `src/agents/architect.md`'s current "Consulting Specialists → How to consult: **invoke the specialist** with the sub-question" instructs an **impossible action** — the architect (a subagent) physically cannot invoke `db-engineer`/`security-reviewer`/etc. This is a latent correctness bug, not cosmetic.
 
-**Goal**: make all specialist consultation **orchestrator-mediated** and **controlled-shape**. The `/plan` orchestrator (the LLM following main.md) is the only actor that can invoke specialists; the architect becomes a pure decision/synthesis function that *requests* consults rather than performing them. `/plan` may consult **any** available specialist for expertise: `architect`, `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `mobile-engineer`, `devops-engineer`, `qa-engineer`.
+**Goal**: make all specialist consultation **orchestrator-mediated** and **controlled-shape**. The `/plan` orchestrator (the LLM following main.md) is the only actor that can invoke specialists; the architect becomes a pure decision/synthesis function that *requests* consults rather than performing them. `/plan` may consult any planning-relevant agent for expertise: `architect` (synthesizer/decision-authority), `frontend-engineer` + `backend-engineer` (consulted for **layer feasibility / FE-BE patterns** — consulted for expertise, NEVER assigned implementation here; implementation is `/execute-task`'s job), `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `mobile-engineer`, `devops-engineer`, `qa-engineer`. The remaining four agents (`code-reviewer`, `runtime-debugger`, `tech-writer`, `ac-verifier`) are out of `/plan`'s consult scope — they serve later phases (review / verify / finalize), not planning.
 
 **Tasks**:
 
@@ -347,10 +347,34 @@ specs/NNN/spec.md                   → WHAT/WHERE
 
 **Depends on**: Step 1+3 (the command + main.md must exist — they do). Independent of Step 6/7. Touches `src/agents/architect.md` + `src/commands/plan/main.md` (+ possibly a new `plan_helper` verb for 8.3).
 
+### Step 9 — plan → breakdown structured handoff (producer side)
+
+**Status**: DRAFTED 2026-05-23. NOT STARTED. Decision (user): build the producer now — "consumer obeys producer." `/plan` defines the contract; the refactored `/breakdown` conforms. **Producer-only: `/breakdown` consumer is pending — no doc may claim a reader exists** (avoid the specify→plan stale-claim trap that `2c2cad2` cleaned up).
+
+**Goal**: `/plan` emits a structured handoff carrying its decisions as breakdown-seeds, so the future `/breakdown` consumes structured data instead of re-parsing `plan.md`. Mirrors the specify→plan pattern (schema + finalize verb + atomic sibling-file write).
+
+**Tasks** (test-first per `feedback_test_first_python_helpers`; via `python-engineer` → `python-reviewer` loop):
+
+9.1 **Schema** (`src/devforge/lib/_plan/handoff_schema.py` or plan_helper-side): `Handoff` with `schema_version`, `handoff_kind = "plan"` (constant), `plan_path`, `plan_completed_at`, `provenance` (pointer back to the upstream specify-handoff), and `breakdown_seeds`. Design `breakdown_seeds` from the plan.md template (Layer Map, File Impact per-file action, Architecture Decisions, Risk Assessment) + the `src/_pending/commands/breakdown.md` draft so the contract anticipates what `/breakdown` needs to emit atomic tasks: layer map (area→layer), file impact (per file: create/modify/verify), architecture decisions, dependencies/ordering hints, AC→file mapping, risks, and the Step-8 controlled-shape specialist-consultation records.
+
+9.2 **Producer verb** `plan_helper finalize-handoff` (mirror `specify_helper finalize-handoff`): reads the rendered `plan.md` (+ resolved spec/state), builds + validates the handoff, atomic-writes `specs/NNN-<feature>/plan-handoff.json` (sibling to `plan.md`; **separate filename** from specify's `handoff.json` — distinct `handoff_kind`s must not share a file). No status mutation. Tests round-trip via a real rendered `plan.md`.
+
+9.3 **Wire main.md Phase 4**: on approval, call `finalize-handoff` to write `plan-handoff.json` and surface the path; **KEEP** the existing `render-breakdown-handoff` manual text block as the human bridge (the user still launches `/breakdown` manually). Both coexist: structured handoff for the future consumer + text block for the user now.
+
+9.4 **Docs**: CLAUDE.md pipeline-handoff index gains a `plan → breakdown` row marked **producer-only, consumer pending**. Every mention says producer-side — never "wired".
+
+**Verify**: schema + `finalize-handoff` verb + tests green; `specs/NNN/plan-handoff.json` written on `/plan` approval, validates against the schema; `grep` shows no doc claiming a `/breakdown` reader exists.
+
+**Open design Qs**: (a) filename `plan-handoff.json` (recommended, separate from specify's `handoff.json`). (b) final `breakdown_seeds` field set — reconfirm against `/breakdown`'s real needs at its refactor (the producer contract may be revised then, which is fine — that is the consumer obeying, then negotiating).
+
+**Consumer handshake (user, 2026-05-23)**: when `/breakdown`'s consumer is built, the user will **check this `/plan` producer side first** and align the consumer to whatever this producer emits (producer is the contract; consumer conforms, then any revision is negotiated from here).
+
+**Depends on**: Step 1+3 (plan.md producer exists). Soft-dep Step 8 (consultation records feed `breakdown_seeds` — can stub if Step 8 lands later).
+
 ### Handoff status (note — not a step)
 
 - **Inbound (specify → plan)**: WIRED 2026-05-23 (Step 7). `/plan` auto-discovers the sibling specify-handoff and consumes the upstream research/discover `plan_seeds`.
-- **Outbound (plan → breakdown)**: currently a **manual-next-step text block** only (`plan_helper render-breakdown-handoff`, Phase 4). A **structured `plan→breakdown handoff.json`** is intentionally **NOT built yet**. Rationale: building a producer before its consumer exists creates "not yet wired" debt (exactly what specify→plan incurred and Step 7's `2c2cad2` had to clean up). **Defer to the `/breakdown` refactor** — design the plan→breakdown structured handoff (architecture decisions + layer map + file impact + consultation records as breakdown-seeds) **together with `/breakdown`'s consumer**, producer+consumer in one cycle. Until then the text block is the bridge.
+- **Outbound (plan → breakdown)**: today a **manual-next-step text block** only (`plan_helper render-breakdown-handoff`, Phase 4). A **structured `plan→breakdown handoff.json` will be built now (producer-side) — see Step 9.** Decision (user, 2026-05-23): "consumer obeys producer" — `/plan` defines the contract; `/breakdown` conforms to it when refactored. To avoid the stale-"reader exists" trap that bit specify→plan, the producer + every doc that mentions it must state explicitly **producer-side; `/breakdown` consumer pending** (NOT "wired").
 
 ---
 
