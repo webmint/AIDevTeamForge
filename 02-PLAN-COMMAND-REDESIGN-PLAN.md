@@ -1,7 +1,11 @@
 # PLAN-COMMAND-REDESIGN-PLAN
 
-**Status**: Draft — pending user approval
-**Date**: 2026-05-15
+**Status**: SHIPPED, PARITY-PENDING (2026-05-23) — all code/spec work done + committed on `develop-2.0-init` (8 commits, head `fa8d9ca`). `/plan` ports the v2 shape + helper (8 verbs, 84 tests) + re-scoped architect + emitter/install + upstream-handoff consumption. Two items open by design:
+- **Step 6 (parity 4-run)** — user-driven offline; needs testForge20 re-install first (Step-5 install predates Step-7 wirings), then 4 `plan.md` outputs handed back for the variance verdict. This is the last gate to call plan-02 fully complete.
+- **Step 7.7 (render-findings reads structured `spec_seeds` vs re-parse `spec.md`)** — DEFERRED as YAGNI; spec.md parse works, pick up only if re-parse fragility is observed.
+
+Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline).
+**Date**: 2026-05-15 (status updated 2026-05-23)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
 
