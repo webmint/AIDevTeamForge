@@ -63,19 +63,36 @@ Check for a sibling handoff via the helper:
 .devforge/lib/plan_helper read-specify-handoff <resolved-path>
 ```
 
-- Stdout `no-handoff` → tell the user `"No upstream handoff; planning cold from the spec."` and proceed to Phase 0b with the resolved path.
+- Stdout `no-handoff` → tell the user `"No upstream handoff; planning cold from the spec."` and proceed to Phase 0a.6 with the resolved path.
 - A 4-line block (lines `spec-handoff:`, `spec_seeds:`, `upstream_handoff_path:`, `upstream_handoff_kind:`) → read its `upstream_handoff_path` line:
-  - value `none` → tell the user `"Spec has no upstream research/discover handoff; planning cold."` and proceed to Phase 0b with the resolved path.
+  - value `none` → tell the user `"Spec has no upstream research/discover handoff; planning cold."` and proceed to Phase 0a.6 with the resolved path.
   - a path → render the plan seeds via the helper, passing the `spec-handoff:` value from the 4-line block as the argument:
 
     ```bash
     .devforge/lib/plan_helper render-plan-seeds <spec-handoff-path>
     ```
 
-    - Stdout `cold-no-plan-seeds` → tell the user `"Upstream handoff carries no plan seeds; planning cold."` and proceed to Phase 0b with the resolved path.
-    - A `## Upstream plan-seeds` block → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the HOW seed and is the authoritative starting point for Phase 0 (Research Evaluation — if it already cites canonical patterns or a recommended approach, you have prior art; calibrate research depth instead of rediscovering), Phase 1 (Technical Design), and Phase 1.3 (Architecture Decisions — where the architect consultation fires and the key design decisions are drafted). If your plan diverges from the upstream recommendation, state the divergence and why in the plan's "Architect Consultation" section — do not silently discard it. Then proceed to Phase 0b with the resolved path.
+    - Stdout `cold-no-plan-seeds` → tell the user `"Upstream handoff carries no plan seeds; planning cold."` and proceed to Phase 0a.6 with the resolved path.
+    - A `## Upstream plan-seeds` block → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the HOW seed and is the authoritative starting point for Phase 0 (Research Evaluation — if it already cites canonical patterns or a recommended approach, you have prior art; calibrate research depth instead of rediscovering), Phase 1 (Technical Design), and Phase 1.3 (Architecture Decisions — where the architect consultation fires and the key design decisions are drafted). If your plan diverges from the upstream recommendation, state the divergence and why in the plan's "Architect Consultation" section — do not silently discard it. Then proceed to Phase 0a.6 with the resolved path.
 
 Exit 2 from either helper means the sibling handoff is malformed or the upstream pointer is dangling/unknown — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
+
+## PHASE 0a.6: Spec drift check
+
+The spec may have been written against source files that changed since. This phase is informational/gate only — it surfaces drift in the spec's §4-cited files before planning starts.
+
+Check for drift via the helper:
+
+```bash
+.devforge/lib/cbm_sync_helper check-spec <resolved-path>
+```
+
+Stdout is one of four forms:
+
+- `current` — the spec's cited files are unchanged since it was stamped. Proceed silently to Phase 0b with the resolved path; no message needed.
+- `missing` — no drift stamp exists for this spec. Tell the user `"No drift stamp for this spec; proceeding."` and proceed to Phase 0b with the resolved path.
+- `drift <a>..<b> <file-1> <file-2> ...` — one or more spec-cited files changed since the spec was stamped. Tell the user the spec's cited files changed since it was stamped, listing the changed files from the `<file-...>` tokens. If the `drift` token carries no `<file-...>` tokens (only the two SHAs), do not claim specific files changed — tell the user the spec has drifted from its stamp but the cited-file list could not be computed (the spec file may have moved). Then ask via `AskUserQuestion` `"Spec-cited files changed since the spec was written — proceed with planning?"` — single-line text — with options `["proceed", "cancel"]`. On `cancel`, tell the user `"Re-check the spec against the changed files before re-running /plan."` and end the turn. On `proceed`, continue to Phase 0b with the resolved path.
+- `not-a-git-repo` (exit 2) — the drift check cannot run (no git repository / no HEAD / git binary missing). Tell the user `"Spec drift check unavailable (not a git repository); proceeding without it."` and proceed to Phase 0b with the resolved path. The drift check is advisory — a non-git target must NOT block planning.
 
 ## PHASE 0b: Status flip
 
@@ -141,6 +158,8 @@ For each signal, choose the appropriate research tool:
 - Use WebSearch to find current best practices and proven approaches.
 - Compare at least 2-3 alternatives with pros/cons.
 - Check library options: maintenance status, bundle size, community adoption.
+
+**Seed from upstream plan-seeds (do not relitigate settled alternatives):** If Phase 0a.5 surfaced an `## Upstream plan-seeds` block that already lists alternatives (a research handoff under "Alternatives considered"; a discover handoff under "Design options"), seed the alternatives comparison from those rather than rediscovering them. The 2+-alternatives architect invocation described in this Step 3 fires only for alternatives NOT already settled in the upstream plan-seeds. The Phase 1.3 mandatory architect consultation is unaffected — it fires unconditionally regardless of plan-seeds. When you seed from plan-seeds and therefore skip fresh alternative discovery, record that in the plan's "Architect Consultation" section, citing the upstream handoff. Do not contradict the upstream recommendation silently — a divergence must be stated with reasoning (this complements the divergence rule in Phase 0a.5).
 
 **Architect consultation: mandatory when 2+ architectural alternatives are being compared.**
 
@@ -213,6 +232,14 @@ The helper enumerates every §3 / §4 / §5 / §6 / §7 / §8 / §9 item with an
 - `[LANDS IN: ?]` on §7 lines → `[LANDS IN: Constitution Compliance]` or `[LANDS IN: Risk Assessment]`.
 - `[RESOLUTION: ?]` on §8 lines → `[RESOLUTION: <decision>]` if resolved by the plan, or `[RESOLUTION: carry-forward to /breakdown]`.
 - `[MITIGATION CARRIED: ?]` on §9 lines → `[MITIGATION CARRIED: yes — Risk Assessment row <N>]` or `[MITIGATION CARRIED: no — out-of-scope per §6]`.
+
+When a planning decision actually resolves a §8 open question — here at Phase 1.5, or later when a Phase 1 / Phase 2 decision settles one — record the resolution in specify-state via the helper, passing the spec's question id and `--resolution-phase plan`:
+
+```bash
+.devforge/lib/specify_helper resolve-open-question --question-id <question-id> --resolution-text "<how the plan resolves it>" --resolution-phase plan
+```
+
+This appends a resolution audit entry to specify-state; the spec re-render strikes through the resolved entry. It is conditional — run it only when the plan actually resolves an open question. Unresolved questions stay open for `/breakdown` (`[RESOLUTION: carry-forward to /breakdown]`) or carry into the plan's Risk Assessment.
 
 **Each section requires concise bullet enumeration** — reference, don't restate. Goal is a ~15–30-line output that proves every spec section was read and accounted for.
 

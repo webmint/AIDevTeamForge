@@ -251,6 +251,8 @@ For each run (N=1..4):
 
 **Status**: ADDED 2026-05-22. Plan Steps 1–6 were authored 2026-05-15, **before** the pipeline-handoff layers shipped (`03-DISCOVER-HANDOFF-PLAN.md` + the `/specify` rewrite). `/plan` now has TWO inputs, not one: the spec it always read, plus a structured handoff chain that carries the HOW-extraction (`project_research_how_extraction_queued`). This step builds the consumer half that `/specify` already names as "not yet wired."
 
+**Progress**: 7.1–7.3 (core) SHIPPED 2026-05-23 (commit `a30c8e3` + cross-ref flip `2c2cad2`): `read-specify-handoff` + `render-plan-seeds` verbs (84 tests), Phase 0a.5 wiring. 7.4–7.6 SHIPPED 2026-05-23 (this batch, main.md only): Phase 0a.6 `check-spec` drift gate (handles `current`/`missing`/`drift`/`not-a-git-repo`), Phase 0 Step 3 anti-relitigation (Phase 1.3 stays unconditional), Phase 1.5 `resolve-open-question` wiring. Reviewed via instruction-author→instruction-reviewer loops (clean). **7.7 (render-findings-from-spec source reconciliation) DEFERRED** — requires helper code (read structured `spec_seeds` from the handoff vs re-parse `spec.md`) + tests; the current spec.md parse works, so this is a robustness refinement, not core. Pick up as its own python-engineer task if/when re-parse fragility is observed.
+
 **Goal**: `/plan` auto-discovers and consumes the upstream handoff chain — `spec_seeds` (WHAT, via the specify-handoff) and `plan_seeds` (HOW, via the upstream research/discover handoff the specify-handoff points at) — and wires the two downstream verbs `/specify` ships for `/plan` to call (`check-spec` drift gate, `resolve-open-question`).
 
 **Consumption contract (verified 2026-05-22 against shipped schemas)**:
@@ -289,7 +291,7 @@ specs/NNN/spec.md                   → WHAT/WHERE
 
 7.4 main.md Phase 0 — `check-spec` drift gate (`/specify` main.md:721 names `/plan` as a caller; verb lives in `cbm_sync_helper`, reads `.devforge/spec-stamps.jsonl`):
    - `.devforge/lib/cbm_sync_helper check-spec <picked-path>`.
-   - `current` → proceed silently. `drift <a>..<b> <files>` → surface the changed §4-cited files, AskUserQuestion `["proceed", "cancel"]`. `missing` → one-line note, proceed.
+   - `current` → proceed silently. `drift <a>..<b> <files>` → surface the changed §4-cited files, AskUserQuestion `["proceed", "cancel"]`. `missing` → one-line note, proceed. `not-a-git-repo` (exit 2) → advisory check unavailable, one-line note, proceed (non-git target must not block planning).
 
 7.5 main.md — wire `resolve-open-question` (verb SHIPS at `_specify/_cmds_phase5.py:61`; `/specify` main.md:783 expects `/plan` to call it):
    - At the point `/plan` resolves a `/specify` §8 open question during planning, call `.devforge/lib/specify_helper resolve-open-question` with the resolution note + phase + timestamp. The resolution audit trail lives in specify-state; re-renders strike through the resolved entry.
