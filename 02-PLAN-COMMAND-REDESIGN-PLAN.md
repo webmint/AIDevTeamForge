@@ -11,6 +11,8 @@
 
 This plan ports `/plan` into the forge as a templated command spec, builds the supporting Python helper, makes it consume the `/specify` output (most-recent `specs/NNN-*/spec.md` with user confirmation), and re-scopes the architect agent so the two artifacts don't contradict each other.
 
+**Update 2026-05-22 — `/plan` now has TWO inputs, not one.** Steps 1–6 were written before the pipeline-handoff layers shipped. `/plan` still reads `spec.md` (WHAT/WHERE), but also auto-discovers the sibling `specs/NNN/handoff.json` `/specify` writes (`spec_seeds` + a `provenance` pointer to the originating research/discover handoff, which carries the HOW-extraction `plan_seeds`). **Step 7** builds that consumer half + wires the two downstream verbs `/specify` ships for `/plan` (`check-spec`, `resolve-open-question`). Read Step 7 before touching Phase 0 of the command spec.
+
 ### Source-of-truth context (must preserve)
 
 `reference-project/.claude/commands/plan.md` is the canonical `/plan` shape. Per the parity-test notes in Obsidian (`20 Projects/AIDevTeamForge/parityTest/`), this command was optimized through a v1→v2 patch sequence that dropped mean pairwise variance from ~11% to ~4.4–5% across 4-run replays. **v3 regressed and was reverted** — `the reference project`'s on-disk copy is v2 and is load-bearing.
@@ -156,6 +158,8 @@ Each step leaves the framework in a buildable, verifiable state. **Verify** crit
 
 ### Step 4 — Architect agent re-scope
 
+**Status**: APPLIED 2026-05-23 on `develop-2.0-init` (untracked). Reconciled framing (user-confirmed): architect = "decision authority for architectural choices, INVOKED BY `/plan` and `/breakdown`; orchestrator runs the commands." Not a pure ownership-strip — "decision authority" retained per the active rule (`memory/project_architect_role_scope`) + the shipped main.md mandatory-invocation hooks. Landed via `claude-code-guide` (convention: command names belong in body, not the `description` field) → `instruction-author` → `instruction-reviewer` iterative loop (2 apply iters; F1 dangling `breakdown.md` ref + a bare-`MEMORY.md` path nit fixed; clean). Final: `You own`=0; `/plan`+`/breakdown`=5 refs, all invoked-by framing; `description` carries no command names.
+
 **Goal**: align forge's `src/agents/architect.md` with the command-driven `/plan` shape. Strip command-ownership prose; keep director-role + synthesis-rule framing for specialist-consultation invocations.
 
 **Tasks**:
@@ -186,6 +190,8 @@ Each step leaves the framework in a buildable, verifiable state. **Verify** crit
 - Cross-check: does `src/commands/plan/main.md` (post-Step 3) reference the architect agent? If yes, verify the reference is "consult-when-needed", not "dispatch-to-own".
 
 ### Step 5 — Emitter + install verification
+
+**Status**: 5.1–5.3 DONE 2026-05-23. `"plan"` added to `scripts/emitters/claude.py` `_PROMOTED` (after `"specify"`). `install.sh /Users/mykolakudlyk/Projects/testForge20` exits 0 — emits `plan command: yes (folder, 0 references)`. Verified in target: `.claude/commands/plan.md` (26.2K, 0 `{{` leaks), `.devforge/lib/plan_helper` shim + `plan_helper.py` (`--help` lists all 6 subcommands; `pick-spec` with no specs → exit 2 per Step 2.1), `.claude/agents/architect.md` re-scoped (`You own`=0). **5.4 (full `/plan` command boot against a synthetic approved spec) = user-side manual e2e** — orchestrator cannot run a fresh Claude Code session; pending like other plans' testForge20 e2e stops. **Pre-existing blocker cleared:** install aborted on a stray untracked `src/devforge/init.yaml` (null helper-state leaked into source tree) — removed (untracked, guard-flagged); unrelated to this step.
 
 **Goal**: get `/plan` installed end-to-end into a target project. Per `feedback_emitter_promoted_cross_check`, `src/commands/plan/` MUST be added to `scripts/emitters/claude.py` `_PROMOTED` list AND verified via install.
 
@@ -241,6 +247,71 @@ For each run (N=1..4):
 
 **Note (housekeeping)**: `~/Projects/testForge20/specs/001-config-menu-sort/spec.md` line 4 carries a stale `**Status**: Approved` from Step-5 helper smoke (auto-mode blocked cross-project Edit revert). Does NOT affect the 008 parity run (the 008 spec is the explicit parity target). Manual one-line revert if user wants the 001 spec back to Draft: change line 4 from `Approved` → `Draft`.
 
+### Step 7 — Handoff consumption alignment (research → discover → specify → /plan)
+
+**Status**: ADDED 2026-05-22. Plan Steps 1–6 were authored 2026-05-15, **before** the pipeline-handoff layers shipped (`03-DISCOVER-HANDOFF-PLAN.md` + the `/specify` rewrite). `/plan` now has TWO inputs, not one: the spec it always read, plus a structured handoff chain that carries the HOW-extraction (`project_research_how_extraction_queued`). This step builds the consumer half that `/specify` already names as "not yet wired."
+
+**Goal**: `/plan` auto-discovers and consumes the upstream handoff chain — `spec_seeds` (WHAT, via the specify-handoff) and `plan_seeds` (HOW, via the upstream research/discover handoff the specify-handoff points at) — and wires the two downstream verbs `/specify` ships for `/plan` to call (`check-spec` drift gate, `resolve-open-question`).
+
+**Consumption contract (verified 2026-05-22 against shipped schemas)**:
+
+```
+research/discover handoff.json      → spec_seeds + plan_seeds   (HOW lives here)
+        │ specify import-handoff consumes spec_seeds ONLY; plan_seeds passes through
+        ▼
+specs/NNN/handoff.json (specify)    → spec_seeds + provenance.upstream_handoff_path (pointer; NO plan_seeds)
+        │ /plan reads THIS — deterministic sibling to spec.md
+        ▼
+specs/NNN/spec.md                   → WHAT/WHERE
+```
+
+- `/plan` reads the **sibling** `specs/NNN/handoff.json` (deterministic path — no reverse-glob). Schema: `src/devforge/lib/_specify/handoff_schema.py` (`Handoff.spec_seeds` + `Handoff.provenance`).
+- The specify-handoff carries `provenance.upstream_handoff_path` / `upstream_handoff_kind` / `upstream_completed_at` — a pointer to the originating research/discover handoff. It does **NOT** forward `plan_seeds` (verified: 0 hits). HOW is a **second hop**: follow the pointer, read `plan_seeds` from the upstream handoff.
+- The two handoff kinds have **divergent `plan_seeds` shapes** — research: `recommended_approach_id/summary` + `layer_destination/justification` + `complexity` + `alternatives_considered` + `proposed_call_shape` + `cited_canonical_patterns`; discover: `design_options` + `build_vs_buy` + `complexity` + `recommended_option_id` + `recommended_option_rationale` + `cited_canonical_patterns`. Any consumer verb MUST kind-dispatch (mirror `research_helper check-outcome`).
+- Cold path: a spec authored without an upstream handoff (or by the pre-rewrite `/specify`) has `provenance.upstream_handoff_path == null` or no sibling handoff at all — `/plan` derives HOW itself, exactly as Steps 1–6 already describe.
+
+**Tasks** (each helper function = test in same turn per `feedback_test_first_python_helpers`, round-tripping via real `specify_helper finalize-handoff` + `research_helper`/`discover_helper finalize-handoff` output — no hand-authored fixtures):
+
+7.1 `plan_helper read-specify-handoff <spec-path>` — resolve the sibling `specs/NNN/handoff.json` next to the picked spec.
+   - Present → parse, emit a deterministic block carrying `spec_seeds` presence summary + `provenance.upstream_handoff_path` (or `none`) + `upstream_handoff_kind`. Exit 0.
+   - Absent (legacy/cold spec) → exit 0 with stdout token `no-handoff` (NOT an error — falls back to spec.md parse path).
+   - Malformed/invalid JSON → exit 2, stderr names the file.
+
+7.2 `plan_helper render-plan-seeds <specify-handoff-path>` — emit the HOW seed block.
+   - Read the specify-handoff's `provenance.upstream_handoff_path`. Null → stdout token `cold-no-plan-seeds`, exit 0.
+   - Non-null → open the upstream handoff, **kind-dispatch on `handoff_kind`** (research vs discover), render the deterministic HOW block (recommended approach/option + layer + complexity + alternatives/design-options + `proposed_call_shape` when present + cited canonical patterns). Helper owns the block shape; LLM composes the plan narrative from it.
+   - Upstream pointer dangling (file gone) → exit 2, stderr names the missing path; LLM surfaces and proceeds cold.
+
+7.3 main.md Phase 0a.5 (NEW, after `pick-spec`/confirm, before the Phase 0b status flip) — handoff discovery:
+   - `.devforge/lib/plan_helper read-specify-handoff <picked-path>`.
+   - On `no-handoff` → one-line note "No upstream handoff; planning cold from spec." Continue to existing Phase 0.
+   - On present → `.devforge/lib/plan_helper render-plan-seeds <handoff-path>`; copy stdout VERBATIM into the conversation as a fenced block. The HOW seed feeds Phase 0 Research Eval (does plan_seeds already cite research?), Phase 1 Tech Design, and Phase 1.3 Architecture Decisions. On `cold-no-plan-seeds` → same cold note.
+
+7.4 main.md Phase 0 — `check-spec` drift gate (`/specify` main.md:721 names `/plan` as a caller; verb lives in `cbm_sync_helper`, reads `.devforge/spec-stamps.jsonl`):
+   - `.devforge/lib/cbm_sync_helper check-spec <picked-path>`.
+   - `current` → proceed silently. `drift <a>..<b> <files>` → surface the changed §4-cited files, AskUserQuestion `["proceed", "cancel"]`. `missing` → one-line note, proceed.
+
+7.5 main.md — wire `resolve-open-question` (verb SHIPS at `_specify/_cmds_phase5.py:61`; `/specify` main.md:783 expects `/plan` to call it):
+   - At the point `/plan` resolves a `/specify` §8 open question during planning, call `.devforge/lib/specify_helper resolve-open-question` with the resolution note + phase + timestamp. The resolution audit trail lives in specify-state; re-renders strike through the resolved entry.
+
+7.6 Phase 0 Step 3 / plan_seeds reconciliation (anti-relitigation):
+   - When `render-plan-seeds` supplied `alternatives_considered` (research) or `design_options` (discover), `/plan` SEEDS the Phase 0 Step 3 alternatives table from them rather than rediscovering. The mandatory architect invocation at Phase 0 Step 3 fires only when `/plan` introduces a NEW alternative not present in plan_seeds. Skip-with-seed must be recorded in the plan.md "Architect Consultation" section (existing single-source-of-truth per main.md:125), citing the upstream handoff path.
+
+7.7 `render-findings-from-spec` source reconciliation (Step 2.5):
+   - Prefer the structured `spec_seeds` from the specify-handoff (already-parsed AC / affected-areas / OOS / risks) over re-parsing `spec.md` markdown when the sibling handoff is present. Fall back to the existing spec.md parse for legacy/cold specs. Identical bullet-count + identifier guarantees apply on both paths.
+
+**Verify**:
+- `src/devforge/lib/plan_helper` exposes `read-specify-handoff` + `render-plan-seeds`; `tests/lib/test_plan_helper.py` has ≥1 test each, round-tripped through a real `specify_helper finalize-handoff` output whose `provenance.upstream_handoff_path` points at both (a) a real `research_helper`-produced handoff and (b) a real `discover_helper`-produced handoff. All green.
+- `render-plan-seeds` on a research-kind upstream emits `proposed_call_shape`/`alternatives_considered`; on a discover-kind upstream emits `design_options`/`build_vs_buy` — proves kind-dispatch.
+- `render-plan-seeds` on a specify-handoff with `provenance.upstream_handoff_path == null` → stdout `cold-no-plan-seeds`, exit 0.
+- `read-specify-handoff` on a spec with no sibling handoff → stdout `no-handoff`, exit 0.
+- `grep -c "read-specify-handoff\|render-plan-seeds\|check-spec\|resolve-open-question" src/commands/plan/main.md` ≥ 4 (all four wirings present).
+- `grep -c "Context7\|Research Output Rule" src/commands/plan/main.md` unchanged from Step 3 (load-bearing anchor prose intact after the Phase 0a.5 insert).
+- Spawn `instruction-author` + `instruction-reviewer` in parallel on `src/commands/plan/main.md`; both clear.
+- Cross-check: `/specify` main.md lines 19/773/781 say "/plan's auto-discovery reader is not yet wired" — after Step 7 ships, those three sentences become false. Update them to "wired (Step 7)" in the SAME change that lands Step 7's main.md edits, per `feedback_cross_check_after_every_change`.
+
+**Depends on**: Step 1+2+3 (the command + helper must exist). Independent of Step 4 (architect) and orthogonal to Step 6 (parity) — though a fresh parity run after Step 7 should re-baseline, since the Phase 0a.5 insert changes the rendered plan for handoff-seeded specs.
+
 ---
 
 ## When resuming work
@@ -259,12 +330,12 @@ For each run (N=1..4):
 
 - `/breakdown` port — separate plan. `/plan` redesign is a precondition (its Phase 4 handoff block targets `/breakdown`), but `/breakdown` itself stays in reference-project-only until a separate redesign cycle.
 - Multi-spec planning (one `/plan` invocation covering N specs) — YAGNI; the existing one-spec-per-plan shape is the parity-validated contract.
-- `resolve-open-question` subcommand wiring (`/specify` Phase 5.4 references this for `/plan` to call when resolving §8 entries) — defer to a follow-up; current `/plan` v2 doesn't call it and parity holds.
+- ~~`resolve-open-question` subcommand wiring (`/specify` Phase 5.4 references this for `/plan` to call when resolving §8 entries) — defer to a follow-up; current `/plan` v2 doesn't call it and parity holds.~~ **Superseded 2026-05-22 → IN SCOPE as Step 7.5.** The verb now ships (`_specify/_cmds_phase5.py:61`) and `/specify` main.md:783 names `/plan` as a caller.
 - ~~`/plan` → architect agent dispatch automation — kept manual (LLM decides when to consult).~~ **Superseded 2026-05-16**: Plan F (`/plan` main.md + `architect.md` edits, this branch) introduces **targeted mandatory invocation at two named hooks** (Phase 1.3 every run; Phase 0 alternatives when 2+ compared) — not full dispatch automation. Discretionary consultation remains the policy outside those hooks. See `memory/project_architect_role_scope.md` for the active rule.
 
 ## Open questions
 
 - **Q1**: Should `pick-spec` accept a partial feature name (e.g., `/plan sample-feature`) and fuzzy-match against `specs/NNN-*/`? Current Step 2.1 design accepts only exact paths. Recommendation: defer until user friction observed; exact paths are unambiguous.
 - **Q2**: Should `check-status-and-flip` refuse to flip if the spec has any `[NEEDS CLARIFICATION]` markers from `/specify` Phase 1.5 accepted-partial-exit? Probable yes — running `/plan` against a spec with unresolved gaps undermines the contract. Recommend adding to Step 2.4 once the spec emission convention is finalized in `/specify`.
-- **Q3**: Phase 4 handoff — should it call `resolve-open-question` for any `/specify` §8 entries this plan resolves? Mentioned in `/specify/main.md:681`. Defer per "Out of scope" above; carry forward as a Step 7 follow-up.
+- **Q3** (RESOLVED 2026-05-22): Phase 4 handoff — should it call `resolve-open-question` for any `/specify` §8 entries this plan resolves? **Yes** — wired in Step 7.5. The verb ships at `_specify/_cmds_phase5.py:61` and `/specify` main.md:783 expects `/plan` to call it; `/plan` calls it at the point it resolves a §8 entry (not only at Phase 4).
 - **Q4** (surfaced during Step 4 iter 3 review, 2026-05-15): `src/_pending/commands/_agent-assignment.md` and its 3 callers (`fix.md:167`, `refactor.md:161`, `breakdown.md:118`) currently fall back to the `architect` agent as an **implementation executor** for domain/shared/unclear code. This directly contradicts the Step-4 re-scope which states the architect "NEVER writes implementation code." All four files are in `src/_pending/` (not shipped). Resolution: deferred to port time for `/breakdown`, `/fix`, `/refactor` — when each is ported into `src/commands/<name>/main.md` (Step-1-style), reconcile the assignment table to fall back to `backend-engineer` (or appropriate generalist implementer), not `architect`. The architect remains consultable for decision sub-questions in those commands. Closing this Q is a precondition for each of those ports.
