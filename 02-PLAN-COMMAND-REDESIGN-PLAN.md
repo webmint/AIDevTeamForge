@@ -308,7 +308,7 @@ specs/NNN/spec.md                   → WHAT/WHERE
 - `grep -c "read-specify-handoff\|render-plan-seeds\|check-spec\|resolve-open-question" src/commands/plan/main.md` ≥ 4 (all four wirings present).
 - `grep -c "Context7\|Research Output Rule" src/commands/plan/main.md` unchanged from Step 3 (load-bearing anchor prose intact after the Phase 0a.5 insert).
 - Spawn `instruction-author` + `instruction-reviewer` in parallel on `src/commands/plan/main.md`; both clear.
-- Cross-check: `/specify` main.md lines 19/773/781 say "/plan's auto-discovery reader is not yet wired" — after Step 7 ships, those three sentences become false. Update them to "wired (Step 7)" in the SAME change that lands Step 7's main.md edits, per `feedback_cross_check_after_every_change`.
+- Cross-check: DONE 2026-05-23 (with the 7.1-7.3 core). Flipped the now-false "/plan's auto-discovery reader is not yet wired" claim at `/specify` main.md lines 19/773/781 → "auto-discovers"; also flipped the same claim in the helper string `_specify/_render.py` (+ its assertion in `test_specify_helper.py`), the consumer-overlay `src/CLAUDE.md` /specify entry, and the `CLAUDE.md` pipeline-handoff index row (NOT YET WIRED → WIRED). Historical "Shipped 2026-05-22" notes in `1.5-SPECIFY-PLAN-HANDOFF-PLAN.md` left as point-in-time record.
 
 **Depends on**: Step 1+2+3 (the command + helper must exist). Independent of Step 4 (architect) and orthogonal to Step 6 (parity) — though a fresh parity run after Step 7 should re-baseline, since the Phase 0a.5 insert changes the rendered plan for handoff-seeded specs.
 

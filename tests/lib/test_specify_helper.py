@@ -3524,7 +3524,7 @@ class TestPhase5RenderPlanHandoff(unittest.TestCase):
             for needle in (
                 "## Manual next step — run /plan",
                 "specs/001-test-spec/handoff.json) is written for /plan",
-                "auto-discovery reader is not yet wired",
+                "auto-discovers it on its first run",
                 "Restart Claude Code",
                 "/plan specs/001-test-spec/spec.md",
                 "Spec status: Approved",
