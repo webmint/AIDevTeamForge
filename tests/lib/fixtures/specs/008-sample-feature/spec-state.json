@@ -1,0 +1,145 @@
+{
+  "topic": null,
+  "topic_slug": null,
+  "date": "2026-05-22",
+  "spec_number": "008",
+  "feature_name": "widget-catalog-search",
+  "feature_slug": "widget-catalog-search",
+  "spec_type": "feature_addition",
+  "spec_type_rationale": "add a search box to the widget catalog page",
+  "spec_type_seeded_by_upstream": false,
+  "status": "Complete",
+  "current_branch": "main",
+  "default_branch": "main",
+  "branch_decision": "create",
+  "branch_created": true,
+  "input_reads": [],
+  "phase1_finalized": true,
+  "findings": [],
+  "source_no_items_relevant": {},
+  "findings_finalized": true,
+  "decision_points": [],
+  "dp_finalized": true,
+  "mode": "interactive",
+  "mandatory_reads": [],
+  "discretionary_reads": [],
+  "phase3_finalized": true,
+  "overview": "Add a keyword search box to the widget catalog page so shoppers can filter the widget list by name and tag.",
+  "current_state": "The widget catalog page renders the full widget list with no filtering. Widgets are loaded once on page mount.",
+  "desired_behavior": "The catalog page shows a search box. Typing filters the widget list by name and tag in real time. Clearing the box restores the full list.",
+  "affected_areas": [
+    {
+      "area": "Catalog page",
+      "files": [
+        "src/widgets/catalog_page.ts",
+        "src/widgets/widget_list.ts"
+      ],
+      "impact": "add search input and client-side filter"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "ac_id": "AC-1",
+      "subsection": "tooling_artifact_presence",
+      "ears_variant": "ubiquitous",
+      "statement": "The catalog page shall render a search input element.",
+      "verification_command": "grep -q 'search-input' src/widgets/catalog_page.ts",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-2",
+      "subsection": "behavior_preservation",
+      "ears_variant": "ubiquitous",
+      "statement": "The catalog shall still list every widget when the search box is empty.",
+      "verification_command": "the unfiltered list length equals the widget count",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-3",
+      "subsection": "behavior_change",
+      "ears_variant": "event",
+      "statement": "WHEN the shopper types a keyword, the list shall show only widgets whose name or tag contains it.",
+      "verification_command": "typing 'red' shows only widgets matching 'red'",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-4",
+      "subsection": "ci_pipeline",
+      "ears_variant": "ubiquitous",
+      "statement": "The build pipeline shall run the catalog component tests.",
+      "verification_command": "ci config runs the widget test suite",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-5",
+      "subsection": "hooks_gates",
+      "ears_variant": "state",
+      "statement": "IF the search box is cleared, THEN the full widget list shall be restored.",
+      "verification_command": "clearing the box restores all widgets",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-6",
+      "subsection": "documentation",
+      "ears_variant": "ubiquitous",
+      "statement": "The catalog page help text shall describe the search box.",
+      "verification_command": "help text mentions search",
+      "test_anchor": "",
+      "n_a_reason": ""
+    },
+    {
+      "ac_id": "AC-7",
+      "subsection": "hygiene",
+      "ears_variant": "ubiquitous",
+      "statement": "The widget list shall contain no duplicate widget entries after filtering.",
+      "verification_command": "filtered list has no duplicate ids",
+      "test_anchor": "",
+      "n_a_reason": ""
+    }
+  ],
+  "ac_subsection_na": {},
+  "out_of_scope": [
+    {
+      "content": "Server-side search or pagination",
+      "finding_ref": ""
+    },
+    {
+      "content": "Fuzzy or typo-tolerant matching",
+      "finding_ref": ""
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "follow",
+      "content": "Filter on the client; do not add a new backend endpoint."
+    },
+    {
+      "kind": "nfr",
+      "content": "Filtering must update the list within 100ms for up to 500 widgets."
+    }
+  ],
+  "open_questions": [],
+  "risks": [
+    {
+      "risk": "Large catalogs make client-side filtering janky",
+      "likelihood": "Med",
+      "impact": "Med",
+      "mitigation": "Debounce input and cap rendered rows"
+    },
+    {
+      "risk": "Tag field missing on legacy widgets breaks tag matching",
+      "likelihood": "Low",
+      "impact": "Low",
+      "mitigation": "Treat an absent tag as an empty string"
+    }
+  ],
+  "approval_summary": null,
+  "plan_handoff_block": null,
+  "open_question_resolutions": [],
+  "conflicts": []
+}
