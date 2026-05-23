@@ -4,7 +4,7 @@
 - **Step 6 (parity 4-run)** — user-driven offline; needs testForge20 re-install first (Step-5 install predates Step-7 wirings), then 4 `plan.md` outputs handed back for the variance verdict. This is the last gate to call plan-02 fully complete.
 - **Step 7.7 (render-findings reads structured `spec_seeds` vs re-parse `spec.md`)** — DEFERRED as YAGNI; spec.md parse works, pick up only if re-parse fragility is observed.
 
-Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ⏸ DRAFTED-NOT-STARTED** (orchestrator-mediated specialist consultation — fixes a latent bug: subagents can't spawn subagents, so architect.md's "invoke the specialist" is impossible; redesign to orchestrator-relayed + controlled-shape; consult any planning-relevant agent incl. FE/BE for expertise) · **Step 9 ⏸ DRAFTED-NOT-STARTED** (plan→breakdown structured handoff, producer-side now per "consumer obeys producer"; `/breakdown` consumer pending).
+Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ✅ SHIPPED 2026-05-23** (orchestrator-mediated specialist consultation — latent-bug fix: architect emits consultation requests, orchestrator invokes specialists incl. FE/BE, controlled-shape Specialist Consultation block) · **Step 9 ⏸ DRAFTED-NOT-STARTED** (plan→breakdown structured handoff, producer-side now per "consumer obeys producer"; `/breakdown` consumer pending).
 **Date**: 2026-05-15 (status updated 2026-05-23)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -301,7 +301,7 @@ specs/NNN/spec.md                   → WHAT/WHERE
    - At the point `/plan` resolves a `/specify` §8 open question during planning, call `.devforge/lib/specify_helper resolve-open-question` with the resolution note + phase + timestamp. The resolution audit trail lives in specify-state; re-renders strike through the resolved entry.
 
 7.6 Phase 0 Step 3 / plan_seeds reconciliation (anti-relitigation):
-   - When `render-plan-seeds` supplied `alternatives_considered` (research) or `design_options` (discover), `/plan` SEEDS the Phase 0 Step 3 alternatives table from them rather than rediscovering. The mandatory architect invocation at Phase 0 Step 3 fires only when `/plan` introduces a NEW alternative not present in plan_seeds. Skip-with-seed must be recorded in the plan.md "Architect Consultation" section (existing single-source-of-truth per main.md:125), citing the upstream handoff path.
+   - When `render-plan-seeds` supplied `alternatives_considered` (research) or `design_options` (discover), `/plan` SEEDS the Phase 0 Step 3 alternatives table from them rather than rediscovering. The mandatory architect invocation at Phase 0 Step 3 fires only when `/plan` introduces a NEW alternative not present in plan_seeds. Skip-with-seed must be recorded in the plan.md "Specialist Consultation" section (the single-source-of-truth for consultation provenance), citing the upstream handoff path.
 
 7.7 `render-findings-from-spec` source reconciliation (Step 2.5):
    - Prefer the structured `spec_seeds` from the specify-handoff (already-parsed AC / affected-areas / OOS / risks) over re-parsing `spec.md` markdown when the sibling handoff is present. Fall back to the existing spec.md parse for legacy/cold specs. Identical bullet-count + identifier guarantees apply on both paths.
@@ -320,7 +320,7 @@ specs/NNN/spec.md                   → WHAT/WHERE
 
 ### Step 8 — Orchestrator-mediated specialist consultation (latent-bug fix + generalization)
 
-**Status**: DRAFTED 2026-05-23. NOT STARTED.
+**Status**: SHIPPED 2026-05-23. 8.1 (architect.md consultation = emit-request not invoke + no-relay fallback + Rule 4 fix), 8.2 (`/plan` Phase 1.3 relay loop + "Architect Consultation"→"Specialist Consultation" rename + render-consultation-block wiring), 8.3 (`plan_helper render-consultation-block` controlled-shape verb, headingless, 10 tests), 8.4 (cross-check: only architect.md had the bug). 94 plan_helper tests pass. Reviewed via claude-code-guide + python-engineer/-reviewer + instruction-author/-reviewer loops (clean).
 
 **Trigger / root cause**: `claude-code-guide` confirmed (against docs.claude.com) that **subagents cannot spawn other subagents** — the Agent/Task tool is withheld from any agent running as a subagent, with no config override (*"prevents infinite nesting"*). Therefore `src/agents/architect.md`'s current "Consulting Specialists → How to consult: **invoke the specialist** with the sub-question" instructs an **impossible action** — the architect (a subagent) physically cannot invoke `db-engineer`/`security-reviewer`/etc. This is a latent correctness bug, not cosmetic.
 

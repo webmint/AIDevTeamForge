@@ -59,6 +59,16 @@ Subcommands:
       Malformed or schema-invalid sibling: exit 2.
       spec-path is a directory or does not exist: exit 2.
 
+  render-consultation-block
+      Emit the content under the '## Specialist Consultation' heading —
+      the intro paragraph, the five-column table, and the verdict-enum rule.
+      The heading itself is NOT emitted (the template owns it); output starts
+      with the intro paragraph. Takes no arguments. Helper owns the five
+      column names (Specialist, Sub-question, Input summary, Verdict, Cites)
+      and the verdict enum (accepted / modified / rejected / no-response);
+      the LLM fills values. Includes an example placeholder row and the
+      empty-state (none) row. Exit 0 always.
+
   render-plan-seeds <specify-handoff-path>
       Render a structured plan-seeds block from the upstream research/discover
       handoff referenced by a specify-handoff.json.
@@ -1243,6 +1253,43 @@ def _render_discover_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
     )
 
 
+def cmd_render_consultation_block(args: argparse.Namespace) -> int:
+    """Emit the content under the '## Specialist Consultation' heading.
+
+    Takes no arguments. Prints the intro paragraph, the five-column table,
+    and the verdict-enum rule to stdout. The heading itself is NOT emitted —
+    the plan.md template already contains '## Specialist Consultation' and the
+    orchestrator copies this helper's stdout into that section; emitting the
+    heading here would produce a duplicate.
+
+    The block includes:
+      - An intro paragraph explaining the table's purpose and the no-relay fallback.
+      - A markdown table with five fixed columns.
+      - A rule line enumerating the verdict enum and the Cites requirement.
+      - An empty-state (none) row.
+
+    Exit 0 always (no inputs to fail on).
+    """
+    block = (
+        "Record one row per specialist consulted during planning. "
+        "The architect is the decision-authority and synthesizer; "
+        "specialists supply domain input only. "
+        "If a consult was requested but no response was relayed, record that too "
+        "(use Verdict `no-response`). "
+        "If NO specialists were consulted on this plan, keep the single `(none)` row below.\n"
+        "\n"
+        "| Specialist | Sub-question | Input summary | Verdict | Cites |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| db-engineer | <the specific sub-question> | <1-line summary of their input> | accepted | <file:line or doc ref> |\n"
+        "| (none) | — | — | — | — |\n"
+        "\n"
+        "**Verdict** must be one of: `accepted` / `modified` / `rejected` / `no-response`. "
+        "Every row requires a **Cites** entry: file:line, doc section, or `own-reasoning`.\n"
+    )
+    sys.stdout.write(block)
+    return 0
+
+
 def cmd_render_plan_seeds(args: argparse.Namespace) -> int:
     """Render a structured plan-seeds block from the upstream research/discover handoff.
 
@@ -1404,6 +1451,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("spec_path", help="Path to spec.md.")
     sp.set_defaults(func=cmd_read_specify_handoff)
+
+    # render-consultation-block
+    sp = sub.add_parser(
+        "render-consultation-block",
+        help=(
+            "Emit the content under '## Specialist Consultation' (intro + table + rule). "
+            "Heading is NOT emitted — template owns it. No arguments required."
+        ),
+    )
+    sp.set_defaults(func=cmd_render_consultation_block)
 
     # render-plan-seeds
     sp = sub.add_parser(

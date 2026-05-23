@@ -1967,5 +1967,118 @@ class RenderPlanSeedsTests(unittest.TestCase):
         self.assertIn("unknown handoff_kind", result.stderr)
 
 
+# ---------------------------------------------------------------------------
+# Tests: render-consultation-block
+# ---------------------------------------------------------------------------
+
+
+class RenderConsultationBlockTests(_CwdIsolation):
+    """Tests for plan_helper render-consultation-block subcommand.
+
+    The subcommand emits a fixed deterministic skeleton — no file parsing,
+    no required arguments. Tests verify structural invariants and
+    determinism.
+    """
+
+    def _get_output(self):
+        """Run render-consultation-block and return stdout; assert exit 0."""
+        result = _run(self.tmp_path, "render-consultation-block")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_exit_0(self):
+        """render-consultation-block exits 0."""
+        result = _run(self.tmp_path, "render-consultation-block")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_no_duplicate_heading(self):
+        """Output does NOT contain '## Specialist Consultation' heading.
+
+        The plan.md template owns the heading; emitting it here would produce
+        a duplicate H2 when the orchestrator copies this block into that section.
+        """
+        output = self._get_output()
+        lines = output.splitlines()
+        self.assertNotIn(
+            "## Specialist Consultation",
+            lines,
+            "Helper must not emit the heading — the template already has it.",
+        )
+
+    def test_table_header_has_five_columns(self):
+        """Table header row contains exactly the five required columns.
+
+        The required columns in order are: Specialist, Sub-question,
+        Input summary, Verdict, Cites.
+        """
+        output = self._get_output()
+        import re
+        # Find the header row — first pipe-delimited row after the heading.
+        header_match = re.search(
+            r"\|\s*Specialist\s*\|\s*Sub-question\s*\|\s*Input summary\s*\|\s*Verdict\s*\|\s*Cites\s*\|",
+            output,
+        )
+        self.assertIsNotNone(
+            header_match,
+            "Table header must contain all five columns in order: "
+            "Specialist | Sub-question | Input summary | Verdict | Cites. "
+            "Got:\n" + output,
+        )
+
+    def test_verdict_enum_present(self):
+        """The verdict enum line lists all four valid values."""
+        output = self._get_output()
+        self.assertIn("accepted", output)
+        self.assertIn("modified", output)
+        self.assertIn("rejected", output)
+        self.assertIn("no-response", output)
+
+    def test_verdict_enum_on_rule_line(self):
+        """The four verdict values appear together on the rule/constraint line."""
+        output = self._get_output()
+        # Find the line that mentions "Verdict" as a rule (not the table header).
+        verdict_rule_line = None
+        for line in output.splitlines():
+            if "Verdict" in line and "accepted" in line:
+                verdict_rule_line = line
+                break
+        self.assertIsNotNone(
+            verdict_rule_line,
+            "Expected a rule line mentioning Verdict and accepted; not found in:\n" + output,
+        )
+        self.assertIn("modified", verdict_rule_line)
+        self.assertIn("rejected", verdict_rule_line)
+        self.assertIn("no-response", verdict_rule_line)
+
+    def test_none_empty_state_row_guidance_present(self):
+        """Output contains guidance for the empty-state (none) row."""
+        output = self._get_output()
+        self.assertIn("(none)", output)
+
+    def test_deterministic_two_runs_identical(self):
+        """Two consecutive invocations produce byte-identical output."""
+        first = _run(self.tmp_path, "render-consultation-block").stdout
+        second = _run(self.tmp_path, "render-consultation-block").stdout
+        self.assertEqual(first, second, "Output must be deterministic across runs")
+
+    def test_cites_requirement_mentioned(self):
+        """Output states the Cites requirement for every row."""
+        output = self._get_output()
+        self.assertIn("Cites", output)
+
+    def test_no_required_arguments(self):
+        """Subcommand takes no required arguments — invoking without args succeeds."""
+        result = _run(self.tmp_path, "render-consultation-block")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Confirm it emits actual content, not just a blank line.
+        self.assertGreater(len(result.stdout.strip()), 0)
+
+    def test_appears_in_help(self):
+        """render-consultation-block is listed in the top-level --help output."""
+        result = _run(self.tmp_path, "--help")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("render-consultation-block", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

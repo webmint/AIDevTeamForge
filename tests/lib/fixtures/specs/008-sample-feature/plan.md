@@ -9,7 +9,7 @@
 Add a client-side keyword search box to the widget catalog page. Typing filters
 the rendered widget list by name and tag; clearing the box restores the full list.
 
-## Architect Consultation
+## Specialist Consultation
 
 Consulted: none. Single-package, single-layer client change — no cross-boundary
 decision required.

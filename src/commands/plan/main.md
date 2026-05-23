@@ -73,7 +73,7 @@ Check for a sibling handoff via the helper:
     ```
 
     - Stdout `cold-no-plan-seeds` → tell the user `"Upstream handoff carries no plan seeds; planning cold."` and proceed to Phase 0a.6 with the resolved path.
-    - A `## Upstream plan-seeds` block → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the HOW seed and is the authoritative starting point for Phase 0 (Research Evaluation — if it already cites canonical patterns or a recommended approach, you have prior art; calibrate research depth instead of rediscovering), Phase 1 (Technical Design), and Phase 1.3 (Architecture Decisions — where the architect consultation fires and the key design decisions are drafted). If your plan diverges from the upstream recommendation, state the divergence and why in the plan's "Architect Consultation" section — do not silently discard it. Then proceed to Phase 0a.6 with the resolved path.
+    - A `## Upstream plan-seeds` block → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the HOW seed and is the authoritative starting point for Phase 0 (Research Evaluation — if it already cites canonical patterns or a recommended approach, you have prior art; calibrate research depth instead of rediscovering), Phase 1 (Technical Design), and Phase 1.3 (Architecture Decisions — where the architect consultation fires and the key design decisions are drafted). If your plan diverges from the upstream recommendation, state the divergence and why in the plan's "Specialist Consultation" section — do not silently discard it. Then proceed to Phase 0a.6 with the resolved path.
 
 Exit 2 from either helper means the sibling handoff is malformed or the upstream pointer is dangling/unknown — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
 
@@ -159,13 +159,13 @@ For each signal, choose the appropriate research tool:
 - Compare at least 2-3 alternatives with pros/cons.
 - Check library options: maintenance status, bundle size, community adoption.
 
-**Seed from upstream plan-seeds (do not relitigate settled alternatives):** If Phase 0a.5 surfaced an `## Upstream plan-seeds` block that already lists alternatives (a research handoff under "Alternatives considered"; a discover handoff under "Design options"), seed the alternatives comparison from those rather than rediscovering them. The 2+-alternatives architect invocation described in this Step 3 fires only for alternatives NOT already settled in the upstream plan-seeds. The Phase 1.3 mandatory architect consultation is unaffected — it fires unconditionally regardless of plan-seeds. When you seed from plan-seeds and therefore skip fresh alternative discovery, record that in the plan's "Architect Consultation" section, citing the upstream handoff. Do not contradict the upstream recommendation silently — a divergence must be stated with reasoning (this complements the divergence rule in Phase 0a.5).
+**Seed from upstream plan-seeds (do not relitigate settled alternatives):** If Phase 0a.5 surfaced an `## Upstream plan-seeds` block that already lists alternatives (a research handoff under "Alternatives considered"; a discover handoff under "Design options"), seed the alternatives comparison from those rather than rediscovering them. The 2+-alternatives architect invocation described in this Step 3 fires only for alternatives NOT already settled in the upstream plan-seeds. The Phase 1.3 mandatory architect consultation is unaffected — it fires unconditionally regardless of plan-seeds. When you seed from plan-seeds and therefore skip fresh alternative discovery, record that in the plan's "Specialist Consultation" section, citing the upstream handoff. Do not contradict the upstream recommendation silently — a divergence must be stated with reasoning (this complements the divergence rule in Phase 0a.5).
 
 **Architect consultation: mandatory when 2+ architectural alternatives are being compared.**
 
 After raw findings for each alternative are gathered (pros/cons/maintenance/bundle), invoke the `architect` agent via the Task tool to author the verdict. Brief shape: pass file paths to `specs/<feature>/spec.md`, in-progress research notes, and `CLAUDE.md`; ask which alternative wins for the named decision area and why; expect the architect to return rows verbatim-ready for the research.md "Alternatives Compared" table (verdict column populated per row) plus a one-line decision rationale.
 
-Skip ONLY when alternatives are mechanical (one library is project-default per `CLAUDE.md`, others are non-starters). The skip reason must be recorded as a one-line note in the plan.md "Architect Consultation" section (see Phase 2 template) — that section is always present in plan.md and is the single source of truth for invocation/skip provenance, regardless of whether research.md was generated. Silent skips are a hard error.
+Skip ONLY when alternatives are mechanical (one library is project-default per `CLAUDE.md`, others are non-starters). The skip reason must be recorded as a one-line note in the plan.md "Specialist Consultation" section (see Phase 2 template) — that section is always present in plan.md and is the single source of truth for invocation/skip provenance, regardless of whether research.md was generated. Silent skips are a hard error.
 
 **For all signals:**
 - Look at real-world examples of similar implementations.
@@ -299,6 +299,14 @@ Document HOW the feature maps to the project's architecture. This is the core of
 
 Before drafting the Phase 2 plan.md tables (Layer Map, Key Design Decisions, File Impact, Risk Assessment), invoke the `architect` agent via the Task tool. The architect's `think`-tier reasoning is the specialization point for layer-mapping, dependency-direction, package-boundary, and constitution-compliance calls. Orchestrator-direct authoring of these tables without consultation is a hard error at this phase.
 
+**Orchestrator-mediated consultation relay (the architect emits requests; it does NOT invoke anyone):** subagents cannot spawn subagents, so the architect cannot consult a specialist itself. Instead the architect returns zero-or-more **consultation requests** alongside its table rows, and the orchestrator (the LLM running this spec) performs the invocations. Run the loop:
+
+1. Invoke the `architect` agent (mandatory, per above). It returns the table rows (Layer Map / Key Design Decisions / File Impact / Risk seeds / Constitution flags) AND zero-or-more consultation requests, each carrying a named specialist + a sub-question + context.
+2. For each consultation request: invoke the named specialist via the Task tool with the architect's sub-question + context, capture the specialist's response, then **re-invoke the `architect`** with the relayed response so the architect can synthesize it into its decision. The architect never invokes the specialist — the orchestrator relays both directions.
+3. The orchestrator MAY also consult a specialist directly when this spec calls for it, not only on the architect's request.
+
+Any planning-relevant specialist may be named: `architect`, `frontend-engineer`, `backend-engineer`, `security-reviewer`, `db-engineer`, `migration-engineer`, `api-designer`, `performance-analyst`, `design-auditor`, `mobile-engineer`, `devops-engineer`, `qa-engineer`.
+
 **Brief shape (pass file paths, NOT inlined content):**
 
 - `specs/<feature>/spec.md`
@@ -317,9 +325,9 @@ The architect inherits the parent session's Read tool surface and will fetch the
 3. Any dependency-direction or package-boundary risks? Return as Risk seeds (likelihood / impact / mitigation hint).
 4. Any constitution rules at risk under this approach? Return as one-line flags for the Constitution Compliance section.
 
-**Return shape:** architect MUST author table rows verbatim-ready for Phase 2 transcription (no orchestrator paraphrasing) and include a `consulted-specialists` provenance line listing any specialists the architect itself consulted (db-engineer / api-designer / security-reviewer / etc.).
+**Return shape:** architect MUST author table rows verbatim-ready for Phase 2 transcription (no orchestrator paraphrasing) and the architect's standard output already carries a `### Specialists Consulted` block (per its Output Format); the orchestrator transcribes those entries — plus any specialists it consulted directly — into the plan's **Specialist Consultation** table (one row each, with Verdict + Cites).
 
-**Halt rule:** if you reach Phase 2 without having completed this consultation, halt, invoke the architect now, then write the Architect Consultation section at the top of plan.md (per the Phase 2 template) before drafting any of the Phase 2 tables. Provenance recording is part of the contract — Phase 2 tables drafted without a corresponding Architect Consultation entry are a hard error.
+**Halt rule:** if you reach Phase 2 without having completed this consultation, halt, invoke the architect now, then write the Specialist Consultation section at the top of plan.md (per the Phase 2 template) before drafting any of the Phase 2 tables. Provenance recording is part of the contract — Phase 2 tables drafted without a corresponding Specialist Consultation entry are a hard error.
 
 ## PHASE 2: Write the Plan
 
@@ -332,18 +340,20 @@ Save to `specs/[feature-name]/plan.md`. The Layer Map below shows a Domain/Data/
 **Spec**: [path to spec.md]
 **Status**: Draft
 
-## Architect Consultation
+## Specialist Consultation
 
 **Invocations**:
 - Phase 0 alternatives: [yes — see research.md §Alternatives Compared | no — N/A (no 2+ alternatives compared, OR alternatives were mechanical per CLAUDE.md project-defaults — one-line reason: ___)]
 - Phase 1.3 architecture decisions: yes (mandatory)
-- Specialists consulted via architect: [list | none]
+- Specialists consulted (orchestrator-relayed on the architect's request, or directly): [see Specialist Consultation table]
 
 **Architect-authored sections** (transcribed verbatim from architect return):
 - Layer Map: [rows N-M]
 - Key Design Decisions: [rows N-M]
 - Risk Assessment seeds: [rows N-M]
 - Constitution Compliance flags: [list | none]
+
+[Specialist Consultation table — emit via `plan_helper render-consultation-block` per the instruction below this template, then fill rows]
 
 ## Summary
 
@@ -413,6 +423,14 @@ Save to `specs/[feature-name]/plan.md`. The Layer Map below shows a Domain/Data/
 - [Data Model](data-model.md) — if data entities are involved
 - [Contracts](contracts.md) — if API changes are involved
 ```
+
+For the `## Specialist Consultation` section's consultation table, emit the controlled-shape skeleton via the helper and fill its rows — one row per specialist consulted (Verdict from the enum `accepted` / `modified` / `rejected` / `no-response`; Cites required; the `(none)` row stays when no specialist was consulted):
+
+```bash
+.devforge/lib/plan_helper render-consultation-block
+```
+
+The helper takes no arguments and owns the column names and verdict enum. Copy its stdout into the `## Specialist Consultation` section of `plan.md` and fill the rows; this table is the single source of truth for consultation provenance.
 
 ## PHASE 2.5: Plan-Spec Cross-Reference Check
 
