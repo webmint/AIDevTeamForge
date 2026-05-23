@@ -47,6 +47,28 @@ Subcommands:
       Reads AC count from spec, file-impact + risk counts from plan.
       Exit 0; exit 2 if either file missing.
 
+  read-specify-handoff <spec-path>
+      Resolve and validate the sibling specify handoff.json for a spec.md.
+      The sibling is spec_path.parent / "handoff.json".
+      Success (sibling valid): print a 4-line block —
+        spec-handoff: <absolute-path-to-handoff.json>
+        spec_seeds: present
+        upstream_handoff_path: <path or "none">
+        upstream_handoff_kind: <kind or "none">
+      No sibling: print "no-handoff", exit 0.
+      Malformed or schema-invalid sibling: exit 2.
+      spec-path is a directory or does not exist: exit 2.
+
+  render-plan-seeds <specify-handoff-path>
+      Render a structured plan-seeds block from the upstream research/discover
+      handoff referenced by a specify-handoff.json.
+      Reads provenance.upstream_handoff_path from the specify handoff, loads
+      the upstream file, dispatches on upstream_handoff_kind ('research' or
+      'discover'), and emits a deterministic multi-line block.
+      Success: print the rendered block, exit 0.
+      Null upstream_handoff_path (cold path): print "cold-no-plan-seeds", exit 0.
+      upstream file missing or upstream_handoff_kind unknown: exit 2.
+
 Exit codes:
   0 — success
   1 — reserved for I/O failures (write errors)
@@ -60,13 +82,14 @@ Stdlib only. Python 3.8+.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +929,403 @@ def cmd_render_breakdown_handoff(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Error helper.
+# ---------------------------------------------------------------------------
+
+
+def _die(msg: str, code: int = 2) -> int:
+    """Write msg to stderr and return code."""
+    sys.stderr.write("plan_helper: " + msg + "\n")
+    return code
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: read-specify-handoff
+# ---------------------------------------------------------------------------
+
+
+_SPECIFY_HANDOFF_REQUIRED_KEYS = frozenset({
+    "schema_version",
+    "handoff_kind",
+    "spec_path",
+    "specify_completed_at",
+    "classification",
+    "spec_seeds",
+    "provenance",
+    "downstream_links",
+})
+
+_PROVENANCE_KEYS = frozenset({
+    "upstream_handoff_path",
+    "upstream_handoff_kind",
+})
+
+
+def _validate_specify_handoff_dict(d: Any) -> str:
+    """Return error string if d is not a valid specify-handoff dict, else empty string.
+
+    Lightweight structural validation: checks handoff_kind constant,
+    required top-level keys, and provenance sub-record keys. Does NOT
+    reconstruct the full dataclass (avoids cross-module coupling; the
+    shape contract is enforced here at the fields plan_helper actually
+    uses).
+    """
+    if not isinstance(d, dict):
+        return "root is not a JSON object"
+    # Check all required top-level keys exist.
+    missing = _SPECIFY_HANDOFF_REQUIRED_KEYS - d.keys()
+    if missing:
+        return "missing required fields: {0}".format(sorted(missing))
+    # handoff_kind constant.
+    if d.get("handoff_kind") != "specify":
+        return "handoff_kind is {0!r}, expected 'specify'".format(d.get("handoff_kind"))
+    # provenance must be a dict with expected keys.
+    prov = d.get("provenance")
+    if not isinstance(prov, dict):
+        return "provenance is not a JSON object"
+    missing_prov = _PROVENANCE_KEYS - prov.keys()
+    if missing_prov:
+        return "provenance missing fields: {0}".format(sorted(missing_prov))
+    # Co-vary invariant: upstream_handoff_path and upstream_handoff_kind must
+    # both be set or both be null (mirrors Provenance.__post_init__ invariant).
+    path_set = bool(prov.get("upstream_handoff_path"))
+    kind_set = bool(prov.get("upstream_handoff_kind"))
+    if path_set != kind_set:
+        return (
+            "provenance.upstream_handoff_path and upstream_handoff_kind "
+            "must both be set or both be null"
+        )
+    return ""
+
+
+def cmd_read_specify_handoff(args: argparse.Namespace) -> int:
+    """Resolve and validate the sibling specify handoff.json for a spec.md.
+
+    Prints a deterministic block to stdout on success; 'no-handoff' when
+    no sibling exists; dies with exit 2 on malformed sibling or missing spec.
+
+    Output format (success):
+      spec-handoff: <absolute path to handoff.json>
+      spec_seeds: present
+      upstream_handoff_path: <path or "none">
+      upstream_handoff_kind: <kind or "none">
+    """
+    spec_path_raw = args.spec_path
+    spec_path = Path(spec_path_raw)
+    if not spec_path.is_absolute():
+        spec_path = Path.cwd() / spec_path
+    spec_path = spec_path.resolve()
+
+    if not spec_path.is_file():
+        return _die("spec not found: {0}".format(spec_path_raw))
+
+    handoff_path = spec_path.parent / "handoff.json"
+
+    if not handoff_path.exists():
+        sys.stdout.write("no-handoff\n")
+        return 0
+
+    # Sibling exists — parse and validate.
+    try:
+        raw_text = handoff_path.read_text(encoding="utf-8")
+        d = json.loads(raw_text)
+    except (OSError, IOError, json.JSONDecodeError) as err:
+        return _die(
+            "handoff.json at {0} is malformed: {1}".format(handoff_path, err)
+        )
+
+    err_msg = _validate_specify_handoff_dict(d)
+    if err_msg:
+        return _die(
+            "handoff.json at {0} fails specify-Handoff schema validation: {1}".format(
+                handoff_path, err_msg
+            )
+        )
+
+    prov = d["provenance"]
+    upstream_path = prov.get("upstream_handoff_path") or None
+    upstream_kind = prov.get("upstream_handoff_kind") or None
+
+    sys.stdout.write("spec-handoff: {0}\n".format(handoff_path.resolve()))
+    sys.stdout.write("spec_seeds: present\n")
+    sys.stdout.write(
+        "upstream_handoff_path: {0}\n".format(upstream_path if upstream_path else "none")
+    )
+    sys.stdout.write(
+        "upstream_handoff_kind: {0}\n".format(upstream_kind if upstream_kind else "none")
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: render-plan-seeds
+# ---------------------------------------------------------------------------
+
+
+def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
+    """Render the plan-seeds block for a research upstream handoff.
+
+    All plan_seeds fields are represented. Lists render as bullet entries
+    (one line each). Empty lists render as '- (none)'.
+    """
+    ps = d.get("plan_seeds", {}) or {}
+
+    rec_id = ps.get("recommended_approach_id", "(unset)")
+    rec_summary = ps.get("recommended_approach_summary", "(unset)")
+    layer_dest = ps.get("layer_destination", "(unset)")
+    layer_just = ps.get("layer_justification", "(unset)")
+    call_shape = ps.get("proposed_call_shape") or "(none)"
+
+    # Complexity.
+    complexity = ps.get("complexity") or {}
+    if isinstance(complexity, dict):
+        complexity_str = "changes={0}, risk={1}, verify_cost={2}".format(
+            complexity.get("changes", "?"),
+            complexity.get("risk", "?"),
+            complexity.get("verify_cost", "?"),
+        )
+    else:
+        complexity_str = str(complexity)
+
+    # Alternatives considered.
+    alts = ps.get("alternatives_considered") or []
+    if alts:
+        alt_lines = []
+        for alt in alts:
+            if isinstance(alt, dict):
+                alt_lines.append(
+                    "- {0}: {1} (rejected: {2})".format(
+                        alt.get("id", "?"),
+                        alt.get("summary", "?"),
+                        alt.get("rejected_reason", "?"),
+                    )
+                )
+            else:
+                alt_lines.append("- {0}".format(alt))
+        alts_block = "\n".join(alt_lines)
+    else:
+        alts_block = "- (none)"
+
+    # Cited canonical patterns.
+    patterns = ps.get("cited_canonical_patterns") or []
+    if patterns:
+        pat_lines = []
+        for pat in patterns:
+            if isinstance(pat, dict):
+                pat_lines.append(
+                    "- {0} ({1})".format(pat.get("qn", "?"), pat.get("file_line", "?"))
+                )
+            else:
+                pat_lines.append("- {0}".format(pat))
+        patterns_block = "\n".join(pat_lines)
+    else:
+        patterns_block = "- (none)"
+
+    return (
+        "## Upstream plan-seeds (research handoff: {upstream_path})\n"
+        "\n"
+        "**Recommended approach**: {rec_id} — {rec_summary}\n"
+        "**Layer**: {layer_dest} — {layer_just}\n"
+        "**Complexity**: {complexity_str}\n"
+        "**Proposed call shape**: {call_shape}\n"
+        "\n"
+        "**Alternatives considered**:\n"
+        "{alts_block}\n"
+        "\n"
+        "**Cited canonical patterns**:\n"
+        "{patterns_block}\n"
+    ).format(
+        upstream_path=upstream_path,
+        rec_id=rec_id,
+        rec_summary=rec_summary,
+        layer_dest=layer_dest,
+        layer_just=layer_just,
+        complexity_str=complexity_str,
+        call_shape=call_shape,
+        alts_block=alts_block,
+        patterns_block=patterns_block,
+    )
+
+
+def _render_discover_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
+    """Render the plan-seeds block for a discover upstream handoff.
+
+    All plan_seeds fields are represented. Lists render as bullet entries
+    (one line each). Empty lists render as '- (none)'.
+    """
+    ps = d.get("plan_seeds", {}) or {}
+
+    rec_id = ps.get("recommended_option_id") or "(none)"
+    rec_rationale = ps.get("recommended_option_rationale", "(unset)")
+
+    # Build vs buy.
+    bvb = ps.get("build_vs_buy") or {}
+    if isinstance(bvb, dict):
+        bvb_str = "recommendation={0}, build={1}, buy={2}, reasoning={3}".format(
+            bvb.get("recommendation", "?"),
+            bvb.get("build_path", "?"),
+            bvb.get("buy_path", "?"),
+            bvb.get("reasoning", "?"),
+        )
+    else:
+        bvb_str = str(bvb)
+
+    # Complexity.
+    complexity = ps.get("complexity") or {}
+    if isinstance(complexity, dict):
+        complexity_str = "changes={0}, risk={1}, verify_cost={2}".format(
+            complexity.get("changes", "?"),
+            complexity.get("risk", "?"),
+            complexity.get("verify_cost", "?"),
+        )
+    else:
+        complexity_str = str(complexity)
+
+    # Design options.
+    opts = ps.get("design_options") or []
+    if opts:
+        opt_lines = []
+        for opt in opts:
+            if isinstance(opt, dict):
+                opt_lines.append(
+                    "- {0}: {1} (shape: {2}, complexity: {3})".format(
+                        opt.get("id", "?"),
+                        opt.get("name", "?"),
+                        opt.get("shape", "?"),
+                        opt.get("complexity", "?"),
+                    )
+                )
+            else:
+                opt_lines.append("- {0}".format(opt))
+        opts_block = "\n".join(opt_lines)
+    else:
+        opts_block = "- (none)"
+
+    # Cited canonical patterns.
+    patterns = ps.get("cited_canonical_patterns") or []
+    if patterns:
+        pat_lines = []
+        for pat in patterns:
+            if isinstance(pat, dict):
+                pat_lines.append(
+                    "- {0} ({1}) [{2}]".format(
+                        pat.get("reference", "?"),
+                        pat.get("kind", "?"),
+                        pat.get("source", "?"),
+                    )
+                )
+            else:
+                pat_lines.append("- {0}".format(pat))
+        patterns_block = "\n".join(pat_lines)
+    else:
+        patterns_block = "- (none)"
+
+    return (
+        "## Upstream plan-seeds (discover handoff: {upstream_path})\n"
+        "\n"
+        "**Recommended option**: {rec_id} — {rec_rationale}\n"
+        "**Build vs buy**: {bvb_str}\n"
+        "**Complexity**: {complexity_str}\n"
+        "\n"
+        "**Design options**:\n"
+        "{opts_block}\n"
+        "\n"
+        "**Cited canonical patterns**:\n"
+        "{patterns_block}\n"
+    ).format(
+        upstream_path=upstream_path,
+        rec_id=rec_id,
+        rec_rationale=rec_rationale,
+        bvb_str=bvb_str,
+        complexity_str=complexity_str,
+        opts_block=opts_block,
+        patterns_block=patterns_block,
+    )
+
+
+def cmd_render_plan_seeds(args: argparse.Namespace) -> int:
+    """Render a structured plan-seeds block from the upstream research/discover handoff.
+
+    Reads the specify-handoff at the given path, follows
+    provenance.upstream_handoff_path to the upstream handoff, dispatches on
+    handoff_kind ('research' or 'discover'), and emits a deterministic block.
+
+    Outputs 'cold-no-plan-seeds' and exits 0 when upstream_handoff_path is
+    null/empty (cold path — manual /specify without upstream). Dies exit 2 on
+    missing upstream file or unknown handoff_kind.
+    """
+    specify_handoff_path_raw = args.specify_handoff_path
+    specify_handoff_path = Path(specify_handoff_path_raw)
+    if not specify_handoff_path.is_absolute():
+        specify_handoff_path = Path.cwd() / specify_handoff_path
+    specify_handoff_path = specify_handoff_path.resolve()
+
+    # Read the specify handoff.
+    try:
+        raw_text = specify_handoff_path.read_text(encoding="utf-8")
+        specify_d = json.loads(raw_text)
+    except FileNotFoundError:
+        return _die("specify-handoff not found: {0}".format(specify_handoff_path_raw))
+    except (OSError, IOError, json.JSONDecodeError) as err:
+        return _die(
+            "cannot read specify-handoff at {0}: {1}".format(
+                specify_handoff_path_raw, err
+            )
+        )
+
+    # Extract upstream_handoff_path from provenance.
+    prov = specify_d.get("provenance") or {}
+    upstream_path_raw = prov.get("upstream_handoff_path") or None
+
+    if not upstream_path_raw:
+        sys.stdout.write("cold-no-plan-seeds\n")
+        return 0
+
+    # Resolve upstream path (may be relative to the repo root / cwd).
+    upstream_path = Path(upstream_path_raw)
+    if not upstream_path.is_absolute():
+        upstream_path = Path.cwd() / upstream_path
+    upstream_path = upstream_path.resolve()
+
+    if not upstream_path.exists():
+        return _die(
+            "upstream handoff not found: {0}".format(upstream_path_raw)
+        )
+
+    # Read and parse the upstream handoff.
+    try:
+        raw_upstream = upstream_path.read_text(encoding="utf-8")
+        upstream_d = json.loads(raw_upstream)
+    except (OSError, IOError, json.JSONDecodeError) as err:
+        return _die(
+            "cannot read upstream handoff at {0}: {1}".format(upstream_path_raw, err)
+        )
+
+    # Kind dispatch: prefer provenance.upstream_handoff_kind from the SPECIFY
+    # handoff (authoritative, set by specify's import-handoff), since the
+    # research handoff schema predates the handoff_kind field convention and
+    # does not include it at the top level. Fall back to upstream's own
+    # handoff_kind field for forward-compatibility if provenance kind is absent.
+    handoff_kind = (
+        prov.get("upstream_handoff_kind")
+        or upstream_d.get("handoff_kind", "")
+    )
+
+    if handoff_kind == "research":
+        block = _render_research_plan_seeds(str(upstream_path_raw), upstream_d)
+    elif handoff_kind == "discover":
+        block = _render_discover_plan_seeds(str(upstream_path_raw), upstream_d)
+    else:
+        return _die(
+            "upstream handoff at {0} has unknown handoff_kind={1!r}; "
+            "expected 'research' or 'discover'".format(upstream_path_raw, handoff_kind)
+        )
+
+    sys.stdout.write(block)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
 
@@ -972,6 +1392,33 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("spec_path", help="Path to spec.md.")
     sp.add_argument("plan_path", help="Path to plan.md.")
     sp.set_defaults(func=cmd_render_breakdown_handoff)
+
+    # read-specify-handoff
+    sp = sub.add_parser(
+        "read-specify-handoff",
+        help=(
+            "Resolve and validate the sibling specify handoff.json for a spec.md. "
+            "Prints a 4-line block on success, 'no-handoff' when none exists, "
+            "exits 2 on malformed sibling or missing spec."
+        ),
+    )
+    sp.add_argument("spec_path", help="Path to spec.md.")
+    sp.set_defaults(func=cmd_read_specify_handoff)
+
+    # render-plan-seeds
+    sp = sub.add_parser(
+        "render-plan-seeds",
+        help=(
+            "Render structured plan-seeds block from the upstream research/discover "
+            "handoff referenced by a specify-handoff. Prints 'cold-no-plan-seeds' "
+            "when provenance.upstream_handoff_path is null."
+        ),
+    )
+    sp.add_argument(
+        "specify_handoff_path",
+        help="Path to the specify handoff.json (specs/NNN-slug/handoff.json).",
+    )
+    sp.set_defaults(func=cmd_render_plan_seeds)
 
     return parser
 

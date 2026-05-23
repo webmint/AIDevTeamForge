@@ -49,9 +49,33 @@ Copy the helper's stdout VERBATIM into your next user-facing message as a fenced
 
 End the turn. The user's reply opens the next turn.
 
-- **`yes`** → proceed to Phase 0b with the resolved path.
-- **`pick-other`** → in the next turn, run `.devforge/lib/plan_helper list-specs` and emit stdout as a numbered list inside a fenced block. The helper output is unbounded (one line per spec, mtime desc). For `AskUserQuestion`, take the first four lines as the four option labels — AskUserQuestion caps at four options, so the LLM truncates client-side, not the helper. Question: `"Which spec to plan against?"` — single-line text. If more than four specs exist, include `other` as the fourth option; on `other`, ask the user via free-text follow-up for the explicit path, then re-run `pick-spec <path>` to validate. On the chosen path, treat it as the resolved path and proceed to Phase 0b.
+- **`yes`** → proceed to Phase 0a.5 with the resolved path.
+- **`pick-other`** → in the next turn, run `.devforge/lib/plan_helper list-specs` and emit stdout as a numbered list inside a fenced block. The helper output is unbounded (one line per spec, mtime desc). For `AskUserQuestion`, take the first four lines as the four option labels — AskUserQuestion caps at four options, so the LLM truncates client-side, not the helper. Question: `"Which spec to plan against?"` — single-line text. If more than four specs exist, include `other` as the fourth option; on `other`, ask the user via free-text follow-up for the explicit path, then re-run `pick-spec <path>` to validate. On the chosen path, treat it as the resolved path and proceed to Phase 0a.5.
 - **`cancel`** → tell the user `"/plan cancelled. Re-run /plan when ready."` and end the turn.
+
+## PHASE 0a.5: Upstream handoff discovery
+
+`/specify` may have written a sibling `handoff.json` next to the spec, which can point upstream to a `/research` or `/discover` handoff carrying the HOW seed. This phase is informational — it surfaces that seed for the planning phases. There is no user gate here; do not invoke `AskUserQuestion`.
+
+Check for a sibling handoff via the helper:
+
+```bash
+.devforge/lib/plan_helper read-specify-handoff <resolved-path>
+```
+
+- Stdout `no-handoff` → tell the user `"No upstream handoff; planning cold from the spec."` and proceed to Phase 0b with the resolved path.
+- A 4-line block (lines `spec-handoff:`, `spec_seeds:`, `upstream_handoff_path:`, `upstream_handoff_kind:`) → read its `upstream_handoff_path` line:
+  - value `none` → tell the user `"Spec has no upstream research/discover handoff; planning cold."` and proceed to Phase 0b with the resolved path.
+  - a path → render the plan seeds via the helper, passing the `spec-handoff:` value from the 4-line block as the argument:
+
+    ```bash
+    .devforge/lib/plan_helper render-plan-seeds <spec-handoff-path>
+    ```
+
+    - Stdout `cold-no-plan-seeds` → tell the user `"Upstream handoff carries no plan seeds; planning cold."` and proceed to Phase 0b with the resolved path.
+    - A `## Upstream plan-seeds` block → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). State that this block is the HOW seed and is the authoritative starting point for Phase 0 (Research Evaluation — if it already cites canonical patterns or a recommended approach, you have prior art; calibrate research depth instead of rediscovering), Phase 1 (Technical Design), and Phase 1.3 (Architecture Decisions — where the architect consultation fires and the key design decisions are drafted). If your plan diverges from the upstream recommendation, state the divergence and why in the plan's "Architect Consultation" section — do not silently discard it. Then proceed to Phase 0b with the resolved path.
+
+Exit 2 from either helper means the sibling handoff is malformed or the upstream pointer is dangling/unknown — copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn.
 
 ## PHASE 0b: Status flip
 

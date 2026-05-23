@@ -22,11 +22,13 @@ Module-level unit tests import plan_helper directly via sys.path insert.
 Stdlib only.
 """
 
+import json
 import os
 import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 from pathlib import Path
 
@@ -34,6 +36,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HELPER_PY = REPO_ROOT / "src" / "devforge" / "lib" / "plan_helper.py"
 HELPER_SHIM = REPO_ROOT / "src" / "devforge" / "lib" / "plan_helper"
 SPECIFY_HELPER_PY = REPO_ROOT / "src" / "devforge" / "lib" / "specify_helper.py"
+RESEARCH_HELPER_PY = REPO_ROOT / "src" / "devforge" / "lib" / "research_helper.py"
+DISCOVER_HELPER_PY = REPO_ROOT / "src" / "devforge" / "lib" / "discover_helper.py"
+_LIB_DIR = REPO_ROOT / "src" / "devforge" / "lib"
 
 FIXTURE_DIR = (
     REPO_ROOT / "tests" / "lib" / "fixtures" / "specs" / "008-sample-feature"
@@ -82,6 +87,19 @@ def tearDownModule():
 
 sys.path.insert(0, str(HELPER_PY.parent))
 import plan_helper  # noqa: E402
+
+# Producer imports for handoff round-trip tests.
+# These are added to sys.path so _specify/_discover packages are importable.
+if str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
+if str(_LIB_DIR / "_specify") not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR / "_specify"))
+if str(_LIB_DIR / "_discover") not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR / "_discover"))
+
+from _specify._cmds_handoff import cmd_finalize_handoff as _specify_finalize_handoff  # noqa: E402
+from _discover._cmds_handoff import cmd_finalize_handoff as _discover_finalize_handoff  # noqa: E402
+from _discover._state import _atomic_write_json, MEMO_FILE_NAME, REPORT_FILE_NAME  # noqa: E402
 
 
 def _run(cwd, *args):
@@ -1257,6 +1275,696 @@ class ModuleUnitTests(unittest.TestCase):
         content = FIXTURE_SPEC.read_text(encoding="utf-8")
         status = plan_helper._parse_frontmatter_field(content, plan_helper._STATUS_PATTERN)
         self.assertEqual(status, "Complete")
+
+
+# ---------------------------------------------------------------------------
+# Fixture factories for handoff round-trip tests.
+# ---------------------------------------------------------------------------
+
+
+def _make_specify_state(handoff_path=None, handoff_kind=None,
+                        research_completed_at=None, discover_completed_at=None,
+                        discover_recommended_summary=None):
+    """Build a minimal valid specify state dict for cmd_finalize_handoff.
+
+    Uses an anonymous 'widget-catalog' domain (consistent with existing fixture
+    theme) with all required fields populated.
+    """
+    return {
+        "topic": "widget-catalog-search",
+        "topic_slug": "widget-catalog-search",
+        "date": "2026-05-22",
+        "spec_number": "009",
+        "feature_name": "widget-catalog-search",
+        "feature_slug": "widget-catalog-search",
+        "spec_type": "feature_addition",
+        "spec_type_rationale": "Adding full-text search to the widget catalog",
+        "spec_type_seeded_by_upstream": False,
+        "status": "Draft",
+        "overview": "Add full-text search capability to the widget catalog API.",
+        "current_state": None,
+        "desired_behavior": None,
+        "affected_areas": [
+            {"area": "WidgetService", "files": ["src/services/widget_service.py"],
+             "impact": "Search logic added here"}
+        ],
+        "acceptance_criteria": [
+            {
+                "ac_id": "AC-1",
+                "subsection": "behavior_change",
+                "ears_variant": "event_driven",
+                "statement": "WHEN a search query is submitted, the system shall return matching widgets.",
+                "verification_command": "pytest tests/test_widget_search.py",
+                "test_anchor": "test_search_returns_results",
+                "n_a_reason": "",
+            }
+        ],
+        "ac_subsection_na": {"ci_pipeline": "No CI changes required"},
+        "out_of_scope": [
+            {"content": "Real-time search indexing", "finding_ref": ""}
+        ],
+        "constraints": [
+            {"kind": "nfr", "content": "Search must respond within 200ms",
+             "quantifier": "p99 < 200ms"}
+        ],
+        "open_questions": [
+            {"question_id": "OQ-1", "content": "Which search backend to use?",
+             "category_no_dp_reason": ""}
+        ],
+        "risks": [
+            {"risk": "Index staleness under heavy write load",
+             "likelihood": "Low", "impact": "Med",
+             "mitigation": "Async index refresh with TTL"}
+        ],
+        "approval_summary": None,
+        "plan_handoff_block": None,
+        "open_question_resolutions": [],
+        "conflicts": [],
+        "source": {
+            "handoff_path": handoff_path,
+            "handoff_kind": handoff_kind,
+            "research_completed_at": research_completed_at,
+            "discover_completed_at": discover_completed_at,
+            "discover_recommended_summary": discover_recommended_summary,
+        },
+        "input_reads": [],
+        "phase1_finalized": False,
+        "findings": [],
+        "source_no_items_relevant": {},
+        "findings_finalized": False,
+        "decision_points": [],
+        "dp_finalized": False,
+        "mode": None,
+        "mandatory_reads": [],
+        "discretionary_reads": [],
+        "phase3_finalized": False,
+        "current_branch": None,
+        "default_branch": None,
+        "branch_decision": None,
+        "branch_created": None,
+    }
+
+
+def _write_specify_state(devforge_dir, state):
+    """Write specify-state.json to devforge_dir."""
+    Path(devforge_dir).mkdir(parents=True, exist_ok=True)
+    state_path = Path(devforge_dir) / "specify-state.json"
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    return state_path
+
+
+def _make_specify_args(devforge_dir, emit_path=None, specs_root="specs",
+                       completed_at="2026-05-22T10:00:00Z"):
+    """Build argparse.Namespace for _specify_finalize_handoff."""
+    ns = types.SimpleNamespace()
+    ns.devforge_dir = str(devforge_dir)
+    ns.emit_handoff_json = emit_path
+    ns.specs_root = specs_root
+    ns.completed_at = completed_at
+    return ns
+
+
+def _produce_specify_handoff(tmp_root, handoff_path=None, handoff_kind=None,
+                              research_completed_at=None,
+                              discover_completed_at=None,
+                              discover_recommended_summary=None):
+    """Produce a real specify handoff.json using the real producer.
+
+    Returns the Path to the written handoff.json.
+    """
+    devforge_dir = tmp_root / ".devforge"
+    state = _make_specify_state(
+        handoff_path=handoff_path,
+        handoff_kind=handoff_kind,
+        research_completed_at=research_completed_at,
+        discover_completed_at=discover_completed_at,
+        discover_recommended_summary=discover_recommended_summary,
+    )
+    _write_specify_state(devforge_dir, state)
+    emit_path = tmp_root / "specs" / "009-widget-catalog-search" / "handoff.json"
+    emit_path.parent.mkdir(parents=True, exist_ok=True)
+    args = _make_specify_args(devforge_dir, emit_path=str(emit_path))
+    rc = _specify_finalize_handoff(args)
+    if rc != 0:
+        raise RuntimeError(
+            "specify finalize-handoff failed rc={0}".format(rc)
+        )
+    return emit_path
+
+
+def _make_discover_memo(topic_slug="widget-search-feature", topic="Widget Search Feature",
+                        date="2026-05-22"):
+    return {
+        "topic": topic,
+        "topic_slug": topic_slug,
+        "date": date,
+        "dimensions": {
+            "functional_scope": {"value": "Full-text search over widget catalog", "state": "Clear", "turns": 1},
+            "users": {"value": "API consumers and internal clients", "state": "Clear", "turns": 1},
+            "inputs_outputs": {"value": "SearchQuery -> WidgetList", "state": "Clear", "turns": 1},
+            "integration_points": {"value": "WidgetRepository", "state": "Clear", "turns": 1},
+            "constraints": {"value": "200ms p99 latency", "state": "Clear", "turns": 1},
+            "non_goals": {"value": "No real-time indexing", "state": "Clear", "turns": 1},
+            "success_criteria": {"value": "Relevant widgets returned for query", "state": "Clear", "turns": 1},
+            "edge_cases": {"value": "Empty query returns all", "state": "Clear", "turns": 1},
+        },
+        "references": [],
+        "gaps": [],
+        "override_recorded": False,
+        "conflicts": [],
+    }
+
+
+def _make_discover_report(verdict="Worth pursuing", overall_fit="Good",
+                           effort_estimate="Low"):
+    return {
+        "topic": "Widget Search Feature",
+        "date": "2026-05-22",
+        "topic_slug": "widget-search-feature",
+        "summary": "Add full-text search to the widget catalog",
+        "prior_art": [],
+        "integration_touchpoints": [
+            {"name": "WidgetRepository", "module_path": "src/repos/widget_repo.py",
+             "reason": "Search queries go through the repository"}
+        ],
+        "fit_assessments": [],
+        "overall_fit": overall_fit,
+        "effort_estimate": effort_estimate,
+        "fit_rationale": "Straightforward addition on top of existing repository layer",
+        "design_options": [
+            {
+                "name": "In-memory filter",
+                "shape": "Filter widget list in memory",
+                "pros": ["Simple"],
+                "cons": ["Slow for large catalogs"],
+                "complexity": "Low",
+            }
+        ],
+        "recommended_option": {"name": "In-memory filter", "rationale": "Lowest complexity for MVP"},
+        "build_vs_buy": {
+            "recommendation": "Build",
+            "build": "Implement filter in WidgetService",
+            "buy": "Third-party search library",
+            "reasoning": "Existing service already owns widget data",
+        },
+        "derisk_plan": [
+            {"risk": "Performance on large catalogs", "mitigation": "Paginate results"}
+        ],
+        "constitution_constraints": [],
+        "verdict": verdict,
+        "recommendation": "Use the in-memory filter approach as a starting point.",
+        "next_step_text": "Run /specify widget-search-feature",
+        "open_uncertainties": [],
+    }
+
+
+def _produce_discover_handoff(tmp_root, emit_path=None):
+    """Produce a real discover handoff.json using the real producer (direct call).
+
+    Returns the Path to the written handoff.json.
+    """
+    devforge_dir = tmp_root / ".devforge"
+    devforge_dir.mkdir(parents=True, exist_ok=True)
+    memo = _make_discover_memo()
+    report = _make_discover_report()
+    _atomic_write_json(memo, devforge_dir / MEMO_FILE_NAME)
+    _atomic_write_json(report, devforge_dir / REPORT_FILE_NAME)
+
+    if emit_path is None:
+        emit_path = tmp_root / "discover" / "2026-05-22-widget-search-feature.handoff.json"
+
+    ns = types.SimpleNamespace()
+    ns.devforge_dir = str(devforge_dir)
+    ns.emit_handoff_json = str(emit_path)
+    rc = _discover_finalize_handoff(ns)
+    if rc != 0:
+        raise RuntimeError("discover finalize-handoff failed rc={0}".format(rc))
+    return Path(emit_path)
+
+
+def _run_research_setup(devforge, research_helper_py):
+    """Set up minimal bug-mode research state and run finalize-handoff.
+
+    Returns the Path to the written handoff.json.
+    """
+    def _rrun(*argv):
+        return subprocess.run(
+            [sys.executable, str(research_helper_py)] + list(argv),
+            capture_output=True, text=True,
+        )
+
+    _rrun("--devforge-dir", str(devforge), "reset-memo")
+    _rrun("--devforge-dir", str(devforge), "reset-report")
+
+    # Phase 0 dimensions.
+    for dim, val in (
+        ("symptom", "Widget query returns stale results after catalog update"),
+        ("affected-area", "src/services/widget_service.py"),
+        ("repro-or-current", "Update catalog; query still returns old results"),
+        ("desired", "Fresh results returned after any catalog update"),
+        ("scope", "one function"),
+        ("unchanged-behavior", "other catalog operations remain unchanged"),
+    ):
+        _rrun("--devforge-dir", str(devforge),
+              "set-" + dim, "--value", val, "--state", "Clear")
+
+    _rrun("--devforge-dir", str(devforge), "detect-mode", "--override", "bug")
+    _rrun("--devforge-dir", str(devforge), "set-topic", "--value", "widget-stale-results")
+    _rrun("--devforge-dir", str(devforge), "set-date", "--value", "2026-05-22")
+
+    # Phase 1.
+    _rrun("--devforge-dir", str(devforge), "record-finding",
+          "--surface", "widget cache",
+          "--file-line", "src/services/widget_service.py:55",
+          "--relevance", "cache not invalidated on write")
+    _rrun("--devforge-dir", str(devforge), "record-finding",
+          "--surface", "catalog update handler",
+          "--file-line", "src/services/widget_service.py:80",
+          "--relevance", "update does not clear cache entry")
+    _rrun("--devforge-dir", str(devforge), "record-hypothesis",
+          "--cause", "cache not cleared on catalog update",
+          "--falsifier", "add logging to cache invalidation; check after update",
+          "--runtime-probe-needed", "yes")
+    _rrun("--devforge-dir", str(devforge), "record-hypothesis",
+          "--cause", "wrong cache key used for lookup after update",
+          "--falsifier", "compare cache keys before and after update",
+          "--runtime-probe-needed", "no")
+    _rrun("--devforge-dir", str(devforge), "set-root-cause-hypothesis",
+          "--value", "cache not cleared on catalog update")
+    _rrun("--devforge-dir", str(devforge), "set-confidence", "--value", "Hypothesis")
+    _rrun("--devforge-dir", str(devforge), "set-trigger",
+          "--value", "catalog write operation")
+    _rrun("--devforge-dir", str(devforge), "set-root-cause-systemic",
+          "--value", "No cache invalidation hook on catalog writes")
+    _rrun("--devforge-dir", str(devforge), "set-verify-step",
+          "--probe", "add cache.clear() after catalog.update()",
+          "--reproduction", "Run update; query; check if fresh result returned",
+          "--discriminator",
+          "fresh result -> cache not invalidated; stale -> different cause")
+
+    # Phase 2.
+    _rrun("--devforge-dir", str(devforge), "set-approach",
+          "--name", "Option A: invalidate cache on write",
+          "--description", "Clear cache entry when catalog update occurs",
+          "--addresses-hypotheses", json.dumps(["cache not cleared on catalog update"]),
+          "--does-not-cover", json.dumps(["wrong cache key used for lookup after update"]),
+          "--pros", json.dumps(["simple"]),
+          "--cons", json.dumps(["requires hook registration"]),
+          "--complexity", "Low")
+    _rrun("--devforge-dir", str(devforge), "set-approach",
+          "--name", "Option B: remove cache entirely",
+          "--description", "Fetch fresh data on every query",
+          "--addresses-hypotheses", json.dumps([
+              "cache not cleared on catalog update",
+              "wrong cache key used for lookup after update",
+          ]),
+          "--does-not-cover", json.dumps([]),
+          "--pros", json.dumps(["always fresh"]),
+          "--cons", json.dumps(["higher latency"]),
+          "--complexity", "Low")
+    _rrun("--devforge-dir", str(devforge), "set-recommended-approach",
+          "--name", "Option A: invalidate cache on write",
+          "--rationale", "Targeted invalidation avoids latency cost of full removal",
+          "--hypotheses-addressed",
+          json.dumps(["cache not cleared on catalog update"]),
+          "--hypotheses-not-covered",
+          json.dumps(["wrong cache key used for lookup after update"]))
+    _rrun("--devforge-dir", str(devforge), "set-constitution-constraints",
+          "--rule", "Cache invalidation must be deterministic",
+          "--impact", "Prevents stale data serving")
+    _rrun("--devforge-dir", str(devforge), "set-complexity",
+          "--codebase-changes", "Low", "--codebase-notes", "1-2 files",
+          "--risk", "Low", "--risk-notes", "narrow scope",
+          "--verify-cost", "Low", "--verify-notes", "unit test suffices")
+    _rrun("--devforge-dir", str(devforge), "set-verdict",
+          "--value", "Root cause hypothesis (needs repro)")
+    _rrun("--devforge-dir", str(devforge), "set-summary",
+          "--value", "Widget query returns stale results because cache is not cleared on update. Fix: hook invalidation to write.")
+
+    # Fix-path helpers for verify checks.
+    _rrun("--devforge-dir", str(devforge), "record-fix-path-helper",
+          "--helper-qn", "widget_service.update_catalog",
+          "--file-line", "src/services/widget_service.py:80")
+    _rrun("--devforge-dir", str(devforge), "record-fix-path-helper",
+          "--helper-qn", "widget_cache.invalidate",
+          "--file-line", "src/services/widget_service.py:55")
+    _rrun("--devforge-dir", str(devforge), "record-inbound-caller",
+          "--helper-qn", "widget_service.update_catalog",
+          "--caller-qn", "catalog_api.update",
+          "--file-line", "src/api/catalog_api.py:30")
+    _rrun("--devforge-dir", str(devforge), "record-runner-up-framing",
+          "--frame", "wrong cache key used for lookup",
+          "--falsifier", "compare cache keys before and after",
+          "--confidence-vs-primary", "lower")
+    _rrun("--devforge-dir", str(devforge), "record-finding",
+          "--surface", "cache key derivation",
+          "--file-line", "src/services/widget_service.py:60",
+          "--relevance", "key derivation cross-check for runner-up",
+          "--framing", "runner-up")
+
+    # Step 4: probe feasibility.
+    _rrun("--devforge-dir", str(devforge), "set-probe-feasibility",
+          "--data-shape-only", "false",
+          "--auth-required", "false",
+          "--network-dependent", "false",
+          "--timing-dependent", "false",
+          "--is-test-code", "false")
+
+
+# ---------------------------------------------------------------------------
+# Tests: read-specify-handoff
+# ---------------------------------------------------------------------------
+
+
+class ReadSpecifyHandoffTests(unittest.TestCase):
+    """Tests for plan_helper read-specify-handoff subcommand."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, *args):
+        """Run plan_helper.py with args from self.tmp as cwd."""
+        return subprocess.run(
+            [sys.executable, str(HELPER_PY)] + list(args),
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+
+    def test_no_sibling_handoff_prints_no_handoff(self):
+        """Spec exists but no sibling handoff.json -> stdout 'no-handoff', exit 0."""
+        spec_dir = self.tmp / "specs" / "009-widget-catalog-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+
+        result = self._run("read-specify-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "no-handoff")
+
+    def test_malformed_sibling_exits_2(self):
+        """Sibling handoff.json exists but is malformed JSON -> exit 2."""
+        spec_dir = self.tmp / "specs" / "009-widget-catalog-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        # Write invalid JSON.
+        (spec_dir / "handoff.json").write_text("{not valid json", encoding="utf-8")
+
+        result = self._run("read-specify-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 2, result.stdout)
+
+    def test_wrong_handoff_kind_exits_2(self):
+        """Sibling handoff.json has handoff_kind != 'specify' -> exit 2."""
+        spec_dir = self.tmp / "specs" / "009-widget-catalog-search"
+        spec_dir.mkdir(parents=True)
+        spec_path = spec_dir / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+        bad = {
+            "schema_version": "1.0",
+            "handoff_kind": "research",  # wrong
+            "spec_path": "specs/009-x/spec.md",
+            "specify_completed_at": "2026-05-22T10:00:00Z",
+            "classification": {},
+            "spec_seeds": {},
+            "provenance": {"upstream_handoff_path": None, "upstream_handoff_kind": None},
+            "downstream_links": {},
+        }
+        (spec_dir / "handoff.json").write_text(json.dumps(bad), encoding="utf-8")
+
+        result = self._run("read-specify-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 2, result.stdout)
+
+    def test_missing_spec_exits_2(self):
+        """Spec path does not exist -> exit 2."""
+        result = self._run("read-specify-handoff", "/nonexistent/path/spec.md")
+        self.assertEqual(result.returncode, 2, result.stdout)
+
+    def test_directory_spec_path_exits_2(self):
+        """Spec path is a directory (not a file) -> exit 2.
+
+        A directory passes .exists() but must hit the 'spec not found' exit-2
+        path, not silently compute a wrong sibling handoff.
+        """
+        spec_dir = self.tmp / "specs" / "009-widget-catalog-search"
+        spec_dir.mkdir(parents=True)
+        # Pass the directory itself as the spec path.
+        result = self._run("read-specify-handoff", str(spec_dir))
+        self.assertEqual(result.returncode, 2, result.stdout)
+
+    def test_real_specify_handoff_with_upstream_provenance(self):
+        """Real specify finalize-handoff output with upstream provenance is parsed.
+
+        Produces a real specify handoff via the producer (round-trip discipline),
+        then asserts read-specify-handoff reports the upstream path + kind.
+        """
+        upstream_handoff_path = "research/2026-05-22-widget-stale/handoff.json"
+        upstream_kind = "research"
+        upstream_completed_at = "2026-05-22T08:00:00Z"
+
+        # Produce real specify handoff via the real producer.
+        emit_path = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=upstream_handoff_path,
+            handoff_kind=upstream_kind,
+            research_completed_at=upstream_completed_at,
+        )
+
+        # Place spec.md in the same directory (sibling).
+        spec_path = emit_path.parent / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+
+        result = self._run("read-specify-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        lines = result.stdout.strip().splitlines()
+        # Block must have exactly 4 lines.
+        self.assertEqual(len(lines), 4, "Expected 4-line block, got: {0!r}".format(result.stdout))
+        self.assertIn(str(emit_path.resolve()), lines[0],
+                      "Line 0 must contain handoff.json absolute path")
+        self.assertEqual(lines[1], "spec_seeds: present")
+        self.assertIn(upstream_handoff_path, lines[2],
+                      "Line 2 must contain upstream_handoff_path")
+        self.assertIn(upstream_kind, lines[3],
+                      "Line 3 must contain upstream_handoff_kind")
+
+    def test_real_specify_handoff_no_upstream_reports_none(self):
+        """Real specify handoff with null upstream provenance reports 'none' for both."""
+        # Produce specify handoff with no upstream (cold path).
+        emit_path = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=None,
+            handoff_kind=None,
+        )
+
+        spec_path = emit_path.parent / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+
+        result = self._run("read-specify-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        lines = result.stdout.strip().splitlines()
+        self.assertEqual(len(lines), 4)
+        self.assertIn("upstream_handoff_path: none", lines[2])
+        self.assertIn("upstream_handoff_kind: none", lines[3])
+
+    def test_provenance_covary_path_set_kind_null_exits_2(self):
+        """Provenance with upstream_handoff_path set but upstream_handoff_kind null -> exit 2.
+
+        Co-vary invariant: both fields must be set or both must be null.
+        Produces a real specify handoff (with valid upstream path+kind), then
+        post-hoc nulls only upstream_handoff_kind to construct the corrupt case.
+        """
+        upstream_handoff_path = "research/2026-05-22-widget-stale/handoff.json"
+
+        # Produce real specify handoff via the real producer (path+kind both set).
+        emit_path = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=upstream_handoff_path,
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+
+        # Post-hoc: null only upstream_handoff_kind — leaving path set — to
+        # construct the co-vary violation without hand-authoring a fixture.
+        data = json.loads(emit_path.read_text(encoding="utf-8"))
+        data["provenance"]["upstream_handoff_kind"] = None
+        emit_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        spec_path = emit_path.parent / "spec.md"
+        _write_minimal_spec(str(spec_path), status="Draft")
+
+        result = self._run("read-specify-handoff", str(spec_path))
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("upstream_handoff_path and upstream_handoff_kind", result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Tests: render-plan-seeds
+# ---------------------------------------------------------------------------
+
+
+class RenderPlanSeedsTests(unittest.TestCase):
+    """Tests for plan_helper render-plan-seeds subcommand."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, *args):
+        """Run plan_helper.py with args from self.tmp as cwd."""
+        return subprocess.run(
+            [sys.executable, str(HELPER_PY)] + list(args),
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+
+    def test_null_upstream_path_prints_cold_no_plan_seeds(self):
+        """Specify handoff with null provenance -> stdout 'cold-no-plan-seeds', exit 0."""
+        # Produce a real specify handoff with no upstream.
+        emit_path = _produce_specify_handoff(self.tmp, handoff_path=None, handoff_kind=None)
+
+        result = self._run("render-plan-seeds", str(emit_path))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "cold-no-plan-seeds")
+
+    def test_dangling_upstream_path_exits_2(self):
+        """Specify handoff references upstream that does not exist -> exit 2."""
+        # Produce specify handoff pointing at a non-existent upstream.
+        dangling = str(self.tmp / "research" / "does-not-exist.handoff.json")
+        emit_path = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=dangling,
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+
+        result = self._run("render-plan-seeds", str(emit_path))
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("not found", result.stderr)
+
+    def test_research_upstream_renders_research_block(self):
+        """Real research_helper handoff -> research-specific fields in block output.
+
+        Proves research dispatch: 'Alternatives considered' and
+        'Proposed call shape' are research-specific plan_seeds fields.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        # Produce the research handoff.
+        research_emit = self.tmp / "research" / "2026-05-22-widget-stale-results.handoff.json"
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path",
+                "research/2026-05-22-widget-stale-results.md",
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0,
+                         "research finalize-handoff failed: " + proc.stderr)
+
+        # Produce the specify handoff referencing this research handoff.
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=str(research_emit),
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        output = result.stdout
+        # Research-specific fields must appear.
+        self.assertIn("Upstream plan-seeds (research handoff:", output)
+        self.assertIn("Recommended approach", output)
+        self.assertIn("Alternatives considered", output)
+        self.assertIn("Proposed call shape", output)
+        self.assertIn("Cited canonical patterns", output)
+        # Discover-specific fields must NOT appear.
+        self.assertNotIn("Design options", output)
+        self.assertNotIn("Build vs buy", output)
+
+    def test_discover_upstream_renders_discover_block(self):
+        """Real discover_helper handoff -> discover-specific fields in block output.
+
+        Proves discover dispatch: 'Design options' and 'Build vs buy' are
+        discover-specific plan_seeds fields.
+        """
+        discover_emit = self.tmp / "discover" / "2026-05-22-widget-search-feature.handoff.json"
+        _produce_discover_handoff(self.tmp, emit_path=discover_emit)
+
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=str(discover_emit),
+            handoff_kind="discover",
+            discover_completed_at="2026-05-22T09:00:00Z",
+            discover_recommended_summary="In-memory filter approach",
+        )
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        output = result.stdout
+        # Discover-specific fields must appear.
+        self.assertIn("Upstream plan-seeds (discover handoff:", output)
+        self.assertIn("Recommended option", output)
+        self.assertIn("Build vs buy", output)
+        self.assertIn("Design options", output)
+        self.assertIn("Cited canonical patterns", output)
+        # Research-specific fields must NOT appear.
+        self.assertNotIn("Alternatives considered", output)
+        self.assertNotIn("Proposed call shape", output)
+
+    def test_unknown_handoff_kind_exits_2(self):
+        """Specify handoff provenance has unknown handoff_kind -> exit 2.
+
+        Kind dispatch uses provenance.upstream_handoff_kind from the specify
+        handoff (authoritative). A provenance kind that is neither 'research'
+        nor 'discover' must produce exit 2.
+
+        Uses the real producer to generate the specify handoff (round-trip
+        discipline), then post-hoc mutates provenance.upstream_handoff_kind
+        to an unrecognised value to construct the corrupt case.
+        """
+        # Produce a real discover handoff to use as a valid upstream reference.
+        discover_emit = self.tmp / "discover" / "2026-05-22-widget-search-feature.handoff.json"
+        _produce_discover_handoff(self.tmp, emit_path=discover_emit)
+
+        # Produce a real specify handoff pointing at the discover handoff.
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=str(discover_emit),
+            handoff_kind="discover",
+            discover_completed_at="2026-05-22T09:00:00Z",
+            discover_recommended_summary="In-memory filter approach",
+        )
+
+        # Post-hoc: corrupt provenance.upstream_handoff_kind to unknown value.
+        data = json.loads(specify_emit.read_text(encoding="utf-8"))
+        data["provenance"]["upstream_handoff_kind"] = "unknown_kind"
+        specify_emit.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("unknown handoff_kind", result.stderr)
 
 
 if __name__ == "__main__":
