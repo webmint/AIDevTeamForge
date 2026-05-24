@@ -1,11 +1,12 @@
 # PLAN-COMMAND-REDESIGN-PLAN
 
-**Status**: SHIPPED, PARITY-PENDING (2026-05-23) — all code/spec work done + committed on `develop-2.0-init` (8 commits, head `fa8d9ca`). `/plan` ports the v2 shape + helper (8 verbs, 84 tests) + re-scoped architect + emitter/install + upstream-handoff consumption. Two items open by design:
+**Status**: SHIPPED, PARITY-PENDING (2026-05-24) — all code/spec work done + committed on `develop-2.0-init` (13 commits, head `ea89ec1`). `/plan` ports the v2 shape + helper (10 verbs, 191 tests) + re-scoped architect + emitter/install + upstream-handoff consumption (Step 7) + orchestrator-mediated specialist consultation (Step 8, latent-bug fix) + plan→breakdown handoff producer (Step 9). Three items open by design:
 - **Step 6 (parity 4-run)** — user-driven offline; needs testForge20 re-install first (Step-5 install predates Step-7 wirings), then 4 `plan.md` outputs handed back for the variance verdict. This is the last gate to call plan-02 fully complete.
 - **Step 7.7 (render-findings reads structured `spec_seeds` vs re-parse `spec.md`)** — DEFERRED as YAGNI; spec.md parse works, pick up only if re-parse fragility is observed.
+- **Step 9 `/breakdown` consumer** — the plan→breakdown handoff producer is shipped; the consumer is built when `/breakdown` is refactored (separate work; "consumer obeys producer" — the user checks this producer side first).
 
 Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ✅ SHIPPED 2026-05-23** (orchestrator-mediated specialist consultation — latent-bug fix: architect emits consultation requests, orchestrator invokes specialists incl. FE/BE, controlled-shape Specialist Consultation block) · **Step 9 ✅ SHIPPED (producer side) 2026-05-24** (plan→breakdown structured handoff: `_plan/handoff_schema.py` + `plan_helper finalize-handoff` parses plan.md → `plan-handoff.json`; Phase 4 wired; `/breakdown` consumer still pending per "consumer obeys producer").
-**Date**: 2026-05-15 (status updated 2026-05-23)
+**Date**: 2026-05-15 (status updated 2026-05-24)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
 
