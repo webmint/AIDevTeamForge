@@ -4,7 +4,7 @@
 - **Step 6 (parity 4-run)** — user-driven offline; needs testForge20 re-install first (Step-5 install predates Step-7 wirings), then 4 `plan.md` outputs handed back for the variance verdict. This is the last gate to call plan-02 fully complete.
 - **Step 7.7 (render-findings reads structured `spec_seeds` vs re-parse `spec.md`)** — DEFERRED as YAGNI; spec.md parse works, pick up only if re-parse fragility is observed.
 
-Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ✅ SHIPPED 2026-05-23** (orchestrator-mediated specialist consultation — latent-bug fix: architect emits consultation requests, orchestrator invokes specialists incl. FE/BE, controlled-shape Specialist Consultation block) · **Step 9 ⏸ DRAFTED-NOT-STARTED** (plan→breakdown structured handoff, producer-side now per "consumer obeys producer"; `/breakdown` consumer pending).
+Per-step state: Steps 1-5 ✅ · Step 7 core 7.1-7.6 ✅ · 7.7 ⏸ deferred · Step 6 ⏸ parity-pending (user-offline) · **Step 8 ✅ SHIPPED 2026-05-23** (orchestrator-mediated specialist consultation — latent-bug fix: architect emits consultation requests, orchestrator invokes specialists incl. FE/BE, controlled-shape Specialist Consultation block) · **Step 9 ✅ SHIPPED (producer side) 2026-05-24** (plan→breakdown structured handoff: `_plan/handoff_schema.py` + `plan_helper finalize-handoff` parses plan.md → `plan-handoff.json`; Phase 4 wired; `/breakdown` consumer still pending per "consumer obeys producer").
 **Date**: 2026-05-15 (status updated 2026-05-23)
 **Branch**: `develop-2.0-init`
 **Owner**: orchestrator (Claude) + user
@@ -349,7 +349,7 @@ specs/NNN/spec.md                   → WHAT/WHERE
 
 ### Step 9 — plan → breakdown structured handoff (producer side)
 
-**Status**: DRAFTED 2026-05-23. NOT STARTED. Decision (user): build the producer now — "consumer obeys producer." `/plan` defines the contract; the refactored `/breakdown` conforms. **Producer-only: `/breakdown` consumer is pending — no doc may claim a reader exists** (avoid the specify→plan stale-claim trap that `2c2cad2` cleaned up).
+**Status**: SHIPPED (producer side) 2026-05-24. 9.1 schema `src/devforge/lib/_plan/handoff_schema.py` (`handoff_kind="plan"`, BreakdownSeeds = layer_map / key_design_decisions / file_impact / doc_impact / risks / specialist_consultation / dependencies + provenance), 9.2 `plan_helper finalize-handoff <plan-path>` (parses rendered plan.md, skips placeholders, atomic-writes `specs/NNN/plan-handoff.json`), 9.3 main.md Phase 4 wiring (finalize before the manual text block; any non-zero exit non-blocking), 9.4 CLAUDE.md pipeline-handoff index row (producer-only). 93 new tests (191 total). Reviewed via python-engineer/-reviewer + instruction-author/-reviewer loops (clean). **Producer-only — `/breakdown` consumer NOT built; no doc claims a reader exists.** Decision (user): "consumer obeys producer"; the refactored `/breakdown` conforms (user checks this producer first).
 
 **Goal**: `/plan` emits a structured handoff carrying its decisions as breakdown-seeds, so the future `/breakdown` consumes structured data instead of re-parsing `plan.md`. Mirrors the specify→plan pattern (schema + finalize verb + atomic sibling-file write).
 

@@ -79,6 +79,22 @@ Subcommands:
       Null upstream_handoff_path (cold path): print "cold-no-plan-seeds", exit 0.
       upstream file missing or upstream_handoff_kind unknown: exit 2.
 
+  finalize-handoff <plan-path> [--completed-at ISO]
+      Parse plan.md into structured breakdown_seeds and write
+      <plan-dir>/plan-handoff.json (sibling to plan.md).
+      Sections parsed: Layer Map, Key Design Decisions, File Impact,
+      Documentation Impact, Risk Assessment, Specialist Consultation,
+      Dependencies. Placeholder rows are skipped.
+      Provenance: resolves the sibling specify handoff.json (handoff.json
+      in the same directory) if present and valid; sets upstream_handoff_path
+      + upstream_handoff_kind = "specify". Also resolves spec_path from the
+      sibling spec.md if present.
+      --completed-at: optional UTC ISO timestamp; defaults to now.
+      On success: prints the written path to stdout, exit 0.
+      Missing plan-path: exit 2.
+      Schema validation failure: exit 2 with message on stderr.
+      Idempotent: re-running overwrites the previous plan-handoff.json.
+
 Exit codes:
   0 — success
   1 — reserved for I/O failures (write errors)
@@ -1373,6 +1389,516 @@ def cmd_render_plan_seeds(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Plan parsing helpers for finalize-handoff.
+# ---------------------------------------------------------------------------
+
+# Placeholder patterns: cells whose first value matches these are skipped.
+# Covers: [path], [decision], [risk], [any bracketed placeholder], _(none)_, (none).
+# NOTE: angle-bracket placeholders (<...>) are NOT covered here —
+# _parse_specialist_consultation handles them inline on the sub_question column.
+_PLACEHOLDER_CELL_RE = re.compile(
+    r"^\s*(?:"
+    r"\[.*\]"           # any [bracketed] placeholder
+    r"|_\(none\)_"      # _(none)_ markdown italic
+    r"|\(none\)"        # bare (none)
+    r")\s*$"
+)
+
+
+def _is_placeholder_cell(text: str) -> bool:
+    """Return True if text is a placeholder that should be skipped.
+
+    The regex anchors (^\\s* and \\s*$) handle surrounding whitespace;
+    no additional strip() at call sites is required.
+    """
+    return bool(_PLACEHOLDER_CELL_RE.match(text))
+
+
+def _extract_plan_section(content: str, heading_pattern: re.Pattern) -> str:
+    """Extract text of the section whose heading matches heading_pattern.
+
+    Returns text from the heading line to the next ## or ### heading or EOF.
+    Returns empty string when the heading is not found.
+    """
+    m = heading_pattern.search(content)
+    if not m:
+        return ""
+    start = m.start()
+    # Find next ## or ### heading at the same or higher level.
+    next_h = re.compile(r"^#{2,}\s+", re.MULTILINE)
+    m_next = next_h.search(content, m.end())
+    if m_next:
+        return content[start:m_next.start()]
+    return content[start:]
+
+
+def _parse_layer_map(plan_content: str) -> List[Any]:
+    """Parse ### Layer Map table rows into LayerRow records.
+
+    Columns: Layer | What | Files (existing or new).
+    Skips placeholder rows. Returns empty list when section absent.
+    """
+    from _plan.handoff_schema import LayerRow
+
+    pat = re.compile(r"^###\s+Layer Map\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    rows = _parse_table_rows(section)
+    result = []
+    for cells in rows:
+        if not cells:
+            continue
+        layer = cells[0] if len(cells) > 0 else ""
+        what = cells[1] if len(cells) > 1 else ""
+        files = cells[2] if len(cells) > 2 else ""
+        # Skip placeholder rows.
+        if _is_placeholder_cell(layer):
+            continue
+        try:
+            result.append(LayerRow(layer=layer, what=what, files=files))
+        except (TypeError, ValueError):
+            continue  # skip malformed rows without crashing
+    return result
+
+
+def _parse_key_design_decisions(plan_content: str) -> List[Any]:
+    """Parse ### Key Design Decisions table rows into DecisionRow records.
+
+    Columns: Decision | Chosen Approach | Why | Alternatives Rejected.
+    Skips placeholder rows. Returns empty list when section absent.
+    """
+    from _plan.handoff_schema import DecisionRow
+
+    pat = re.compile(r"^###\s+Key Design Decisions\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    rows = _parse_table_rows(section)
+    result = []
+    for cells in rows:
+        if not cells:
+            continue
+        decision = cells[0] if len(cells) > 0 else ""
+        chosen = cells[1] if len(cells) > 1 else ""
+        why = cells[2] if len(cells) > 2 else ""
+        alts = cells[3] if len(cells) > 3 else ""
+        if _is_placeholder_cell(decision):
+            continue
+        try:
+            result.append(
+                DecisionRow(
+                    decision=decision,
+                    chosen_approach=chosen,
+                    why=why,
+                    alternatives_rejected=alts,
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _parse_file_impact_rows(plan_content: str) -> List[Any]:
+    """Parse ### File Impact table rows into FileImpactRow records.
+
+    Columns: File | Action | What Changes.
+    Uses _extract_plan_section to locate the section boundary.
+    Skips placeholder rows. Returns empty list when section absent.
+    """
+    from _plan.handoff_schema import FileImpactRow
+
+    pat = re.compile(r"^###\s+File Impact\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    rows = _parse_table_rows(section)
+    result = []
+    for cells in rows:
+        if not cells:
+            continue
+        file_ = cells[0] if len(cells) > 0 else ""
+        action = cells[1] if len(cells) > 1 else ""
+        what = cells[2] if len(cells) > 2 else ""
+        if _is_placeholder_cell(file_):
+            continue
+        try:
+            result.append(
+                FileImpactRow(file=file_, action=action, what_changes=what)
+            )
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _parse_doc_impact_rows(plan_content: str) -> List[Any]:
+    """Parse ### Documentation Impact table rows into DocImpactRow records.
+
+    Columns: Doc File | Action | What Changes.
+    Skips placeholder rows. Returns empty list when section absent.
+    """
+    from _plan.handoff_schema import DocImpactRow
+
+    pat = re.compile(r"^###\s+Documentation Impact\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    rows = _parse_table_rows(section)
+    result = []
+    for cells in rows:
+        if not cells:
+            continue
+        doc_file = cells[0] if len(cells) > 0 else ""
+        action = cells[1] if len(cells) > 1 else ""
+        what = cells[2] if len(cells) > 2 else ""
+        if _is_placeholder_cell(doc_file):
+            continue
+        try:
+            result.append(
+                DocImpactRow(doc_file=doc_file, action=action, what_changes=what)
+            )
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _parse_risk_rows(plan_content: str) -> List[Any]:
+    """Parse ## Risk Assessment table rows into RiskRow records.
+
+    Columns: Risk | Likelihood | Impact | Mitigation.
+    Uses _extract_plan_section to locate the section boundary.
+    Matches both '## Risk Assessment' and '### Risk Assessment' heading forms.
+    Skips placeholder rows. Returns empty list when section absent.
+    """
+    from _plan.handoff_schema import RiskRow
+
+    # Try the primary heading form first (## or ### Risk Assessment).
+    pat = re.compile(r"^###?\s+Risk Assessment\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        # Fall back to bare '## Risk' variant.
+        pat = re.compile(r"^##\s+Risk\b", re.MULTILINE | re.IGNORECASE)
+        section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    rows = _parse_table_rows(section)
+    result = []
+    for cells in rows:
+        if not cells:
+            continue
+        risk = cells[0] if len(cells) > 0 else ""
+        likelihood = cells[1] if len(cells) > 1 else ""
+        impact = cells[2] if len(cells) > 2 else ""
+        mitigation = cells[3] if len(cells) > 3 else ""
+        if _is_placeholder_cell(risk):
+            continue
+        try:
+            result.append(
+                RiskRow(
+                    risk=risk,
+                    likelihood=likelihood,
+                    impact=impact,
+                    mitigation=mitigation,
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+# Accepted verdict values for specialist consultation rows.
+_CONSULT_VERDICT_VALUES = frozenset({"accepted", "modified", "rejected", "no-response"})
+
+# "(none)" placeholder for specialist consultation: the no-consult sentinel row.
+_CONSULT_NONE_SPECIALIST_RE = re.compile(r"^\s*\(none\)\s*$")
+
+
+def _parse_specialist_consultation(plan_content: str) -> List[Any]:
+    """Parse ## Specialist Consultation table rows into ConsultRow records.
+
+    Columns: Specialist | Sub-question | Input summary | Verdict | Cites.
+    Verdict values: accepted / modified / rejected / no-response.
+    Skips the (none) sentinel row and rows with placeholder/invalid verdicts.
+    Also skips the example placeholder row emitted by render-consultation-block.
+    Returns empty list when section absent or all rows are placeholders.
+    """
+    from _plan.handoff_schema import ConsultRow
+
+    pat = re.compile(r"^##\s+Specialist Consultation\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    rows = _parse_table_rows(section)
+    result = []
+    for cells in rows:
+        if not cells:
+            continue
+        specialist = cells[0] if len(cells) > 0 else ""
+        sub_q = cells[1] if len(cells) > 1 else ""
+        summary = cells[2] if len(cells) > 2 else ""
+        verdict = cells[3] if len(cells) > 3 else ""
+        cites = cells[4] if len(cells) > 4 else ""
+        # Skip the (none) sentinel row.
+        if _CONSULT_NONE_SPECIALIST_RE.match(specialist):
+            continue
+        # Skip placeholder rows.
+        if _is_placeholder_cell(specialist):
+            continue
+        # Skip rows with angle-bracket placeholder sub-questions (template row).
+        if sub_q.startswith("<") and sub_q.endswith(">"):
+            continue
+        # Skip rows with invalid verdict values (includes placeholder "-").
+        if verdict not in _CONSULT_VERDICT_VALUES:
+            continue
+        try:
+            result.append(
+                ConsultRow(
+                    specialist=specialist,
+                    sub_question=sub_q,
+                    input_summary=summary,
+                    verdict=verdict,
+                    cites=cites,
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _parse_dependencies(plan_content: str) -> List[str]:
+    """Parse ## Dependencies section into a list of non-blank content lines.
+
+    Captures all non-blank, non-heading lines under ## Dependencies.
+    Returns empty list when the section is absent or contains only
+    the template placeholder ("Any external dependencies: ...").
+    """
+    pat = re.compile(r"^##\s+Dependencies\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    lines = []
+    for raw_line in section.splitlines():
+        stripped = raw_line.strip()
+        # Skip the heading line itself.
+        if re.match(r"^##\s+Dependencies", stripped, re.IGNORECASE):
+            continue
+        # Skip blank lines.
+        if not stripped:
+            continue
+        # Skip pure template placeholder text.
+        if stripped.startswith("[Any external dependencies") or stripped.startswith("[any external"):
+            continue
+        lines.append(stripped)
+    return lines
+
+
+def _resolve_sibling_specify_handoff(plan_dir: Path) -> Optional[str]:
+    """Return path to the sibling specify handoff.json if it is valid, else None.
+
+    'Valid' means: exists, parses as JSON, has handoff_kind == 'specify'.
+    Does NOT do full schema validation — just enough to confirm it is the
+    sibling specify handoff and not a different artefact.
+    """
+    candidate = plan_dir / "handoff.json"
+    if not candidate.exists():
+        return None
+    try:
+        raw = candidate.read_text(encoding="utf-8")
+        d = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    if d.get("handoff_kind") != "specify":
+        return None
+    return str(candidate.resolve())
+
+
+def _asdict_handoff(handoff: Any) -> Dict[str, Any]:
+    """Serialize a plan Handoff dataclass to a plain JSON-ready dict.
+
+    Uses dataclasses.asdict recursively to flatten nested dataclasses.
+    Lists of dataclasses are converted to lists of dicts.
+    """
+    import dataclasses as _dc
+    return _dc.asdict(handoff)
+
+
+def _atomic_write_json_plan(data: Dict[str, Any], target: Path) -> None:
+    """Atomically write data as JSON to target.
+
+    Uses tempfile.mkstemp + os.replace.  Cleans up temp on failure.
+    """
+    fd, tmp_path = tempfile.mkstemp(
+        prefix="plan-handoff-",
+        suffix=".json.tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, sort_keys=False)
+            f.write("\n")
+        os.replace(tmp_path, str(target))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: finalize-handoff
+# ---------------------------------------------------------------------------
+
+
+def cmd_finalize_handoff(args: argparse.Namespace) -> int:
+    """Parse plan.md -> build Handoff -> validate -> write plan-handoff.json.
+
+    Sections parsed (in order):
+      Layer Map, Key Design Decisions, File Impact, Documentation Impact,
+      Risk Assessment, Specialist Consultation, Dependencies.
+    Placeholder rows are skipped transparently.
+
+    Provenance:
+      Resolves the sibling specify handoff.json (same directory as plan.md).
+      If present and valid (handoff_kind == 'specify'), sets
+        upstream_handoff_path = absolute path
+        upstream_handoff_kind = 'specify'
+      Else both None.
+      spec_path: sibling spec.md if it exists, else None.
+
+    Output: <plan-dir>/plan-handoff.json (sibling to plan.md, separate from
+    the specify handoff.json which carries handoff_kind='specify').
+
+    Idempotent: re-running overwrites the previous plan-handoff.json.
+    """
+    # _plan.handoff_schema imports -- done inside the function to avoid
+    # circular import if plan_helper is imported from tests that import
+    # _plan submodules separately.
+    _lib_dir = Path(__file__).resolve().parent
+    if str(_lib_dir) not in sys.path:
+        sys.path.insert(0, str(_lib_dir))
+
+    from _plan.handoff_schema import (
+        BreakdownSeeds,
+        Handoff,
+        Provenance,
+        SCHEMA_VERSION,
+        HANDOFF_KIND,
+    )
+
+    plan_path_raw = args.plan_path
+    plan_path = Path(plan_path_raw)
+    if not plan_path.is_absolute():
+        plan_path = Path.cwd() / plan_path
+    plan_path = plan_path.resolve()
+
+    if not plan_path.is_file():
+        return _die("plan not found: {0}".format(plan_path_raw))
+
+    plan_content = _read_file(str(plan_path))
+    if plan_content is None:
+        return _die("cannot read plan: {0}".format(plan_path_raw))
+
+    plan_dir = plan_path.parent
+
+    # Resolve plan_completed_at.
+    completed_at_raw = getattr(args, "completed_at", None)
+    if completed_at_raw:
+        plan_completed_at = completed_at_raw.strip()
+    else:
+        plan_completed_at = (
+            datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
+
+    # Build BreakdownSeeds by parsing each section.
+    layer_map = _parse_layer_map(plan_content)
+    key_design_decisions = _parse_key_design_decisions(plan_content)
+    file_impact = _parse_file_impact_rows(plan_content)
+    doc_impact = _parse_doc_impact_rows(plan_content)
+    risks = _parse_risk_rows(plan_content)
+    specialist_consultation = _parse_specialist_consultation(plan_content)
+    dependencies = _parse_dependencies(plan_content)
+
+    try:
+        breakdown_seeds = BreakdownSeeds(
+            layer_map=layer_map,
+            key_design_decisions=key_design_decisions,
+            file_impact=file_impact,
+            doc_impact=doc_impact,
+            risks=risks,
+            specialist_consultation=specialist_consultation,
+            dependencies=dependencies,
+        )
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed building BreakdownSeeds: {0}".format(err)
+        )
+
+    # Resolve provenance.
+    sibling_specify_path = _resolve_sibling_specify_handoff(plan_dir)
+    if sibling_specify_path is not None:
+        upstream_handoff_path = sibling_specify_path  # type: Optional[str]
+        upstream_handoff_kind = "specify"              # type: Optional[str]
+    else:
+        upstream_handoff_path = None
+        upstream_handoff_kind = None
+
+    # spec_path: sibling spec.md if it exists.
+    sibling_spec = plan_dir / "spec.md"
+    spec_path_val = str(sibling_spec.resolve()) if sibling_spec.is_file() else None
+
+    try:
+        provenance = Provenance(
+            upstream_handoff_path=upstream_handoff_path,
+            upstream_handoff_kind=upstream_handoff_kind,
+            spec_path=spec_path_val,
+        )
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed building Provenance: {0}".format(err)
+        )
+
+    try:
+        handoff = Handoff(
+            schema_version=SCHEMA_VERSION,
+            handoff_kind=HANDOFF_KIND,
+            plan_path=str(plan_path),
+            plan_completed_at=plan_completed_at,
+            provenance=provenance,
+            breakdown_seeds=breakdown_seeds,
+        )
+    except (TypeError, ValueError) as err:
+        return _die(
+            "finalize-handoff: schema validation failed: {0}".format(err)
+        )
+
+    # Write plan-handoff.json as sibling to plan.md.
+    target = plan_dir / "plan-handoff.json"
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json_plan(_asdict_handoff(handoff), target)
+    except OSError as err:
+        sys.stderr.write(
+            "plan_helper: finalize-handoff: cannot write {0}: {1}\n".format(
+                target, err
+            )
+        )
+        return 1
+
+    sys.stdout.write("{0}\n".format(target.resolve()))
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
 
@@ -1476,6 +2002,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the specify handoff.json (specs/NNN-slug/handoff.json).",
     )
     sp.set_defaults(func=cmd_render_plan_seeds)
+
+    # finalize-handoff
+    sp = sub.add_parser(
+        "finalize-handoff",
+        help=(
+            "Parse plan.md into structured breakdown_seeds and write "
+            "plan-handoff.json as a sibling to plan.md. "
+            "Provenance resolves the sibling specify handoff.json when present."
+        ),
+    )
+    sp.add_argument(
+        "plan_path",
+        help="Path to plan.md (specs/NNN-slug/plan.md).",
+    )
+    sp.add_argument(
+        "--completed-at",
+        default=None,
+        dest="completed_at",
+        help="UTC ISO-8601 timestamp for plan_completed_at (default: now).",
+    )
+    sp.set_defaults(func=cmd_finalize_handoff)
 
     return parser
 
