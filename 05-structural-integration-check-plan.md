@@ -1,5 +1,7 @@
 # Structural Integration Check (DIR) — Implementation Plan
 
+**Status:** IMPLEMENTED 2026-05-24 on `develop-2.0-init` — all 3 spec edits landed in `src/agents/code-reviewer.md` (§7 Structural Integration at end of checklist; Output Format `Structural Integration` subsection; Rule 1 new-file overlap-search clause). §7 placed at end of checklist (monotonic 1→7), not after §2 as originally drafted — resolved a numbering conflict. **Smoke tests (DoD) PENDING — manual:** (1) changeset with duplicate module → expect `DUPLICATE`; (2) new handler beside same-shape handlers → expect `INTEGRATED` (no false positive).
+
 ## Background
 
 **Source:** SLUMP / ProjectGuard paper. Structural integration degrades on both Claude Code and Codex even when semantic faithfulness holds. On Codex, DIR (Dependency Integration Ratio) improves on 15 of 19 papers after ProjectGuard, with 76% mean relative improvement. This is a separate problem from semantic drift, not a side-effect.

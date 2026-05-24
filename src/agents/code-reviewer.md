@@ -52,6 +52,20 @@ For project-specific type-safety rules, consult `constitution.md` §3.1. If §3.
 ### 6. Memory Check
 - Cross-reference `.devforge/memory.md` for known pitfalls related to changed code
 
+### 7. Structural Integration
+
+For each **newly created** file/module in this changeset:
+1. Search the repo for existing modules with similar responsibility or interface shape
+   (Glob by likely names; Grep for similar function/class signatures; check sibling directories).
+2. If a similar module exists, classify the new code as one of:
+   - **Intentional parallel** — explicit design reason (e.g., versioned API, A/B variant). Must be justified in spec/plan.
+   - **Duplicate / parallel rewrite** — same responsibility implemented again, ignoring existing code.
+3. Output: list each new file with verdict `INTEGRATED | INTENTIONAL_PARALLEL | DUPLICATE`.
+   `DUPLICATE` is **Critical** — it means the agent rewrote what existed.
+   `INTENTIONAL_PARALLEL` without spec justification is **Warning**.
+
+Limit: one targeted search pass, not a full repo audit. Skip files that only edit existing modules.
+
 ## Output Format
 
 ```
@@ -71,12 +85,15 @@ For project-specific type-safety rules, consult `constitution.md` §3.1. If §3.
 #### Info (optional)
 - [observation]
 
+### Structural Integration
+- [new-file]: INTEGRATED | INTENTIONAL_PARALLEL (reason: ...) | DUPLICATE (existing: [path])
+
 ### Verdict: APPROVE / REQUEST CHANGES / BLOCK
 ```
 
 ## Rules
 
-1. Read ALL changed files before giving any feedback
+1. Read ALL changed files before giving any feedback. For newly created files, also search for pre-existing modules with overlapping responsibility — a single targeted pass.
 2. Check constitution FIRST — it's the highest authority
 3. Be specific — cite file and line with the exact issue, not vague "fix types"
 4. Don't suggest refactors outside the task scope
