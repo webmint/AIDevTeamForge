@@ -453,7 +453,7 @@ diff <(sed -n '/^#### `\/execute-task`/,/^####/p' src/CLAUDE.md) <(echo '<implem
 - `03-DISCOVER-HANDOFF-PLAN.md` — Step 8 referenced an outcome-reminder wire-in that was DEFERRED because `/execute-task` did not exist. Once this plan ships Phase 9, revisit `03-` Step 8 to land the outcome-reminder.
 - `04-PR-REVIEW-PLAN.md` — sibling; does NOT depend on `/execute-task`.
 - `05-structural-integration-check-plan.md` — adds Section 7 to `code-reviewer.md`; this plan's Phase 5 invokes `code-reviewer`, so `05-` improvements automatically propagate.
-- `06-CONDITIONAL-CONTEXT-PLAN.md` — `.claude/rules/*.md` conditional loading; orthogonal to `/execute-task` shape, but spec text in `main.md` may benefit from being split across conditional rules once `06-` ships.
+- `06-CONDITIONAL-CONTEXT-PLAN.md` — **ABORTED 2026-05-24** (archived to `done-plans/`); premise false + wrong mechanism. Superseded by `08-CLAUDE-MD-COMMAND-TRIM-PLAN.md`. No bearing on `/execute-task` shape.
 
 ## Open questions (surface to user before Phase 1)
 

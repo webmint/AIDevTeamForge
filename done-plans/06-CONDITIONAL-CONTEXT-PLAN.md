@@ -1,6 +1,8 @@
 # CONDITIONAL-CONTEXT-PLAN
 
-**Status**: Drafted 2026-05-20. Primitive verification re-affirmed 2026-05-21 by user (Claude Code v2.0.64+ ships `.claude/rules/*.md` with `paths:` frontmatter as a first-class primitive alongside `CLAUDE.md` / `settings.json` / `skills/` / `agents/`). Plan stays queued, not started.
+**Status**: **ABORTED 2026-05-24** on `develop-2.0-init`. Step 0 gate ran and failed (kill-switch fires); the plan's core premise was found false. Never started — no `src/rules/`, no emitter, no commits. See *Step 0 result* + *Abort rationale* below. Archived to `done-plans/`.
+
+**Status (historical)**: Drafted 2026-05-20. Primitive verification re-affirmed 2026-05-21 by user (Claude Code v2.0.64+ ships `.claude/rules/*.md` with `paths:` frontmatter as a first-class primitive alongside `CLAUDE.md` / `settings.json` / `skills/` / `agents/`). Plan stayed queued, not started.
 **Branch**: `develop-2.0-init`. Queue: forcing-functions Phase 2 ahead; PR-REVIEW + DISCOVER-HANDOFF code-complete (awaiting testForge20 manual e2e), do not block this plan after their tests pass.
 **Driver**: Comparison vs leaked Kiro system prompts (gist `CypherpunkSamurai/ad7be9c3ea07cf4fe55053323012ab4d`, 2026-05-20 conversation) surfaced one Claude-Code-supported primitive worth importing: **path-scoped `.claude/rules/*.md`** with `paths:` frontmatter. Goal: move slices of the always-on consumer-overlay `src/CLAUDE.md` (306 lines, ~4-5K tokens per turn) into conditionally-loaded rules so each domain's discipline lights up only when relevant files are in play.
 
@@ -68,13 +70,36 @@ python -c "import tiktoken; e = tiktoken.get_encoding('cl100k_base'); print(len(
 # Categorization table committed to this plan as "Step 0 result" block (see below).
 ```
 
-### Step 0 result (fill in when run)
+### Step 0 result (run 2026-05-24)
 
-| Section heading | Tokens | Classification | Notes |
+Counter: word-count proxy (`tiktoken` unavailable in env; ratio is what the kill-switch needs, not absolute tokens). `src/CLAUDE.md` = 3383 words / 306 lines, sectioned by H2:
+
+| Section heading | Words | % | Classification |
 |---|---|---|---|
-| _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| Workflow (command catalog + per-command detail) | 1656 | 49.0% | Always — command/domain-scoped, NOT path-gateable (a command fires regardless of which files are open) |
+| Key Rules (Always/Never one-liners) | 317 | 9.4% | Partial path-scoped — ~half (Document new code / Lint everything / Handle both paths / Validate at boundaries / SOLID-DRY-KISS) is code-touch scoped |
+| Artifact Storage | 307 | 9.1% | Always — reference |
+| CBM-first Protocol Enforcement | 320 | 9.5% | Always — hook reference |
+| Enforced Quality Gates | 268 | 7.9% | Always — task-boundary, not path |
+| Session Continuity | 210 | 6.2% | Always |
+| Commit Convention | 93 | 2.7% | Always — domain (committing), not path |
+| Placeholder Convention | 81 | 2.4% | Always — meta |
+| Project Overview/Structure/Dev/Arch/Agents/References | ~120 | ~3.5% | Always — placeholders + refs |
 
-**Total tokens**: _TBD_. **Path-scoped subtotal**: _TBD_ (_TBD_ %). **Decision**: proceed / abort.
+**Total**: 3383 words. **Path-scoped subtotal**: ≈ a slice of Key Rules ≈ **5–9%** (best case, the code-discipline one-liners). **Threshold**: 15%. **Decision: ABORT.** To reach 15% one would have to misclassify command-gated Workflow content as path-gated, which Step 0's own procedure (line 59: domain-scoped stays always-on) forbids.
+
+### Abort rationale (2026-05-24)
+
+Two independent findings, either of which is sufficient to abort:
+
+1. **Premise false.** Plan line 18 asserts `src/CLAUDE.md` "packs every discipline rule (audit format, default-argue, test-first, sentence-level hallucination check, cross-check, helper-owns-shape)." It does not, and a `git show` of the file at the nearest draft-time commit (`8eebb69`, 2026-05-15) confirms it never did — zero discipline keywords, identical 14 sections. Those rules live in the **repo-root forge-internal `CLAUDE.md`**, which (a) the plan marks explicitly out of scope (line 25) and (b) governs forge *development* of `src/`, not the consumer overlay that spawns into target projects. The author conflated the two files at drafting time.
+
+2. **Mechanism is the wrong tool for the real cost.** Investigation via `claude-code-guide` (2026-05-24, three queries, docs.claude.com) established the consumer-side always-on/​on-invocation model:
+   - In a spawned project the only always-on surface is the emitted `CLAUDE.md` (+ `.claude/rules/`). `.claude/commands/*.md` bodies load **only on invocation**.
+   - Custom commands are **merged into skills**; the model normally sees each command's `description` frontmatter always-on for awareness — **EXCEPT** when `disable-model-invocation: true`, which sets *"Description not in context"* (docs table, code.claude.com/docs/en/skills). Every forge command sets `disable-model-invocation: true` (deliberate manual-only / full-user-control stance).
+   - Consequence: the command catalog in `CLAUDE.md` is **load-bearing** (the only thing telling the model the commands exist), and the genuine always-on bloat is the **deep phase-by-phase per-command paragraphs** (research 170w / discover 268w / specify 299w) that duplicate the on-invocation command body. That is fixed by **trimming/deleting** those paragraphs to purpose one-liners — not by path-scoped `.claude/rules/`. The mechanism this plan proposes does not address the real cost.
+
+**Successor**: `08-CLAUDE-MD-COMMAND-TRIM-PLAN.md` (phase-detail trim, deletion-only, ~20% always-on saving).
 
 ---
 
