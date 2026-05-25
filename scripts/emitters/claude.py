@@ -52,7 +52,7 @@ def emit(src: Path, target: Path) -> None:
     # add it here. Full generalized iteration (loop all src/commands/ entries)
     # stays commented below until every command has passed its CLI-agnostic +
     # audit passes — premature promotion would ship broken skills.
-    _PROMOTED = ("init-forge", "onboard", "generate-docs", "configure", "constitute", "research", "discover", "specify", "plan", "pr-review")
+    _PROMOTED = ("init-forge", "onboard", "generate-docs", "configure", "constitute", "research", "discover", "specify", "plan", "breakdown", "pr-review")
 
     for cmd_name in _PROMOTED:
         source = load_command(src / "commands", cmd_name)

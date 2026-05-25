@@ -42,16 +42,16 @@ Per `src/CLAUDE.md` template: `/execute-task` writes WIP marker `.devforge/wip.m
 - Thin helper shim at `src/devforge/lib/execute_task_helper` (POSIX launcher, mirrors `constitute_helper`).
 - Emitter wire-in at `scripts/emitters/claude.py` `_PROMOTED` list per `feedback_emitter_promoted_cross_check.md`.
 
-### Task file format (read contract — NOT owned here)
+### Task file format (read contract — NOT owned here) — UPDATED 2026-05-25 per 09-BREAKDOWN
 
-Task files live at `specs/<NNN-feature-name>/tasks/<NNN-short-title>.md` per consumer-template Artifact Storage section. Format owner = `/breakdown` (separate command, separate plan). This plan assumes the format documented in `src/CLAUDE.md` (per-task `agent` assignment, dependency graph in `tasks/README.md`, sequential numbering).
+`/breakdown` **shipped** (`09-BREAKDOWN-COMMAND-REDESIGN-PLAN.md`, helper + spec). It is the format owner. The machine-readable contract `/execute-task` consumes is **NOT YAML frontmatter** — it is the structured `specs/<NNN-feature>/breakdown-handoff.json` (schema `src/devforge/lib/_breakdown/handoff_schema.py`, `handoff_kind="breakdown"`), produced by `breakdown_helper finalize-handoff`. The human `tasks/<NNN-short-title>.md` files stay pure markdown per `src/devforge/storage-rules.md` §Task File Format (a `**Agent**:` line, NOT frontmatter).
 
-**Read-only contract**:
-- Each task file YAML frontmatter must declare `agent: <agent-name>` (matches `.claude/agents/<agent-name>.md`).
-- `tasks/README.md` declares dependency graph + execution order.
-- Each task's body = LLM-readable description of work + acceptance criteria for THIS task (subset of feature spec ACs).
+**Read-only contract** (`/execute-task` obeys this producer):
+- `specs/<NNN-feature>/breakdown-handoff.json` carries a `tasks[]` array; each `TaskRow` declares `number`, `title`, `agent` (matches `.claude/agents/<agent-name>.md`), `depends_on`, `blocks`, `touched_files`, `expects`, `produces`, `ac_addressed`, `doc_refs`, `review_checkpoint`. `/execute-task N` loads this JSON and indexes by task number.
+- `provenance.upstream_handoff_path` → the sibling `plan-handoff.json` (`handoff_kind="plan"`); `provenance.spec_path` → the feature `spec.md`.
+- `tasks/README.md` declares the human dependency graph + execution order; `dependency_graph` + `additions` are also captured in the JSON.
 
-If `/breakdown` is not yet built, this plan documents the contract as a **hard precondition** — testForge20 install smoke (Phase 11) requires a manually-authored task file in this format.
+⚠️ **SUPERSEDES**: the frontmatter-based sketches elsewhere in this DRAFT plan must be reworked to read `breakdown-handoff.json` when 07 is built — specifically the `parse_task_file` helper (reads "YAML frontmatter"), the agent-dispatch step ("`agent:` frontmatter"), and the Phase 11 hand-authored task file ("frontmatter `agent: backend-engineer`"). When 07 executes, replace those with a `read-breakdown-handoff` consumer of `breakdown_helper`'s output. The testForge20 smoke (Phase 11) should run real `/breakdown` to produce the JSON rather than hand-authoring frontmatter.
 
 ### Scope-aware verification
 

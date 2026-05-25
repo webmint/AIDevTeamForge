@@ -71,8 +71,8 @@ Authors a structured 9-section feature spec at `specs/NNN-<feature-name>/spec.md
 #### `/plan [spec-file]`
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. **Requires approval before breakdown.**
 
-#### `/breakdown [spec-file]`
-Takes an approved plan and generates ordered, atomic tasks with dependencies and agent assignments. Saves to `specs/[feature]/tasks/`. **Requires approval before execution.**
+#### `/breakdown [plan-file]`
+Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments, and verifiable Expects/Produces contracts. Saves task files to `specs/[feature]/tasks/` and writes a structured `specs/[feature]/breakdown-handoff.json` (the producer side of the breakdown→`/execute-task` handoff). **Requires approval before execution.**
 
 #### `/execute-task [number]`
 Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:

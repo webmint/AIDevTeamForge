@@ -25,6 +25,9 @@ specs/
     research.md                    # Research findings (plan) — optional
     data-model.md                  # Entity definitions (plan) — optional
     contracts.md                   # API contracts (plan) — optional
+    handoff.json                   # specify→plan structured handoff (specify)
+    plan-handoff.json              # plan→breakdown structured handoff (plan)
+    breakdown-handoff.json         # breakdown→execute-task structured handoff (breakdown)
     tasks/                         # Task breakdown (breakdown)
       001-short-task-title.md      # Individual task files
       002-short-task-title.md
@@ -146,7 +149,7 @@ research     → displays report in console, optionally saves to research/YYYY-M
 discover     → displays report in console, optionally saves to discover/YYYY-MM-DD-[topic-slug].md
 specify      → creates specs/NNN-name/spec.md
 plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
-breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ...
+breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ... + specs/NNN-name/breakdown-handoff.json (machine contract for execute-task; task .md files stay human-readable)
 execute-task → updates individual task file status + completion notes
 review       → creates specs/NNN-name/review.md (security, performance, test findings)
 verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 triage may create bugs/NNN-xxx.md
