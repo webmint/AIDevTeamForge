@@ -280,7 +280,8 @@ def render_report(report_dict):
         agents_failed             : list[dict {name, reason}]  (may be absent)
         findings                  : list of ParsedFinding-like dicts
             each dict has: agent, severity, file, line, pattern, confidence,
-            evidence, why, remediation, tags, (optional) finding_id, (optional) score
+            evidence, why, remediation, tags, (optional) finding_id,
+            (optional) score, (optional) pass_count
         top10                     : list[str]  finding_ids in priority order
         source_root               : str
         framework                 : str
@@ -290,8 +291,15 @@ def render_report(report_dict):
         recurring_reviews_consulted : list[str]
         discard_counts            : dict keys: file_missing, line_oob,
                                     quote_mismatch, evidence_empty, pattern_missing
-        consensus                 : dict  finding_id -> list[str] agent names
+        consensus                 : dict (finding_id -> [agent names]);
+                                    multi-pass passes {} — the Summary cross-agent
+                                    count now derives from [CROSS-AGENT] tags, not
+                                    this dict
         next_candidates           : list[dict]  (hotspot mode only)
+        passes_run                : int  (optional, default 1).  When >= 2, a
+                                    "Passes run" line is added to the ## Summary
+                                    block.  When absent or 1 (single-pass), the
+                                    Summary is byte-identical to pre-multipass output.
 
     Returns
     -------
@@ -313,8 +321,11 @@ def render_report(report_dict):
     recurring_unresolved = report_dict.get("recurring_unresolved") or []
     recurring_reviews_consulted = report_dict.get("recurring_reviews_consulted") or []
     discard_counts = report_dict.get("discard_counts") or {}
-    consensus = report_dict.get("consensus") or {}
     next_candidates = report_dict.get("next_candidates") or []
+    # passes_run: optional int, default 1.  Values <= 1 are treated as single-pass
+    # and produce no extra output — preserving byte-identical single-pass reports.
+    raw_passes_run = report_dict.get("passes_run", 1)
+    passes_run = int(raw_passes_run) if isinstance(raw_passes_run, int) and not isinstance(raw_passes_run, bool) else 1
 
     # Assign finding_ids if not already present (F-001, F-002, ...)
     numbered = []
@@ -466,7 +477,7 @@ def render_report(report_dict):
         "file_missing", "line_oob", "quote_mismatch", "evidence_empty", "pattern_missing"
     ))
     consensus_count = sum(
-        1 for fid, _ in numbered if fid in consensus and len(consensus[fid]) >= 2
+        1 for _, f in numbered if "[CROSS-AGENT]" in (f.get("tags") or [])
     )
     unresolved_count = len(recurring_unresolved)
     skipped_str = ", ".join(agents_skipped) if agents_skipped else "none"
@@ -487,6 +498,18 @@ def render_report(report_dict):
     )
     out.append("- Cross-agent consensus findings: {0}".format(consensus_count))
     out.append("- Recurring (unresolved): {0}".format(unresolved_count))
+    # Multi-pass summary line: only when passes_run >= 2 (guard preserves
+    # byte-identical output for single-pass runs).
+    if passes_run >= 2:
+        multipass_count = sum(
+            1 for _, f in numbered
+            if (f.get("pass_count") or 1) >= 2
+        )
+        out.append(
+            "- Passes run: {0} | Multi-pass-confirmed findings: {1}".format(
+                passes_run, multipass_count
+            )
+        )
     out.append("- Agents skipped (not installed): {0}".format(skipped_str))
     out.append("- Agents failed (ran but errored): {0}".format(failed_str))
     out.append(

@@ -1,6 +1,14 @@
 """Tests for src/devforge/lib/_audit/_scope.py.
 
 Coverage:
+  _parse_ls_files_stdout — empty, single, multi-file, blank lines, whitespace,
+                           no trailing newline, submodule-prefixed paths
+  _git_ls_files_dir — nonempty plain result (no nested attempt), nested-repo
+                      resolution via real git topology (independent nested repo,
+                      deeper subdir, workspace-relative prefix), genuinely empty
+                      dir (no nested .git) → [], None semantics preserved
+                      (plain git-absent or non-zero exit → None), nested git -C
+                      fails gracefully → [] (not None, no crash)
   resolve_scope — broad, hotspot, file (simplified pipeline), directory via
                   git ls-files, directory non-git fallback, uncommitted,
                   scope_oversize boundary (==limit → False; ==limit+1 → True),
@@ -15,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -28,6 +37,8 @@ from _audit._scope import (  # noqa: E402
     _CLOSING_REMINDER,
     _FOCUS_BLOCKS,
     _OUTPUT_CONTRACT,
+    _git_ls_files_dir,
+    _parse_ls_files_stdout,
     render_agent_brief,
     render_scope_block,
     resolve_scope,
@@ -286,6 +297,273 @@ class TestResolveScopeDirectory(unittest.TestCase):
         mr = _mode_result(mode="narrow", scope_arg=src_dir)
         result = resolve_scope(mr, self.tmpdir)
         self.assertEqual(result["pipeline"], "full")
+
+
+# ---------------------------------------------------------------------------
+# Tests — _parse_ls_files_stdout
+# ---------------------------------------------------------------------------
+
+class TestParseLsFilesStdout(unittest.TestCase):
+    """Unit tests for the shared stdout-parsing helper."""
+
+    def test_empty_string_returns_empty_list(self):
+        self.assertEqual(_parse_ls_files_stdout(""), [])
+
+    def test_single_file(self):
+        self.assertEqual(_parse_ls_files_stdout("src/foo.py\n"), ["src/foo.py"])
+
+    def test_multiple_files_sorted(self):
+        stdout = "src/z.py\nsrc/a.py\nsrc/m.py\n"
+        self.assertEqual(_parse_ls_files_stdout(stdout), ["src/a.py", "src/m.py", "src/z.py"])
+
+    def test_blank_lines_ignored(self):
+        stdout = "src/a.py\n\nsrc/b.py\n\n"
+        self.assertEqual(_parse_ls_files_stdout(stdout), ["src/a.py", "src/b.py"])
+
+    def test_whitespace_stripped(self):
+        stdout = "  src/a.py  \n  src/b.py  \n"
+        self.assertEqual(_parse_ls_files_stdout(stdout), ["src/a.py", "src/b.py"])
+
+    def test_no_trailing_newline(self):
+        stdout = "src/a.py\nsrc/b.py"
+        self.assertEqual(_parse_ls_files_stdout(stdout), ["src/a.py", "src/b.py"])
+
+    def test_submodule_prefixed_paths_preserved(self):
+        """Paths with submodule prefix (e.g. db-ui/src/foo.py) are returned as-is."""
+        stdout = "db-ui/src/bar.ts\ndb-ui/src/foo.ts\n"
+        self.assertEqual(
+            _parse_ls_files_stdout(stdout),
+            ["db-ui/src/bar.ts", "db-ui/src/foo.ts"],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests — _git_ls_files_dir basic mock tests
+# ---------------------------------------------------------------------------
+
+class TestGitLsFilesDirBasic(unittest.TestCase):
+    """Mock-based tests for _git_ls_files_dir covering normal-dir and error paths.
+
+    The nested-repo resolution path is covered by TestGitLsFilesDirNestedRepo
+    (real git topology) below.
+    """
+
+    def _make_proc(self, stdout="", returncode=0):
+        """Return a mock CompletedProcess-like object."""
+        proc = unittest.mock.MagicMock()
+        proc.stdout = stdout
+        proc.returncode = returncode
+        return proc
+
+    def test_nonempty_plain_result_returned_directly_no_nested_attempt(self):
+        """When plain ls-files returns files, no nested-repo attempt is made."""
+        plain_stdout = "src/a.py\nsrc/b.py\n"
+        with unittest.mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = self._make_proc(stdout=plain_stdout)
+            result = _git_ls_files_dir("/repo", "src")
+        self.assertEqual(result, ["src/a.py", "src/b.py"])
+        # Only one subprocess.run call (the plain one).
+        self.assertEqual(mock_run.call_count, 1)
+
+    def test_none_semantics_preserved_plain_file_not_found(self):
+        """When git is absent for the plain call, None is returned (no nested attempt)."""
+        with unittest.mock.patch(
+            "subprocess.run", side_effect=FileNotFoundError("git not found")
+        ) as mock_run:
+            result = _git_ls_files_dir("/repo", "src")
+
+        self.assertIsNone(result)
+        # Only one call was attempted.
+        self.assertEqual(mock_run.call_count, 1)
+
+    def test_none_semantics_preserved_plain_nonzero_exit(self):
+        """When plain ls-files returns non-zero exit, None is returned (no nested attempt)."""
+        with unittest.mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = self._make_proc(stdout="", returncode=128)
+            result = _git_ls_files_dir("/repo", "src")
+
+        self.assertIsNone(result)
+        # Only one call was attempted.
+        self.assertEqual(mock_run.call_count, 1)
+
+    def test_genuinely_empty_dir_no_nested_git_returns_empty_list(self):
+        """Plain empty, no .git in ancestors → [] (no nested attempt, no crash).
+
+        The repo_root is a non-existent path so no .git walk can find anything.
+        """
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a subdir inside tmpdir (which has no .git).
+            empty_dir = os.path.join(tmpdir, "empty-dir")
+            os.makedirs(empty_dir)
+            with unittest.mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = self._make_proc(stdout="")
+                result = _git_ls_files_dir(tmpdir, "empty-dir")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result, [])
+        # Only the plain call — no nested git -C call.
+        self.assertEqual(mock_run.call_count, 1)
+
+    def test_nested_git_fails_returns_empty_list_not_none(self):
+        """Plain empty, nested .git found but git -C fails → [] (not None, no crash).
+
+        Mock: first subprocess.run (plain) → empty rc=0; second (nested git -C)
+        → non-zero exit.  We place a real .git dir so the ancestor walk finds it.
+        """
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            nested_dir = os.path.join(tmpdir, "nested")
+            os.makedirs(nested_dir)
+            # Plant a .git dir to fool the ancestor walk.
+            os.makedirs(os.path.join(nested_dir, ".git"))
+
+            call_count = {"n": 0}
+            make_proc = self._make_proc
+
+            def side_effect(cmd, **kwargs):
+                call_count["n"] += 1
+                if call_count["n"] == 1:
+                    # First call: plain git ls-files → empty
+                    return make_proc(stdout="", returncode=0)
+                # Second call: nested git -C → non-zero exit
+                return make_proc(stdout="", returncode=128)
+
+            with unittest.mock.patch("subprocess.run", side_effect=side_effect):
+                result = _git_ls_files_dir(tmpdir, "nested")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result, [])
+
+
+# ---------------------------------------------------------------------------
+# Tests — _git_ls_files_dir nested-repo resolution (real git topology)
+# ---------------------------------------------------------------------------
+
+@unittest.skipUnless(_git_available(), "git not available")
+class TestGitLsFilesDirNestedRepo(unittest.TestCase):
+    """Real git topology tests for nested-repo resolution in _git_ls_files_dir.
+
+    Builds a workspace repo with a nested independent git repo (its own .git,
+    NOT registered as a submodule) and verifies that _git_ls_files_dir returns
+    the correct workspace-relative, prefixed paths.
+    """
+
+    def setUp(self):
+        self.tmpobj = tempfile.TemporaryDirectory()
+        self.tmpdir = self.tmpobj.name
+
+        # Initialize workspace (superproject) repo.
+        _init_git_repo(self.tmpdir)
+
+        # Create the nested repo directory.
+        nested_dir = os.path.join(self.tmpdir, "nested")
+        os.makedirs(nested_dir)
+        sub_dir = os.path.join(nested_dir, "sub")
+        os.makedirs(sub_dir)
+
+        # Initialize the nested repo independently — NOT added to the workspace.
+        _init_git_repo(nested_dir)
+
+        # Create and commit files inside the nested repo.
+        with open(os.path.join(nested_dir, "a.py"), "w") as fh:
+            fh.write("a = 1\n")
+        with open(os.path.join(sub_dir, "b.py"), "w") as fh:
+            fh.write("b = 2\n")
+        _git_add_commit(nested_dir, ["a.py", "sub/b.py"])
+
+    def tearDown(self):
+        self.tmpobj.cleanup()
+
+    def test_plain_git_ls_files_returns_zero_files_for_nested(self):
+        """Sanity: plain git -C workspace ls-files -- nested/ returns 0 files."""
+        proc = subprocess.run(
+            ["git", "-C", self.tmpdir, "ls-files", "--", "nested"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0)
+        files = [l.strip() for l in proc.stdout.splitlines() if l.strip()]
+        self.assertEqual(files, [], "plain ls-files must return 0 for nested repo")
+
+    def test_nested_repo_top_level_returns_workspace_relative_paths(self):
+        """_git_ls_files_dir resolves nested/a.py and nested/sub/b.py."""
+        result = _git_ls_files_dir(self.tmpdir, "nested")
+        self.assertIsNotNone(result)
+        self.assertIn("nested/a.py", result)
+        self.assertIn("nested/sub/b.py", result)
+        self.assertEqual(len(result), 2)
+
+    def test_nested_repo_top_level_paths_are_sorted(self):
+        """Returned paths are sorted."""
+        result = _git_ls_files_dir(self.tmpdir, "nested")
+        self.assertIsNotNone(result)
+        self.assertEqual(result, sorted(result))
+
+    def test_nested_repo_top_level_paths_are_workspace_relative(self):
+        """Each returned path starts with 'nested/' (workspace-relative prefix)."""
+        result = _git_ls_files_dir(self.tmpdir, "nested")
+        self.assertIsNotNone(result)
+        for path in result:
+            self.assertTrue(
+                path.startswith("nested/"),
+                "Expected workspace-relative prefix 'nested/' but got: {0!r}".format(path),
+            )
+
+    def test_nested_repo_subdir_returns_filtered_workspace_relative_paths(self):
+        """_git_ls_files_dir with nested/sub returns only nested/sub/b.py."""
+        result = _git_ls_files_dir(self.tmpdir, "nested/sub")
+        self.assertIsNotNone(result)
+        self.assertEqual(result, ["nested/sub/b.py"])
+
+    def test_nested_repo_subdir_does_not_include_sibling_files(self):
+        """Requesting nested/sub does not return nested/a.py."""
+        result = _git_ls_files_dir(self.tmpdir, "nested/sub")
+        self.assertIsNotNone(result)
+        self.assertNotIn("nested/a.py", result)
+
+    def test_outer_dir_without_git_containing_nested_repo_returns_empty(self):
+        """outer/ has no .git but contains outer/inner/ which is its own git repo.
+
+        _git_ls_files_dir(workspace, "outer") must return [] — not None, no crash.
+        The ancestor walk for "outer" finds no .git at the "outer" level, so the
+        original empty list from the plain call is returned unchanged.
+        """
+        with tempfile.TemporaryDirectory() as workspace:
+            _init_git_repo(workspace)
+
+            # Create outer/ — NOT a git repo itself.
+            outer_dir = os.path.join(workspace, "outer")
+            inner_dir = os.path.join(outer_dir, "inner")
+            os.makedirs(inner_dir)
+
+            # Initialise inner/ as its own independent git repo.
+            subprocess.run(
+                ["git", "-c", "user.email=t@t.com", "-c", "user.name=T",
+                 "init", inner_dir],
+                check=True, capture_output=True,
+            )
+            inner_file = os.path.join(inner_dir, "inner.py")
+            with open(inner_file, "w") as fh:
+                fh.write("x = 1\n")
+            subprocess.run(
+                ["git", "-C", inner_dir, "-c", "user.email=t@t.com",
+                 "-c", "user.name=T", "add", "inner.py"],
+                check=True, capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", inner_dir, "-c", "user.email=t@t.com",
+                 "-c", "user.name=T", "commit", "-m", "init", "--allow-empty"],
+                check=True, capture_output=True,
+            )
+
+            result = _git_ls_files_dir(workspace, "outer")
+
+        # Must be [] (not None, not a crash) — outer itself has no .git, so the
+        # ancestor walk never finds a nested-repo root and returns the plain [].
+        self.assertIsNotNone(result)
+        self.assertEqual(result, [])
 
 
 # ---------------------------------------------------------------------------
@@ -953,6 +1231,164 @@ class TestClosingReminderEnumerateText(unittest.TestCase):
     def test_cap_token_present(self):
         """__FINDING_CAP__ token is in _CLOSING_REMINDER before substitution."""
         self.assertIn("__FINDING_CAP__", _CLOSING_REMINDER)
+
+
+# ---------------------------------------------------------------------------
+# Tests — render_agent_brief tmp_path parameter
+# ---------------------------------------------------------------------------
+
+
+class TestRenderAgentBriefTmpPath(unittest.TestCase):
+    """Verify tmp_path controls the agent findings write-path in the brief."""
+
+    _DEFAULT_PATH_TOKEN = "audits/.tmp-{agent-name}.md"
+    _CUSTOM_PATH = "/tmp/forge-audit-abc/tmp-architect-p2.md"
+
+    def _make_brief(self, agent="architect", tmp_path=None):
+        # type: (str, object) -> str
+        return render_agent_brief(
+            agent=agent,
+            references_dir=str(_REFERENCES_DIR),
+            scope_block=_make_brief_scope_block(),
+            source_root="/test/repo",
+            tmp_path=tmp_path,
+        )
+
+    # --- default (no tmp_path): backward-compatible behavior ---
+
+    def test_default_tmp_path_none_contains_default_path(self):
+        """When tmp_path is None, the brief contains the default audits/.tmp-{agent-name}.md."""
+        brief = self._make_brief(agent="architect", tmp_path=None)
+        self.assertIn(self._DEFAULT_PATH_TOKEN, brief)
+
+    def test_default_tmp_path_none_exact_sentence(self):
+        """When tmp_path is None, the main sentence uses the default path verbatim."""
+        brief = self._make_brief(agent="code-reviewer", tmp_path=None)
+        self.assertIn(
+            "Each agent writes its findings to `audits/.tmp-{agent-name}.md`",
+            brief,
+        )
+
+    def test_default_tmp_path_for_all_agents(self):
+        """Default path token present for every agent when tmp_path is None."""
+        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+            brief = self._make_brief(agent=agent, tmp_path=None)
+            self.assertIn(
+                self._DEFAULT_PATH_TOKEN,
+                brief,
+                "Agent {0}: default path token missing when tmp_path=None".format(agent),
+            )
+
+    # --- custom tmp_path: path substitution ---
+
+    def test_custom_tmp_path_present_in_brief(self):
+        """When tmp_path is set, the brief contains that exact path string."""
+        brief = self._make_brief(tmp_path=self._CUSTOM_PATH)
+        self.assertIn(self._CUSTOM_PATH, brief)
+
+    def test_custom_tmp_path_replaces_default_path(self):
+        """When tmp_path is set, the default audits/.tmp-{agent-name}.md is gone."""
+        brief = self._make_brief(tmp_path=self._CUSTOM_PATH)
+        self.assertNotIn(self._DEFAULT_PATH_TOKEN, brief)
+
+    def test_custom_tmp_path_main_sentence(self):
+        """The main 'Each agent writes its findings to' sentence uses the custom path."""
+        brief = self._make_brief(tmp_path=self._CUSTOM_PATH)
+        self.assertIn(
+            "Each agent writes its findings to `{0}`".format(self._CUSTOM_PATH),
+            brief,
+        )
+
+    def test_custom_tmp_path_failure_instruction(self):
+        """The failure instruction references the custom path, not 'a temp file'."""
+        brief = self._make_brief(tmp_path=self._CUSTOM_PATH)
+        self.assertIn(
+            "write `{0}` with `# Status: failed`".format(self._CUSTOM_PATH),
+            brief,
+        )
+
+    def test_custom_tmp_path_empty_file_instruction(self):
+        """The empty-file instruction references the custom path, not 'a temp file'."""
+        brief = self._make_brief(tmp_path=self._CUSTOM_PATH)
+        self.assertIn(
+            "write `{0}` with `# Status: complete`".format(self._CUSTOM_PATH),
+            brief,
+        )
+
+    def test_custom_tmp_path_no_stray_default_path(self):
+        """When tmp_path is set, no stray audits/.tmp- references remain."""
+        brief = self._make_brief(tmp_path=self._CUSTOM_PATH)
+        self.assertNotIn("audits/.tmp-", brief)
+
+    def test_custom_tmp_path_with_pass_suffix(self):
+        """Multi-pass path suffix is emitted verbatim."""
+        pass_path = "/tmp/forge-run-xyz/tmp-code-reviewer-p1.md"
+        brief = self._make_brief(agent="code-reviewer", tmp_path=pass_path)
+        self.assertIn(pass_path, brief)
+        self.assertNotIn(self._DEFAULT_PATH_TOKEN, brief)
+
+    def test_custom_tmp_path_verbatim_no_normalization(self):
+        """tmp_path is emitted verbatim: no path normalization, no quoting."""
+        unusual_path = "relative/path/with spaces/tmp-qa-p3.md"
+        brief = self._make_brief(agent="qa-engineer", tmp_path=unusual_path)
+        self.assertIn(unusual_path, brief)
+
+    def test_custom_tmp_path_all_agents(self):
+        """Custom tmp_path substitution works for every agent."""
+        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+            brief = self._make_brief(agent=agent, tmp_path=self._CUSTOM_PATH)
+            self.assertIn(
+                self._CUSTOM_PATH,
+                brief,
+                "Agent {0}: custom path not found in brief".format(agent),
+            )
+            self.assertNotIn(
+                self._DEFAULT_PATH_TOKEN,
+                brief,
+                "Agent {0}: default path token still present when tmp_path set".format(agent),
+            )
+
+    def test_tmp_path_combined_with_finding_cap(self):
+        """tmp_path and finding_cap can both be set; both substitutions apply."""
+        brief = render_agent_brief(
+            agent="architect",
+            references_dir=str(_REFERENCES_DIR),
+            scope_block=_make_brief_scope_block(),
+            source_root="/test/repo",
+            finding_cap=42,
+            tmp_path=self._CUSTOM_PATH,
+        )
+        self.assertIn(self._CUSTOM_PATH, brief)
+        self.assertNotIn(self._DEFAULT_PATH_TOKEN, brief)
+        self.assertNotIn("__FINDING_CAP__", brief)
+        self.assertIn("Cap: 42 findings", brief)
+
+    def test_default_behavior_byte_identical_when_tmp_path_omitted(self):
+        """Brief content is identical whether tmp_path is omitted or explicitly None."""
+        brief_omitted = render_agent_brief(
+            agent="security-reviewer",
+            references_dir=str(_REFERENCES_DIR),
+            scope_block=_make_brief_scope_block(),
+            source_root="/test/repo",
+        )
+        brief_explicit_none = render_agent_brief(
+            agent="security-reviewer",
+            references_dir=str(_REFERENCES_DIR),
+            scope_block=_make_brief_scope_block(),
+            source_root="/test/repo",
+            tmp_path=None,
+        )
+        self.assertEqual(brief_omitted, brief_explicit_none)
+
+    def test_constant_not_mutated_after_custom_call(self):
+        """A custom tmp_path call must not mutate _OUTPUT_CONTRACT; a subsequent
+        default call must still emit the default audits/.tmp-{agent-name}.md path."""
+        # custom call first
+        _ = self._make_brief(agent="architect", tmp_path="/tmp/forge-audit/tmp-architect-p1.md")
+        # then a default call — must still contain the default path, not the custom one
+        brief_after = self._make_brief(agent="architect", tmp_path=None)
+        self.assertIn(self._DEFAULT_PATH_TOKEN, brief_after)
+        self.assertNotIn("/tmp/forge-audit/tmp-architect-p1.md", brief_after)
 
 
 if __name__ == "__main__":

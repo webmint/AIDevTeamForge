@@ -164,7 +164,17 @@ def map_recurring_issues(findings, past_findings):
 
 def _score_finding(finding):
     # type: (dict) -> float
-    """Compute the force-rank score for a single finding."""
+    """Compute the force-rank score for a single finding.
+
+    score = severity_weight × confidence_weight × cross_agent_bonus
+            × recurring_bonus × pass_bonus
+
+    pass_bonus nudges multi-pass-confirmed findings slightly higher while
+    leaving single-pass scores byte-identical:
+      pass_count missing or <= 1  → pass_bonus = 1.0  (no change)
+      pass_count == 2             → pass_bonus = 1.25
+      pass_count >= 3             → pass_bonus = 1.5   (cap at 3)
+    """
     severity = finding.get("severity", "Info")
     confidence = finding.get("confidence", "Speculative")
     tags = finding.get("tags", []) or []
@@ -179,7 +189,14 @@ def _score_finding(finding):
     else:
         rec_bonus = 1.0
 
-    return sev_w * conf_w * cross_bonus * rec_bonus
+    # pass_bonus: missing key → 1 (single-pass, no change).
+    # pass_count 0 or negative → no bonus (clamp to 1.0 no-op).
+    pass_bonus = 1.0
+    pass_count = finding.get("pass_count", 1)
+    if isinstance(pass_count, int) and not isinstance(pass_count, bool) and pass_count >= 1:
+        pass_bonus = 1.0 + 0.25 * (min(pass_count, 3) - 1)
+
+    return sev_w * conf_w * cross_bonus * rec_bonus * pass_bonus
 
 
 # ---------------------------------------------------------------------------

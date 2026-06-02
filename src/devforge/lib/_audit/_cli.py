@@ -31,6 +31,10 @@ Phase 4 adds 3 verbs:
   render-report         — render + write the full audit markdown report
   render-inline-summary — render the ## Audit Complete console block
   cleanup-tmps          — delete leftover audits/.tmp-*.md files
+
+Phase 5 adds 1 verb:
+  merge-passes        — union-merge per-pass validated-findings JSON files via
+                        tolerant line clustering
 """
 
 from __future__ import annotations
@@ -52,6 +56,8 @@ def cmd_resolve_mode(args: argparse.Namespace) -> int:
     """Parse raw $ARGUMENTS string and emit mode + knobs as JSON.
 
     Returns 0 on success, 2 when parse error (error field is set).
+    When --passes N was clamped, a one-line note is written to stderr
+    (stdout carries only the JSON result for the orchestrator).
     """
     from ._preflight import resolve_mode
 
@@ -66,6 +72,10 @@ def cmd_resolve_mode(args: argparse.Namespace) -> int:
     if result.get("error"):
         sys.stderr.write("audit_helper resolve-mode: {0}\n".format(result["error"]))
         return 2
+    if result.get("passes_clamp_note"):
+        sys.stderr.write(
+            "audit_helper resolve-mode: note: {0}\n".format(result["passes_clamp_note"])
+        )
     return 0
 
 
@@ -511,6 +521,7 @@ def cmd_render_agent_brief(args: argparse.Namespace) -> int:
             return 2
 
     finding_cap = getattr(args, "finding_cap", 30) or 30
+    tmp_path = getattr(args, "tmp_path", None)
 
     scope_block = render_scope_block(scope_result, source_root)
 
@@ -522,6 +533,7 @@ def cmd_render_agent_brief(args: argparse.Namespace) -> int:
             source_root=source_root,
             extra_context=extra_context,
             finding_cap=finding_cap,
+            tmp_path=tmp_path,
         )
     except ValueError as exc:
         sys.stderr.write(
@@ -851,6 +863,14 @@ def cmd_render_report(args: argparse.Namespace) -> int:
         )
         return 2
 
+    # Inject passes_run from CLI arg into report_dict.  The render layer reads
+    # it from the dict (default 1 when absent), so single-pass callers that
+    # omit --passes-run get byte-identical output.
+    passes_run = getattr(args, "passes_run", 1) or 1
+    if isinstance(passes_run, int) and not isinstance(passes_run, bool) and passes_run >= 1:
+        report_dict["passes_run"] = passes_run
+    # else: leave report_dict unchanged; render_report defaults to 1.
+
     try:
         content = render_report(report_dict)
         out_path = write_report(audits_dir, date_str, content)
@@ -946,6 +966,111 @@ def cmd_cleanup_tmps(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Phase 5 handlers
+# ---------------------------------------------------------------------------
+
+
+def cmd_merge_passes(args: argparse.Namespace) -> int:
+    """Merge per-pass validated-findings JSON files via _merge.merge_passes.
+
+    Reads one or more pool files (--pools), each either a bare JSON array of
+    ParsedFinding dicts or a validate-findings output object with a "passed"
+    key.  Sorts resolved paths lexically (deterministic pass order for
+    .validated-p1.json, .validated-p2.json, ... naming convention).  Calls
+    merge_passes(pools) and writes the merged bare JSON array to stdout.
+
+    Returns 0 on success.
+    Returns 2 on no matching files, unreadable file, or malformed JSON.
+    """
+    import glob as _glob
+
+    from ._merge import merge_passes
+
+    pool_tokens = getattr(args, "pools", None) or []
+    if not pool_tokens:
+        sys.stderr.write(
+            "audit_helper merge-passes: --pools <path> [path ...] required\n"
+        )
+        return 2
+
+    # Expand glob metacharacters in any token; collect all resolved paths.
+    resolved = []  # type: list
+    for token in pool_tokens:
+        if any(c in token for c in ("*", "?", "[")):
+            expanded = sorted(_glob.glob(token))
+            resolved.extend(expanded)
+        else:
+            resolved.append(token)
+
+    # Deduplicate while preserving insertion order, then sort lexically for
+    # deterministic pass order.  Duplicates arise when a glob token and an
+    # explicit token both expand to the same path; merging the same file twice
+    # would inflate pass_count / [MULTI-PASS:k] tags.
+    seen = set()  # type: set
+    deduped = []  # type: list
+    for p in resolved:
+        if p not in seen:
+            seen.add(p)
+            deduped.append(p)
+    resolved = sorted(deduped)
+
+    if not resolved:
+        sys.stderr.write(
+            "audit_helper merge-passes: no files matched by --pools tokens\n"
+        )
+        return 2
+
+    pools = []  # type: list
+    for path in resolved:
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                raw = json.load(fh)
+        except OSError as exc:
+            sys.stderr.write(
+                "audit_helper merge-passes: cannot read pool file {0!r}: "
+                "{1}\n".format(path, exc)
+            )
+            return 2
+        except json.JSONDecodeError as exc:
+            sys.stderr.write(
+                "audit_helper merge-passes: pool file {0!r} is not valid "
+                "JSON: {1}\n".format(path, exc)
+            )
+            return 2
+
+        # Accept either the full validate-findings output object or a bare list.
+        if isinstance(raw, dict) and "passed" in raw:
+            pool_findings = raw["passed"]
+            if not isinstance(pool_findings, list):
+                sys.stderr.write(
+                    "audit_helper merge-passes: pool file {0!r} has 'passed' "
+                    "key but its value is not a JSON array\n".format(path)
+                )
+                return 2
+        elif isinstance(raw, dict):
+            # dict present but no 'passed' key
+            sys.stderr.write(
+                "audit_helper merge-passes: pool file {0!r} must be a JSON "
+                "array or an object with a 'passed' key\n".format(path)
+            )
+            return 2
+        elif isinstance(raw, list):
+            pool_findings = raw
+        else:
+            sys.stderr.write(
+                "audit_helper merge-passes: pool file {0!r} must be a JSON "
+                "array or an object with a 'passed' key\n".format(path)
+            )
+            return 2
+
+        pools.append(pool_findings)
+
+    merged = merge_passes(pools)
+    sys.stdout.write(json.dumps(merged, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Registry + parser construction
 # ---------------------------------------------------------------------------
 
@@ -1034,6 +1159,11 @@ _SUBCOMMAND_REGISTRY = [
         "cleanup-tmps",
         "Delete leftover audits/.tmp-*.md files from an interrupted run (Phase 4/5).",
         cmd_cleanup_tmps,
+    ),
+    (
+        "merge-passes",
+        "Union-merge per-pass validated-findings JSON files via tolerant line clustering (Phase 5).",
+        cmd_merge_passes,
     ),
 ]
 
@@ -1257,6 +1387,22 @@ def _register_subcommands(subparsers) -> None:
                     "contract and closing reminder."
                 ),
             )
+            sp.add_argument(
+                "--tmp-path",
+                default=None,
+                dest="tmp_path",
+                metavar="PATH",
+                help=(
+                    "Override the agent findings write-path in the output "
+                    "contract. When omitted, the contract uses the default "
+                    "audits/.tmp-{agent-name}.md path (backward-compatible). "
+                    "When provided, the given path is emitted verbatim wherever "
+                    "the write-path appears in the contract (main sentence and "
+                    "failure/empty-file instructions). Useful for relocating "
+                    "scratch files to a run-scoped temp dir or for multi-pass "
+                    "per-pass path suffixes."
+                ),
+            )
 
         elif verb == "consume-tmp":
             sp.add_argument(
@@ -1376,6 +1522,19 @@ def _register_subcommands(subparsers) -> None:
                 metavar="YYYY-MM-DD",
                 help="Audit date string used in the output filename.",
             )
+            sp.add_argument(
+                "--passes-run",
+                type=int,
+                default=1,
+                dest="passes_run",
+                metavar="N",
+                help=(
+                    "Number of audit passes that produced this report "
+                    "(default: 1). When >= 2, a 'Passes run' line is "
+                    "added to the ## Summary block. Single-pass callers "
+                    "should omit this flag to preserve byte-identical output."
+                ),
+            )
 
         elif verb == "render-inline-summary":
             sp.add_argument(
@@ -1398,6 +1557,22 @@ def _register_subcommands(subparsers) -> None:
                 help=(
                     "Directory to clean .tmp-*.md files from "
                     "(default: 'audits' in CWD)."
+                ),
+            )
+
+        elif verb == "merge-passes":
+            sp.add_argument(
+                "--pools",
+                nargs="+",
+                required=True,
+                metavar="PATH",
+                help=(
+                    "One or more pool file paths (or a glob pattern) to merge. "
+                    "Each file must be a JSON array of ParsedFinding dicts or a "
+                    "validate-findings output object with a 'passed' key. "
+                    "Files are sorted lexically before merging so that "
+                    ".validated-p1.json, .validated-p2.json, ... resolve in "
+                    "pass order. At least one path is required."
                 ),
             )
 

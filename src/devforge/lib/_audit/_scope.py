@@ -132,12 +132,50 @@ _IGNORE_DIRS = frozenset((
 # ---------------------------------------------------------------------------
 
 
+def _parse_ls_files_stdout(stdout):
+    # type: (str) -> List[str]
+    """Parse stdout from git ls-files into a sorted list of non-empty paths."""
+    result = []
+    for line in stdout.splitlines():
+        fp = line.strip()
+        if fp:
+            result.append(fp)
+    result.sort()
+    return result
+
+
 def _git_ls_files_dir(repo_root, subdir, timeout=60):
     # type: (str, str, int) -> Optional[List[str]]
     """Run git ls-files for a subdir under repo_root.
 
     Returns a sorted list of workspace-relative paths, or None if git fails
-    or is not on PATH.  Empty list (no tracked files) is distinct from None.
+    or is not on PATH.  Empty list (zero files resolved) is distinct from None
+    (git unavailable/error).
+
+    When the plain ``git ls-files`` call returns an empty list (rc 0, zero
+    files), the directory may contain or be contained in a nested independent
+    git repository (its own ``.git`` dir or gitlink file) that the superproject
+    does not track.  In that case nested-repo resolution is attempted:
+
+    1. Walk the ancestors of ``subdir`` from just-under ``repo_root`` downward
+       toward ``subdir`` (inclusive), checking whether each candidate dir ``A``
+       has a ``.git`` entry (directory OR gitlink file — covers both independent
+       repos and registered submodules).  The FIRST such ``A`` is the nested-repo
+       root ``R``.
+    2. If found, run ``git -C <repo_root/R> ls-files`` with the path of
+       ``subdir`` relative to ``R``, parse the output with the same
+       ``_parse_ls_files_stdout`` helper, then prefix each result with the
+       workspace-relative path of ``R`` so callers receive workspace-relative
+       paths.
+    3. If no nested ``.git`` is found, or the nested ``git -C`` call fails for
+       any reason (non-zero exit, FileNotFoundError, TimeoutExpired), the
+       original empty list is returned — callers still see ``[]``, not ``None``.
+
+    This handles independent nested repos — directories that own their own
+    ``.git`` but are NOT registered as submodules of the workspace.
+    Registered submodules are NOT handled here: plain ``git ls-files`` returns
+    a non-empty gitlink entry for them (the submodule name, not its files), so
+    the empty-result path is not reached for registered submodules.
     """
     cmd = ["git", "-C", repo_root, "ls-files", "--", subdir]
     try:
@@ -154,12 +192,80 @@ def _git_ls_files_dir(repo_root, subdir, timeout=60):
     if proc.returncode != 0:
         return None
 
-    result = []
-    for line in proc.stdout.splitlines():
-        fp = line.strip()
-        if fp:
-            result.append(fp)
-    result.sort()
+    plain_result = _parse_ls_files_stdout(proc.stdout)
+
+    # Non-empty result: normal directory tracked by the superproject.
+    if plain_result:
+        return plain_result
+
+    # Plain call returned [] — attempt nested-repo resolution.
+    # Walk ancestors of subdir (relative to repo_root) from top downward,
+    # looking for the first directory that owns its own .git entry.
+    #
+    # Build the list of candidate ancestor components.  For example, if
+    # subdir is "a/b/c" the candidates are ["a", "a/b", "a/b/c"].
+    parts = []
+    current = subdir
+    while True:
+        head, tail = os.path.split(current)
+        if tail:
+            parts.append(current)
+        if not tail or not head or head == current:
+            break
+        current = head
+    # parts is innermost-first; reverse to walk outermost-first.
+    parts.reverse()
+
+    nested_root_rel = None  # workspace-relative path of the nested repo root
+    for candidate_rel in parts:
+        git_entry = os.path.join(repo_root, candidate_rel, ".git")
+        if os.path.exists(git_entry):
+            nested_root_rel = candidate_rel
+            break
+
+    if nested_root_rel is None:
+        return plain_result  # no nested repo found → []
+
+    nested_repo_abs = os.path.join(repo_root, nested_root_rel)
+    # Compute the path of subdir relative to the nested repo root.
+    # os.path.relpath handles the case where subdir == nested_root_rel
+    # (returns "."), and deeper cases.
+    sub_rel = os.path.relpath(
+        os.path.join(repo_root, subdir),
+        nested_repo_abs,
+    )
+    # Build the nested git -C command.  When sub_rel is "." (subdir IS the
+    # nested root), pass no pathspec so ls-files lists all tracked files.
+    if sub_rel == ".":
+        nested_cmd = ["git", "-C", nested_repo_abs, "ls-files"]
+    else:
+        nested_cmd = ["git", "-C", nested_repo_abs, "ls-files", "--", sub_rel]
+
+    try:
+        nested_proc = subprocess.run(
+            nested_cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return plain_result  # [] — not None
+
+    if nested_proc.returncode != 0:
+        return plain_result  # [] — not None
+
+    nested_files = _parse_ls_files_stdout(nested_proc.stdout)
+    if not nested_files:
+        return plain_result  # nested repo also empty → []
+
+    # Prefix each path with the workspace-relative nested-root path so callers
+    # receive workspace-relative paths (e.g. "nested/a.py", not "a.py").
+    prefix = nested_root_rel.replace(os.sep, "/")
+    result = sorted(
+        prefix + "/" + fp.replace(os.sep, "/")
+        for fp in nested_files
+    )
     return result
 
 
@@ -326,10 +432,11 @@ def resolve_scope(mode_result, repo_root, hotspot_files=None):
         if os.path.isdir(abs_path):
             # Directory — Decision 9: git ls-files (tracked + non-gitignored).
             # git_files is None ONLY when git failed / is absent — in that case
-            # fall back to a filesystem walk. An EMPTY list means git succeeded
-            # with zero tracked files in the subtree; honor that as an empty
-            # result rather than walking (which would pull in untracked /
-            # gitignored junk and violate Decision 9's "tracked files only").
+            # fall back to a filesystem walk. An EMPTY list means git found no
+            # files in this subtree (including after nested-repo resolution for
+            # independent or submodule dirs); honor that as an empty result
+            # rather than walking (which would pull in untracked / gitignored
+            # junk and violate Decision 9's "tracked files only").
             rel_dir = os.path.relpath(abs_path, repo_root)
             git_files = _git_ls_files_dir(repo_root, rel_dir)
             if git_files is not None:
@@ -411,8 +518,8 @@ def render_scope_block(scope_result, source_root):
 # ---------------------------------------------------------------------------
 
 
-def render_agent_brief(agent, references_dir, scope_block, source_root, extra_context="", finding_cap=30):
-    # type: (str, str, str, str, str, int) -> str
+def render_agent_brief(agent, references_dir, scope_block, source_root, extra_context="", finding_cap=30, tmp_path=None):
+    # type: (str, str, str, str, str, int, Optional[str]) -> str
     """Assemble the per-agent audit instruction block.
 
     Assembly order (7 steps):
@@ -440,6 +547,14 @@ def render_agent_brief(agent, references_dir, scope_block, source_root, extra_co
         finding_cap:    Maximum findings the agent should report (default: 30).
                         Substituted for the ``__FINDING_CAP__`` token in the brief.
                         Non-positive values fall back to 30.
+        tmp_path:       Optional override for the agent findings write-path.
+                        When None (default), the output contract uses the default
+                        ``audits/.tmp-{agent-name}.md`` path (backward-compatible).
+                        When provided, that literal string replaces every
+                        occurrence of the default path in the output contract,
+                        including the main write-path sentence and the
+                        failure/empty-file instructions.  The value is emitted
+                        verbatim — no normalization is applied.
 
     Returns:
         Multi-line string forming the agent instruction block.
@@ -504,13 +619,31 @@ def render_agent_brief(agent, references_dir, scope_block, source_root, extra_co
         scope_section_parts.append(extra_context)
     scope_section = "\n".join(scope_section_parts)
 
+    # Build the output contract, optionally substituting the write-path.
+    # When tmp_path is None, _OUTPUT_CONTRACT is used verbatim (default behavior,
+    # backward-compatible: path reads `audits/.tmp-{agent-name}.md`).
+    # When tmp_path is provided, replace every occurrence of the default
+    # write-path token AND update the failure/empty-file instructions so all
+    # path references in the contract point to the single provided path.
+    if tmp_path is None:
+        output_contract = _OUTPUT_CONTRACT
+    else:
+        output_contract = _OUTPUT_CONTRACT.replace(
+            "audits/.tmp-{agent-name}.md",
+            tmp_path,
+        )
+        output_contract = output_contract.replace(
+            "write a temp file with",
+            "write `{0}` with".format(tmp_path),
+        )
+
     parts = [
         preamble,
         mislogic_checklist,
         best_practices_checklist,
         focus,
         scope_section,
-        _OUTPUT_CONTRACT,
+        output_contract,
         _CLOSING_REMINDER,
     ]
 

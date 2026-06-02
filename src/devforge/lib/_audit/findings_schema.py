@@ -105,6 +105,8 @@ class Finding:
     title, explanation, suggested_fix, source_pass are non-empty strings.
     references is a list of strings (may be empty).
     category must be one of CATEGORY_ENUM; defaults to 'mislogic'.
+    pass_count is a strict int (no bool) >= 1; defaults to 1 (single-pass).
+    Multi-pass runs set pass_count via the merger (_merge.merge_passes).
     """
 
     finding_id: str
@@ -118,6 +120,7 @@ class Finding:
     references: List[str]
     source_pass: str
     category: str = "mislogic"
+    pass_count: int = 1
 
     def __post_init__(self):
         # type: () -> None
@@ -159,6 +162,24 @@ class Finding:
                 )
 
         _require_nonempty(self.source_pass, "Finding.source_pass")
+
+        # pass_count: strict int (no bool), >= 1.
+        if isinstance(self.pass_count, bool):
+            raise ValueError(
+                "Finding.pass_count must be an int, got bool"
+            )
+        if not isinstance(self.pass_count, int):
+            raise ValueError(
+                "Finding.pass_count must be an int, got {0}".format(
+                    type(self.pass_count).__name__
+                )
+            )
+        if self.pass_count < 1:
+            raise ValueError(
+                "Finding.pass_count must be >= 1, got {0}".format(
+                    self.pass_count
+                )
+            )
 
 
 # ---------------------------------------------------------------------------

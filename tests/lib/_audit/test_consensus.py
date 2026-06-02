@@ -12,6 +12,10 @@ Coverage:
     - Severity kept as highest of the group (Critical + High → Critical kept)
     - Consensus map only contains merged-group keys
     - Empty input → empty output
+
+Note: this exact-match consensus bump is intentional and distinct from
+`_merge.py`'s tolerant (TOL±3) cross-agent merge, which does NOT bump
+severity (location proximity is too permissive to justify escalation).
 """
 
 import sys

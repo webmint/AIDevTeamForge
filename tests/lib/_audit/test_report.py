@@ -1153,5 +1153,130 @@ class TestRenderReportFindingLineFormat(unittest.TestCase):
         self.assertNotIn("## Critical Findings", report)
 
 
+# ---------------------------------------------------------------------------
+# render_report — Summary: Cross-agent consensus count from [CROSS-AGENT] tags
+# ---------------------------------------------------------------------------
+
+class TestRenderReportCrossAgentSummaryCount(unittest.TestCase):
+    """Summary line 'Cross-agent consensus findings: N' must count
+    findings whose tags list contains '[CROSS-AGENT]', not len(consensus).
+
+    This is correct for both modes:
+    - Multi-pass: consensus={} but merger tags findings with [CROSS-AGENT].
+    - Single-pass: compute-consensus both populates consensus AND tags findings;
+      the count of [CROSS-AGENT]-tagged findings equals len(consensus groups),
+      so the displayed number is byte-identical to pre-fix output.
+    """
+
+    def _summary_line(self, report):
+        # type: (str) -> str
+        """Extract the Cross-agent consensus line from the Summary section."""
+        for line in report.splitlines():
+            if "Cross-agent consensus findings:" in line:
+                return line
+        self.fail("Cross-agent consensus findings line not found in report")
+        return ""  # unreachable; satisfies type checker
+
+    def test_multipass_no_consensus_dict_but_tagged_findings_shows_correct_count(self):
+        """Multi-pass style: consensus={}, 3 of 5 findings tagged [CROSS-AGENT]."""
+        findings = [
+            _make_finding(finding_id="F-001", tags=["[CROSS-AGENT]"]),
+            _make_finding(finding_id="F-002", tags=["[CROSS-AGENT]"]),
+            _make_finding(finding_id="F-003", tags=["[CROSS-AGENT]"]),
+            _make_finding(finding_id="F-004", tags=[]),
+            _make_finding(finding_id="F-005", tags=[]),
+        ]
+        rd = _make_report_dict(findings=findings, top10=[])
+        rd["consensus"] = {}  # empty — simulate multi-pass (no compute-consensus run)
+        report = render_report(rd)
+        line = self._summary_line(report)
+        self.assertIn("3", line,
+                      "Expected count 3 in line: {!r}".format(line))
+
+    def test_multipass_was_showing_zero_before_fix_now_shows_correct_count(self):
+        """Explicit regression: the old code returned 0 when consensus={}.
+        This is the exact symptom reported (49 [CROSS-AGENT] findings, showed 0).
+        """
+        findings = [
+            _make_finding(finding_id="F-{0:03d}".format(i), tags=["[CROSS-AGENT]"])
+            for i in range(1, 6)
+        ]
+        rd = _make_report_dict(findings=findings, top10=[])
+        rd["consensus"] = {}
+        report = render_report(rd)
+        line = self._summary_line(report)
+        # Must NOT show 0 when [CROSS-AGENT]-tagged findings are present
+        self.assertNotIn(": 0", line,
+                         "Still showing 0 for [CROSS-AGENT]-tagged findings: {!r}".format(line))
+        self.assertIn("5", line)
+
+    def test_singlepass_count_unchanged_equals_consensus_group_count(self):
+        """Single-pass style: consensus populated with K groups, same K findings
+        tagged [CROSS-AGENT]. New count must equal K (byte-identical behaviour).
+        """
+        findings = [
+            _make_finding(finding_id="F-001", tags=["[CROSS-AGENT]"]),
+            _make_finding(finding_id="F-002", tags=["[CROSS-AGENT]"]),
+            _make_finding(finding_id="F-003", tags=[]),
+        ]
+        rd = _make_report_dict(findings=findings, top10=[])
+        # Two consensus groups (K=2), same two findings tagged [CROSS-AGENT]
+        rd["consensus"] = {
+            "F-001": ["code-reviewer", "architect"],
+            "F-002": ["security-reviewer", "architect"],
+        }
+        report = render_report(rd)
+        line = self._summary_line(report)
+        self.assertIn(": 2", line,
+                      "Expected count 2 (K=2 groups, K=2 tagged) in line: {!r}".format(line))
+
+    def test_finding_without_cross_agent_tag_not_counted(self):
+        """A finding with tags but no [CROSS-AGENT] must not be counted."""
+        findings = [
+            _make_finding(finding_id="F-001", tags=["[CONSTITUTION-VIOLATION]"]),
+            _make_finding(finding_id="F-002", tags=["[SOME-OTHER-TAG]"]),
+            _make_finding(finding_id="F-003", tags=[]),
+        ]
+        rd = _make_report_dict(findings=findings, top10=[])
+        rd["consensus"] = {}
+        report = render_report(rd)
+        line = self._summary_line(report)
+        self.assertIn(": 0", line,
+                      "Expected count 0 for findings without [CROSS-AGENT]: {!r}".format(line))
+
+    def test_zero_cross_agent_findings_shows_zero(self):
+        """Zero [CROSS-AGENT] findings (no tags at all) shows 0."""
+        findings = [
+            _make_finding(finding_id="F-001", tags=[]),
+            _make_finding(finding_id="F-002", tags=[]),
+        ]
+        rd = _make_report_dict(findings=findings, top10=[])
+        rd["consensus"] = {}
+        report = render_report(rd)
+        line = self._summary_line(report)
+        self.assertIn(": 0", line,
+                      "Expected 0 in Summary line: {!r}".format(line))
+
+    def test_zero_findings_shows_zero(self):
+        """Empty findings list shows 0 (no crash on empty)."""
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["consensus"] = {}
+        report = render_report(rd)
+        line = self._summary_line(report)
+        self.assertIn(": 0", line,
+                      "Expected 0 with no findings: {!r}".format(line))
+
+    def test_existing_fixture_single_pass_count_is_one(self):
+        """The standard _make_report_dict fixture has 1 [CROSS-AGENT] finding (F-002)
+        and consensus={F-002: [...]}.  Old count was 1; new count must also be 1.
+        Confirms the standard test fixture produces the same output as before the fix.
+        """
+        rd = _make_report_dict()  # F-002 has tags=["[CROSS-AGENT]"], consensus has F-002
+        report = render_report(rd)
+        line = self._summary_line(report)
+        self.assertIn(": 1", line,
+                      "Standard fixture: expected count 1 in line: {!r}".format(line))
+
+
 if __name__ == "__main__":
     unittest.main()

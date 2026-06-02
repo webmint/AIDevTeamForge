@@ -16,6 +16,8 @@ The category is producer-declared — each agent sets the `Category:` field on e
 
 Empty sub-sections and files with no findings are omitted entirely; the `## Summary` section always renders.
 
+Finding tags: `[CROSS-AGENT]` (raised by ≥2 agents), `[RECURRING]` (matches an unresolved finding from a past `specs/*/review.md`), `[CONSTITUTION-VIOLATION]` (overrides the bucket as above), and — only on multi-pass runs (`--passes >= 2`) — `[MULTI-PASS:k]` on a finding corroborated across `k` (≥2) of the run's passes.
+
 ## Skeleton
 
 ```markdown
@@ -46,7 +48,7 @@ Force-ranked across all buckets. Fix these first.
   Why it's wrong: [the contradiction]
   Remediation: [specific fix]
   Confidence: Certain | Likely | Speculative
-  Tags: [CROSS-AGENT] [RECURRING] [CONSTITUTION-VIOLATION]
+  Tags: [CROSS-AGENT] [RECURRING] [CONSTITUTION-VIOLATION] [MULTI-PASS:k]
 - [F-014] [High] :88 — [description]
   [same finding format]
 
@@ -91,6 +93,7 @@ Force-ranked across all buckets. Fix these first.
 
 ## Summary
 - Critical: N | High: N | Medium: N | Info: N
+- Passes run: N | Multi-pass-confirmed findings: <count>   (only when the resolved `passes >= 2`; omitted when `passes == 1`. Count = findings with `pass_count >= 2`.)
 - Cross-agent consensus findings: N
 - Recurring (unresolved): N
 - Agents skipped (not installed): [list]

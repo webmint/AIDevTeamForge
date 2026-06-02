@@ -1,12 +1,12 @@
 """Tests for src/devforge/lib/_audit/_cli.py (CLI smoke tests for Phase 5).
 
 Coverage:
-  build_parser    — returns ArgumentParser; exactly 17 subcommands registered.
+  build_parser    — returns ArgumentParser; exactly 18 subcommands registered.
   main            — no subcommand → exit 2; help → exit 2.
   per-verb args   — each verb's namespace has a `func` attribute wired.
   e2e smokes      — resolve-mode --full → exit 0 + JSON {mode: broad};
                     check-agents --agents-dir /nonexistent → exit 3.
-  verb guard      — registered set matches expected 17-verb constant.
+  verb guard      — registered set matches expected 18-verb constant.
 """
 
 import argparse
@@ -20,6 +20,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 _HELPER_PY = _LIB_DIR / "audit_helper.py"
+_REFERENCES_DIR = _REPO_ROOT / "src" / "commands" / "audit" / "references"
 
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
@@ -28,7 +29,7 @@ from _audit._cli import build_parser, main  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# The canonical 17-verb list (Phase 0–4). Guard against accidental drops.
+# The canonical 18-verb list (Phase 0–5). Guard against accidental drops.
 # ---------------------------------------------------------------------------
 _EXPECTED_VERBS = frozenset([
     "resolve-mode",
@@ -48,6 +49,7 @@ _EXPECTED_VERBS = frozenset([
     "render-report",
     "render-inline-summary",
     "cleanup-tmps",
+    "merge-passes",
 ])
 
 
@@ -80,8 +82,8 @@ class TestBuildParser(unittest.TestCase):
         parser = build_parser()
         self.assertIsInstance(parser, argparse.ArgumentParser)
 
-    def test_exactly_17_verbs_registered(self):
-        """build_parser registers exactly the 17 expected verbs — no more, no fewer."""
+    def test_exactly_18_verbs_registered(self):
+        """build_parser registers exactly the 18 expected verbs — no more, no fewer."""
         parser = build_parser()
         # Walk the _subparsers action to collect registered verb names.
         registered = set()
@@ -218,6 +220,26 @@ class TestPerVerbFuncWired(unittest.TestCase):
             "--scope", "/tmp/sc.json",
         ])
         self.assertTrue(callable(args.func))
+
+    def test_render_agent_brief_tmp_path_default_none(self):
+        """--tmp-path defaults to None when omitted."""
+        args = self._parse([
+            "render-agent-brief",
+            "--agent", "architect",
+            "--scope", "/tmp/sc.json",
+        ])
+        self.assertIsNone(args.tmp_path)
+
+    def test_render_agent_brief_tmp_path_custom(self):
+        """--tmp-path stores the provided path string verbatim."""
+        path = "/tmp/forge-audit-abc/tmp-architect-p1.md"
+        args = self._parse([
+            "render-agent-brief",
+            "--agent", "architect",
+            "--scope", "/tmp/sc.json",
+            "--tmp-path", path,
+        ])
+        self.assertEqual(args.tmp_path, path)
 
     def test_consume_tmp_requires_tmp(self):
         with self.assertRaises(SystemExit):
@@ -442,6 +464,448 @@ class TestShimImport(unittest.TestCase):
         # The module-level import of main must have succeeded.
         self.assertTrue(hasattr(mod, "main"))
         self.assertTrue(callable(mod.main))
+
+
+# ---------------------------------------------------------------------------
+# Task A: --passes flag in resolve-mode (via cmd_resolve_mode / main)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveModePassesFlag(unittest.TestCase):
+    """resolve-mode --passes N integration tests via main()."""
+
+    def _run(self, args_str):
+        # type: (str) -> tuple
+        """Run main(["resolve-mode", "--", args_str]) and return (code, data, err)."""
+        code, out, err = _capture_main(["resolve-mode", "--", args_str])
+        data = json.loads(out) if out.strip() else {}
+        return code, data, err
+
+    # --- default (no --passes): mode-conditional default applies ---
+    def test_default_passes_broad_is_2(self):
+        # empty args → broad mode → mode-default passes = 2
+        code, data, err = self._run("")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("passes"), 2)
+
+    def test_default_passes_clamp_note_empty(self):
+        code, data, err = self._run("")
+        self.assertEqual(code, 0)
+        self.assertEqual(data.get("passes_clamp_note"), "")
+
+    # --- valid in-range values ---
+    def test_passes_2(self):
+        code, data, err = self._run("--passes 2")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("passes"), 2)
+        self.assertEqual(data.get("passes_clamp_note"), "")
+
+    def test_passes_3(self):
+        code, data, err = self._run("--passes 3")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("passes"), 3)
+        self.assertEqual(data.get("passes_clamp_note"), "")
+
+    def test_passes_1_explicit(self):
+        code, data, err = self._run("--passes 1")
+        self.assertEqual(code, 0)
+        self.assertEqual(data.get("passes"), 1)
+        self.assertEqual(data.get("passes_clamp_note"), "")
+
+    # --- out-of-range: clamped, NOT an error ---
+    def test_passes_10_clamped_to_3(self):
+        code, data, err = self._run("--passes 10")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("passes"), 3)
+        self.assertNotEqual(data.get("passes_clamp_note"), "",
+                            msg="clamp note should be non-empty when clamped")
+
+    def test_passes_0_clamped_to_1(self):
+        code, data, err = self._run("--passes 0")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("passes"), 1)
+        self.assertNotEqual(data.get("passes_clamp_note"), "")
+
+    def test_passes_negative_clamped_to_1(self):
+        code, data, err = self._run("--passes -5")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("passes"), 1)
+        self.assertNotEqual(data.get("passes_clamp_note"), "")
+
+    def test_passes_clamp_note_written_to_stderr(self):
+        """When a clamp occurs, a note line must appear on stderr (not stdout)."""
+        code, data, err = self._run("--passes 10")
+        self.assertEqual(code, 0)
+        self.assertIn("clamped", err.lower(),
+                      msg="Expected clamp note on stderr; got: " + repr(err))
+
+    # --- non-integer: must set error, must not crash ---
+    def test_passes_abc_sets_error(self):
+        code, data, err = self._run("--passes abc")
+        self.assertEqual(code, 2, msg="Expected exit 2 for non-integer --passes")
+        self.assertIsNotNone(data.get("error"))
+        self.assertIsNone(data.get("mode"))
+
+    def test_passes_float_sets_error(self):
+        code, data, err = self._run("--passes 1.5")
+        self.assertEqual(code, 2)
+        self.assertIsNotNone(data.get("error"))
+
+    # --- Fix 4: edge cases for --passes ---
+    def test_passes_trailing_no_value_exits_2_no_crash(self):
+        """'--passes' as the final token with no value → error set, exit 2, no crash."""
+        code, data, err = self._run("--passes")
+        self.assertEqual(code, 2,
+                         msg="Expected exit 2 when --passes has no value; stderr: " + err)
+        self.assertIsNotNone(data.get("error"),
+                             msg="error field should be set; data=" + repr(data))
+
+    def test_passes_next_token_is_flag_exits_2_no_crash(self):
+        """'--passes --full' (next token is a flag, not an int) → error set, no crash."""
+        code, data, err = self._run("--passes --full")
+        self.assertEqual(code, 2,
+                         msg="Expected exit 2 when --passes value is a flag; stderr: " + err)
+        self.assertIsNotNone(data.get("error"),
+                             msg="error field should be set; data=" + repr(data))
+
+    def test_passes_clamp_note_contains_original_and_clamped(self):
+        """clamp_note for '--passes 10' must contain both the original value (10)
+        and the clamped value (3)."""
+        code, data, err = self._run("--passes 10")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        note = data.get("passes_clamp_note", "")
+        self.assertIn("10", note,
+                      msg="clamp note should mention original value 10; note=" + repr(note))
+        self.assertIn("3", note,
+                      msg="clamp note should mention clamped value 3; note=" + repr(note))
+
+    # --- composes with existing modes ---
+    def test_top_25_passes_2(self):
+        code, data, err = self._run("--top 25 --passes 2")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("mode"), "hotspot")
+        self.assertEqual(data.get("top_n"), 25)
+        self.assertEqual(data.get("passes"), 2)
+
+    def test_full_passes_3(self):
+        code, data, err = self._run("--full --passes 3")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("mode"), "broad")
+        self.assertEqual(data.get("passes"), 3)
+
+    def test_uncommitted_passes_2(self):
+        code, data, err = self._run("--uncommitted --passes 2")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("mode"), "narrow")
+        self.assertEqual(data.get("passes"), 2)
+
+    def test_narrow_path_passes_2(self):
+        code, data, err = self._run("src/auth.py --passes 2")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(data.get("mode"), "narrow")
+        self.assertEqual(data.get("passes"), 2)
+
+
+# ---------------------------------------------------------------------------
+# Task B: merge-passes verb via main()
+# ---------------------------------------------------------------------------
+
+
+def _make_finding_dict(
+    agent="code-reviewer",
+    severity="High",
+    file_path="src/auth.py",
+    line=10,
+    pattern="naming lie",
+    confidence="Certain",
+    evidence="def validate(): return True",
+    why="always True",
+    remediation="fix it",
+    category="mislogic",
+    tags=None,
+):
+    # type: (...) -> dict
+    return {
+        "agent": agent,
+        "severity": severity,
+        "file": file_path,
+        "line": line,
+        "pattern": pattern,
+        "confidence": confidence,
+        "evidence": evidence,
+        "why": why,
+        "remediation": remediation,
+        "category": category,
+        "tags": list(tags) if tags is not None else [],
+    }
+
+
+class TestMergePassesVerb(unittest.TestCase):
+    """merge-passes CLI verb integration tests via main()."""
+
+    def setUp(self):
+        import tempfile
+        self._tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir)
+
+    def _write_pool(self, filename, content):
+        # type: (str, object) -> str
+        """Write content as JSON to a temp file; return absolute path."""
+        path = os.path.join(self._tmpdir, filename)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(content, fh)
+        return path
+
+    def _run_merge(self, pool_args):
+        # type: (list) -> tuple
+        """Run main(["merge-passes", "--pools"] + pool_args); return (code, list, err)."""
+        argv = ["merge-passes", "--pools"] + pool_args
+        code, out, err = _capture_main(argv)
+        data = json.loads(out) if out.strip() else []
+        return code, data, err
+
+    # --- two passes with same defect within TOL → one merged finding ---
+    def test_two_passes_same_defect_within_tol_collapses(self):
+        """Same defect at lines 10 and 12 (within TOL=3) → one merged finding."""
+        f1 = _make_finding_dict(line=10)
+        f2 = _make_finding_dict(line=12)  # line 12 - 10 = 2 <= TOL
+        p1 = self._write_pool("p1.json", {"passed": [f1], "discarded": []})
+        p2 = self._write_pool("p2.json", {"passed": [f2], "discarded": []})
+        code, data, err = self._run_merge([p1, p2])
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0].get("pass_count"), 2)
+        tags = data[0].get("tags", [])
+        self.assertTrue(
+            any("[MULTI-PASS:2]" in t for t in tags),
+            msg="Expected [MULTI-PASS:2] tag; tags={0}".format(tags),
+        )
+
+    def test_two_passes_bare_list_pool_accepted(self):
+        """A bare JSON list (not a dict-with-passed) is also accepted as a pool."""
+        f1 = _make_finding_dict(line=10)
+        f2 = _make_finding_dict(line=11)
+        # p1 = validate-findings object; p2 = bare list
+        p1 = self._write_pool("p1.json", {"passed": [f1], "discarded": []})
+        p2 = self._write_pool("p2.json", [f2])
+        code, data, err = self._run_merge([p1, p2])
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0].get("pass_count"), 2)
+
+    # --- glob expansion ---
+    def test_glob_resolves_multiple_files_in_sorted_order(self):
+        """A glob token expands to all matching files; lexical sort defines pass order."""
+        f1 = _make_finding_dict(line=10, evidence="pass one evidence")
+        f2 = _make_finding_dict(line=13, evidence="pass two evidence")  # 13-10=3 <= TOL
+        # Use names that sort lexically as p1 before p2
+        p1 = self._write_pool("validated-p1.json", {"passed": [f1]})
+        p2 = self._write_pool("validated-p2.json", {"passed": [f2]})
+        glob_pattern = os.path.join(self._tmpdir, "validated-p*.json")
+        code, data, err = self._run_merge([glob_pattern])
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0].get("pass_count"), 2)
+
+    # --- no matching files → nonzero exit + stderr message ---
+    def test_no_matching_files_nonzero_exit(self):
+        """No files matching the provided paths → exit 2 + stderr message."""
+        nonexistent = os.path.join(self._tmpdir, "nonexistent*.json")
+        code, data, err = self._run_merge([nonexistent])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err,
+                         msg="Should not produce a raw traceback on no-match")
+        self.assertIn("no files", err.lower(),
+                      msg="Expected 'no files' message in stderr; got: " + repr(err))
+
+    def test_nonexistent_explicit_path_nonzero_exit(self):
+        """An explicit path that doesn't exist → exit 2, no traceback."""
+        bad_path = os.path.join(self._tmpdir, "doesnotexist.json")
+        code, data, err = self._run_merge([bad_path])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err)
+
+    # --- malformed JSON → clear error, no crash ---
+    def test_malformed_json_nonzero_exit(self):
+        path = os.path.join(self._tmpdir, "bad.json")
+        with open(path, "w") as fh:
+            fh.write("not json {{{")
+        code, data, err = self._run_merge([path])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err)
+
+    # --- empty pool files → valid merge (empty output) ---
+    def test_empty_pools_returns_empty_list(self):
+        p1 = self._write_pool("p1.json", {"passed": []})
+        p2 = self._write_pool("p2.json", {"passed": []})
+        code, data, err = self._run_merge([p1, p2])
+        self.assertEqual(code, 0)
+        self.assertEqual(data, [])
+
+    # --- output is a bare JSON array (not a wrapper object) ---
+    def test_output_is_bare_json_array(self):
+        f1 = _make_finding_dict(line=5)
+        p1 = self._write_pool("p1.json", [f1])
+        code, out, err = _capture_main(["merge-passes", "--pools", p1])
+        self.assertEqual(code, 0)
+        parsed = json.loads(out)
+        self.assertIsInstance(parsed, list)
+
+    # --- Fix 1: guard for passed value not being a list ---
+    def test_passed_value_is_string_exits_2_no_traceback(self):
+        """{'passed': 'not-a-list'} → exit 2, clean stderr, no traceback."""
+        p1 = self._write_pool("bad_passed.json", {"passed": "not-a-list", "discarded": []})
+        code, data, err = self._run_merge([p1])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err,
+                         msg="Should not produce a raw traceback")
+        # stderr must name the file and say something useful
+        self.assertIn("bad_passed.json", err,
+                      msg="Error should name the offending file; got: " + repr(err))
+
+    def test_dict_without_passed_key_exits_2_no_traceback(self):
+        """A dict with no 'passed' key → exit 2, clean error, no traceback."""
+        p1 = self._write_pool("no_passed.json", {"other_key": [1, 2, 3]})
+        code, data, err = self._run_merge([p1])
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err,
+                         msg="Should not produce a raw traceback")
+        self.assertIn("no_passed.json", err,
+                      msg="Error should name the offending file; got: " + repr(err))
+
+    # --- Fix 3: glob + explicit overlap → pass_count equals unique file count ---
+    def test_glob_and_explicit_overlap_deduplicates(self):
+        """A glob token and an explicit path that both expand to the same file
+        should be counted only once, so pass_count == number of UNIQUE files."""
+        f1 = _make_finding_dict(line=10)
+        f2 = _make_finding_dict(line=11)
+        p1 = self._write_pool("dedup-p1.json", {"passed": [f1]})
+        p2 = self._write_pool("dedup-p2.json", {"passed": [f2]})
+        # Glob that matches both files
+        glob_pattern = os.path.join(self._tmpdir, "dedup-p*.json")
+        # Also pass p1 explicitly — this creates a duplicate for p1
+        code, data, err = self._run_merge([glob_pattern, p1])
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        # p1 and p2 each have one finding at lines 10 and 11 (within TOL=3),
+        # so after deduplication they merge into 1 finding with pass_count=2.
+        # Without dedup, p1 would appear twice giving pass_count=3.
+        self.assertEqual(len(data), 1)
+        self.assertEqual(
+            data[0].get("pass_count"), 2,
+            msg=(
+                "pass_count should be 2 (2 unique files), not 3 "
+                "(p1 counted twice without dedup); data={0}".format(data)
+            ),
+        )
+
+    # --- func wired in argparse (structural) ---
+    def test_merge_passes_func_wired(self):
+        args = build_parser().parse_args([
+            "merge-passes", "--pools", "/tmp/p1.json",
+        ])
+        self.assertTrue(callable(args.func))
+
+    def test_merge_passes_requires_pools(self):
+        with self.assertRaises(SystemExit):
+            build_parser().parse_args(["merge-passes"])
+
+
+# ---------------------------------------------------------------------------
+# Task C: render-agent-brief --tmp-path flag via main()
+# ---------------------------------------------------------------------------
+
+
+class TestRenderAgentBriefTmpPathCLI(unittest.TestCase):
+    """CLI round-trip tests for render-agent-brief --tmp-path flag."""
+
+    _CUSTOM_PATH = "/tmp/forge-audit-abc/tmp-architect-p2.md"
+    _DEFAULT_PATH_TOKEN = "audits/.tmp-{agent-name}.md"
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        # Write a minimal scope JSON for the verb to consume.
+        scope = {
+            "scope_kind": "file",
+            "pipeline": "simplified",
+            "files": ["src/main.py"],
+            "file_count": 1,
+            "scope_limit": 200,
+            "scope_oversize": False,
+            "line_range": None,
+            "error": None,
+        }
+        self._scope_path = os.path.join(self._tmpdir, "scope.json")
+        with open(self._scope_path, "w", encoding="utf-8") as fh:
+            json.dump(scope, fh)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _run_brief(self, agent, extra_argv=None):
+        # type: (str, list) -> tuple
+        """Run render-agent-brief via main() and return (code, stdout, stderr)."""
+        argv = [
+            "render-agent-brief",
+            "--agent", agent,
+            "--scope", self._scope_path,
+            "--references-dir", str(_REFERENCES_DIR),
+        ]
+        if extra_argv:
+            argv.extend(extra_argv)
+        return _capture_main(argv)
+
+    def test_default_no_tmp_path_contains_default_token(self):
+        """Without --tmp-path, output contains audits/.tmp-{agent-name}.md."""
+        code, out, err = self._run_brief("architect")
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertIn(self._DEFAULT_PATH_TOKEN, out)
+
+    def test_with_tmp_path_contains_custom_path(self):
+        """With --tmp-path, output contains the custom path."""
+        code, out, err = self._run_brief(
+            "architect",
+            extra_argv=["--tmp-path", self._CUSTOM_PATH],
+        )
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertIn(self._CUSTOM_PATH, out)
+
+    def test_with_tmp_path_no_default_token(self):
+        """With --tmp-path, the default audits/.tmp-{agent-name}.md is not in output."""
+        code, out, err = self._run_brief(
+            "architect",
+            extra_argv=["--tmp-path", self._CUSTOM_PATH],
+        )
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertNotIn(self._DEFAULT_PATH_TOKEN, out)
+
+    def test_with_tmp_path_failure_instruction_references_path(self):
+        """With --tmp-path, failure instruction references the custom path."""
+        code, out, err = self._run_brief(
+            "code-reviewer",
+            extra_argv=["--tmp-path", self._CUSTOM_PATH],
+        )
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertIn(
+            "write `{0}` with `# Status: failed`".format(self._CUSTOM_PATH),
+            out,
+        )
+
+    def test_with_tmp_path_empty_instruction_references_path(self):
+        """With --tmp-path, empty-file instruction references the custom path."""
+        code, out, err = self._run_brief(
+            "code-reviewer",
+            extra_argv=["--tmp-path", self._CUSTOM_PATH],
+        )
+        self.assertEqual(code, 0, msg="stderr: " + err)
+        self.assertIn(
+            "write `{0}` with `# Status: complete`".format(self._CUSTOM_PATH),
+            out,
+        )
 
 
 if __name__ == "__main__":

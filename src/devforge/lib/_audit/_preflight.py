@@ -32,6 +32,9 @@ _UNPOPULATED_SENTINELS = (
     "Run /constitute to populate",
 )
 
+# Default passes by mode when --passes is not explicitly given.
+_MODE_DEFAULT_PASSES = {"broad": 2, "hotspot": 2, "narrow": 1}
+
 
 # ---------------------------------------------------------------------------
 # resolve_mode
@@ -47,6 +50,8 @@ def _empty_result() -> Dict:
         "weights": None,
         "scope_limit": 200,
         "line_range": None,
+        "passes": 1,
+        "passes_clamp_note": "",
         "error": None,
     }
 
@@ -62,13 +67,26 @@ def resolve_mode(arguments: str) -> Dict:
       single positional path               → mode="narrow", scope_arg=<path>
         optional :start-end suffix         → stripped into line_range
       --scope-limit N (any mode)           → scope_limit=N
+      --passes N (any mode)                → passes=clamp(N,1,3); non-int → error
       two+ positional paths                → error
       unknown flag                         → error
 
     Returns a dict with keys always present:
-      mode, scope_arg, uncommitted, top_n, weights, scope_limit, line_range, error
+      mode, scope_arg, uncommitted, top_n, weights, scope_limit, line_range,
+      passes, passes_clamp_note, error
+
+    When --passes is NOT given, passes defaults by mode:
+      broad   → 2
+      hotspot → 2
+      narrow  → 1
+      (any other/None mode → 1 as a defensive fallback)
+
+    When --passes N IS given explicitly: N is clamped into [1,3]; a non-empty
+    passes_clamp_note is set when the value was clamped. The mode-conditional
+    default does NOT apply when --passes is explicit.
     """
     result = _empty_result()
+    passes_explicit = False  # tracks whether --passes was given on the command line
 
     tokens = arguments.split() if arguments else []
 
@@ -162,6 +180,30 @@ def resolve_mode(arguments: str) -> Dict:
             result["scope_limit"] = sl
             i += 1
 
+        elif tok == "--passes":
+            i += 1
+            if i >= len(tokens):
+                result["error"] = "Usage: --passes N (integer in [1,3] required after --passes)."
+                result["mode"] = None
+                return result
+            try:
+                p = int(tokens[i])
+            except (ValueError, TypeError):
+                result["error"] = (
+                    "Usage: --passes N (N must be an integer, got {!r}).".format(tokens[i])
+                )
+                result["mode"] = None
+                return result
+            # Clamp into [1, 3]; record note so caller can emit a stderr note.
+            clamped = max(1, min(3, p))
+            if clamped != p:
+                result["passes_clamp_note"] = (
+                    "--passes {0} out of range [1,3]; clamped to {1}.".format(p, clamped)
+                )
+            result["passes"] = clamped
+            passes_explicit = True
+            i += 1
+
         elif tok.startswith("-"):
             result["error"] = "Unknown flag {!r}. Supported: --full, --uncommitted, --top N, --weights ..., --scope-limit N, or a single path.".format(tok)
             result["mode"] = None
@@ -215,6 +257,10 @@ def resolve_mode(arguments: str) -> Dict:
     # Default to broad when nothing specified.
     if result["mode"] is None and result["error"] is None:
         result["mode"] = "broad"
+
+    # Apply mode-conditional default for passes when not explicitly given.
+    if not passes_explicit:
+        result["passes"] = _MODE_DEFAULT_PASSES.get(result["mode"], 1)  # type: ignore[arg-type]
 
     return result
 

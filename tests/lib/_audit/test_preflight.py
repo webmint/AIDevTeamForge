@@ -52,6 +52,9 @@ class TestResolveModeEmpty(unittest.TestCase):
         self.assertEqual(r["scope_limit"], 200)
         self.assertIsNone(r["line_range"])
         self.assertIsNone(r["scope_arg"])
+        # empty args → broad mode → mode-default passes = 2
+        self.assertEqual(r["passes"], 2)
+        self.assertEqual(r["passes_clamp_note"], "")
 
 
 class TestResolveModeFull(unittest.TestCase):
@@ -159,6 +162,91 @@ class TestResolveModeScopeLimit(unittest.TestCase):
         self.assertIsNotNone(r["error"])
 
 
+class TestResolveModePassesDefault(unittest.TestCase):
+    """Mode-conditional default for passes when --passes is NOT given."""
+
+    # --- default-by-mode: no --passes token ---
+
+    def test_empty_args_broad_default_passes_2(self):
+        r = _ok(resolve_mode(""))
+        self.assertEqual(r["mode"], "broad")
+        self.assertEqual(r["passes"], 2)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    def test_full_flag_broad_default_passes_2(self):
+        r = _ok(resolve_mode("--full"))
+        self.assertEqual(r["mode"], "broad")
+        self.assertEqual(r["passes"], 2)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    def test_top_25_hotspot_default_passes_2(self):
+        r = _ok(resolve_mode("--top 25"))
+        self.assertEqual(r["mode"], "hotspot")
+        self.assertEqual(r["passes"], 2)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    def test_path_narrow_default_passes_1(self):
+        r = _ok(resolve_mode("src/foo.ts"))
+        self.assertEqual(r["mode"], "narrow")
+        self.assertEqual(r["passes"], 1)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    def test_directory_path_narrow_default_passes_1(self):
+        r = _ok(resolve_mode("src/auth"))
+        self.assertEqual(r["mode"], "narrow")
+        self.assertEqual(r["passes"], 1)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    def test_uncommitted_narrow_default_passes_1(self):
+        r = _ok(resolve_mode("--uncommitted"))
+        self.assertEqual(r["mode"], "narrow")
+        self.assertEqual(r["passes"], 1)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    # --- explicit override beats mode default in both directions ---
+
+    def test_full_passes_1_explicit_beats_broad_default(self):
+        # broad default is 2, but explicit --passes 1 must win
+        r = _ok(resolve_mode("--full --passes 1"))
+        self.assertEqual(r["mode"], "broad")
+        self.assertEqual(r["passes"], 1)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    def test_narrow_passes_3_explicit_beats_narrow_default(self):
+        # narrow default is 1, but explicit --passes 3 must win
+        r = _ok(resolve_mode("src/foo.ts --passes 3"))
+        self.assertEqual(r["mode"], "narrow")
+        self.assertEqual(r["passes"], 3)
+        self.assertEqual(r["passes_clamp_note"], "")
+
+    def test_full_passes_10_clamped_clamp_note_set(self):
+        r = resolve_mode("--full --passes 10")
+        self.assertIsNone(r["error"])
+        self.assertEqual(r["passes"], 3)
+        self.assertNotEqual(r["passes_clamp_note"], "",
+                            msg="passes_clamp_note must be set when clamped")
+
+    def test_passes_0_clamped_to_1_with_note(self):
+        r = resolve_mode("--passes 0")
+        self.assertIsNone(r["error"])
+        self.assertEqual(r["passes"], 1)
+        self.assertNotEqual(r["passes_clamp_note"], "")
+
+    def test_passes_abc_error_unchanged(self):
+        r = resolve_mode("--passes abc")
+        self.assertIsNotNone(r["error"])
+        self.assertIsNone(r["mode"])
+
+    def test_no_passes_clamp_note_for_mode_defaults(self):
+        """passes_clamp_note must be empty for all mode-default (non-explicit) cases."""
+        for args in ("", "--full", "--top 25", "src/x.py", "--uncommitted"):
+            with self.subTest(args=args):
+                r = resolve_mode(args)
+                self.assertEqual(r.get("passes_clamp_note"), "",
+                                 msg="Expected empty clamp_note for {!r}, got {!r}".format(
+                                     args, r.get("passes_clamp_note")))
+
+
 class TestResolveModeErrors(unittest.TestCase):
     def test_two_paths_error(self):
         r = resolve_mode("src/a.py src/b.py")
@@ -186,7 +274,7 @@ class TestResolveModeResultKeys(unittest.TestCase):
 
     _EXPECTED_KEYS = {
         "mode", "scope_arg", "uncommitted", "top_n", "weights",
-        "scope_limit", "line_range", "error",
+        "scope_limit", "line_range", "passes", "passes_clamp_note", "error",
     }
 
     def _assert_keys(self, args_str: str):
