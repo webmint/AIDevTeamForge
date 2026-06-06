@@ -10,19 +10,28 @@ into TestV3LiteralArchaeology + TestV3CallShape for 8+10=18 total; total = 6+10+
 Stdlib only. No third-party dependencies.
 """
 
-import sys
 import unittest
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Test import pattern (mirrors test_generate_docs_schema.py lines 15-26).
+# Load via importlib from an explicit path under a UNIQUE module name: five
+# source files share the name "handoff_schema.py" across subpackages, so a bare
+# `import handoff_schema` would let pytest-session sys.modules caching serve a
+# different subpackage's schema to a later test. (Both schema modules import
+# stdlib only, so no sys.path entry is needed.)
 # ---------------------------------------------------------------------------
+
+import importlib.util
 
 _HERE = Path(__file__).resolve().parent
 _RESEARCH_DIR = _HERE.parent.parent / "src" / "devforge" / "lib" / "_research"
-sys.path.insert(0, str(_RESEARCH_DIR))
 
-import handoff_schema as hs  # noqa: E402
+_spec = importlib.util.spec_from_file_location(
+    "research_handoff_schema",  # unique name — never "handoff_schema"; avoids sys.modules collision
+    _RESEARCH_DIR / "handoff_schema.py",
+)
+hs = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(hs)
 
 
 # ---------------------------------------------------------------------------

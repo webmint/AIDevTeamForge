@@ -17,19 +17,28 @@ Grouped into logical sections:
 Stdlib only. No third-party dependencies.
 """
 
-import sys
 import unittest
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Import path setup.
+# Load via importlib from an explicit path under a UNIQUE module name: five
+# source files share the name "handoff_schema.py" across subpackages, so a bare
+# `import handoff_schema` would let pytest-session sys.modules caching serve a
+# different subpackage's schema to a later test. (Both schema modules import
+# stdlib only, so no sys.path entry is needed.)
 # ---------------------------------------------------------------------------
+
+import importlib.util
 
 _HERE = Path(__file__).resolve().parent
 _DISCOVER_DIR = _HERE.parent.parent / "src" / "devforge" / "lib" / "_discover"
-sys.path.insert(0, str(_DISCOVER_DIR))
 
-import handoff_schema as hs  # noqa: E402
+_spec = importlib.util.spec_from_file_location(
+    "discover_handoff_schema",  # unique name — never "handoff_schema"; avoids sys.modules collision
+    _DISCOVER_DIR / "handoff_schema.py",
+)
+hs = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(hs)
 
 
 # ---------------------------------------------------------------------------
