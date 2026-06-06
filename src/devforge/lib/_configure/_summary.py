@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import List
+
 from ._schema import FIELD_SCHEMA
+from ._validators import collect_executability_warnings
 
 
 # Field groupings for summary output (locked order).
@@ -105,11 +108,36 @@ def _render_field_for_summary(name: str, kind: str, value: object) -> str:
     return "{0}  ?\n".format(pad_name)
 
 
+def _render_executability_warnings(warnings: List[dict]) -> str:
+    """Render the executability WARNING block for `warnings`.
+
+    Each warning becomes one line:
+        WARNING  <scope>: '<command>' — '<missing_token>' not found on PATH
+                  (verify may fail at /implement time)
+
+    Returns an empty string when `warnings` is empty.
+    """
+    if not warnings:
+        return ""
+    lines = ["\n### Command Executability Warnings\n"]
+    for w in warnings:
+        lines.append(
+            "  WARNING  {scope}: '{command}' — '{missing_token}' not found on PATH"
+            " (verify may fail at /implement time)\n".format(**w)
+        )
+    return "".join(lines)
+
+
 def _render_configure_summary(state: dict) -> str:
     """Build the deterministic configure-report summary string from `state`.
 
-    Groups fields by _SUMMARY_GROUPS. Output ends with exactly one
-    trailing newline. Stable across re-runs (deterministic).
+    Groups fields by _SUMMARY_GROUPS. Appends a WARNING block for any
+    configured command whose leading executable is not resolvable via
+    shutil.which (best-effort PATH probe; see probe_command_executability
+    docstring for the accepted npm/npx indirection limitation).
+
+    Output ends with exactly one trailing newline. Stable across re-runs
+    (deterministic).
     """
     field_kinds = dict(FIELD_SCHEMA)
     lines = []
@@ -121,5 +149,8 @@ def _render_configure_summary(state: dict) -> str:
             kind = field_kinds.get(name, "scalar")
             value = state.get(name)
             lines.append(_render_field_for_summary(name, kind, value))
+
+    warnings = collect_executability_warnings(state)
+    lines.append(_render_executability_warnings(warnings))
 
     return "".join(lines)

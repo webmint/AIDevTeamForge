@@ -1,9 +1,11 @@
-"""Validation helpers + _die exit-code wrapper."""
+"""Validation helpers + _die exit-code wrapper + command-executability probe."""
 
 from __future__ import annotations
 
+import shlex
+import shutil
 import sys
-from typing import List
+from typing import Dict, List, Optional
 
 from ._schema import ENUM_FIELDS
 
@@ -146,3 +148,223 @@ def _die(message: str, code: int = 1) -> int:
     # and the user-facing distinction matters at exit-code level.
     sys.stderr.write("configure_helper: {0}\n".format(message))
     return code
+
+
+# ---------------------------------------------------------------------------
+# Command-executability probe (best-effort PATH resolution).
+# ---------------------------------------------------------------------------
+
+# Sentinel: commands stored as exactly this string (after strip) are
+# legitimately absent — no tool is expected on PATH.
+_NA_SENTINEL = "N/A"
+
+# Segment separators that split a compound shell command into sequential
+# segments, each with its own leading executable.
+_CHAIN_SEPARATORS = ("&&", ";")
+
+
+def _split_into_segments(command: str) -> List[List[str]]:
+    """Split a shell command into segments on '&&' and ';' separators.
+
+    Strategy: tokenize the whole command once with shlex (quote-aware),
+    then walk the token list splitting on separators. A '&&' or ';' that
+    appears as its own whitespace-delimited token is a separator. A
+    separator fused to the end of a token (e.g. 'tsc&&eslint' or 'tsc;')
+    is also detected by scanning each token for a trailing bare '&&' or
+    ';' after stripping outer quotes — this handles the no-space form
+    that shlex leaves as a single token.
+
+    Returns a list of segments, each segment being a list of raw token
+    strings (still quoted where the user quoted them). Returns an empty
+    outer list if the command has no parseable tokens.
+    """
+    try:
+        tokens = shlex.split(command, posix=False)
+    except ValueError:
+        tokens = command.split()
+
+    segments: List[List[str]] = []
+    current: List[str] = []
+
+    for tok in tokens:
+        # A token that is exactly a separator (with or without surrounding
+        # whitespace in the raw command, shlex strips that).
+        if tok in ("&&", ";"):
+            if current:
+                segments.append(current)
+                current = []
+            continue
+
+        # A token that has a fused separator: e.g. "tsc&&" or "tsc&&eslint"
+        # or "cmd;". shlex with posix=False won't split these because &&
+        # and ; are not shell metacharacters in posix=False mode.
+        # We detect: does this unquoted token contain '&&' or ';' ?
+        # We only do this when the token is NOT entirely quoted (i.e. bare).
+        bare = tok  # shlex posix=False leaves quotes intact
+        if not (bare.startswith("'") or bare.startswith('"')):
+            # Check for fused '&&' first (longer separator has priority).
+            if "&&" in bare:
+                parts = bare.split("&&")
+                for i, part in enumerate(parts):
+                    if part:
+                        current.append(part)
+                    if i < len(parts) - 1:
+                        # separator between parts[i] and parts[i+1]
+                        if current:
+                            segments.append(current)
+                            current = []
+                continue
+            if ";" in bare:
+                parts = bare.split(";")
+                for i, part in enumerate(parts):
+                    if part:
+                        current.append(part)
+                    if i < len(parts) - 1:
+                        if current:
+                            segments.append(current)
+                            current = []
+                continue
+
+        current.append(tok)
+
+    if current:
+        segments.append(current)
+
+    return segments
+
+
+# Shell-variable assignment prefix: matches tokens like VAR=value, VAR=,
+# SOME_VAR123=anything. These are env-var overrides that precede the
+# actual executable and must be skipped when probing.
+import re as _re
+_ENV_ASSIGN_RE = _re.compile(r'^\w+=')
+
+
+def probe_command_executability(command: str) -> Optional[List[str]]:
+    """Return unresolvable executable tokens for `command`, or None to skip.
+
+    Best-effort PATH probe using shutil.which. Does NOT execute the command.
+
+    Best-effort limitations:
+    - Package-manager wrappers such as npm, npx, pnpm, and yarn resolve
+      via shutil.which when the manager itself is on PATH — but the
+      underlying script they invoke (e.g. 'vue-tsc' via 'npx vue-tsc')
+      is not probed.
+    - Shell env-var assignment prefixes (e.g. 'NODE_ENV=test tsc') are
+      skipped; the first non-assignment token is probed as the executable.
+      If a segment consists only of assignments, nothing is probed for it.
+
+    Returns:
+        None    — command is skipped (empty, blank, or the literal "N/A").
+        []      — all executable tokens resolved; command is safe to run.
+        [token] — list of unresolvable leading executable tokens (one per
+                  chain-segment whose binary is missing); duplicates
+                  deduplicated, order preserved by first occurrence.
+
+    Chain handling:
+        '&&' and ';' separators split the command into segments (quote-
+        aware: a separator inside a quoted argument is NOT treated as a
+        chain boundary). Each segment's first non-assignment, non-cd token
+        is probed independently.
+    """
+    stripped = command.strip() if command else ""
+    if not stripped or stripped == _NA_SENTINEL:
+        return None
+
+    segments = _split_into_segments(stripped)
+
+    missing: List[str] = []
+    seen: List[str] = []
+
+    for seg_tokens in segments:
+        if not seg_tokens:
+            continue
+
+        # Find the first non-assignment token as the executable.
+        executable = None
+        for tok in seg_tokens:
+            # Strip surrounding quotes left by shlex posix=False.
+            bare = tok.strip("'\"")
+            if _ENV_ASSIGN_RE.match(bare):
+                # Shell env-var assignment prefix — skip it.
+                continue
+            executable = bare
+            break
+
+        if executable is None:
+            # Segment is entirely assignments — nothing to probe.
+            continue
+
+        # Skip 'cd' segments — they change directory, not a tool to probe.
+        if executable == "cd":
+            continue
+
+        if shutil.which(executable) is None:
+            # Deduplicate: skip if already in the missing list.
+            if executable not in seen:
+                missing.append(executable)
+                seen.append(executable)
+
+    return missing
+
+
+def collect_executability_warnings(state: dict) -> List[Dict[str, str]]:
+    """Probe all configured commands in `state` and return warning records.
+
+    Probes the primary command arrays (type_check_commands[0],
+    lint_commands[0], build_commands[0]) and every per-package record in
+    package_stacks (type_check_command, lint_command, build_command).
+
+    Only the FIRST entry of each primary array is probed — it is the
+    command that /implement's verify gate will actually run.
+
+    Returns a list of dicts, each with:
+        scope         — human-readable location (e.g. "primary type_check",
+                        "package packages/frontend lint")
+        command       — the command string that was probed
+        missing_token — the first unresolvable executable token found
+
+    Empty list → no warnings (all commands resolvable or skipped).
+    """
+    warnings: List[Dict[str, str]] = []
+
+    # Primary command arrays: probe the first entry only.
+    _PRIMARY = (
+        ("type_check_commands", "primary type_check"),
+        ("lint_commands",       "primary lint"),
+        ("build_commands",      "primary build"),
+    )
+    for field, scope_label in _PRIMARY:
+        arr = state.get(field, [])
+        if not arr:
+            continue
+        cmd = arr[0]
+        result = probe_command_executability(cmd)
+        if result:  # non-empty list → at least one missing token
+            warnings.append({
+                "scope": scope_label,
+                "command": cmd,
+                "missing_token": result[0],
+            })
+
+    # Per-package records.
+    _PKG_FIELDS = (
+        ("type_check_command", "type_check"),
+        ("lint_command",       "lint"),
+        ("build_command",      "build"),
+    )
+    for record in state.get("package_stacks", []):
+        pkg_path = record.get("path", "")
+        for field, kind_label in _PKG_FIELDS:
+            cmd = record.get(field)
+            if not cmd:
+                continue
+            result = probe_command_executability(cmd)
+            if result:
+                warnings.append({
+                    "scope": "package {0} {1}".format(pkg_path, kind_label),
+                    "command": cmd,
+                    "missing_token": result[0],
+                })
+
+    return warnings
