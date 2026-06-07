@@ -27,6 +27,7 @@ from _implement._cmds_preflight import cmd_preflight, add_args_preflight  # type
 from _implement._cmds_capture import cmd_capture_touched_files, add_args_capture_touched_files  # type: ignore[import]
 from _implement._cmds_verify import cmd_verify_touched, add_args_verify_touched  # type: ignore[import]
 from _implement._cmds_review_loop import cmd_review_loop_step, add_args_review_loop_step  # type: ignore[import]
+from _implement._cmds_review_panel import cmd_merge_review_panel, add_args_merge_review_panel  # type: ignore[import]
 from _implement._cmds_gate import cmd_run_forcing_functions_gate, add_args_run_forcing_functions_gate  # type: ignore[import]
 from _implement._cmds_commit import cmd_wip_commit, add_args_wip_commit  # type: ignore[import]
 from _implement._cmds_complete import cmd_mark_complete, add_args_mark_complete, cmd_mark_skipped, add_args_mark_skipped  # type: ignore[import]
@@ -100,6 +101,22 @@ _SUBCOMMAND_REGISTRY = [
         ),
         cmd_review_loop_step,
         add_args_review_loop_step,
+    ),
+    # Phase 5 (panel) verbs.
+    (
+        "merge-review-panel",
+        (
+            "Aggregate verdicts from all four per-task panel reviewers into a "
+            "single control-flow signal: {clean, escalate, iteration, per_reviewer}. "
+            "Takes --reviewer agent-name:path pairs (one per reviewer). "
+            "clean=true only when ALL reviewers emit their clean token "
+            "(APPROVE / ADEQUATE / PASS / MEETS TARGETS). "
+            "escalate=true when --iteration N >= REVIEW_LOOP_CAP (3). "
+            "Exit 0 on success; exit 2 on any parse error (stderr names the "
+            "failing reviewer; no JSON emitted)."
+        ),
+        cmd_merge_review_panel,
+        add_args_merge_review_panel,
     ),
     # Phase 6 verbs.
     (

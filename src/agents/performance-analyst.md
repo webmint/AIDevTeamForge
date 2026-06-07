@@ -38,7 +38,7 @@ Read-only — report findings and recommend fixes, do not modify code.
 ```
 ## Performance Analysis
 
-Verdict: MEETS TARGETS / BOTTLENECKS FOUND
+### Verdict: MEETS TARGETS / BOTTLENECKS FOUND
 
 ### Current Metrics
 | Metric | Value | Target |

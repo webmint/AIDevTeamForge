@@ -57,7 +57,8 @@ Read-only — report findings, do not modify code.
 
 ### Summary
 - Critical: N | High: N | Medium: N | Info: N
-- Verdict: PASS / FAIL
+
+### Verdict: PASS / FAIL
 ```
 
 ## Boundaries & Handoffs
