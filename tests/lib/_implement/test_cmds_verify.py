@@ -304,13 +304,13 @@ class TestCollectCommands(unittest.TestCase):
 
     def test_single_file_matching_package(self):
         stacks = [self._pkg("src", "tsc-src", "eslint-src")]
-        tc, lint = _collect_commands(["src/foo.ts"], stacks, "primary-tc", "primary-lint")
+        tc, lint, _ = _collect_commands(["src/foo.ts"], stacks, "primary-tc", "primary-lint")
         self.assertEqual(tc, ["tsc-src"])
         self.assertEqual(lint, ["eslint-src"])
 
     def test_multiple_files_same_package_deduped(self):
         stacks = [self._pkg("src", "tsc-src", "eslint-src")]
-        tc, lint = _collect_commands(
+        tc, lint, _ = _collect_commands(
             ["src/foo.ts", "src/bar.ts"], stacks, "primary-tc", "primary-lint"
         )
         self.assertEqual(tc, ["tsc-src"])
@@ -318,31 +318,31 @@ class TestCollectCommands(unittest.TestCase):
 
     def test_file_outside_package_uses_primary_fallback(self):
         stacks = [self._pkg("src")]
-        tc, lint = _collect_commands(["top_level.py"], stacks, "primary-tc", "primary-lint")
+        tc, lint, _ = _collect_commands(["top_level.py"], stacks, "primary-tc", "primary-lint")
         self.assertEqual(tc, ["primary-tc"])
         self.assertEqual(lint, ["primary-lint"])
 
     def test_na_type_check_excluded(self):
         stacks = [self._pkg("src", tc="N/A", lint="eslint-src")]
-        tc, lint = _collect_commands(["src/foo.ts"], stacks, None, None)
+        tc, lint, _ = _collect_commands(["src/foo.ts"], stacks, None, None)
         self.assertEqual(tc, [])
         self.assertEqual(lint, ["eslint-src"])
 
     def test_na_lint_excluded(self):
         stacks = [self._pkg("src", tc="tsc-src", lint="N/A")]
-        tc, lint = _collect_commands(["src/foo.ts"], stacks, None, None)
+        tc, lint, _ = _collect_commands(["src/foo.ts"], stacks, None, None)
         self.assertEqual(tc, ["tsc-src"])
         self.assertEqual(lint, [])
 
     def test_none_type_check_excluded(self):
         stacks = [self._pkg("src", tc=None, lint="eslint-src")]
-        tc, lint = _collect_commands(["src/foo.ts"], stacks, None, None)
+        tc, lint, _ = _collect_commands(["src/foo.ts"], stacks, None, None)
         self.assertEqual(tc, [])
         self.assertEqual(lint, ["eslint-src"])
 
     def test_mixed_package_and_non_package_files(self):
         stacks = [self._pkg("src", "tsc-src", "eslint-src")]
-        tc, lint = _collect_commands(
+        tc, lint, _ = _collect_commands(
             ["src/foo.ts", "root_script.sh"], stacks, "primary-tc", "primary-lint"
         )
         # package command + primary fallback, each appears once.
@@ -351,7 +351,7 @@ class TestCollectCommands(unittest.TestCase):
 
     def test_empty_touched_files(self):
         stacks = [self._pkg("src")]
-        tc, lint = _collect_commands([], stacks, "primary-tc", "primary-lint")
+        tc, lint, _ = _collect_commands([], stacks, "primary-tc", "primary-lint")
         self.assertEqual(tc, [])
         self.assertEqual(lint, [])
 
@@ -360,7 +360,7 @@ class TestCollectCommands(unittest.TestCase):
             self._pkg("services/api", "api-tc", "api-lint"),
             self._pkg("frontend", "fe-tc", "fe-lint"),
         ]
-        tc, lint = _collect_commands(
+        tc, lint, _ = _collect_commands(
             ["services/api/main.py", "frontend/src/App.tsx"],
             stacks,
             "primary-tc",
@@ -454,6 +454,7 @@ class TestCmdVerifyTouched(unittest.TestCase):
         self.assertEqual(payload["status"], "pass")
         self.assertIn("commands_run", payload)
         self.assertIn("build_commands_run", payload)
+        self.assertIn("test_commands_run", payload)
 
     def test_pass_contains_commands_run(self):
         """Pass payload includes the list of commands that ran."""
@@ -463,6 +464,7 @@ class TestCmdVerifyTouched(unittest.TestCase):
         self.assertEqual(rc, EXIT_OK)
         self.assertIsInstance(payload["commands_run"], list)
         self.assertIsInstance(payload["build_commands_run"], list)
+        self.assertIsInstance(payload["test_commands_run"], list)
 
     # --- Self-repair iterations 0, 1, 2 ---
 
@@ -1797,6 +1799,502 @@ class TestNodeBinResolutionIntegration(unittest.TestCase):
         self.assertEqual(
             payload["status"], "pass",
             "expected pass (union resolves the binary); got {0!r}".format(payload),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: test command collection + execution tests
+# ---------------------------------------------------------------------------
+
+
+class TestCollectCommandsTestSlot(unittest.TestCase):
+    """Unit tests for the test_command slot in _collect_commands (Phase 2)."""
+
+    def _pkg(self, path, tc="tc-cmd", lint="lint-cmd", test=None):
+        return {
+            "path": path,
+            "type_check_command": tc,
+            "lint_command": lint,
+            "test_command": test,
+        }
+
+    def test_per_package_test_command_returned(self):
+        """File in package with test_command → that test_command in result."""
+        stacks = [self._pkg("src", test="pytest src/")]
+        _, _, test_cmds = _collect_commands(
+            ["src/foo.py"], stacks, "primary-tc", "primary-lint", "primary-test"
+        )
+        self.assertEqual(test_cmds, ["pytest src/"])
+
+    def test_primary_test_fallback_for_unmatched_file(self):
+        """File outside any package → primary_test fallback used."""
+        stacks = [self._pkg("src", test="pytest src/")]
+        _, _, test_cmds = _collect_commands(
+            ["top_level.py"], stacks, None, None, "primary-test-fallback"
+        )
+        self.assertEqual(test_cmds, ["primary-test-fallback"])
+
+    def test_na_test_command_excluded(self):
+        """test_command == 'N/A' → silently excluded, empty list."""
+        stacks = [self._pkg("src", test="N/A")]
+        _, _, test_cmds = _collect_commands(["src/foo.py"], stacks, None, None, None)
+        self.assertEqual(test_cmds, [])
+
+    def test_none_test_command_excluded(self):
+        """test_command == None → silently excluded."""
+        stacks = [self._pkg("src", test=None)]
+        _, _, test_cmds = _collect_commands(["src/foo.py"], stacks, None, None, None)
+        self.assertEqual(test_cmds, [])
+
+    def test_duplicate_test_command_deduped(self):
+        """Two files in the same package → test_command appears once."""
+        stacks = [self._pkg("src", test="pytest src/")]
+        _, _, test_cmds = _collect_commands(
+            ["src/a.py", "src/b.py"], stacks, None, None, "primary-test"
+        )
+        self.assertEqual(test_cmds, ["pytest src/"])
+
+    def test_two_packages_distinct_test_commands_both_collected(self):
+        """Two packages with different test commands → both collected (de-duped each)."""
+        stacks = [
+            self._pkg("services/api", test="pytest services/api/"),
+            self._pkg("frontend", test="npm test --prefix frontend"),
+        ]
+        _, _, test_cmds = _collect_commands(
+            ["services/api/main.py", "frontend/src/App.tsx"],
+            stacks,
+            None,
+            None,
+            "primary-test",
+        )
+        self.assertIn("pytest services/api/", test_cmds)
+        self.assertIn("npm test --prefix frontend", test_cmds)
+        # Primary fallback not included — all files matched packages.
+        self.assertNotIn("primary-test", test_cmds)
+
+    def test_no_primary_test_no_package_test_empty_list(self):
+        """No primary_test and no per-package test_command → empty list."""
+        stacks = [self._pkg("src", test=None)]
+        _, _, test_cmds = _collect_commands(
+            ["top_level.py"], stacks, None, None, None
+        )
+        self.assertEqual(test_cmds, [])
+
+    def test_empty_touched_files_empty_test_cmds(self):
+        """No touched files → no test commands collected."""
+        stacks = [self._pkg("src", test="pytest src/")]
+        _, _, test_cmds = _collect_commands([], stacks, None, None, "primary-test")
+        self.assertEqual(test_cmds, [])
+
+    def test_returns_three_tuple(self):
+        """_collect_commands now returns a 3-tuple (tc, lint, test)."""
+        stacks = [self._pkg("src", test="pytest")]
+        result = _collect_commands(["src/x.py"], stacks, None, None, None)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 3)
+
+
+class TestCmdVerifyTouchedTestCommands(unittest.TestCase):
+    """Integration tests for test command execution via cmd_verify_touched (Phase 2).
+
+    All tests use the _run_with_mock / mock-patching pattern from the existing
+    tooling-unavailable integration tests so no real test runner is needed.
+    Config dicts set test_command per-package and/or TEST_COMMANDS at top level.
+    """
+
+    def _run_with_mock(self, files_list, config, mock_run_fn, iteration=0):
+        """Write config, patch _run_command, run cmd_verify_touched, return (rc, payload)."""
+        import _implement._cmds_verify as verify_mod
+
+        tmpdir = tempfile.mkdtemp()
+        _write_config(tmpdir, config)
+
+        original = verify_mod._run_command
+        verify_mod._run_command = mock_run_fn
+
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+        try:
+            with patch("sys.stdout", stdout_buf), patch("sys.stderr", stderr_buf):
+                rc = cmd_verify_touched(
+                    FakeArgs(
+                        files=json.dumps(files_list),
+                        root=tmpdir,
+                        iteration=iteration,
+                    )
+                )
+        finally:
+            verify_mod._run_command = original
+
+        output = stdout_buf.getvalue()
+        payload = json.loads(output) if output.strip() else None
+        return rc, payload
+
+    def _pass_config_with_test(self, test_command="npm test"):
+        """Config with a per-package test_command and all other commands as 'true'."""
+        return {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            # TEST_COMMANDS is intentionally empty so this helper exercises ONLY the
+            # per-package test_command path, not the primary-fallback path (which is
+            # covered by test_primary_test_command_fallback_for_non_package_file).
+            "TEST_COMMANDS": [],
+            "PACKAGE_STACKS": [
+                {
+                    "path": "services/api",
+                    "language": "Python",
+                    "framework": "FastAPI",
+                    "build_tool": None,
+                    "build_command": "true",
+                    "type_check_command": "true",
+                    "lint_command": "true",
+                    "test_command": test_command,
+                },
+            ],
+        }
+
+    # --- pass payload includes test_commands_run ---
+
+    def test_pass_payload_includes_test_commands_run(self):
+        """Pass payload must include test_commands_run key."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            return 0, ""
+
+        config = self._pass_config_with_test("npm test")
+        rc, payload = self._run_with_mock(["services/api/main.py"], config, mock_run)
+
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(payload["status"], "pass")
+        self.assertIn("test_commands_run", payload)
+        self.assertIsInstance(payload["test_commands_run"], list)
+
+    def test_per_package_test_command_in_test_commands_run(self):
+        """Per-package test_command appears in test_commands_run."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            return 0, ""
+
+        config = self._pass_config_with_test("pytest services/api/")
+        rc, payload = self._run_with_mock(["services/api/main.py"], config, mock_run)
+
+        self.assertEqual(payload["status"], "pass")
+        self.assertIn("pytest services/api/", payload["test_commands_run"])
+
+    def test_primary_test_command_fallback_for_non_package_file(self):
+        """File outside any package → TEST_COMMANDS[0] fallback appears in test_commands_run."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            return 0, ""
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "TEST_COMMANDS": ["pytest ."],
+            "PACKAGE_STACKS": [
+                {
+                    "path": "services/api",
+                    "type_check_command": "true",
+                    "lint_command": "true",
+                    "build_command": "true",
+                    "test_command": "pytest services/api/",
+                },
+            ],
+        }
+        # top_level.py is outside 'services/api' → falls back to TEST_COMMANDS[0].
+        rc, payload = self._run_with_mock(["top_level.py"], config, mock_run)
+
+        self.assertEqual(payload["status"], "pass")
+        self.assertIn("pytest .", payload["test_commands_run"])
+        # Per-package test must NOT appear — the file didn't match the package.
+        self.assertNotIn("pytest services/api/", payload["test_commands_run"])
+
+    # --- N/A test_command skipped ---
+
+    def test_na_test_command_skipped_pass_with_empty_test_commands_run(self):
+        """'N/A' test_command → skipped; test_commands_run is empty."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            return 0, ""
+
+        config = self._pass_config_with_test("N/A")
+        rc, payload = self._run_with_mock(["services/api/main.py"], config, mock_run)
+
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["test_commands_run"], [])
+
+    # --- Duplicate test_command de-duped ---
+
+    def test_duplicate_test_command_across_two_files_deduped(self):
+        """Two files in the same package → test_command runs once (de-duped)."""
+        commands_called = []
+
+        def mock_run(cmd, cwd, extra_paths=None):
+            commands_called.append(cmd)
+            return 0, ""
+
+        import _implement._cmds_verify as verify_mod
+        original = verify_mod._run_command
+        verify_mod._run_command = mock_run
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "TEST_COMMANDS": [],
+            "PACKAGE_STACKS": [
+                {
+                    "path": "services/api",
+                    "type_check_command": "true",
+                    "lint_command": "true",
+                    "build_command": "true",
+                    "test_command": "pytest services/api/",
+                },
+            ],
+        }
+        tmpdir = tempfile.mkdtemp()
+        _write_config(tmpdir, config)
+
+        try:
+            stdout_buf = io.StringIO()
+            with patch("sys.stdout", stdout_buf):
+                cmd_verify_touched(
+                    FakeArgs(
+                        files=json.dumps(
+                            ["services/api/a.py", "services/api/b.py"]
+                        ),
+                        root=tmpdir,
+                        iteration=0,
+                    )
+                )
+        finally:
+            verify_mod._run_command = original
+
+        from collections import Counter
+        counts = Counter(commands_called)
+        self.assertEqual(
+            counts.get("pytest services/api/", 0), 1,
+            "test_command must run exactly once (de-duped across two files in same package)",
+        )
+
+    # --- Failing test command → self_repair / failed ---
+
+    def test_failing_test_command_at_iteration_0_self_repair(self):
+        """Failing test_command at iteration=0 → self_repair, exit 0."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            if cmd == "pytest services/api/":
+                return 1, "FAILED test_widget.py::test_add - AssertionError\n"
+            return 0, ""
+
+        config = self._pass_config_with_test("pytest services/api/")
+        rc, payload = self._run_with_mock(
+            ["services/api/main.py"], config, mock_run, iteration=0
+        )
+
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(payload["status"], "self_repair")
+        self.assertEqual(payload["iteration"], 0)
+        self.assertIn("failed_command", payload)
+        self.assertIn("output", payload)
+
+    def test_failing_test_command_at_cap_produces_failed(self):
+        """Failing test_command at iteration=SELF_REPAIR_CAP → failed, exit 2."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            if cmd == "pytest services/api/":
+                return 1, "FAILED test_widget.py::test_add - AssertionError\n"
+            return 0, ""
+
+        config = self._pass_config_with_test("pytest services/api/")
+        rc, payload = self._run_with_mock(
+            ["services/api/main.py"], config, mock_run, iteration=SELF_REPAIR_CAP
+        )
+
+        self.assertEqual(rc, EXIT_FINDINGS)
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["failed_command"], "pytest services/api/")
+
+    # --- Missing test runner → tooling_unavailable ---
+
+    def test_missing_test_runner_rc127_tooling_unavailable(self):
+        """test_command that returns rc=127 → tooling_unavailable, exit 2."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            if cmd == "missing-test-runner":
+                return 127, "sh: missing-test-runner: command not found\n"
+            return 0, ""
+
+        config = self._pass_config_with_test("missing-test-runner")
+        rc, payload = self._run_with_mock(
+            ["services/api/main.py"], config, mock_run, iteration=0
+        )
+
+        self.assertEqual(rc, EXIT_FINDINGS)
+        self.assertEqual(payload["status"], "tooling_unavailable")
+        self.assertEqual(payload["failed_command"], "missing-test-runner")
+
+    # --- Build failure short-circuits before test runs ---
+
+    def test_failing_build_short_circuits_before_test(self):
+        """A failing build_command must prevent test_command from running at all.
+
+        Run order is: tc → lint → build → test.
+        If build fails, test must never be called.
+        """
+        commands_called = []
+
+        def mock_run(cmd, cwd, extra_paths=None):
+            commands_called.append(cmd)
+            if cmd == "build-fail":
+                return 1, "Build error: missing module\n"
+            return 0, ""
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["build-fail"],
+            "TEST_COMMANDS": [],
+            "PACKAGE_STACKS": [
+                {
+                    "path": "services/api",
+                    "type_check_command": "true",
+                    "lint_command": "true",
+                    "build_command": "build-fail",
+                    "test_command": "should-not-run",
+                },
+            ],
+        }
+        import _implement._cmds_verify as verify_mod
+        original = verify_mod._run_command
+        verify_mod._run_command = mock_run
+
+        tmpdir = tempfile.mkdtemp()
+        _write_config(tmpdir, config)
+
+        try:
+            stdout_buf = io.StringIO()
+            with patch("sys.stdout", stdout_buf):
+                cmd_verify_touched(
+                    FakeArgs(
+                        files=json.dumps(["services/api/main.py"]),
+                        root=tmpdir,
+                        iteration=0,
+                    )
+                )
+        finally:
+            verify_mod._run_command = original
+
+        self.assertNotIn(
+            "should-not-run", commands_called,
+            "test_command must NOT run when build fails (fail-fast ordering)",
+        )
+        # Build failure at iteration=0, exit code 1 → self_repair (not failed/tooling_unavailable).
+        output = stdout_buf.getvalue()
+        payload = json.loads(output) if output.strip() else None
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["status"], "self_repair")
+
+    # --- No test config anywhere → backward-compatible no-op ---
+
+    def test_no_test_config_backward_compatible(self):
+        """Project with no TEST_COMMANDS and no per-package test_command → pass with empty list.
+
+        This is the backward-compatibility case: projects without test config
+        must behave exactly as before Phase 2 (no test runs, no failure).
+        """
+        def mock_run(cmd, cwd, extra_paths=None):
+            return 0, ""
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            # No TEST_COMMANDS key at all.
+            "PACKAGE_STACKS": [
+                {
+                    "path": "services/api",
+                    "type_check_command": "true",
+                    "lint_command": "true",
+                    "build_command": "true",
+                    # No test_command key at all.
+                },
+            ],
+        }
+        rc, payload = self._run_with_mock(["services/api/main.py"], config, mock_run)
+
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["test_commands_run"], [])
+
+    def test_empty_test_commands_array_backward_compatible(self):
+        """Empty TEST_COMMANDS array + no per-package test_command → no test runs, pass."""
+        def mock_run(cmd, cwd, extra_paths=None):
+            return 0, ""
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "TEST_COMMANDS": [],
+            "PACKAGE_STACKS": [
+                {
+                    "path": "services/api",
+                    "type_check_command": "true",
+                    "lint_command": "true",
+                    "build_command": "true",
+                    "test_command": None,
+                },
+            ],
+        }
+        rc, payload = self._run_with_mock(["services/api/main.py"], config, mock_run)
+
+        self.assertEqual(rc, EXIT_OK)
+        self.assertEqual(payload["status"], "pass")
+        self.assertEqual(payload["test_commands_run"], [])
+
+    # --- Test runs AFTER build (ordering probe) ---
+
+    def test_test_command_runs_after_build_in_all_pass_case(self):
+        """Confirm test_command is called AFTER build_command in the all-pass case."""
+        call_order = []
+
+        def mock_run(cmd, cwd, extra_paths=None):
+            call_order.append(cmd)
+            return 0, ""
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["tc-cmd"],
+            "LINT_COMMANDS": ["lint-cmd"],
+            "BUILD_COMMANDS": ["build-cmd"],
+            "TEST_COMMANDS": ["test-cmd"],
+            "PACKAGE_STACKS": [],  # All files use primary fallbacks.
+        }
+
+        import _implement._cmds_verify as verify_mod
+        original = verify_mod._run_command
+        verify_mod._run_command = mock_run
+
+        tmpdir = tempfile.mkdtemp()
+        _write_config(tmpdir, config)
+
+        try:
+            stdout_buf = io.StringIO()
+            with patch("sys.stdout", stdout_buf):
+                cmd_verify_touched(
+                    FakeArgs(
+                        files=json.dumps(["top_level.py"]),
+                        root=tmpdir,
+                        iteration=0,
+                    )
+                )
+        finally:
+            verify_mod._run_command = original
+
+        # Verify ordering: build before test.
+        self.assertIn("build-cmd", call_order)
+        self.assertIn("test-cmd", call_order)
+        build_idx = call_order.index("build-cmd")
+        test_idx = call_order.index("test-cmd")
+        self.assertLess(
+            build_idx, test_idx,
+            "build_command must run before test_command; "
+            "call_order={0!r}".format(call_order),
         )
 
 

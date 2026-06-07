@@ -1,8 +1,8 @@
 """_cmds_verify -- verify-touched verb for implement_helper.
 
-Runs scope-aware type-check + lint + build over the files the agent touched,
-and implements a bounded self-repair counter so the orchestrator knows when to
-request a fix vs when to give up.
+Runs scope-aware type-check + lint + build + test over the files the agent
+touched, and implements a bounded self-repair counter so the orchestrator
+knows when to request a fix vs when to give up.
 
 Algorithm
 ---------
@@ -12,35 +12,38 @@ Algorithm
    run with cwd = source_root; touched files + PACKAGE_STACKS paths are
    all source-root-relative.
 3. Load PACKAGE_STACKS + TYPE_CHECK_COMMANDS + LINT_COMMANDS + BUILD_COMMANDS
-   from .devforge/project-config.json (relative to install_root).
+   + TEST_COMMANDS from .devforge/project-config.json (relative to install_root).
 4. For every touched file: longest-path-prefix match against each package's
-   `path` field.  Matching package → that package's `type_check_command` and
-   `lint_command`.  No match → primary-stack fallback (TYPE_CHECK_COMMANDS[0] /
-   LINT_COMMANDS[0]).
+   `path` field.  Matching package → that package's `type_check_command`,
+   `lint_command`, and `test_command`.  No match → primary-stack fallback
+   (TYPE_CHECK_COMMANDS[0] / LINT_COMMANDS[0] / TEST_COMMANDS[0]).
 5. Aggregate: de-duplicate identical commands so each runs exactly once (the
    same tsc invocation from two packages is not run twice).
 6. Build: once per task at the end, de-dup across touched packages.
    Non-package files → BUILD_COMMANDS[0].
-7. "N/A" commands are silently skipped (not a failure).  Commands are BARE
+7. Test: per-package, de-duped, same collection logic as type-check/lint.
+   Non-package files → TEST_COMMANDS[0].  Run AFTER build (fail-fast ordering:
+   static checks → build → tests; a broken build surfaces first).
+8. "N/A" commands are silently skipped (not a failure).  Commands are BARE
    (e.g. "npm run check", path ".") — NOT pre-prefixed with "cd SOURCE_ROOT &&".
    Run each command with cwd=source_root so the bare command works correctly.
-8. Wrapper-isolation check (wrapper mode ONLY, ported from 1.x line 259):
+9. Wrapper-isolation check (wrapper mode ONLY, ported from 1.x line 259):
    After the agent edits, scan source_root for forge artifacts that must NOT
    be there: .claude/, specs/, docs/overview.md, docs/architecture.md,
    constitution.md, CLAUDE.md, bugs/, research/, .mcp.json.
    If any exist inside source_root → report a verification FAILURE (the agent
    polluted the source tree).  This check is SKIPPED entirely in standalone
    mode — standalone's single repo legitimately contains .claude/, specs/, etc.
-9. Self-repair counter (helper-owned, zero-escape-hatch):
-   - --iteration N (the orchestrator increments it across repair attempts).
-   - Run ALL commands.  If ALL pass → emit {status:"pass", ...}; exit 0.
-   - If any fails AND N < SELF_REPAIR_CAP (3) →
-       emit {status:"self_repair", iteration:N, failed_command, output}; exit 0.
-       (The orchestrator re-runs the implementing agent then re-calls with N+1.)
-   - If any fails AND N >= SELF_REPAIR_CAP →
-       emit {status:"failed", failed_command, output}; EXIT_FINDINGS (exit 2).
-   The helper owns the cap constant.  The orchestrator cannot extend past the
-   cap; the helper simply escalates at N>=3.
+10. Self-repair counter (helper-owned, zero-escape-hatch):
+    - --iteration N (the orchestrator increments it across repair attempts).
+    - Run ALL commands.  If ALL pass → emit {status:"pass", ...}; exit 0.
+    - If any fails AND N < SELF_REPAIR_CAP (3) →
+        emit {status:"self_repair", iteration:N, failed_command, output}; exit 0.
+        (The orchestrator re-runs the implementing agent then re-calls with N+1.)
+    - If any fails AND N >= SELF_REPAIR_CAP →
+        emit {status:"failed", failed_command, output}; EXIT_FINDINGS (exit 2).
+    The helper owns the cap constant.  The orchestrator cannot extend past the
+    cap; the helper simply escalates at N>=3.
 
 Arguments (argparse):
   --files <json>      Required. JSON array of source-relative file paths
@@ -51,7 +54,8 @@ Arguments (argparse):
   --iteration N       Optional. Current self-repair iteration count. Default 0.
 
 Emitted JSON (stdout):
-  status:"pass"        → {status:"pass", commands_run:[...], build_commands_run:[...]}
+  status:"pass"        → {status:"pass", commands_run:[...], build_commands_run:[...],
+                           test_commands_run:[...]}
   status:"self_repair" → {status:"self_repair", iteration:N,
                            failed_command:"...", output:"..."}
   status:"failed"      → {status:"failed", failed_command:"...", output:"..."}
@@ -92,12 +96,14 @@ PACKAGE_STACKS JSON shape (as produced by `configure_helper render-config`):
       "build_tool": "tsc",
       "build_command": "npm run build",         # BARE command; may be null or "N/A"
       "type_check_command": "npx tsc --noEmit", # BARE command; may be null or "N/A"
-      "lint_command": "npx eslint src/"         # BARE command; may be null or "N/A"
+      "lint_command": "npx eslint src/",        # BARE command; may be null or "N/A"
+      "test_command": "npm test"                # BARE command; may be null or "N/A"
     }
   Primary-stack arrays at the top level of project-config.json:
     "TYPE_CHECK_COMMANDS": ["npx tsc --noEmit", ...]
     "LINT_COMMANDS": ["npx eslint .", ...]
     "BUILD_COMMANDS": ["npm run build", ...]
+    "TEST_COMMANDS": ["npm test", ...]
   [0] of each array is the fallback for files outside any detected package.
 
 Design notes:
@@ -249,31 +255,39 @@ def _match_package(file_path, package_stacks):
 # ---------------------------------------------------------------------------
 
 
-def _collect_commands(touched_files, package_stacks, primary_type_check, primary_lint):
-    # type: (List[str], List[dict], Optional[str], Optional[str]) -> Tuple[List[str], List[str]]
-    """Build de-duplicated (type_check_commands, lint_commands) for touched files.
+def _collect_commands(touched_files, package_stacks, primary_type_check, primary_lint,
+                      primary_test=None):
+    # type: (List[str], List[dict], Optional[str], Optional[str], Optional[str]) -> Tuple[List[str], List[str], List[str]]
+    """Build de-duplicated (type_check_commands, lint_commands, test_commands) for touched files.
 
     For each touched file: longest-prefix match → package commands.
     If no package matches → primary fallback.
     "N/A" commands and None values are excluded.
     Preserves first-seen order.
 
-    Returns (type_check_cmds, lint_cmds) as two ordered de-duped lists.
+    Returns (type_check_cmds, lint_cmds, test_cmds) as three ordered de-duped lists.
+    test_cmds is collected using the same per-package / primary-fallback logic as
+    type_check_cmds and lint_cmds: pkg.get("test_command") for matched packages,
+    primary_test for unmatched files.
     """
-    tc_seen = []   # type: List[str]  (ordered, de-duped)
+    tc_seen = []    # type: List[str]  (ordered, de-duped)
     lint_seen = []  # type: List[str]
+    test_seen = []  # type: List[str]
 
-    tc_set = set()   # type: Set[str]
+    tc_set = set()    # type: Set[str]
     lint_set = set()  # type: Set[str]
+    test_set = set()  # type: Set[str]
 
     for fpath in touched_files:
         pkg = _match_package(fpath, package_stacks)
         if pkg is not None:
             tc_cmd = pkg.get("type_check_command")
             lint_cmd = pkg.get("lint_command")
+            test_cmd = pkg.get("test_command")
         else:
             tc_cmd = primary_type_check
             lint_cmd = primary_lint
+            test_cmd = primary_test
 
         # Register type_check_command.
         if tc_cmd and tc_cmd != _NA and tc_cmd not in tc_set:
@@ -285,7 +299,12 @@ def _collect_commands(touched_files, package_stacks, primary_type_check, primary
             lint_set.add(lint_cmd)
             lint_seen.append(lint_cmd)
 
-    return tc_seen, lint_seen
+        # Register test_command.
+        if test_cmd and test_cmd != _NA and test_cmd not in test_set:
+            test_set.add(test_cmd)
+            test_seen.append(test_cmd)
+
+    return tc_seen, lint_seen, test_seen
 
 
 def _collect_build_commands(touched_files, package_stacks, primary_build):
@@ -497,10 +516,12 @@ def cmd_verify_touched(args):
     type_check_commands = config.get("TYPE_CHECK_COMMANDS") or []
     lint_commands = config.get("LINT_COMMANDS") or []
     build_commands = config.get("BUILD_COMMANDS") or []
+    test_commands = config.get("TEST_COMMANDS") or []
 
     primary_type_check = type_check_commands[0] if type_check_commands else None
     primary_lint = lint_commands[0] if lint_commands else None
     primary_build = build_commands[0] if build_commands else None
+    primary_test = test_commands[0] if test_commands else None
 
     # --- Wrapper-isolation check (wrapper mode ONLY) ---
     # Run BEFORE the type-check/lint/build commands so a pollution failure is
@@ -521,14 +542,17 @@ def cmd_verify_touched(args):
 
     # --- Build command lists ---
     # Touched files and PACKAGE_STACKS paths are both source-root-relative.
-    tc_cmds, lint_cmds = _collect_commands(
-        touched_files, package_stacks, primary_type_check, primary_lint
+    tc_cmds, lint_cmds, test_cmds = _collect_commands(
+        touched_files, package_stacks, primary_type_check, primary_lint, primary_test
     )
     build_cmds = _collect_build_commands(touched_files, package_stacks, primary_build)
 
-    # All commands to run: type-check, then lint, then build.
+    # All commands to run: type-check, then lint, then build, then test.
+    # Ordering rationale: fail fast on cheap static checks and build before
+    # running the (typically slower) test suite.  A broken build surfaces first;
+    # tests run only on a building tree.
     verify_cmds = tc_cmds + lint_cmds
-    all_cmds = verify_cmds + build_cmds
+    all_cmds = verify_cmds + build_cmds + test_cmds
 
     # --- Compute node_modules/.bin dirs for locally-installed JS/TS tools ---
     # Union the bin dirs for all packages that contributed commands, plus always
@@ -584,6 +608,7 @@ def cmd_verify_touched(args):
             "status": "pass",
             "commands_run": verify_cmds,
             "build_commands_run": build_cmds,
+            "test_commands_run": test_cmds,
         }
         sys.stdout.write(json.dumps(payload))
         sys.stdout.write("\n")

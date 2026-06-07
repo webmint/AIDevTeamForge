@@ -145,16 +145,16 @@ Agent selection is automatic in `/implement` based on the task's assigned agent.
 
 ### Verification (explicit, scope-aware — no per-edit hooks)
 
-Verification runs at task boundaries (end of `/implement`, `/fix`, `/refactor`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build commands apply to each file touched during the task.
+Verification runs at task boundaries (end of `/implement`, `/fix`, `/refactor`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build / test commands apply to each file touched during the task.
 
 **Scope-aware verification flow**:
 
 1. Identify files touched during the task (git diff against the task-start checkpoint).
 2. For each touched file, find its package via `PACKAGE_STACKS` path lookup (longest path prefix wins; e.g., `services/api/users.py` matches the `services/api` package).
-3. Run that package's `type_check_command` and `lint_command` (stored in `.devforge/project-config.json`). Skip `"N/A"` commands silently (no-op; not a failure).
-4. Build (`build_command`) typically runs once per task at the end, aggregated across touched packages when multiple are edited.
-5. For files not inside any detected package (top-level scripts, misc files): fall back to the primary-stack commands (`TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` / `BUILD_COMMANDS[0]`).
-6. **Self-repair loop**: if type check or lint fails, attempt up to 3 auto-repair iterations before stopping and reporting. Code-review findings are reported to the user, not auto-repaired.
+3. Run that package's `type_check_command`, `lint_command`, and `test_command` (stored in `.devforge/project-config.json`). Skip `"N/A"` and absent commands silently (no-op; not a failure).
+4. Build (`build_command`) runs once per task between the static checks and the tests, aggregated across touched packages when multiple are edited. The fixed order is static checks (type-check + lint) → build → tests, so a failing build surfaces before any test runs.
+5. For files not inside any detected package (top-level scripts, misc files): fall back to the primary-stack commands (`TYPE_CHECK_COMMANDS[0]` / `LINT_COMMANDS[0]` / `BUILD_COMMANDS[0]` / `TEST_COMMANDS[0]`).
+6. **Self-repair loop**: if type check, lint, or a test fails, attempt up to 3 auto-repair iterations before stopping and reporting. Code-review findings are reported to the user, not auto-repaired.
 
 **Pre-flight check** (before each task): read `constitution.md` and `.devforge/memory.md` so the task starts with the right context.
 
