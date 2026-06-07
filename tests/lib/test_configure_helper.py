@@ -7,20 +7,19 @@ rejection + fence-aware section extractor), reset subcommand, read-init
 read-manifests, read-configs.
 
 Step 2 coverage: _load / _dump / _state_transaction (write-on-exit, abort-
-on-exception, lock-file creation), five _validate_* helpers, all 28 setter
+on-exception, lock-file creation), five _validate_* helpers, all 29 setter
 subcommands (3 identity + 1 primary-language + 8 stack arrays incl.
-project_natures + 3 per-pkg arrays + add-package-stack + 3 verbatim +
-6 enums + 3 ac-runtime), round-trip integration (all-28-fields set +
-reload + compare; replace-not-append
-for string_arrays; accumulate for add-package-stack), cross-process safety
-(5 concurrent add-package-stack via Popen — no lost writes; mixed scalar+
-append concurrency — no corruption).
+project_natures + 4 per-pkg arrays incl. test_commands + add-package-stack +
+3 verbatim + 6 enums + 3 ac-runtime), round-trip integration (all-29-fields
+set + reload + compare; replace-not-append for string_arrays; accumulate for
+add-package-stack), cross-process safety (5 concurrent add-package-stack via
+Popen — no lost writes; mixed scalar+ append concurrency — no corruption).
 
 Step 3 coverage: _write_json (atomic write, idempotency, no temp files left),
-_build_project_config (36-key output, WRAPPER_MODE_SECTION variants,
+_build_project_config (37-key output, WRAPPER_MODE_SECTION variants,
 COMMIT_ATTRIBUTION variants, field mapping, package_stacks pass-through),
 _read_agent_list (absent dir, empty dir, sorted alphabetically, non-md excluded),
-render-config subprocess (init.yaml missing, 36-key output, configure fields,
+render-config subprocess (init.yaml missing, 37-key output, configure fields,
 init fields, wrapper section, commit attribution, agent list, idempotency,
 overwrite semantics, package_stacks), verify subprocess (all-populated pass,
 null scalar fail, empty array fail, ac-runtime optional when not runtime-
@@ -29,10 +28,10 @@ malformed, round-trip drift), summary subprocess (unset shows label, populated
 values, long string truncation, package_stacks rows, stability, empty array,
 section headers).
 
-Step 4 coverage: _build_substitution_map (all 36 project-config keys present,
-10 singular aliases derive from plural arrays, PROJECT_PATHS from
+Step 4 coverage: _build_substitution_map (all 37 project-config keys present,
+11 singular aliases derive from plural arrays, PROJECT_PATHS from
 packages_detected, PACKAGE_STACKS_SECTION empty → empty string, populated →
-4-column markdown table, UPPERCASE identity, STATE_MANAGEMENT + STYLING NOT
+5-column markdown table, UPPERCASE identity, STATE_MANAGEMENT + STYLING NOT
 in map — those rules live in constitution.md per /constitute pipeline),
 _substitute_placeholders engine (single placeholder, multiple placeholders,
 unknown key → missing list, STATE_MANAGEMENT + STYLING reported as unknown (no
@@ -141,12 +140,12 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_28_fields(self):
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 28)
+    def test_field_schema_has_29_fields(self):
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 29)
 
-    def test_default_state_has_28_keys(self):
+    def test_default_state_has_29_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 28)
+        self.assertEqual(len(state), 29)
 
     def test_default_state_scalars_are_none(self):
         state = configure_helper.default_state()
@@ -186,6 +185,7 @@ class SchemaTests(unittest.TestCase):
             "build_commands",
             "type_check_commands",
             "lint_commands",
+            "test_commands",
             "package_stacks",
             "project_structure",
             "dev_commands",
@@ -332,6 +332,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
                 "build_command": "npm run build",
                 "type_check_command": "npm run typecheck",
                 "lint_command": "npm run lint",
+                "test_command": "npm test",
             }
         ]
         text = configure_helper.emit_yaml(state)
@@ -349,6 +350,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
                 "build_command": None,
                 "type_check_command": "mypy .",
                 "lint_command": "flake8 .",
+                "test_command": None,
             }
         ]
         text = configure_helper.emit_yaml(state)
@@ -431,7 +433,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIn("lint_command", str(ctx.exception))
 
     def test_all_fields_set_round_trip(self):
-        """All 28 fields populated — comprehensive round-trip."""
+        """All 29 fields populated — comprehensive round-trip."""
         state = {
             "project_name": "module",
             "project_description": "A complex monorepo project",
@@ -448,6 +450,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "build_commands": ["npm run build"],
             "type_check_commands": ["npm run typecheck"],
             "lint_commands": ["npm run lint"],
+            "test_commands": ["npm test"],
             "package_stacks": [
                 {
                     "path": "apps/app",
@@ -457,6 +460,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
                     "build_command": "npm run build",
                     "type_check_command": "npm run typecheck",
                     "lint_command": "npm run lint",
+                    "test_command": "npm test",
                 }
             ],
             "project_structure": "apps/ packages/ services/",
@@ -490,6 +494,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
                 "build_command": "npm run build",
                 "type_check_command": None,
                 "lint_command": None,
+                "test_command": None,
             }
         ]
         text1 = configure_helper.emit_yaml(state)
@@ -507,6 +512,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
                 "build_command": "npm run build",
                 "type_check_command": "npm run typecheck",
                 "lint_command": "npm run lint",
+                "test_command": None,
             },
             {
                 "path": "services/api",
@@ -516,6 +522,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
                 "build_command": None,
                 "type_check_command": "mypy .",
                 "lint_command": "flake8 .",
+                "test_command": None,
             },
         ]
         text = configure_helper.emit_yaml(state)
@@ -2070,6 +2077,7 @@ class AddPackageStackTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertIsNone(record["build_command"])
         self.assertIsNone(record["type_check_command"])
         self.assertIsNone(record["lint_command"])
+        self.assertIsNone(record["test_command"])
 
     def test_all_optional_fields_provided(self):
         proc = _run_configure(
@@ -2363,8 +2371,8 @@ class SetAcVerificationModeTests(_EnvIsolationMixin, unittest.TestCase):
 
 class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
 
-    def test_all_28_fields_set_reload_match(self):
-        """Set all 28 fields via setters then reload and compare full state."""
+    def test_all_29_fields_set_reload_match(self):
+        """Set all 29 fields via setters then reload and compare full state."""
         # Identity scalars
         _run_configure(self.devforge_dir, "set-project-name", "full-roundtrip")
         _run_configure(self.devforge_dir, "set-project-description", "Full round-trip test")
@@ -2384,6 +2392,7 @@ class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-build-commands", "npm run build")
         _run_configure(self.devforge_dir, "set-type-check-commands", "npm run typecheck")
         _run_configure(self.devforge_dir, "set-lint-commands", "npm run lint")
+        _run_configure(self.devforge_dir, "set-test-commands", "npm test")
         # Package stack record
         _run_configure(
             self.devforge_dir, "add-package-stack",
@@ -2594,11 +2603,11 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_36_keys_present(self):
+    def test_all_37_keys_present(self):
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 36)
+        self.assertEqual(len(result), 37)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -2750,13 +2759,13 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_36_keys_with_defaults(self):
+    def test_renders_37_keys_with_defaults(self):
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 36)
+        self.assertEqual(len(data), 37)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 
@@ -2896,7 +2905,7 @@ class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
         _run_init(self.devforge_dir, "set-default-branch", "main")
 
     def _populate_all_configure_fields(self):
-        """Set all 28 configure.yaml fields to valid values."""
+        """Set all 29 configure.yaml fields to valid values."""
         _run_configure(self.devforge_dir, "reset")
         _run_configure(self.devforge_dir, "set-project-name", "test-project")
         _run_configure(self.devforge_dir, "set-project-description", "A test project")
@@ -2913,6 +2922,7 @@ class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-build-commands", "npm run build")
         _run_configure(self.devforge_dir, "set-type-check-commands", "npx tsc")
         _run_configure(self.devforge_dir, "set-lint-commands", "npm run lint")
+        _run_configure(self.devforge_dir, "set-test-commands", "npm test")
         _run_configure(
             self.devforge_dir, "add-package-stack",
             "--path", "src", "--language", "TypeScript",
@@ -3108,7 +3118,7 @@ class SubstitutionMapTests(unittest.TestCase):
         for k in (
             "LANGUAGES", "FRAMEWORKS", "ARCHITECTURES", "PROJECT_NATURES",
             "ERROR_HANDLINGS", "API_LAYERS", "TESTINGS", "BUILD_TOOLS",
-            "BUILD_COMMANDS", "TYPE_CHECK_COMMANDS", "LINT_COMMANDS",
+            "BUILD_COMMANDS", "TYPE_CHECK_COMMANDS", "LINT_COMMANDS", "TEST_COMMANDS",
             "PACKAGE_STACKS", "PACKAGES_DETECTED",
         ):
             base[k] = []
@@ -3118,8 +3128,8 @@ class SubstitutionMapTests(unittest.TestCase):
         base.update(overrides)
         return base
 
-    def test_all_36_project_config_keys_present_in_map(self):
-        """All 36 keys from _PROJECT_CONFIG_KEY_ORDER appear as entries in the map."""
+    def test_all_37_project_config_keys_present_in_map(self):
+        """All 37 keys from _PROJECT_CONFIG_KEY_ORDER appear as entries in the map."""
         config = self._make_config()
         sub_map = configure_helper._build_substitution_map(config, [])
         for key in configure_helper._PROJECT_CONFIG_KEY_ORDER:
@@ -3128,8 +3138,8 @@ class SubstitutionMapTests(unittest.TestCase):
                 "key {0} missing from substitution map".format(key),
             )
 
-    def test_10_singular_aliases_derive_from_plural_arrays(self):
-        """10 singular aliases are present in the map and derive from their plural array."""
+    def test_11_singular_aliases_derive_from_plural_arrays(self):
+        """11 singular aliases are present in the map and derive from their plural array."""
         config = self._make_config(
             FRAMEWORKS=["Vue", "React"],
             LANGUAGES=["TypeScript", "Python"],
@@ -3137,6 +3147,7 @@ class SubstitutionMapTests(unittest.TestCase):
             BUILD_COMMANDS=["npm run build"],
             TYPE_CHECK_COMMANDS=["npx tsc"],
             LINT_COMMANDS=["npm run lint"],
+            TEST_COMMANDS=["npm test"],
             ERROR_HANDLINGS=["try-catch"],
             API_LAYERS=["REST"],
             TESTINGS=["Jest"],
@@ -3149,6 +3160,7 @@ class SubstitutionMapTests(unittest.TestCase):
         self.assertEqual(sub_map["BUILD_COMMAND"], "npm run build")
         self.assertEqual(sub_map["TYPE_CHECK_COMMAND"], "npx tsc")
         self.assertEqual(sub_map["LINT_COMMAND"], "npm run lint")
+        self.assertEqual(sub_map["TEST_COMMAND"], "npm test")
         self.assertEqual(sub_map["ERROR_HANDLING"], "try-catch")
         self.assertEqual(sub_map["API_LAYER"], "REST")
         self.assertEqual(sub_map["TESTING"], "Jest")
@@ -3171,7 +3183,7 @@ class SubstitutionMapTests(unittest.TestCase):
         self.assertEqual(sub_map["PACKAGE_STACKS_SECTION"], "")
 
     def test_package_stacks_section_populated_gives_markdown_table(self):
-        """PACKAGE_STACKS_SECTION renders a 4-column markdown table."""
+        """PACKAGE_STACKS_SECTION renders a 5-column markdown table."""
         stacks = [
             {
                 "path": "apps/app",
@@ -3181,6 +3193,7 @@ class SubstitutionMapTests(unittest.TestCase):
                 "build_command": "npm run build",
                 "type_check_command": "npx tsc",
                 "lint_command": "npm run lint",
+                "test_command": "npm test",
             },
             {
                 "path": "packages/pkg-core",
@@ -3190,16 +3203,17 @@ class SubstitutionMapTests(unittest.TestCase):
                 "build_command": "npm run build",
                 "type_check_command": "npx tsc",
                 "lint_command": "npm run lint",
+                "test_command": None,
             },
         ]
         config = self._make_config(PACKAGE_STACKS=stacks)
         sub_map = configure_helper._build_substitution_map(config, [])
         table = sub_map["PACKAGE_STACKS_SECTION"]
-        self.assertIn("| Package | Language | Framework | Build Tool |", table)
-        self.assertIn("|---------|----------|-----------|------------|", table)
-        self.assertIn("| apps/app | TypeScript | Vue | Vite |", table)
-        # None framework → empty cell (not the word "None").
-        self.assertIn("| packages/pkg-core | TypeScript |  | Vite |", table)
+        self.assertIn("| Package | Language | Framework | Build Tool | Test Command |", table)
+        self.assertIn("|---------|----------|-----------|------------|--------------|", table)
+        self.assertIn("| apps/app | TypeScript | Vue | Vite | npm test |", table)
+        # None framework → empty cell; None test_command → empty cell.
+        self.assertIn("| packages/pkg-core | TypeScript |  | Vite |  |", table)
         self.assertNotIn("None", table)
 
     def test_uppercase_key_produces_identity_passthrough(self):
@@ -3406,8 +3420,8 @@ class SubstituteTemplatesTests(_EnvIsolationMixin, unittest.TestCase):
         proc = self._run_substitute()
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         result = self._read_claude_md()
-        self.assertIn("| Package | Language | Framework | Build Tool |", result)
-        self.assertIn("| apps/web | TypeScript | Vue | Vite |", result)
+        self.assertIn("| Package | Language | Framework | Build Tool | Test Command |", result)
+        self.assertIn("| apps/web | TypeScript | Vue | Vite |  |", result)
 
     def test_unknown_placeholder_exits_2_and_lists_key(self):
         """Template with {{FOO}} → exit 2 + stderr names FOO."""
@@ -3808,6 +3822,479 @@ class ParseAgentFrontmatterTests(unittest.TestCase):
         text = "---\nname: foo\napplies_to: [\"web\"]\nBody without closing fence.\n"
         result = configure_helper._parse_agent_frontmatter(text)
         self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 (Plan 17): test_commands / test_command field additions.
+# ---------------------------------------------------------------------------
+
+
+class TestCommandsSchemaTests(unittest.TestCase):
+    """Schema: test_commands in FIELD_SCHEMA; test_command last in _PACKAGE_STACK_FIELDS."""
+
+    def test_test_commands_in_field_schema(self):
+        """test_commands appears in FIELD_SCHEMA as string_array."""
+        found = [(name, kind) for name, kind in configure_helper.FIELD_SCHEMA
+                 if name == "test_commands"]
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0][1], "string_array")
+
+    def test_test_commands_position_after_lint_commands_before_package_stacks(self):
+        """test_commands comes immediately after lint_commands and before package_stacks."""
+        names = [name for name, _ in configure_helper.FIELD_SCHEMA]
+        lint_idx = names.index("lint_commands")
+        test_idx = names.index("test_commands")
+        stack_idx = names.index("package_stacks")
+        self.assertEqual(test_idx, lint_idx + 1,
+                         "test_commands must immediately follow lint_commands")
+        self.assertLess(test_idx, stack_idx,
+                        "test_commands must precede package_stacks")
+
+    def test_test_command_in_package_stack_fields(self):
+        """test_command is the last field in _PACKAGE_STACK_FIELDS."""
+        from _configure._schema import _PACKAGE_STACK_FIELDS
+        self.assertIn("test_command", _PACKAGE_STACK_FIELDS)
+        self.assertEqual(_PACKAGE_STACK_FIELDS[-1], "test_command",
+                         "test_command must be the last entry in _PACKAGE_STACK_FIELDS")
+
+    def test_default_state_test_commands_is_empty_list(self):
+        """default_state initializes test_commands to []."""
+        state = configure_helper.default_state()
+        self.assertIn("test_commands", state)
+        self.assertEqual(state["test_commands"], [])
+
+
+class TestCommandsSetVerbTests(_EnvIsolationMixin, unittest.TestCase):
+    """set-test-commands round-trips through emit→parse."""
+
+    def test_set_test_commands_single_item_round_trips(self):
+        """set-test-commands 'npm test' → test_commands == ['npm test']."""
+        proc = _run_configure(self.devforge_dir, "set-test-commands", "npm test")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["test_commands"], ["npm test"])
+
+    def test_set_test_commands_comma_separated_round_trips(self):
+        """set-test-commands 'a,b' → test_commands == ['a', 'b']."""
+        proc = _run_configure(self.devforge_dir, "set-test-commands", "a,b")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["test_commands"], ["a", "b"])
+
+    def test_set_test_commands_replaces_prior_value(self):
+        """Calling set-test-commands twice replaces, does not append."""
+        _run_configure(self.devforge_dir, "set-test-commands", "pytest")
+        _run_configure(self.devforge_dir, "set-test-commands", "npm test,jest")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["test_commands"], ["npm test", "jest"])
+
+    def test_set_test_commands_empty_string_exits_nonzero(self):
+        """Empty value is rejected (validation guard)."""
+        proc = _run_configure(self.devforge_dir, "set-test-commands", "")
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_set_test_commands_does_not_reset_other_fields(self):
+        """Setting test_commands does not clear other state fields."""
+        _run_configure(self.devforge_dir, "set-project-name", "my-project")
+        _run_configure(self.devforge_dir, "set-test-commands", "npm test")
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["project_name"], "my-project")
+        self.assertEqual(state["test_commands"], ["npm test"])
+
+
+class PerPackageTestCommandTests(_EnvIsolationMixin, unittest.TestCase):
+    """Per-package test_command: emit+parse round-trip, backward-compat, and add-package-stack."""
+
+    def test_add_package_stack_with_test_command_round_trips(self):
+        """add-package-stack --test-command stores test_command in the record."""
+        proc = _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "apps/web",
+            "--language", "TypeScript",
+            "--test-command", "npm test",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        record = state["package_stacks"][0]
+        self.assertEqual(record["test_command"], "npm test")
+
+    def test_add_package_stack_without_test_command_defaults_to_null(self):
+        """add-package-stack without --test-command yields test_command: None."""
+        _run_configure(
+            self.devforge_dir, "add-package-stack",
+            "--path", "apps/web",
+            "--language", "TypeScript",
+        )
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        record = state["package_stacks"][0]
+        self.assertIn("test_command", record,
+                      "test_command key must be present even when not supplied")
+        self.assertIsNone(record["test_command"])
+
+    def test_record_with_test_command_full_round_trip(self):
+        """A record with all 8 subfields (including test_command) round-trips intact."""
+        state = configure_helper.default_state()
+        state["package_stacks"] = [
+            {
+                "path": "services/api",
+                "language": "Python",
+                "framework": "FastAPI",
+                "build_tool": None,
+                "build_command": None,
+                "type_check_command": "mypy .",
+                "lint_command": "ruff check .",
+                "test_command": "pytest",
+            }
+        ]
+        text = configure_helper.emit_yaml(state)
+        state2 = configure_helper.parse_yaml(text)
+        self.assertEqual(state2["package_stacks"][0]["test_command"], "pytest")
+
+    def test_backward_compat_old_yaml_without_test_command_parses(self):
+        """Old configure.yaml with 7-subfield records (no test_command) parses fine.
+
+        Backward-compatibility contract: test_command defaults to None when absent.
+        Records written before this field existed must not cause a parse error.
+        """
+        old_yaml = (
+            "project_name: null\n"
+            "project_description: null\n"
+            "project_type: null\n"
+            "primary_language: null\n"
+            "languages: []\n"
+            "frameworks: []\n"
+            "architectures: []\n"
+            "project_natures: []\n"
+            "error_handlings: []\n"
+            "api_layers: []\n"
+            "testings: []\n"
+            "build_tools: []\n"
+            "build_commands: []\n"
+            "type_check_commands: []\n"
+            "lint_commands: []\n"
+            "test_commands: []\n"
+            "package_stacks:\n"
+            "  - path: \"apps/app\"\n"
+            "    language: \"TypeScript\"\n"
+            "    framework: \"Vue\"\n"
+            "    build_tool: \"Vite\"\n"
+            "    build_command: \"npm run build\"\n"
+            "    type_check_command: \"npm run typecheck\"\n"
+            "    lint_command: \"npm run lint\"\n"
+            "project_structure: null\n"
+            "dev_commands: null\n"
+            "architecture_details: null\n"
+            "workflow_enforcement: null\n"
+            "ai_attribution: null\n"
+            "claude_tier_think: null\n"
+            "claude_tier_do: null\n"
+            "claude_tier_verify: null\n"
+            "ac_verification_mode: null\n"
+            "ac_runtime_url: null\n"
+            "ac_runtime_api_base: null\n"
+            "ac_runtime_cli_command: null\n"
+        )
+        # Must not raise.
+        state = configure_helper.parse_yaml(old_yaml)
+        self.assertEqual(len(state["package_stacks"]), 1)
+        record = state["package_stacks"][0]
+        # test_command absent from yaml → defaulted to None.
+        self.assertIsNone(record["test_command"])
+
+    def test_backward_compat_truly_old_yaml_without_test_commands_key(self):
+        """Pre-Phase-1 configure.yaml with no top-level test_commands key parses fine.
+
+        Backward-compatibility contract: when the top-level test_commands key is
+        entirely absent (the true pre-Phase-1 file shape), parse_yaml must not raise
+        and must return state["test_commands"] == [] (the default_state() fallback).
+        """
+        truly_old_yaml = (
+            "project_name: null\n"
+            "project_description: null\n"
+            "project_type: null\n"
+            "primary_language: null\n"
+            "languages: []\n"
+            "frameworks: []\n"
+            "architectures: []\n"
+            "project_natures: []\n"
+            "error_handlings: []\n"
+            "api_layers: []\n"
+            "testings: []\n"
+            "build_tools: []\n"
+            "build_commands: []\n"
+            "type_check_commands: []\n"
+            "lint_commands: []\n"
+            # test_commands key intentionally omitted — pre-Phase-1 shape.
+            "package_stacks:\n"
+            "  - path: \"apps/app\"\n"
+            "    language: \"TypeScript\"\n"
+            "    framework: \"Vue\"\n"
+            "    build_tool: \"Vite\"\n"
+            "    build_command: \"npm run build\"\n"
+            "    type_check_command: \"npm run typecheck\"\n"
+            "    lint_command: \"npm run lint\"\n"
+            # test_command subfield also intentionally omitted.
+            "project_structure: null\n"
+            "dev_commands: null\n"
+            "architecture_details: null\n"
+            "workflow_enforcement: null\n"
+            "ai_attribution: null\n"
+            "claude_tier_think: null\n"
+            "claude_tier_do: null\n"
+            "claude_tier_verify: null\n"
+            "ac_verification_mode: null\n"
+            "ac_runtime_url: null\n"
+            "ac_runtime_api_base: null\n"
+            "ac_runtime_cli_command: null\n"
+        )
+        # Must not raise.
+        state = configure_helper.parse_yaml(truly_old_yaml)
+        # Top-level test_commands missing → default_state() fallback of [].
+        self.assertEqual(state["test_commands"], [])
+        # Per-package test_command also absent → None.
+        self.assertEqual(len(state["package_stacks"]), 1)
+        self.assertIsNone(state["package_stacks"][0]["test_command"])
+
+    def test_record_emit_includes_test_command_key(self):
+        """emit_yaml writes test_command subfield for every package_stack record."""
+        state = configure_helper.default_state()
+        state["package_stacks"] = [
+            {
+                "path": "pkg",
+                "language": "Go",
+                "framework": None,
+                "build_tool": None,
+                "build_command": None,
+                "type_check_command": None,
+                "lint_command": None,
+                "test_command": "go test ./...",
+            }
+        ]
+        text = configure_helper.emit_yaml(state)
+        self.assertIn("test_command:", text)
+        self.assertIn("go test ./...", text)
+
+
+class TestCommandsRenderTests(unittest.TestCase):
+    """_build_package_stacks_table includes the test_command column."""
+
+    def test_table_header_includes_test_command_column(self):
+        """Table header has Test Command as the 5th column."""
+        from _configure._render import _build_package_stacks_table
+        stacks = [{"path": "p", "language": "Go", "framework": None,
+                   "build_tool": None, "test_command": "go test ./..."}]
+        table = _build_package_stacks_table(stacks)
+        self.assertIn("| Test Command |", table)
+
+    def test_table_row_includes_test_command_value(self):
+        """Table row shows test_command value from the record."""
+        from _configure._render import _build_package_stacks_table
+        stacks = [{"path": "pkg", "language": "Python", "framework": "FastAPI",
+                   "build_tool": None, "test_command": "pytest"}]
+        table = _build_package_stacks_table(stacks)
+        self.assertIn("pytest", table)
+
+    def test_table_row_test_command_none_gives_empty_cell(self):
+        """None test_command → empty cell (not the word 'None')."""
+        from _configure._render import _build_package_stacks_table
+        stacks = [{"path": "pkg", "language": "Go", "framework": None,
+                   "build_tool": None, "test_command": None}]
+        table = _build_package_stacks_table(stacks)
+        self.assertNotIn("None", table)
+        # Row should end with |  | (empty test_command cell)
+        self.assertIn("|  |", table)
+
+    def test_test_commands_key_in_project_config_key_order(self):
+        """TEST_COMMANDS key exists in _PROJECT_CONFIG_KEY_ORDER."""
+        self.assertIn("TEST_COMMANDS", configure_helper._PROJECT_CONFIG_KEY_ORDER)
+
+    def test_test_command_singular_alias_in_substitution_map(self):
+        """TEST_COMMAND singular alias resolves from TEST_COMMANDS array."""
+        base = {k: None for k in configure_helper._PROJECT_CONFIG_KEY_ORDER}
+        for k in ("LANGUAGES", "FRAMEWORKS", "ARCHITECTURES", "PROJECT_NATURES",
+                  "ERROR_HANDLINGS", "API_LAYERS", "TESTINGS", "BUILD_TOOLS",
+                  "BUILD_COMMANDS", "TYPE_CHECK_COMMANDS", "LINT_COMMANDS", "TEST_COMMANDS",
+                  "PACKAGE_STACKS", "PACKAGES_DETECTED"):
+            base[k] = []
+        for k in ("WRAPPER_MODE_SECTION", "COMMIT_ATTRIBUTION", "AGENT_LIST"):
+            base[k] = ""
+        base["TEST_COMMANDS"] = ["pytest", "npm test"]
+        sub_map = configure_helper._build_substitution_map(base, [])
+        self.assertIn("TEST_COMMAND", sub_map)
+        self.assertEqual(sub_map["TEST_COMMAND"], "pytest, npm test")
+
+
+class TestCommandsValidatorTests(unittest.TestCase):
+    """Resolvability probe covers test_commands[0] and per-package test_command."""
+
+    def _make_state(self, **kw):
+        base = {
+            "type_check_commands": [],
+            "lint_commands": [],
+            "build_commands": [],
+            "test_commands": [],
+            "package_stacks": [],
+        }
+        base.update(kw)
+        return base
+
+    def test_primary_test_commands_unresolvable_produces_warning(self):
+        """test_commands[0] unresolvable → warning with scope 'primary test'."""
+        from _configure._validators import collect_executability_warnings
+        from unittest.mock import patch
+
+        state = self._make_state(test_commands=["pytest-missing-xyz"])
+        with patch("shutil.which", lambda t: None):
+            warnings = collect_executability_warnings(state)
+        test_warns = [w for w in warnings if "test" in w["scope"]]
+        self.assertEqual(len(test_warns), 1)
+        self.assertIn("primary test", test_warns[0]["scope"])
+        self.assertEqual(test_warns[0]["missing_token"], "pytest-missing-xyz")
+
+    def test_primary_test_commands_resolvable_no_warning(self):
+        """test_commands[0] resolvable → no warning for test."""
+        from _configure._validators import collect_executability_warnings
+        from unittest.mock import patch
+
+        state = self._make_state(test_commands=["pytest"])
+        with patch("shutil.which", lambda t: "/usr/bin/pytest" if t == "pytest" else None):
+            warnings = collect_executability_warnings(state)
+        test_warns = [w for w in warnings if "test" in w["scope"]]
+        self.assertEqual(test_warns, [])
+
+    def test_primary_test_commands_na_skipped(self):
+        """test_commands[0] == 'N/A' → no warning (N/A sentinel)."""
+        from _configure._validators import collect_executability_warnings
+        from unittest.mock import patch
+
+        state = self._make_state(test_commands=["N/A"])
+        with patch("shutil.which", lambda t: None):
+            warnings = collect_executability_warnings(state)
+        test_warns = [w for w in warnings if "test" in w["scope"]]
+        self.assertEqual(test_warns, [])
+
+    def test_primary_test_commands_empty_array_skipped(self):
+        """Empty test_commands array → no warning."""
+        from _configure._validators import collect_executability_warnings
+        from unittest.mock import patch
+
+        state = self._make_state(test_commands=[])
+        with patch("shutil.which", lambda t: None):
+            warnings = collect_executability_warnings(state)
+        test_warns = [w for w in warnings if "test" in w["scope"]]
+        self.assertEqual(test_warns, [])
+
+    def test_per_package_test_command_unresolvable_produces_warning(self):
+        """Per-package test_command unresolvable → warning with package path in scope."""
+        from _configure._validators import collect_executability_warnings
+        from unittest.mock import patch
+
+        stack = {
+            "path": "services/api",
+            "language": "Python",
+            "type_check_command": None,
+            "lint_command": None,
+            "build_command": None,
+            "test_command": "pytest-missing-xyz",
+        }
+        state = self._make_state(package_stacks=[stack])
+        with patch("shutil.which", lambda t: None):
+            warnings = collect_executability_warnings(state)
+        test_warns = [w for w in warnings if "test" in w["scope"]]
+        self.assertEqual(len(test_warns), 1)
+        self.assertIn("services/api", test_warns[0]["scope"])
+        self.assertEqual(test_warns[0]["missing_token"], "pytest-missing-xyz")
+
+    def test_per_package_test_command_none_skipped(self):
+        """Per-package test_command == None → no warning."""
+        from _configure._validators import collect_executability_warnings
+        from unittest.mock import patch
+
+        stack = {
+            "path": "services/api",
+            "language": "Python",
+            "type_check_command": None,
+            "lint_command": None,
+            "build_command": None,
+            "test_command": None,
+        }
+        state = self._make_state(package_stacks=[stack])
+        with patch("shutil.which", lambda t: None):
+            warnings = collect_executability_warnings(state)
+        test_warns = [w for w in warnings if "test" in w["scope"]]
+        self.assertEqual(test_warns, [])
+
+    def test_per_package_test_command_na_skipped(self):
+        """Per-package test_command == 'N/A' → no warning."""
+        from _configure._validators import collect_executability_warnings
+        from unittest.mock import patch
+
+        stack = {
+            "path": "packages/docs",
+            "language": "Markdown",
+            "type_check_command": None,
+            "lint_command": None,
+            "build_command": None,
+            "test_command": "N/A",
+        }
+        state = self._make_state(package_stacks=[stack])
+        with patch("shutil.which", lambda t: None):
+            warnings = collect_executability_warnings(state)
+        test_warns = [w for w in warnings if "test" in w["scope"]]
+        self.assertEqual(test_warns, [])
+
+
+class TestCommandsSummaryTests(unittest.TestCase):
+    """test_commands appears in configure summary Per-package section."""
+
+    def _minimal_state(self):
+        state = configure_helper.default_state()
+        state["project_name"] = "test"
+        state["primary_language"] = "Python"
+        state["project_description"] = "desc"
+        state["project_type"] = "lib"
+        state["languages"] = ["Python"]
+        state["frameworks"] = ["FastAPI"]
+        state["architectures"] = ["layered"]
+        state["project_natures"] = ["backend"]
+        state["error_handlings"] = ["exceptions"]
+        state["api_layers"] = ["REST"]
+        state["testings"] = ["pytest"]
+        state["build_tools"] = ["make"]
+        state["project_structure"] = "src/"
+        state["dev_commands"] = "make dev"
+        state["architecture_details"] = "layered"
+        state["workflow_enforcement"] = "Strict"
+        state["ai_attribution"] = "No"
+        state["claude_tier_think"] = "Opus"
+        state["claude_tier_do"] = "Sonnet"
+        state["claude_tier_verify"] = "Haiku"
+        state["ac_verification_mode"] = "off"
+        return state
+
+    def test_test_commands_appears_in_summary_output(self):
+        """Summary includes test_commands in the Per-package section."""
+        from _configure._summary import _render_configure_summary
+        from unittest.mock import patch
+        state = self._minimal_state()
+        state["test_commands"] = ["pytest -v"]
+        with patch("shutil.which", lambda t: "/usr/bin/{0}".format(t) if t == "pytest" else None):
+            output = _render_configure_summary(state)
+        self.assertIn("test_commands", output)
+        self.assertIn("pytest -v", output)
+
+    def test_test_commands_empty_shows_empty_label(self):
+        """Empty test_commands renders as '(empty)' in summary."""
+        from _configure._summary import _render_configure_summary
+        from unittest.mock import patch
+        state = self._minimal_state()
+        state["test_commands"] = []
+        with patch("shutil.which", lambda t: None):
+            output = _render_configure_summary(state)
+        # test_commands line should exist and show (empty)
+        lines = [l for l in output.splitlines() if "test_commands" in l]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("(empty)", lines[0])
 
 
 if __name__ == "__main__":

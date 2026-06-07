@@ -44,6 +44,7 @@ FIELD_SCHEMA = (
     ("build_commands",         "string_array"),
     ("type_check_commands",    "string_array"),
     ("lint_commands",          "string_array"),
+    ("test_commands",          "string_array"),
     ("package_stacks",         "package_stack_array"),
 
     # Verbatim from docs/
@@ -88,4 +89,5 @@ _PACKAGE_STACK_FIELDS = (
     "build_command",
     "type_check_command",
     "lint_command",
+    "test_command",
 )

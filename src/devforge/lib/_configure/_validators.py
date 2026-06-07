@@ -379,6 +379,7 @@ def collect_executability_warnings(
         ("type_check_commands", "primary type_check"),
         ("lint_commands",       "primary lint"),
         ("build_commands",      "primary build"),
+        ("test_commands",       "primary test"),
     )
     for field, scope_label in _PRIMARY:
         arr = state.get(field, [])
@@ -398,6 +399,7 @@ def collect_executability_warnings(
         ("type_check_command", "type_check"),
         ("lint_command",       "lint"),
         ("build_command",      "build"),
+        ("test_command",       "test"),
     )
     for record in state.get("package_stacks", []):
         pkg_path = record.get("path", "") or ""

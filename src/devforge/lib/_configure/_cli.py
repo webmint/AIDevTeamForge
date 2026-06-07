@@ -53,6 +53,7 @@ from ._cmds_set import (
     cmd_set_project_natures,
     cmd_set_project_structure,
     cmd_set_project_type,
+    cmd_set_test_commands,
     cmd_set_testings,
     cmd_set_type_check_commands,
     cmd_set_workflow_enforcement,
@@ -198,6 +199,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("value", help="Comma-separated lint command list.")
     sp.set_defaults(func=cmd_set_lint_commands)
 
+    sp = subparsers.add_parser("set-test-commands", help="Set test_commands (comma-sep list).")
+    sp.add_argument("value", help="Comma-separated test command list.")
+    sp.set_defaults(func=cmd_set_test_commands)
+
     # ------------------------------------------------------------------
     # Per-package record append setter.
     # ------------------------------------------------------------------
@@ -213,6 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--build-command", dest="build_command", default=None, help="Package build command (optional).")
     sp.add_argument("--type-check-command", dest="type_check_command", default=None, help="Package type-check command (optional).")
     sp.add_argument("--lint-command", dest="lint_command", default=None, help="Package lint command (optional).")
+    sp.add_argument("--test-command", dest="test_command", default=None, help="Package test command (optional).")
     sp.set_defaults(func=cmd_add_package_stack)
 
     # ------------------------------------------------------------------

@@ -148,7 +148,7 @@ def cmd_set_build_tools(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Per-package string_array setters (3).
+# Per-package string_array setters (4).
 # ---------------------------------------------------------------------------
 
 
@@ -165,6 +165,11 @@ def cmd_set_type_check_commands(args: argparse.Namespace) -> int:
 def cmd_set_lint_commands(args: argparse.Namespace) -> int:
     """Set lint_commands string_array (comma-sep; replaces prior value)."""
     return _cmd_set_string_array(args, "lint_commands")
+
+
+def cmd_set_test_commands(args: argparse.Namespace) -> int:
+    """Set test_commands string_array (comma-sep; replaces prior value)."""
+    return _cmd_set_string_array(args, "test_commands")
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +201,7 @@ def cmd_add_package_stack(args: argparse.Namespace) -> int:
         ("build_command", "build_command"),
         ("type_check_command", "type_check_command"),
         ("lint_command", "lint_command"),
+        ("test_command", "test_command"),
     ):
         raw = getattr(args, attr, None)
         if raw is not None:
@@ -214,6 +220,7 @@ def cmd_add_package_stack(args: argparse.Namespace) -> int:
         "build_command": optional["build_command"],
         "type_check_command": optional["type_check_command"],
         "lint_command": optional["lint_command"],
+        "test_command": optional["test_command"],
     }
 
     try:

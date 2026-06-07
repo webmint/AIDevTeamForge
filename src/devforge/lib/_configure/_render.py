@@ -11,11 +11,11 @@ from typing import Dict, List, Optional, Tuple
 
 
 # Ordered list of keys in project-config.json.
-# 28 from configure.yaml (FIELD_SCHEMA, uppercased) +
+# 29 from configure.yaml (FIELD_SCHEMA, uppercased) +
 # 5 from init.yaml (WORKSPACE_MODE, PROJECT_ROOT, PROJECT_STATE,
 #                   DEFAULT_BRANCH, PACKAGES_DETECTED) +
 # 3 derived (WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST).
-# Total: 36 keys.
+# Total: 37 keys.
 _PROJECT_CONFIG_KEY_ORDER = (
     # From configure.yaml (identity)
     "PROJECT_NAME",
@@ -41,6 +41,7 @@ _PROJECT_CONFIG_KEY_ORDER = (
     "BUILD_COMMANDS",
     "TYPE_CHECK_COMMANDS",
     "LINT_COMMANDS",
+    "TEST_COMMANDS",
     # From init.yaml
     "PACKAGES_DETECTED",
     # From configure.yaml (per-package stacks + verbatim docs)
@@ -122,7 +123,7 @@ def _build_project_config(
     uppercase project-config.json keys). Computes the 3 derived fields.
     Returns an ordered dict whose keys follow _PROJECT_CONFIG_KEY_ORDER.
 
-    configure.yaml fields: all 28 FIELD_SCHEMA entries.
+    configure.yaml fields: all 29 FIELD_SCHEMA entries.
     init.yaml fields: workspace_mode, project_root, project_state,
                       default_branch, packages_detected.
     Derived: WRAPPER_MODE_SECTION, COMMIT_ATTRIBUTION, AGENT_LIST.
@@ -202,6 +203,7 @@ _SINGULAR_ALIASES = {
     "BUILD_COMMAND":      "BUILD_COMMANDS",
     "TYPE_CHECK_COMMAND": "TYPE_CHECK_COMMANDS",
     "LINT_COMMAND":       "LINT_COMMANDS",
+    "TEST_COMMAND":       "TEST_COMMANDS",
     "ERROR_HANDLING":     "ERROR_HANDLINGS",
     "API_LAYER":          "API_LAYERS",
     "TESTING":            "TESTINGS",
@@ -225,28 +227,29 @@ def _comma_join(arr: object) -> str:
 
 
 def _build_package_stacks_table(stacks: object) -> str:
-    """Render package_stacks[] as a 4-column markdown table.
+    """Render package_stacks[] as a 5-column markdown table.
 
-    Columns: Package (path), Language, Framework, Build Tool.
+    Columns: Package (path), Language, Framework, Build Tool, Test Command.
     Empty list or None → empty string "".
     None cells in individual fields → empty cell.
 
     Table format:
-        | Package | Language | Framework | Build Tool |
-        |---------|----------|-----------|------------|
-        | path    | lang     | fw        | bt         |
+        | Package | Language | Framework | Build Tool | Test Command |
+        |---------|----------|-----------|------------|--------------|
+        | path    | lang     | fw        | bt         | tc           |
     """
     if not stacks:
         return ""
-    header = "| Package | Language | Framework | Build Tool |"
-    align  = "|---------|----------|-----------|------------|"
+    header = "| Package | Language | Framework | Build Tool | Test Command |"
+    align  = "|---------|----------|-----------|------------|--------------|"
     rows = [header, align]
     for rec in stacks:
         path = rec.get("path") or ""
         lang = rec.get("language") or ""
         fw   = rec.get("framework") or ""
         bt   = rec.get("build_tool") or ""
-        rows.append("| {0} | {1} | {2} | {3} |".format(path, lang, fw, bt))
+        tc   = rec.get("test_command") or ""
+        rows.append("| {0} | {1} | {2} | {3} | {4} |".format(path, lang, fw, bt, tc))
     return "\n".join(rows)
 
 
@@ -261,9 +264,9 @@ def _build_substitution_map(project_config: dict, packages_detected: object) -> 
         AGENT_LIST are already derived strings in project_config — used as-is.
 
     (B) Singular aliases: FRAMEWORK, LANGUAGE, BUILD_TOOL, BUILD_COMMAND,
-        TYPE_CHECK_COMMAND, LINT_COMMAND, ERROR_HANDLING, API_LAYER,
-        TESTING, ARCHITECTURE — each comma-joins its plural array from
-        project_config.
+        TYPE_CHECK_COMMAND, LINT_COMMAND, TEST_COMMAND, ERROR_HANDLING,
+        API_LAYER, TESTING, ARCHITECTURE — each comma-joins its plural
+        array from project_config.
 
     (C) Composed:
         PACKAGE_STACKS_SECTION — markdown table from PACKAGE_STACKS.

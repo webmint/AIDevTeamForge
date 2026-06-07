@@ -31,6 +31,7 @@ _SUMMARY_GROUPS = (
             "build_commands",
             "type_check_commands",
             "lint_commands",
+            "test_commands",
             "package_stacks",
         ),
     ),

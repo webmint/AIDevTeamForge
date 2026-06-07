@@ -202,18 +202,29 @@ def parse_yaml(text: str) -> dict:
 
     def _close_record(at_lineno):
         # Close the open package_stack record (if any) by validating it
-        # has all 7 required subfields. Closed-shape contract: a record
-        # missing any subfield is rejected at parse time.
+        # has all required subfields. Closed-shape contract: a record
+        # missing a REQUIRED subfield is rejected at parse time.
+        # OPTIONAL subfields (test_command) default to None for backward
+        # compatibility with configure.yaml files written before these
+        # fields existed.
         if current_record is None:
             return
-        missing = [f for f in _PACKAGE_STACK_FIELDS if f not in current_record]
-        if missing:
+        _OPTIONAL_SUBFIELDS = {"test_command"}
+        missing_required = [
+            f for f in _PACKAGE_STACK_FIELDS
+            if f not in current_record and f not in _OPTIONAL_SUBFIELDS
+        ]
+        if missing_required:
             raise YamlParseError(
                 "line {0}: package_stack record opened at line {1} "
                 "is missing required subfield(s): {2}".format(
-                    at_lineno, current_record_lineno, ", ".join(missing)
+                    at_lineno, current_record_lineno, ", ".join(missing_required)
                 )
             )
+        # Default optional subfields to None if absent.
+        for f in _OPTIONAL_SUBFIELDS:
+            if f not in current_record:
+                current_record[f] = None
 
     lines = text.splitlines()
     for idx, raw_line in enumerate(lines, start=1):
