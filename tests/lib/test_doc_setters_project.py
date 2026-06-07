@@ -39,6 +39,9 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+from _generate_docs._doc_setters._renderers import (  # noqa: E402
+    _render_conventions_subsections,
+)
 from _generate_docs._doc_setters import (  # noqa: E402
     cmd_init_doc,
     cmd_render_doc,
@@ -1517,6 +1520,146 @@ class CmdSetArchitectureConventionsTests(unittest.TestCase):
         self.assertNotIn("**File Organization**", conv_section)
         self.assertNotIn("**Import Style**", conv_section)
         self.assertNotIn("**Error Handling**", conv_section)
+
+    def test_new_buckets_render_with_headings(self):
+        """styling + state_management bullets render under Styling / State Management headings."""
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            conventions=json.dumps({
+                "styling": ["Use Tailwind utility classes", "No inline styles"],
+                "state_management": ["Use BLoC pattern", "State is immutable"],
+            }),
+        )
+        code, _, err = _run(cmd_set_architecture_conventions, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        conv_section = _section_body(content, "Conventions")
+        self.assertIn("**Styling**", conv_section)
+        self.assertIn("**State Management**", conv_section)
+        self.assertIn("- Use Tailwind utility classes", conv_section)
+        self.assertIn("- No inline styles", conv_section)
+        self.assertIn("- Use BLoC pattern", conv_section)
+        self.assertIn("- State is immutable", conv_section)
+
+    def test_empty_new_buckets_omitted(self):
+        """Empty styling + state_management lists are omitted from output (D6 omit rule)."""
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            conventions=json.dumps({
+                "naming": ["PascalCase for classes"],
+                "styling": [],
+                "state_management": [],
+            }),
+        )
+        code, _, err = _run(cmd_set_architecture_conventions, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        conv_section = _section_body(content, "Conventions")
+        self.assertIn("**Naming**", conv_section)
+        self.assertNotIn("**Styling**", conv_section)
+        self.assertNotIn("**State Management**", conv_section)
+
+    def test_back_compat_four_bucket_input(self):
+        """A 4-bucket input (no styling/state keys) renders identically before and after
+        the new bucket additions.
+
+        Proves byte-identity two ways:
+        1. Direct renderer call: a 4-key dict produces the exact expected string
+           (four **Heading** sub-sections joined by double-newline, no Styling or
+           State Management blocks).
+        2. Transparent empty new buckets: the same 4-key dict renders identically
+           whether or not styling/state_management are present-but-empty (empty
+           lists are omitted, so pre-existing callers are unaffected).
+        3. End-to-end: the cmd_set_architecture_conventions handler round-trips the
+           payload through state and renders the correct section in the skeleton file
+           (membership checks confirm both presence and absence).
+        """
+        four_bucket_payload = {
+            "naming": ["Classes: PascalCase", "Factories: camelCase"],
+            "file_organization": ["Feature dir per module"],
+            "import_style": ["Use package root names"],
+            "error_handling": ["Either monad outside core"],
+        }
+
+        # --- 1. Direct byte-equality: renderer produces the exact expected string ---
+        expected_render = (
+            "**Naming**\n- Classes: PascalCase\n- Factories: camelCase"
+            "\n\n"
+            "**File Organization**\n- Feature dir per module"
+            "\n\n"
+            "**Import Style**\n- Use package root names"
+            "\n\n"
+            "**Error Handling**\n- Either monad outside core"
+        )
+        self.assertEqual(_render_conventions_subsections(four_bucket_payload), expected_render)
+
+        # --- 2. Transparent empty new buckets: byte-identical with or without empty keys ---
+        six_key_with_empty_new = {
+            **four_bucket_payload,
+            "styling": [],
+            "state_management": [],
+        }
+        self.assertEqual(
+            _render_conventions_subsections(four_bucket_payload),
+            _render_conventions_subsections(six_key_with_empty_new),
+            "Empty styling/state_management must not change renderer output",
+        )
+
+        # --- 3. End-to-end handler round-trip: skeleton file reflects the same result ---
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            conventions=json.dumps(four_bucket_payload),
+        )
+        code, _, err = _run(cmd_set_architecture_conventions, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        conv_section = _section_body(content, "Conventions")
+        # All four existing sub-sections present.
+        self.assertIn("**Naming**", conv_section)
+        self.assertIn("**File Organization**", conv_section)
+        self.assertIn("**Import Style**", conv_section)
+        self.assertIn("**Error Handling**", conv_section)
+        # New buckets must NOT appear.
+        self.assertNotIn("**Styling**", conv_section)
+        self.assertNotIn("**State Management**", conv_section)
+        # Bullet content from the 4-bucket payload is present.
+        self.assertIn("- Classes: PascalCase", conv_section)
+        self.assertIn("- Either monad outside core", conv_section)
+
+    def test_six_bucket_full_input_all_in_order(self):
+        """A full 6-bucket input renders all six sub-sections in section_order order.
+
+        Styling and State Management appear LAST (after Error Handling), per D6.
+        """
+        args = _ns(
+            self.devforge,
+            "project-architecture",
+            conventions=json.dumps({
+                "naming": ["PascalCase"],
+                "file_organization": ["Feature dirs"],
+                "import_style": ["Package roots"],
+                "error_handling": ["Either monad"],
+                "styling": ["Tailwind only"],
+                "state_management": ["BLoC pattern"],
+            }),
+        )
+        code, _, err = _run(cmd_set_architecture_conventions, args)
+        self.assertEqual(code, 0, msg=err)
+        content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
+        conv_section = _section_body(content, "Conventions")
+        # All six present.
+        for heading in ("**Naming**", "**File Organization**", "**Import Style**",
+                        "**Error Handling**", "**Styling**", "**State Management**"):
+            self.assertIn(heading, conv_section, msg=f"Missing heading: {heading}")
+        # section_order: Styling after Error Handling, State Management after Styling.
+        idx_error = conv_section.index("**Error Handling**")
+        idx_styling = conv_section.index("**Styling**")
+        idx_state = conv_section.index("**State Management**")
+        self.assertLess(idx_error, idx_styling, "Styling must come after Error Handling")
+        self.assertLess(idx_styling, idx_state, "State Management must come after Styling")
 
 
 class CmdSetArchitectureCrossCutsDetailedTests(unittest.TestCase):

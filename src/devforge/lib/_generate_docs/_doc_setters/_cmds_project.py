@@ -404,7 +404,7 @@ def cmd_set_architecture_conventions(args: argparse.Namespace) -> int:
         print("--conventions must decode to a JSON object", file=sys.stderr)
         return 2
     sections: Dict[str, List[str]] = {}
-    for key in ("naming", "file_organization", "import_style", "error_handling"):
+    for key in ("naming", "file_organization", "import_style", "error_handling", "styling", "state_management"):
         items = decoded.get(key)
         if isinstance(items, list):
             sections[key] = [str(x) for x in items]
@@ -640,7 +640,8 @@ def _build_set_architecture_conventions(p: argparse.ArgumentParser) -> None:
         required=True,
         help=(
             'JSON object {"naming": [bullets], "file_organization": [bullets], '
-            '"import_style": [bullets], "error_handling": [bullets]}'
+            '"import_style": [bullets], "error_handling": [bullets], '
+            '"styling": [bullets], "state_management": [bullets]}'
         ),
     )
 

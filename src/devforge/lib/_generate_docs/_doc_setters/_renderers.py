@@ -271,7 +271,8 @@ def _render_arch_patterns_subsections(entries: List[Dict[str, str]]) -> str:
 
 
 def _render_conventions_subsections(entries: Dict[str, List[str]]) -> str:
-    """Render 4 sub-sections: Naming, File Organization, Import Style, Error Handling.
+    """Render up to 6 sub-sections: Naming, File Organization, Import Style,
+    Error Handling, Styling, State Management.
 
     Input dict: each key maps to list of bullet-point strings. Sub-sections
     with empty lists are omitted. Sub-headings use `**bold**` paragraph form
@@ -282,6 +283,8 @@ def _render_conventions_subsections(entries: Dict[str, List[str]]) -> str:
         ("file_organization", "File Organization"),
         ("import_style", "Import Style"),
         ("error_handling", "Error Handling"),
+        ("styling", "Styling"),
+        ("state_management", "State Management"),
     )
     blocks: List[str] = []
     for key, heading in section_order:

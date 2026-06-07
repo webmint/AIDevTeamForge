@@ -98,6 +98,8 @@ A rule may legitimately fit more than one tag (an extracted rule that is also en
 
 **Tag distribution typical for Section 4**: universal-scope rules → `tag = universal`; project-specific-scope rules → `tag = extracted` (when the rule is documented in architecture.md) or `tag = project-specific` (when implicit in the codebase but not explicitly documented).
 
+**Source for the project-specific buckets**: draw from two sources — (1) `DOCS_JSON.architecture.patterns` (the architecture.md Patterns section) and (2) the `**State Management**` bucket of `DOCS_JSON.architecture.conventions`. Classify each state-management convention into `always` / `never` / `prefer` by how the rule is phrased: a mandate → `always`; a prohibition → `never`; a preference → `prefer`. See `main.md` § "Section 4" for the full conventions-bucket routing table (which `DOCS_JSON.architecture.conventions` bucket lands where).
+
 **Composition tip**: keep each rule one sentence. Multi-clause rules belong in Section 2 or Section 3 with code examples. The Section 4 buckets are quick-reference checklists, not deep-dive content.
 
 ## Section 5 — Domain Rules

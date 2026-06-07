@@ -100,7 +100,9 @@ Per-rule tag selection: rules cited from `architecture.md` → `extracted`; rule
 
 ### Section 3 — Code Quality Standards
 
-Compose 4-7 sub-sections (e.g., 3.1 Type Safety, 3.2 Error Handling, 3.3 Naming Conventions, 3.4 Testing Requirements, 3.5 Documentation, 3.6 Function Length, 3.7 Check Before You Build) drawing from `DOCS_JSON.architecture.patterns` + `DOCS_JSON.architecture.conventions` + universal defaults applicable to every project.
+Compose 4-7 sub-sections (e.g., 3.1 Type Safety, 3.2 Error Handling, 3.3 Naming Conventions, 3.4 Testing Requirements, 3.5 Documentation, 3.6 Function Length, 3.7 Check Before You Build) drawing from `DOCS_JSON.architecture.patterns` + the code-quality buckets of `DOCS_JSON.architecture.conventions` + universal defaults applicable to every project.
+
+`DOCS_JSON.architecture.conventions` is the raw text of the docs `## Conventions` section, which carries up to six bucket sub-sections rendered as bold-heading labels (`**Naming**`, `**File Organization**`, `**Import Style**`, `**Error Handling**`, `**Styling**`, `**State Management**`). The orchestrator identifies each bucket by its bold-heading sub-section label in that raw text. For Section 3, draw from ONLY the four legacy code-quality buckets — `**Naming**`, `**File Organization**`, `**Import Style**`, `**Error Handling**` — and explicitly EXCLUDE the `**Styling**` and `**State Management**` bold-heading sub-sections of `DOCS_JSON.architecture.conventions` specifically (this exclusion narrows only the conventions-bucket path; state-management content documented in the architecture.md `## Patterns` section still feeds Section 3 via `DOCS_JSON.architecture.patterns`, a separate architecture-tier path). `**State Management**` routes to Section 4 instead (see Section 4 below); `**Styling**` is documented-only and is lifted into neither Section 3 nor Section 4 (see Section 4's styling note).
 
 Per-rule tag selection: project-specific conventions → `extracted` (or `project-specific` when the rule applies only to this project); universal defaults → `universal`; tooling-enforced rules → `enforced`.
 
@@ -109,11 +111,17 @@ Per-rule tag selection: project-specific conventions → `extracted` (or `projec
 Six buckets emitted via `add-pattern-rule` (one bucket per `--bucket` × `--scope` combination):
 
 - `--bucket always --scope universal` — always-do rules that apply to every project (e.g., "Validate inputs at module boundaries").
-- `--bucket always --scope project-specific` — always-do rules extracted from `DOCS_JSON.architecture.patterns`.
+- `--bucket always --scope project-specific` — always-do rules extracted from `DOCS_JSON.architecture.patterns` and from the `**State Management**` bucket of `DOCS_JSON.architecture.conventions` (state-management conventions phrased as mandates — e.g., "All shared state lives in the store").
 - `--bucket never --scope universal` — never-do rules that apply to every project (e.g., "Never swallow errors silently").
-- `--bucket never --scope project-specific` — never-do rules extracted from this project's anti-patterns.
+- `--bucket never --scope project-specific` — never-do rules extracted from this project's anti-patterns and from the `**State Management**` bucket of `DOCS_JSON.architecture.conventions` (state-management conventions phrased as prohibitions — e.g., "Never mutate state outside a reducer").
 - `--bucket prefer --scope universal` — universal preferences (e.g., "Prefer composition over inheritance").
-- `--bucket prefer --scope project-specific` — preferences extracted from this project's conventions.
+- `--bucket prefer --scope project-specific` — preferences extracted from `DOCS_JSON.architecture.patterns` and from the `**State Management**` bucket of `DOCS_JSON.architecture.conventions` (state-management conventions phrased as preferences — e.g., "Prefer selectors over direct store reads").
+
+**Conventions-bucket routing (where each `DOCS_JSON.architecture.conventions` bucket lands).** The docs `## Conventions` section can carry up to six bold-heading bucket sub-sections; this list records which constitution home each routes to (identified by its bold-heading sub-section label, per Section 3 above):
+
+- `**Naming**` / `**File Organization**` / `**Import Style**` / `**Error Handling**` → Section 3 Code Quality Standards.
+- `**State Management**` → Section 4 (the three project-specific buckets above), classified into always / never / prefer by how each rule is phrased — NOT Section 3.
+- `**Styling**` → documented-only: lifted into NEITHER Section 3 NOR Section 4. Styling authority is existing components plus the design reference, never the constitution (per `15-AGENT-STANDARDIZATION-PLAN.md`, which set the styling-grounding stance the agents already follow); styling stays captured knowledge in `docs/architecture.md` and never becomes constitution law.
 
 ### Section 5 — Domain Rules
 

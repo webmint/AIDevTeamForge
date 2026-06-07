@@ -431,13 +431,15 @@ The skeleton emits eight sections (Track 4 Phase 3 expansion). Six are LLM-judgm
 | Architecture Overview | LLM multi-paragraph narrative synthesizing across `package_seeds[*]` | `set-architecture-overview-narrative` |
 | Module / Package Structure | LLM emits annotated tree of workspace + per-feature subdir layout | `set-architecture-module-structure` |
 | Patterns | LLM via CBM `get_code_snippet` — `[{name, applies_in, rule, language, code_snippet, cite}]` per pattern | `set-architecture-patterns` |
-| Conventions | LLM extracts from concern docs + filesystem patterns — `{naming, file_organization, import_style, error_handling}` 4-bucket bullets | `set-architecture-conventions` |
+| Conventions | LLM extracts from concern docs + filesystem patterns + tech stack (`project-input.tech_stack_candidates`) — `{naming, file_organization, import_style, error_handling, styling, state_management}` 6-bucket bullets | `set-architecture-conventions` |
 | Layers | LLM `[{name, role, cite}]` (Phase 0 shape) | `set-doc-layers` |
 | Cross-Cuts | LLM via CBM — `[{name, description, language, code_snippet, cite}]` per cross-cut subsection | `set-architecture-cross-cuts-detailed` |
 | Dependency Direction Rules | LLM `[bullet_strings]` per package layer | `set-architecture-dependency-direction-rules` |
 | Dependency Overview | `project-input.dep_graph_mermaid` (verbatim) OR LLM-curated mermaid graph | `set-architecture-dependency-overview-mermaid` |
 
 For Patterns + Cross-Cuts: orchestrator queries CBM `get_code_snippet(qualified_name)` to fetch verbatim source + line range, then passes the snippet + `<file>:<line>` cite into the setter. Helper renders subsection-style (`### <name>` + applies-in + rule prose + cite-back HTML comment + fenced code block).
+
+For Conventions: the orchestrator composes all six buckets — including `styling` and `state_management` — from concern docs + filesystem patterns + the already-detected tech stack (`project-input.tech_stack_candidates`), the same way the other four buckets are extracted; there is no dedicated mechanical detector for any bucket. The `styling` bullets describe the project's observed styling approach (e.g. CSS-modules vs utility-first vs styled-components, theme-token usage, where stylesheets live) and the `state_management` bullets describe the project's observed state approach (e.g. the store/reducer/context idiom in use, local-vs-shared state boundaries). Apply the same judgment discipline as the other four buckets: document only conventions observed in the codebase, ground each bullet in real code, and mark any bullet that is inferred rather than directly observed. When the codebase shows no styling or no shared state-management convention (e.g. a non-UI service), omit that bucket's bullets — the helper omits any empty bucket from the rendered `## Conventions` section.
 
 ```
 ./.devforge/lib/generate_docs_helper init-doc --tier project-architecture --target "<project-label>" \
@@ -449,7 +451,7 @@ For Patterns + Cross-Cuts: orchestrator queries CBM `get_code_snippet(qualified_
 ./.devforge/lib/generate_docs_helper set-architecture-patterns --tier project-architecture --target "<project-label>" \
     --patterns '<JSON array of patterns with snippet+cite>'
 ./.devforge/lib/generate_docs_helper set-architecture-conventions --tier project-architecture --target "<project-label>" \
-    --conventions '<{naming, file_organization, import_style, error_handling} JSON>'
+    --conventions '<{naming, file_organization, import_style, error_handling, styling, state_management} JSON>'
 ./.devforge/lib/generate_docs_helper set-doc-layers --tier project-architecture --target "<project-label>" \
     --layers '<JSON array>'
 ./.devforge/lib/generate_docs_helper set-architecture-cross-cuts-detailed --tier project-architecture --target "<project-label>" \
