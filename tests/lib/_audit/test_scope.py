@@ -961,7 +961,7 @@ class TestRenderAgentBriefBothChecklists(unittest.TestCase):
 
     def test_best_practices_distinctive_substring_present(self):
         """A distinctive phrase from best-practices-checklist.md is in every brief."""
-        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+        for agent in ("code-reviewer", "architect", "qa-reviewer", "security-reviewer"):
             brief = self._make_brief(agent)
             self.assertIn(
                 "Type-safety suppression",
@@ -971,7 +971,7 @@ class TestRenderAgentBriefBothChecklists(unittest.TestCase):
 
     def test_mislogic_distinctive_substring_present(self):
         """A distinctive phrase from mislogic-checklist.md is in every brief."""
-        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+        for agent in ("code-reviewer", "architect", "qa-reviewer", "security-reviewer"):
             brief = self._make_brief(agent)
             self.assertIn(
                 "MISLOGIC HUNT CHECKLIST",
@@ -988,7 +988,7 @@ class TestRenderAgentBriefBothChecklists(unittest.TestCase):
 
     def test_assembly_order_best_practices_after_mislogic(self):
         """Best-practices checklist must appear AFTER the mislogic checklist."""
-        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+        for agent in ("code-reviewer", "architect", "qa-reviewer", "security-reviewer"):
             brief = self._make_brief(agent)
             mislogic_pos = brief.find("MISLOGIC HUNT CHECKLIST")
             best_practices_pos = brief.find("BEST-PRACTICES")
@@ -1000,7 +1000,7 @@ class TestRenderAgentBriefBothChecklists(unittest.TestCase):
 
     def test_assembly_order_best_practices_before_focus(self):
         """Best-practices checklist must appear BEFORE the per-agent focus block."""
-        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+        for agent in ("code-reviewer", "architect", "qa-reviewer", "security-reviewer"):
             brief = self._make_brief(agent)
             best_practices_pos = brief.find("BEST-PRACTICES")
             focus_text = _FOCUS_BLOCKS[agent]
@@ -1065,8 +1065,8 @@ class TestFocusBlocksCategoryReminders(unittest.TestCase):
     def test_architect_has_duplication_category(self):
         self.assertIn("Category: duplication", _FOCUS_BLOCKS["architect"])
 
-    def test_qa_engineer_has_blind_spot_category(self):
-        self.assertIn("Category: blind_spot", _FOCUS_BLOCKS["qa-engineer"])
+    def test_qa_reviewer_has_blind_spot_category(self):
+        self.assertIn("Category: blind_spot", _FOCUS_BLOCKS["qa-reviewer"])
 
     def test_security_reviewer_has_security_category(self):
         self.assertIn("Category: security", _FOCUS_BLOCKS["security-reviewer"])
@@ -1170,7 +1170,7 @@ class TestFindingCapSubstitution(unittest.TestCase):
 
     def test_all_agents_no_token_leak(self):
         """No agent's brief leaks the literal __FINDING_CAP__ token."""
-        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+        for agent in ("code-reviewer", "architect", "qa-reviewer", "security-reviewer"):
             brief = self._make_brief(agent=agent)
             self.assertNotIn(
                 "__FINDING_CAP__", brief,
@@ -1271,7 +1271,7 @@ class TestRenderAgentBriefTmpPath(unittest.TestCase):
 
     def test_default_tmp_path_for_all_agents(self):
         """Default path token present for every agent when tmp_path is None."""
-        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+        for agent in ("code-reviewer", "architect", "qa-reviewer", "security-reviewer"):
             brief = self._make_brief(agent=agent, tmp_path=None)
             self.assertIn(
                 self._DEFAULT_PATH_TOKEN,
@@ -1330,12 +1330,12 @@ class TestRenderAgentBriefTmpPath(unittest.TestCase):
     def test_custom_tmp_path_verbatim_no_normalization(self):
         """tmp_path is emitted verbatim: no path normalization, no quoting."""
         unusual_path = "relative/path/with spaces/tmp-qa-p3.md"
-        brief = self._make_brief(agent="qa-engineer", tmp_path=unusual_path)
+        brief = self._make_brief(agent="qa-reviewer", tmp_path=unusual_path)
         self.assertIn(unusual_path, brief)
 
     def test_custom_tmp_path_all_agents(self):
         """Custom tmp_path substitution works for every agent."""
-        for agent in ("code-reviewer", "architect", "qa-engineer", "security-reviewer"):
+        for agent in ("code-reviewer", "architect", "qa-reviewer", "security-reviewer"):
             brief = self._make_brief(agent=agent, tmp_path=self._CUSTOM_PATH)
             self.assertIn(
                 self._CUSTOM_PATH,

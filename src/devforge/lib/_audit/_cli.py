@@ -1339,7 +1339,7 @@ def _register_subcommands(subparsers) -> None:
                 metavar="NAME",
                 help=(
                     "Agent name: code-reviewer | architect | "
-                    "qa-engineer | security-reviewer."
+                    "qa-reviewer | security-reviewer."
                 ),
             )
             sp.add_argument(

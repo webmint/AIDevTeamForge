@@ -158,7 +158,7 @@ For each opportunity found, note: the category, affected lines, what's wrong, wh
 
 ### 2.3: Select Agent
 
-Read `.claude/commands/_agent-assignment.md` and select the agent based on the target file's layer and the code characteristics from 2.1. Cross-reference with `CLAUDE.md` project structure to confirm the selection. If the selected agent doesn't exist in `.claude/agents/`, fall back to `architect`.
+Read `.claude/commands/_agent-assignment.md` and select the agent based on the target file's layer and the code characteristics from 2.1. Cross-reference with `CLAUDE.md` project structure to confirm the selection. Refactoring is implementer-tier work — route to the implementer that owns the touched file's stack (`frontend-engineer` / `backend-engineer` / `mobile-engineer` / etc.). If the owning stack's implementer isn't generated for this project (absent from `.claude/agents/`), HALT and escalate to the human — pick the implementer that owns the touched file's stack, or stop so the missing agent can be added. Never fall back to `architect`: the architect is a director and cannot write code (per `.claude/agents/architect.md` Rule 1). `/refactor` is a standalone command (no `/breakdown`), so do NOT re-run `/breakdown` — escalate or pick the owning-stack implementer instead.
 
 ### 2.4: Present Refactoring Proposal
 
@@ -380,7 +380,7 @@ Wait for user response:
 
 Update `.claude/wip.md` — change Phase to `7 (Test Assessment)`.
 
-Launch the **qa-engineer** agent to assess test impact.
+Launch the **qa-reviewer** agent to assess test impact.
 
 Provide the agent with:
 1. The changed files and the nature of the refactoring

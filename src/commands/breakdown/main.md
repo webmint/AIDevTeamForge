@@ -1,13 +1,13 @@
 ---
 name: breakdown
-description: Translate an approved technical plan into ordered, atomic, agent-assigned tasks with verifiable contracts and a structured breakdown→execute-task handoff.
+description: Translate an approved technical plan into ordered, atomic, agent-assigned tasks with verifiable contracts and a structured breakdown→implement handoff.
 argument-hint: "[plan-file]"
 disable-model-invocation: true
 ---
 
 # /breakdown — Task Breakdown from Plan
 
-`/breakdown` is repeatable per feature. It takes an approved plan authored by `/plan` and produces ordered, atomic, agent-assigned tasks with verifiable cross-task contracts: a `tasks/*.md` file per task, a `tasks/README.md` index, and a structured `breakdown-handoff.json`. The orchestrator (the LLM following this spec) writes all task artefacts in the main thread via Write or Edit. Subagent dispatch is reserved for **decision work at one mandatory hook**: the `architect` agent is invoked at Phase 2 (Decomposition) for every run to validate task atomicity, dependency ordering, and contract-chain integrity. Outside that hook, the orchestrator authors directly and assigns agents via the inlined Agent Assignment table — no per-phase auto-dispatch. Phase 0b's hard gate ensures `/constitute` has populated the constitution before any breakdown work fires. Produces `specs/NNN-<feature>/tasks/` plus `specs/NNN-<feature>/breakdown-handoff.json`, and ends with a manual handoff to `/execute-task` — no automated dispatch.
+`/breakdown` is repeatable per feature. It takes an approved plan authored by `/plan` and produces ordered, atomic, agent-assigned tasks with verifiable cross-task contracts: a `tasks/*.md` file per task, a `tasks/README.md` index, and a structured `breakdown-handoff.json`. The orchestrator (the LLM following this spec) writes all task artefacts in the main thread via Write or Edit. Subagent dispatch is reserved for **decision work at one mandatory hook**: the `architect` agent is invoked at Phase 2 (Decomposition) for every run to validate task atomicity, dependency ordering, and contract-chain integrity. Outside that hook, the orchestrator authors directly and assigns agents via the inlined Agent Assignment table — no per-phase auto-dispatch. Phase 0b's hard gate ensures `/constitute` has populated the constitution before any breakdown work fires. Produces `specs/NNN-<feature>/tasks/` plus `specs/NNN-<feature>/breakdown-handoff.json`, and ends with a manual handoff to `/implement` — no automated dispatch.
 
 Usage: `/breakdown [plan-file]` (e.g. `/breakdown specs/008-prevent-duplicate-config-options/plan.md`, or `/breakdown` with no argument to use the most-recently-modified plan under `specs/`).
 
@@ -20,7 +20,7 @@ Usage: `/breakdown [plan-file]` (e.g. `/breakdown specs/008-prevent-duplicate-co
 ## Context in the Workflow
 
 ```
-/research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
+/research (optional) → /specify → /plan → /breakdown → /implement → /review → /verify → /summarize → /finalize
 ```
 
 `/breakdown` runs AFTER the plan is approved, BEFORE task execution. The plan describes HOW the feature maps to the architecture; `/breakdown` decomposes that into atomic, independently-verifiable units of work with explicit dependencies and contracts.
@@ -231,28 +231,26 @@ When bundling, merge the mechanical task's files, contracts, and done-when condi
 
 ### Agent Assignment table
 
-Assign exactly ONE agent per task by file layer:
+Assign exactly ONE agent per task by the file's owning package/stack (see `## Packages` / `PACKAGE_STACKS` in `CLAUDE.md`). A type, interface, domain model, contract, or state store is **not its own layer with its own agent** — it belongs to the stack that owns the file, and that stack's implementer writes it. The architect never appears in this table: it shapes at `/plan` and only *VALIDATES* the decomposition (above) — it does not write code.
 
 | Files in... | Agent |
 |-------------|-------|
-| Domain models, interfaces, contracts, type definitions, architectural decisions | architect |
-| State management with orchestration logic (BLoC, Redux reducers with business rules, Pinia stores with computed logic) | architect |
-| API endpoints, controllers, middleware, services, server-side logic | backend-engineer |
-| UI components, styles, routes, composables, stores | frontend-engineer |
-| Mobile screens, navigation, native modules, platform-specific code, app lifecycle | mobile-engineer |
-| Both core + UI (tightly coupled change) | architect first, then frontend-engineer |
+| API endpoints, controllers, middleware, services, server-side logic — and the backend stack's domain models, types, interfaces, contracts, and business/state logic | backend-engineer |
+| UI components, styles, routes, composables, stores — and the frontend stack's domain models, types, interfaces, and state management (BLoC / Redux / Pinia) | frontend-engineer |
+| Mobile screens, navigation, native modules, platform-specific code, app lifecycle — and the mobile stack's domain models, types, and state | mobile-engineer |
 | Bug investigation with runtime symptoms | runtime-debugger |
-| Performance-critical path or optimization task | performance-analyst |
-| Auth, secrets, input validation, security hardening | security-reviewer |
+| Performance-critical path or optimization task | owning stack engineer (backend/frontend/mobile-engineer, per the file's layer) — `performance-analyst` diagnoses and recommends during `/review`, it never implements |
+| Auth, secrets, input validation, security hardening | owning stack engineer (backend-engineer for server-side auth/secrets/validation; frontend-engineer for client-side) — `security-reviewer` reviews during `/review`, it never implements |
 | Database schemas, migrations, queries, seed data | db-engineer |
 | API contract design, OpenAPI specs, endpoint structure | api-designer |
 | CI/CD, Docker, deployment config, infrastructure | devops-engineer |
 | Data migration scripts, backward compatibility layers | migration-engineer |
 | Accessibility, design system compliance, UI audit | design-auditor |
-| Shared utilities, type definitions, cross-cutting concerns | architect |
-| Unclear or mixed | architect (safe default) |
+| Unclear or mixed | split per the rule below — never `architect` |
 
-If the assigned agent does not exist in `.claude/agents/` (not all projects generate all agents), fall back to `architect`. `performance-analyst` and `security-reviewer` run during `/review` on all changed files — assign them to a task only when the task itself is primarily perf/security work.
+A mixed or unclear task is a decomposition smell, not a routing problem: split it until each piece maps to exactly one stack's implementer; if a piece genuinely spans stacks (e.g. a backend API plus its frontend consumer), break it into per-stack tasks joined by a dependency edge. If splitting is genuinely impossible, escalate to the human. Never assign `architect` to write code — the architect cannot implement.
+
+If the owning stack's implementer is not generated for this project (not all projects generate all agents), split or escalate to the human — never fall back to `architect` (the architect cannot write code). `performance-analyst` and `security-reviewer` are READ-ONLY reviewers — they run during `/review` (and `/audit`) on the changed files and are never assigned an implementation task. For a genuinely perf- or security-focused investigation, the diagnosis still routes to the owning stack engineer to implement the fix; the reviewer recommends, the engineer changes the code.
 
 **Halt rule:** if you reach Phase 3 without having completed the architect consultation, halt, invoke the architect now, then record its validation provenance in the tasks index Specialist Consultation table (Phase 3) before writing any task file. Task files written without a corresponding Specialist Consultation entry are a hard error.
 
@@ -270,14 +268,14 @@ Copy the helper's stdout VERBATIM into your next user-facing message as a fenced
 - **Files table**, **Description**, **Change Details** — from the Phase 1 file analysis.
 - **Contracts** (`Expects` / `Produces`) — per the Contract Generation Rules below.
 - **Done When** — task-specific testable conditions; the helper-emitted skeleton already carries the standing tsc/lint/no-secrets/no-debug conditions.
-- **Completion Notes** — leave the helper-emitted Completion Notes skeleton empty — it is the read contract that the `/execute-task` consumer (not yet built) will fill on completion.
+- **Completion Notes** — leave the helper-emitted Completion Notes skeleton empty — it is the read contract that the `/implement` consumer will fill on completion.
 
 ### Contract Generation Rules
 
 Each task's `## Contracts` section has `### Expects` (preconditions) and `### Produces` (postconditions):
 
 - **Expects**: what must be true in the codebase before this task runs correctly. For the first task in a chain, these describe existing state. For downstream tasks, these match an upstream task's `Produces`.
-- **Produces**: what must be true after this task completes. The `/execute-task` consumer (not yet built) will verify these by reading the source when it is implemented.
+- **Produces**: what must be true after this task completes. The `/implement` consumer verifies these by reading the source.
 
 Rules:
 
@@ -358,7 +356,7 @@ Two forcing-functions walk the task set mechanically. Do not proceed to Phase 4 
 - **If auto mode is NOT active** (interactive mode, default): if the decomposition surfaces decision points (e.g., whether to split or bundle a borderline task), the architect consultation in Phase 2 is the place to resolve them; present the resolved breakdown here.
 - **When uncertain about mode**: prefer pausing (interactive default). Asking and waiting is reversible; proceeding without input is not.
 
-**HARD GATE**: the breakdown MUST be approved before `/execute-task` can run.
+**HARD GATE**: the breakdown MUST be approved before `/implement` can run.
 
 Present a summary. This block is LLM-authored (breakdown state lives on disk in the task files and index, not in a state JSON):
 
@@ -383,7 +381,7 @@ End the turn. The user's reply opens the next turn.
 
 ## PHASE 5: Finalize
 
-On `approve`, first write the structured breakdown→execute-task handoff via the helper. The `<plan-path>` for the call below is the resolved path to the approved `plan.md`.
+On `approve`, first write the structured breakdown→implement handoff via the helper. The `<plan-path>` for the call below is the resolved path to the approved `plan.md`.
 
 ```bash
 .devforge/lib/breakdown_helper finalize-handoff <plan-path>
@@ -392,28 +390,28 @@ On `approve`, first write the structured breakdown→execute-task handoff via th
 The helper parses `<plan-dir>/tasks/*.md` + the tasks `README.md` and atomic-writes `<plan-dir>/breakdown-handoff.json` (a structured handoff carrying the per-task machine contract — agent, depends_on, touched_files, expects, produces, ac_addressed, review_checkpoint — plus provenance to the sibling `plan-handoff.json`). Handle the exit code:
 
 - Exit 0 → the helper wrote `specs/NNN-<feature>/breakdown-handoff.json` and printed its path on stdout. Surface the written path to the user in one line, e.g. `"Structured breakdown handoff written: <path>."`
-- Non-zero exit (Exit 2 → plan or task files missing, a task carries a placeholder agent, or rendered content failed schema validation; Exit 1 → I/O error writing `breakdown-handoff.json`, e.g. permissions or disk-full) → the helper could not write or validate the handoff. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT abort — continue to the `render-execute-task-handoff` block below. The structured handoff is best-effort; the manual block is the guaranteed human bridge.
+- Non-zero exit (Exit 2 → plan or task files missing, a task carries a placeholder agent, or rendered content failed schema validation; Exit 1 → I/O error writing `breakdown-handoff.json`, e.g. permissions or disk-full) → the helper could not write or validate the handoff. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT abort — continue to the `render-implement-handoff` block below. The structured handoff is best-effort; the manual block is the guaranteed human bridge.
 
-The `breakdown-handoff.json` is the **producer side** of the breakdown→execute-task handoff. The `/execute-task` consumer/reader does not exist yet — it will conform to this producer when it is built. There is no auto-dispatch and no auto-consume: the manual block below remains how the user launches `/execute-task`.
+The `breakdown-handoff.json` is the **producer side** of the breakdown→implement handoff. The `/implement` consumer reads this producer's contract. There is no auto-dispatch and no auto-consume: the manual block below remains how the user launches `/implement`.
 
 Then emit the deterministic manual next-step block via the helper:
 
 ```bash
-.devforge/lib/breakdown_helper render-execute-task-handoff <plan-path>
+.devforge/lib/breakdown_helper render-implement-handoff <plan-path>
 ```
 
 Handle the exit code:
 
 - Exit 2 → the plan or task files could not be read. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), tell the user to verify `specs/NNN-<feature>/tasks/` exists and re-run `/breakdown`, and end the turn. Unlike `finalize-handoff`'s non-blocking non-zero exit above (which continues to this block), a failure here DOES end the turn — this block is the guaranteed human bridge, and if it cannot render there is no fallback next-step to fall through to.
-- Exit 0 → stdout is the deterministic manual-next-step block — copy it VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The block heading reads `## Manual next step — run /execute-task`; it carries the task count, the numerically-lowest first task, and the literal `/execute-task NNN` invocation. The block also instructs the user to **restart Claude Code** before running `/execute-task` so any newly-installed command is picked up.
+- Exit 0 → stdout is the deterministic manual-next-step block — copy it VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The block heading reads `## Manual next step — run /implement`; it carries the task count, informationally names the numerically-lowest first task, and the literal `/implement` invocation (no argument — `/implement` auto-resolves the lowest incomplete feature and its next task). The block also instructs the user to **restart Claude Code** before running `/implement` so any newly-installed command is picked up.
 
-After the block lands in the user-facing message, end the turn with one short confirmation: `"/breakdown is done. Restart Claude Code, then copy the /execute-task command above to continue."` Do NOT restate the `/execute-task` invocation in your closing sentence — the block already contains the literal `/execute-task NNN` line.
+After the block lands in the user-facing message, end the turn with one short confirmation: `"/breakdown is done. Restart Claude Code, then copy the /implement command above to continue."` Do NOT restate the `/implement` invocation in your closing sentence — the block already contains the literal `/implement` line.
 
 ## IMPORTANT RULES
 
 1. **Atomic tasks** — each task must be independently verifiable. Never bundle unrelated changes.
 2. **Explicit dependencies** — if task B uses something task A produces, mark it. Missing dependencies cause bugs.
-3. **One agent per task** — assign exactly ONE agent. If a task genuinely needs two layers, split it (or use the "architect first, then frontend-engineer" sequencing row).
+3. **One agent per task** — assign exactly ONE agent. If a task genuinely spans two stacks, split it into per-stack tasks joined by a dependency edge (per the Agent Assignment table's split-or-escalate rule) — never assign `architect` to write code.
 4. **Include verification in every task** — every task's Done When carries tsc + lint conditions (the helper-emitted skeleton already does).
 5. **Reference spec criteria** — every task maps to at least one acceptance criterion (`AC-N`).
 6. **All ACs covered** — every spec acceptance criterion must be addressed by at least one task (enforced by `verify-ac-coverage`).

@@ -319,7 +319,7 @@ class TestCheckAgents(unittest.TestCase):
         self.assertTrue(r["all_missing"])
         self.assertEqual(r["present"], [])
         self.assertEqual(sorted(r["missing"]), [
-            "architect", "code-reviewer", "qa-engineer", "security-reviewer"
+            "architect", "code-reviewer", "qa-reviewer", "security-reviewer"
         ])
 
     def test_all_missing_when_dir_empty(self):
@@ -337,17 +337,17 @@ class TestCheckAgents(unittest.TestCase):
         r = check_agents(agents_dir)
         self.assertFalse(r["all_missing"])
         self.assertEqual(r["present"], ["architect", "code-reviewer"])
-        self.assertEqual(r["missing"], ["qa-engineer", "security-reviewer"])
+        self.assertEqual(r["missing"], ["qa-reviewer", "security-reviewer"])
 
     def test_all_agents_present(self):
         agents_dir = os.path.join(self.td, "agents")
         os.makedirs(agents_dir)
-        for name in ("architect", "code-reviewer", "qa-engineer", "security-reviewer"):
+        for name in ("architect", "code-reviewer", "qa-reviewer", "security-reviewer"):
             open(os.path.join(agents_dir, name + ".md"), "w").close()
         r = check_agents(agents_dir)
         self.assertFalse(r["all_missing"])
         self.assertEqual(r["present"], [
-            "architect", "code-reviewer", "qa-engineer", "security-reviewer"
+            "architect", "code-reviewer", "qa-reviewer", "security-reviewer"
         ])
         self.assertEqual(r["missing"], [])
 

@@ -42,9 +42,10 @@ _FOCUS_BLOCKS = {
         "Tag layering/SOLID/god-component findings `Category: system_design` "
         "and copy-paste/diverged-code findings `Category: duplication`."
     ),
-    "qa-engineer": (
+    "qa-reviewer": (
         "Your primary mission in ADVERSARIAL MODE: treat untested branches as "
-        "**logic blind spots** where mislogic hides. Do **NOT** write tests. "
+        "**logic blind spots** where mislogic hides. Do **NOT** write tests — "
+        "you are a read-only test-quality assessor. "
         "Report each significant untested branch as an audit finding with "
         "severity based on how much domain logic is uncovered.\n"
         "\n"

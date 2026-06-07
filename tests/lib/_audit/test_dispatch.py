@@ -30,7 +30,7 @@ from _audit._scope import (  # noqa: E402
     resolve_scope,
 )
 
-_AGENTS = ["code-reviewer", "architect", "qa-engineer", "security-reviewer"]
+_AGENTS = ["code-reviewer", "architect", "qa-reviewer", "security-reviewer"]
 
 # ---------------------------------------------------------------------------
 # Read reference file contents once for assertion helpers
@@ -123,8 +123,8 @@ class TestRenderAgentBriefContentPresence(unittest.TestCase):
         self._assert_contains_output_contract(brief)
         self._assert_ends_with_closing(brief)
 
-    def test_qa_engineer_all_sections(self):
-        brief = self._make_brief("qa-engineer")
+    def test_qa_reviewer_all_sections(self):
+        brief = self._make_brief("qa-reviewer")
         self._assert_contains_preamble(brief)
         self._assert_contains_checklist(brief)
         self._assert_contains_output_contract(brief)
@@ -162,9 +162,9 @@ class TestRenderAgentBriefFocusBlocks(unittest.TestCase):
         self.assertIn(_FOCUS_BLOCKS["architect"], brief)
         self.assertIn("cross-module contradictions", brief)
 
-    def test_qa_engineer_focus_text(self):
-        brief = self._make_brief("qa-engineer")
-        self.assertIn(_FOCUS_BLOCKS["qa-engineer"], brief)
+    def test_qa_reviewer_focus_text(self):
+        brief = self._make_brief("qa-reviewer")
+        self.assertIn(_FOCUS_BLOCKS["qa-reviewer"], brief)
         self.assertIn("logic blind spots", brief)
 
     def test_security_reviewer_focus_text(self):
@@ -416,7 +416,7 @@ class TestRenderAgentBriefScopeSection(unittest.TestCase):
             "/custom/root",
         )
         brief = render_agent_brief(
-            agent="qa-engineer",
+            agent="qa-reviewer",
             references_dir=str(_REFERENCES_DIR),
             scope_block=scope_block,
             source_root="/custom/root",

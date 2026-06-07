@@ -21,7 +21,7 @@ from typing import Dict, List, Optional
 _AUDIT_AGENTS: List[str] = [
     "architect",
     "code-reviewer",
-    "qa-engineer",
+    "qa-reviewer",
     "security-reviewer",
 ]
 
@@ -272,7 +272,7 @@ def resolve_mode(arguments: str) -> Dict:
 def check_agents(agents_dir: str) -> Dict:
     """Check which audit-capable agent .md files exist in agents_dir.
 
-    The four agents are: architect, code-reviewer, qa-engineer, security-reviewer.
+    The four agents are: architect, code-reviewer, qa-reviewer, security-reviewer.
     Returns {"present": [...sorted...], "missing": [...sorted...], "all_missing": bool}.
     Pure filesystem check; if agents_dir doesn't exist, all four are missing.
     """

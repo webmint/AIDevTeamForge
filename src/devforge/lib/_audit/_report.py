@@ -409,10 +409,10 @@ def render_report(report_dict):
     _render_findings_by_file(numbered, out)
 
     # -- Logic Blind Spots ---------------------------------------------------
-    # qa-engineer findings that reference untested branches are rendered here.
-    # We collect findings from qa-engineer agent that are in Info tier or have
+    # qa-reviewer findings that reference untested branches are rendered here.
+    # We collect findings from qa-reviewer agent that are in Info tier or have
     # a pattern suggesting untested branches. In practice the orchestrator may
-    # put these in the regular findings list; we render all qa-engineer findings
+    # put these in the regular findings list; we render all qa-reviewer findings
     # that appear in the Info bucket separately under this heading IF the
     # report_dict has an explicit "blind_spots" key, otherwise we emit the
     # section header with a "(none identified)" note.

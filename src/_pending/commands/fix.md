@@ -362,7 +362,7 @@ Wait for user response:
 
 Update `.claude/wip.md` — change Phase to `7 (Test Assessment)`.
 
-Launch the **qa-engineer** agent to assess test impact.
+Launch the **qa-reviewer** agent to assess test impact.
 
 Provide the agent with:
 1. The changed files and the nature of the fix

@@ -1,7 +1,7 @@
 """Thin entry-point shim for /audit helper — see _audit/ for implementation.
 
 Adversarial whole-codebase audit: mislogic hunt, hotspot scoring,
-agent ensemble (code-reviewer, architect, qa-engineer, security-reviewer),
+agent ensemble (code-reviewer, architect, qa-reviewer, security-reviewer),
 consensus merge, and report generation. All logic lives in `_audit/`;
 this shim provides the stable POSIX launcher path.
 """

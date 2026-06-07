@@ -37,14 +37,14 @@ This file provides guidance to Claude Code when working with code in this reposi
 ### Spec-Driven Development Flow
 
 ```
-/setup-wizard → /constitute → /onboard → /research → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
+/setup-wizard → /constitute → /onboard → /research → /specify → /plan → /breakdown → /implement → /review → /verify → /summarize → /finalize
    (once)         (once)       (once)    (optional)  (per feat)  (per feat) (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
 ```
 
 - `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md`
 - `/plan` — Technical plan from approved spec → `specs/NNN-name/plan.md`
 - `/breakdown` — Atomic tasks with dependencies → `specs/NNN-name/tasks/`
-- `/execute-task N` — Implement one task with assigned agent
+- `/implement` — Drain the feature's tasks one at a time (no args); per-task hard gate before commit
 - `/review` — Security + performance + test review → findings report
 - `/verify` — Check acceptance criteria against spec
 - `/finalize` — Squash WIP commits, generate docs, clean commit
@@ -53,7 +53,7 @@ Standalone (no spec required):
 - `/fix "bug"` — Localized bug fix (1-5 files)
 - `/refactor path "goal"` — Behavior-preserving restructuring (1-5 files)
 - `/security [target]` — On-demand security review
-- `/audit` — Adversarial whole-codebase quality review
+- `/audit` — Adversarial whole-codebase quality + system-design + best-practices review
 - `/research "topic"` — Investigate a bug or enhancement against the existing codebase
 - `/discover "feature idea"` — Greenfield-feature discovery (pre-`/specify`)
 
@@ -72,16 +72,10 @@ Authors a structured 9-section feature spec at `specs/NNN-<feature-name>/spec.md
 Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. **Requires approval before breakdown.**
 
 #### `/breakdown [plan-file]`
-Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments, and verifiable Expects/Produces contracts. Saves task files to `specs/[feature]/tasks/` and writes a structured `specs/[feature]/breakdown-handoff.json` (the producer side of the breakdown→`/execute-task` handoff). **Requires approval before execution.**
+Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments, and verifiable Expects/Produces contracts. Saves task files to `specs/[feature]/tasks/` and writes a structured `specs/[feature]/breakdown-handoff.json` (the producer side of the breakdown→`/implement` handoff). **Requires approval before execution.**
 
-#### `/execute-task [number]`
-Executes a single task from the breakdown using the assigned specialized agent. Follows enforced workflow:
-1. Pre-flight check (constitution, memory, file state, contract preconditions)
-2. Agent execution with scope constraints (agent writes code + inline docs)
-3. Post-execution verification (tsc, lint, build, done conditions, self-repair)
-4. Code review (code-reviewer agent — findings reported to user, critical issues block)
-5. Memory update
-WIP commits accumulate across tasks and are squashed by `/finalize` when the feature is approved.
+#### `/implement`
+Drains an approved feature's breakdown tasks one at a time — NO arguments; auto-resolves the lowest-numbered incomplete feature and its next dependency-ready task, and loops. Per task: dispatch the assigned agent → scope-aware verify with self-repair → autonomous code-reviewer⇄engineer review loop → forcing-functions gate → a per-task HARD GATE (the human reviews the ready diff and approves/repairs/skips/stops; nothing is committed before approval; if the review loop made judgment calls they surface as focused questions first). On approve: mark the task complete, single WIP commit, refresh the codebase-memory graph, advance. WIP commits accumulate and are squashed by `/finalize`. Writes a `.devforge/wip.md` marker + git checkpoint for crash recovery.
 
 #### `/review [spec-file]`
 Launches specialist review agents (security, performance, test assessment) on completed feature code. Produces a structured review report saved to `specs/[feature]/review.md` for `/verify` to incorporate into its verdict. Does not render a verdict — findings only.
@@ -108,7 +102,7 @@ Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the
 3. Apply minimal fix with WIP checkpoint
 4. Verification (tsc, lint, build, self-repair loop)
 5. Code review (code-reviewer agent)
-6. Test assessment (qa-engineer agent)
+6. Test assessment (qa-reviewer agent)
 7. Clean commit + memory update
 
 If the bug grows beyond 5 files, recommends escalating to `/specify`.
@@ -117,10 +111,10 @@ If the bug grows beyond 5 files, recommends escalating to `/specify`.
 Focused code refactoring workflow for behavior-preserving restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path. Phases:
 1. Analysis (detect refactoring opportunities against constitution rules — long functions, SOLID/DRY/KISS violations, type safety, naming, dead code, pattern mismatches)
 2. User approves proposal with specific items (hard gate, partial approval supported)
-3. Apply refactoring with auto-selected agent (architect, frontend-engineer, or backend-engineer based on file layer)
+3. Apply refactoring with the owning stack's implementer, auto-selected by file layer (frontend-engineer, backend-engineer, mobile-engineer, etc.)
 4. Verification (tsc, lint, build, tests, self-repair loop)
 5. Code review (code-reviewer agent)
-6. Test assessment (qa-engineer agent — tests must pass unchanged since refactoring is behavior-preserving)
+6. Test assessment (qa-reviewer agent — tests must pass unchanged since refactoring is behavior-preserving)
 7. Clean commit + memory update
 
 If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
@@ -128,8 +122,8 @@ If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
 #### `/security [file|dir|--full]`
 On-demand security review. Targets a specific file (with optional line range), directory, uncommitted changes (default), or the full codebase (`--full`). Launches the security-reviewer agent with constitution and memory context. Reports findings by severity (Critical/High/Medium/Info) with CWE identifiers and remediation suggestions. Read-only — does not modify code. Full codebase mode uses module-based subagents for large projects.
 
-#### `/audit [--full | --uncommitted | path]`
-Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-engineer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming-vs-behavior mismatches, lying comments, off-by-one errors, dead branches, cross-file contradictions, contradictory configs). Reads up to 5 recent `specs/*/review.md` files to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim Evidence quote from the actual code; Phase 4 validation re-reads cited files and discards ungrounded findings. Writes dated reports to `audits/YYYY-MM-DD-audit.md` and prints inline summary. Read-only, not auto-committed, **NOT part of any workflow chain** — invoke manually after several specs ship.
+#### `/audit [--full | --uncommitted | --top N | path] [--passes N]`
+Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Three scope modes: **broad** (`--full` / empty — whole codebase), **hotspot** (`--top N`, default 25 — risk-scored files by churn × CBM-callers × size, for large repos), **narrow** (file / directory / `--uncommitted`). **Full-spectrum** — one run hunts five dimensions: mislogic (lying names/comments, dead branches, cross-file contradictions) + **system design** (layering/SOLID/god-component) + **language/framework best practices** (type-safety suppression, untyped boundaries, reactivity/lifecycle misuse, perf-idiom smells) + **duplication/divergence** + **constitution-principle adherence** — system/software design, NOT visual. Launches code-reviewer, architect, qa-reviewer, and security-reviewer in **adversarial mode** with two structured checklists (Mislogic Hunt + Best-Practices/System-Design); each finding declares a `Category` (`mislogic | system_design | best_practice | duplication | security | blind_spot`) and the report buckets by it. Subjective best-practice findings are marked `Likely`/`Speculative`, never `Certain`. Reads up to 5 recent `specs/*/review.md` files to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim Evidence quote from the actual code; Phase 4 validation re-reads cited files and discards ungrounded findings. Writes dated reports to `audits/YYYY-MM-DD-audit.md` and prints inline summary. `--passes N` (clamped 1–3) overrides the **mode-conditional default** — broad/hotspot default to 2 passes (union findings to widen recall), narrow defaults to 1 — and composes with all three scope modes; multi-pass costs K× and is for periodic deep audits. Read-only, not auto-committed, **NOT part of any workflow chain** — invoke manually after several specs ship.
 
 #### Additional Commands
 
@@ -139,19 +133,19 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 
 {{AGENT_LIST}}
 
-Agent selection is automatic in `/execute-task` based on the task's assigned agent.
+Agent selection is automatic in `/implement` based on the task's assigned agent.
 
 ## Enforced Quality Gates
 
 ### Hard Gates (block until approved)
 - Spec approval → before `/plan` can run
 - Plan approval → before `/breakdown` can run
-- Task breakdown approval → before `/execute-task` can start
+- Task breakdown approval → before `/implement` can start
 - Acceptance criteria → verified in `/verify`
 
 ### Verification (explicit, scope-aware — no per-edit hooks)
 
-Verification runs at task boundaries (end of `/execute-task`, `/fix`, `/refactor`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build commands apply to each file touched during the task.
+Verification runs at task boundaries (end of `/implement`, `/fix`, `/refactor`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build commands apply to each file touched during the task.
 
 **Scope-aware verification flow**:
 
@@ -164,7 +158,7 @@ Verification runs at task boundaries (end of `/execute-task`, `/fix`, `/refactor
 
 **Pre-flight check** (before each task): read `constitution.md` and `.devforge/memory.md` so the task starts with the right context.
 
-Full specification in `/execute-task`.
+Full specification in `/implement`.
 
 ## CBM-first Protocol Enforcement
 
@@ -207,8 +201,8 @@ Authors of template files — constitution, agent files, docs, this CLAUDE.md �
 10. **Validate at boundaries** — validate external input (user input, API responses, env vars); trust internal code
 11. **SOLID, DRY, KISS** — single responsibility, don't repeat logic 3+ times, keep it simple
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
-13. **Session state** — after each `/execute-task`, overwrite `.devforge/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
-14. **Crash recovery** — `/execute-task` writes a WIP marker (`.devforge/wip.md`) before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
+13. **Session state** — after each `/implement`, overwrite `.devforge/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
+14. **Crash recovery** — `/implement` writes a WIP marker (`.devforge/wip.md`) before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
@@ -290,13 +284,13 @@ This file is:
 - **Fixed-size** — always fully overwritten, never appended, max ~40 lines
 - **A sliding window** — only tracks the last 3 tasks' modifications and last 3 decisions
 - **Not a history log** — history lives in task completion notes (`specs/`) and `MEMORY.md`
-- **Updated automatically** by `/execute-task` (Phase 7)
+- **Updated automatically** by `/implement` (Phase 7)
 
-If context is compacted or a new session starts, session-state.md ensures the next `/execute-task` can bootstrap without re-discovering state.
+If context is compacted or a new session starts, session-state.md ensures the next `/implement` can bootstrap without re-discovering state.
 
 ### Crash Recovery
 
-If a task execution is interrupted (power loss, terminal crash, network drop), the next `/execute-task` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command (`/execute-task`, `/fix`, or `/refactor`) was interrupted — if you run a different command, it will detect the mismatch and ask you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/finalize` when the feature is approved.
+If a task execution is interrupted (power loss, terminal crash, network drop), the next `/implement` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command (`/implement`, `/fix`, or `/refactor`) was interrupted — if you run a different command, it will detect the mismatch and ask you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/finalize` when the feature is approved.
 
 ## References
 

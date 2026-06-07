@@ -64,7 +64,7 @@ If the agent doesn't exist, skip this phase silently.
 
 ## PHASE 4: Test Assessment
 
-If `.claude/agents/qa-engineer.md` exists, launch the **qa-engineer** agent.
+If `.claude/agents/qa-reviewer.md` exists, launch the **qa-reviewer** agent.
 
 Provide the agent with:
 1. The list of all changed files (from all task completion notes)
@@ -107,8 +107,8 @@ _Skipped — no performance-analyst agent configured._
 
 ## Test Assessment
 
-[Include if qa-engineer ran, otherwise:]
-_Skipped — no qa-engineer agent configured._
+[Include if qa-reviewer ran, otherwise:]
+_Skipped — no qa-reviewer agent configured._
 
 - AC items with test coverage: [N] of [M]
 - Coverage gaps: [list uncovered areas]

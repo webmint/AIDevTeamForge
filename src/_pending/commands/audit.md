@@ -39,12 +39,12 @@ Use CBM tools for structural lookups (functions, callers, types, deps); consult 
 2. **Agent-existence check (cheapest fail-fast)**: check which audit-capable agents exist in `.claude/agents/`:
    - `code-reviewer.md`
    - `architect.md`
-   - `qa-engineer.md`
+   - `qa-reviewer.md`
    - `security-reviewer.md`
 
    If **zero** exist, stop immediately with:
    ```
-   ⛔ No audit-capable agents installed. Run /setup-wizard first to install at least one of: code-reviewer, architect, qa-engineer, security-reviewer.
+   ⛔ No audit-capable agents installed. Run /setup-wizard first to install at least one of: code-reviewer, architect, qa-reviewer, security-reviewer.
    ```
    If 1–3 exist, proceed and note the missing ones for the report's "Agents skipped (not installed)" section.
 
@@ -121,7 +121,7 @@ For each **available** agent (from Phase 1 step 2), build the prompt as follows:
 **architect** (cross-module contradictions):
 > Your primary mission in ADVERSARIAL MODE: find cross-module contradictions, layering drift, SOLID violations that compound across files, contradictory domain rules in different files, and dependency direction violations. You are looking for the "two files that can't both be right" situations.
 
-**qa-engineer** (logic blind spots, NOT test writing):
+**qa-reviewer** (logic blind spots, NOT test writing):
 > Your primary mission in ADVERSARIAL MODE: treat untested branches as **logic blind spots** where mislogic hides. Do **NOT** write tests. Report each significant untested branch as an audit finding with severity based on how much domain logic is uncovered.
 >
 > **Branch scope (strict)**: only consider untested **public functions and methods in business-logic modules** (services, controllers, use cases, domain logic). Do NOT report: private helpers, pure utility functions, type-only files, configuration files, generated code, or files matching `*.test.*` / `*.spec.*`.
@@ -182,7 +182,7 @@ REMEMBER: ADVERSARIAL AUDIT MODE is in effect. Bias toward false positives ONLY 
 To avoid the context exhaustion failure mode documented in CHANGELOG 1.27.0 for `/verify`:
 
 - **Batch A (parallel)**: code-reviewer + architect → wait → both write to `audits/.tmp-*.md`.
-- **Batch B (parallel)**: qa-engineer + security-reviewer → wait → both write to `audits/.tmp-*.md`.
+- **Batch B (parallel)**: qa-reviewer + security-reviewer → wait → both write to `audits/.tmp-*.md`.
 
 For 200+ file codebases using module subagents, run **one module** through Batch A → Batch B before moving to the next module. Do **not** fan out every module in parallel.
 
@@ -192,7 +192,7 @@ For 200+ file codebases using module subagents, run **one module** through Batch
 
 ### 4.1 — Stream agent outputs
 
-For each agent in `[code-reviewer, architect, qa-engineer, security-reviewer]`:
+For each agent in `[code-reviewer, architect, qa-reviewer, security-reviewer]`:
 
 1. Check if `audits/.tmp-{agent}.md` exists.
    - **Missing**: log `"Agent failed: {agent} (no output)"` to a `failed_agents` list. Skip and continue.
@@ -319,7 +319,7 @@ Force-ranked across all buckets. Fix these first.
 [same sub-sections]
 
 ## Logic Blind Spots (Untested Branches)
-[from qa-engineer]
+[from qa-reviewer]
 
 ## Recurring Issues Status
 | Past Review | Finding | Status |

@@ -10,7 +10,7 @@ Each finding's `####` sub-section is chosen by this priority:
 
 1. `[CONSTITUTION-VIOLATION]` tag → **Constitution Violations** (a cross-cutting override; it wins regardless of the finding's declared category — a `system_design` finding tagged constitution lands here, not in System Design).
 2. Otherwise the finding's declared `Category` maps to its sub-section: `system_design` → **System Design**, `best_practice` → **Best Practices**, `duplication` → **Duplication**, `security` → **Security**, `mislogic` → **Mislogic**.
-3. A missing or unrecognized category defaults to **Mislogic**. (`blind_spot` findings share the Mislogic display bucket here; the dedicated `## Logic Blind Spots` section below is sourced separately from the qa-engineer pass.)
+3. A missing or unrecognized category defaults to **Mislogic**. (`blind_spot` findings share the Mislogic display bucket here; the dedicated `## Logic Blind Spots` section below is sourced separately from the qa-reviewer pass.)
 
 The category is producer-declared — each agent sets the `Category:` field on every finding (see `references/adversarial-preamble.md` and the output contract). The renderer buckets by that declared value; it never infers a category from which agent produced the finding.
 
@@ -71,7 +71,7 @@ Force-ranked across all buckets. Fix these first.
 [same `#### <category>` sub-sections, only the non-empty ones]
 
 ## Logic Blind Spots (Untested Branches)
-[from qa-engineer]
+[from qa-reviewer]
 
 ## Recurring Issues Status
 | Past Review | Finding | Status |
