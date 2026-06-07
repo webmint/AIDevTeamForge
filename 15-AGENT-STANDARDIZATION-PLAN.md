@@ -42,7 +42,7 @@ Every agent body conforms to this ordered skeleton. Section NAMES are fixed; dep
 3. **`## Project Paths`** — `{{PROJECT_PATHS}}`, in ALL 17 agents, no exceptions (D2).
 4. **`## Approach`** — the working procedure as a numbered list. ONE consistent section name replacing the divergent "Principles" / "Workflow" / "Phases" / "Testing Philosophy" / "Mandatory Debugging Loop" names.
 5. **`## Output`** — deliverable contract. The pure read-only reviewers carry the unified severity (D1); builders (incl. the now-pure-builder `qa-engineer`) may omit `## Output` if they produce only code/tests.
-6. **`## Boundaries & Handoffs`** — NEW in every agent: own X · defer Y to {named agent} · consult specialists via the orchestrator (subagents can't spawn). Back-ported in lighter form from `architect`'s `## Role & Boundaries` + `## Consulting Specialists` discipline.
+6. **`## Boundaries & Handoffs`** — NEW in every agent: own X · defer Y to {named agent} · consult specialists via the orchestrator (subagents can't spawn). Back-ported in lighter form from `architect`'s `## Boundaries & Handoffs` + `## Consulting Specialists` discipline.
 7. **`## Rules`** — numbered; closes with the constitution + memory + minimal-scope + grounding conventions (F2 + the fleet-wide grounding rule).
 
 `architect` and `tech-writer` keep additional substantive sections beyond this skeleton (see D-Families); they conform section NAMES and Rules style, they are not flattened to the minimal skeleton.
@@ -178,7 +178,7 @@ grep -nE "model_tier:\s*verify" src/agents/qa-reviewer.md              # expect:
 grep -nE "model_tier:\s*verify" src/agents/performance-analyst.md     # expect: 1
 # Unified severity present, old vocabularies gone, in the 6 pure reviewers:
 grep -rnE "Critical|High|Medium|Info" src/agents/{code-reviewer,security-reviewer,ac-verifier,design-auditor,performance-analyst,qa-reviewer}.md
-grep -rnE "Warning|ADEQUATE|GAPS|PASS/FAIL|high/med" src/agents/{code-reviewer,security-reviewer,ac-verifier,design-auditor,performance-analyst,qa-reviewer}.md  # expect: 0
+grep -rnE "Warning|high/medium/low" src/agents/{code-reviewer,security-reviewer,ac-verifier,design-auditor,performance-analyst,qa-reviewer}.md  # expect: 0 (dead severity vocab; verdicts like PASS/FAIL, ADEQUATE/GAPS are legitimate and not swept)
 # performance-analyst acting half stripped:
 grep -niE "Changes Made|After Metrics" src/agents/performance-analyst.md  # expect: 0
 # ac-verifier + qa-reviewer carry Project Paths:
@@ -208,7 +208,7 @@ grep -L "{{PROJECT_PATHS}}" src/agents/{api-designer,backend-engineer,db-enginee
 # No tools: lock on any builder/actor (they inherit all):
 grep -l "tools:" src/agents/{api-designer,backend-engineer,db-engineer,devops-engineer,frontend-engineer,migration-engineer,mobile-engineer,qa-engineer,runtime-debugger}.md  # expect: none
 # qa-engineer assessment vocab stripped (now owned by qa-reviewer):
-grep -niE "ADEQUATE|GAPS|coverage gap" src/agents/qa-engineer.md  # expect: 0 (assessment half moved to qa-reviewer)
+grep -niE "ADEQUATE / GAPS FOUND|Verdict:.*GAPS" src/agents/qa-engineer.md  # expect: 0 (assessment-verdict form gone; test-writing 'coverage gaps' language is legitimate)
 # api-designer stray-line + unexecutable-instruction gone:
 sed -n '6,9p' src/agents/api-designer.md   # confirm no bare 'b' line after the fence
 grep -n "Validate with the backend-engineer agent" src/agents/api-designer.md  # expect: 0
@@ -218,13 +218,13 @@ grep -n "§Conventions" src/agents/frontend-engineer.md src/agents/mobile-engine
 grep -l "## Boundaries & Handoffs" src/agents/{api-designer,backend-engineer,db-engineer,devops-engineer,frontend-engineer,migration-engineer,mobile-engineer,qa-engineer,runtime-debugger}.md  # expect: all 9
 ```
 
-DoD: all 9 rewritten through the loop; each parses; `description` non-empty; `qa-engineer` is a pure test-writer (assessment half removed, no severity vocab, final tier flagged with reasoning); no `tools:` lock on any builder/actor; no `§Conventions` / `framework idiom`-only fallback / stray `b` / unexecutable cross-agent call remains in the touched files.
+DoD: all 9 rewritten through the loop; each parses; `description` non-empty; `qa-engineer` is a pure test-writer (assessment half removed, no severity vocab, final tier flagged with reasoning); no `tools:` lock on any builder/actor; no `§Conventions` / `framework-idiomatic` weak fallback / stray `b` / unexecutable cross-agent call remains in the touched files.
 
 ## Phase 3 — Specials (architect, tech-writer)
 
 Light conform only — `architect` is the reference and is NOT a flatten target; `tech-writer`'s 3 operating modes are preserved. Via `instruction-author` → `instruction-reviewer`:
 
-- **architect**: conform section NAMES to D-Skeleton where they diverge, conform Rules style and constitution/memory phrasing (F2), confirm a `## Boundaries & Handoffs` section exists (its `## Role & Boundaries` already carries this discipline — reconcile the name to the fleet convention or document why it keeps the richer name), confirm the F3 concept-name constitution-reference rule and the D-Grounding rule are present. No substance is removed.
+- **architect**: conform section NAMES to D-Skeleton where they diverge, conform Rules style and constitution/memory phrasing (F2), confirm a `## Boundaries & Handoffs` section exists (its `## Boundaries & Handoffs` already carries this discipline — reconcile the name to the fleet convention or document why it keeps the richer name), confirm the F3 concept-name constitution-reference rule and the D-Grounding rule are present. No substance is removed.
 - **tech-writer**: conform section names + Rules style; PRESERVE the 3 operating modes (do not collapse); de-stale the `GENERATE-DOCS-PLAN.md` references (now under `done-plans/`) and the `/onboard`-deprecation framing (D-Bugs-c) after RE-VERIFYING current state — the ~line numbers in the brief are approximate and must be re-grepped before editing; apply F2, F3, D-Grounding.
 
 ### Verify
@@ -319,7 +319,7 @@ Regenerate the emitted agents and prove the fleet (now **17**) is consistent, th
 - Run `scripts/generate-agents.py --src src/agents --target <dir>` (both args are required) to regenerate `<dir>/.claude/agents/` from the **17** rewritten/new sources (the new `qa-reviewer` included). Use a scratch `<dir>` for verification (see the `### Verify` block).
 - Run `tests/scripts/test_generate_agents.py` (frontmatter structure + tools handling) — must pass. Run `tests/lib/_audit/` too (the rewire changed `_AUDIT_AGENTS`) — must pass.
 - Install-ride verify: **17** emitted `.claude/agents/*.md`; no `{{` leaks in emitted agents; `tools:` lines emit for exactly the **6** pure reviewers; every `description` non-empty.
-- Cross-ref sweep across `src/agents/`: `grep §Conventions` → 0; `grep "framework idiom"` → 0 (the weak fallback is fully replaced by D-Grounding); severity vocab consistent across the 6 pure reviewers (only Critical/High/Medium/Info; no Warning/ADEQUATE/GAPS/PASS-FAIL/high-med-low survives — note `qa-engineer` is no longer a reviewer, so its `ADEQUATE/GAPS` must be gone there too).
+- Cross-ref sweep across `src/agents/`: `grep §Conventions` → 0; `grep "framework-idiomatic"` → 0 (the weak fallback is fully replaced by D-Grounding; the D-Grounding rule's quoted 'framework idiom' is legitimate and not swept); severity vocab consistent across the 6 pure reviewers (only Critical/High/Medium/Info; no Warning/ADEQUATE/GAPS/PASS-FAIL/high-med-low survives — note `qa-engineer` is no longer a reviewer, so its `ADEQUATE/GAPS` must be gone there too).
 - Rewire-completeness sweep: no command or helper still invokes `qa-engineer` in a reviewer/assessor role, and no command/helper still assigns `performance-analyst` as an implementer.
 
 ### Verify
@@ -341,8 +341,8 @@ grep -l "^tools:" /tmp/forge-phase5-verify/.claude/agents/*.md   # expect: code-
 grep -rnE "^description: *(\"\"|'')? *$" /tmp/forge-phase5-verify/.claude/agents/   # expect: 0
 # Fleet-wide cross-ref sweep over the 17 sources:
 grep -rn "§Conventions" src/agents/        # expect: 0
-grep -rn "framework idiom" src/agents/     # expect: 0
-grep -rnE "Warning|ADEQUATE|GAPS|PASS/FAIL|high/med" src/agents/{code-reviewer,security-reviewer,ac-verifier,design-auditor,performance-analyst,qa-reviewer,qa-engineer}.md  # expect: 0
+grep -rn "framework-idiomatic" src/agents/     # expect: 0 (old weak fallback phrasing; the D-Grounding rule's quoted 'framework idiom' is legitimate and not swept)
+grep -rnE "Warning|high/medium/low" src/agents/{code-reviewer,security-reviewer,ac-verifier,design-auditor,performance-analyst,qa-reviewer,qa-engineer}.md  # expect: 0 (dead severity vocab; verdicts like PASS/FAIL, ADEQUATE/GAPS are legitimate and not swept)
 # Rewire complete — no qa-engineer reviewer-role and no performance-analyst implementer-role downstream
 # (read each remaining qa-engineer match to confirm it is a test-WRITING assignment, not assessment):
 grep -rn "qa-engineer" src/commands src/_pending  # expect: only test-writing assignments (breakdown/plan) remain
@@ -373,7 +373,7 @@ DoD: generator runs clean; `test_generate_agents.py` AND `tests/lib/_audit/` pas
 
 - This plan rewrites the BODY (and trims the `description`) of all 16 existing `src/agents/*.md` sources to the D-Skeleton, ADDS one new source (`qa-reviewer`, roster 16 → **17**), and rewires the commands + Python helpers that named the old roles; it does NOT touch the build contract (`generate-agents.py` / `emit_claude` / meta block / `applies_to`).
 - **D-ReviewerSplit is RESOLVED toward a SPLIT** (no longer an open decision; no kickoff confirmation required). The three nominal code-modifying reviewers are NOT symmetric: `qa-engineer` SPLITS into a pure-builder test-writer (`qa-engineer`) + a NEW read-only assessor (`qa-reviewer`); `performance-analyst` is DEMOTED to a pure read-only analyst (retiered `do` → `verify`); `runtime-debugger` is an UNCHANGED actor. Four families now: 6 pure read-only reviewers (tools-locked) / 8 builders / 1 actor / 2 specials.
-- `architect.md` is the REFERENCE for the boundaries + consulting discipline (its `## Role & Boundaries` + `## Consulting Specialists` are back-ported in lighter form as `## Boundaries & Handoffs` across the fleet). Do NOT flatten `architect` or `tech-writer` — Specials keep richer substance; `tech-writer` keeps its 3 operating modes.
+- `architect.md` is the REFERENCE for the boundaries + consulting discipline (its `## Boundaries & Handoffs` + `## Consulting Specialists` are back-ported in lighter form across the fleet). Do NOT flatten `architect` or `tech-writer` — Specials keep richer substance; `tech-writer` keeps its 3 operating modes.
 - The new rewire phase (Phase 4) spans BOTH agent-flow loops: sub-track A (command markdown) via `instruction-author` → `instruction-reviewer`, sub-track B (Python helpers, incl. `_audit/_preflight.py` `_AUDIT_AGENTS`) via `python-engineer` → `python-reviewer`. Phases 1, 2, and 4 must land together (a consumer must not reference `qa-reviewer` before the source exists, and the audit panel must not name a `qa-engineer` reviewer after the split).
 - Verified-settled facts: `SEVERITY_ENUM = ("Critical","High","Medium","Info")` at `findings_schema.py:49`; `tools:` emitter support live + tested (`tests/scripts/test_generate_agents.py`); `{{AGENT_LIST}}` is filename-derived (`_configure/_render.py:169-188`), so F1 description-trim is contained AND the new `qa-reviewer` will auto-appear in `{{AGENT_LIST}}` once its source exists; `api-designer.md:7` stray `b` + `:84` unexecutable cross-agent call confirmed against the file this session; `_AUDIT_AGENTS = ["architect","code-reviewer","qa-engineer","security-reviewer"]` at `_audit/_preflight.py:21` (+ docstring naming the four at `:275`) confirmed this session.
 - The five D-Bugs are folded into the phase that touches each file: a/b → Phase 2 (api-designer); c → Phase 3 (tech-writer, RE-VERIFY ~line numbers first); d → Phase 1 (ac-verifier) + Phase 2 (runtime-debugger); e (model_tier audit) → Phase 1 (`performance-analyst` `do`→`verify` resolved; `design-auditor` flagged) + Phase 2 (`qa-engineer` builder tier reconsidered).

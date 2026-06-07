@@ -160,7 +160,7 @@ This closes the drift vector that the old weak "follow framework-idiomatic conve
 
 Every agent carries a `## Boundaries & Handoffs` body section. It does three things: it **names what the agent owns**, it **names which other agent(s) it defers specific concerns to** (e.g. defer test assessment to `qa-reviewer`, defer security depth to `security-reviewer`), and it **routes specialist consultation through the orchestrator** — never by calling another agent directly, because subagents cannot spawn other subagents (see [Subagents cannot spawn other subagents](#subagents-cannot-spawn-other-subagents) below).
 
-`architect.md`'s `## Role & Boundaries` + `## Consulting Specialists` is the reference implementation — match its shape in lighter form for every other agent: state the owned scope, list the named deferrals, and emit a consultation request to the orchestrator rather than attempting a direct subagent call.
+`architect.md`'s `## Boundaries & Handoffs` + `## Consulting Specialists` is the reference implementation — match its shape in lighter form for every other agent: state the owned scope, list the named deferrals, and emit a consultation request to the orchestrator rather than attempting a direct subagent call.
 
 ## Subagents cannot spawn other subagents
 
