@@ -1,14 +1,14 @@
 ---
 name: implement
 argument-hint: ""
-description: Drain an approved feature's breakdown tasks one at a time — dispatch the assigned agent, verify, autonomous code-review loop, forcing-functions gate, then a per-task human hard gate before any commit.
+description: Drain an approved feature's breakdown tasks one at a time — dispatch the assigned agent, verify, autonomous four-reviewer review panel, forcing-functions gate, then a per-task human hard gate before any commit.
 disable-model-invocation: true
 allowed-tools:
   - Bash(.devforge/lib/implement_helper resolve-next-task *)
   - Bash(.devforge/lib/implement_helper preflight *)
   - Bash(.devforge/lib/implement_helper capture-touched-files *)
   - Bash(.devforge/lib/implement_helper verify-touched *)
-  - Bash(.devforge/lib/implement_helper review-loop-step *)
+  - Bash(.devforge/lib/implement_helper merge-review-panel *)
   - Bash(.devforge/lib/implement_helper run-forcing-functions-gate *)
   - Bash(.devforge/lib/implement_helper wip-commit *)
   - Bash(.devforge/lib/implement_helper mark-complete *)
@@ -25,9 +25,9 @@ allowed-tools:
 
 # /implement — Per-Task Execution Loop
 
-`/implement` is repeatable per feature. It drains the lowest-numbered incomplete feature's breakdown tasks one at a time, in dependency order. Each task runs through dispatch → scope-aware verify → an autonomous code-review loop → a forcing-functions gate, then **stops at a per-task hard gate** where the orchestrator (the LLM following this spec) shows the diff and asks the user to approve, repair, skip, or stop. **Nothing the agent produced is committed until `approve`.** On `approve`, one per-task WIP commit lands and the loop auto-advances to the next task. The loop exits only on user `stop` or when the feature has no incomplete tasks left.
+`/implement` is repeatable per feature. It drains the lowest-numbered incomplete feature's breakdown tasks one at a time, in dependency order. Each task runs through dispatch → scope-aware verify → an autonomous four-reviewer review panel → a forcing-functions gate, then **stops at a per-task hard gate** where the orchestrator (the LLM following this spec) shows the diff and asks the user to approve, repair, skip, or stop. **Nothing the agent produced is committed until `approve`.** On `approve`, one per-task WIP commit lands and the loop auto-advances to the next task. The loop exits only on user `stop` or when the feature has no incomplete tasks left.
 
-The orchestrator runs the loop in the main thread. Subagent dispatch via the Task tool is reserved for the implementing engineer (per task) and the `code-reviewer` agent (per review-loop round). The helper (`.devforge/lib/implement_helper`) owns task resolution, scope-aware verification, the self-repair and review-loop counters, the forcing-functions gate, the per-task commit, completion marking, and session-state — the orchestrator composes values and drives the loop.
+The orchestrator runs the loop in the main thread. Subagent dispatch via the Task tool is reserved for the implementing engineer (per task) and the four read-only review-panel agents (`code-reviewer`, `qa-reviewer`, `security-reviewer`, `performance-analyst`), fanned out in parallel per review-panel round. The helper (`.devforge/lib/implement_helper`) owns task resolution, scope-aware verification, the self-repair and review-panel counters, the forcing-functions gate, the per-task commit, completion marking, and session-state — the orchestrator composes values and drives the loop.
 
 Usage: `/implement` — no arguments. The command resolves the lowest-numbered incomplete feature and walks its tasks in dependency order; there is no `N`, range, or `all` form. Per-task human approval is logically incompatible with batch forms.
 
@@ -48,7 +48,7 @@ Usage: `/implement` — no arguments. The command resolves the lowest-numbered i
 
 ## What this command does NOT do
 
-- **No feature-level docs.** `tech-writer` is NOT invoked here, and no per-task `docs/` regeneration runs. Inline documentation (docstrings / JSDoc) is the implementing agent's job, verified by `code-reviewer` during the review loop. Feature-level `docs/` generation happens at `/finalize`. Do not add `tech-writer` or per-task `docs/` regeneration to this loop.
+- **No feature-level docs.** `tech-writer` is NOT invoked here, and no per-task `docs/` regeneration runs. Inline documentation (docstrings / JSDoc) is the implementing agent's job, verified by `code-reviewer` during the review panel. Feature-level `docs/` generation happens at `/finalize`. Do not add `tech-writer` or per-task `docs/` regeneration to this loop.
 - **No batch task targeting.** There is no `/implement N` form (see Usage).
 
 ---
@@ -173,26 +173,33 @@ Exit 1 (missing/malformed `project-config.json`) — copy the helper's stderr VE
 
 ---
 
-## PHASE 6: Autonomous review loop
+## PHASE 6: Autonomous review PANEL loop
 
-After verify passes, run the bounded autonomous code-review loop — `code-reviewer` agent ⇄ implementing agent, ≤3 rounds (helper-owned counter), NO human between rounds. The loop converges to a clean verdict AND records each judgment-level call it made on the user's behalf as a structured decision item for PHASE 7 Stage A. See `references/review-loop.md` for the verdict mapping, the mechanical-vs-judgment classification, the bias-toward-recording tie-breaker, and the decision-item shape.
+After verify passes, run the bounded autonomous review-panel loop — a panel of FOUR read-only reviewers (`code-reviewer`, `qa-reviewer`, `security-reviewer`, `performance-analyst`) ⇄ implementing agent, ≤3 rounds (helper-owned counter), NO human between rounds. The loop converges to a panel-clean verdict (every reviewer clean) AND records each judgment-level call it made on the user's behalf as a structured decision item for PHASE 7 Stage A. See `references/review-loop.md` for the per-reviewer verdict mapping, the all-clean rule, the orchestrator-side findings synthesis + conflict identification, the mechanical-vs-judgment classification, the bias-toward-recording tie-breaker, and the three decision-item shapes.
+
+All four reviewers are read-only and tools-locked (per the standardized roster — `Read, Grep, Glob, Bash`; no `Edit`/`Write`/`Agent`), so they cannot modify the tree: a parallel fan-out is safe, and the **only writer in PHASE 6 is the implementing agent during a repair leg** — the reviewers never collide ("stepping on each other" is impossible). A "conflict" in this loop therefore means two reviewers proposing INCOMPATIBLE changes to the same code region — a findings-level contradiction, never a write race.
 
 Start the loop iteration counter at 0 and run:
 
-1. Invoke the `code-reviewer` agent (consumer `.claude/agents/code-reviewer.md`) via the Task tool with the `touched_files`, the constitution, and the task body. It returns a markdown verdict carrying a `### Verdict:` line (`APPROVE` / `REQUEST CHANGES` / `BLOCK`).
-2. Parse the verdict via the helper, passing the current iteration `N`:
+1. **Fan out the four reviewers in parallel.** In ONE turn, dispatch `code-reviewer` (consumer `.claude/agents/code-reviewer.md`), `qa-reviewer`, `security-reviewer`, and `performance-analyst` via the Task tool — four Task calls in the same turn. Give EACH the same inputs: the `touched_files`, the constitution, and the task body. Each reviewer is independent and sees ONLY its own brief. The four results return UNORDERED, so key each returned markdown to the agent you dispatched it to (do not assume return order). Each reviewer returns a markdown verdict carrying a `### Verdict:` line in its own vocabulary (`code-reviewer`: `APPROVE` / `REQUEST CHANGES` / `BLOCK`; `qa-reviewer`: `ADEQUATE` / `GAPS FOUND`; `security-reviewer`: `PASS` / `FAIL`; `performance-analyst`: `MEETS TARGETS` / `BOTTLENECKS FOUND`).
+2. **Write each reviewer's returned markdown to a run-scoped scratch file** (a tmp dir OUTSIDE the repo so the scratch never pollutes the source tree, mirroring how `/audit` uses a `${TMPDIR:-/tmp}/forge-audit` working dir): write each with the Write tool to `${TMPDIR:-/tmp}/forge-implement-review/<agent>.md` (one file per reviewer, named for the agent). A bash subprocess cannot read a subagent's return value, so these files are the bridge to the merge helper.
+3. **Merge the four verdicts** via the helper, passing the current iteration `N` and one `--reviewer <agent>:<path>` per reviewer (the path written in step 2):
 
    ```bash
-   .devforge/lib/implement_helper review-loop-step --iteration N
+   .devforge/lib/implement_helper merge-review-panel --iteration N --reviewer code-reviewer:<path> --reviewer qa-reviewer:<path> --reviewer security-reviewer:<path> --reviewer performance-analyst:<path>
    ```
 
-   Pass the reviewer's returned markdown on stdin (or write it to a file and pass `--verdict-file <path>`). The helper parses the `### Verdict:` line and emits JSON `{clean, escalate, iteration, verdict}` (exit 0). `clean` is `true` for `APPROVE`, `false` for `REQUEST CHANGES` / `BLOCK`. `escalate` is `true` when `N >= 3` (the helper-owned cap). Exit 2 means the verdict line was missing or was the unfilled `APPROVE / REQUEST CHANGES / BLOCK` template — copy the helper's stderr VERBATIM into a fenced code block, then re-invoke `code-reviewer` for a properly-formed verdict.
-3. Branch on the JSON:
-   - **`clean: true`** → exit the loop. Carry any reviewer warnings into PHASE 7 Stage B. Proceed to PHASE 6 forcing-functions gate below.
-   - **`clean: false` and `escalate: false`** → relaunch the **implementing agent** with the reviewer's findings (the autonomous repair leg — no human), then re-invoke `code-reviewer` and re-call `review-loop-step` with `--iteration` set to `N + 1`. While clearing a finding, classify what you changed (per `references/review-loop.md`): a **judgment** call (changed the shape of the solution) is recorded as a decision item `{finding, agent_resolution, alternative}` for Stage A; a **mechanical** fix resolves silently. When unsure, record it.
-   - **`clean: false` and `escalate: true`** → the cap was reached without converging. Exit the loop and record a `could-not-converge: <reviewer objection>` decision item for Stage A.
+   The helper parses each reviewer's `### Verdict:` line against that reviewer's vocabulary and emits JSON `{clean, escalate, iteration, per_reviewer}` (exit 0), where `per_reviewer` is one `{agent, verdict, clean}` record per reviewer. `clean` is `true` IFF EVERY reviewer returned its own clean token (`code-reviewer` `APPROVE`, `qa-reviewer` `ADEQUATE`, `security-reviewer` `PASS`, `performance-analyst` `MEETS TARGETS`); one dirty reviewer keeps the loop going. `escalate` is `true` when `N >= 3` (the helper-owned `REVIEW_LOOP_CAP`). The helper does the deterministic verdict aggregation ONLY — it does NOT parse, merge, or conflict-detect findings; that is the orchestrator's job below. Exit 2 means one reviewer's verdict line was missing, was the unfilled slash-joined template, or carried a token outside that reviewer's vocabulary — copy the helper's stderr VERBATIM into a fenced code block (it names WHICH reviewer failed), then re-invoke ONLY that named reviewer for a properly-formed verdict, rewrite its scratch file, and re-run `merge-review-panel`. Do not treat a parse error as a verdict.
+4. Branch on the JSON:
+   - **`clean: true`** → exit the panel loop. Carry any reviewer warnings into PHASE 7 Stage B. Proceed to the forcing-functions gate below.
+   - **`clean: false` and `escalate: false`** → the autonomous repair leg (no human). You hold the four reviewers' returned markdown; do all of the following, then re-fan-out:
+     - **Synthesize ALL findings** across the four reviewers into ONE implementing-agent repair brief (per `references/agent-brief.md`'s PHASE 6 re-dispatch shape). One repair pass addresses all non-conflicting findings.
+     - **Classify each cleared finding** mechanical-vs-judgment (per `references/review-loop.md`): a **judgment** call (changed the shape of the solution) is recorded as a decision item `{finding, agent_resolution, alternative}` for Stage A; a **mechanical** fix resolves silently. When unsure, record it.
+     - **Identify conflicts** — two reviewers proposing INCOMPATIBLE changes to the same region. A CROSS-severity contradiction is NOT a conflict: the higher severity wins, and you apply it and proceed autonomously (the panel shares the unified `Critical / High / Medium / Info` severity scale, so severity is directly comparable). A COMPARABLE-severity genuine conflict is one you must NOT decide on the user's behalf → record it as a `conflict` decision item (it surfaces at Stage A) and do NOT autonomously repair that contested region this round.
+     - Relaunch the **implementing agent** ONCE with the synthesized findings, then **re-fan-out the FULL panel** (all four reviewers over `touched_files` — no delta-scoping) at iteration `N + 1`. Full-panel re-review each round closes the cross-file-regression hole a repair could open.
+   - **`clean: false` and `escalate: true`** → the cap was reached without converging. Exit the loop and record a `could-not-converge` decision item carrying the unresolved reviewer objection(s) for Stage A.
 
-After the review loop exits, run the forcing-functions gate via the helper:
+After the review panel exits clean, run the forcing-functions gate via the helper:
 
 ```bash
 .devforge/lib/implement_helper run-forcing-functions-gate
@@ -208,7 +215,9 @@ The helper reads the `forcing_functions` block from `.devforge/constitute.json` 
 
 ## PHASE 7: Hard gate (two stages)
 
-This is the per-task human gate. **No content has been committed at this point** — the agent's work and all self-repair / review-loop edits sit in the working tree. The gate has two stages: Stage A surfaces recorded decisions one at a time (skipped entirely when none were recorded), then Stage B always presents the diff for the final code read.
+This is the per-task human gate. **No content has been committed at this point** — the agent's work and all self-repair / review-panel edits sit in the working tree. The gate has two stages: Stage A surfaces recorded decisions one at a time (skipped entirely when none were recorded), then Stage B always presents the diff for the final code read.
+
+**IMPORTANT — all findings fixed before `approve`.** Stage B (the `approve` gate) is reachable ONLY when the PHASE 6 panel verdict is fully clean (every reviewer returned its clean token) AND no unresolved finding or conflict remains. A RESOLVED judgment item (the finding is fixed; the human confirms the SHAPE at Stage A) is NOT an open finding and may reach Stage B; only genuinely unresolved findings or conflicts are blocked from `approve` — they route through a Stage A repair leg (which re-reviews to clean) or the gate-blocked path. There is no path that lets `approve` happen with an open finding.
 
 ### Stage A — Decision questions (run ONLY if PHASE 6 recorded ≥1 decision item, or escalated)
 
@@ -217,20 +226,23 @@ Iterate the recorded decision items. For EACH item, ask ONE `AskUserQuestion` �
 - Single-line question, e.g. `"Reviewer flagged <finding> — keep which resolution?"`.
 - Options (each carrying a full `description` with the explanation): `["<agent's resolution> (recommended)", "<named alternative>", "let me specify", "stop"]`. Option 1 is ALWAYS the agent's resolution, marked `(recommended)`, so agreeing is one click.
   - **option 1 (the recommended resolution)** → keep that resolution; move to the next decision item.
-  - **`<named alternative>` or `let me specify`** → treat as a repair. For `let me specify`, ask the user via free-text follow-up for the direction. Relaunch the implementing agent with the chosen direction, re-run PHASE 4 (capture-touched-files, from the same checkpoint SHA) → PHASE 5 (verify) → PHASE 6 (review loop), rebuild the decision set from the new loop, and restart Stage A.
+  - **`<named alternative>` or `let me specify`** → treat as a repair. For `let me specify`, ask the user via free-text follow-up for the direction. Relaunch the implementing agent with the chosen direction, re-run PHASE 4 (capture-touched-files, from the same checkpoint SHA) → PHASE 5 (verify) → PHASE 6 (review panel), rebuild the decision set from the new loop, and restart Stage A.
   - **`stop`** → keep `.devforge/wip.md` + the working tree; tell the user the loop stopped at task `NNN`; end the loop.
 
-For a `could-not-converge` item (recorded when PHASE 6 escalated at the cap), the question's options are `["accept anyway", "send back with direction", "skip", "stop"]`:
-- **`accept anyway`** → keep the unconverged resolution; move on.
-- **`send back with direction`** → free-text follow-up, then repair as above (relaunch → re-verify → re-review → rebuild → restart Stage A).
+For a `could-not-converge` item (recorded when PHASE 6 escalated at the cap with one or more reviewers still dirty), the question's options are `["send back with direction", "skip", "stop"]` — there is NO accept-the-finding-as-is option, because an open finding must never reach `approve` (the D4 guarantee above):
+- **`send back with direction`** → free-text follow-up, then repair as above (relaunch the implementing agent → re-run PHASE 4 (capture) → PHASE 5 (verify) → PHASE 6 (review panel) → rebuild the decision set → restart Stage A). The loop continues under human direction; it does not ship the open finding.
 - **`skip`** → take the Stage B `skip` path below.
+- **`stop`** → keep `wip.md` + working tree; end the loop.
+
+For a `conflict` item (recorded when PHASE 6 found a COMPARABLE-severity contradiction it must not decide on the user's behalf), the question names the contested finding on one line and offers the two reviewers' incompatible positions as the first two options, each explained in its `description`: `["<reviewer A's position>", "<reviewer B's position>", "let me specify", "stop"]`:
+- **`<reviewer A's position>` / `<reviewer B's position>` / `let me specify`** → treat the chosen resolution as a repair direction. For `let me specify`, ask the user via free-text follow-up. Relaunch the implementing agent with the chosen resolution → re-run PHASE 4 (capture) → PHASE 5 (verify) → PHASE 6 (review panel) → rebuild the decision set → restart Stage A. The conflict is thus RESOLVED and re-reviewed to clean before Stage B — never approved open.
 - **`stop`** → keep `wip.md` + working tree; end the loop.
 
 Most tasks record zero decision items → Stage A is skipped entirely and the gate is just Stage B.
 
 ### Stage B — Final code read (ALWAYS)
 
-Present the ready diff and the verification results. Show `git diff --stat` and the `git diff` (for a large diff, bound it: show `--stat` in full plus the diff for the highest-impact files, and tell the user the full diff is available on request). Summarize the PHASE 5 verify result, the PHASE 6 review verdict (plus any carried warnings), and the forcing-functions gate result.
+Present the ready diff and the verification results. Show `git diff --stat` and the `git diff` (for a large diff, bound it: show `--stat` in full plus the diff for the highest-impact files, and tell the user the full diff is available on request). Summarize the PHASE 5 verify result, the PHASE 6 panel verdict — the four reviewers' clean verdicts (plus any carried warnings) — and the forcing-functions gate result.
 
 Then ask via `AskUserQuestion`:
 
@@ -273,7 +285,7 @@ End the turn. The user's reply opens the next turn.
 
      Pass `--total-count` as the `total_count` PHASE 1 emitted (completion does not change the task total). The `completed_count` PHASE 1 emitted is the **pre-completion** snapshot, so pass `--completed-count` as that value **plus 1** to account for the task just marked complete in step 1 — this is correct and cheaper than re-running `resolve-next-task` to re-scan disk. The helper overwrites `.devforge/session-state.md` (≤40 lines, sliding window of the last 3 task mods + last 3 decisions) and appends one outcome line to `.devforge/memory.md` (exit 0 → `{"updated": true}`).
   5. Loop: return to PHASE 1 (`resolve-next-task`) to pick the next task. The loop auto-advances — there is no per-task continue prompt; `stop` at this gate is the only loop exit besides `all-complete`.
-- **`repair`** → ask the user via free-text follow-up for the repair direction, relaunch the implementing agent with those notes, then re-run PHASE 4 (capture-touched-files) → PHASE 5 (verify) → PHASE 6 (review loop + forcing-functions gate) → return to this hard gate.
+- **`repair`** → ask the user via free-text follow-up for the repair direction, relaunch the implementing agent with those notes, then re-run PHASE 4 (capture-touched-files) → PHASE 5 (verify) → PHASE 6 (review panel + forcing-functions gate) → return to this hard gate.
 - **`skip`** → discard the task's edits and advance:
   1. `git -C <source_root> reset --hard <checkpoint_sha>` (the PHASE 2 checkpoint SHA, which is the **source** repo HEAD) — this resets the **source** working tree to the task-start state so the skipped edits do not bleed into the next task's diff. (Standalone: `<source_root>` is the install root, so this resets the single repo as today.)
   2. Mark the task skipped via the helper:
@@ -307,7 +319,7 @@ When PHASE 5 returns `tooling_unavailable`, a configured type-check, lint, or te
 - Question: `"Task NNN's type-check, lint, or test command can't run — how to proceed?"` — single-line text (substitute the resolved `number`).
 - Options: `["fix-tooling", "scope-and-approve", "skip", "stop"]`. `fix-tooling` is the recommended option — fixing the tooling is the root cause and restores full mechanical verification.
   - **`fix-tooling`** (recommended) → tell the user to correct the configured command or install the missing tool, then re-run `/implement`. The command config is owned by `/configure` — point the user there to fix the type-check, lint, or test command. Leave `.devforge/wip.md` (and the PHASE 2 `[checkpoint]` commit) in place — do NOT clear them here. On the next `/implement` run PHASE 0 detects the marker and offers the crash-recovery prompt: `resume` re-enters the recorded task at its `**Phase**:` field — the verify leg (PHASE 5) re-runs from the top once the tooling is fixed; `rollback` discards the agent's work via the checkpoint SHA. End the turn.
-  - **`scope-and-approve`** → the mechanical verify gate is acknowledged unavailable (the configured type-check, lint, or test command could not run) for this task. Proceed to **PHASE 6** — the code-review loop AND the forcing-functions gate still run, since they are independent of the type checker — then the normal **Stage B** hard gate. Carry a **verification-scoped** flag noting the type-check, lint, and test Done-When conditions are unconfirmed; Stage B's `mark-complete` (step 1) leaves those boxes unticked per the verification-scoped rule.
+  - **`scope-and-approve`** → the mechanical verify gate is acknowledged unavailable (the configured type-check, lint, or test command could not run) for this task. Proceed to **PHASE 6** — the review panel AND the forcing-functions gate still run, since they are independent of the type checker — then the normal **Stage B** hard gate. Carry a **verification-scoped** flag noting the type-check, lint, and test Done-When conditions are unconfirmed; Stage B's `mark-complete` (step 1) leaves those boxes unticked per the verification-scoped rule.
   - **`skip`** → the Stage B `skip` path above.
   - **`stop`** → keep `.devforge/wip.md` + the working tree; end the loop.
 
@@ -315,9 +327,9 @@ When PHASE 5 returns `tooling_unavailable`, a configured type-check, lint, or te
 
 ## IMPORTANT RULES
 
-1. **Nothing commits before `approve`.** Agent work + self-repair + review-loop edits sit in the working tree until the Stage B gate approves them. The only commits before `approve` are the empty `[checkpoint]` commit (PHASE 2) and — on `approve` — the single `wip-commit`.
-2. **The helper owns every counter.** The self-repair cap (3, PHASE 5) and the review-loop cap (3, PHASE 6) are helper-owned; the orchestrator cannot extend them. At each cap the task is gate-blocked or escalates.
+1. **Nothing commits before `approve`.** Agent work + self-repair + review-panel-repair edits sit in the working tree until the Stage B gate approves them. The only commits before `approve` are the empty `[checkpoint]` commit (PHASE 2) and — on `approve` — the single `wip-commit`.
+2. **The helper owns every counter.** The self-repair cap (3, PHASE 5) and the review-panel cap (3, PHASE 6) are helper-owned; the orchestrator cannot extend them. At each cap the task is gate-blocked or escalates.
 3. **One task at a time, dependency order.** `resolve-next-task` picks exactly one task; the loop drains the feature task-by-task. There is no batch mode.
-4. **Decisions are pushed, never summarized.** Judgment calls the review loop made surface as sequential Stage A questions with the agent's resolution pre-selected — never a text wall to scroll. Most tasks record zero decisions.
+4. **Decisions are pushed, never summarized.** Judgment calls and conflicts the review panel surfaced appear as sequential Stage A questions with the agent's resolution pre-selected (or the contested positions named) — never a text wall to scroll. Most tasks record zero decisions.
 5. **Relay machine reports VERBATIM.** Where a helper emits a user-facing finding report on stdout (blocked verify, forcing-functions exit 2, blocked resolve), copy its stdout VERBATIM into a fenced code block. For helper failures, copy the stderr VERBATIM into a fenced code block. Do not summarize or paraphrase.
 6. **Inline docs are the agent's job; feature docs wait for `/finalize`.** Do not invoke `tech-writer` or regenerate `docs/` in this loop (see "What this command does NOT do").
