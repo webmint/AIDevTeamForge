@@ -1,6 +1,6 @@
 # Forcing-functions gate (`/implement` PHASE 6)
 
-This reference defines the forcing-functions gate run after verify + the review loop, BEFORE the hard gate (PHASE 6 of `main.md`). The gate runs the consumer-side mechanical detectors that back constitution rules LLMs systematically violate. It is a single helper call:
+This reference defines the forcing-functions gate run after verify + the review panel, BEFORE the hard gate (PHASE 6 of `main.md`). The gate runs the consumer-side mechanical detectors that back constitution rules LLMs systematically violate. It is a single helper call:
 
 ```bash
 .devforge/lib/implement_helper run-forcing-functions-gate
@@ -40,7 +40,7 @@ On exit 2, copy the helper's **stdout JSON** VERBATIM into your next user-facing
 
 When the gate blocks (exit 2), the relayed `reports` name which rule(s) failed and where. Triage with the user via the PHASE 7 gate-blocked `AskUserQuestion`:
 
-- **`repair`** → relaunch the implementing agent with the failing rule's report so it removes the violation (e.g. replace a magic-enum duplication with the generated enum, remove a cross-layer import, replace an `any` where a generated type exists), then re-run verify → review loop → this gate.
+- **`repair`** → relaunch the implementing agent with the failing rule's report so it removes the violation (e.g. replace a magic-enum duplication with the generated enum, remove a cross-layer import, replace an `any` where a generated type exists), then re-run verify → review panel → this gate.
 - **`skip`** → reset to the checkpoint, mark the task `Skipped`, advance (PHASE 7 `skip` path).
 - **`stop`** → keep `wip.md` + working tree; end the loop.
 
