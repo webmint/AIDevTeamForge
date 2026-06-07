@@ -608,5 +608,415 @@ class TestSummaryWarningBlock(unittest.TestCase):
         self.assertNotIn("WARNING", output)
 
 
+# ---------------------------------------------------------------------------
+# node_bin_dirs unit tests (new shared utility).
+# ---------------------------------------------------------------------------
+
+
+import os as _os
+import stat as _stat
+import tempfile as _tempfile
+import shutil as _shutil
+
+from _shared.node_bin import node_bin_dirs, resolves  # noqa: E402
+
+
+class TestNodeBinDirs(unittest.TestCase):
+    """Unit tests for _shared.node_bin.node_bin_dirs upward-walk logic.
+
+    Creates real temp directory trees so the 'is_dir' check in node_bin_dirs
+    reflects actual filesystem state.
+    """
+
+    def setUp(self):
+        self._root = _tempfile.mkdtemp()
+
+    def tearDown(self):
+        _shutil.rmtree(self._root, ignore_errors=True)
+
+    def _mkdir(self, *parts):
+        """Create <root>/<part1>/<part2>/... and return its path."""
+        path = _os.path.join(self._root, *parts)
+        _os.makedirs(path, exist_ok=True)
+        return path
+
+    def test_only_root_node_modules_bin_exists(self):
+        """Only <source_root>/node_modules/.bin → returns that single dir."""
+        self._mkdir("node_modules", ".bin")
+        result = node_bin_dirs(self._root, "")
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0].endswith(_os.path.join("node_modules", ".bin")))
+
+    def test_no_node_modules_anywhere_empty_list(self):
+        """No node_modules/.bin on any level → empty list."""
+        result = node_bin_dirs(self._root, "packages/frontend")
+        self.assertEqual(result, [])
+
+    def test_package_local_first_root_last(self):
+        """Package-local bin appears before root bin (most-specific first)."""
+        self._mkdir("packages", "frontend", "node_modules", ".bin")
+        self._mkdir("node_modules", ".bin")
+        result = node_bin_dirs(self._root, "packages/frontend")
+        # At minimum, frontend and root bins must be in the list.
+        self.assertGreaterEqual(len(result), 2)
+        # First entry should be the package-local bin.
+        self.assertIn(_os.path.join("packages", "frontend", "node_modules", ".bin"),
+                      result[0])
+        # Last entry should be the root-level bin.
+        self.assertIn(_os.path.join("node_modules", ".bin"), result[-1])
+        # Root-level must NOT come before package-local.
+        frontend_idx = next(i for i, d in enumerate(result)
+                             if "frontend" in d)
+        root_idx = next(i for i, d in enumerate(result)
+                        if "packages" not in d and d.endswith(
+                            _os.path.join("node_modules", ".bin")))
+        self.assertLess(frontend_idx, root_idx,
+                        "package-local bin must precede root bin in result list")
+
+    def test_intermediate_dir_bin_included(self):
+        """<root>/packages/node_modules/.bin (intermediate) included in upward walk."""
+        self._mkdir("packages", "frontend", "node_modules", ".bin")
+        self._mkdir("packages", "node_modules", ".bin")
+        self._mkdir("node_modules", ".bin")
+        result = node_bin_dirs(self._root, "packages/frontend")
+        # All three dirs must appear.
+        self.assertEqual(len(result), 3)
+
+    def test_empty_package_path_returns_only_root_bin(self):
+        """Empty package_path → only root node_modules/.bin checked."""
+        self._mkdir("node_modules", ".bin")
+        result = node_bin_dirs(self._root, "")
+        self.assertEqual(len(result), 1)
+
+    def test_dot_package_path_same_as_empty(self):
+        """'.' package_path → equivalent to empty (start from source_root)."""
+        self._mkdir("node_modules", ".bin")
+        result = node_bin_dirs(self._root, ".")
+        self.assertEqual(len(result), 1)
+
+    def test_non_existent_node_modules_not_included(self):
+        """Dirs that don't exist on disk are NOT returned."""
+        # No node_modules anywhere.
+        result = node_bin_dirs(self._root, "packages/frontend")
+        self.assertEqual(result, [],
+                         "non-existent node_modules/.bin must not appear in results")
+
+    def test_result_paths_are_absolute(self):
+        """All returned paths are absolute (not relative)."""
+        self._mkdir("node_modules", ".bin")
+        result = node_bin_dirs(self._root, "")
+        for d in result:
+            self.assertTrue(_os.path.isabs(d),
+                            "path must be absolute: {0!r}".format(d))
+
+    def test_deeply_nested_package_walks_up(self):
+        """Deep package path 'a/b/c' — only existing bins at c, b, a, root returned."""
+        self._mkdir("a", "b", "c", "node_modules", ".bin")
+        self._mkdir("a", "node_modules", ".bin")
+        # No bin at a/b or root.
+        result = node_bin_dirs(self._root, "a/b/c")
+        # Should find a/b/c and a, not root or a/b.
+        self.assertEqual(len(result), 2)
+        self.assertTrue(any("a" + _os.sep + "b" + _os.sep + "c" in d for d in result))
+        self.assertTrue(any(d.endswith(_os.path.join("a", "node_modules", ".bin")) for d in result))
+
+    def test_sibling_sharing_string_prefix_not_included(self):
+        """A sibling dir whose name shares source_root's string prefix must NOT appear.
+
+        Before the fix, a walk guard using str.startswith() would pass for
+        a sibling like /tmp/proj_sibling when source_root is /tmp/proj,
+        because '/tmp/proj_sibling'.startswith('/tmp/proj') is True.
+        The separator-safe relative_to() check breaks out of the walk
+        correctly so the sibling's node_modules/.bin is never returned.
+
+        Concretely: source_root = <tmpdir>/proj,
+                    sibling    = <tmpdir>/proj_sibling
+        We start walking inside proj (package_path = "pkg") and ensure
+        proj_sibling/node_modules/.bin is absent from the result even
+        though its string representation starts with proj's path.
+        """
+        import tempfile as _tf
+        import shutil as _sh
+
+        # Create a fresh parent so we control the exact names.
+        parent_dir = _tf.mkdtemp()
+        try:
+            root = _os.path.join(parent_dir, "proj")
+            sibling = _os.path.join(parent_dir, "proj_sibling")
+
+            # Create a package inside root and its bin dir.
+            pkg_bin = _os.path.join(root, "pkg", "node_modules", ".bin")
+            _os.makedirs(pkg_bin, exist_ok=True)
+
+            # Create a node_modules/.bin inside the sibling (should never appear).
+            sibling_bin = _os.path.join(sibling, "node_modules", ".bin")
+            _os.makedirs(sibling_bin, exist_ok=True)
+
+            result = node_bin_dirs(root, "pkg")
+
+            # The sibling's bin MUST NOT appear in the walk result.
+            for d in result:
+                self.assertFalse(
+                    d.startswith(sibling),
+                    "sibling dir {0!r} must not appear in node_bin_dirs result; "
+                    "got: {1!r}".format(sibling, result),
+                )
+        finally:
+            _sh.rmtree(parent_dir, ignore_errors=True)
+
+
+class TestResolvesFunction(unittest.TestCase):
+    """Unit tests for _shared.node_bin.resolves()."""
+
+    def setUp(self):
+        self._root = _tempfile.mkdtemp()
+
+    def tearDown(self):
+        _shutil.rmtree(self._root, ignore_errors=True)
+
+    def _make_fake_binary(self, bin_dir, name):
+        """Create a fake executable at <bin_dir>/<name>."""
+        _os.makedirs(bin_dir, exist_ok=True)
+        path = _os.path.join(bin_dir, name)
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\necho ok\n")
+        _os.chmod(path, _stat.S_IRWXU)
+        return path
+
+    def test_token_on_global_path_returns_true(self):
+        """Token found via shutil.which → True, regardless of node_modules."""
+        with patch("shutil.which", _make_which(["tsc"])):
+            result = resolves("tsc", self._root, "")
+        self.assertTrue(result)
+
+    def test_token_not_on_path_not_in_node_bin_returns_false(self):
+        """Token absent from PATH and no node_modules → False."""
+        with patch("shutil.which", _make_which([])):
+            result = resolves("totally-absent-xyz", self._root, "")
+        self.assertFalse(result)
+
+    def test_token_in_root_node_modules_bin_returns_true(self):
+        """Token in <source_root>/node_modules/.bin (not on PATH) → True."""
+        bin_dir = _os.path.join(self._root, "node_modules", ".bin")
+        self._make_fake_binary(bin_dir, "vue-tsc-fake")
+        with patch("shutil.which", _make_which([])):
+            result = resolves("vue-tsc-fake", self._root, "")
+        self.assertTrue(result,
+                        "binary in source_root/node_modules/.bin must resolve")
+
+    def test_token_in_package_node_modules_bin_returns_true(self):
+        """Token in <source_root>/<pkg>/node_modules/.bin → True."""
+        bin_dir = _os.path.join(self._root, "packages", "ui", "node_modules", ".bin")
+        self._make_fake_binary(bin_dir, "eslint-fake")
+        with patch("shutil.which", _make_which([])):
+            result = resolves("eslint-fake", self._root, "packages/ui")
+        self.assertTrue(result,
+                        "binary in package node_modules/.bin must resolve")
+
+    def test_token_in_wrong_package_returns_false(self):
+        """Token in packages/ui/node_modules/.bin but probing packages/api → False."""
+        bin_dir = _os.path.join(self._root, "packages", "ui", "node_modules", ".bin")
+        self._make_fake_binary(bin_dir, "ui-only-tool")
+        with patch("shutil.which", _make_which([])):
+            result = resolves("ui-only-tool", self._root, "packages/api")
+        self.assertFalse(result,
+                         "binary in wrong package must not resolve for different package")
+
+    def test_non_executable_file_not_resolved(self):
+        """A file in node_modules/.bin that is NOT executable → False."""
+        bin_dir = _os.path.join(self._root, "node_modules", ".bin")
+        _os.makedirs(bin_dir, exist_ok=True)
+        path = _os.path.join(bin_dir, "non-exec-tool")
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\n")
+        # Make it NOT executable (read-only).
+        _os.chmod(path, _stat.S_IRUSR)
+        with patch("shutil.which", _make_which([])):
+            result = resolves("non-exec-tool", self._root, "")
+        self.assertFalse(result,
+                         "non-executable file in node_modules/.bin must not resolve")
+
+    def test_divergence_invariant_per_package_cannot_see_sibling_bin(self):
+        """Divergence invariant (probe direction): resolves() is PER-PACKAGE.
+
+        Design invariant: cmd_verify_touched UNIONS all touched packages'
+        bin dirs, so it may resolve a binary that the per-package probe
+        (resolves()) still returns False for.  The reverse must NEVER hold:
+        if resolves() returns True, the runner must also find it.
+
+        This test pins the invariant direction for the per-package probe:
+        package B's resolves() call CANNOT see package A's
+        node_modules/.bin, even though verify's union would include it.
+
+        Setup:
+          packages/a/node_modules/.bin/shared-tool  (executable)
+          packages/b  (NO node_modules/.bin at all)
+
+        Probing for "shared-tool" with package_path="packages/b" → False,
+        because per-package walk from packages/b does not descend into
+        packages/a.
+        """
+        # Create shared-tool in package A's bin dir.
+        bin_dir_a = _os.path.join(self._root, "packages", "a", "node_modules", ".bin")
+        self._make_fake_binary(bin_dir_a, "shared-tool")
+
+        # Package B has no node_modules/.bin of its own.
+        with patch("shutil.which", _make_which([])):
+            result = resolves("shared-tool", self._root, "packages/b")
+
+        self.assertFalse(
+            result,
+            "resolves() with package_path='packages/b' must NOT see "
+            "packages/a/node_modules/.bin — per-package probe is isolated",
+        )
+
+
+# ---------------------------------------------------------------------------
+# probe_command_executability with project_node_bin_dirs.
+# ---------------------------------------------------------------------------
+
+
+class TestProbeCommandWithNodeBinDirs(unittest.TestCase):
+    """Tests for probe_command_executability(cmd, project_node_bin_dirs=[...])."""
+
+    def setUp(self):
+        self._root = _tempfile.mkdtemp()
+
+    def tearDown(self):
+        _shutil.rmtree(self._root, ignore_errors=True)
+
+    def _make_fake_binary(self, bin_dir, name):
+        _os.makedirs(bin_dir, exist_ok=True)
+        path = _os.path.join(bin_dir, name)
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\necho ok\n")
+        _os.chmod(path, _stat.S_IRWXU)
+        return path
+
+    def test_binary_in_provided_node_bin_dirs_no_warning(self):
+        """Binary in project_node_bin_dirs (not on PATH) → empty (no warning)."""
+        from _configure._validators import probe_command_executability
+
+        bin_dir = _os.path.join(self._root, "node_modules", ".bin")
+        self._make_fake_binary(bin_dir, "vue-tsc-probe-fake")
+
+        with patch("shutil.which", _make_which([])):
+            result = probe_command_executability(
+                "vue-tsc-probe-fake --noEmit",
+                project_node_bin_dirs=[bin_dir],
+            )
+        self.assertEqual(result, [],
+                         "binary in project_node_bin_dirs must suppress the warning")
+
+    def test_binary_absent_from_path_and_node_bins_warns(self):
+        """Binary absent from PATH and not in any provided node_bin_dirs → flagged."""
+        from _configure._validators import probe_command_executability
+
+        # Provide a real bin_dir but DON'T create the binary there.
+        bin_dir = _os.path.join(self._root, "node_modules", ".bin")
+        _os.makedirs(bin_dir, exist_ok=True)
+
+        with patch("shutil.which", _make_which([])):
+            result = probe_command_executability(
+                "totally-absent-xyz --noEmit",
+                project_node_bin_dirs=[bin_dir],
+            )
+        self.assertEqual(result, ["totally-absent-xyz"],
+                         "truly absent binary must still be flagged")
+
+    def test_no_node_bin_dirs_backward_compatible(self):
+        """project_node_bin_dirs=None → original PATH-only behaviour (backwards compatible)."""
+        from _configure._validators import probe_command_executability
+
+        with patch("shutil.which", _make_which([])):
+            result = probe_command_executability("missing-tool --flag", project_node_bin_dirs=None)
+        self.assertEqual(result, ["missing-tool"])
+
+    def test_empty_node_bin_dirs_backward_compatible(self):
+        """project_node_bin_dirs=[] → empty list is treated as no local bins."""
+        from _configure._validators import probe_command_executability
+
+        with patch("shutil.which", _make_which([])):
+            result = probe_command_executability("missing-tool --flag", project_node_bin_dirs=[])
+        self.assertEqual(result, ["missing-tool"])
+
+
+# ---------------------------------------------------------------------------
+# collect_executability_warnings with source_root.
+# ---------------------------------------------------------------------------
+
+
+class TestCollectWarningsWithSourceRoot(unittest.TestCase):
+    """Tests for collect_executability_warnings(state, source_root=...)."""
+
+    def setUp(self):
+        self._root = _tempfile.mkdtemp()
+
+    def tearDown(self):
+        _shutil.rmtree(self._root, ignore_errors=True)
+
+    def _make_fake_binary(self, bin_dir, name):
+        _os.makedirs(bin_dir, exist_ok=True)
+        path = _os.path.join(bin_dir, name)
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\necho ok\n")
+        _os.chmod(path, _stat.S_IRWXU)
+        return path
+
+    def _make_state(self, **kw):
+        base = {
+            "type_check_commands": [],
+            "lint_commands": [],
+            "build_commands": [],
+            "package_stacks": [],
+        }
+        base.update(kw)
+        return base
+
+    def test_binary_in_source_root_node_modules_no_warning(self):
+        """Binary in <source_root>/node_modules/.bin (not on PATH) → no warning."""
+        bin_dir = _os.path.join(self._root, "node_modules", ".bin")
+        self._make_fake_binary(bin_dir, "vue-tsc-warn-fake")
+        state = self._make_state(type_check_commands=["vue-tsc-warn-fake --noEmit"])
+        with patch("shutil.which", _make_which([])):
+            warnings = collect_executability_warnings(state, source_root=self._root)
+        self.assertEqual(warnings, [],
+                         "binary in node_modules/.bin must suppress warning")
+
+    def test_truly_missing_binary_still_warns(self):
+        """Binary absent from PATH and node_modules/.bin → warning (unchanged)."""
+        state = self._make_state(type_check_commands=["truly-absent-xyz --noEmit"])
+        with patch("shutil.which", _make_which([])):
+            warnings = collect_executability_warnings(state, source_root=self._root)
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["missing_token"], "truly-absent-xyz")
+
+    def test_no_source_root_falls_back_to_path_only(self):
+        """source_root=None → PATH-only probe (backward compatible with existing tests)."""
+        state = self._make_state(type_check_commands=["absent-tool --flag"])
+        with patch("shutil.which", _make_which([])):
+            warnings = collect_executability_warnings(state, source_root=None)
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["missing_token"], "absent-tool")
+
+    def test_package_binary_in_pkg_node_modules_no_warning(self):
+        """Per-package binary in <pkg>/node_modules/.bin → no warning."""
+        pkg_bin_dir = _os.path.join(self._root, "packages", "frontend",
+                                    "node_modules", ".bin")
+        self._make_fake_binary(pkg_bin_dir, "pkg-tool-fake")
+        stack = {
+            "path": "packages/frontend",
+            "language": "TypeScript",
+            "type_check_command": "pkg-tool-fake --noEmit",
+            "lint_command": None,
+            "build_command": None,
+        }
+        state = self._make_state(package_stacks=[stack])
+        with patch("shutil.which", _make_which([])):
+            warnings = collect_executability_warnings(state, source_root=self._root)
+        self.assertEqual(warnings, [],
+                         "per-package binary in pkg node_modules/.bin must suppress warning")
+
+
 if __name__ == "__main__":
     unittest.main()

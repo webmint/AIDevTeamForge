@@ -609,7 +609,7 @@ class TestCmdVerifyTouched(unittest.TestCase):
 
         commands_called = []
 
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             commands_called.append(cmd)
             return 0, ""
 
@@ -1309,7 +1309,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_missing_command_rc127_tooling_unavailable(self):
         """A command returning rc=127 with 'command not found' → tooling_unavailable, exit 2."""
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 127, "/bin/sh: vue-tsc: command not found\n"
 
         config = {
@@ -1328,7 +1328,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_missing_command_windows_signal_tooling_unavailable(self):
         """Windows 'not recognized' output → tooling_unavailable, exit 2."""
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 1, (
                 "'vue-tsc' is not recognized as an internal or external command,\r\n"
                 "operable program or batch file.\r\n"
@@ -1348,7 +1348,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_tooling_unavailable_does_not_self_repair(self):
         """tooling_unavailable must NOT enter the self_repair path even at iteration=0."""
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 127, "sh: missing-linter: command not found\n"
 
         config = {
@@ -1368,7 +1368,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
         """When the first command is tooling-unavailable, remaining commands must NOT run."""
         commands_called = []
 
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             commands_called.append(cmd)
             if cmd == "bad-tool --check":
                 return 127, "sh: bad-tool: command not found\n"
@@ -1390,7 +1390,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_genuine_code_failure_still_self_repairs(self):
         """tsc exit 1 with real TS diagnostics must still produce self_repair (not tooling_unavailable)."""
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 1, (
                 "src/widget.ts(5,10): error TS2304: Cannot find name 'MyWidget'\n"
                 "Found 1 error.\n"
@@ -1417,7 +1417,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
         It must go through the self-repair path so the implementing agent can
         fix the config, not be short-circuited as tooling_unavailable.
         """
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 1, "Error: Loader: not found for .vue files\n"
 
         config = {
@@ -1437,7 +1437,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_vite_plugin_not_found_diagnostic_is_self_repair(self):
         """Vite 'Plugin: not found' diagnostic (rc=1) → self_repair, NOT tooling_unavailable."""
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 1, "Plugin: not found: @vitejs/plugin-vue\nError: Build failed.\n"
 
         config = {
@@ -1456,7 +1456,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_genuine_code_failure_at_cap_fails_not_tooling_unavailable(self):
         """tsc exit 2 with real diagnostics at cap → failed (not tooling_unavailable)."""
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 2, "Found 3 errors in 2 files.\n"
 
         config = {
@@ -1475,7 +1475,7 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
     def test_all_pass_unchanged_after_feature(self):
         """All-pass case is unaffected by the new tooling_unavailable path."""
-        def mock_run(cmd, cwd):
+        def mock_run(cmd, cwd, extra_paths=None):
             return 0, ""
 
         config = {
@@ -1488,6 +1488,316 @@ class TestToolingUnavailableIntegration(unittest.TestCase):
 
         self.assertEqual(rc, EXIT_OK)
         self.assertEqual(payload["status"], "pass")
+
+
+# ---------------------------------------------------------------------------
+# Node bin resolution tests for _run_command and cmd_verify_touched
+# ---------------------------------------------------------------------------
+
+
+class TestNodeBinResolutionRunCommand(unittest.TestCase):
+    """Unit tests for _run_command's extra_paths / PATH augmentation.
+
+    These tests import _run_command directly and verify:
+    - extra_paths=None → os.environ unchanged (no mutation check).
+    - extra_paths=["/some/bin"] → those dirs appear in subprocess PATH.
+    - os.environ is NOT mutated after the call.
+    """
+
+    def _import_run_command(self):
+        from _implement._cmds_verify import _run_command
+        return _run_command
+
+    def test_no_extra_paths_uses_current_env(self):
+        """extra_paths=None → subprocess inherits PATH unchanged; no mutation."""
+        _run_command = self._import_run_command()
+        original_path = os.environ.get("PATH", "")
+        _run_command("true", "/tmp", extra_paths=None)
+        self.assertEqual(os.environ.get("PATH", ""), original_path,
+                         "os.environ must not be mutated")
+
+    def test_extra_paths_empty_list_no_mutation(self):
+        """extra_paths=[] (empty) → os.environ not mutated."""
+        _run_command = self._import_run_command()
+        original_path = os.environ.get("PATH", "")
+        _run_command("true", "/tmp", extra_paths=[])
+        self.assertEqual(os.environ.get("PATH", ""), original_path,
+                         "empty extra_paths must not mutate os.environ")
+
+    def test_extra_paths_prepended_to_path(self):
+        """extra_paths prepended → a script in that dir is found and runs."""
+        import tempfile as _tempfile
+        import stat as _stat
+
+        _run_command = self._import_run_command()
+        tmpdir = _tempfile.mkdtemp()
+        try:
+            # Create a fake executable in tmpdir.
+            script_path = os.path.join(tmpdir, "my-fake-tool")
+            with open(script_path, "w") as fh:
+                fh.write("#!/bin/sh\necho hello\n")
+            os.chmod(script_path, _stat.S_IRWXU)
+
+            # The tool is NOT on the global PATH (it's in tmpdir only).
+            import shutil as _shutil
+            self.assertIsNone(_shutil.which("my-fake-tool"),
+                              "precondition: tool must not be on global PATH")
+
+            rc, output = _run_command("my-fake-tool", "/tmp", extra_paths=[tmpdir])
+            self.assertEqual(rc, 0, "command in extra_paths dir must succeed (rc=0)")
+            self.assertIn("hello", output)
+        finally:
+            import shutil as _shutil
+            _shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_os_environ_not_mutated_after_extra_paths(self):
+        """os.environ PATH is exactly unchanged after _run_command with extra_paths."""
+        _run_command = self._import_run_command()
+        before = dict(os.environ)
+        _run_command("true", "/tmp", extra_paths=["/some/fake/bin"])
+        after = dict(os.environ)
+        self.assertEqual(before.get("PATH"), after.get("PATH"),
+                         "os.environ PATH must not be mutated after call with extra_paths")
+
+
+class TestNodeBinResolutionIntegration(unittest.TestCase):
+    """Integration tests for cmd_verify_touched with node_modules/.bin resolution.
+
+    Exercises the full path from cmd_verify_touched down through _run_command:
+    - Binary in <source_root>/node_modules/.bin → pass (not tooling_unavailable).
+    - Binary in <source_root>/<pkg>/node_modules/.bin → pass.
+    - Genuinely missing binary → tooling_unavailable (unchanged semantics).
+    - os.environ is not mutated.
+    """
+
+    def setUp(self):
+        import tempfile as _tempfile
+        import stat as _stat
+        import shutil as _shutil
+
+        self._tmpdir = _tempfile.mkdtemp()
+        self._stat = _stat
+        self._shutil = _shutil
+
+    def tearDown(self):
+        self._shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _make_fake_binary(self, bin_dir, name):
+        """Create a fake executable at <bin_dir>/<name>; return the path."""
+        os.makedirs(bin_dir, exist_ok=True)
+        path = os.path.join(bin_dir, name)
+        with open(path, "w") as fh:
+            fh.write("#!/bin/sh\necho ok\n")
+        os.chmod(path, self._stat.S_IRWXU)
+        return path
+
+    def _write_config_and_run(self, files_list, config, iteration=0):
+        """Write config to install root and run cmd_verify_touched."""
+        devforge = os.path.join(self._tmpdir, ".devforge")
+        os.makedirs(devforge, exist_ok=True)
+        config_path = os.path.join(devforge, "project-config.json")
+        with open(config_path, "w") as fh:
+            json.dump(config, fh)
+
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+        with patch("sys.stdout", stdout_buf), patch("sys.stderr", stderr_buf):
+            rc = cmd_verify_touched(
+                FakeArgs(
+                    files=json.dumps(files_list),
+                    root=self._tmpdir,
+                    iteration=iteration,
+                )
+            )
+        output = stdout_buf.getvalue()
+        payload = json.loads(output) if output.strip() else None
+        return rc, payload
+
+    def test_binary_in_source_root_node_modules_bin_passes(self):
+        """vue-tsc in <source_root>/node_modules/.bin → pass (not tooling_unavailable).
+
+        The binary exists ONLY as a devDependency (in node_modules/.bin),
+        NOT on the global PATH.  Before this fix, it would exit as
+        tooling_unavailable with rc=127.  After the fix, extra_paths is
+        prepended to PATH and the command runs.
+        """
+        import shutil as _shutil
+
+        # Precondition: ensure vue-tsc is not globally available.
+        if _shutil.which("vue-tsc-fake-test-binary"):
+            self.skipTest("vue-tsc-fake-test-binary unexpectedly on PATH")
+
+        node_bin = os.path.join(self._tmpdir, "node_modules", ".bin")
+        self._make_fake_binary(node_bin, "vue-tsc-fake-test-binary")
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["vue-tsc-fake-test-binary --noEmit"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "PACKAGE_STACKS": [],
+        }
+        original_path = os.environ.get("PATH", "")
+        rc, payload = self._write_config_and_run(["src/App.vue"], config)
+        # os.environ must be unchanged.
+        self.assertEqual(os.environ.get("PATH", ""), original_path,
+                         "os.environ PATH must not be mutated")
+        self.assertEqual(rc, EXIT_OK,
+                         "binary in source_root/node_modules/.bin must resolve; "
+                         "payload={0!r}".format(payload))
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["status"], "pass",
+                         "expected pass; got {0!r}".format(payload))
+
+    def test_binary_in_package_node_modules_bin_passes(self):
+        """Tool in <source_root>/<pkg>/node_modules/.bin → pass.
+
+        Simulates a package-local install (npm workspaces with no hoisting).
+        """
+        import shutil as _shutil
+
+        if _shutil.which("pkg-local-fake-test-binary"):
+            self.skipTest("pkg-local-fake-test-binary unexpectedly on PATH")
+
+        pkg_node_bin = os.path.join(self._tmpdir, "packages", "frontend",
+                                    "node_modules", ".bin")
+        self._make_fake_binary(pkg_node_bin, "pkg-local-fake-test-binary")
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "PACKAGE_STACKS": [
+                {
+                    "path": "packages/frontend",
+                    "language": "TypeScript",
+                    "framework": "Vue",
+                    "build_tool": "vite",
+                    "build_command": "true",
+                    "type_check_command": "pkg-local-fake-test-binary --noEmit",
+                    "lint_command": "true",
+                },
+            ],
+        }
+        original_path = os.environ.get("PATH", "")
+        rc, payload = self._write_config_and_run(["packages/frontend/src/App.vue"], config)
+        self.assertEqual(os.environ.get("PATH", ""), original_path,
+                         "os.environ PATH must not be mutated")
+        self.assertEqual(rc, EXIT_OK,
+                         "binary in pkg node_modules/.bin must resolve; "
+                         "payload={0!r}".format(payload))
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["status"], "pass",
+                         "expected pass; got {0!r}".format(payload))
+
+    def test_genuinely_missing_binary_still_tooling_unavailable(self):
+        """A binary absent from PATH AND node_modules → tooling_unavailable (unchanged)."""
+        import shutil as _shutil
+
+        if _shutil.which("totally-absent-tool-xyz"):
+            self.skipTest("totally-absent-tool-xyz unexpectedly on PATH")
+
+        # No node_modules/.bin created — binary is genuinely missing.
+        config = {
+            "TYPE_CHECK_COMMANDS": ["totally-absent-tool-xyz --check"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "PACKAGE_STACKS": [],
+        }
+        rc, payload = self._write_config_and_run(["src/App.vue"], config)
+        self.assertEqual(rc, EXIT_FINDINGS)
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["status"], "tooling_unavailable",
+                         "truly missing binary must still produce tooling_unavailable")
+
+    def test_os_environ_not_mutated_during_full_verify(self):
+        """os.environ PATH is unchanged after a full cmd_verify_touched run."""
+        node_bin = os.path.join(self._tmpdir, "node_modules", ".bin")
+        self._make_fake_binary(node_bin, "env-check-fake-binary")
+
+        config = {
+            "TYPE_CHECK_COMMANDS": ["env-check-fake-binary --noEmit"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "PACKAGE_STACKS": [],
+        }
+        original_path = os.environ.get("PATH", "")
+        self._write_config_and_run(["src/App.vue"], config)
+        self.assertEqual(os.environ.get("PATH", ""), original_path,
+                         "os.environ must not be mutated during cmd_verify_touched")
+
+    def test_divergence_invariant_verify_union_passes_per_package_probe_would_fail(self):
+        """Divergence invariant: verify (union) may pass where per-package probe would not.
+
+        Design invariant direction: verify's bin-dir union can resolve a binary
+        the per-package probe (resolves()) would return False for — but NEVER
+        the reverse.
+
+        Setup:
+          packages/a/node_modules/.bin/shared-tool  (real executable)
+          packages/b  type_check_command = "shared-tool --check"
+                      (NO shared-tool in packages/b/node_modules/.bin)
+
+        Touch files in BOTH packages/a and packages/b so that cmd_verify_touched
+        unions their bin dirs.  The union includes packages/a/node_modules/.bin,
+        so the command "shared-tool --check" (assigned to package B) can be
+        found and runs successfully → status == "pass", NOT tooling_unavailable.
+
+        The companion test in TestResolvesFunction
+        (test_divergence_invariant_per_package_cannot_see_sibling_bin)
+        confirms that resolves("shared-tool", root, "packages/b") == False,
+        pinning the invariant direction.
+        """
+        import shutil as _shutil
+
+        # Precondition: ensure shared-tool-divergence-fake is not on global PATH.
+        if _shutil.which("shared-tool-divergence-fake"):
+            self.skipTest("shared-tool-divergence-fake unexpectedly on global PATH")
+
+        # Create shared-tool in package A's bin dir.
+        bin_dir_a = os.path.join(self._tmpdir, "packages", "a", "node_modules", ".bin")
+        self._make_fake_binary(bin_dir_a, "shared-tool-divergence-fake")
+
+        # Package B has the command but no local node_modules/.bin.
+        config = {
+            "TYPE_CHECK_COMMANDS": ["true"],
+            "LINT_COMMANDS": ["true"],
+            "BUILD_COMMANDS": ["true"],
+            "PACKAGE_STACKS": [
+                {
+                    "path": "packages/a",
+                    "language": "TypeScript",
+                    "framework": None,
+                    "build_tool": None,
+                    "build_command": "true",
+                    "type_check_command": "true",
+                    "lint_command": "true",
+                },
+                {
+                    "path": "packages/b",
+                    "language": "TypeScript",
+                    "framework": None,
+                    "build_tool": None,
+                    "build_command": "true",
+                    # B owns this command but has no local node_modules/.bin.
+                    "type_check_command": "shared-tool-divergence-fake --check",
+                    "lint_command": "true",
+                },
+            ],
+        }
+        # Touch files in BOTH packages so the union includes A's bin dir.
+        rc, payload = self._write_config_and_run(
+            ["packages/a/index.ts", "packages/b/index.ts"], config
+        )
+        self.assertEqual(
+            rc, EXIT_OK,
+            "verify's union of A+B bin dirs must find shared-tool-divergence-fake; "
+            "payload={0!r}".format(payload),
+        )
+        self.assertIsNotNone(payload)
+        self.assertEqual(
+            payload["status"], "pass",
+            "expected pass (union resolves the binary); got {0!r}".format(payload),
+        )
 
 
 if __name__ == "__main__":

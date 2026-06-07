@@ -159,6 +159,46 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def _derive_source_root(devforge_dir):
+    # type: (object) -> Optional[str]
+    """Derive the project source_root from .devforge/project-config.json.
+
+    Reads PROJECT_ROOT from project-config.json (sibling to devforge_dir).
+    Returns an absolute path string, or None if derivation fails (file
+    missing, malformed JSON, PROJECT_ROOT absent or standalone).
+
+    Best-effort only — callers must handle None gracefully.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    devforge = _Path(str(devforge_dir))
+    # project-config.json lives INSIDE .devforge/.
+    config_path = devforge / "project-config.json"
+    if not config_path.exists():
+        return None
+
+    try:
+        with open(str(config_path), "r", encoding="utf-8") as fh:
+            pconfig = _json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+    if not isinstance(pconfig, dict):
+        return None
+
+    project_root = pconfig.get("PROJECT_ROOT", "")
+    if not project_root or project_root == ".":
+        # Standalone: source root IS the install root (parent of .devforge/).
+        install_root = devforge.parent
+        return str(install_root.resolve())
+
+    # Wrapper: source root is install_root / PROJECT_ROOT.
+    install_root = devforge.parent
+    source_root = install_root / str(project_root)
+    return str(source_root.resolve())
+
+
 def cmd_summary(args: argparse.Namespace) -> int:
     """Render the configure report summary to stdout. Read-only, exit 0 always.
 
@@ -172,5 +212,9 @@ def cmd_summary(args: argparse.Namespace) -> int:
             "configure_helper summary: cannot load configure.yaml: {0}\n".format(err)
         )
         return 1
-    sys.stdout.write(_render_configure_summary(state))
+
+    # Derive source_root for node_modules/.bin probe (best-effort; None on failure).
+    source_root = _derive_source_root(args.devforge_dir)
+
+    sys.stdout.write(_render_configure_summary(state, source_root=source_root))
     return 0

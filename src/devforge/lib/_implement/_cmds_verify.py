@@ -134,6 +134,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from _implement._workspace import resolve_workspace  # type: ignore[import]
+from _shared.node_bin import node_bin_dirs as _node_bin_dirs  # type: ignore[import]
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -329,15 +330,30 @@ def _collect_build_commands(touched_files, package_stacks, primary_build):
 # ---------------------------------------------------------------------------
 
 
-def _run_command(cmd, cwd):
-    # type: (str, str) -> Tuple[int, str]
+def _run_command(cmd, cwd, extra_paths=None):
+    # type: (str, str, Optional[List[str]]) -> Tuple[int, str]
     """Run a shell command and return (returncode, combined_output).
 
     shell=True: required because stored commands may contain `cd X && ...`
     chains that the OS cannot exec directly.
     Output is stdout+stderr combined (the orchestrator relays this to the
     repairing agent; combining avoids ordering ambiguity).
+
+    extra_paths: optional list of directory paths to prepend to PATH in the
+    subprocess environment.  Used to expose `node_modules/.bin` directories
+    so locally-installed tools (e.g. vue-tsc, eslint) resolve without
+    requiring global installation.  os.environ is NEVER mutated; a copy is
+    made.  When extra_paths is None or empty, env is unchanged (subprocess
+    inherits os.environ as-is).
     """
+    env = None
+    if extra_paths:
+        env = dict(os.environ)
+        existing_path = env.get("PATH", "")
+        env["PATH"] = os.pathsep.join(extra_paths) + (
+            os.pathsep + existing_path if existing_path else ""
+        )
+
     try:
         result = subprocess.run(
             cmd,
@@ -348,6 +364,7 @@ def _run_command(cmd, cwd):
             text=True,
             check=False,
             timeout=_CMD_TIMEOUT,
+            env=env,
         )
         return result.returncode, result.stdout
     except subprocess.TimeoutExpired:
@@ -513,6 +530,28 @@ def cmd_verify_touched(args):
     verify_cmds = tc_cmds + lint_cmds
     all_cmds = verify_cmds + build_cmds
 
+    # --- Compute node_modules/.bin dirs for locally-installed JS/TS tools ---
+    # Union the bin dirs for all packages that contributed commands, plus always
+    # include the source-root-level hoisted bins.  This lets bare tool invocations
+    # like "vue-tsc --noEmit" resolve when the binary is a devDependency rather
+    # than a global install — matching npm's own upward-walk resolution order.
+    # os.environ is NOT mutated; _run_command receives a copy with an augmented PATH.
+    _pkg_paths_seen = set()  # type: Set[str]
+    for fpath in touched_files:
+        pkg = _match_package(fpath, package_stacks)
+        if pkg is not None:
+            _pkg_paths_seen.add((pkg.get("path") or "").strip())
+    # Always include the source-root level (hoisted node_modules/.bin).
+    _pkg_paths_seen.add("")
+
+    _bin_dirs_ordered = []  # type: List[str]
+    _bin_dirs_seen = set()  # type: Set[str]
+    for _pkg_path in sorted(_pkg_paths_seen, key=len, reverse=True):
+        for _d in _node_bin_dirs(source_root_str, _pkg_path):
+            if _d not in _bin_dirs_seen:
+                _bin_dirs_seen.add(_d)
+                _bin_dirs_ordered.append(_d)
+
     # --- Run commands with cwd = source_root ---
     # Commands are BARE (e.g. "npm run check") — not pre-prefixed with
     # "cd SOURCE_ROOT &&".  Setting cwd=source_root is the correct way to
@@ -521,7 +560,7 @@ def cmd_verify_touched(args):
     failed_output = None
 
     for cmd in all_cmds:
-        rc, output = _run_command(cmd, source_root_str)
+        rc, output = _run_command(cmd, source_root_str, extra_paths=_bin_dirs_ordered)
         if rc != 0:
             # Tooling-unavailable check comes FIRST — a missing binary cannot be
             # fixed by re-running the implementing agent, so skip self-repair entirely.

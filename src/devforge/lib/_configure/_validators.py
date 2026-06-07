@@ -240,7 +240,11 @@ import re as _re
 _ENV_ASSIGN_RE = _re.compile(r'^\w+=')
 
 
-def probe_command_executability(command: str) -> Optional[List[str]]:
+def probe_command_executability(
+    command,         # type: str
+    project_node_bin_dirs=None,  # type: Optional[List[str]]
+):
+    # type: (...) -> Optional[List[str]]
     """Return unresolvable executable tokens for `command`, or None to skip.
 
     Best-effort PATH probe using shutil.which. Does NOT execute the command.
@@ -253,6 +257,14 @@ def probe_command_executability(command: str) -> Optional[List[str]]:
     - Shell env-var assignment prefixes (e.g. 'NODE_ENV=test tsc') are
       skipped; the first non-assignment token is probed as the executable.
       If a segment consists only of assignments, nothing is probed for it.
+
+    project_node_bin_dirs: optional list of `node_modules/.bin` directory
+        paths to check when shutil.which fails.  Produced by
+        `_shared.node_bin.node_bin_dirs(source_root, package_path)`.
+        When provided, a token is NOT flagged as missing if the binary
+        exists and is executable in any of those dirs.  When None or empty,
+        only the global PATH is consulted (original behaviour, backwards
+        compatible).
 
     Returns:
         None    — command is skipped (empty, blank, or the literal "N/A").
@@ -267,14 +279,16 @@ def probe_command_executability(command: str) -> Optional[List[str]]:
         chain boundary). Each segment's first non-assignment, non-cd token
         is probed independently.
     """
+    import os as _os
+
     stripped = command.strip() if command else ""
     if not stripped or stripped == _NA_SENTINEL:
         return None
 
     segments = _split_into_segments(stripped)
 
-    missing: List[str] = []
-    seen: List[str] = []
+    missing = []   # type: List[str]
+    seen = []      # type: List[str]
 
     for seg_tokens in segments:
         if not seg_tokens:
@@ -299,7 +313,20 @@ def probe_command_executability(command: str) -> Optional[List[str]]:
         if executable == "cd":
             continue
 
-        if shutil.which(executable) is None:
+        if shutil.which(executable) is not None:
+            # Resolves on global PATH — fine.
+            continue
+
+        # Not on global PATH: check project-local node_modules/.bin dirs.
+        found_locally = False
+        if project_node_bin_dirs:
+            for bin_dir in project_node_bin_dirs:
+                candidate = _os.path.join(bin_dir, executable)
+                if _os.path.isfile(candidate) and _os.access(candidate, _os.X_OK):
+                    found_locally = True
+                    break
+
+        if not found_locally:
             # Deduplicate: skip if already in the missing list.
             if executable not in seen:
                 missing.append(executable)
@@ -308,7 +335,11 @@ def probe_command_executability(command: str) -> Optional[List[str]]:
     return missing
 
 
-def collect_executability_warnings(state: dict) -> List[Dict[str, str]]:
+def collect_executability_warnings(
+    state,           # type: dict
+    source_root=None,  # type: Optional[str]
+):
+    # type: (...) -> List[Dict[str, str]]
     """Probe all configured commands in `state` and return warning records.
 
     Probes the primary command arrays (type_check_commands[0],
@@ -318,6 +349,14 @@ def collect_executability_warnings(state: dict) -> List[Dict[str, str]]:
     Only the FIRST entry of each primary array is probed — it is the
     command that /implement's verify gate will actually run.
 
+    source_root: optional absolute path to the project's source root.
+        When provided, `node_modules/.bin` directories are derived from
+        `_shared.node_bin.node_bin_dirs` and checked before emitting a
+        "not found" warning.  This lets locally-installed tools (e.g.
+        vue-tsc, eslint installed as devDependencies) suppress false
+        warnings.  When None, only the global PATH is consulted
+        (backwards-compatible with all existing tests and callers).
+
     Returns a list of dicts, each with:
         scope         — human-readable location (e.g. "primary type_check",
                         "package packages/frontend lint")
@@ -326,9 +365,16 @@ def collect_executability_warnings(state: dict) -> List[Dict[str, str]]:
 
     Empty list → no warnings (all commands resolvable or skipped).
     """
-    warnings: List[Dict[str, str]] = []
+    from _shared.node_bin import node_bin_dirs as _nb_dirs  # type: ignore[import]
+
+    warnings = []  # type: List[Dict[str, str]]
 
     # Primary command arrays: probe the first entry only.
+    # For primaries, use the source-root node_modules/.bin (hoisted).
+    primary_node_bins = None  # type: Optional[List[str]]
+    if source_root:
+        primary_node_bins = _nb_dirs(source_root, "")
+
     _PRIMARY = (
         ("type_check_commands", "primary type_check"),
         ("lint_commands",       "primary lint"),
@@ -339,7 +385,7 @@ def collect_executability_warnings(state: dict) -> List[Dict[str, str]]:
         if not arr:
             continue
         cmd = arr[0]
-        result = probe_command_executability(cmd)
+        result = probe_command_executability(cmd, project_node_bin_dirs=primary_node_bins)
         if result:  # non-empty list → at least one missing token
             warnings.append({
                 "scope": scope_label,
@@ -347,19 +393,22 @@ def collect_executability_warnings(state: dict) -> List[Dict[str, str]]:
                 "missing_token": result[0],
             })
 
-    # Per-package records.
+    # Per-package records: use the package-specific node_modules/.bin walk.
     _PKG_FIELDS = (
         ("type_check_command", "type_check"),
         ("lint_command",       "lint"),
         ("build_command",      "build"),
     )
     for record in state.get("package_stacks", []):
-        pkg_path = record.get("path", "")
+        pkg_path = record.get("path", "") or ""
+        pkg_node_bins = None  # type: Optional[List[str]]
+        if source_root:
+            pkg_node_bins = _nb_dirs(source_root, pkg_path)
         for field, kind_label in _PKG_FIELDS:
             cmd = record.get(field)
             if not cmd:
                 continue
-            result = probe_command_executability(cmd)
+            result = probe_command_executability(cmd, project_node_bin_dirs=pkg_node_bins)
             if result:
                 warnings.append({
                     "scope": "package {0} {1}".format(pkg_path, kind_label),

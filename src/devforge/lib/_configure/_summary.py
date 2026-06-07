@@ -128,13 +128,18 @@ def _render_executability_warnings(warnings: List[dict]) -> str:
     return "".join(lines)
 
 
-def _render_configure_summary(state: dict) -> str:
+def _render_configure_summary(state, source_root=None):
+    # type: (dict, object) -> str
     """Build the deterministic configure-report summary string from `state`.
 
     Groups fields by _SUMMARY_GROUPS. Appends a WARNING block for any
     configured command whose leading executable is not resolvable via
     shutil.which (best-effort PATH probe; see probe_command_executability
     docstring for the accepted npm/npx indirection limitation).
+
+    source_root: optional absolute path to the project source root.  When
+        provided, locally-installed tools in `node_modules/.bin` suppress
+        false "not found" warnings.  Threaded to collect_executability_warnings.
 
     Output ends with exactly one trailing newline. Stable across re-runs
     (deterministic).
@@ -150,7 +155,7 @@ def _render_configure_summary(state: dict) -> str:
             value = state.get(name)
             lines.append(_render_field_for_summary(name, kind, value))
 
-    warnings = collect_executability_warnings(state)
+    warnings = collect_executability_warnings(state, source_root=source_root)
     lines.append(_render_executability_warnings(warnings))
 
     return "".join(lines)
