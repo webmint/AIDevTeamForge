@@ -55,6 +55,18 @@ def _replace_or_substitute(content: str, placeholder: str, anchor: str, new_text
     """Replace either the placeholder OR an already-filled section body.
 
     Section body = lines between `## <anchor>\n\n` and the next `## ` (or EOF).
+
+    Regex path (re-render): when a following heading exists, group 3 captures
+    `\\n## ` (a single newline).  We emit `\\n\\n## ` instead so markdown
+    always has a blank line before the next heading.  When group 3 is `` (EOF
+    sentinel), the suffix is left unchanged.  Empty new_text does not produce
+    an extra blank line — the separator logic only fires when new_text is
+    non-empty.
+
+    Known limitation: `new_text` must not contain a `\\n## ` sequence (a `## `
+    heading at line-start inside the body).  The non-greedy `.*?` in the regex
+    stops at the first inner `\\n## `, truncating the replacement and corrupting
+    output on re-render.
     """
     new_text = new_text.rstrip()
     if placeholder in content:
@@ -63,7 +75,17 @@ def _replace_or_substitute(content: str, placeholder: str, anchor: str, new_text
         rf"(## {re.escape(anchor)}\n\n)(.*?)(\n## |\Z)",
         flags=re.DOTALL,
     )
-    return pattern.sub(rf"\g<1>{new_text}\g<3>", content, count=1)
+
+    def _repl(m: "re.Match[str]") -> str:
+        heading = m.group(1)
+        sep = m.group(3)
+        # Normalise \n## → \n\n## only when there is body text; an empty body
+        # should not produce a doubled blank line (## A\n\n\n\n## B).
+        if sep == "\n## " and new_text:
+            sep = "\n\n## "
+        return heading + new_text + sep
+
+    return pattern.sub(_repl, content, count=1)
 
 
 def _replace_purpose_block(content: str, new_text: str) -> str:

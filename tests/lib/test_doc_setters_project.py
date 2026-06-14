@@ -39,6 +39,9 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+from _generate_docs._doc_setters._blocks import (  # noqa: E402
+    _replace_or_substitute,
+)
 from _generate_docs._doc_setters._renderers import (  # noqa: E402
     _render_conventions_subsections,
 )
@@ -936,6 +939,95 @@ class EndToEndPhase2OverviewPipelineTests(unittest.TestCase):
         # NO leftover placeholders anywhere.
         self.assertNotIn("<!-- TODO:", text)
 
+
+class ReplaceOrSubstituteBlankLineTests(unittest.TestCase):
+    """Unit tests for the blank-line fix in `_replace_or_substitute`.
+
+    Cases:
+      1. Regex path (re-render) with a following heading → blank line before next heading.
+      2. Regex path at EOF (no next heading) → no spurious trailing newline.
+      3. Placeholder path → byte-identical to before-fix behavior (unchanged branch).
+      4. Idempotency → applying the regex substitution twice yields identical output.
+      5. Empty new_text on the regex path → no doubled blank line.
+    """
+
+    _PLACEHOLDER = "<!-- TODO: anchor-block -->"
+    _ANCHOR = "My Section"
+
+    def _call(self, content: str, new_text: str) -> str:
+        return _replace_or_substitute(
+            content, self._PLACEHOLDER, self._ANCHOR, new_text
+        )
+
+    # ------------------------------------------------------------------
+    # Case 1: re-render with a following heading → blank line before it
+    # ------------------------------------------------------------------
+    def test_rerender_with_following_heading_adds_blank_line(self):
+        # Simulate a document where the section was already filled on a prior run.
+        content = "## My Section\n\nOld body line one\nOld body line two\n## Next Section\n"
+        result = self._call(content, "New body text")
+        # The section body must be replaced.
+        self.assertIn("New body text", result)
+        self.assertNotIn("Old body", result)
+        # A blank line must precede the next heading.
+        self.assertIn("New body text\n\n## Next Section", result)
+        # No triple-newline artefact.
+        self.assertNotIn("\n\n\n", result)
+
+    # ------------------------------------------------------------------
+    # Case 2: re-render at EOF → no spurious trailing newline
+    # ------------------------------------------------------------------
+    def test_rerender_at_eof_no_trailing_newline(self):
+        content = "## My Section\n\nOld body\n"
+        # The document ends after the section (no following heading).
+        # rstrip the trailing newline on new_text as the function does internally.
+        result = self._call(content, "New body")
+        self.assertIn("New body", result)
+        self.assertNotIn("Old body", result)
+        # Must NOT add an extra newline beyond what new_text itself provides.
+        # The result should end with the heading + body, no blank line appended.
+        self.assertTrue(result.endswith("New body"), msg=repr(result))
+
+    # ------------------------------------------------------------------
+    # Case 3: placeholder path → byte-identical to pre-fix behavior
+    # ------------------------------------------------------------------
+    def test_placeholder_path_is_byte_identical(self):
+        content = (
+            "## My Section\n\n"
+            "<!-- TODO: anchor-block -->\n\n"
+            "## Next Section\n"
+        )
+        new_text = "Filled body text."
+        # The placeholder path just does content.replace(placeholder, new_text, 1).
+        expected = content.replace(self._PLACEHOLDER, new_text, 1)
+        result = self._call(content, new_text)
+        self.assertEqual(result, expected)
+
+    # ------------------------------------------------------------------
+    # Case 4: idempotency — applying the regex path twice yields identical output
+    # ------------------------------------------------------------------
+    def test_idempotency_applying_twice_same_output(self):
+        content = "## My Section\n\nOld body\n\n## Next\n"
+        first = self._call(content, "Stable body")
+        # first no longer has the placeholder, so the second call uses the regex path.
+        second = self._call(first, "Stable body")
+        self.assertEqual(first, second, msg="Re-render with same body should be idempotent")
+
+    # ------------------------------------------------------------------
+    # Case 5: empty new_text on regex path → separator stays \n## , no extra
+    #         newline added.  The empty-body guard (`new_text` falsy) short-
+    #         circuits the \n## → \n\n## normalisation, so the heading group's
+    #         trailing \n\n is preserved as-is and no fourth newline is added.
+    # ------------------------------------------------------------------
+    def test_empty_new_text_no_extra_blank_line_added(self):
+        content = "## My Section\n\nSome old body\n\n## Next\n"
+        result = self._call(content, "")
+        # empty-body guard short-circuits; separator stays \n## , no \n\n## .
+        # The heading group's \n\n gives a triple-newline shape (## ...\n\n\n## );
+        # the guard must not add a fourth newline.
+        self.assertNotIn("\n\n\n\n", result)
+        # The next heading should still be present.
+        self.assertIn("## Next", result)
 
 class CmdInitDocPhase2AnchorsTests(unittest.TestCase):
     """Track 4 Phase 2 — verify project-overview skeleton emits 4 new anchors."""
