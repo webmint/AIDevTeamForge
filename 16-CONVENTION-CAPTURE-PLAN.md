@@ -1,6 +1,6 @@
 # 16 — Convention Capture (styling + state-management) + /constitute Routing
 
-**Status**: Phases 0–4 SHIPPED in the working tree (uncommitted) 2026-06-07 on `develop-2.0-init`; only Phase 5 (testForge20 e2e) remains — user-driven hard gate. Both design decisions RESOLVED (see Decisions). Hard precondition SATISFIED — plan 15 (`15-AGENT-STANDARDIZATION-PLAN.md`) SHIPPED `720253f` (2026-06-07); its consumer-side work (agents swept of the dangling `§Conventions` anchor, the concept-name citation rule recorded at `src/agents-AUTHORING.md:147`) is the foundation this plan's producer-side capture completes.
+**Status**: Phases 0–5 DONE 2026-06-14 on `develop-2.0-init`. Phases 0–4 committed `bbde1c8`; Phase 5 testForge20 e2e PASSED — Styling + State Management captured in `docs/architecture.md` § Conventions, state-management routed to constitution §4 (classified into always/never/prefer by phrasing), styling correctly absent from the constitution. Both design decisions RESOLVED (see Decisions). Hard precondition SATISFIED — plan 15 (`15-AGENT-STANDARDIZATION-PLAN.md`) SHIPPED `720253f` (2026-06-07); its consumer-side work (agents swept of the dangling `§Conventions` anchor, the concept-name citation rule recorded at `src/agents-AUTHORING.md:147`) is the foundation this plan's producer-side capture completes.
 **Branch**: `develop-2.0-init`
 
 ## Driver
