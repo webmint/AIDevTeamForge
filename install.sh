@@ -23,9 +23,19 @@ TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
 TARGET_DIR=""
+ONLY_CMD=""   # --only <command>: surgical single-command delivery (see below)
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --only)
+      ONLY_CMD="${2:-}"
+      shift
+      if [ "$#" -gt 0 ]; then shift; fi
+      ;;
+    --only=*)
+      ONLY_CMD="${1#--only=}"
+      shift
+      ;;
     -*)
       echo "Unknown flag: $1"
       exit 1
@@ -74,6 +84,80 @@ else
   echo "AIDevTeamForge requires Python 3 on the target machine." >&2
   echo "Install Python 3.8+ (https://www.python.org/downloads/) and re-run." >&2
   exit 1
+fi
+
+# ── Surgical mode: --only <command> ────────────────────────────────────────
+# Patch an EXISTING install with a single command + its helper subpackage.
+# Delivers ONLY the emitted command (.claude/commands/<cmd>.md + references/),
+# its helper (.devforge/lib/_<cmd>/ + <cmd>_helper{,.py}), and the shared helper
+# package (.devforge/lib/_shared/) that refactored helpers import — no agents,
+# no other commands, no config/hooks, no full .devforge copy. Use it to push one
+# command's changes to a dev/test install without dragging in unrelated work.
+if [ -n "$ONLY_CMD" ]; then
+  if [ ! -d "$TARGET_DIR/.devforge" ] || [ ! -d "$TARGET_DIR/.claude" ]; then
+    echo "error: --only patches an EXISTING install, but '$TARGET_DIR' has no .devforge/ + .claude/." >&2
+    echo "  Run a full install first:  ./install.sh '$TARGET_DIR'" >&2
+    exit 1
+  fi
+
+  # Resolve a Python 3 interpreter for the emitter (same selector as generate.sh).
+  if command -v python3 >/dev/null 2>&1; then PY="python3"
+  elif command -v py >/dev/null 2>&1; then PY="py -3"
+  else PY="python"; fi
+
+  echo "Surgical install: delivering only '$ONLY_CMD' into $TARGET_DIR"
+
+  # Emit just this command. claude.py --only validates it is a promoted command
+  # and exits non-zero (emitting nothing) if not.
+  if ! $PY "$TEMPLATE_DIR/scripts/emitters/claude.py" \
+       --src "$TEMPLATE_DIR/src" --target "$TARGET_DIR" --only "$ONLY_CMD"; then
+    echo "error: emit failed for '$ONLY_CMD' (not a promoted command?)." >&2
+    exit 1
+  fi
+
+  # Copy the command's helper subpackage + launcher, if any. Command name maps
+  # to helper paths by replacing hyphens with underscores (audit → _audit /
+  # audit_helper; pr-review → _pr_review / pr_review_helper).
+  cmd_u="$(printf '%s' "$ONLY_CMD" | tr '-' '_')"
+  helper_found=false
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_${cmd_u}" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_${cmd_u}"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_${cmd_u}" "$TARGET_DIR/.devforge/lib/_${cmd_u}"
+    echo "  helper subpackage: .devforge/lib/_${cmd_u}/"
+    helper_found=true
+  fi
+  # Ship the shared helper package too: refactored helpers import shared infra
+  # from .devforge/lib/_shared/ (e.g. _audit/_cli.py does `from _shared._consume
+  # import ...`), so a command-only delivery that omitted it would leave the
+  # target unable to import. _shared/ is framework-owned (no user state) — clean
+  # replace. (Refreshes shared code other commands use; for strict cross-command
+  # version consistency, run a full update instead.)
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_shared" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_shared"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_shared" "$TARGET_DIR/.devforge/lib/_shared"
+    rm -rf "$TARGET_DIR/.devforge/lib/_shared/__pycache__"
+    echo "  shared deps: .devforge/lib/_shared/"
+    helper_found=true
+  fi
+  for _launcher in "${cmd_u}_helper" "${cmd_u}_helper.py"; do
+    if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_launcher" ]; then
+      cp "$TEMPLATE_DIR/src/devforge/lib/$_launcher" "$TARGET_DIR/.devforge/lib/$_launcher"
+      echo "  helper launcher: .devforge/lib/$_launcher"
+      helper_found=true
+    fi
+  done
+  # cp drops the executable bit without -p; restore it on the extension-less
+  # launcher (the entry point invoked as .devforge/lib/<cmd>_helper).
+  if [ -f "$TARGET_DIR/.devforge/lib/${cmd_u}_helper" ]; then
+    chmod +x "$TARGET_DIR/.devforge/lib/${cmd_u}_helper"
+  fi
+  if [ "$helper_found" = false ]; then
+    echo "  (no helper subpackage/launcher for '$ONLY_CMD' — command-only delivery)"
+  fi
+
+  echo ""
+  echo "Done. Surgically delivered '$ONLY_CMD' to $TARGET_DIR (nothing else touched)."
+  exit 0
 fi
 
 echo "Installing AIDevTeamForge into: $TARGET_DIR"

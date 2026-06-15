@@ -30,12 +30,15 @@ header()  { printf "\n${BOLD}%b${NC}\n" "$*"; }
 # ── Parse arguments ─────────────────────────────────────────────────────────
 DRY_RUN=false
 FORCE=false
+ONLY_CMD=""   # --only <command>: surgical single-command delivery (see below)
 TARGET_DIR=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
     --force)   FORCE=true; shift ;;
+    --only)    ONLY_CMD="${2:-}"; shift; if [ "$#" -gt 0 ]; then shift; fi ;;
+    --only=*)  ONLY_CMD="${1#--only=}"; shift ;;
     -*)        err "Unknown flag: $1"; exit 1 ;;
     *)         TARGET_DIR="$1"; shift ;;
   esac
@@ -63,6 +66,81 @@ if [ ! -d "$TARGET_DIR/.claude" ]; then
   err "Target does not look like a project installed from this template."
   err "Missing .claude/ directory in: $TARGET_DIR"
   exit 1
+fi
+
+# ── Surgical mode: --only <command> ─────────────────────────────────────────
+# Re-emit a SINGLE command + overwrite its helper subpackage, skipping the
+# manifest-driven sync, three-way merges, and the version-marker bump. Same
+# bounded set as `install.sh --only`. Needs neither jq nor perl (no JSON merge,
+# no placeholder substitution). Composes with --dry-run / --force.
+if [ -n "$ONLY_CMD" ]; then
+  PY=""
+  if command -v python3 >/dev/null 2>&1; then PY="python3"
+  elif command -v py >/dev/null 2>&1; then PY="py -3"
+  elif command -v python >/dev/null 2>&1; then PY="python"; fi
+  if [ -z "$PY" ]; then err "Python 3 is required to emit the command."; exit 1; fi
+
+  cmd_u="$(printf '%s' "$ONLY_CMD" | tr '-' '_')"
+
+  header "Surgical update — only '$ONLY_CMD'"
+  info "Target: $TARGET_DIR"
+  overwrt "RE-EMIT    .claude/commands/$ONLY_CMD.md (+ references/)"
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_${cmd_u}" ]; then
+    overwrt "OVERWRITE  .devforge/lib/_${cmd_u}/"
+  fi
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_shared" ]; then
+    overwrt "OVERWRITE  .devforge/lib/_shared/ (shared deps refactored helpers import)"
+  fi
+  for _l in "${cmd_u}_helper" "${cmd_u}_helper.py"; do
+    if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_l" ]; then
+      overwrt "OVERWRITE  .devforge/lib/$_l"
+    fi
+  done
+  echo ""
+
+  if [ "$DRY_RUN" = true ]; then
+    info "Dry run — no files modified."
+    exit 0
+  fi
+  if [ "$FORCE" != true ]; then
+    printf "Apply surgical update for '%s'? [y/N] " "$ONLY_CMD"
+    read -r confirm
+    case "$confirm" in [Yy]*) ;; *) info "Aborted."; exit 0 ;; esac
+  fi
+
+  if ! $PY "$TEMPLATE_DIR/scripts/emitters/claude.py" \
+       --src "$TEMPLATE_DIR/src" --target "$TARGET_DIR" --only "$ONLY_CMD"; then
+    err "Emit failed for '$ONLY_CMD' (not a promoted command?)."
+    exit 1
+  fi
+  added "Re-emitted: .claude/commands/$ONLY_CMD.md (+ references/)"
+
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_${cmd_u}" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_${cmd_u}"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_${cmd_u}" "$TARGET_DIR/.devforge/lib/_${cmd_u}"
+    added "Overwrote: .devforge/lib/_${cmd_u}/"
+  fi
+  # Refactored helpers import from .devforge/lib/_shared/ — ship it too, or the
+  # target's helper cannot import. Framework-owned, clean replace.
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_shared" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_shared"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_shared" "$TARGET_DIR/.devforge/lib/_shared"
+    rm -rf "$TARGET_DIR/.devforge/lib/_shared/__pycache__"
+    added "Overwrote: .devforge/lib/_shared/"
+  fi
+  for _l in "${cmd_u}_helper" "${cmd_u}_helper.py"; do
+    if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_l" ]; then
+      cp "$TEMPLATE_DIR/src/devforge/lib/$_l" "$TARGET_DIR/.devforge/lib/$_l"
+      added "Overwrote: .devforge/lib/$_l"
+    fi
+  done
+  if [ -f "$TARGET_DIR/.devforge/lib/${cmd_u}_helper" ]; then
+    chmod +x "$TARGET_DIR/.devforge/lib/${cmd_u}_helper"
+  fi
+
+  header "Surgical update complete"
+  info "Delivered '$ONLY_CMD' only — manifest sync, merges, and the version marker were skipped."
+  exit 0
 fi
 
 # ── Check for jq (required for JSON merging) ───────────────────────────────

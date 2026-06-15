@@ -43,18 +43,29 @@ from lib.command_source import (  # noqa: E402
     processed as process_source,
     write_references,
 )
-def emit(src: Path, target: Path) -> None:
-    """Emit Claude-runtime files into target from src."""
+
+# Commands promoted so far. As each command matures out of src/_pending/,
+# add it here. Full generalized iteration (loop all src/commands/ entries)
+# stays commented below until every command has passed its CLI-agnostic +
+# audit passes — premature promotion would ship broken skills.
+_PROMOTED = ("init-forge", "onboard", "generate-docs", "configure", "constitute", "research", "discover", "specify", "plan", "breakdown", "implement", "pr-review", "audit", "review")
+
+
+def emit(src: Path, target: Path, only: "str | None" = None) -> None:
+    """Emit Claude-runtime files into target from src.
+
+    When *only* is None all promoted commands are emitted (default, identical
+    to the previous behaviour).  When *only* is set to a command name that
+    exists in *_PROMOTED*, only that single command is emitted.  The caller
+    is responsible for validating that *only* is a member of *_PROMOTED*
+    before calling this function.
+    """
     commands_dir = target / ".claude" / "commands"
     commands_dir.mkdir(parents=True, exist_ok=True)
 
-    # Commands promoted so far. As each command matures out of src/_pending/,
-    # add it here. Full generalized iteration (loop all src/commands/ entries)
-    # stays commented below until every command has passed its CLI-agnostic +
-    # audit passes — premature promotion would ship broken skills.
-    _PROMOTED = ("init-forge", "onboard", "generate-docs", "configure", "constitute", "research", "discover", "specify", "plan", "breakdown", "pr-review", "audit")
+    to_emit = (only,) if only is not None else _PROMOTED
 
-    for cmd_name in _PROMOTED:
+    for cmd_name in to_emit:
         source = load_command(src / "commands", cmd_name)
         if source is None:
             continue
@@ -88,6 +99,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Claude runtime emitter")
     parser.add_argument("--src", type=Path, required=True, help="Template src/ directory")
     parser.add_argument("--target", type=Path, required=True, help="Target project directory")
+    parser.add_argument(
+        "--only",
+        default=None,
+        metavar="NAME",
+        help="Emit a single promoted command instead of all (must be in the promoted list).",
+    )
     args = parser.parse_args()
 
     if not args.src.is_dir():
@@ -97,7 +114,15 @@ def main() -> int:
         print(f"error: --target '{args.target}' is not a directory", file=sys.stderr)
         return 1
 
-    emit(args.src, args.target)
+    if args.only is not None and args.only not in _PROMOTED:
+        choices = ", ".join(_PROMOTED)
+        print(
+            f"error: --only '{args.only}' is not a promoted command (choices: {choices})",
+            file=sys.stderr,
+        )
+        return 1
+
+    emit(args.src, args.target, only=args.only)
     return 0
 
 
