@@ -562,7 +562,7 @@ def cmd_consume_tmp(args: argparse.Namespace) -> int:
     from "agent wrote a failed/corrupt file".  Other OSError conditions
     (permissions, etc.) produce status=STATUS_FAILED.
     """
-    from ._consume import parse_agent_tmp, STATUS_MISSING, STATUS_FAILED
+    from _shared._consume import parse_agent_tmp, STATUS_MISSING, STATUS_FAILED  # type: ignore[import]
 
     tmp_path = getattr(args, "tmp", None)
     if not tmp_path:
@@ -615,7 +615,7 @@ def cmd_validate_findings(args: argparse.Namespace) -> int:
 
     Returns 0 on success, 2 on missing/unreadable file or bad input.
     """
-    from ._validate import validate_findings
+    from _shared._validate import validate_findings  # type: ignore[import]
 
     findings_path = getattr(args, "findings", None)
     if not findings_path:
@@ -667,7 +667,7 @@ def cmd_compute_consensus(args: argparse.Namespace) -> int:
     Input: --findings <path>  (JSON list of ParsedFinding dicts, all agents combined)
     Returns 0 on success, 2 on missing/bad input.
     """
-    from ._consensus import compute_consensus
+    from _shared._consensus import compute_consensus  # type: ignore[import]
 
     findings_path = getattr(args, "findings", None)
     if not findings_path:
@@ -1071,6 +1071,304 @@ def cmd_merge_passes(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Plan-19 Step-1 handlers (refutation / cross-examination stage)
+# ---------------------------------------------------------------------------
+
+
+def cmd_route_refutation(args: argparse.Namespace) -> int:
+    """Group working findings by author and assign each group a non-author refuter.
+
+    Input: --findings <path>  (JSON array of ParsedFinding dicts)
+           --finders <comma-list>  (present finder agent names from Phase 1.2)
+    Returns 0 on success, 2 on missing/bad input.
+    Output: JSON list of {refuter, findings} routing groups, one per refuter.
+    """
+    from _shared._verify import route_refutation  # type: ignore[import]
+
+    findings_path = getattr(args, "findings", None)
+    if not findings_path:
+        sys.stderr.write(
+            "audit_helper route-refutation: --findings <path> required\n"
+        )
+        return 2
+
+    finders_raw = getattr(args, "finders", None) or ""
+    present_finders = [f.strip() for f in finders_raw.split(",") if f.strip()]
+
+    try:
+        with open(findings_path, "r", encoding="utf-8") as fh:
+            findings = json.load(fh)
+    except OSError as exc:
+        sys.stderr.write(
+            "audit_helper route-refutation: cannot read --findings file: "
+            "{0}\n".format(exc)
+        )
+        return 2
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(
+            "audit_helper route-refutation: --findings file is not valid "
+            "JSON: {0}\n".format(exc)
+        )
+        return 2
+
+    if not isinstance(findings, list):
+        sys.stderr.write(
+            "audit_helper route-refutation: --findings must be a JSON array\n"
+        )
+        return 2
+
+    result = route_refutation(findings, present_finders)
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+def cmd_render_verify_brief(args: argparse.Namespace) -> int:
+    """Assemble a refuter's cross-examination instruction block.
+
+    Input: --findings <path>       (JSON array of ParsedFinding dicts — the
+                                    subset routed to this refuter)
+           --refuter <name>        (refuter agent name)
+           --references-dir <dir>  (directory containing refutation-preamble.md)
+           --scope <path>          (resolve-scope JSON output file)
+           --source-root <dir>     (workspace/repo root label)
+           --tmp-path <path>       (optional write-path for the verdict file)
+    Returns 0 on success, 2 on bad input.
+    Prints the rendered brief as plain text to stdout.
+    """
+    from ._scope import render_scope_block
+    from _shared._verify import render_verify_brief  # type: ignore[import]
+
+    findings_path = getattr(args, "findings", None)
+    refuter = getattr(args, "refuter", None)
+    references_dir = getattr(args, "references_dir", None) or ".claude/commands/audit/references"
+    scope_path = getattr(args, "scope", None)
+    source_root = getattr(args, "source_root", ".") or "."
+    tmp_path = getattr(args, "tmp_path", None)
+
+    if not findings_path:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: --findings <path> required\n"
+        )
+        return 2
+    if not refuter:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: --refuter <name> required\n"
+        )
+        return 2
+    if not scope_path:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: --scope <path> required\n"
+        )
+        return 2
+
+    try:
+        with open(findings_path, "r", encoding="utf-8") as fh:
+            findings = json.load(fh)
+    except OSError as exc:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: cannot read --findings file: "
+            "{0}\n".format(exc)
+        )
+        return 2
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: --findings file is not valid "
+            "JSON: {0}\n".format(exc)
+        )
+        return 2
+
+    if not isinstance(findings, list):
+        sys.stderr.write(
+            "audit_helper render-verify-brief: --findings must be a JSON array\n"
+        )
+        return 2
+
+    try:
+        with open(scope_path, "r", encoding="utf-8") as fh:
+            scope_result = json.load(fh)
+    except OSError as exc:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: cannot read --scope file: "
+            "{0}\n".format(exc)
+        )
+        return 2
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: --scope file is not valid "
+            "JSON: {0}\n".format(exc)
+        )
+        return 2
+
+    scope_block = render_scope_block(scope_result, source_root)
+
+    try:
+        brief = render_verify_brief(
+            refuter=refuter,
+            findings=findings,
+            references_dir=references_dir,
+            scope_block=scope_block,
+            source_root=source_root,
+            tmp_path=tmp_path,
+        )
+    except ValueError as exc:
+        sys.stderr.write(
+            "audit_helper render-verify-brief: {0}\n".format(exc)
+        )
+        return 2
+
+    sys.stdout.write(brief)
+    if not brief.endswith("\n"):
+        sys.stdout.write("\n")
+    return 0
+
+
+def cmd_consume_verdicts(args: argparse.Namespace) -> int:
+    """Parse one refuter verdict file into status + verdict list JSON.
+
+    Input: --verdicts <path>  (the raw refuter markdown verdict file)
+           --refuter <name>   (optional agent name hint when # Refuter: header absent)
+    Returns 0 on success, 2 on missing/unreadable file.
+    The result JSON always includes a 'status' field.
+    """
+    from _shared._verify import consume_verdicts, VERDICT_STATUS_MISSING, VERDICT_STATUS_FAILED  # type: ignore[import]
+
+    verdicts_path = getattr(args, "verdicts", None)
+    if not verdicts_path:
+        sys.stderr.write(
+            "audit_helper consume-verdicts: --verdicts <path> required\n"
+        )
+        return 2
+
+    refuter_hint = getattr(args, "refuter", "") or ""
+
+    try:
+        with open(verdicts_path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except FileNotFoundError as exc:
+        result = {
+            "status": VERDICT_STATUS_MISSING,
+            "reason": "verdicts file not found: {0}".format(exc),
+            "refuter": refuter_hint or "unknown",
+            "verdict_count": 0,
+            "verdicts": [],
+        }
+        sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        sys.stderr.write("audit_helper consume-verdicts: {0}\n".format(exc))
+        return 2
+    except OSError as exc:
+        result = {
+            "status": VERDICT_STATUS_FAILED,
+            "reason": "cannot read verdicts file: {0}".format(exc),
+            "refuter": refuter_hint or "unknown",
+            "verdict_count": 0,
+            "verdicts": [],
+        }
+        sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        sys.stderr.write("audit_helper consume-verdicts: {0}\n".format(exc))
+        return 2
+
+    result = consume_verdicts(text)
+    # If the # Refuter: header was absent and we have a hint, apply the hint.
+    if result.get("refuter") == "unknown" and refuter_hint:
+        result = dict(result)
+        result["refuter"] = refuter_hint
+        for v in result.get("verdicts", []):
+            if v.get("refuter") == "unknown":
+                v["refuter"] = refuter_hint
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+def cmd_apply_verdicts(args: argparse.Namespace) -> int:
+    """Partition working findings by merged verdicts per D7 category rules.
+
+    Input: --findings <path>  (JSON array of ParsedFinding dicts — the full
+                               working list: consensus-findings.json or merged.json)
+           --verdicts <path>  (JSON array of verdict dicts — merged across all
+                               refuters; each element is a verdict dict from
+                               consume_verdicts)
+    Returns 0 on success, 2 on missing/bad input.
+    Output: JSON object with keys: confirmed, dismissed, uncertain, contested.
+    """
+    from _shared._verify import apply_verdicts  # type: ignore[import]
+
+    findings_path = getattr(args, "findings", None)
+    verdicts_path = getattr(args, "verdicts", None)
+
+    if not findings_path:
+        sys.stderr.write(
+            "audit_helper apply-verdicts: --findings <path> required\n"
+        )
+        return 2
+    if not verdicts_path:
+        sys.stderr.write(
+            "audit_helper apply-verdicts: --verdicts <path> required\n"
+        )
+        return 2
+
+    try:
+        with open(findings_path, "r", encoding="utf-8") as fh:
+            findings = json.load(fh)
+    except OSError as exc:
+        sys.stderr.write(
+            "audit_helper apply-verdicts: cannot read --findings file: "
+            "{0}\n".format(exc)
+        )
+        return 2
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(
+            "audit_helper apply-verdicts: --findings file is not valid "
+            "JSON: {0}\n".format(exc)
+        )
+        return 2
+
+    if not isinstance(findings, list):
+        sys.stderr.write(
+            "audit_helper apply-verdicts: --findings must be a JSON array\n"
+        )
+        return 2
+
+    try:
+        with open(verdicts_path, "r", encoding="utf-8") as fh:
+            verdicts_raw = json.load(fh)
+    except OSError as exc:
+        sys.stderr.write(
+            "audit_helper apply-verdicts: cannot read --verdicts file: "
+            "{0}\n".format(exc)
+        )
+        return 2
+    except json.JSONDecodeError as exc:
+        sys.stderr.write(
+            "audit_helper apply-verdicts: --verdicts file is not valid "
+            "JSON: {0}\n".format(exc)
+        )
+        return 2
+
+    # Accept either a bare JSON array of verdict dicts OR a consume-verdicts
+    # result object with a "verdicts" key.
+    if isinstance(verdicts_raw, dict) and "verdicts" in verdicts_raw:
+        verdicts = verdicts_raw["verdicts"]
+    elif isinstance(verdicts_raw, list):
+        verdicts = verdicts_raw
+    else:
+        sys.stderr.write(
+            "audit_helper apply-verdicts: --verdicts must be a JSON array or "
+            "an object with a 'verdicts' key\n"
+        )
+        return 2
+
+    if not isinstance(verdicts, list):
+        sys.stderr.write(
+            "audit_helper apply-verdicts: --verdicts must be a JSON array\n"
+        )
+        return 2
+
+    result = apply_verdicts(findings, verdicts)
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Registry + parser construction
 # ---------------------------------------------------------------------------
 
@@ -1164,6 +1462,26 @@ _SUBCOMMAND_REGISTRY = [
         "merge-passes",
         "Union-merge per-pass validated-findings JSON files via tolerant line clustering (Phase 5).",
         cmd_merge_passes,
+    ),
+    (
+        "route-refutation",
+        "Group findings by author and assign each group a non-author refuter (Plan-19 Phase 4.2.5).",
+        cmd_route_refutation,
+    ),
+    (
+        "render-verify-brief",
+        "Assemble refuter cross-examination instruction block (Plan-19 Phase 4.2.5).",
+        cmd_render_verify_brief,
+    ),
+    (
+        "consume-verdicts",
+        "Parse one refuter verdict markdown file into status + verdict list JSON (Plan-19 Phase 4.2.5).",
+        cmd_consume_verdicts,
+    ),
+    (
+        "apply-verdicts",
+        "Partition working findings by merged verdicts per D7 category rules (Plan-19 Phase 4.2.5).",
+        cmd_apply_verdicts,
     ),
 ]
 
@@ -1573,6 +1891,123 @@ def _register_subcommands(subparsers) -> None:
                     "Files are sorted lexically before merging so that "
                     ".validated-p1.json, .validated-p2.json, ... resolve in "
                     "pass order. At least one path is required."
+                ),
+            )
+
+        elif verb == "route-refutation":
+            sp.add_argument(
+                "--findings",
+                required=True,
+                metavar="PATH",
+                help=(
+                    "Path to a JSON array of ParsedFinding dicts (the working "
+                    "list after consensus/merge — consensus-findings.json or "
+                    "merged.json)."
+                ),
+            )
+            sp.add_argument(
+                "--finders",
+                default="",
+                metavar="NAMES",
+                help=(
+                    "Comma-separated list of present finder agent names from the "
+                    "Phase-1.2 agent-existence check (e.g. "
+                    "'code-reviewer,architect,qa-reviewer,security-reviewer'). "
+                    "Only present finders are eligible refuters."
+                ),
+            )
+
+        elif verb == "render-verify-brief":
+            sp.add_argument(
+                "--findings",
+                required=True,
+                metavar="PATH",
+                help=(
+                    "Path to a JSON array of ParsedFinding dicts — the subset "
+                    "routed to this refuter (from route-refutation output)."
+                ),
+            )
+            sp.add_argument(
+                "--refuter",
+                required=True,
+                metavar="NAME",
+                help=(
+                    "Refuter agent name: code-reviewer | architect | "
+                    "qa-reviewer | security-reviewer."
+                ),
+            )
+            sp.add_argument(
+                "--references-dir",
+                default=".claude/commands/audit/references",
+                dest="references_dir",
+                metavar="DIR",
+                help=(
+                    "Directory containing refutation-preamble.md "
+                    "(default: .claude/commands/audit/references)."
+                ),
+            )
+            sp.add_argument(
+                "--scope",
+                required=True,
+                metavar="PATH",
+                help="Path to a resolve-scope JSON output file.",
+            )
+            sp.add_argument(
+                "--source-root",
+                default=".",
+                dest="source_root",
+                help="Workspace / repo root label (default: CWD).",
+            )
+            sp.add_argument(
+                "--tmp-path",
+                default=None,
+                dest="tmp_path",
+                metavar="PATH",
+                help=(
+                    "Override the verdict file write-path in the output contract. "
+                    "When omitted, defaults to '$WORKDIR/verdicts-<refuter>.md'. "
+                    "When provided, the given path is emitted verbatim."
+                ),
+            )
+
+        elif verb == "consume-verdicts":
+            sp.add_argument(
+                "--verdicts",
+                required=True,
+                metavar="PATH",
+                help=(
+                    "Path to the raw refuter markdown verdict file "
+                    "(e.g. $WORKDIR/verdicts-code-reviewer.md)."
+                ),
+            )
+            sp.add_argument(
+                "--refuter",
+                default="",
+                metavar="NAME",
+                help=(
+                    "Refuter agent name hint used when the # Refuter: header "
+                    "is absent (default: 'unknown')."
+                ),
+            )
+
+        elif verb == "apply-verdicts":
+            sp.add_argument(
+                "--findings",
+                required=True,
+                metavar="PATH",
+                help=(
+                    "Path to a JSON array of ParsedFinding dicts — the full "
+                    "working list (consensus-findings.json or merged.json)."
+                ),
+            )
+            sp.add_argument(
+                "--verdicts",
+                required=True,
+                metavar="PATH",
+                help=(
+                    "Path to a JSON file containing the merged verdict list "
+                    "(a bare JSON array of verdict dicts, or a consume-verdicts "
+                    "output object with a 'verdicts' key)."
                 ),
             )
 

@@ -115,8 +115,10 @@ class TestInlineSummaryStructure(unittest.TestCase):
     def test_adversarial_note_present(self):
         self.assertIn("NOTE: /audit is adversarial", self.summary)
 
-    def test_adversarial_note_mentions_false_positives(self):
-        self.assertIn("false positives over false", self.summary)
+    def test_adversarial_note_mentions_verbatim_grounding(self):
+        # The NOTE now describes the grounding + cross-examination model instead
+        # of the old "bias toward false positives" framing (plan 19 Change D).
+        self.assertIn("verbatim", self.summary)
 
     def test_adversarial_note_mentions_speculative(self):
         self.assertIn("Speculative", self.summary)
@@ -345,6 +347,161 @@ class TestInlineSummaryAutoAssignedId(unittest.TestCase):
         summary = render_inline_summary(rd)
         # Rank 1 entry must reference b.py line 2 (the auto-assigned F-002).
         self.assertIn("1. [High] b.py:2", summary)
+
+
+# ---------------------------------------------------------------------------
+# Confidence-gate counts (plan 19 Change D / Edit 3)
+# ---------------------------------------------------------------------------
+
+class TestInlineConfidenceCounts(unittest.TestCase):
+    """The inline block must report confirmed / contested / dismissed / uncertain counts."""
+
+    def _make_report_with_confidence(
+        self,
+        headline_findings=None,
+        dismissed=None,
+        uncertain=None,
+    ):
+        """Build a report_dict with the given headline/dismissed/uncertain splits."""
+        if headline_findings is None:
+            headline_findings = []
+        if dismissed is None:
+            dismissed = []
+        if uncertain is None:
+            uncertain = []
+        rd = _make_report_dict(findings=headline_findings, top10=[])
+        rd["dismissed"] = dismissed
+        rd["uncertain"] = uncertain
+        return rd
+
+    def test_confirmed_count_line_present(self):
+        """**Confirmed**: N line is present in the inline block."""
+        rd = self._make_report_with_confidence(
+            headline_findings=_make_findings(2),
+        )
+        summary = render_inline_summary(rd)
+        self.assertIn("**Confirmed**:", summary)
+
+    def test_contested_count_line_present(self):
+        """**Contested**: N line is present in the inline block."""
+        rd = self._make_report_with_confidence()
+        summary = render_inline_summary(rd)
+        self.assertIn("**Contested**:", summary)
+
+    def test_dismissed_count_line_present(self):
+        """**Dismissed**: N line is present in the inline block."""
+        rd = self._make_report_with_confidence()
+        summary = render_inline_summary(rd)
+        self.assertIn("**Dismissed**:", summary)
+
+    def test_uncertain_count_line_present(self):
+        """**Uncertain**: N line is present in the inline block."""
+        rd = self._make_report_with_confidence()
+        summary = render_inline_summary(rd)
+        self.assertIn("**Uncertain**:", summary)
+
+    def test_all_four_counts_on_same_line(self):
+        """All four confidence counts appear on a single line (| separated)."""
+        rd = self._make_report_with_confidence()
+        summary = render_inline_summary(rd)
+        for line in summary.splitlines():
+            if "**Confirmed**:" in line and "**Contested**:" in line:
+                self.assertIn("**Dismissed**:", line)
+                self.assertIn("**Uncertain**:", line)
+                return
+        self.fail("Confidence counts not found on a single line in:\n" + summary)
+
+    def test_confirmed_count_correct(self):
+        """Confirmed count = headline findings minus [CONTESTED]-tagged findings."""
+        # 3 headline findings: 2 without [CONTESTED], 1 with [CONTESTED]
+        f1 = {
+            "finding_id": "F-001", "agent": "code-reviewer", "severity": "High",
+            "file": "src/a.py", "line": 1, "pattern": "P1", "confidence": "Certain",
+            "evidence": "e1", "why": "w1", "remediation": "r1",
+            "category": "mislogic", "tags": [],
+        }
+        f2 = dict(f1, finding_id="F-002", tags=[])
+        f3 = dict(f1, finding_id="F-003", tags=["[CONTESTED]"])
+        rd = self._make_report_with_confidence(headline_findings=[f1, f2, f3])
+        summary = render_inline_summary(rd)
+        self.assertIn("**Confirmed**: 2", summary)
+        self.assertIn("**Contested**: 1", summary)
+
+    def test_dismissed_count_correct(self):
+        """Dismissed count = len(dismissed list)."""
+        dismissed = [
+            {"finding_id": "D-001", "agent": "code-reviewer", "severity": "High",
+             "file": "src/d.py", "line": 1, "pattern": "P_dis", "confidence": "Likely",
+             "evidence": "e", "why": "w", "remediation": "r", "category": "mislogic", "tags": []},
+            {"finding_id": "D-002", "agent": "code-reviewer", "severity": "Medium",
+             "file": "src/e.py", "line": 2, "pattern": "P_dis2", "confidence": "Likely",
+             "evidence": "e", "why": "w", "remediation": "r", "category": "mislogic", "tags": []},
+        ]
+        rd = self._make_report_with_confidence(dismissed=dismissed)
+        summary = render_inline_summary(rd)
+        self.assertIn("**Dismissed**: 2", summary)
+
+    def test_uncertain_count_correct(self):
+        """Uncertain count = len(uncertain list)."""
+        uncertain = [
+            {"finding_id": "U-001", "agent": "architect", "severity": "Medium",
+             "file": "src/u.py", "line": 5, "pattern": "P_unc", "confidence": "Speculative",
+             "evidence": "e", "why": "w", "remediation": "r", "category": "system_design", "tags": []},
+        ]
+        rd = self._make_report_with_confidence(uncertain=uncertain)
+        summary = render_inline_summary(rd)
+        self.assertIn("**Uncertain**: 1", summary)
+
+    def test_all_zero_when_empty(self):
+        """All four confidence counts are zero when findings/dismissed/uncertain are empty."""
+        rd = self._make_report_with_confidence()
+        summary = render_inline_summary(rd)
+        self.assertIn("**Confirmed**: 0", summary)
+        self.assertIn("**Contested**: 0", summary)
+        self.assertIn("**Dismissed**: 0", summary)
+        self.assertIn("**Uncertain**: 0", summary)
+
+    def test_backward_compat_absent_keys(self):
+        """When dismissed/uncertain keys absent, counts default to 0 (no crash)."""
+        rd = _make_report_dict()
+        rd.pop("dismissed", None)
+        rd.pop("uncertain", None)
+        summary = render_inline_summary(rd)
+        self.assertIn("**Dismissed**: 0", summary)
+        self.assertIn("**Uncertain**: 0", summary)
+
+    def test_confidence_count_line_before_top5(self):
+        """Confidence count line appears before ### Top 5 Priorities."""
+        rd = self._make_report_with_confidence()
+        summary = render_inline_summary(rd)
+        confirmed_pos = summary.find("**Confirmed**:")
+        top5_pos = summary.find("### Top 5 Priorities")
+        self.assertGreater(confirmed_pos, -1)
+        self.assertGreater(top5_pos, -1)
+        self.assertLess(confirmed_pos, top5_pos)
+
+
+class TestInlineNoteUpdated(unittest.TestCase):
+    """NOTE in inline block reflects new grounding model (not 'bias toward FP')."""
+
+    def setUp(self):
+        self.summary = render_inline_summary(_make_report_dict())
+
+    def test_no_bias_toward_false_positives_in_note(self):
+        """'biases toward false positives over false negatives' must not appear in NOTE."""
+        self.assertNotIn("biases toward false positives over false", self.summary)
+
+    def test_note_mentions_verbatim(self):
+        """NOTE must mention verbatim grounding."""
+        self.assertIn("verbatim", self.summary)
+
+    def test_note_mentions_speculative(self):
+        """NOTE must retain the 'Speculative' findings caveat."""
+        self.assertIn("Speculative", self.summary)
+
+    def test_adversarial_note_still_present(self):
+        """NOTE: /audit is adversarial line must still be present."""
+        self.assertIn("NOTE: /audit is adversarial", self.summary)
 
 
 if __name__ == "__main__":

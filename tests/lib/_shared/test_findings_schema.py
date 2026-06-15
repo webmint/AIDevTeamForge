@@ -1,4 +1,4 @@
-"""Tests for src/devforge/lib/_audit/findings_schema.py.
+"""Tests for src/devforge/lib/_shared/findings_schema.py.
 
 Coverage:
   Happy-path construction of Finding and AuditReport.
@@ -21,16 +21,15 @@ _LIB_DIR = Path(__file__).resolve().parents[3] / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from _audit import findings_schema  # noqa: E402
-from _audit.findings_schema import (  # noqa: E402
+from _shared import findings_schema  # noqa: E402
+from _shared.findings_schema import (  # noqa: E402
     Finding,
-    AuditReport,
     SCHEMA_VERSION,
     SEVERITY_ENUM,
-    MODE_ENUM,
     CATEGORY_ENUM,
 )
 from _audit.hotspot_schema import FileScore  # noqa: E402
+from _audit.report_schema import AuditReport, MODE_ENUM  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

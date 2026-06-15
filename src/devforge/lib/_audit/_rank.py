@@ -29,6 +29,9 @@ score = severity_weight × confidence_weight × cross_agent_bonus × recurring_b
                       1.5 if [RECURRING] in tags
                       1.0 otherwise
 
+pass_count is retained as a descriptive field but does NOT multiply the score.
+Correlated re-generation across passes is not independent corroboration.
+
 Sort descending.  Ties broken by: file (alphabetical asc), then line (int asc),
 then agent (alphabetical asc).  All tie-break keys are deterministic.
 
@@ -40,7 +43,7 @@ from __future__ import annotations
 import copy
 from typing import List
 
-from ._consensus import _bump_severity
+from _shared._consensus import _bump_severity  # type: ignore[import]
 
 # ---------------------------------------------------------------------------
 # Weight tables
@@ -167,13 +170,12 @@ def _score_finding(finding):
     """Compute the force-rank score for a single finding.
 
     score = severity_weight × confidence_weight × cross_agent_bonus
-            × recurring_bonus × pass_bonus
+            × recurring_bonus
 
-    pass_bonus nudges multi-pass-confirmed findings slightly higher while
-    leaving single-pass scores byte-identical:
-      pass_count missing or <= 1  → pass_bonus = 1.0  (no change)
-      pass_count == 2             → pass_bonus = 1.25
-      pass_count >= 3             → pass_bonus = 1.5   (cap at 3)
+    pass_count is retained as a descriptive field on the finding dict but
+    does NOT inflate the score.  Correlated re-generation across passes is
+    not independent corroboration; only the refutation stage (Change A) may
+    raise confidence/score on a multi-pass finding.
     """
     severity = finding.get("severity", "Info")
     confidence = finding.get("confidence", "Speculative")
@@ -189,14 +191,7 @@ def _score_finding(finding):
     else:
         rec_bonus = 1.0
 
-    # pass_bonus: missing key → 1 (single-pass, no change).
-    # pass_count 0 or negative → no bonus (clamp to 1.0 no-op).
-    pass_bonus = 1.0
-    pass_count = finding.get("pass_count", 1)
-    if isinstance(pass_count, int) and not isinstance(pass_count, bool) and pass_count >= 1:
-        pass_bonus = 1.0 + 0.25 * (min(pass_count, 3) - 1)
-
-    return sev_w * conf_w * cross_bonus * rec_bonus * pass_bonus
+    return sev_w * conf_w * cross_bonus * rec_bonus
 
 
 # ---------------------------------------------------------------------------

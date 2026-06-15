@@ -18,7 +18,8 @@ Algorithm summary (see merge_passes docstring for full spec):
   5. Annotate representative with corroboration signals:
      - agent_count >= 2 → [CROSS-AGENT] tag only (severity NOT bumped here;
        location-tolerant clustering is too permissive for a severity signal).
-     - pass_count >= 2  → [MULTI-PASS:{k}] tag + confidence floor of "Likely".
+     - pass_count >= 2  → [MULTI-PASS:{k}] tag; confidence is NOT raised
+       (correlated re-generation is not independent corroboration).
      - rep["pass_count"] always set (even when 1).
   6. Output order: file first-appearance order; within file, anchor-line
      ascending; -1 sentinel clusters last within each file.
@@ -29,7 +30,7 @@ No I/O, no LLM, no network, no argparse.
 
 from typing import Dict, List, Tuple
 
-from .findings_schema import SEVERITY_ENUM
+from _shared.findings_schema import SEVERITY_ENUM  # type: ignore[import]
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -118,19 +119,6 @@ def _union_tags(members):
     return result
 
 
-def _confidence_floor(confidence, floor):
-    # type: (str, str) -> str
-    """Return confidence raised to at least floor; leaves Certain unchanged.
-
-    Floor is applied by rank: if confidence rank > floor rank (i.e. confidence
-    is "weaker"), return floor.  Otherwise return confidence unchanged.
-    """
-    conf_r = _CONF_RANK.get(confidence, len(_CONF_RANK))
-    floor_r = _CONF_RANK.get(floor, len(_CONF_RANK))
-    if conf_r > floor_r:
-        return floor
-    return confidence
-
 
 def _cluster_file_members(members_with_pass):
     # type: (List[Tuple[int, dict]]) -> List[List[Tuple[int, dict]]]
@@ -203,7 +191,8 @@ def _annotate_representative(rep, cluster_members_with_pass):
         tolerant clustering is too permissive to justify a severity escalation).
       pass_count = distinct pass indices in cluster.
         Set rep["pass_count"] = pass_count (always).
-        >= 2 → append [MULTI-PASS:{k}] to tags + confidence floor "Likely".
+        >= 2 → append [MULTI-PASS:{k}] to tags only; confidence is NOT raised
+        (correlated re-generation across passes is not independent corroboration).
 
     Tags: union of all members' existing tags (stable order, deduped) plus
     new computed tags appended at the end.
@@ -232,14 +221,13 @@ def _annotate_representative(rep, cluster_members_with_pass):
         if "[CROSS-AGENT]" not in new_tags:
             new_tags.append("[CROSS-AGENT]")
 
-    # Multi-pass corroboration
+    # Multi-pass corroboration: tag only; confidence is NOT raised here.
+    # Re-generating the same finding across passes reflects correlated error
+    # from the same model reading the same code — not independent confirmation.
     if pass_count >= 2:
         mp_tag = "[MULTI-PASS:{k}]".format(k=pass_count)
         if mp_tag not in new_tags:
             new_tags.append(mp_tag)
-        rep["confidence"] = _confidence_floor(
-            rep.get("confidence", "Speculative"), "Likely"
-        )
 
     rep["tags"] = _dedup_tags(new_tags)
     return rep

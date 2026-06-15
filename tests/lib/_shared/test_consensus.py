@@ -1,4 +1,4 @@
-"""Tests for src/devforge/lib/_audit/_consensus.py.
+"""Tests for src/devforge/lib/_shared/_consensus.py.
 
 Coverage:
   compute_consensus:
@@ -28,7 +28,7 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from _audit._consensus import (  # noqa: E402
+from _shared._consensus import (  # noqa: E402
     _bump_severity,
     _make_hash_key,
     _normalise_pattern,

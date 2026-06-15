@@ -281,7 +281,10 @@ def render_report(report_dict):
         findings                  : list of ParsedFinding-like dicts
             each dict has: agent, severity, file, line, pattern, confidence,
             evidence, why, remediation, tags, (optional) finding_id,
-            (optional) score, (optional) pass_count
+            (optional) score, (optional) pass_count.
+            This must be the confirmed ∪ contested union (findings whose
+            [CONTESTED] tag marks them as high-stakes-uncertain are included
+            here; they are NOT passed via a separate report_dict key).
         top10                     : list[str]  finding_ids in priority order
         source_root               : str
         framework                 : str
@@ -367,6 +370,11 @@ def render_report(report_dict):
     out.append("**Framework / Language**: {0} / {1}".format(framework, language))
     out.append("")
 
+    # Dismissed and uncertain appendix lists (plan 19 Change D).
+    # Both may be absent from older report dicts → default to [].
+    dismissed_list = report_dict.get("dismissed") or []
+    uncertain_list = report_dict.get("uncertain") or []
+
     # -- Top N Priorities ----------------------------------------------------
     out.append("## {0}".format(top10_label))
     out.append("Force-ranked across all buckets. Fix these first.")
@@ -401,12 +409,65 @@ def render_report(report_dict):
             if tags_str:
                 line_parts.append(tags_str)
             out.append(" ".join(line_parts))
+            # Note: [CONTESTED]-tagged findings render in the headline (D7).
+            # Their [CONTESTED] tag is already embedded in tags_str above.
     else:
         out.append("(no findings)")
     out.append("")
 
     # -- Findings by File ----------------------------------------------------
     _render_findings_by_file(numbered, out)
+
+    # -- Dismissed / Worth a Glance ------------------------------------------
+    # Appendix for dismissed + low-stakes uncertain findings (plan 19 Change D).
+    # Rendered after the headline findings; omitted when both lists are empty.
+    if dismissed_list or uncertain_list:
+        out.append("## Dismissed / Worth a Glance")
+        out.append(
+            "These findings were reviewed but not confirmed. "
+            "Dismissed findings had no demonstrable defect; "
+            "uncertain findings could not be resolved from the code alone. "
+            "A reviewer may want to glance at them before closing the audit."
+        )
+        out.append("")
+
+        if dismissed_list:
+            out.append("### Dismissed")
+            for i, f in enumerate(dismissed_list):
+                fid = f.get("finding_id") or "D-{0:03d}".format(i + 1)
+                severity = f.get("severity") or "Info"
+                file_ = f.get("file") or "(unknown)"
+                line_ = f.get("line", -1)
+                if isinstance(line_, int) and line_ >= 1:
+                    loc = "{0}:{1}".format(file_, line_)
+                else:
+                    loc = file_
+                pattern = (f.get("pattern") or "").strip()
+                why = (f.get("why") or f.get("explanation") or "").strip()
+                desc = pattern or (why.splitlines()[0][:120] if why else "(no description)")
+                out.append(
+                    "- [{0}] [{1}] {2} — {3}".format(fid, severity, loc, desc)
+                )
+            out.append("")
+
+        if uncertain_list:
+            out.append("### Uncertain (low-stakes)")
+            for i, f in enumerate(uncertain_list):
+                fid = f.get("finding_id") or "U-{0:03d}".format(i + 1)
+                severity = f.get("severity") or "Info"
+                file_ = f.get("file") or "(unknown)"
+                line_ = f.get("line", -1)
+                if isinstance(line_, int) and line_ >= 1:
+                    loc = "{0}:{1}".format(file_, line_)
+                else:
+                    loc = file_
+                pattern = (f.get("pattern") or "").strip()
+                why = (f.get("why") or f.get("explanation") or "").strip()
+                desc = pattern or (why.splitlines()[0][:120] if why else "(no description)")
+                out.append(
+                    "- [{0}] [{1}] {2} — {3}".format(fid, severity, loc, desc)
+                )
+            out.append("")
 
     # -- Logic Blind Spots ---------------------------------------------------
     # qa-reviewer findings that reference untested branches are rendered here.
@@ -490,10 +551,25 @@ def render_report(report_dict):
         else "none"
     )
 
+    # Confidence-gate counts (plan 19 Change D).
+    # contested = [CONTESTED]-tagged findings in the headline set (findings).
+    # confirmed = headline findings that are NOT [CONTESTED]-tagged.
+    contested_count = sum(
+        1 for _, f in numbered if "[CONTESTED]" in (f.get("tags") or [])
+    )
+    confirmed_count = len(numbered) - contested_count
+    dismissed_count = len(dismissed_list)
+    uncertain_count = len(uncertain_list)
+
     out.append("## Summary")
     out.append(
         "- Critical: {0} | High: {1} | Medium: {2} | Info: {3}".format(
             counts["Critical"], counts["High"], counts["Medium"], counts["Info"]
+        )
+    )
+    out.append(
+        "- Confirmed: {0} | Contested: {1} | Dismissed: {2} | Uncertain: {3}".format(
+            confirmed_count, contested_count, dismissed_count, uncertain_count
         )
     )
     out.append("- Cross-agent consensus findings: {0}".format(consensus_count))
@@ -555,17 +631,29 @@ def render_report(report_dict):
     # -- Methodology ---------------------------------------------------------
     out.append("## Methodology")
     out.append(
-        "Adversarial mode — deliberate bias toward false positives over false "
-        "negatives,"
+        "Every finding is grounded in a verbatim quote from the actual code."
     )
     out.append(
-        "but every finding is grounded in a verbatim quote from the actual code."
+        "A refutation stage cross-examines findings after grounding validation:"
     )
     out.append(
-        "Findings without grounding are discarded by Phase 4 validation. Confidence"
+        "confirmed findings appear in the headline (Top-N + Findings by File);"
     )
     out.append(
-        "tiers indicate certainty. \"Speculative\" findings are hypotheses, not verdicts."
+        "dismissed findings and low-stakes uncertain findings move to the"
+    )
+    out.append(
+        "\"Dismissed / Worth a Glance\" appendix; high-stakes uncertain findings"
+    )
+    out.append(
+        "(security / [CONSTITUTION-VIOLATION]) appear in the headline flagged"
+    )
+    out.append(
+        "[CONTESTED] — surfaced for human review, never buried."
+    )
+    out.append(
+        "Confidence tiers indicate certainty. \"Speculative\" findings are "
+        "hypotheses, not verdicts."
     )
     out.append("")
     out.append(

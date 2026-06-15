@@ -1,12 +1,19 @@
 """Tests for src/devforge/lib/_audit/_rank.py.
 
 Coverage:
-  force_rank:
+  _score_finding:
     - Score math exact for known findings (verify multiplication)
-    - Ordering descending
-    - Top 10 vs Top 5 (--narrow)
     - Cross-agent bonus applied
     - Recurring bonuses applied
+    - pass_count does NOT inflate the score (pass_bonus neutralized):
+        pass_count=1, pass_count=2, pass_count=3 all produce identical scores.
+    - pass_count missing → same score as pass_count=1 (baseline unchanged)
+
+  force_rank:
+    - Ordering descending
+    - Top 10 vs Top 5 (--narrow)
+    - Cross-agent bonus changes rank
+    - Recurring-spread bonus applied
 
   map_recurring_issues:
     - RESOLVED: fingerprint not in any current finding → status RESOLVED
@@ -111,6 +118,65 @@ class TestScoreFinding(unittest.TestCase):
         )
         # 8 * 3 * 1.5 * 2.0 = 72.0
         self.assertAlmostEqual(_score_finding(f), 72.0)
+
+
+# ---------------------------------------------------------------------------
+# _score_finding — pass_count neutralized (no pass_bonus)
+# ---------------------------------------------------------------------------
+
+class TestScoreFindingPassCountNeutralized(unittest.TestCase):
+    """pass_count is a descriptive field; it must NOT inflate the score.
+
+    Correlated re-generation across passes is not independent corroboration.
+    A finding seen in 1, 2, or 3 passes must produce exactly the same score.
+    """
+
+    def test_pass_count_1_same_as_no_pass_count(self):
+        f_none = _make_finding(severity="High", confidence="Certain")
+        f_one = _make_finding(severity="High", confidence="Certain")
+        f_one["pass_count"] = 1
+        self.assertAlmostEqual(_score_finding(f_none), _score_finding(f_one))
+
+    def test_pass_count_2_same_score_as_pass_count_1(self):
+        """pass_count=2 must NOT add the former 1.25 multiplier."""
+        f1 = _make_finding(severity="High", confidence="Certain")
+        f1["pass_count"] = 1
+        f2 = _make_finding(severity="High", confidence="Certain")
+        f2["pass_count"] = 2
+        # score = 4 * 3 = 12.0 regardless of pass_count
+        self.assertAlmostEqual(_score_finding(f1), 12.0)
+        self.assertAlmostEqual(_score_finding(f2), 12.0)
+
+    def test_pass_count_3_same_score_as_pass_count_1(self):
+        """pass_count=3 must NOT add the former 1.5 multiplier."""
+        f1 = _make_finding(severity="High", confidence="Certain")
+        f1["pass_count"] = 1
+        f3 = _make_finding(severity="High", confidence="Certain")
+        f3["pass_count"] = 3
+        self.assertAlmostEqual(_score_finding(f1), _score_finding(f3))
+
+    def test_pass_count_large_value_no_inflation(self):
+        """Any pass_count value (even large) must not inflate the score."""
+        f_base = _make_finding(severity="Critical", confidence="Certain")
+        f_high = _make_finding(severity="Critical", confidence="Certain")
+        f_high["pass_count"] = 100
+        # Base score = 8 * 3 = 24.0; must be identical
+        self.assertAlmostEqual(_score_finding(f_base), 24.0)
+        self.assertAlmostEqual(_score_finding(f_high), 24.0)
+
+    def test_pass_count_with_cross_agent_no_extra_inflation(self):
+        """pass_count=2 + [CROSS-AGENT]: only cross_bonus applies (1.5), not a pass-bonus."""
+        f = _make_finding(severity="High", confidence="Certain", tags=["[CROSS-AGENT]"])
+        f["pass_count"] = 2
+        # score = 4 * 3 * 1.5 = 18.0 (no pass factor)
+        self.assertAlmostEqual(_score_finding(f), 18.0)
+
+    def test_pass_count_with_recurring_no_extra_inflation(self):
+        """pass_count=3 + [RECURRING]: only rec_bonus applies (1.5), not a pass-bonus."""
+        f = _make_finding(severity="High", confidence="Certain", tags=["[RECURRING]"])
+        f["pass_count"] = 3
+        # score = 4 * 3 * 1.0 * 1.5 = 18.0 (no pass factor)
+        self.assertAlmostEqual(_score_finding(f), 18.0)
 
 
 # ---------------------------------------------------------------------------

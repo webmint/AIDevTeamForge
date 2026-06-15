@@ -1,4 +1,4 @@
-"""Tests for src/devforge/lib/_audit/_validate.py.
+"""Tests for src/devforge/lib/_shared/_validate.py.
 
 Coverage:
   validate_findings — one finding per rejection class:
@@ -25,7 +25,7 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from _audit._validate import (  # noqa: E402
+from _shared._validate import (  # noqa: E402
     REASON_EVIDENCE_EMPTY,
     REASON_FILE_MISSING,
     REASON_LINE_OOB,

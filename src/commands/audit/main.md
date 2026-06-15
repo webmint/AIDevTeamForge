@@ -40,9 +40,16 @@ The helper cannot call CBM or dispatch agents (a subprocess has no MCP tools), s
 - `$WORKDIR/validated.json` — the four agents' validated `passed` findings concatenated into ONE bare array. Written in Phase 4.1, read by `compute-consensus --findings`.
 - `$WORKDIR/tmp-<agent>-p<pass>.json`-style per-pass scratch: `$WORKDIR/parsed-<agent>-p<pass>.json`, `$WORKDIR/findings-<agent>-p<pass>.json`, `$WORKDIR/validated-<agent>-p<pass>.json` — **multi-pass only (`--passes >= 2`).** The per-pass analogues of the three per-agent scratch files above, one set per `<agent>` per `<pass>` (the `-p<pass>` suffix is the only difference). Written + read inside the Phase 3 + 4.1 K-loop.
 - `$WORKDIR/validated-p<pass>.json` — **multi-pass only.** One pool file per pass: that pass's four agents' validated `passed` arrays concatenated into ONE bare array. Written at the end of each K-loop iteration, read by `merge-passes --pools` (globbed). Holds ALL of the pass's agents so the merge can compute both cross-agent and cross-pass corroboration.
-- `$WORKDIR/merged.json` — **multi-pass only.** `merge-passes` stdout: the BARE merged working array unioning every pass pool (the multi-pass analogue of single-pass's `consensus-findings.json`). Written after the K-loop, read by `map-recurring-issues --findings` (and `force-rank-top10` on the single-file skip). REPLACES `compute-consensus` in the multi-pass branch — there is no `consensus.json`/`consensus-findings.json` in a multi-pass run.
+- `$WORKDIR/merged.json` — **multi-pass only.** `merge-passes` stdout: the BARE merged working array unioning every pass pool (the multi-pass analogue of single-pass's `consensus-findings.json`). Written after the K-loop, read by `route-refutation --findings` + `apply-verdicts --findings` (Phase 4.2.5). REPLACES `compute-consensus` in the multi-pass branch — there is no `consensus.json`/`consensus-findings.json` in a multi-pass run.
 - `$WORKDIR/consensus.json` — `compute-consensus` stdout (a DICT: `findings` merged working list + `consensus_map`). Written in Phase 4.2. **Single-pass only (`--passes 1`).**
-- `$WORKDIR/consensus-findings.json` — the bare `findings` array extracted from `consensus.json`. Written in Phase 4.2, read by `map-recurring-issues --findings` (and `force-rank-top10` on the single-file skip). **Single-pass only** — multi-pass uses `merged.json` in its place.
+- `$WORKDIR/consensus-findings.json` — the bare `findings` array extracted from `consensus.json`. Written in Phase 4.2, read by `route-refutation --findings` + `apply-verdicts --findings` (single-pass). **Single-pass only** — multi-pass uses `merged.json` in its place.
+- `$WORKDIR/refutation-routes.json` — `route-refutation` stdout (a list of `{refuter, findings}` cross-examination groups assigning each finding a non-author refuter). Written in Phase 4.2.5, read by the orchestrator to drive the per-group `render-verify-brief` + refuter-dispatch loop.
+- `$WORKDIR/refute-<refuter>.json` — one refuter group's bare-array `findings` subset, extracted by the orchestrator from `refutation-routes.json`. Written + read per refuter in Phase 4.2.5, passed to `render-verify-brief --findings`.
+- `$WORKDIR/verdicts-<refuter>.md` — per-refuter raw markdown verdicts, written by each dispatched refuter agent in Phase 4.2.5 (the `render-verify-brief` `--tmp-path` names this exact path), consumed by `consume-verdicts --verdicts` in the same sub-phase. Swept by the end-of-run `rm -rf "$WORKDIR"`.
+- `$WORKDIR/parsed-verdicts-<refuter>.json` — `consume-verdicts` stdout per refuter (a DICT: `status` + a `verdicts` array). Written + read per refuter in Phase 4.2.5; its `.verdicts` array is extracted and concatenated into `verdicts.json`.
+- `$WORKDIR/verdicts.json` — every refuter's `parsed-verdicts-<refuter>.json` array concatenated into ONE bare array. Written in Phase 4.2.5, read by `apply-verdicts --verdicts`.
+- `$WORKDIR/applied-verdicts.json` — `apply-verdicts` stdout (a DICT: `confirmed` + `dismissed` + `uncertain` + `contested` buckets, with `contested` already `[CONTESTED]`-tagged). Written in Phase 4.2.5, read by the orchestrator to build `verified.json` (confirmed ∪ contested) and to carry the dismissed + uncertain appendix buckets into the Phase 4.5 report dict.
+- `$WORKDIR/verified.json` — the bare HEADLINE working array = the `confirmed` bucket UNIONED with the `contested` bucket from `applied-verdicts.json` (so high-stakes `[CONTESTED]` findings get ranked and can appear in the Top-N). Written in Phase 4.2.5, read by `map-recurring-issues --findings` (and `force-rank-top10` on the single-file skip). Replaces `consensus-findings.json` / `merged.json` as the 4.3+ working list. The `dismissed` + `uncertain` appendix buckets are NOT in this file — they are carried separately into the Phase 4.5 report dict.
 - `$WORKDIR/recurring-mapped.json` — `map-recurring-issues` stdout (a DICT: `findings` recurring-tagged + `recurring_status`). Written in Phase 4.3.
 - `$WORKDIR/working.json` — the bare recurring-tagged `findings` array extracted from `recurring-mapped.json`. Written in Phase 4.3, read by `force-rank-top10 --findings`.
 - `$WORKDIR/ranked.json` — `force-rank-top10` stdout (a DICT: `top` = ordered `[{finding, score}]`). Written in Phase 4.4, read by the orchestrator when building the report dict's `top10`.
@@ -55,6 +62,7 @@ Read these in full at the phase where each is needed. The adversarial preamble +
 - `references/adversarial-preamble.md` — the ADVERSARIAL AUDIT MODE preamble (Phase 3, every agent).
 - `references/mislogic-checklist.md` — the Mislogic Hunt Checklist (Phase 3, every agent).
 - `references/best-practices-checklist.md` — the system-design + language/framework best-practices + duplication + constitution-principle adherence hunt checklist (Phase 3, every agent). Injected verbatim alongside the mislogic checklist; each section names the `Category` its findings carry.
+- `references/refutation-preamble.md` — the REFUTATION / second-opinion preamble + the per-finding verdict output contract (Phase 4.2.5, every refuter). Load-bearing prompt text — `render-verify-brief` injects it verbatim into each refuter brief; do not paraphrase, summarize, or templatize it.
 - `references/report-format.md` — the report skeleton `render-report` produces (orientation for Phase 5; the helper owns the actual render).
 - `references/hotspot-scoring.md` — the risk-score formula, weights, defaults, and knobs for `--top N` mode (Phase 2, hotspot only).
 
@@ -249,14 +257,15 @@ for pass in 1..passes:
     run 4.1 (multi-pass branch) → per-pass consume+validate → $WORKDIR/validated-p<pass>.json
 # ONLY after the loop completes (all `passes` pools written):
 run 4.2 (multi-pass branch) → merge-passes --pools "$WORKDIR/validated-p*.json" → $WORKDIR/merged.json
+run 4.2.5 (refutation) ONCE on $WORKDIR/merged.json → $WORKDIR/verified.json
 continue with 4.3 → 4.4 → 4.5 → Phase 5 → Phase 6 (ONCE)
 ```
 
-**DO NOT run `merge-passes`, `compute-consensus`, recurring-mapping, ranking, or the report until you have completed all `passes` iterations of 3.1+3.2+4.1.** The merge consumes every pass's pool at once; reaching it after a single pass discards the recall the `--passes` flag exists to buy. Each iteration's agent temp files and validated pool MUST use the `-p<pass>` suffix (`$WORKDIR/tmp-<agent>-p<pass>.md`, `$WORKDIR/validated-p<pass>.json`) so passes do not overwrite each other.
+**DO NOT run `merge-passes`, `compute-consensus`, refutation, recurring-mapping, ranking, or the report until you have completed all `passes` iterations of 3.1+3.2+4.1.** The merge consumes every pass's pool at once; reaching it after a single pass discards the recall the `--passes` flag exists to buy. **Refutation (4.2.5) runs exactly ONCE, after the K-loop AND the merge, on the single deduped `$WORKDIR/merged.json` working list — it is NOT inside the per-pass loop body** (the loop body is only 3.1+3.2+4.1; refutation judges each distinct merged finding once, not once per pass). Each iteration's agent temp files and validated pool MUST use the `-p<pass>` suffix (`$WORKDIR/tmp-<agent>-p<pass>.md`, `$WORKDIR/validated-p<pass>.json`) so passes do not overwrite each other.
 
 **NO cleanup during the loop.** Do NOT run `rm`, or delete ANY file under `$WORKDIR`, at any point before Phase 5 has written the report. Every pass's scratch (`$WORKDIR/tmp-<agent>-p<pass>.md`, the per-pass pools `$WORKDIR/validated-p<pass>.json`, `$WORKDIR/mode.json`, `$WORKDIR/scope.json`, and every other file listed in the Intermediate-scratch inventory) MUST persist through the entire loop and the merge — `merge-passes` reads all per-pass pools at once AFTER the loop, so a pool deleted mid-loop is silently dropped from the union (this is the failure that produces a report built from later passes only, with "Multi-pass-confirmed findings: 0"). Cleanup happens exactly ONCE: the single `rm -rf "$WORKDIR"` at the very end of Phase 6 (after the inline summary). There is no earlier cleanup, ever. (Because `$WORKDIR` is outside `audits/`, the external reaper that deletes dot-prefixed files under `audits/` mid-run cannot touch any pass pool — moving scratch out of `audits/` is what makes the loop reaper-immune.)
 
-The per-iteration mechanics live inline: 3.1 + 3.2 are the dispatch step of this loop body, Phase 4.1 (multi-pass branch) is the per-pass consume+validate step, and Phase 4.2 (multi-pass branch) is the single post-loop merge. Read those branches as steps of THIS loop, not as phases you reach by reading straight through.
+The per-iteration mechanics live inline: 3.1 + 3.2 are the dispatch step of this loop body, Phase 4.1 (multi-pass branch) is the per-pass consume+validate step, and Phase 4.2 (multi-pass branch) is the single post-loop merge. Read those branches as steps of THIS loop, not as phases you reach by reading straight through. Phase 4.2.5 (refutation) is NOT a loop step — it runs once after the merge, on the merged working list, exactly as in single-pass (read it straight through after 4.2).
 
 ### 3.1 — Build each agent brief
 
@@ -360,7 +369,66 @@ WORKDIR="${TMPDIR:-/tmp}/forge-audit"
 
 `merge-passes` takes one-or-more pool paths (`--pools` is `nargs="+"`; the single quoted glob token is expanded, and the resolved paths are deduped + sorted so pass order is deterministic). Each pool file is EITHER a bare JSON array of finding dicts OR a `{"passed":[...]}` object — the per-pass `validated-p<pass>.json` pools are bare arrays. It unions all pools via tolerant location clustering and writes the BARE merged array to `$WORKDIR/merged.json`. Each merged finding carries `pass_count` (int) and is tagged `[MULTI-PASS:k]` when seen in ≥2 passes and `[CROSS-AGENT]` when ≥2 distinct agents appear in its cluster (severity is already bumped inside the merge — the orchestrator does not re-bump). On no-match / unreadable / malformed-JSON the verb exits 2 with a clean stderr message — copy stderr VERBATIM and end the turn.
 
-`$WORKDIR/merged.json` is the multi-pass analogue of single-pass's `consensus-findings.json` (the BARE working array) and is what 4.3+ operate on. **Intentional tradeoff — no `consensus_map` in the multi-pass branch:** because `compute-consensus` is skipped, there is no `consensus_map`, so the multi-pass report dict sets `consensus` to `{}` (Phase 4.5). Cross-agent corroboration is not lost — it surfaces via the `[CROSS-AGENT]` tag and the already-applied severity bump on each merged finding; cross-pass corroboration surfaces via the `[MULTI-PASS:k]` tag plus the new Summary line (Phase 5). This is by design: the unified merge already did both cross-agent and cross-pass corroboration in one pass, so a separate consensus map would be redundant. Skip the `consensus.json`/`consensus-findings.json` steps above entirely.
+`$WORKDIR/merged.json` is the multi-pass analogue of single-pass's `consensus-findings.json` (the BARE working array) and is what 4.2.5+ operate on. **Intentional tradeoff — no `consensus_map` in the multi-pass branch:** because `compute-consensus` is skipped, there is no `consensus_map`, so the multi-pass report dict sets `consensus` to `{}` (Phase 4.5). Cross-agent corroboration is not lost — it surfaces via the `[CROSS-AGENT]` tag and the already-applied severity bump on each merged finding; cross-pass corroboration surfaces via the `[MULTI-PASS:k]` tag plus the new Summary line (Phase 5). This is by design: the unified merge already did both cross-agent and cross-pass corroboration in one pass, so a separate consensus map would be redundant. Skip the `consensus.json`/`consensus-findings.json` steps above entirely.
+
+### 4.2.5 — Refutation (cross-examination)
+
+Refutation runs ONCE on the deduped working list, AFTER consensus (single-pass) or the merge (multi-pass) and BEFORE recurring-mapping. It is NOT per-pass — in multi-pass it runs a single time on `$WORKDIR/merged.json` after the whole Phase-3.0 loop + merge complete, never inside the loop. Its job is to invert the pipeline default from "assume a bug" to "assume correct unless proven": each finding is cross-examined by a non-author finder whose default verdict is NOT-a-bug, and only the survivors (`confirmed`) flow downstream to recurring-mapping and ranking. Read `references/refutation-preamble.md` in full now — it is the refuter brief text and the verdict output contract, injected by `render-verify-brief` and load-bearing.
+
+The working list this sub-phase reads is the bare array `$WORKDIR/consensus-findings.json` (single-pass) or `$WORKDIR/merged.json` (**when `passes >= 2`**). Establish `$WORKING_FINDINGS` ONCE here, before Step A, and use it in BOTH the Step A `route-refutation` call and the Step D `apply-verdicts` call so the single-pass/multi-pass choice is made in exactly one place:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-audit"
+# WORKING_FINDINGS = the deduped working array this sub-phase routes + partitions.
+# Single-pass: $WORKDIR/consensus-findings.json (from 4.2). When passes >= 2: $WORKDIR/merged.json (from the 4.2 merge).
+WORKING_FINDINGS="$WORKDIR/consensus-findings.json"   # set to "$WORKDIR/merged.json" when passes >= 2
+```
+
+The four steps below are a per-author dispatch loop.
+
+**Step A — route each finding to a non-author refuter.** Pass the working list plus the present-finders list (the `present` array from the Phase-1.2 `check-agents` JSON, as a comma-separated list) and capture the routing map:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-audit"
+# PRESENT_FINDERS = comma-joined "present" list from Phase 1.2 check-agents (ONLY finders that exist)
+.devforge/lib/audit_helper route-refutation --findings "$WORKING_FINDINGS" --finders "$PRESENT_FINDERS" > "$WORKDIR/refutation-routes.json"
+```
+
+`route-refutation` groups the working list by each finding's `agent` (the representative author after consensus/merge dedup) and assigns each group the FIRST present finder, by the fixed priority order `[code-reviewer, architect, qa-reviewer, security-reviewer]`, that is NOT the author. Stdout (captured to `$WORKDIR/refutation-routes.json`) is a list of `{refuter, findings}` groups — each group is one refuter and the bare-array subset of findings routed to it. When the author is the only present finder, that sole finder self-refutes (degraded independence — note it in the report); the helper owns that edge case, the orchestrator does not special-case it. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+
+**Step B — dispatch each refuter over its routed subset, in batches.** For each `{refuter, findings}` group in the routing map, write that group's `findings` subset to a scratch file (e.g. `$WORKDIR/refute-<refuter>.json`, a one-line `python3 -c` extraction of the group's `findings` from `$WORKDIR/refutation-routes.json`) and render that refuter's brief over its assigned subset:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-audit"
+.devforge/lib/audit_helper render-verify-brief --findings "$WORKDIR/refute-<refuter>.json" --refuter <refuter> --references-dir .claude/commands/audit/references --scope "$WORKDIR/scope.json" --source-root <source-root> --tmp-path "$WORKDIR/verdicts-<refuter>.md"
+```
+
+`render-verify-brief` assembles the refuter prompt — the refutation preamble (read verbatim from `references/refutation-preamble.md` under `--references-dir`, the installed location) plus the assigned findings to cross-examine — and `--tmp-path` sets the EXACT path the brief tells the refuter to write its verdicts to; pass `"$WORKDIR/verdicts-<refuter>.md"` so the verdict file lands in `$WORKDIR` (reaper-immune). Substitute `<source-root>` with the Source Root from Phase 1.3. Pass the rendered brief as the Task tool PROMPT. Dispatching with `subagent_type: <refuter>` ALREADY loads that finder's persona — so do NOT prepend or re-inline the persona; the refutation preamble in the brief carries only the cross-examination instructions on top of it (the same persona-via-`subagent_type` model 3.1 uses). The brief instructs the refuter to write its fixed-format markdown verdicts to `$WORKDIR/verdicts-<refuter>.md` via Bash shell redirection (the refuter is a finder carrying `Bash`, so it writes the file exactly as the finders write `$WORKDIR/tmp-<agent>.md` in Phase 3 — no Write tool needed). **Dispatch the refuter groups in two batches** (mirroring the Phase 3.2 Batch A / Batch B pattern — multiple Task calls in a single turn, wait for the batch to complete before the next) to avoid context exhaustion; do not fan out all refuter groups at once. Each refuter judges ONLY its routed findings (a bounded set), not the whole working list. On a non-zero `render-verify-brief` exit, copy the helper's stderr VERBATIM and end the turn.
+
+**Step C — parse each refuter's verdicts, then merge.** For each refuter dispatched, parse its verdict file into a bare verdict array, then concatenate all refuters' parsed arrays into one bare array:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-audit"
+.devforge/lib/audit_helper consume-verdicts --verdicts "$WORKDIR/verdicts-<refuter>.md" --refuter <refuter> > "$WORKDIR/parsed-verdicts-<refuter>.json"
+# After every refuter is parsed, extract each .verdicts array and concatenate into ONE bare array:
+python3 -c "import json,glob; out=[]; [out.extend(json.load(open(p)).get('verdicts',[])) for p in sorted(glob.glob('$WORKDIR/parsed-verdicts-*.json'))]; print(json.dumps(out))" > "$WORKDIR/verdicts.json"
+```
+
+`consume-verdicts` regex-parses one refuter's fixed-format markdown verdict file (the `## Verdict N` blocks the refutation contract specifies) into a DICT carrying `status` (`complete` / `failed` / `missing`) and a `verdicts` array — the same dict shape `consume-tmp` returns. Pass `--refuter <refuter>` so a verdict missing the `# Refuter:` header is still attributed. The `python3 -c` line extracts each parsed dict's `.verdicts` array and concatenates every refuter's verdicts into `$WORKDIR/verdicts.json` — the merged verdict array `apply-verdicts` consumes (mirroring the per-agent `.passed`→`validated.json` concat in 4.1). When a refuter's `status` is `failed` or `missing`, its `verdicts` array is empty so it contributes nothing to the merge; the findings that refuter was routed are then absent from the verdict set, and `apply-verdicts` handles an unjudged finding per its own contract. On a non-zero `consume-verdicts` exit, copy the helper's stderr VERBATIM and end the turn.
+
+**Step D — apply the verdicts and partition.** Partition the working list against the merged verdicts:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-audit"
+# $WORKING_FINDINGS — established at the top of 4.2.5 — is the same working list Step A routed.
+.devforge/lib/audit_helper apply-verdicts --findings "$WORKING_FINDINGS" --verdicts "$WORKDIR/verdicts.json" > "$WORKDIR/applied-verdicts.json"
+# verified.json is the HEADLINE working set = the confirmed bucket UNIONED with the contested bucket
+# (contested findings are already [CONTESTED]-tagged by apply-verdicts), so they get ranked and can
+# appear in the Top-N flagged [CONTESTED]. dismissed + uncertain are the appendix — captured separately below.
+python3 -c "import json; d=json.load(open('$WORKDIR/applied-verdicts.json')); print(json.dumps(d['confirmed'] + d['contested']))" > "$WORKDIR/verified.json"
+```
+
+`apply-verdicts` keys each verdict to its working-list finding by the `(file, line, pattern, agent)` tuple (the same tuple Phase 4.5 uses to match ranked findings back to ids) and partitions category-aware per the refutation design: it prints a DICT with four buckets — `confirmed` (survivors that earned their place), `dismissed` (the default verdict on undemonstrable findings), `uncertain` (low-stakes `mislogic` / `system_design` / `best_practice` / `duplication` / `blind_spot` findings the refuter could not resolve → the report appendix), and `contested` (high-stakes `security` / `[CONSTITUTION-VIOLATION]` findings the refuter returned `uncertain` on, plus any "dismiss" verdict on a grounded `[CONSTITUTION-VIOLATION]` — `apply-verdicts` tags each `[CONTESTED]`). The helper owns the verdict→bucket partition and the category routing; the orchestrator does not re-derive verdicts. `$WORKDIR/verified.json` is the HEADLINE working set = the `confirmed` bucket UNIONED with the `contested` bucket — contested findings are high-stakes findings the refuter could not confirm (or a dismissed grounded `[CONSTITUTION-VIOLATION]`), and the design requires them in the headline, so they join `verified.json` (already `[CONTESTED]`-tagged by `apply-verdicts`) rather than the appendix. The `confirmed + contested` array is the bare working list recurring-mapping (4.3) and force-rank (4.4) read in place of the raw working list, so the ranked Top-N can surface a high-stakes `[CONTESTED]` finding. Carry the `dismissed` and `uncertain` buckets forward from this `apply-verdicts` stdout (`$WORKDIR/applied-verdicts.json`) — those two are the appendix; Phase 4.5 reads them into the report dict's dismissed / uncertain fields (built in a later step; this sub-phase only captures them to the named scratch). On a non-zero `apply-verdicts` exit, copy the helper's stderr VERBATIM and end the turn.
 
 ### 4.3 — Recurring-issues mapping (broad + hotspot + directory/uncommitted; skip single-file)
 
@@ -368,11 +436,11 @@ WORKDIR="${TMPDIR:-/tmp}/forge-audit"
 
 **Step A — build the recurring payload.** Glob `specs/*/review.md` modified within the last 90 days, take the 5 most recent, and extract their Critical findings ONLY (cap 25 total across all reviews). Write them to `$WORKDIR/recurring.json` as a `[{file, fingerprint}]` list. If no reviews qualify, write `[]` and note "No recent reviews to cross-reference." in the eventual summary. Track which review files you consulted — that list becomes the report dict's `recurring_reviews_consulted`.
 
-**Step B — map.** The `--findings` input is the working list — the bare array `$WORKDIR/consensus-findings.json` extracted at the end of 4.2, NOT raw `validated.json` (recurring tags must layer on top of the merged list). **When `passes >= 2`, pass `$WORKDIR/merged.json` (the merge output from 4.2) here instead of `consensus-findings.json` — it is the multi-pass working list.**
+**Step B — map.** The `--findings` input is the working list — the bare array `$WORKDIR/verified.json` (the headline set: confirmed ∪ contested) written at the end of 4.2.5, NOT raw `validated.json` and NOT the pre-refutation `consensus-findings.json` / `merged.json` (recurring tags must layer on top of the headline working list, so a dismissed or low-stakes-uncertain finding — neither of which is in `verified.json` — is never recurring-tagged). The same `verified.json` is the working list in both single-pass and multi-pass — 4.2.5 already collapsed the consensus / merge distinction into one headline array.
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-audit"
-.devforge/lib/audit_helper map-recurring-issues --findings "$WORKDIR/consensus-findings.json" --recurring "$WORKDIR/recurring.json" > "$WORKDIR/recurring-mapped.json"
+.devforge/lib/audit_helper map-recurring-issues --findings "$WORKDIR/verified.json" --recurring "$WORKDIR/recurring.json" > "$WORKDIR/recurring-mapped.json"
 ```
 
 It maps each past finding against the working list — RESOLVED / RECURRING / RECURRING-SPREAD — by exact match, tags matched findings, and bumps their severity. This is the audit's differentiator over `/review`: it sees drift across features. Stdout (captured to `$WORKDIR/recurring-mapped.json`) is a DICT carrying `findings` (the working list, now recurring-tagged) and `recurring_status` (a `[{past, status}]` list). Derive the report dict's `recurring_resolved` / `recurring_unresolved` by splitting `recurring_status` on `status` (`RESOLVED` → resolved; `RECURRING` / `RECURRING-SPREAD` → unresolved). Algorithmic merging only — exact-match keys in the helper, never LLM semantic judgment. Extract the recurring-tagged `findings` array into a bare array for 4.4:
@@ -382,24 +450,24 @@ WORKDIR="${TMPDIR:-/tmp}/forge-audit"
 python3 -c "import json; print(json.dumps(json.load(open('$WORKDIR/recurring-mapped.json'))['findings']))" > "$WORKDIR/working.json"
 ```
 
-When this step is SKIPPED (single-file `simplified` pipeline), use `$WORKDIR/consensus-findings.json` from 4.2 as the working list for 4.4 instead (or `$WORKDIR/merged.json` when `passes >= 2`), and set the report dict's `recurring_resolved`, `recurring_unresolved`, and `recurring_reviews_consulted` to `[]`.
+When this step is SKIPPED (single-file `simplified` pipeline), use `$WORKDIR/verified.json` from 4.2.5 (the headline set: confirmed ∪ contested — same file in single-pass and multi-pass) as the working list for 4.4 instead, and set the report dict's `recurring_resolved`, `recurring_unresolved`, and `recurring_reviews_consulted` to `[]`.
 
 ### 4.4 — Force-rank the Top N
 
-The `--findings` input is the bare-array working list from the previous step — `$WORKDIR/working.json` when 4.3 ran, else `$WORKDIR/consensus-findings.json` (the single-file skip case; or `$WORKDIR/merged.json` when `passes >= 2`). Add `--narrow` ONLY for the single-file `simplified` pipeline (Top 5 instead of Top 10):
+The `--findings` input is the bare-array working list from the previous step — `$WORKDIR/working.json` when 4.3 ran, else `$WORKDIR/verified.json` (the single-file skip case — the headline set confirmed ∪ contested, same file in single-pass and multi-pass). Add `--narrow` ONLY for the single-file `simplified` pipeline (Top 5 instead of Top 10):
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-audit"
 .devforge/lib/audit_helper force-rank-top10 --findings "$WORKDIR/working.json" [--narrow] > "$WORKDIR/ranked.json"
 ```
 
-Scores survivors by severity × confidence × cross-agent × recurring weights and returns the ordered top slice. Deterministic given the working list. Stdout (captured to `$WORKDIR/ranked.json`) is a DICT carrying `top` — an ordered `[{finding, score}]` list (length 10, or 5 with `--narrow`). The report dict's `findings` and `top10` are BOTH derived from the SAME bare-array working list you just ranked (`$WORKDIR/working.json`, or `$WORKDIR/consensus-findings.json` on the single-file skip — `$WORKDIR/merged.json` in either role when `passes >= 2`) plus this ranking — see Phase 4.5.
+Scores survivors by severity × confidence × cross-agent × recurring weights and returns the ordered top slice. Deterministic given the working list. Stdout (captured to `$WORKDIR/ranked.json`) is a DICT carrying `top` — an ordered `[{finding, score}]` list (length 10, or 5 with `--narrow`). The report dict's `findings` and `top10` are BOTH derived from the SAME bare-array working list you just ranked (`$WORKDIR/working.json`, or `$WORKDIR/verified.json` on the single-file skip — the headline set confirmed ∪ contested, same file in single-pass and multi-pass) plus this ranking — see Phase 4.5.
 
 ### 4.5 — Assemble the report dict
 
 Assemble the `render_report` input dict and write it to `$WORKDIR/report.json`. This is the single bundle `render-report` and `render-inline-summary` both consume.
 
-**Finding-id assignment first.** The helper auto-assigns `finding_id` (`F-001`, `F-002`, …) in document order only at render time, so to build the `top10` and `consensus` keys (both keyed by finding_id) the orchestrator must assign the SAME ids up front. Take the FULL bare-array working list — `$WORKDIR/working.json` when 4.3 ran, else `$WORKDIR/consensus-findings.json` (or `$WORKDIR/merged.json` in either role when `passes >= 2`) — and assign `finding_id` = `F-001`, `F-002`, … in that exact order. This id-assigned list is the report dict's `findings`.
+**Finding-id assignment first.** The helper auto-assigns `finding_id` (`F-001`, `F-002`, …) in document order only at render time, so to build the `top10` and `consensus` keys (both keyed by finding_id) the orchestrator must assign the SAME ids up front. Take the FULL bare-array working list — `$WORKDIR/working.json` when 4.3 ran, else `$WORKDIR/verified.json` (the headline set confirmed ∪ contested, same file in single-pass and multi-pass) — and assign `finding_id` = `F-001`, `F-002`, … in that exact order. This id-assigned list is the report dict's `findings` — the ranked headline set, which already carries the `[CONTESTED]` tags `apply-verdicts` applied to its contested members (Phase 4.2.5 Step D); no extra tagging happens here. (The `dismissed` and `uncertain` appendix buckets captured in Phase 4.2.5's `$WORKDIR/applied-verdicts.json` are carried into the report dict's `dismissed` / `uncertain` fields by the rows added to the source table below; `render-report` consumes those keys to render the Dismissed / Worth-a-Glance appendix. There is no separate `contested` report-dict key — contested findings ride inside `findings`, `[CONTESTED]`-tagged.)
 
 Then build the rest, each value sourced from an earlier step:
 
@@ -412,8 +480,10 @@ Then build the rest, each value sourced from an earlier step:
 | `agents_run` | Phase 1.2 `check-agents` `present` |
 | `agents_skipped` | Phase 1.2 `check-agents` `missing` |
 | `agents_failed` | Phase 4.1 — agents whose `consume-tmp` `status` was `failed` or `missing`, as `[{name, reason}]` |
-| `findings` | the id-assigned full working list (above) |
-| `top10` | the `finding_id`s of `$WORKDIR/ranked.json`'s `top` entries, in order — match each `top[i].finding` to its assigned id by `(file, line, pattern, agent)` |
+| `findings` | the id-assigned full working list (above) — the ranked headline set (`$WORKDIR/verified.json` = confirmed ∪ contested; contested members already `[CONTESTED]`-tagged by `apply-verdicts`) |
+| `dismissed` | Phase 4.2.5 — the `dismissed` bucket from `$WORKDIR/applied-verdicts.json` (the appendix; undemonstrable findings the refuter knocked down). Consumed by `render-report` for the Dismissed / Worth-a-Glance appendix |
+| `uncertain` | Phase 4.2.5 — the `uncertain` bucket from `$WORKDIR/applied-verdicts.json` (the appendix; low-stakes findings the refuter could not resolve). Consumed by `render-report` for the Dismissed / Worth-a-Glance appendix |
+| `top10` | the `finding_id`s of `$WORKDIR/ranked.json`'s `top` entries, in order — match each `top[i].finding` to its assigned id by `(file, line, pattern, agent)`. Ranked from `findings` (confirmed ∪ contested), so a high-stakes `[CONTESTED]` finding can appear here |
 | `consensus` | `$WORKDIR/consensus.json` `consensus_map` re-keyed from hash → finding_id: for each hashed group, the matching finding's assigned `finding_id` maps to that group's agent list. **When `passes >= 2`: `{}` (empty) — there is no `consensus_map` in the multi-pass branch; cross-agent corroboration surfaces via the `[CROSS-AGENT]` tag instead (see 4.2)** |
 | `recurring_resolved` | Phase 4.3 — `recurring_status` entries with `status == "RESOLVED"` (skipped → `[]`) |
 | `recurring_unresolved` | Phase 4.3 — `recurring_status` entries with `status` in `RECURRING` / `RECURRING-SPREAD` (skipped → `[]`) |
@@ -471,7 +541,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-audit"
 rm -rf "$WORKDIR"
 ```
 
-This single `rm -rf` sweeps every scratch file at once — single-pass (`mode.json`, `scope.json`, the per-agent `parsed-*`/`findings-*`/`validated-*`, `validated.json`, `consensus.json`, `consensus-findings.json`, `recurring.json`, `recurring-mapped.json`, `working.json`, `ranked.json`, `report.json`, the agent temps `tmp-<agent>.md`) AND multi-pass (the per-pass `*-p<pass>` analogues, the pools `validated-p<pass>.json`, `merged.json`, and the per-pass temps `tmp-<agent>-p<pass>.md`). Because `$WORKDIR` is outside the repo, there is no gitignore concern and no per-file `rm` list to maintain. (The `cleanup-tmps` verb that previously swept `audits/.tmp-*.md` in Phase 5 is superseded — no scratch lands in `audits/` anymore, so it is not called.)
+This single `rm -rf` sweeps every scratch file at once — single-pass (`mode.json`, `scope.json`, the per-agent `parsed-*`/`findings-*`/`validated-*`, `validated.json`, `consensus.json`, `consensus-findings.json`, the refutation scratch `refutation-routes.json`/`refute-<refuter>.json`/`verdicts-<refuter>.md`/`parsed-verdicts-<refuter>.json`/`verdicts.json`/`applied-verdicts.json`/`verified.json` (refutation runs once; no per-pass analogues), `recurring.json`, `recurring-mapped.json`, `working.json`, `ranked.json`, `report.json`, the agent temps `tmp-<agent>.md`) AND multi-pass (the per-pass `*-p<pass>` analogues, the pools `validated-p<pass>.json`, `merged.json`, and the per-pass temps `tmp-<agent>-p<pass>.md`). Because `$WORKDIR` is outside the repo, there is no gitignore concern and no per-file `rm` list to maintain. (The `cleanup-tmps` verb that previously swept `audits/.tmp-*.md` in Phase 5 is superseded — no scratch lands in `audits/` anymore, so it is not called.)
 
 Then mark the run complete so an interrupted re-run can distinguish a finished audit from a stopped one:
 
@@ -483,7 +553,7 @@ Then mark the run complete so an interrupted re-run can distinguish a finished a
 
 1. **Read-only** — no source modifications, no fixes, no auto-commit of the report.
 2. **Standalone** — `/audit` is never invoked by another command, never part of any chain, never auto-triggered.
-3. **Grounded adversarial bias** — false positives are acceptable ONLY when grounded in a verbatim quote from real code; `validate-findings` discards ungrounded ones.
+3. **Evidence-first adversarial mode** — every finding must be grounded in a verbatim quote from real code; `validate-findings` discards ungrounded ones, and the refutation stage (Phase 4.2.5) cross-examines each finding before ranking, dismissing the false positives that survive grounding. A real quote of correct code is not a finding.
 4. **Constitution violations are always Critical** — never downgraded, regardless of confidence.
 5. **Critique code, not people** — findings describe what is wrong with the code, never who is wrong.
 6. **Algorithmic merging only** — consensus + recurring tags are exact-match hash keys in the helper, never LLM semantic judgment.

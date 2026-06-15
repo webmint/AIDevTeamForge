@@ -1,12 +1,12 @@
 """Tests for src/devforge/lib/_audit/_cli.py (CLI smoke tests for Phase 5).
 
 Coverage:
-  build_parser    — returns ArgumentParser; exactly 18 subcommands registered.
+  build_parser    — returns ArgumentParser; exactly 22 subcommands registered.
   main            — no subcommand → exit 2; help → exit 2.
   per-verb args   — each verb's namespace has a `func` attribute wired.
   e2e smokes      — resolve-mode --full → exit 0 + JSON {mode: broad};
                     check-agents --agents-dir /nonexistent → exit 3.
-  verb guard      — registered set matches expected 18-verb constant.
+  verb guard      — registered set matches expected 22-verb constant.
 """
 
 import argparse
@@ -29,7 +29,8 @@ from _audit._cli import build_parser, main  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# The canonical 18-verb list (Phase 0–5). Guard against accidental drops.
+# The canonical 22-verb list (Phase 0–5 + Plan-19 Step-1 refutation verbs).
+# Guard against accidental drops.
 # ---------------------------------------------------------------------------
 _EXPECTED_VERBS = frozenset([
     "resolve-mode",
@@ -50,6 +51,11 @@ _EXPECTED_VERBS = frozenset([
     "render-inline-summary",
     "cleanup-tmps",
     "merge-passes",
+    # Plan-19 Step-1: refutation / cross-examination stage
+    "route-refutation",
+    "render-verify-brief",
+    "consume-verdicts",
+    "apply-verdicts",
 ])
 
 
@@ -82,8 +88,8 @@ class TestBuildParser(unittest.TestCase):
         parser = build_parser()
         self.assertIsInstance(parser, argparse.ArgumentParser)
 
-    def test_exactly_18_verbs_registered(self):
-        """build_parser registers exactly the 18 expected verbs — no more, no fewer."""
+    def test_exactly_22_verbs_registered(self):
+        """build_parser registers exactly the 22 expected verbs — no more, no fewer."""
         parser = build_parser()
         # Walk the _subparsers action to collect registered verb names.
         registered = set()

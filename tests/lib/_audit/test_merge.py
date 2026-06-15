@@ -15,8 +15,9 @@ Coverage:
     - merge_passes([]) → []; merge_passes([[]]) → []; single non-empty pool.
     - TOL boundary: lines differing by exactly 3 merge; by exactly 4 do NOT.
     - line == -1 members do NOT merge with real-line members.
-    - Confidence floor: pass_count >= 2 cluster whose rep was "Speculative"
-      becomes "Likely"; "Certain" stays "Certain".
+    - Multi-pass recurrence: pass_count >= 2 clusters get [MULTI-PASS:k] tag
+      and pass_count set; confidence is NOT changed (correlated re-generation
+      is not independent corroboration — Speculative stays Speculative).
     - Input dicts and their tag lists are NOT mutated by the call.
 """
 
@@ -373,34 +374,66 @@ class TestRepresentativeSelection(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Confidence floor for multi-pass
+# Multi-pass confidence: recurrence does NOT raise confidence
 # ---------------------------------------------------------------------------
 
 
-class TestConfidenceFloor(unittest.TestCase):
-    def test_speculative_raised_to_likely_when_two_passes(self):
+class TestMultiPassConfidence(unittest.TestCase):
+    """Correlated re-generation across passes is not independent corroboration.
+
+    pass_count and [MULTI-PASS:k] are set as descriptive signals, but the
+    representative's confidence field is NOT changed by pass recurrence.
+    """
+
+    def test_speculative_stays_speculative_when_two_passes(self):
+        """Speculative seen in 2 passes must remain Speculative — no floor."""
         f0 = _make_finding(confidence="Speculative", line=100)
         f1 = _make_finding(confidence="Speculative", line=101)
         result = merge_passes([[f0], [f1]])
-        self.assertEqual(result[0]["confidence"], "Likely")
+        self.assertEqual(result[0]["confidence"], "Speculative")
+
+    def test_speculative_stays_speculative_when_three_passes(self):
+        """Speculative seen in 3 passes must remain Speculative."""
+        f0 = _make_finding(confidence="Speculative", line=100)
+        f1 = _make_finding(confidence="Speculative", line=101)
+        f2 = _make_finding(confidence="Speculative", line=102)
+        result = merge_passes([[f0], [f1], [f2]])
+        self.assertEqual(result[0]["confidence"], "Speculative")
 
     def test_likely_stays_likely_when_two_passes(self):
+        """Likely seen in 2 passes stays Likely (unchanged)."""
         f0 = _make_finding(confidence="Likely", line=100)
         f1 = _make_finding(confidence="Likely", line=100)
         result = merge_passes([[f0], [f1]])
         self.assertEqual(result[0]["confidence"], "Likely")
 
     def test_certain_stays_certain_when_two_passes(self):
+        """Certain seen in 2 passes stays Certain (unchanged)."""
         f0 = _make_finding(confidence="Certain", line=100)
         f1 = _make_finding(confidence="Certain", line=101)
         result = merge_passes([[f0], [f1]])
         self.assertEqual(result[0]["confidence"], "Certain")
 
-    def test_no_confidence_floor_for_single_pass(self):
-        """Single pass: Speculative stays Speculative (no floor)."""
+    def test_single_pass_speculative_unchanged(self):
+        """Single pass: Speculative stays Speculative (baseline, no floor ever)."""
         f0 = _make_finding(confidence="Speculative", line=100)
         result = merge_passes([[f0]])
         self.assertEqual(result[0]["confidence"], "Speculative")
+
+    def test_multi_pass_tag_still_set_even_though_confidence_unchanged(self):
+        """[MULTI-PASS:2] tag is still added at pass_count >= 2."""
+        f0 = _make_finding(confidence="Speculative", line=100)
+        f1 = _make_finding(confidence="Speculative", line=101)
+        result = merge_passes([[f0], [f1]])
+        self.assertIn("[MULTI-PASS:2]", result[0]["tags"])
+        self.assertEqual(result[0]["pass_count"], 2)
+
+    def test_pass_count_set_even_when_confidence_unchanged(self):
+        """pass_count field is always set as a descriptive signal."""
+        f0 = _make_finding(confidence="Speculative", line=100)
+        f1 = _make_finding(confidence="Speculative", line=101)
+        result = merge_passes([[f0], [f1]])
+        self.assertEqual(result[0]["pass_count"], 2)
 
 
 # ---------------------------------------------------------------------------

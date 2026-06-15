@@ -112,8 +112,9 @@ Category glossary: `mislogic` — logic contradictions, lying names/comments, co
 - If the agent finds nothing, write a temp file with `# Status: complete` and `# Finding count: 0`. Empty file ≠ failure."""
 
 _CLOSING_REMINDER = (
-    "REMEMBER: ADVERSARIAL AUDIT MODE is in effect. Bias toward false positives "
-    "ONLY when grounded in verbatim quotes from the actual code. Fabrications are "
+    "REMEMBER: ADVERSARIAL AUDIT MODE is in effect. Report only defects you can "
+    "demonstrate from verbatim quotes of the actual code — a real quote of correct "
+    "code is not a finding; do not assume a bug exists. Fabrications are "
     "forbidden. Enumerate every real instance you can quote exactly, up to "
     "__FINDING_CAP__ — do not stop at one example of a recurring pattern, and drop "
     "any finding whose quote you cannot copy verbatim from the file. "

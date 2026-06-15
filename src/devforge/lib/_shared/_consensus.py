@@ -28,7 +28,7 @@ import re
 import string
 from typing import List
 
-from .findings_schema import SEVERITY_ENUM
+from _shared.findings_schema import SEVERITY_ENUM  # type: ignore[import]
 
 # ---------------------------------------------------------------------------
 # Severity helpers (shared with _rank.py via _bump_severity)

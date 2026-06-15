@@ -37,7 +37,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .findings_schema import CATEGORY_ENUM
+from _shared.findings_schema import CATEGORY_ENUM  # type: ignore[import]
 
 # ---------------------------------------------------------------------------
 # ParsedFinding dataclass
@@ -236,6 +236,19 @@ def _parse_finding_block(block_text, agent_name):
     # Remediation
     remediation = _extract_section(block_text, "Remediation:")
 
+    # Lift the [CONSTITUTION-VIOLATION] marker into the structured tags list.
+    # Agents have no structured Tags field in the output contract (§3.2), so
+    # they embed the bracketed marker in the Pattern one-liner or Why text.
+    # We detect the exact token here — case-sensitive, brackets required — so
+    # that prose like "this is not a constitution violation" (no brackets)
+    # does NOT match.  Evidence is intentionally excluded from the scan: it
+    # contains verbatim source code, where the literal token would be
+    # coincidental rather than a deliberate marker.
+    _CONSTITUTION_MARKER = "[CONSTITUTION-VIOLATION]"
+    tags = []
+    if _CONSTITUTION_MARKER in pattern or _CONSTITUTION_MARKER in why:
+        tags = [_CONSTITUTION_MARKER]
+
     return ParsedFinding(
         agent=agent_name,
         severity=severity,
@@ -247,7 +260,7 @@ def _parse_finding_block(block_text, agent_name):
         why=why,
         remediation=remediation,
         category=category,
-        tags=[],
+        tags=tags,
     )
 
 

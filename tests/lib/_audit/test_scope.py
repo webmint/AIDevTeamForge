@@ -43,7 +43,7 @@ from _audit._scope import (  # noqa: E402
     render_scope_block,
     resolve_scope,
 )
-from _audit.findings_schema import CATEGORY_ENUM  # noqa: E402
+from _shared.findings_schema import CATEGORY_ENUM  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -1231,6 +1231,43 @@ class TestClosingReminderEnumerateText(unittest.TestCase):
     def test_cap_token_present(self):
         """__FINDING_CAP__ token is in _CLOSING_REMINDER before substitution."""
         self.assertIn("__FINDING_CAP__", _CLOSING_REMINDER)
+
+    def test_demonstrate_defect_wording_present(self):
+        """The new demonstrate-the-defect clause is in _CLOSING_REMINDER."""
+        self.assertIn(
+            "Report only defects you can demonstrate from verbatim quotes of the actual code",
+            _CLOSING_REMINDER,
+        )
+
+    def test_real_quote_of_correct_code_not_a_finding_present(self):
+        """The 'a real quote of correct code is not a finding' clause is present."""
+        self.assertIn(
+            "a real quote of correct code is not a finding",
+            _CLOSING_REMINDER,
+        )
+
+    def test_do_not_assume_bug_exists_present(self):
+        """The 'do not assume a bug exists' clause is present."""
+        self.assertIn(
+            "do not assume a bug exists",
+            _CLOSING_REMINDER,
+        )
+
+    def test_bias_toward_false_positives_absent(self):
+        """The old 'Bias toward false positives' framing is gone from _CLOSING_REMINDER."""
+        self.assertNotIn("Bias toward false positives", _CLOSING_REMINDER)
+
+    def test_fabrications_forbidden_preserved(self):
+        """The 'Fabrications are forbidden' clause is preserved."""
+        self.assertIn("Fabrications are forbidden", _CLOSING_REMINDER)
+
+    def test_confidence_tier_preserved(self):
+        """The 'Confidence tier' requirement is preserved."""
+        self.assertIn("Confidence tier", _CLOSING_REMINDER)
+
+    def test_critical_of_code_not_people_preserved(self):
+        """The 'Critical of code, not people' clause is preserved."""
+        self.assertIn("Critical of code, not people", _CLOSING_REMINDER)
 
 
 # ---------------------------------------------------------------------------

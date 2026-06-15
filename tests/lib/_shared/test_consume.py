@@ -1,4 +1,4 @@
-"""Tests for src/devforge/lib/_audit/_consume.py.
+"""Tests for src/devforge/lib/_shared/_consume.py.
 
 Coverage:
   parse_agent_tmp — well-formed 2-finding file → exact ParsedFinding fields
@@ -24,7 +24,7 @@ import json
 import os
 import tempfile
 
-from _audit._consume import (  # noqa: E402
+from _shared._consume import (  # noqa: E402
     ParsedFinding,
     STATUS_CLEAN,
     STATUS_COMPLETE,
@@ -643,6 +643,155 @@ Remediation: Introduce a service layer.
 
     def test_why_correct(self):
         self.assertIn("storage layer", self.result["findings"][0]["why"])
+
+
+# ---------------------------------------------------------------------------
+# [CONSTITUTION-VIOLATION] tag lifting (tag-plumbing fix)
+# ---------------------------------------------------------------------------
+
+# Template for constitution-violation tag tests.
+# Slots: {pattern_line}, {why_line}
+_CV_BLOCK_TEMPLATE = """\
+# Agent: architect
+# Status: complete
+# Finding count: 1
+
+## Finding 1
+Severity: High
+File: src/orders/use_case.py
+Line: 38
+Pattern: {pattern_line}
+Category: system_design
+Confidence: Certain
+Evidence:
+```
+const data = localStorage.getItem('cart');
+```
+Why it's wrong: {why_line}
+Remediation: Route through the domain service layer.
+"""
+
+
+class TestConstitutionViolationTagLifting(unittest.TestCase):
+    """[CONSTITUTION-VIOLATION] marker emitted by agents (inline in Pattern or Why)
+    must be lifted into the structured ParsedFinding.tags list so that:
+      - _report._bucket_finding routes to the Constitution Violations bucket, and
+      - _verify._has_constitution_tag / _is_high_stakes fire for the D7 carve-out.
+    """
+
+    def _parse(self, pattern_line, why_line):
+        text = _CV_BLOCK_TEMPLATE.format(
+            pattern_line=pattern_line,
+            why_line=why_line,
+        )
+        result = parse_agent_tmp(text, agent_name="architect")
+        self.assertEqual(len(result["findings"]), 1)
+        return result["findings"][0]
+
+    # --- happy paths ----------------------------------------------------------
+
+    def test_marker_in_pattern_yields_tag(self):
+        """Pattern contains the exact bracketed marker → tags includes it."""
+        f = self._parse(
+            pattern_line="Domain use case reads directly from localStorage — constitution layer violation [CONSTITUTION-VIOLATION]",
+            why_line="Presentation-layer storage accessed in the use-case layer.",
+        )
+        self.assertIn("[CONSTITUTION-VIOLATION]", f["tags"])
+
+    def test_marker_in_why_yields_tag(self):
+        """Pattern is clean; Why text contains the marker → tags includes it."""
+        f = self._parse(
+            pattern_line="Direct localStorage access in use-case layer",
+            why_line="This crosses a layer boundary and is a [CONSTITUTION-VIOLATION].",
+        )
+        self.assertIn("[CONSTITUTION-VIOLATION]", f["tags"])
+
+    def test_marker_in_both_pattern_and_why_idempotent(self):
+        """Marker present in both Pattern and Why → exactly one tag entry."""
+        f = self._parse(
+            pattern_line="Layer violation [CONSTITUTION-VIOLATION]",
+            why_line="Direct storage access [CONSTITUTION-VIOLATION] breaks the domain boundary.",
+        )
+        self.assertEqual(
+            f["tags"].count("[CONSTITUTION-VIOLATION]"),
+            1,
+            "tag must appear at most once even when marker is in both fields",
+        )
+
+    # --- no-marker cases (precision guards) ----------------------------------
+
+    def test_no_marker_yields_empty_tags(self):
+        """A finding with NO marker in Pattern or Why → tags == []."""
+        f = self._parse(
+            pattern_line="Direct localStorage access in use-case layer",
+            why_line="Presentation-layer storage accessed in the use-case layer.",
+        )
+        self.assertEqual(f["tags"], [])
+
+    def test_prose_without_brackets_does_not_match(self):
+        """Prose 'constitution violation' without brackets → tags == [] (no false positive)."""
+        f = self._parse(
+            pattern_line="This is a constitution violation without brackets",
+            why_line="The naming convention violates the constitution rules here.",
+        )
+        self.assertEqual(
+            f["tags"],
+            [],
+            "prose 'constitution violation' without brackets must NOT produce the tag",
+        )
+
+    def test_case_variant_does_not_match(self):
+        """[constitution-violation] (lowercase) is NOT the exact marker → tags == []."""
+        f = self._parse(
+            pattern_line="Layer breach [constitution-violation] lowercase",
+            why_line="Some explanation.",
+        )
+        self.assertEqual(f["tags"], [])
+
+    # --- existing no-marker finding stays clean ------------------------------
+
+    def test_existing_well_formed_fixture_tags_unchanged(self):
+        """Existing _WELL_FORMED_TMP findings (no marker) still have tags == []."""
+        result = parse_agent_tmp(_WELL_FORMED_TMP, agent_name="code-reviewer")
+        for f in result["findings"]:
+            self.assertEqual(f["tags"], [])
+
+    # --- evidence is NOT scanned for the marker ------------------------------
+
+    def test_marker_in_evidence_only_does_not_produce_tag(self):
+        """Marker appearing only inside the Evidence fenced block is NOT lifted.
+
+        Evidence contains verbatim source code; a [CONSTITUTION-VIOLATION] token
+        there would be coincidental (e.g., a comment in code being audited),
+        not a deliberate agent signal.
+        """
+        text = """\
+# Agent: architect
+# Status: complete
+# Finding count: 1
+
+## Finding 1
+Severity: Medium
+File: src/layer.py
+Line: 7
+Pattern: Some pattern without the marker
+Category: system_design
+Confidence: Likely
+Evidence:
+```
+// [CONSTITUTION-VIOLATION] this comment exists in the source code
+const x = 1;
+```
+Why it's wrong: The code is structured oddly.
+Remediation: Restructure.
+"""
+        result = parse_agent_tmp(text, agent_name="architect")
+        self.assertEqual(len(result["findings"]), 1)
+        self.assertEqual(
+            result["findings"][0]["tags"],
+            [],
+            "marker inside Evidence (source code) must NOT produce the tag",
+        )
 
 
 if __name__ == "__main__":

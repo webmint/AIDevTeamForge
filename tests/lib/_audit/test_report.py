@@ -1278,5 +1278,471 @@ class TestRenderReportCrossAgentSummaryCount(unittest.TestCase):
                       "Standard fixture: expected count 1 in line: {!r}".format(line))
 
 
+# ---------------------------------------------------------------------------
+# render_report — plan 19 Change D: confidence-gate presentation
+# ---------------------------------------------------------------------------
+
+class TestRenderReportContestatedTagInHeadline(unittest.TestCase):
+    """[CONTESTED]-tagged findings render IN the headline (Top-N + Findings by File).
+
+    Contested findings are part of the report_dict["findings"] headline set and
+    render WITH the [CONTESTED] tag visible in the Top-N line (in tags_str).
+    """
+
+    def _make_contested_finding(self, finding_id="F-001"):
+        """A finding already tagged [CONTESTED] (as apply_verdicts would produce)."""
+        return {
+            "finding_id": finding_id,
+            "agent": "security-reviewer",
+            "severity": "High",
+            "file": "src/sec.py",
+            "line": 5,
+            "pattern": "contested security issue",
+            "confidence": "Likely",
+            "evidence": "unsafe_call()",
+            "why": "Could not resolve security implication.",
+            "remediation": "Review manually.",
+            "category": "security",
+            "tags": ["[CONTESTED]"],
+        }
+
+    def test_contested_finding_appears_in_findings_by_file(self):
+        """[CONTESTED]-tagged finding renders in ## Findings by File."""
+        f = self._make_contested_finding("F-001")
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        report = render_report(rd)
+        # The finding's pattern should appear in Findings by File
+        self.assertIn("contested security issue", report)
+        fbf_pos = report.find("## Findings by File")
+        self.assertGreater(fbf_pos, -1)
+        fbf_section = report[fbf_pos:]
+        self.assertIn("contested security issue", fbf_section)
+
+    def test_contested_tag_appears_in_top_n_line(self):
+        """[CONTESTED] tag appears in the Top-N entry for a contested finding."""
+        f = self._make_contested_finding("F-001")
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        report = render_report(rd)
+        # Find the Top-N section
+        top_n_pos = report.find("## Top 10 Priorities")
+        self.assertGreater(top_n_pos, -1)
+        top_n_section = report[top_n_pos: report.find("## Findings by File")]
+        self.assertIn("[CONTESTED]", top_n_section)
+
+    def test_confirmed_and_contested_both_in_headline(self):
+        """Both confirmed and [CONTESTED]-tagged findings appear in the headline."""
+        confirmed = {
+            "finding_id": "F-001",
+            "agent": "code-reviewer",
+            "severity": "Critical",
+            "file": "src/a.py",
+            "line": 1,
+            "pattern": "confirmed issue",
+            "confidence": "Certain",
+            "evidence": "bad_code()",
+            "why": "Clearly wrong.",
+            "remediation": "Fix it.",
+            "category": "mislogic",
+            "tags": [],
+            "verify_confidence": "confirmed",
+        }
+        contested = self._make_contested_finding("F-002")
+        rd = _make_report_dict(findings=[confirmed, contested], top10=["F-001", "F-002"])
+        report = render_report(rd)
+        self.assertIn("confirmed issue", report)
+        self.assertIn("contested security issue", report)
+
+
+class TestRenderReportDismissedAppendix(unittest.TestCase):
+    """Dismissed + uncertain findings render in '## Dismissed / Worth a Glance' appendix."""
+
+    def _dismissed_finding(self, finding_id="D-001"):
+        return {
+            "finding_id": finding_id,
+            "agent": "code-reviewer",
+            "severity": "High",
+            "file": "src/dis.py",
+            "line": 10,
+            "pattern": "dismissed pattern",
+            "confidence": "Likely",
+            "evidence": "fine_code()",
+            "why": "No defect demonstrable.",
+            "remediation": "N/A.",
+            "category": "mislogic",
+            "tags": [],
+        }
+
+    def _uncertain_finding(self, finding_id="U-001"):
+        return {
+            "finding_id": finding_id,
+            "agent": "architect",
+            "severity": "Medium",
+            "file": "src/unc.py",
+            "line": 20,
+            "pattern": "uncertain pattern",
+            "confidence": "Speculative",
+            "evidence": "ambiguous_code()",
+            "why": "Cannot resolve from code alone.",
+            "remediation": "N/A.",
+            "category": "system_design",
+            "tags": [],
+        }
+
+    def test_appendix_section_rendered_when_dismissed_present(self):
+        """## Dismissed / Worth a Glance renders when dismissed list is non-empty."""
+        d = self._dismissed_finding()
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = [d]
+        rd["uncertain"] = []
+        report = render_report(rd)
+        self.assertIn("## Dismissed / Worth a Glance", report)
+        self.assertIn("dismissed pattern", report)
+
+    def test_appendix_section_rendered_when_uncertain_present(self):
+        """## Dismissed / Worth a Glance renders when uncertain list is non-empty."""
+        u = self._uncertain_finding()
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = []
+        rd["uncertain"] = [u]
+        report = render_report(rd)
+        self.assertIn("## Dismissed / Worth a Glance", report)
+        self.assertIn("uncertain pattern", report)
+
+    def test_appendix_omitted_when_both_empty(self):
+        """## Dismissed / Worth a Glance is omitted when both dismissed and uncertain are empty."""
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = []
+        rd["uncertain"] = []
+        report = render_report(rd)
+        self.assertNotIn("## Dismissed / Worth a Glance", report)
+
+    def test_appendix_omitted_when_keys_absent(self):
+        """## Dismissed / Worth a Glance is omitted when keys are not in report_dict."""
+        rd = _make_report_dict(findings=[], top10=[])
+        # Don't add dismissed/uncertain keys at all (backward compat with older report dicts)
+        rd.pop("dismissed", None)
+        rd.pop("uncertain", None)
+        report = render_report(rd)
+        self.assertNotIn("## Dismissed / Worth a Glance", report)
+
+    def test_dismissed_not_in_findings_by_file(self):
+        """Dismissed findings must NOT appear in ## Findings by File headline section."""
+        d = self._dismissed_finding()
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = [d]
+        rd["uncertain"] = []
+        report = render_report(rd)
+        fbf_pos = report.find("## Findings by File")
+        dismissed_pos = report.find("## Dismissed / Worth a Glance")
+        self.assertGreater(fbf_pos, -1)
+        self.assertGreater(dismissed_pos, -1)
+        # "## Findings by File" section should not contain the dismissed pattern
+        fbf_section = report[fbf_pos:dismissed_pos]
+        self.assertNotIn("dismissed pattern", fbf_section)
+
+    def test_uncertain_not_in_top_n(self):
+        """Uncertain findings must NOT appear in ## Top N Priorities."""
+        u = self._uncertain_finding()
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = []
+        rd["uncertain"] = [u]
+        report = render_report(rd)
+        top_n_pos = report.find("## Top 10 Priorities")
+        self.assertGreater(top_n_pos, -1)
+        # No top10 ids, so Top-N shows "(no findings)" — uncertain must not leak in
+        top_n_section = report[top_n_pos:report.find("## Findings by File")]
+        self.assertNotIn("uncertain pattern", top_n_section)
+
+    def test_appendix_subsections_present(self):
+        """Both ### Dismissed and ### Uncertain (low-stakes) subsections render."""
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = [self._dismissed_finding()]
+        rd["uncertain"] = [self._uncertain_finding()]
+        report = render_report(rd)
+        self.assertIn("### Dismissed", report)
+        self.assertIn("### Uncertain (low-stakes)", report)
+
+    def test_appendix_section_position_after_findings_by_file(self):
+        """## Dismissed / Worth a Glance section appears after ## Findings by File."""
+        d = self._dismissed_finding()
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = [d]
+        rd["uncertain"] = []
+        report = render_report(rd)
+        fbf_pos = report.find("## Findings by File")
+        app_pos = report.find("## Dismissed / Worth a Glance")
+        self.assertGreater(fbf_pos, -1)
+        self.assertGreater(app_pos, -1)
+        self.assertLess(fbf_pos, app_pos)
+
+
+class TestRenderReportMethodologyUpdated(unittest.TestCase):
+    """## Methodology text must reflect the new refutation model (plan 19 Change D)."""
+
+    def setUp(self):
+        self.report = render_report(_make_report_dict())
+
+    def _methodology_section(self):
+        pos = self.report.find("## Methodology")
+        self.assertGreater(pos, -1, "## Methodology section not found")
+        return self.report[pos:]
+
+    def test_no_deliberate_bias_framing(self):
+        """Old 'deliberate bias toward false positives' wording must be gone."""
+        self.assertNotIn("deliberate bias toward false positives", self.report)
+
+    def test_no_bias_toward_false_positives_framing(self):
+        """'bias toward false positives over false negatives' must be gone."""
+        self.assertNotIn("bias toward false positives over false negatives", self.report)
+
+    def test_methodology_mentions_refutation(self):
+        """New Methodology text must mention the refutation/cross-examination stage."""
+        meth = self._methodology_section()
+        self.assertIn("refutation", meth.lower())
+
+    def test_methodology_mentions_confirmed(self):
+        """New Methodology text must describe confirmed → headline routing."""
+        meth = self._methodology_section()
+        self.assertIn("confirmed", meth.lower())
+
+    def test_methodology_mentions_dismissed_appendix(self):
+        """New Methodology text must mention dismissed findings go to appendix."""
+        meth = self._methodology_section()
+        self.assertIn("appendix", meth.lower())
+
+    def test_methodology_mentions_contested(self):
+        """New Methodology text must mention [CONTESTED] (D7 high-stakes routing)."""
+        meth = self._methodology_section()
+        self.assertIn("[CONTESTED]", meth)
+
+    def test_methodology_retains_speculative_note(self):
+        """'Speculative' findings note must be retained in new Methodology."""
+        meth = self._methodology_section()
+        self.assertIn("Speculative", meth)
+
+    def test_methodology_retains_verbatim_quote_note(self):
+        """Verbatim-quote mention must be retained."""
+        meth = self._methodology_section()
+        self.assertIn("verbatim", meth.lower())
+
+
+class TestRenderReportSummaryConfidenceCounts(unittest.TestCase):
+    """## Summary must report confirmed/dismissed/uncertain/contested counts."""
+
+    def _summary_section(self, report):
+        pos = report.find("## Summary")
+        self.assertGreater(pos, -1, "## Summary section not found")
+        return report[pos:]
+
+    def test_summary_counts_line_confirmed_dismissed_uncertain_contested(self):
+        """Summary line 'Confirmed: N | Contested: N | Dismissed: N | Uncertain: N' present."""
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = []
+        rd["uncertain"] = []
+        report = render_report(rd)
+        summary = self._summary_section(report)
+        self.assertIn("Confirmed:", summary)
+        self.assertIn("Contested:", summary)
+        self.assertIn("Dismissed:", summary)
+        self.assertIn("Uncertain:", summary)
+
+    def test_confirmed_count_excludes_contested(self):
+        """Confirmed count = headline findings minus [CONTESTED]-tagged findings."""
+        f_confirmed = _make_finding(finding_id="F-001", tags=[])
+        f_contested = _make_finding(finding_id="F-002", tags=["[CONTESTED]"])
+        rd = _make_report_dict(findings=[f_confirmed, f_contested], top10=[])
+        rd["dismissed"] = []
+        rd["uncertain"] = []
+        report = render_report(rd)
+        summary = self._summary_section(report)
+        # 1 confirmed (F-001), 1 contested (F-002)
+        self.assertIn("Confirmed: 1", summary)
+        self.assertIn("Contested: 1", summary)
+
+    def test_dismissed_count_from_dismissed_list(self):
+        """Dismissed count in Summary comes from report_dict['dismissed'] list length."""
+        dismissed = [
+            _make_finding(finding_id="D-001"),
+            _make_finding(finding_id="D-002"),
+        ]
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = dismissed
+        rd["uncertain"] = []
+        report = render_report(rd)
+        summary = self._summary_section(report)
+        self.assertIn("Dismissed: 2", summary)
+
+    def test_uncertain_count_from_uncertain_list(self):
+        """Uncertain count in Summary comes from report_dict['uncertain'] list length."""
+        uncertain = [_make_finding(finding_id="U-001")]
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = []
+        rd["uncertain"] = uncertain
+        report = render_report(rd)
+        summary = self._summary_section(report)
+        self.assertIn("Uncertain: 1", summary)
+
+    def test_all_zero_when_no_findings(self):
+        """With no findings, all confidence counts are zero."""
+        rd = _make_report_dict(findings=[], top10=[])
+        rd["dismissed"] = []
+        rd["uncertain"] = []
+        report = render_report(rd)
+        summary = self._summary_section(report)
+        self.assertIn("Confirmed: 0", summary)
+        self.assertIn("Contested: 0", summary)
+        self.assertIn("Dismissed: 0", summary)
+        self.assertIn("Uncertain: 0", summary)
+
+    def test_backward_compat_keys_absent(self):
+        """When dismissed/uncertain keys are absent, Summary counts default to 0."""
+        rd = _make_report_dict(findings=[], top10=[])
+        rd.pop("dismissed", None)
+        rd.pop("uncertain", None)
+        report = render_report(rd)
+        summary = self._summary_section(report)
+        self.assertIn("Dismissed: 0", summary)
+        self.assertIn("Uncertain: 0", summary)
+
+
+class TestRenderReportAllFourBucketsIntegration(unittest.TestCase):
+    """F3: Full-integration test — all four buckets populated simultaneously.
+
+    findings=[<confirmed>, <[CONTESTED]-tagged>] represents the confirmed ∪
+    contested union passed to render_report via report_dict["findings"].
+    dismissed and uncertain are passed via their own keys.
+
+    Asserts:
+      - confirmed + contested findings both appear in ## Findings by File
+      - contested finding carries its [CONTESTED] tag visible in the report
+      - dismissed finding appears in ## Dismissed / Worth a Glance
+      - uncertain finding appears in ## Dismissed / Worth a Glance
+      - dismissed finding does NOT appear in ## Findings by File
+      - uncertain finding does NOT appear in ## Findings by File
+    """
+
+    def _confirmed_finding(self):
+        return {
+            "finding_id": "F-001",
+            "agent": "code-reviewer",
+            "severity": "Critical",
+            "file": "src/core.py",
+            "line": 10,
+            "pattern": "confirmed-logic-bug",
+            "confidence": "Certain",
+            "evidence": "if x is None: pass  # swallowed",
+            "why": "Swallowed None crashes downstream.",
+            "remediation": "Raise ValueError.",
+            "category": "mislogic",
+            "tags": [],
+            "verify_confidence": "confirmed",
+        }
+
+    def _contested_finding(self):
+        return {
+            "finding_id": "F-002",
+            "agent": "security-reviewer",
+            "severity": "High",
+            "file": "src/auth.py",
+            "line": 55,
+            "pattern": "contested-security-issue",
+            "confidence": "Likely",
+            "evidence": "token = request.args.get('token')",
+            "why": "Token not validated.",
+            "remediation": "Validate token server-side.",
+            "category": "security",
+            "tags": ["[CONTESTED]"],
+        }
+
+    def _dismissed_finding(self):
+        return {
+            "finding_id": "D-001",
+            "agent": "qa-reviewer",
+            "severity": "Medium",
+            "file": "src/util.py",
+            "line": 30,
+            "pattern": "dismissed-dead-branch",
+            "confidence": "Speculative",
+            "evidence": "if False: cleanup()",
+            "why": "Appears dead.",
+            "remediation": "Remove.",
+            "category": "mislogic",
+            "tags": [],
+        }
+
+    def _uncertain_finding(self):
+        return {
+            "finding_id": "U-001",
+            "agent": "architect",
+            "severity": "Low",
+            "file": "src/svc.py",
+            "line": 20,
+            "pattern": "uncertain-coupling",
+            "confidence": "Speculative",
+            "evidence": "from db import session",
+            "why": "Cannot determine scope without runtime trace.",
+            "remediation": "N/A.",
+            "category": "system_design",
+            "tags": [],
+        }
+
+    def setUp(self):
+        confirmed = self._confirmed_finding()
+        contested = self._contested_finding()
+        dismissed = self._dismissed_finding()
+        uncertain = self._uncertain_finding()
+
+        rd = _make_report_dict(
+            findings=[confirmed, contested],
+            top10=["F-001", "F-002"],
+        )
+        rd["dismissed"] = [dismissed]
+        rd["uncertain"] = [uncertain]
+        self.report = render_report(rd)
+
+    def test_confirmed_finding_in_findings_by_file(self):
+        fbf_start = self.report.find("## Findings by File")
+        self.assertGreater(fbf_start, -1)
+        fbf_end = self.report.find("\n## ", fbf_start + 1)
+        fbf_section = self.report[fbf_start:fbf_end] if fbf_end > -1 else self.report[fbf_start:]
+        self.assertIn("confirmed-logic-bug", fbf_section)
+
+    def test_contested_finding_in_findings_by_file(self):
+        fbf_start = self.report.find("## Findings by File")
+        self.assertGreater(fbf_start, -1)
+        fbf_end = self.report.find("\n## ", fbf_start + 1)
+        fbf_section = self.report[fbf_start:fbf_end] if fbf_end > -1 else self.report[fbf_start:]
+        self.assertIn("contested-security-issue", fbf_section)
+
+    def test_contested_tag_visible_in_report(self):
+        # [CONTESTED] tag must appear somewhere in the report (Top-N or Findings by File)
+        self.assertIn("[CONTESTED]", self.report)
+
+    def test_dismissed_in_appendix_not_in_findings_by_file(self):
+        fbf_start = self.report.find("## Findings by File")
+        appendix_start = self.report.find("## Dismissed / Worth a Glance")
+        self.assertGreater(fbf_start, -1)
+        self.assertGreater(appendix_start, -1)
+        # Dismissed pattern appears in appendix
+        self.assertIn("dismissed-dead-branch", self.report[appendix_start:])
+        # Dismissed pattern does NOT appear before the appendix section
+        self.assertNotIn("dismissed-dead-branch", self.report[:appendix_start])
+
+    def test_uncertain_in_appendix_not_in_findings_by_file(self):
+        fbf_start = self.report.find("## Findings by File")
+        appendix_start = self.report.find("## Dismissed / Worth a Glance")
+        self.assertGreater(fbf_start, -1)
+        self.assertGreater(appendix_start, -1)
+        # Uncertain pattern appears in appendix
+        self.assertIn("uncertain-coupling", self.report[appendix_start:])
+        # Uncertain pattern does NOT appear before the appendix section
+        self.assertNotIn("uncertain-coupling", self.report[:appendix_start])
+
+    def test_appendix_present_with_both_subsections(self):
+        self.assertIn("## Dismissed / Worth a Glance", self.report)
+        self.assertIn("### Dismissed", self.report)
+        self.assertIn("### Uncertain (low-stakes)", self.report)
+
+
 if __name__ == "__main__":
     unittest.main()

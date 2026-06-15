@@ -2,17 +2,17 @@
 
 Covers Tasks 3 and 4 from the pass_count wiring spec:
 
-  Task 3 — ranking nudge (_rank._score_finding pass_bonus):
-    - pass_bonus monotonic: pass_count 1 < 2 < 3
+  Task 3 — ranking (pass_bonus NEUTRALIZED per Change C):
+    - pass_count does NOT inflate the score: pass_count 1 == 2 == 3 == missing
     - pass_count=1 and missing key both give unchanged score (equality assertion
-      against the pre-nudge value for a known finding)
+      against the base score for a known finding)
 
   Task 4 — integration test:
     - build a small pool list
     - run through merge_passes (real producer) to get findings with real pass_count/tags
     - feed through map_recurring_issues + force_rank/_score_finding WITHOUT error
-    - assert multi-pass-confirmed (pass_count=2) ranks ABOVE single-pass (pass_count=1)
-      of otherwise-equal base score
+    - assert multi-pass-confirmed (pass_count=2) has the SAME score as single-pass
+      (pass_count=1) of otherwise-equal base score (pass_count is descriptive only)
     - assert no-op invariant: findings all with pass_count=1 rank in the SAME order
       as the identical findings with the pass_count key removed entirely
 
@@ -93,14 +93,19 @@ def _minimal_report_dict(findings=None, passes_run=None):
 
 
 # ---------------------------------------------------------------------------
-# Task 3: ranking pass_bonus monotonicity and single-pass invariant
+# Task 3: pass_count neutralized — no score inflation, pass_count is descriptive only
 # ---------------------------------------------------------------------------
 
-class TestPassBonusMonotonic(unittest.TestCase):
-    """pass_bonus = 1.0 + 0.25 * (min(pc, 3) - 1)"""
+class TestPassBonusNeutralized(unittest.TestCase):
+    """pass_count does NOT inflate the score (pass_bonus neutralized).
+
+    Correlated re-generation across passes is not independent corroboration;
+    only the refutation stage may raise confidence/score on a multi-pass finding.
+    pass_count is retained as a descriptive field — same score for all values.
+    """
 
     def _base_score(self):
-        """Score without any pass_count key (same as pass_count=1)."""
+        """Score without any pass_count key."""
         f = _finding(severity="High", confidence="Certain")
         return _score_finding(f)
 
@@ -111,49 +116,49 @@ class TestPassBonusMonotonic(unittest.TestCase):
         self.assertAlmostEqual(_score_finding(f_missing), _score_finding(f_one))
 
     def test_pass_count_1_score_unchanged(self):
-        """pass_count=1 → pass_bonus=1.0 → score unchanged vs no-pass_count."""
+        """pass_count=1 → score unchanged vs no-pass_count."""
         base = self._base_score()
         f = _finding(severity="High", confidence="Certain", pass_count=1)
-        # High/Certain base = 4*3*1.0*1.0*1.0 = 12.0
+        # High/Certain base = 4*3 = 12.0
         self.assertAlmostEqual(_score_finding(f), base)
         self.assertAlmostEqual(base, 12.0)
 
-    def test_pass_count_2_score_higher_than_1(self):
-        """pass_count=2 → pass_bonus=1.25 → score > pass_count=1."""
+    def test_pass_count_2_same_score_as_1(self):
+        """pass_count=2 must NOT add the former 1.25 multiplier."""
         f1 = _finding(severity="High", confidence="Certain", pass_count=1)
         f2 = _finding(severity="High", confidence="Certain", pass_count=2)
-        self.assertGreater(_score_finding(f2), _score_finding(f1))
+        self.assertAlmostEqual(_score_finding(f2), _score_finding(f1))
 
-    def test_pass_count_3_score_higher_than_2(self):
-        """pass_count=3 → pass_bonus=1.5 → score > pass_count=2."""
+    def test_pass_count_3_same_score_as_2(self):
+        """pass_count=3 must NOT add the former 1.5 multiplier."""
         f2 = _finding(severity="High", confidence="Certain", pass_count=2)
         f3 = _finding(severity="High", confidence="Certain", pass_count=3)
-        self.assertGreater(_score_finding(f3), _score_finding(f2))
+        self.assertAlmostEqual(_score_finding(f3), _score_finding(f2))
 
-    def test_pass_count_4_capped_at_3(self):
-        """pass_count=4 is capped at 3 → same score as pass_count=3."""
+    def test_pass_count_4_same_as_pass_count_3(self):
+        """Any pass_count value — including beyond the old cap of 3 — yields base score."""
         f3 = _finding(severity="High", confidence="Certain", pass_count=3)
         f4 = _finding(severity="High", confidence="Certain", pass_count=4)
         self.assertAlmostEqual(_score_finding(f3), _score_finding(f4))
 
-    def test_exact_values(self):
-        """Verify exact multipliers: 1.0, 1.25, 1.5."""
+    def test_exact_values_all_equal_base(self):
+        """All pass_count values produce the same score (base × 1.0)."""
         base = 4.0 * 3.0  # High/Certain, no bonuses from tags
         f1 = _finding(severity="High", confidence="Certain", pass_count=1)
         f2 = _finding(severity="High", confidence="Certain", pass_count=2)
         f3 = _finding(severity="High", confidence="Certain", pass_count=3)
-        self.assertAlmostEqual(_score_finding(f1), base * 1.0)
-        self.assertAlmostEqual(_score_finding(f2), base * 1.25)
-        self.assertAlmostEqual(_score_finding(f3), base * 1.5)
+        self.assertAlmostEqual(_score_finding(f1), base)
+        self.assertAlmostEqual(_score_finding(f2), base)
+        self.assertAlmostEqual(_score_finding(f3), base)
 
     def test_pass_count_zero_equals_missing(self):
-        """pass_count=0 in a raw dict → same score as no pass_count key (no penalty)."""
+        """pass_count=0 in a raw dict → same score as no pass_count key."""
         f_missing = _finding(severity="High", confidence="Certain")
         f_zero = _finding(severity="High", confidence="Certain", pass_count=0)
         self.assertAlmostEqual(_score_finding(f_missing), _score_finding(f_zero))
 
     def test_pass_count_negative_equals_missing(self):
-        """pass_count=-1 in a raw dict → same score as no pass_count key (no penalty)."""
+        """pass_count=-1 in a raw dict → same score as no pass_count key."""
         f_missing = _finding(severity="High", confidence="Certain")
         f_neg = _finding(severity="High", confidence="Certain", pass_count=-1)
         self.assertAlmostEqual(_score_finding(f_missing), _score_finding(f_neg))
@@ -266,9 +271,10 @@ class TestMergePassesIntegration(unittest.TestCase):
         result = map_recurring_issues(merged, past)
         self.assertIn("findings", result)
 
-    def test_multipass_finding_ranks_above_singlepass_equal_base(self):
-        """A pass_count=2 finding ranks above pass_count=1 of equal base score.
+    def test_multipass_finding_same_score_as_singlepass_equal_base(self):
+        """A pass_count=2 finding scores IDENTICALLY to pass_count=1 with equal base.
 
+        pass_count is a descriptive field only — it does NOT inflate the score.
         Equal base: same severity, confidence, no tags other than [MULTI-PASS:k].
         Multi-pass cluster: two separate passes of the same finding on src/a.py.
         Single-pass: one occurrence of the same severity/confidence on src/c.py.
@@ -305,16 +311,15 @@ class TestMergePassesIntegration(unittest.TestCase):
 
         score_a = _score_finding(a_finding)
         score_c = _score_finding(c_finding)
-        self.assertGreater(score_a, score_c,
-                           "pass_count=2 finding should score higher than pass_count=1")
+        # Scores must be identical: pass_count does not inflate the score
+        self.assertAlmostEqual(score_a, score_c,
+                               msg="pass_count=2 must NOT score higher than pass_count=1")
 
-        # Also verify via force_rank ordering
+        # Both must appear in force_rank top (both present, not one suppressed)
         result = force_rank(merged, narrow=False)
         top_files = [e["finding"]["file"] for e in result["top"]]
-        idx_a = top_files.index("src/a.py")
-        idx_c = top_files.index("src/c.py")
-        self.assertLess(idx_a, idx_c,
-                        "src/a.py (pass_count=2) should rank before src/c.py (pass_count=1)")
+        self.assertIn("src/a.py", top_files)
+        self.assertIn("src/c.py", top_files)
 
     def test_noop_invariant_single_pass_identical_order(self):
         """findings all pass_count=1 rank identically to findings with no pass_count key."""
@@ -483,7 +488,7 @@ class TestFindingPassCount(unittest.TestCase):
     """Schema-level tests for the pass_count field."""
 
     def _make_finding(self, **overrides):
-        from _audit.findings_schema import Finding
+        from _shared.findings_schema import Finding
         defaults = dict(
             finding_id="F-001",
             agent="code-reviewer",
@@ -558,7 +563,7 @@ class TestFindingPassCount(unittest.TestCase):
     def test_round_trip_with_pass_count_2(self):
         """pass_count=2 survives asdict → reconstruct."""
         import dataclasses
-        from _audit.findings_schema import Finding
+        from _shared.findings_schema import Finding
         f = self._make_finding(pass_count=2)
         d = dataclasses.asdict(f)
         self.assertEqual(d["pass_count"], 2)

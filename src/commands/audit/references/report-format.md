@@ -16,7 +16,9 @@ The category is producer-declared — each agent sets the `Category:` field on e
 
 Empty sub-sections and files with no findings are omitted entirely; the `## Summary` section always renders.
 
-Finding tags: `[CROSS-AGENT]` (raised by ≥2 agents), `[RECURRING]` (matches an unresolved finding from a past `specs/*/review.md`), `[CONSTITUTION-VIOLATION]` (overrides the bucket as above), and — only on multi-pass runs (`--passes >= 2`) — `[MULTI-PASS:k]` on a finding corroborated across `k` (≥2) of the run's passes.
+Finding tags: `[CROSS-AGENT]` (raised by ≥2 agents), `[RECURRING]` (matches an unresolved finding from a past `specs/*/review.md`), `[CONSTITUTION-VIOLATION]` (overrides the bucket as above), `[CONTESTED]` (a high-stakes `security` / `[CONSTITUTION-VIOLATION]` finding the refutation stage could not confirm — surfaced in the headline, never buried in the appendix), and — only on multi-pass runs (`--passes >= 2`) — `[MULTI-PASS:k]` on a finding corroborated across `k` (≥2) of the run's passes.
+
+The `## Top 10 Priorities` and `## Findings by File` sections draw from CONFIRMED findings plus high-stakes `[CONTESTED]` findings only — the refutation stage's headline set (Phase 4.2.5). Dismissed findings and low-stakes uncertain findings are NOT shown there; they render in the `## Dismissed / Worth a Glance` appendix below.
 
 ## Skeleton
 
@@ -48,7 +50,7 @@ Force-ranked across all buckets. Fix these first.
   Why it's wrong: [the contradiction]
   Remediation: [specific fix]
   Confidence: Certain | Likely | Speculative
-  Tags: [CROSS-AGENT] [RECURRING] [CONSTITUTION-VIOLATION] [MULTI-PASS:k]
+  Tags: [CROSS-AGENT] [RECURRING] [CONSTITUTION-VIOLATION] [CONTESTED] [MULTI-PASS:k]
 - [F-014] [High] :88 — [description]
   [same finding format]
 
@@ -93,6 +95,7 @@ Force-ranked across all buckets. Fix these first.
 
 ## Summary
 - Critical: N | High: N | Medium: N | Info: N
+- Confirmed: N | Contested: N | Dismissed: N | Uncertain: N
 - Passes run: N | Multi-pass-confirmed findings: <count>   (only when the resolved `passes >= 2`; omitted when `passes == 1`. Count = findings with `pass_count >= 2`.)
 - Cross-agent consensus findings: N
 - Recurring (unresolved): N
@@ -105,11 +108,27 @@ Force-ranked across all buckets. Fix these first.
   - Failed evidence-non-empty check: N
   - Failed pattern-field check: N
 
+## Dismissed / Worth a Glance
+(Findings the refutation stage knocked out of the headline — not deleted, because a dismissal is itself a judgment that can be wrong. Clearly separated from the headline above; the whole section is omitted when both lists are empty.)
+
+### Dismissed
+- [Medium] [relative/path/to/File.ext]:NN — [description]
+  Why dismissed: [the counter-quote / code path that makes the finding wrong, when one exists]
+
+### Uncertain (low-stakes)
+- [Info] [relative/path/to/File.ext]:NN — [description]
+  Unresolved: [what the refuter could not decide from the code]
+
 ## Methodology
-Adversarial mode — deliberate bias toward false positives over false negatives,
-but every finding is grounded in a verbatim quote from the actual code.
-Findings without grounding are discarded by Phase 4 validation. Confidence
-tiers indicate certainty. "Speculative" findings are hypotheses, not verdicts.
+Findings are grounded — every finding carries a verbatim quote from the actual
+code, and Phase 4 validation discards ungrounded ones. A refutation stage then
+cross-examines each grounded finding before ranking: a finding earns its place
+only by surviving an adversary. Confirmed findings reach the headline; dismissed
+findings and low-stakes uncertain findings drop to the Dismissed / Worth a Glance
+appendix; high-stakes contested findings (`security` / `[CONSTITUTION-VIOLATION]`
+the refuter could not confirm) are surfaced in the headline, flagged
+`[CONTESTED]`, never buried. Confidence tiers indicate certainty; "Speculative"
+findings are hypotheses, not verdicts.
 
 If "Failed verbatim-quote check" count is high (>5), the agents are
 hallucinating evidence — review the agent prompts for tone drift.
