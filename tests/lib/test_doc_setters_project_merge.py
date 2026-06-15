@@ -35,10 +35,14 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from _generate_docs._doc_setters import (  # noqa: E402
+from _generate_docs._doc_setters._skeletons import (  # noqa: E402
     _PROJECT_ARCHITECTURE_OWNED_ANCHORS,
     _PROJECT_OVERVIEW_OWNED_ANCHORS,
+)
+from _generate_docs._doc_setters._cmds_package import (  # noqa: E402
     _merge_project_skeleton,
+)
+from _generate_docs._doc_setters import (  # noqa: E402
     cmd_init_doc,
 )
 
