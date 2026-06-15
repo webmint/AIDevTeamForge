@@ -2,6 +2,7 @@
 
 Dispatcher-only. All cmd_* handler bodies live in sibling modules:
   _cmds_set    — all 28 cmd_set_* + cmd_reset + cmd_add_package_stack
+                 + cmd_set_package_stacks
   _cmds_read   — read-init / read-docs / read-manifests / read-configs
   _cmds_render — render-config / substitute-templates / prune-agents
   _cmds_verify — verify / summary
@@ -28,6 +29,7 @@ from ._cmds_render import (
 )
 from ._cmds_set import (
     cmd_add_package_stack,
+    cmd_set_package_stacks,
     cmd_reset,
     cmd_set_ac_runtime_api_base,
     cmd_set_ac_runtime_cli_command,
@@ -220,6 +222,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--lint-command", dest="lint_command", default=None, help="Package lint command (optional).")
     sp.add_argument("--test-command", dest="test_command", default=None, help="Package test command (optional).")
     sp.set_defaults(func=cmd_add_package_stack)
+
+    sp = subparsers.add_parser(
+        "set-package-stacks",
+        help=(
+            "Replace the whole package_stacks list from JSON on stdin. "
+            "Input must be a JSON object: {\"package_stacks\": [...]}. "
+            "Replace semantics: overwrites any prior list (use to recover from "
+            "a corrupt/duplicate state). Each record must contain 'path' and "
+            "'language' (required) and up to 6 optional nullable fields "
+            "(framework, build_tool, build_command, type_check_command, "
+            "lint_command, test_command). Unknown keys are rejected (exit 2)."
+        ),
+    )
+    sp.set_defaults(func=cmd_set_package_stacks)
 
     # ------------------------------------------------------------------
     # Verbatim docs scalar setters (--text flag for multi-line content).

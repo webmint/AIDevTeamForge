@@ -10,10 +10,16 @@ Step 2 coverage: _load / _dump / _state_transaction (write-on-exit, abort-
 on-exception, lock-file creation), five _validate_* helpers, all 29 setter
 subcommands (3 identity + 1 primary-language + 8 stack arrays incl.
 project_natures + 4 per-pkg arrays incl. test_commands + add-package-stack +
-3 verbatim + 6 enums + 3 ac-runtime), round-trip integration (all-29-fields
-set + reload + compare; replace-not-append for string_arrays; accumulate for
-add-package-stack), cross-process safety (5 concurrent add-package-stack via
+set-package-stacks + 3 verbatim + 6 enums + 3 ac-runtime), round-trip
+integration (all-29-fields set + reload + compare; replace-not-append for
+string_arrays; accumulate for add-package-stack; replace-not-append for
+set-package-stacks), cross-process safety (5 concurrent add-package-stack via
 Popen — no lost writes; mixed scalar+ append concurrency — no corruption).
+set-package-stacks: happy multi-record round-trip, bug-class regression
+(null framework must not shift), replace-not-append (second call wins),
+empty-list clears state, minimal required fields, validation errors
+(missing path / language / unknown key / malformed JSON / non-object /
+non-list / missing key / record not dict / empty path / error index).
 
 Step 3 coverage: _write_json (atomic write, idempotency, no temp files left),
 _build_project_config (37-key output, WRAPPER_MODE_SECTION variants,
@@ -92,6 +98,16 @@ def _run_configure_extra(devforge_dir, extra_args, *args):
     return subprocess.run(
         [sys.executable, str(_HELPER_PY), "--devforge-dir", str(devforge_dir)]
         + list(extra_args) + list(args),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _run_configure_stdin(devforge_dir, stdin_text, *args):
+    """Invoke configure_helper.py <args> with stdin_text piped to stdin."""
+    return subprocess.run(
+        [sys.executable, str(_HELPER_PY), "--devforge-dir", str(devforge_dir)] + list(args),
+        input=stdin_text.encode("utf-8"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -399,7 +415,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertEqual(state2["project_name"], "windows\r\nline ending")
 
     def test_package_stack_missing_subfield_rejected(self):
-        """Closed-shape contract: record missing any of 7 subfields raises.
+        """Closed-shape contract: record missing any of the 7 required subfields raises (test_command is optional for backward compat).
 
         Regression: parse_yaml previously accepted incomplete records.
         """
@@ -431,6 +447,43 @@ class EmitParseRoundTripTests(unittest.TestCase):
         with self.assertRaises(configure_helper.YamlParseError) as ctx:
             configure_helper.parse_yaml(bad_yaml)
         self.assertIn("lint_command", str(ctx.exception))
+
+    def test_package_stack_absent_test_command_defaults_none(self):
+        """Optional test_command absent (not null) parses successfully; defaults to None.
+
+        Regression guard: a future change that promotes test_command to a
+        required subfield would raise YamlParseError here and be caught
+        immediately.  Distinct from test_package_stack_nullable_fields_round_trip
+        which round-trips an explicit ``test_command: null`` — this test
+        omits the key entirely (7-subfield old-config shape).
+        """
+        yaml_7fields = (
+            "project_name: null\n"
+            "project_description: null\n"
+            "project_type: null\n"
+            "primary_language: null\n"
+            "languages: []\n"
+            "frameworks: []\n"
+            "architectures: []\n"
+            "error_handlings: []\n"
+            "api_layers: []\n"
+            "testings: []\n"
+            "build_tools: []\n"
+            "build_commands: []\n"
+            "type_check_commands: []\n"
+            "lint_commands: []\n"
+            "package_stacks:\n"
+            "  - path: \"apps/app\"\n"
+            "    language: \"TypeScript\"\n"
+            "    framework: \"Vue\"\n"
+            "    build_tool: \"Vite\"\n"
+            "    build_command: \"npm run build\"\n"
+            "    type_check_command: \"npm run typecheck\"\n"
+            "    lint_command: \"npm run lint\"\n"
+            "project_structure: null\n"
+        )
+        state = configure_helper.parse_yaml(yaml_7fields)
+        self.assertIsNone(state["package_stacks"][0]["test_command"])
 
     def test_all_fields_set_round_trip(self):
         """All 29 fields populated — comprehensive round-trip."""
@@ -2167,6 +2220,320 @@ class AddPackageStackTests(_EnvIsolationMixin, unittest.TestCase):
             "--framework", "",
         )
         self.assertEqual(proc.returncode, 2)
+
+
+# ---------------------------------------------------------------------------
+# 14b. set-package-stacks tests (~20)
+# ---------------------------------------------------------------------------
+
+
+class SetPackageStacksTests(_EnvIsolationMixin, unittest.TestCase):
+    """Tests for the set-package-stacks bulk JSON-in replace verb.
+
+    All tests drive the verb through the subprocess harness (stdin piped
+    via _run_configure_stdin) so they exercise the full CLI dispatch path.
+    State is read back via configure_helper.parse_yaml for structural
+    assertions — same pattern as AddPackageStackTests.
+    """
+
+    # ------------------------------------------------------------------
+    # Happy-path tests.
+    # ------------------------------------------------------------------
+
+    def test_happy_path_multi_record_round_trip(self):
+        """Multi-record input round-trips through emit_yaml/parse_yaml exactly."""
+        payload = json.dumps({
+            "package_stacks": [
+                {
+                    "path": "apps/web",
+                    "language": "TypeScript",
+                    "framework": "Vue",
+                    "build_tool": "Vite",
+                    "build_command": "npm run build",
+                    "type_check_command": "npm run typecheck",
+                    "lint_command": "npm run lint",
+                    "test_command": "npm test",
+                },
+                {
+                    "path": "services/api",
+                    "language": "Python",
+                    "framework": None,
+                    "build_tool": None,
+                    "build_command": None,
+                    "type_check_command": "mypy .",
+                    "lint_command": "flake8 .",
+                    "test_command": None,
+                },
+            ]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(len(state["package_stacks"]), 2)
+        self.assertEqual(state["package_stacks"][0]["path"], "apps/web")
+        self.assertEqual(state["package_stacks"][0]["framework"], "Vue")
+        self.assertEqual(state["package_stacks"][1]["path"], "services/api")
+        self.assertEqual(state["package_stacks"][1]["framework"], None)
+        self.assertEqual(state["package_stacks"][1]["build_command"], None)
+
+    def test_bug_class_regression_null_framework_stays_null(self):
+        """Regression: a record with framework: null must not shift to a wrong value.
+
+        This is the exact corruption class from the bash-loop bug: a tab-delimited
+        read loop collapsed empty framework_hint columns, causing framework to be
+        set to 'vite' and build/lint commands to shift.  After set-package-stacks,
+        framework must remain null — NOT become vite or any other adjacent field.
+        """
+        payload = json.dumps({
+            "package_stacks": [
+                {
+                    "path": "packages/core",
+                    "language": "TypeScript",
+                    "framework": None,
+                    "build_tool": "Vite",
+                    "build_command": "vite build",
+                    "type_check_command": "tsc --noEmit",
+                    "lint_command": "eslint .",
+                    "test_command": "vitest run",
+                }
+            ]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        record = state["package_stacks"][0]
+        # The column-shift bug would set framework="Vite" and shift everything right.
+        self.assertIsNone(record["framework"], "framework must remain null, not shift")
+        self.assertEqual(record["build_tool"], "Vite")
+        self.assertEqual(record["build_command"], "vite build")
+        self.assertEqual(record["type_check_command"], "tsc --noEmit")
+        self.assertEqual(record["lint_command"], "eslint .")
+        self.assertEqual(record["test_command"], "vitest run")
+
+    def test_replace_not_append_second_call_wins(self):
+        """Calling the verb twice: final state equals the SECOND list only.
+
+        This proves idempotent replace semantics — not append — and verifies
+        the re-run recovery use case (corrupt/duplicate state wiped clean).
+        """
+        first_payload = json.dumps({
+            "package_stacks": [
+                {"path": "first/pkg", "language": "Go", "framework": None,
+                 "build_tool": None, "build_command": None,
+                 "type_check_command": None, "lint_command": None, "test_command": None},
+            ]
+        })
+        second_payload = json.dumps({
+            "package_stacks": [
+                {"path": "second/alpha", "language": "Python", "framework": None,
+                 "build_tool": None, "build_command": None,
+                 "type_check_command": None, "lint_command": None, "test_command": None},
+                {"path": "second/beta", "language": "Rust", "framework": None,
+                 "build_tool": None, "build_command": None,
+                 "type_check_command": None, "lint_command": None, "test_command": None},
+            ]
+        })
+        proc1 = _run_configure_stdin(self.devforge_dir, first_payload, "set-package-stacks")
+        self.assertEqual(proc1.returncode, 0, proc1.stderr.decode())
+        proc2 = _run_configure_stdin(self.devforge_dir, second_payload, "set-package-stacks")
+        self.assertEqual(proc2.returncode, 0, proc2.stderr.decode())
+
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        # Must have exactly 2 records from the second call — NOT 3 (1 + 2).
+        self.assertEqual(len(state["package_stacks"]), 2)
+        paths = [r["path"] for r in state["package_stacks"]]
+        self.assertNotIn("first/pkg", paths, "first call's record must be gone (replace, not append)")
+        self.assertIn("second/alpha", paths)
+        self.assertIn("second/beta", paths)
+
+    def test_empty_package_stacks_list_clears_state(self):
+        """An empty package_stacks: [] input sets the list to empty."""
+        # Pre-populate via add-package-stack.
+        _run_configure(
+            self.devforge_dir,
+            "add-package-stack",
+            "--path", "apps/existing",
+            "--language", "TypeScript",
+        )
+        state_before = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(len(state_before["package_stacks"]), 1)
+
+        proc = _run_configure_stdin(
+            self.devforge_dir, '{"package_stacks": []}', "set-package-stacks"
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["package_stacks"], [])
+
+    def test_single_record_minimal_required_fields_only(self):
+        """A record with only path and language (all optionals absent) is valid."""
+        payload = json.dumps({
+            "package_stacks": [
+                {"path": "lib/shared", "language": "Go"}
+            ]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        record = state["package_stacks"][0]
+        self.assertEqual(record["path"], "lib/shared")
+        self.assertEqual(record["language"], "Go")
+        # All 6 optional fields default to None.
+        for field in ("framework", "build_tool", "build_command",
+                      "type_check_command", "lint_command", "test_command"):
+            self.assertIsNone(record[field], "{0} must default to None".format(field))
+
+    # ------------------------------------------------------------------
+    # Validation error tests (exit code 2).
+    # ------------------------------------------------------------------
+
+    def test_missing_required_path_exits_2(self):
+        """A record without 'path' is rejected with exit 2."""
+        payload = json.dumps({
+            "package_stacks": [{"language": "TypeScript"}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"path", proc.stderr)
+
+    def test_missing_required_language_exits_2(self):
+        """A record without 'language' is rejected with exit 2."""
+        payload = json.dumps({
+            "package_stacks": [{"path": "apps/web"}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"language", proc.stderr)
+
+    def test_unknown_key_in_record_exits_2(self):
+        """A record with a key outside the 8-field schema is rejected with exit 2."""
+        payload = json.dumps({
+            "package_stacks": [
+                {
+                    "path": "apps/web",
+                    "language": "TypeScript",
+                    "bogus_key": "value",
+                }
+            ]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"bogus_key", proc.stderr)
+
+    def test_malformed_json_exits_2(self):
+        """Non-JSON input on stdin is rejected with exit 2."""
+        proc = _run_configure_stdin(self.devforge_dir, "not json at all", "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_top_level_not_object_exits_2(self):
+        """Top-level JSON array (not object) is rejected with exit 2."""
+        proc = _run_configure_stdin(
+            self.devforge_dir, '[{"path": "a", "language": "Go"}]', "set-package-stacks"
+        )
+        self.assertEqual(proc.returncode, 2)
+
+    def test_package_stacks_not_a_list_exits_2(self):
+        """package_stacks value that is not a list is rejected with exit 2."""
+        payload = json.dumps({"package_stacks": "should-be-a-list"})
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_missing_package_stacks_key_exits_2(self):
+        """Object missing the 'package_stacks' key is rejected with exit 2."""
+        payload = json.dumps({"packages": []})
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"package_stacks", proc.stderr)
+
+    def test_record_not_a_dict_exits_2(self):
+        """A list item that is not a dict (e.g. a string) is rejected with exit 2."""
+        payload = json.dumps({"package_stacks": ["not-a-dict"]})
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"record 0 is not an object", proc.stderr)
+
+    def test_empty_path_string_exits_2(self):
+        """A record with path: '' (empty string) is rejected with exit 2."""
+        payload = json.dumps({
+            "package_stacks": [{"path": "", "language": "Go"}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_error_message_includes_record_index(self):
+        """Error messages name the failing record by 0-based index."""
+        payload = json.dumps({
+            "package_stacks": [
+                {"path": "ok/pkg", "language": "Go"},
+                {"language": "Python"},  # index 1: missing path
+            ]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"record 1", proc.stderr)  # index 1 named in the error
+
+    def test_path_with_newline_exits_2(self):
+        """A record with a newline inside 'path' is rejected with exit 2.
+
+        Confirms _validate_path_value's newline-rejection fires through the
+        set-package-stacks path (not bypassed by bulk-replace code).
+        """
+        payload = json.dumps({
+            "package_stacks": [{"path": "apps\nweb", "language": "Go"}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"newline", proc.stderr)
+
+    def test_empty_language_string_exits_2(self):
+        """A record with language: '' (empty string) is rejected with exit 2."""
+        payload = json.dumps({
+            "package_stacks": [{"path": "apps/web", "language": ""}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_empty_optional_field_string_exits_2(self):
+        """A record with an optional field set to '' (empty string) is rejected."""
+        payload = json.dumps({
+            "package_stacks": [{"path": "apps/web", "language": "Go", "framework": ""}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+
+    def test_non_string_required_path_exits_2(self):
+        """A record with path: 123 (integer, not string) is rejected with exit 2.
+
+        Covers Finding 1's new isinstance guard on required fields — JSON
+        differentiates types, so an integer path must not be str()-coerced.
+        """
+        payload = json.dumps({
+            "package_stacks": [{"path": 123, "language": "Go"}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        # Error message must name the field or the actual type (int).
+        self.assertTrue(
+            b"path" in proc.stderr or b"int" in proc.stderr,
+            "stderr must mention 'path' or 'int', got: {0!r}".format(proc.stderr),
+        )
+
+    def test_non_string_optional_field_exits_2(self):
+        """A record with framework: 42 (non-null, non-string) is rejected with exit 2.
+
+        Covers Finding 1's new isinstance guard on optional fields — a non-string,
+        non-null optional value must not be str()-coerced silently.
+        """
+        payload = json.dumps({
+            "package_stacks": [{"path": "apps/web", "language": "Go", "framework": 42}]
+        })
+        proc = _run_configure_stdin(self.devforge_dir, payload, "set-package-stacks")
+        self.assertEqual(proc.returncode, 2)
+        # Error message must name the field or the actual type (int).
+        self.assertTrue(
+            b"framework" in proc.stderr or b"int" in proc.stderr,
+            "stderr must mention 'framework' or 'int', got: {0!r}".format(proc.stderr),
+        )
 
 
 # ---------------------------------------------------------------------------

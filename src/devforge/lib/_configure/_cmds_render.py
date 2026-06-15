@@ -28,7 +28,7 @@ from ._yaml import YamlParseError
 def cmd_render_config(args: argparse.Namespace) -> int:
     """Read configure.yaml + init.yaml; derive AGENT_LIST; write project-config.json.
 
-    Output: <devforge_dir>/project-config.json with 36 keys (28 from
+    Output: <devforge_dir>/project-config.json with 37 keys (29 from
     configure.yaml + 5 from init.yaml + 3 derived). Atomic write via
     _write_json (mkstemp + fsync + os.replace).
 

@@ -18,7 +18,7 @@ Version: develop-2.0-init branch, post-2026-05-11. All four pivot commands shipp
 The three shipped commands sit at the head of the 4-command pivot (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). They share five design principles:
 
 1. **Helper-owns-shape, LLM-owns-values.** Every artifact (`init.yaml`, `index.json`, `docs/<...>/index.md`, `docs/glossary.md`, `configure.yaml`, `project-config.json`, substituted `CLAUDE.md` + `.claude/agents/*.md`) is rendered by a Python helper. The orchestrator (the LLM thread executing the slash command) never writes structural content directly via the `Write` tool to those paths. It composes values, passes them to setters, and the helper produces the canonical bytes. This includes template substitution (`/configure substitute-templates`) and agent pruning (`/configure prune-agents`) — neither is done via the `Edit` tool against `.claude/agents/*.md`. This is the only way to make idempotent re-runs and downstream parsers reliable.
-2. **State IS the on-disk file.** Each setter does a read-modify-write cycle with `tempfile.mkstemp` + `os.replace` for atomicity. There is no in-memory "current state" object held across invocations; the file is the source of truth. For `/generate-docs`'s skeleton-fill flow, the skeleton file (`*.md.skeleton`) IS the state — no sidecar JSON. `/configure`'s `_state.py`-style transaction (`_state_transaction` context manager around `fcntl.LOCK_EX` on `configure.yaml.lock`) serializes concurrent setters; without it, two parallel `add-package-stack` calls could lose array-append entries (lock pattern lifted from `_generate_docs/_state.py`'s prior fix).
+2. **State IS the on-disk file.** Each setter does a read-modify-write cycle with `tempfile.mkstemp` + `os.replace` for atomicity. There is no in-memory "current state" object held across invocations; the file is the source of truth. For `/generate-docs`'s skeleton-fill flow, the skeleton file (`*.md.skeleton`) IS the state — no sidecar JSON. `/configure`'s `_state.py`-style transaction (`_state_transaction` context manager around `fcntl.LOCK_EX` on `configure.yaml.lock`) serializes concurrent setters; the primary path `set-package-stacks` replaces the whole record list in one atomic write, while the historical/recovery path `add-package-stack` array-appends one record per call and two parallel appends could lose entries without the lock (lock pattern lifted from `_generate_docs/_state.py`'s prior fix).
 3. **Mechanical first, LLM second.** Anything that can be derived without judgment (file walks, manifest parsing, dep extraction, source-stamp hashing, ASCII tree rendering, build-tool / framework detection) is helper work. The LLM is invoked only for prose synthesis (`Purpose` paragraphs, leaf annotations, glossary definitions, cross-cut rationale, classification calls like PROJECT_TYPE). The helper layer pre-extracts mechanical fields via `*-input` / `read-*` subcommands so the LLM never reads raw source if a helper can extract first. `/configure` extends this with `_derive_build_tool_hint` + `_derive_framework_hint` (per-package, dependency-name match against locked tables).
 4. **Bottom-up tier walk.** `/generate-docs` always proceeds concern → package → project, so each upper tier has rendered child docs to synthesize from. The pipeline gates on per-tier `source_stamp`: if upstream input hashes are unchanged, the tier skips dispatch. Stamps are SHA-256 prefixes (16 chars) over canonicalized input.
 5. **Atomic taxonomy + helper-side enforcement.** `/configure` uses atomic project-nature labels (`web` / `backend` / `mobile` / etc.) — no synthetic meta-labels like "fullstack". A monorepo with both web and backend packages declares `project_natures: ["web", "backend"]`; the agent-pruning gate matches via set intersection (`agent.applies_to ∩ project.natures`), keeping agents that fit either nature. Project rules (state-management / styling conventions) live in `constitution.md` (per `/constitute` pipeline), NOT in template-substitution placeholders — keeps the substitution layer free of concerns it can't own.
@@ -257,7 +257,7 @@ The `*.md.skeleton` files are transient — `init-doc` writes them, setters edit
 
 ## 4. `/configure` — populate config + substitute templates + prune agents
 
-`/configure` consumes the artifacts emitted by `/init-forge` + `/generate-docs`, fills 28 configuration fields, renders `.devforge/project-config.json` (36-key substitution map), prunes non-applicable agent files based on the project's natures, and substitutes `{{KEY}}` placeholders across `CLAUDE.md` + the surviving `.claude/agents/*.md` files. Single helper module + single command spec.
+`/configure` consumes the artifacts emitted by `/init-forge` + `/generate-docs`, fills 29 configuration fields, renders `.devforge/project-config.json` (37-key substitution map), prunes non-applicable agent files based on the project's natures, and substitutes `{{KEY}}` placeholders across `CLAUDE.md` + the surviving `.claude/agents/*.md` files. Single helper module + single command spec.
 
 ### 4.1 Helper architecture
 
@@ -271,18 +271,18 @@ Subcommand surface (~32 subcommands grouped by role):
 | Read-* inputs | `read-init` / `read-docs` / `read-manifests` / `read-configs` | Capture Phase 1 inputs as JSON |
 | Identity setters (3) | `set-project-name` / `set-project-description` / `set-project-type` | Scalar fields |
 | Stack setters (8) | `set-primary-language` / `set-languages` / `set-frameworks` / `set-architectures` / `set-project-natures` / `set-error-handlings` / `set-api-layers` / `set-testings` | Scalar + string-array |
-| Per-pkg arrays (4) | `set-build-tools` / `set-build-commands` / `set-type-check-commands` / `set-lint-commands` | string-array |
-| Per-pkg record (1) | `add-package-stack` | record-append (7-subfield) |
+| Per-pkg arrays (5) | `set-build-tools` / `set-build-commands` / `set-type-check-commands` / `set-lint-commands` / `set-test-commands` | string-array |
+| Per-pkg record | `set-package-stacks` (primary) / `add-package-stack` (recovery) | `set-package-stacks` replaces the record list from bulk stdin (8-subfield); `add-package-stack` record-append retained for recovery |
 | Verbatim docs (3) | `set-project-structure --text` / `set-dev-commands --text` / `set-architecture-details --text` | Multi-line scalar |
 | User prefs (5) | `set-workflow-enforcement` / `set-ai-attribution` / `set-claude-tier-think` / `-do` / `-verify` | Scalar (Q11 tiers are non-enum to allow custom model aliases) |
 | AC verification (4) | `set-ac-verification-mode` / `set-ac-runtime-url` / `set-ac-runtime-api-base` / `set-ac-runtime-cli-command` | Scalar |
-| Render | `render-config` | Atomic JSON write of project-config.json (36 keys) |
+| Render | `render-config` | Atomic JSON write of project-config.json (37 keys) |
 | Prune | `prune-agents [--apply]` | Walk agents/, delete mismatches (or dry-run JSON) |
 | Substitute | `substitute-templates` | `{{KEY}}` replacement across CLAUDE.md + agents |
 | Verify | `verify` | Required-field + round-trip identity check |
 | Summary | `summary` | Verbatim-echo report (mirrors `init_helper summary`) |
 
-Schema: `FIELD_SCHEMA` carries 28 fields (locked order; emit walks list for diff stability). Three field kinds: `scalar`, `string_array`, `package_stack_array` (the only record kind; 7 fixed subfields). `ENUM_FIELDS` carries 3 entries (`workflow_enforcement` / `ai_attribution` / `ac_verification_mode`); `claude_tier_*` deliberately NOT in ENUM_FIELDS — accepts free-text scalars so users can name custom Claude routes via the Q11 `Other` branch.
+Schema: `FIELD_SCHEMA` carries 29 fields (locked order; emit walks list for diff stability). Three field kinds: `scalar`, `string_array`, `package_stack_array` (the only record kind; 8 fixed subfields). `ENUM_FIELDS` carries 3 entries (`workflow_enforcement` / `ai_attribution` / `ac_verification_mode`); `claude_tier_*` deliberately NOT in ENUM_FIELDS — accepts free-text scalars so users can name custom Claude routes via the Q11 `Other` branch.
 
 Validation helpers (private):
 - `_validate_scalar` — non-empty after strip
@@ -314,23 +314,23 @@ Phase 5.2 — prune-agents          (dry-run → bulk-confirm with keep/drop lis
                                    prune-agents --apply on yes; os.unlink per dropped file)
 Phase 5.3 — substitute-templates  (regex-based {{KEY}} replacement across CLAUDE.md +
                                    .claude/agents/*.md; per-file atomic write)
-Phase 6 — Verify + summary        (verify cross-checks 28-field configure.yaml + 36-key
+Phase 6 — Verify + summary        (verify cross-checks 29-field configure.yaml + 37-key
                                    project-config.json + round-trip identity; summary echoes
                                    field-by-field report verbatim)
 ```
 
 Retry budgets: 3 per setter on validation failure; 3 per bulk-prompt parse failure; on 4th surface-failure-and-continue. Stop discipline: Phase 3 + Phase 5.2 echoes MUST end assistant turn (plain prose has no harness wait-for-user affordance; explicit "do not advance" directive in spec).
 
-### 4.3 Field-source map (28 configure.yaml + 5 init.yaml + 3 derived = 36 project-config.json keys)
+### 4.3 Field-source map (29 configure.yaml + 5 init.yaml + 3 derived = 37 project-config.json keys)
 
 Detection-derived (23 fields composed in Phase 2):
 - Identity (3): PROJECT_NAME / PROJECT_DESCRIPTION / PROJECT_TYPE
 - Stack (9): PRIMARY_LANGUAGE / LANGUAGES / FRAMEWORKS / ARCHITECTURES / **PROJECT_NATURES** / ERROR_HANDLINGS / API_LAYERS / TESTINGS / BUILD_TOOLS
-- Per-package (4): BUILD_COMMANDS / TYPE_CHECK_COMMANDS / LINT_COMMANDS / PACKAGE_STACKS
+- Per-package (5): BUILD_COMMANDS / TYPE_CHECK_COMMANDS / LINT_COMMANDS / TEST_COMMANDS / PACKAGE_STACKS
 - Verbatim docs (3): PROJECT_STRUCTURE / DEV_COMMANDS / ARCHITECTURE_DETAILS
 - AC runtime (3): AC_RUNTIME_URL / AC_RUNTIME_API_BASE / AC_RUNTIME_CLI_COMMAND
 
-User-only (5 fields via Phase 4 sequential prompts): WORKFLOW_ENFORCEMENT / AI_ATTRIBUTION / CLAUDE_TIER_THINK / CLAUDE_TIER_DO / CLAUDE_TIER_VERIFY / AC_VERIFICATION_MODE. (Total 6 user-only fields including AC mode; AC runtime triple is conditional follow-up to Q12 only when mode == runtime-assisted.)
+User-only (6 fields via Phase 4 sequential prompts): WORKFLOW_ENFORCEMENT / AI_ATTRIBUTION / CLAUDE_TIER_THINK / CLAUDE_TIER_DO / CLAUDE_TIER_VERIFY / AC_VERIFICATION_MODE. (AC runtime triple is conditional follow-up to Q12 only when mode == runtime-assisted.)
 
 From `init.yaml` (5 keys, read-through): WORKSPACE_MODE / PROJECT_ROOT / PROJECT_STATE / DEFAULT_BRANCH / PACKAGES_DETECTED.
 
@@ -358,7 +358,7 @@ Source agent files at `src/agents/*.md` carry `applies_to: [...]` frontmatter �
 
 | Category | Count | Source |
 |---|---|---|
-| (A) Direct project-config.json keys | 12 | Verbatim from the 36-key map |
+| (A) Direct project-config.json keys | 12 | Verbatim from the 37-key map |
 | (B) Singular aliases of plural arrays | 10 | `{{FRAMEWORK}}` → comma-join `FRAMEWORKS`, etc. (10 fields: FRAMEWORK / LANGUAGE / BUILD_TOOL / BUILD_COMMAND / TYPE_CHECK_COMMAND / LINT_COMMAND / ERROR_HANDLING / API_LAYER / TESTING / ARCHITECTURE) |
 | (C) Composed | 2 | `{{PACKAGE_STACKS_SECTION}}` markdown table (4 cols: Package \| Language \| Framework \| Build Tool); `{{PROJECT_PATHS}}` comma-join `path` from `packages_detected[]` |
 | (D) Identity passthrough | 1 | `{{UPPERCASE}}` substitutes to literal `{{UPPERCASE}}` (preserves prose explanation of placeholder syntax in CLAUDE.md's "Placeholder Convention" section) |
@@ -377,9 +377,9 @@ Known limitation (cosmetic): substitute engine matches all `{{[A-Z_]+}}` markers
 
 ```
 .devforge/
-  configure.yaml            # canonical 28-field state — single source of truth
+  configure.yaml            # canonical 29-field state — single source of truth
   configure.yaml.lock       # fcntl LOCK_EX sidecar
-  project-config.json       # 36-key render artifact (regenerated each run)
+  project-config.json       # 37-key render artifact (regenerated each run)
 .claude/agents/             # pruned by Phase 5.2 (16 → 12 in testForge20 web case);
                             # surviving agents substituted in place by Phase 5.3
 CLAUDE.md                   # substituted in place

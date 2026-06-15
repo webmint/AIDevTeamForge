@@ -424,14 +424,14 @@ class TestReadConfigure(unittest.TestCase):
 
             parsed = json.loads(result.stdout)
             self.assertEqual(parsed["project_name"], "my-test-project")
-            # All 28 configure fields present.
+            # All 29 configure fields present.
             self.assertIn("project_description", parsed)
             self.assertIn("primary_language", parsed)
             self.assertIn("frameworks", parsed)
             self.assertIn("workflow_enforcement", parsed)
 
-    def test_read_configure_all_28_fields_present(self):
-        """read-configure emits all 28 configure fields."""
+    def test_read_configure_all_29_fields_present(self):
+        """read-configure emits all 29 configure fields."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             devforge = tmp_path / ".devforge"
@@ -446,7 +446,7 @@ class TestReadConfigure(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
 
             parsed = json.loads(result.stdout)
-            # configure_helper.FIELD_SCHEMA has exactly 28 fields.
+            # configure_helper.FIELD_SCHEMA has exactly 29 fields.
             expected_fields = {name for name, _ in configure_helper.FIELD_SCHEMA}
             self.assertEqual(set(parsed.keys()), expected_fields)
 

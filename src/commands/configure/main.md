@@ -6,12 +6,12 @@ disable-model-invocation: true
 
 # /configure — Project Configuration
 
-`/configure` is the third command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes the structural fields persisted by `/init-forge` and the docs corpus produced by `/generate-docs`, fills 28 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
+`/configure` is the third command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes the structural fields persisted by `/init-forge` and the docs corpus produced by `/generate-docs`, fills 29 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
 
 ## Outputs of this phase
 
-- `.devforge/configure.yaml` — canonical state (28 fields). Owned + shaped by the helper; mutated only via setter subcommands.
-- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (36 keys: 28 from configure.yaml + 5 from init.yaml + 3 derived).
+- `.devforge/configure.yaml` — canonical state (29 fields). Owned + shaped by the helper; mutated only via setter subcommands.
+- `.devforge/project-config.json` — render artifact rebuilt from `configure.yaml` + `.devforge/init.yaml` + `.claude/agents/` listing on every run (37 keys: 29 from configure.yaml + 5 from init.yaml + 3 derived).
 - `.claude/agents/*.md` — pruned to those whose `applies_to` frontmatter overlaps `project_natures` (Phase 5.2); each remaining file is substituted in place; no `{{KEY}}` markers remain.
 - `CLAUDE.md` — substituted in place; no `{{KEY}}` markers remain.
 
@@ -124,12 +124,14 @@ Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same conv
 - `BUILD_COMMANDS` — comma-separated list aligned per-package; each entry is the package's `scripts.build` from `MANIFESTS_JSON.packages[]`. When a package lacks a `build` script, emit the ecosystem default (`npm run build` for `package.json`, `cargo build` for `Cargo.toml`, etc.).
 - `TYPE_CHECK_COMMANDS` — comma-separated; per-package `scripts.typecheck` or `scripts.tsc` from `MANIFESTS_JSON`. When absent, emit `tsc --noEmit` for TypeScript packages, `mypy .` for Python packages, or `N/A` when no type checker applies.
 - `LINT_COMMANDS` — comma-separated; per-package `scripts.lint`. When absent, emit `N/A`.
-- `PACKAGE_STACKS` — composite per-package record list. Each record is `{path, language, framework, build_tool, build_command, type_check_command, lint_command}`. Per-record fields:
+- `TEST_COMMANDS` — comma-separated; per-package `scripts.test`. When absent, emit `N/A`.
+- `PACKAGE_STACKS` — composite per-package record list. Each record is `{path, language, framework, build_tool, build_command, type_check_command, lint_command, test_command}`. Per-record fields:
   - `path` — project-relative path matching `INIT_JSON.packages_detected[].path`.
   - `language` — derived per-package from manifest extension (`package.json` → TypeScript when `*.ts` files in package, else JavaScript; `pyproject.toml` → Python; `Cargo.toml` → Rust; etc.).
   - `framework` — `MANIFESTS_JSON.packages[<path>].framework_hint` VERBATIM. Do NOT inherit the project-level top framework. A package that does not import a recognized framework gets `null` (helper returns null when no framework dep is present). This prevents mis-attributing e.g. `Vue` to a pure-TS domain package whose only deps are workspace siblings + utility libs.
   - `build_tool` — `MANIFESTS_JSON.packages[<path>].build_tool_hint` verbatim.
-  - `build_command` / `type_check_command` / `lint_command` — same per-package values used by the flat string-arrays above.
+  - `build_command` / `type_check_command` / `lint_command` — same per-package values used by the flat string-arrays above; `test_command` is derived separately (see the next bullet) — it does NOT follow the flat arrays' `N/A`-when-absent rule.
+  - `test_command` — `MANIFESTS_JSON.packages[<path>].scripts.test` (or the ecosystem-equivalent test script). `null` when the package has no test script — do NOT invent an ecosystem-default guess.
 
 **Verbatim from docs/**
 
@@ -174,6 +176,7 @@ Per-package commands:
 - build_commands: <BUILD_COMMANDS>
 - type_check_commands: <TYPE_CHECK_COMMANDS>
 - lint_commands: <LINT_COMMANDS>
+- test_commands: <TEST_COMMANDS>
 - package_stacks: <count> packages — <list path entries>
 
 Verbatim from docs/:
@@ -219,6 +222,7 @@ Apply each accepted/overridden value via the matching setter. Setter argument sh
 | `build_commands` | `set-build-commands <comma-sep-list>` |
 | `type_check_commands` | `set-type-check-commands <comma-sep-list>` |
 | `lint_commands` | `set-lint-commands <comma-sep-list>` |
+| `test_commands` | `set-test-commands <comma-sep-list>` |
 | `project_structure` | `set-project-structure --text <verbatim>` |
 | `dev_commands` | `set-dev-commands --text <verbatim>` |
 | `architecture_details` | `set-architecture-details --text <verbatim>` |
@@ -226,22 +230,48 @@ Apply each accepted/overridden value via the matching setter. Setter argument sh
 | `ac_runtime_api_base` | `set-ac-runtime-api-base <value>` |
 | `ac_runtime_cli_command` | `set-ac-runtime-cli-command <value>` |
 
-For `package_stacks`: invoke `add-package-stack` once per package record from Phase 2's composed list:
+For `package_stacks`: serialize Phase 2's composed package list (already in memory) into a SINGLE JSON object and pipe it once to the bulk verb `set-package-stacks`, which validates each record, then replaces the whole `package_stacks` list in one call. The JSON top-level shape is `{"package_stacks": [<record>, ...]}`; every record carries all 8 keys `{path, language, framework, build_tool, build_command, type_check_command, lint_command, test_command}`. Absent values are explicit JSON `null` — never omitted, never an empty string. `path` and `language` are required and must be non-null; the other 6 keys accept `null`.
+
+Pipe the JSON to the helper on stdin via a quoted heredoc so it is passed verbatim (the `'JSON'` delimiter suppresses shell expansion):
 
 ```bash
-.devforge/lib/configure_helper add-package-stack \
-    --path <p> --language <l> \
-    [--framework <f>] [--build-tool <b>] \
-    [--build-command <bc>] [--type-check-command <tc>] [--lint-command <lc>]
+.devforge/lib/configure_helper set-package-stacks <<'JSON'
+{
+  "package_stacks": [
+    {
+      "path": "apps/web",
+      "language": "TypeScript",
+      "framework": "Vue",
+      "build_tool": "vite",
+      "build_command": "npm run build",
+      "type_check_command": "vue-tsc --noEmit",
+      "lint_command": "eslint .",
+      "test_command": "vitest run"
+    },
+    {
+      "path": "packages/core",
+      "language": "TypeScript",
+      "framework": null,
+      "build_tool": null,
+      "build_command": "tsc -b",
+      "type_check_command": "tsc --noEmit",
+      "lint_command": "eslint .",
+      "test_command": null
+    }
+  ]
+}
+JSON
 ```
 
-`--path` and `--language` are required; the other five flags are optional and only included when the Phase 2 record carries a non-null value for that subfield.
+Include one object per detected package. Every record carries all 8 keys `{path, language, framework, build_tool, build_command, type_check_command, lint_command, test_command}`; absent optional values are the literal JSON `null` (unquoted) — never an omitted key, never an empty string. `path` and `language` are required and must be non-null; the other 6 keys accept `null`.
 
-If any setter exits non-zero, capture its stderr, fix the input value, and retry the same setter (cap at 3 retries per field). On the 4th failure, surface the failure to the user and ABORT — `configure.yaml` is left in a partial state and the user must re-run `/configure`.
+**MUST NOT**: do not build a whitespace-, tab-, or comma-delimited intermediate table; do not iterate with a bash `read` loop; do not call `add-package-stack` per record. Compose the JSON object once and pipe it once. A delimited `read` loop collapses empty fields and shifts every subsequent column left, silently corrupting records.
+
+If `set-package-stacks` exits non-zero, capture its stderr, surface it verbatim, fix the offending record in the JSON, and retry the one call (cap at 3 retries). `set-package-stacks` validates every record before entering the atomic `_state_transaction` and replaces the whole list in one write, so a failure never half-writes `configure.yaml` — the `package_stacks` field is simply left unpopulated while the other Phase 3 fields are already written. On the 4th failure, surface the failure to the user and ABORT; the user can re-run `/configure`, or read the JSON validation error, fix the source data, and re-run.
 
 ## Phase 4 — Sequential user-only prompts
 
-These five fields cannot be derived from filesystem scan; each requires a user choice. One AskUserQuestion per question, in order. Persist each answer via its setter before issuing the next question.
+These six fields cannot be derived from filesystem scan; each requires a user choice. One AskUserQuestion per question, in order. Persist each answer via its setter before issuing the next question.
 
 ### Q9: Workflow Enforcement
 
@@ -270,7 +300,7 @@ Use AskUserQuestion to pick the mode, then conditionally ask the runtime triple.
 
 ## Phase 5 — Render + prune + substitute
 
-Once `configure.yaml` is fully populated (28 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
+Once `configure.yaml` is fully populated (29 fields set), render the consolidated JSON config, prune the agents directory against `project_natures`, then substitute the templates. Three sub-steps in fixed order: render-config → prune-agents → substitute-templates. The order matters: `render-config` derives `AGENT_LIST` from the on-disk agent listing, so any pruning must happen AFTER `render-config` writes the snapshot to `project-config.json` (otherwise the substituted `{{AGENT_LIST}}` would still advertise dropped agents). `substitute-templates` then walks the post-prune file set, so dropped agents are not substituted.
 
 ### Phase 5.1 — Render config
 
@@ -387,4 +417,4 @@ Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for r
 
 ## Closing
 
-`/configure` is complete. The 28 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 36 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted. Tell the user: "Run `/constitute` next."
+`/configure` is complete. The 29 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 37 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted. Tell the user: "Run `/constitute` next."

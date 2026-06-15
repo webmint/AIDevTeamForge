@@ -52,7 +52,7 @@ Stdout JSON carries every field in `.devforge/init.yaml`: `project_root`, `works
 .devforge/lib/constitute_helper read-configure
 ```
 
-Stdout JSON carries every field in `.devforge/configure.yaml` (28 keys, including `project_name`, `project_description`, `project_type`, `primary_language`, `languages`, `frameworks`, `architectures`, `project_natures`, `error_handlings`, `api_layers`, `testings`, `build_tools`, `workflow_enforcement`, etc.). Capture as `CONFIGURE_JSON`.
+Stdout JSON carries every field in `.devforge/configure.yaml` (29 keys, including `project_name`, `project_description`, `project_type`, `primary_language`, `languages`, `frameworks`, `architectures`, `project_natures`, `error_handlings`, `api_layers`, `testings`, `build_tools`, `workflow_enforcement`, etc.). Capture as `CONFIGURE_JSON`.
 
 ```bash
 .devforge/lib/constitute_helper read-docs

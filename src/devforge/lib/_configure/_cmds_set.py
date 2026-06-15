@@ -1,9 +1,12 @@
-"""All cmd_set_* handlers + cmd_reset + cmd_add_package_stack."""
+"""All cmd_set_* handlers + cmd_reset + cmd_add_package_stack + cmd_set_package_stacks."""
 
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 
+from ._schema import _PACKAGE_STACK_FIELDS as _SCHEMA_PACKAGE_STACK_FIELDS
 from ._state import _state_transaction, _write_state, _output_file_path, default_state
 from ._validators import (
     _die,
@@ -228,6 +231,180 @@ def cmd_add_package_stack(args: argparse.Namespace) -> int:
             state["package_stacks"].append(record)
     except (OSError, YamlParseError) as err:
         return _die("add-package-stack: {0}".format(err))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Per-package record bulk replace setter (1).
+# ---------------------------------------------------------------------------
+
+# Derived from _schema._PACKAGE_STACK_FIELDS — _schema.py is the single source
+# of truth for field names and order.  Adding a 9th field to the schema tuple
+# flows through automatically to both constants below; no manual update needed.
+
+# Frozenset of all 8 known field names — used for O(1) set-subtraction to reject
+# unknown keys at record-validation time.
+_PACKAGE_STACK_FIELDS = frozenset(_SCHEMA_PACKAGE_STACK_FIELDS)
+
+# Tuple (ordered) of the 6 optional field names — all schema fields except the
+# two required ones (path, language).  Iterated in schema declaration order to
+# build the normalized record dict with a stable, deterministic field layout.
+_OPTIONAL_PACKAGE_STACK_FIELDS = tuple(
+    f for f in _SCHEMA_PACKAGE_STACK_FIELDS if f not in ("path", "language")
+)
+
+
+def cmd_set_package_stacks(args: argparse.Namespace) -> int:
+    """Replace the whole package_stacks list from JSON on stdin.
+
+    Reads a JSON object with a single key ``package_stacks`` whose value
+    is a list of record objects.  Each record must be a dict with the
+    same 8-field schema as ``cmd_add_package_stack`` writes:
+
+      path (required), language (required), framework, build_tool,
+      build_command, type_check_command, lint_command, test_command
+      (these 6 optional, null/None allowed).
+
+    **Replace semantics**: the whole ``package_stacks`` list in state is
+    replaced atomically — NOT appended.  An empty input list is valid and
+    sets ``package_stacks`` to ``[]``.
+
+    Validation: unknown keys are rejected (exit 2) — that is the whole
+    point of the verb: the bash loop that triggered the column-shift bug
+    bypassed exactly this check.
+
+    Exit 0 on success.  Exit 2 on any validation or parse error.
+    Exit 1 on I/O error.
+    """
+    raw = sys.stdin.read()
+
+    # --- JSON parse ---
+    try:
+        payload = json.loads(raw)
+    except ValueError as err:
+        return _die("set-package-stacks: malformed JSON on stdin: {0}".format(err), code=2)
+
+    if not isinstance(payload, dict):
+        return _die(
+            "set-package-stacks: stdin must be a JSON object, got {0}".format(
+                type(payload).__name__
+            ),
+            code=2,
+        )
+
+    if "package_stacks" not in payload:
+        return _die(
+            "set-package-stacks: stdin JSON object must have a 'package_stacks' key",
+            code=2,
+        )
+
+    records_raw = payload["package_stacks"]
+    if not isinstance(records_raw, list):
+        return _die(
+            "set-package-stacks: 'package_stacks' must be a list, got {0}".format(
+                type(records_raw).__name__
+            ),
+            code=2,
+        )
+
+    # --- Per-record validation + normalization ---
+    normalized_records = []
+    for idx, rec in enumerate(records_raw):
+        if not isinstance(rec, dict):
+            return _die(
+                "set-package-stacks: record {0} is not an object".format(idx),
+                code=2,
+            )
+
+        unknown = set(rec.keys()) - _PACKAGE_STACK_FIELDS
+        if unknown:
+            bad_key = sorted(unknown)[0]
+            return _die(
+                "set-package-stacks: record {0} has unknown key {1!r}".format(idx, bad_key),
+                code=2,
+            )
+
+        # Required: path
+        if "path" not in rec or rec["path"] is None:
+            return _die(
+                "set-package-stacks: record {0} missing required field 'path'".format(idx),
+                code=2,
+            )
+        if not isinstance(rec["path"], str):
+            return _die(
+                "set-package-stacks: record {0}: 'path' must be a string, got {1}".format(
+                    idx, type(rec["path"]).__name__
+                ),
+                code=2,
+            )
+        try:
+            path_val = _validate_path_value(rec["path"], "path")
+        except ValueError as err:
+            return _die(
+                "set-package-stacks: record {0}: {1}".format(idx, err),
+                code=2,
+            )
+
+        # Required: language
+        if "language" not in rec or rec["language"] is None:
+            return _die(
+                "set-package-stacks: record {0} missing required field 'language'".format(idx),
+                code=2,
+            )
+        if not isinstance(rec["language"], str):
+            return _die(
+                "set-package-stacks: record {0}: 'language' must be a string, got {1}".format(
+                    idx, type(rec["language"]).__name__
+                ),
+                code=2,
+            )
+        try:
+            lang_val = _validate_scalar(rec["language"], "language")
+        except ValueError as err:
+            return _die(
+                "set-package-stacks: record {0}: {1}".format(idx, err),
+                code=2,
+            )
+
+        # Optional fields: validate when present and not null.
+        optional = {}
+        for field in _OPTIONAL_PACKAGE_STACK_FIELDS:
+            raw_val = rec.get(field, None)
+            if raw_val is not None:
+                if not isinstance(raw_val, str):
+                    return _die(
+                        "set-package-stacks: record {0}: '{1}' must be a string, got {2}".format(
+                            idx, field, type(raw_val).__name__
+                        ),
+                        code=2,
+                    )
+                try:
+                    optional[field] = _validate_scalar(raw_val, field)
+                except ValueError as err:
+                    return _die(
+                        "set-package-stacks: record {0}: {1}".format(idx, err),
+                        code=2,
+                    )
+            else:
+                optional[field] = None
+
+        normalized_records.append({
+            "path": path_val,
+            "language": lang_val,
+            "framework": optional["framework"],
+            "build_tool": optional["build_tool"],
+            "build_command": optional["build_command"],
+            "type_check_command": optional["type_check_command"],
+            "lint_command": optional["lint_command"],
+            "test_command": optional["test_command"],
+        })
+
+    # --- Atomic replace ---
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["package_stacks"] = normalized_records
+    except (OSError, YamlParseError) as err:
+        return _die("set-package-stacks: {0}".format(err))
     return 0
 
 
