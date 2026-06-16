@@ -34,7 +34,7 @@ The wizard will:
 
 **codebase-memory-mcp** — Local code-intelligence engine: tree-sitter knowledge graph (functions, classes, calls, routes) over 155 languages, queryable via 14 MCP tools (`search_graph`, `query_graph`, `trace_path`, `get_code_snippet`, etc.). Used by `/generate-docs` Phase 3 to gather mechanical fields per concern in a single batched dispatch (Plan E). Pre-configured in `.mcp.json`; binary must be installed first via [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) (`curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash`). After install, the binary self-registers on PATH; restart Claude Code so the MCP connection comes up.
 
-**Chrome DevTools** (conditional) — Connects to Chrome/Chromium debugger for screenshots, DOM interaction, and AC verification against the running app. Only added to `.mcp.json` when `/setup-wizard` sets AC verification to "auto" or "browser-only" (frontend/fullstack projects). The script at `scripts/chrome-devtools-mcp.sh` auto-detects the debugging port across JetBrains IDEs, Chrome, and manual launches (macOS, Linux, WSL). Set `CHROME_DEBUG_PORT` env var to override detection.
+**Chrome DevTools** — Connects to Chrome/Chromium debugger for screenshots, DOM interaction, and AC verification against the running app. Pre-configured in `.mcp.json` for all projects via `./.devforge/bin/chrome-devtools-mcp.sh` (shipped by the installer), which auto-detects the debugging port across JetBrains IDEs, Chrome, and manual launches (macOS, Linux, WSL). Requires Node (the script runs `chrome-devtools-mcp` via `npx`) plus a running Chrome/Chromium with remote debugging — e.g. your IDE's JS debugger; set `CHROME_DEBUG_PORT` to override detection. When no debugger is found the server simply fails to start, which is harmless for backend-only projects.
 
 ## Updating Projects
 
@@ -101,7 +101,7 @@ Run these once when you first install the template:
 - **`/breakdown`** — Ordered atomic tasks with dependencies, agent assignments (via shared `_agent-assignment.md`), and cross-task contracts (Expects/Produces). Review checkpoints at convergence points. **Requires approval.**
 - **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/finalize`.
   - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task all` — all pending
-- **`/review`** — Expert code review: security (security-reviewer) + performance (performance-analyst) + test assessment (qa-engineer). Produces structured findings saved to `specs/[feature]/review.md`. No verdict — findings only.
+- **`/review`** — Expert code review: security (security-reviewer) + performance (performance-analyst) + test assessment (qa-reviewer). Produces structured findings saved to `specs/[feature]/review.md`. No verdict — findings only.
 - **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
 - **`/summarize`** — PR-ready feature summary. Run after `/verify` approves, before `/finalize`.
 - **`/finalize`** — Feature documentation (tech-writer) + feature squash via `git merge-base`. The last step before creating a PR.
@@ -109,9 +109,6 @@ Run these once when you first install the template:
 ### Standalone Commands (use anytime)
 
 ```
-/fix "bug description"         ← small bugs (1-5 files)
-/fix bugs/003-null-check.md   ← fix from bug backlog
-/refactor path/to/file.ts     ← behavior-preserving restructuring
 /security src/api/             ← security review (file, dir, or --full for codebase)
 /audit                         ← adversarial whole-codebase audit (periodic, after several specs)
 /report-bug "description"     ← log a bug for later
@@ -120,10 +117,8 @@ Run these once when you first install the template:
 /discover "feature idea"        ← greenfield-feature discovery (pre-/specify)
 ```
 
-- **`/fix`** — Diagnose → delegate to agent → verify → code review → test assessment → doc update. Accepts enriched bug files with AC/expected/actual behavior context. Self-contained (own squash, own docs). Escalates to `/specify` if scope > 5 files.
-- **`/refactor`** — Analyze 9 categories → propose (partial approval supported) → delegate to agent → verify → code review → test assessment → doc update. Auto-selects agent by file layer. Self-contained. Escalates to `/specify` if scope > 5 files.
 - **`/security`** — On-demand security review. Target a file, directory, uncommitted changes, or full codebase (`--full`). Launches security-reviewer agent with constitution context. Reports Critical/High/Medium/Info with CWE identifiers and remediation. Read-only.
-- **`/audit`** — Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-engineer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming lies, lying comments, off-by-one, cross-file contradictions, dead branches, contradictory configs, etc.). Reads recent `specs/*/review.md` to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim quote from the actual code; ungrounded findings are discarded by Phase 4 validation. Writes dated reports to `audits/YYYY-MM-DD-audit.md`. Read-only, not auto-committed, **not part of any workflow chain** — invoke manually after several specs ship.
+- **`/audit`** — Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-reviewer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming lies, lying comments, off-by-one, cross-file contradictions, dead branches, contradictory configs, etc.). Reads recent `specs/*/review.md` to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim quote from the actual code; ungrounded findings are discarded by Phase 4 validation. Writes dated reports to `audits/YYYY-MM-DD-audit.md`. Read-only, not auto-committed, **not part of any workflow chain** — invoke manually after several specs ship.
 - **`/report-bug`** — Creates structured bug file in `bugs/` with status lifecycle (Open → In Progress → Fixed).
 - **`/refresh-docs`** — Lightweight doc update using git delta. Tech-writer in Refresh Mode.
 - **`/research`** — Investigate a bug or enhancement against the codebase. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Phase 0 clarifies the symptom across 6 rubric dimensions (auto-detects bug vs enhancement). Phase 1 walks the codebase-memory-mcp graph + `docs/` corpus in the main thread (no subagent dispatch) with a mandatory `search_graph` → `search_code` fallback chain, a parallel-pattern sweep over the primary file (catches sibling buggy blocks), and ≥2 falsifiable hypotheses. Phase 2 composes a structured report (mode-aware verdict, root-cause hypothesis, runtime-probe recommendation, approaches, complexity). Phase 3 saves to `research/YYYY-MM-DD-<topic-slug>.md` with a copy-pasteable `/specify` handoff block.
@@ -228,7 +223,7 @@ my-workspace/                    # Wrapper (your git repo)
 ### How it works
 - All Claude artifacts stay in the wrapper root — nothing leaks into the inner project
 - All source scanning (`/constitute`, `/onboard`, agents) targets the inner folder
-- Git auto-commits apply to both repos — wrapper gets workflow commits, source repo gets per-task WIP commits that are squashed into one clean commit (`[TICKET-ID] - Description`, extracted from source branch name) when `/verify` approves the feature (or at `/fix`/`/refactor` final commit)
+- Git auto-commits apply to both repos — wrapper gets workflow commits, source repo gets per-task WIP commits that are squashed into one clean commit (`[TICKET-ID] - Description`, extracted from source branch name) when `/verify` approves the feature
 - `/execute-task` verifies no Claude artifacts were created inside the inner project
 
 ### Setup
@@ -251,7 +246,7 @@ After running `/setup-wizard`:
 - `CLAUDE.md` — Adjust workflow steps
 - `constitution.md` — Add project-specific rules
 - `.claude/settings.json` — Modify hooks and plugins
-- `docs/` — Project documentation. Implementing agents write inline docs (JSDoc/docstrings) per task; tech-writer generates feature-level docs at `/verify` time
+- `docs/` — Project documentation. Implementing agents write inline docs (JSDoc/docstrings) per task; tech-writer generates feature-level docs at `/finalize` time
 
 ## Template Files
 
