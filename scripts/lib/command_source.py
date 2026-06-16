@@ -2,7 +2,7 @@
 
 Handles both flat and folder-based command sources from src/commands/:
 
-    Flat:    src/commands/fix.md
+    Flat:    src/commands/<name>.md
     Folder:  src/commands/setup-wizard/
                main.md
                references/

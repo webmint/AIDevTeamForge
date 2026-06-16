@@ -1,6 +1,8 @@
 # Recovery: Interrupted Command Session
 
-This file is read by `/execute-task`, `/fix`, and `/refactor` when `.claude/wip.md` exists at the start of execution. The calling command provides `CALLING_COMMAND` (one of: `execute-task`, `fix`, `refactor`).
+> **SUPERSEDED** — this `_pending` draft is legacy. The live crash-recovery contract is owned by `src/commands/implement/references/crash-recovery.md` (the `/implement` reference). Retained for history; not part of any emitted command.
+
+This file *was* read by `/execute-task` when `.claude/wip.md` existed at the start of execution; the calling command provided `CALLING_COMMAND` (`execute-task`). Legacy — see the supersession note above; the live contract is `src/commands/implement/references/crash-recovery.md`.
 
 ## 0.1: Route by Command Field
 
@@ -23,9 +25,8 @@ Run these checks:
 
 ## 0.3: Present Recovery Options
 
-Report findings to the user. The option labels vary by command:
+Report findings to the user:
 
-**For execute-task:**
 ```
 ⚠️ Interrupted task detected: Task [N] — [Title] (Feature: [NNN-name])
 Interrupted during: Phase [N] — [phase name]
@@ -41,22 +42,6 @@ Options:
 4. **Keep changes, mark manual** — Keep current git state as-is, delete WIP marker, and let you handle it manually.
 ```
 
-**For fix / refactor:**
-```
-Interrupted [fix|refactoring] detected: [description]
-Interrupted during: Phase [N] — [phase name]
-
-Git state:
-- Uncommitted changes: [yes/no] ([list files])
-- WIP commits found: [yes/no] ([count])
-
-Options:
-1. **Resume** — Re-run verification on current state and continue from the interrupted phase.
-2. **Rollback and retry** — Reset to the last clean checkpoint, then re-execute from scratch.
-3. **Rollback and abandon** — Reset to pre-WIP state. You handle it manually.
-4. **Keep changes, clear marker** — Keep current git state as-is, delete WIP marker only.
-```
-
 Wait for user to choose.
 
 ## 0.4: Execute Choice
@@ -66,7 +51,6 @@ Wait for user to choose.
 First, check the Phase field in wip.md to determine where execution was interrupted:
 
 - **Phase 4 (Complete)** — for `execute-task`: the task was verified, reviewed, and marked complete. Code is committed. Delete wip.md and continue to Phase 5 (bookkeeping).
-- **Phase 8 (squash-related)** — for `fix` and `refactor`: check whether the squash already happened. If wip.md says "Squash Applied", retry the commit only. If squash hasn't happened, run the squash from the start.
 
 - **All other phases (3, 4, etc.):**
   - Run the Type Check Command from CLAUDE.md, the Lint Command, and the build command (if specified) on all files listed in the WIP marker
@@ -82,17 +66,13 @@ First, check the Phase field in wip.md to determine where execution was interrup
 - Delete `.claude/wip.md`
 - Re-run the calling command from PHASE 1:
   - `execute-task`: re-run `/execute-task [same task number]`
-  - `fix`: re-run `/fix [same arguments]`
-  - `refactor`: re-run `/refactor [same arguments]`
 
-**If Rollback and skip/abandon:**
+**If Rollback and skip:**
 - Same git reset as above — read checkpoint hash from wip.md, validate, then reset (including source repo rollback if applicable)
-- **execute-task only**: Update the task file — set status back to `Pending`. Inform user the task is pending.
-- **fix/refactor**: Inform user the state is cleared and they can handle it manually.
+- Update the task file — set status back to `Pending`. Inform user the task is pending.
 - Delete `.claude/wip.md`
 
-**If Keep changes, mark manual / clear marker:**
+**If Keep changes, mark manual:**
 - Delete `.claude/wip.md` only
 - Do nothing else
-- **execute-task**: Inform user: "WIP marker cleared. Git state untouched. Task file still shows in_progress — update it manually when done."
-- **fix/refactor**: Inform user: "WIP marker cleared. Git state untouched."
+- Inform user: "WIP marker cleared. Git state untouched. Task file still shows in_progress — update it manually when done."

@@ -72,14 +72,14 @@ Branch decision:
 
 ### Phase 0.3 — Session-state reset
 
-Reset `.claude/session-state.md` to the empty placeholder so the next `/execute-task` bootstraps from a clean snapshot. A new spec means a new feature scope — previous session tracking is irrelevant.
+Reset `.devforge/session-state.md` to the empty placeholder so the next `/implement` bootstraps from a clean snapshot. A new spec means a new feature scope — previous session tracking is irrelevant.
 
 ```bash
-mkdir -p .claude && cat > .claude/session-state.md <<'EOF'
+mkdir -p .devforge && cat > .devforge/session-state.md <<'EOF'
 <!-- This file is a fixed-size sliding window. Always fully overwritten, never appended. Max ~40 lines. -->
 # Session State
 
-No tasks executed yet. This file is updated automatically after each `/execute-task` run.
+No tasks executed yet. This file is updated automatically after each `/implement` run.
 EOF
 ```
 
@@ -94,12 +94,16 @@ Then reset helper state for this run:
 ### Phase 0.4 — Handoff discovery
 
 ```bash
-.devforge/lib/specify_helper find-handoffs --since "7 days"
+.devforge/lib/specify_helper find-handoffs --since "7 days" --require
 ```
 
-Helper globs `research/**/handoff.json` AND `discover/*.handoff.json` modified within the window; emits one summary line per finding to stdout (newest first). Output format per line: `<mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <truncated summary>`. For research handoffs `mode_or_verdict` is `mode=<mode>` (summary from `plan_seeds.recommended_approach_summary`); for discover handoffs it is `verdict=<verdict>` (summary from `plan_seeds.recommended_option_rationale`). Summary truncated to 80 chars. Exit 0 always — zero hits is not a failure.
+Helper globs `research/**/handoff.json` AND `discover/*.handoff.json` modified within the window; emits one summary line per finding to stdout (newest first). Output format per line: `<mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <truncated summary>`. For research handoffs `mode_or_verdict` is `mode=<mode>` (summary from `plan_seeds.recommended_approach_summary`); for discover handoffs it is `verdict=<verdict>` (summary from `plan_seeds.recommended_option_rationale`). Summary truncated to 80 chars. Exit 0 when ≥1 handoff (research OR discover) is found; exit 2 with a BLOCKED message on zero hits — the gate is enforced via `--require`.
 
-On zero hits: emit `"No recent handoff found; proceeding cold"` as plain prose to the user and continue to Phase 1.
+**This gate is mandatory, with no override.** A research OR discover handoff must exist before `/specify` proceeds. The intake interrogation that validates the user's prompt lives in `/research` and `/discover`; allowing `/specify` to run cold would let a user skip straight past that gate, so the precondition is unbypassable — there is NO cold-spec escape hatch, even for a feature the user researched externally. The mitigation for the externally-researched case is PROPORTIONATE research, not a bypass: the user runs `/research "<topic>"` (or `/discover "<idea>"`), but the rubric scales DOWN to a fast pass that still runs the intake gate (the prompt echo-back included), so the prompt is validated at the boundary regardless. "Mandatory" therefore does not mean "heavyweight" — a two-sentence bug still goes through research, but research for it is a 30-second pass, not a full investigation. The gate accepts research OR discover so neither track is excluded (discover covers greenfield, where research's bug/enhancement framing does not fit).
+
+**Scope of this gate (it applies ONLY to the spec pipeline).** The standalone flows — `/audit`, `/security` — are separate from the spec pipeline and are NOT gated by this precondition; they exist precisely to bypass the heavy pipeline for small, one-off work. (Of the two standalone flows, only `/audit` exists as a source spec today; `/security` is not yet ported — so the do-not-gate rule is forward-looking for it.)
+
+On zero hits (exit 2): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The stderr names the two recovery commands — `/research "<topic>"` for a bug or enhancement against existing code, `/discover "<idea>"` for a greenfield feature. The user runs one, then re-invokes `/specify`. Do NOT proceed to Phase 1 and do NOT offer a cold-start alternative — there is no override.
 
 On one or more hits: count R research and D discover handoffs from the output lines. AskUserQuestion: `"Found handoff(s) — R research, D discover. Pre-seed spec from one?"` (substitute actual counts for R and D) with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
 
@@ -543,7 +547,8 @@ Call once per AC:
     --ears-variant <ubiquitous|event_driven|state_driven|optional|unwanted> \
     --statement "<EARS-formatted statement>" \
     [--verification-command "<executable check>"] \
-    [--test-anchor "<path::test_name>"]
+    [--test-anchor "<path::test_name>"] \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 ```
 
 The seven subsection keys map to fixed headings:
@@ -583,7 +588,7 @@ Record each OOS item with the Phase 1.5 cross-reference where applicable:
     [--finding-ref "<F-source-N from Phase 1.5>"]
 ```
 
-Be exhaustive on Out of Scope — this prevents scope creep during implementation.
+Be exhaustive on Out of Scope — this prevents scope creep during implementation. A §6 entry that contradicts a §5 AC / §4 affected-area (the spec both excludes and requires the same concern) is surfaced by `verify-scope-coherence` at Phase 4 Step 4.9 as a non-blocking warning for the author to reconcile.
 
 ### Step 4.6 — §7 Technical Constraints
 
@@ -594,34 +599,40 @@ Be exhaustive on Out of Scope — this prevents scope creep during implementatio
 .devforge/lib/specify_helper record-constraint \
     --kind nfr \
     --quantifier "<numeric-threshold + unit OR named-compliance-class>" \
-    --content "<constraint text>"
+    --content "<constraint text>" \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 
 # Constitution anchor — transcribes a code-pattern rule from constitution.md
 .devforge/lib/specify_helper record-constraint \
     --kind constitution_anchor \
     --constitution-ref "<§-ref, e.g. §3.6>" \
-    --content "<verbatim quoted rule text>"
+    --content "<verbatim quoted rule text>" \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 
 # External system — integration contract with an off-codebase dependency
 .devforge/lib/specify_helper record-constraint \
     --kind external_system \
     --protocol "<protocol name, e.g. REST | gRPC | SAML 2.0>" \
-    --content "<integration constraint text>"
+    --content "<integration constraint text>" \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 # OR — if the contract lives in a doc (OpenAPI / proto / etc.):
 .devforge/lib/specify_helper record-constraint \
     --kind external_system \
     --contract-doc-ref "<path/to/contract>" \
-    --content "<integration constraint text>"
+    --content "<integration constraint text>" \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 
 # Process rule — non-architectural workflow constraint (e.g. commit conventions)
 .devforge/lib/specify_helper record-constraint \
     --kind follow \
-    --content "<rule text>"
+    --content "<rule text>" \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 
 # Behavior preservation — existing functionality that must not regress
 .devforge/lib/specify_helper record-constraint \
     --kind not_break \
-    --content "<behavior to preserve>"
+    --content "<behavior to preserve>" \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 ```
 
 Render labels: `nfr` → "Must satisfy NFR (<quantifier>)"; `constitution_anchor` → "Must follow constitution §<ref>"; `external_system` → "Must integrate with external system (<protocol or contract>)"; `follow` → "Must follow"; `not_break` → "Must not break".
@@ -663,7 +674,8 @@ Call once per row:
     --risk "<risk description>" \
     --likelihood <Low|Med|High> \
     --impact <Low|Med|High> \
-    --mitigation "<how to handle>"
+    --mitigation "<how to handle>" \
+    [--finding-ref "<F-source-N from Phase 1.5>"]
 ```
 
 ### Step 4.9 — Verifiers (run in order)
@@ -675,7 +687,7 @@ Call once per row:
 .devforge/lib/specify_helper verify-numerical-consistency
 ```
 
-- `verify-coverage` — every Phase 1.5 `Finding` has `landed_in != unlanded`. Walk each `unlanded` finding cited on stderr and either (a) add an AC referencing it, (b) add a Constraint, (c) add an OOS entry with `--finding-ref`, or (d) add a Risk. Re-run until exit 0.
+- `verify-coverage` — every Phase 1.5 `Finding` has `landed_in != unlanded`. Findings are recorded `unlanded` in Phase 1.5; they land here in §5–§9 as you write the entries that cover them. Walk each `unlanded` finding cited on stderr and pass its `finding_id` to the setter you write for it: (a) `add-ac ... --finding-ref <finding_id>`, (b) `record-constraint ... --finding-ref <finding_id>`, (c) `record-out-of-scope ... --finding-ref <finding_id>`, or (d) `record-risk ... --finding-ref <finding_id>`. The `--finding-ref` flag is what flips the finding from `unlanded` to that bucket so `verify-coverage` passes — writing the AC/Constraint/OOS/Risk without the flag leaves the finding `unlanded` and fails the gate. `--finding-ref` is repeatable on `add-ac`, `record-constraint`, and `record-risk` (pass it once per finding): one entry can land several findings, and one finding can be landed by the single entry that covers it. A `--finding-ref` naming an unknown `finding_id` exits non-zero (a typo fails loudly, never silently passes coverage). When a finding is already covered by an existing §5–§9 entry and there is no new AC/Constraint/OOS/Risk to add, land it directly with `set-finding-landed --finding-id <finding_id> --landed-in <AC|Constraint|OOS|Risk> [--landed-ref <existing entry ref, e.g. AC-3>]`. Re-run until exit 0.
 - `verify-ac-subsection-coverage` — each of the 7 §5 subsections has ≥1 AC OR an explicit `--mark-na --n-a-reason` marker. On exit 2, add the missing AC or N/A marker for the cited subsection and re-run.
 - `verify-ac-shape` — every AC `statement` matches the regex for its declared `ears_variant`. On exit 2, re-call `add-ac` with a corrected statement (the helper appends — there is no delete; re-add with the same `ac_id` is rejected, so revise the proposed text BEFORE re-running `add-ac`; if the AC has already been recorded under that `ac_id`, reset state and re-walk Step 4.4 to avoid stale entries).
 - `verify-numerical-consistency` — every multi-occurrence digit-prefixed noun in the rendered spec carries the same numeric value across all occurrences. On exit 2, the stderr cites locations; resolve by editing the source values via setters and re-rendering. Verify counts via direct Bash enumeration before composing setter content — for every count, size, version number, or line number you write into the spec, the same verified value must appear everywhere it is referenced.
@@ -685,6 +697,12 @@ Call once per row:
 ```
 
 Non-blocking. Helper greps `constitution.md` for `MUST` / `MUST NOT` / `SHALL` / `SHALL NOT` lines and surfaces token-overlap warnings against rendered AC / Constraints / OOS. Warnings appear on stderr but exit code is 0 unless the helper itself fails. Surface any warning text to the user as plain prose so they decide whether to amend the spec or proceed with the conflict noted (a noted conflict typically lands in §8 Open Questions). Re-run this command at Phase 5 entry so changes between Phase 4 and approval re-surface relevant warnings.
+
+```bash
+.devforge/lib/specify_helper verify-scope-coherence
+```
+
+Non-blocking. Helper token-overlaps each §6 Out-of-Scope entry against every §5 AC `statement` and §4 affected-area `impact`, and surfaces a WARNING naming the §6 entry plus the conflicting §5/§4 entry whenever an OOS exclusion overlaps a mandate (the spec both excludes and requires the same concern). Warnings appear on stderr but exit code is 0 unless the helper itself fails — a warning is NOT a verify failure, so do not treat it as one. Surface any warning text to the user as plain prose. Recovery is advisory reconciliation, not a block: the author reconciles the real contradiction by EITHER dropping the §6 OOS entry (the concern is actually in scope) OR weakening/removing the §5/§4 mandate (the concern is actually out of scope). This is a token-overlap heuristic and WILL surface false positives (a §6 entry and a §5 AC sharing a noun without truly conflicting); on a false positive, note it and proceed — the hard human gate is the Phase 5 approval echo-back, and this check is a warning backstop behind it.
 
 ### Step 4.10 — Render + save
 
@@ -718,7 +736,7 @@ Stamp the spec at the current repo HEAD so downstream commands can detect drift:
 .devforge/lib/cbm_sync_helper stamp-spec "specs/<NNN>-<feature-name>/spec.md"
 ```
 
-Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (append-only). Downstream `/plan` and `/execute-task` invoke `check-spec` to surface drift: `current` = no §4-cited file changed since the stamp; `drift <a>..<b> <files>` = at least one cited file changed; `missing` = no stamp.
+Appends `(spec_path, git_sha, stamped_at)` to `.devforge/spec-stamps.jsonl` (append-only). Downstream `/plan` and `/implement` invoke `check-spec` to surface drift: `current` = no §4-cited file changed since the stamp; `drift <a>..<b> <files>` = at least one cited file changed; `missing` = no stamp.
 
 **Known limitation — drift detection precision is bounded by §4 Affected Areas completeness.** If a cited file is missing from §4, drift on that file is silent. `/breakdown` already pressures §4 completeness for task partitioning, so the same pressure benefits drift detection — but it is a known ceiling. A future Stage 2 enhancement may expand the cited set via CBM `trace_path` outbound from §4-cited files; deferred until empirical miss-rate justifies the cost.
 
@@ -798,3 +816,4 @@ After the verbatim manual-next-step block from `render-plan-handoff` lands in th
 8. **Verify numerical claims** — for every count, size, version number, or line number you write into the spec, verify by direct Bash enumeration before writing. If a number appears in multiple places, use the same verified value throughout. Inconsistent numbers in the same spec are a hard error — `verify-numerical-consistency` blocks the render until reconciled.
 9. **Phase 1.5 is mandatory** — every input file read in Phase 1 must produce an enumerated findings list before Phase 2 begins. Skipping or compressing this step is a hard error. The findings output is the bridge between reading and writing; without it, content silently drops.
 10. **Decision points must be exhaustively surfaced** — Phase 2 must surface every decision point per the rule in that phase, across all 7 categories. The model's preferred default does not justify skipping a question — surface the choice to the user even when the model has a strong recommendation. Document categories with no decision point in §8 Open Questions.
+11. **§5↔§6 coherence is a non-blocking warning** — `verify-scope-coherence` (Phase 4 Step 4.9) flags a §6 Out-of-Scope entry that overlaps a §5 AC / §4 affected-area mandate, but it is a token-overlap heuristic and false-positive-prone, so it surfaces a WARNING and exits 0 — a warning does NOT fail the verify and does NOT gate the spec. On a real contradiction the author reconciles (drop the §6 entry OR weaken the §5/§4 mandate); on a false positive, note it and proceed.

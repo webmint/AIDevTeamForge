@@ -56,8 +56,6 @@ This file provides guidance to Claude Code when working with code in this reposi
 `/research` and `/discover` are read-only and produce no spec themselves, but their handoffs are a required precondition for `/specify` — so they belong to the spec pipeline above, not to the standalone group below.
 
 Standalone (no pipeline connection — bypass the spec pipeline for small or one-off work):
-- `/fix "bug"` — Localized bug fix (1-5 files)
-- `/refactor path "goal"` — Behavior-preserving restructuring (1-5 files)
 - `/security [target]` — On-demand security review
 - `/audit` — Adversarial whole-codebase quality + system-design + best-practices review
 
@@ -99,30 +97,6 @@ One-time deep codebase analysis (or interview for greenfield projects) that gene
 #### `/onboard`
 One-time deep codebase scan for existing projects. Uses the tech-writer agent to generate comprehensive documentation in `docs/` — the knowledge base for all agents. Run once after `/constitute`.
 
-#### `/fix "bug description"`
-Lightweight bug-fix workflow for small, localized bugs (1-5 files). Bypasses the full spec→plan→breakdown pipeline. Phases:
-1. Diagnosis (runtime-debugger agent for runtime errors, manual tracing for logic bugs)
-2. User confirms root cause (hard gate)
-3. Apply minimal fix with WIP checkpoint
-4. Verification (tsc, lint, build, self-repair loop)
-5. Code review (code-reviewer agent)
-6. Test assessment (qa-reviewer agent)
-7. Clean commit + memory update
-
-If the bug grows beyond 5 files, recommends escalating to `/specify`.
-
-#### `/refactor path/to/file.ts "goal"`
-Focused code refactoring workflow for behavior-preserving restructuring (1-5 files). Supports IDE-injected context (active file/selection from WebStorm) or manual file path. Phases:
-1. Analysis (detect refactoring opportunities against constitution rules — long functions, SOLID/DRY/KISS violations, type safety, naming, dead code, pattern mismatches)
-2. User approves proposal with specific items (hard gate, partial approval supported)
-3. Apply refactoring with the owning stack's implementer, auto-selected by file layer (frontend-engineer, backend-engineer, mobile-engineer, etc.)
-4. Verification (tsc, lint, build, tests, self-repair loop)
-5. Code review (code-reviewer agent)
-6. Test assessment (qa-reviewer agent — tests must pass unchanged since refactoring is behavior-preserving)
-7. Clean commit + memory update
-
-If the refactoring grows beyond 5 files, recommends escalating to `/specify`.
-
 #### `/security [file|dir|--full]`
 On-demand security review. Targets a specific file (with optional line range), directory, uncommitted changes (default), or the full codebase (`--full`). Launches the security-reviewer agent with constitution and memory context. Reports findings by severity (Critical/High/Medium/Info) with CWE identifiers and remediation suggestions. Read-only — does not modify code. Full codebase mode uses module-based subagents for large projects.
 
@@ -149,7 +123,7 @@ Agent selection is automatic in `/implement` based on the task's assigned agent.
 
 ### Verification (explicit, scope-aware — no per-edit hooks)
 
-Verification runs at task boundaries (end of `/implement`, `/fix`, `/refactor`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build / test commands apply to each file touched during the task.
+Verification runs at task boundaries (end of `/implement`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build / test commands apply to each file touched during the task.
 
 **Scope-aware verification flow**:
 
@@ -294,7 +268,7 @@ If context is compacted or a new session starts, session-state.md ensures the ne
 
 ### Crash Recovery
 
-If a task execution is interrupted (power loss, terminal crash, network drop), the next `/implement` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command (`/implement`, `/fix`, or `/refactor`) was interrupted — if you run a different command, it will detect the mismatch and ask you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/finalize` when the feature is approved.
+If a task execution is interrupted (power loss, terminal crash, network drop), the next `/implement` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command was interrupted; if you run a different command while a marker exists, it detects the mismatch and asks you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/finalize` when the feature is approved.
 
 ## References
 

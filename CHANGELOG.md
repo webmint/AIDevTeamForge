@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New framework helper: `.devforge/lib/discover_helper` (POSIX shell wrapper around `discover_helper.py`) — owns shape via 40+ subcommands; state persisted to `.devforge/discover-scope.json` (ScopingMemo) + `.devforge/discover-report.json` (DiscoveryReport).
 - Emitter `scripts/emitters/claude.py` `_PROMOTED` tuple now includes `discover`.
 
+### Removed
+- chore(commands): dropped `/fix` and `/refactor` (`21-DROP-FIX-REFACTOR-PLAN.md`, 2026-06-15). Deleted the two stale pre-pivot drafts `src/_pending/commands/fix.md` + `src/_pending/commands/refactor.md` and removed their already-broken `src/manifest.json` install entries (both `source` paths pointed at non-existent `src/commands/*.md` files). Neither command was ever emitted (absent from `scripts/emitters/claude.py` `_PROMOTED`), so no installed target project changes — this is a source-tree cleanup. Every consumer reference was dereferenced across the consumer overlay, agents, command specs, helper docstrings, the adjacent `_pending` tail, and the maintainer docs. Rationale: fast-path commands duplicate the full chain's pieces (diagnosis / execution / the task contract) — see `21-DROP-FIX-REFACTOR-PLAN.md`. Small bugs are hand-fixed and routed through the existing tools (`/research` for diagnosis, a one-off test task, the project's verify commands, `/audit` as the periodic safety net); `/security` + `/audit` are explicitly retained.
+
 ## [1.28.0] - 2026-04-10
 
 ### Added

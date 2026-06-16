@@ -8,7 +8,7 @@ Public API:
   write_wip_marker(state)
       Write (or overwrite) <devforge_dir>/wip.md with fields derived from
       the given ImplementState.  The file always contains a
-      "Command: /implement" field so a /fix or /refactor marker is
+      "Command: /implement" field so a marker written by a different command is
       distinguishable at crash-recovery time.
 
   read_wip_marker(devforge_dir) -> Optional[dict]
@@ -33,7 +33,7 @@ File format (markdown, human-readable + machine-parseable):
   **Checkpoint**: <checkpoint_sha or "(none)">
 
 The "Command: /implement" field is MANDATORY so the crash-recovery branch
-can detect a mismatch (e.g., a /fix marker) and refuse to proceed.
+can detect a mismatch (a marker from a different command) and refuse to proceed.
 
 Atomic writes use tempfile.mkstemp + os.replace so concurrent invocations
 and crash recovery are safe.

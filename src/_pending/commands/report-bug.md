@@ -1,6 +1,6 @@
 # /report-bug — Report a Bug for Later
 
-Creates a structured bug report file in `bugs/` for tracking and later fixing via `/fix` or `/specify`.
+Creates a structured bug report file in `bugs/` for tracking and later fixing via `/specify`.
 
 ## Usage
 ```
@@ -60,7 +60,7 @@ Create `bugs/NNN-short-description.md`:
 
 ## Fix Notes
 
-[To be filled in by /fix]
+[To be filled in when the bug is fixed]
 ```
 
 If no `--file` was provided, write the File(s) table as:
@@ -81,14 +81,13 @@ Bug reported: bugs/NNN-short-description.md
   Severity: [severity]
   File(s): [file path or "not specified"]
 
-To fix this bug, run: /fix bugs/NNN-short-description.md
-To escalate to a full spec: /specify "Bug NNN: [title]"
+To address this bug, run: /specify "Bug NNN: [title]"
 ```
 
 ## IMPORTANT RULES
 
 1. **One bug per file** — if the user describes multiple bugs, create separate files for each
 2. **Severity defaults to Warning** — only use Critical if the user explicitly says so or the bug clearly prevents core functionality
-3. **Don't diagnose** — this command only records the bug. Diagnosis happens in `/fix`
+3. **Don't diagnose** — this command only records the bug. Diagnosis happens in `/research` (or `/specify` if the bug is escalated to a full spec)
 4. **Kebab-case slugs** — 2-4 words, descriptive: `null-cart-total`, `missing-auth-check`, `broken-date-format`
 5. **Sequential numbering** — always scan `bugs/` to find the next number, never hardcode or guess

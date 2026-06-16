@@ -343,16 +343,17 @@ class TestWipCycle(unittest.TestCase):
         self.assertIsNone(after)
 
     def test_mismatch_detection_via_command_field(self):
-        """A marker written by /fix (wrong Command) is distinguishable.
+        """A marker written by a different command (wrong Command) is distinguishable.
 
-        This test simulates a /fix marker and verifies that the Command
-        field can be used to detect the mismatch at crash-recovery time.
+        This test simulates a marker from a hypothetical /other-command and
+        verifies that the Command field can be used to detect the mismatch at
+        crash-recovery time.
         """
-        # Simulate a /fix marker written by another command.
+        # Simulate a marker written by a different command.
         wip_path = self.devforge_dir / "wip.md"
         wip_path.write_text(
-            "# WIP Marker — /fix\n\n"
-            "**Command**: /fix\n"
+            "# WIP Marker — /other-command\n\n"
+            "**Command**: /other-command\n"
             "**Task**: 002\n",
             encoding="utf-8",
         )
@@ -361,7 +362,7 @@ class TestWipCycle(unittest.TestCase):
         self.assertIsNotNone(data)
         # The Command field must differ from '/implement' so the caller can
         # detect the mismatch and refuse to proceed.
-        self.assertEqual(data.get("Command"), "/fix")
+        self.assertEqual(data.get("Command"), "/other-command")
         self.assertNotEqual(data.get("Command"), "/implement")
 
 

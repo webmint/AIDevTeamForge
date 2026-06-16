@@ -229,9 +229,7 @@ List each Critical and Warning issue from the verification report with a sequent
 
 ### Code Issues
 1. [Critical] [file path] — [issue description]
-   → Run `/fix "[description]"` to address
 2. [Warning] [file path] — [issue description]
-   → Run `/fix "[description]"` to address
 
 ### Documentation Gaps
 3. [Warning] [file path] — [public API lacking docs]
@@ -247,12 +245,12 @@ Based on the number of Critical + Warning issues, add context-aware guidance:
 
 **1-3 issues:**
 ```
-[N] issues found. You can run `/fix` for each in the current session.
+[N] issues found. Address each in the current session.
 ```
 
 **4-6 issues:**
 ```
-[N] issues found. Run `/fix` for each, but consider `/compact` after every 2-3 fixes to manage context.
+[N] issues found. Address each, but consider `/compact` after every 2-3 fixes to manage context.
 ```
 
 **7+ issues:**
@@ -267,8 +265,8 @@ After presenting issues and guidance, offer to create bug files:
 
 ```
 Create bug files for all [N] issues? Each file will contain the AC reference,
-expected/actual behavior, and affected files — enough context for a fresh
-`/fix` session.
+expected/actual behavior, and affected files — enough context to address the
+bug later.
   1. Yes — create bug files for all issues
   2. Select — create bug files for specific issues (provide numbers)
   3. No — I'll handle these manually
@@ -302,15 +300,14 @@ Bug files created:
 - bugs/NNN-yyy.md — [short title]
 - bugs/NNN-zzz.md — [short title]
 
-To fix: run `/fix bugs/NNN-xxx.md` for each issue.
-After fixes, run `/verify` to confirm.
+After addressing each issue, run `/verify` to confirm.
 ```
 
 ## IMPORTANT RULES
 
 1. **Verify against spec, not assumptions** — the spec is the contract. If the code does something useful but the spec didn't ask for it, that's scope creep
 2. **Be specific about failures** — "AC-2 fails because `orderState.soldToParty` is null when ShippingTypeEnum is SoldTo, but it should return the party data" not "AC-2 fails"
-3. **Verification does not fix code** — /verify does not modify source code or invoke /fix. It verifies, reports findings, and renders a verdict. The user decides next steps. Docs and squashing are handled by `/finalize`
+3. **Verification does not fix code** — /verify does not modify source code. It verifies, reports findings, and renders a verdict. The user decides next steps. Docs and squashing are handled by `/finalize`
 4. **Memory updates are mandatory** — even if everything passed, record what you learned
 5. **Constitution violations are always critical** — never downgrade a constitution violation to "warning"
 6. **Review findings inform the verdict** — if a review report exists, Critical/High security findings become Critical issues in the verdict. Missing review report does not block verification but weakens the verdict. For production-ready features, always run `/review` before `/verify` to catch security and performance issues

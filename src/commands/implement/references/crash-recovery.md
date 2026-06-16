@@ -18,7 +18,7 @@ This reference defines the interrupted-session recovery handled by PHASE 0 of `m
 **Checkpoint**: <checkpoint_sha or "(none)">
 ```
 
-- **`Command`** is MANDATORY and is always `/implement` when this command writes the marker. It is the discriminator that lets the recovery branch detect a marker left by a different command (`/fix`, `/refactor`).
+- **`Command`** is MANDATORY and is always `/implement` when this command writes the marker. It is the discriminator that lets the recovery branch detect a marker left by a different command.
 - **`Phase`** records the phase that was about to run (`dispatch` / `verify` / `review` / `forcing_functions` / `gate`), so `resume` can re-enter at the right point.
 - **`Checkpoint`** is the **source** repo HEAD snapshotted at task start (`preflight`'s `head_sha`) — the rollback target for `rollback` and for the `skip` reset. In wrapper mode the source repo is the nested repo at `<install_root>/PROJECT_ROOT`; in standalone mode (`PROJECT_ROOT == "."`) it is the single repo. `wip.md` itself lives in the install root and records this source SHA alongside the source branch.
 
@@ -37,4 +37,4 @@ When PHASE 0 reads a `wip.md` whose `**Command**:` is `/implement`, it asks via 
 
 ## Command-mismatch detection
 
-When PHASE 0 reads a `wip.md` whose `**Command**:` is anything OTHER than `/implement` (e.g. a `/fix` or `/refactor` marker), it does NOT proceed. It tells the user a previous `/fix` or `/refactor` session was interrupted and to resolve that session first, then ends the turn. Running `/implement` against another command's marker would corrupt that command's recovery state — the mismatch guard prevents it.
+When PHASE 0 reads a `wip.md` whose `**Command**:` is anything OTHER than `/implement` (a marker left by a different command), it does NOT proceed. It tells the user a previous session of a different command was interrupted and to resolve that session first, then ends the turn. Running `/implement` against another command's marker would corrupt that command's recovery state — the mismatch guard prevents it.

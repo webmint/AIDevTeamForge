@@ -73,7 +73,7 @@ Read `.devforge/wip.md`.
 
     The helper sets `**Status**: Skipped` in the task file and rewrites the matching `tasks/README.md` index row (it does NOT touch git or `wip.md`); exit 2 means the task file or index row was not found — copy its stderr VERBATIM into a fenced code block and resolve before re-running. `resolve-next-task` treats `Skipped` as satisfied for dependency resolution, so downstream tasks are not permanently blocked.
   - **`manual`** → keep all state and `wip.md` in place; tell the user `"/implement paused for manual inspection. Re-run /implement when ready."` and end the turn.
-- **Present with a `**Command**:` value other than `/implement`** (e.g. `/fix` or `/refactor`) → a different command was interrupted. Do NOT proceed. Tell the user `"A previous /fix or /refactor session was interrupted (see .devforge/wip.md). Resolve that session first before running /implement."` and end the turn.
+- **Present with a `**Command**:` value other than `/implement`** → a different command was interrupted. Do NOT proceed. Tell the user `"A previous session of a different command was interrupted (see .devforge/wip.md). Resolve that session first before running /implement."` and end the turn.
 
 ---
 

@@ -5,7 +5,7 @@ Domains owned by this package:
 - Task resolution: scan breakdown-handoff.json to find the next runnable task
   (lowest-numbered feature, lowest dependency-ready task).
 - WIP marker: write/read/clear the .devforge/wip.md interrupted-session marker
-  (Command: /implement field distinguishes from /fix or /refactor markers).
+  (Command: /implement field distinguishes from a marker written by a different command).
 - Scope-aware verification: match touched files against PACKAGE_STACKS config,
   run the appropriate type_check_command + lint_command per package, cap
   self-repair at 3 iterations.

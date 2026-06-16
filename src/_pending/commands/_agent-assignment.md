@@ -1,6 +1,6 @@
 # Agent Assignment: File-Layer Mapping
 
-This file is the single source of truth for assigning agents based on the files being changed. Referenced by `/breakdown`, `/fix`, and `/refactor`.
+This file is the single source of truth for assigning agents based on the files being changed. Referenced by `/breakdown`.
 
 Each command reads this table and selects the agent whose row best matches the files involved by the file's owning package/stack (see `## Packages` / `PACKAGE_STACKS` in `CLAUDE.md`). A type, interface, domain model, contract, or state store is **not its own layer with its own agent** — it belongs to the stack that owns the file, and that stack's implementer writes it. The architect never appears in this table: it shapes at `/plan` and only *VALIDATES* the decomposition — it does not write code.
 
