@@ -18,6 +18,8 @@ Empty sub-sections and files with no findings are omitted entirely; the `## Summ
 
 Finding tags: `[CROSS-AGENT]` (raised by ≥2 agents), `[RECURRING]` (matches an unresolved finding from a past `specs/*/review.md`), `[CONSTITUTION-VIOLATION]` (overrides the bucket as above), `[CONTESTED]` (a high-stakes `security` / `[CONSTITUTION-VIOLATION]` finding the refutation stage could not confirm — surfaced in the headline, never buried in the appendix), and — only on multi-pass runs (`--passes >= 2`) — `[MULTI-PASS:k]` on a finding corroborated across `k` (≥2) of the run's passes.
 
+A finding line carries a trailing `(raised by N)` annotation when `N` duplicate reports of the same `(file, line, category)` were deduplicated into it (omitted when `N == 1`); it appears on both `## Top 10 Priorities` entries and `## Findings by File` finding lines.
+
 The `## Top 10 Priorities` and `## Findings by File` sections draw from CONFIRMED findings plus high-stakes `[CONTESTED]` findings only — the refutation stage's headline set (Phase 4.2.5). Dismissed findings and low-stakes uncertain findings are NOT shown there; they render in the `## Dismissed / Worth a Glance` appendix below.
 
 ## Skeleton

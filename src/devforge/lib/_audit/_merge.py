@@ -3,7 +3,7 @@
 Implements the multi-pass union merge used when /audit runs the pipeline K
 times and needs ONE merged result across both the 4 agents AND the K passes.
 
-Unlike compute_consensus (which keys on exact (file, line, pattern) hash),
+Unlike compute_consensus (which keys on exact (file, line, category)),
 this merge is location-only: it groups by file then clusters by line proximity
 (tolerance TOL=3).  Pattern differences within a cluster are intentionally
 ignored -- that is the point of a tolerant cross-pass union.

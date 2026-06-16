@@ -1744,5 +1744,218 @@ class TestRenderReportAllFourBucketsIntegration(unittest.TestCase):
         self.assertIn("### Uncertain (low-stakes)", self.report)
 
 
+# ---------------------------------------------------------------------------
+# render_report — merged_count annotation (dedup visibility)
+# ---------------------------------------------------------------------------
+
+class TestRenderReportMergedCount(unittest.TestCase):
+    """merged_count > 1 renders '(raised by N)' in Findings by File and Top-N.
+
+    Backward-compat contract:
+      - merged_count == 1  -> NO annotation
+      - merged_count absent -> NO annotation (byte-identical to pre-change output)
+      - merged_count == 0  -> NO annotation (not a real dedup count)
+      - merged_count not an int -> NO annotation
+    """
+
+    def _render_single_finding(self, **overrides):
+        """Render a report with exactly one finding; return (report_str, finding_id)."""
+        f = _make_finding(finding_id="F-001", **overrides)
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        return render_report(rd), "F-001"
+
+    # -- Findings by File section -------------------------------------------
+
+    def test_merged_count_3_annotates_description_line_in_findings_by_file(self):
+        """merged_count=3 appends '(raised by 3)' on the finding bullet in Findings by File."""
+        report, _ = self._render_single_finding(merged_count=3)
+
+        fbf_pos = report.find("## Findings by File")
+        self.assertGreater(fbf_pos, -1)
+        fbf_section = report[fbf_pos:]
+
+        # The annotation must appear in the Findings by File section
+        self.assertIn("(raised by 3)", fbf_section)
+
+    def test_merged_count_3_annotation_on_same_line_as_pattern(self):
+        """The '(raised by N)' token appears on the same bullet line as the pattern."""
+        f = _make_finding(
+            finding_id="F-001",
+            pattern="deduped finding pattern",
+            merged_count=3,
+        )
+        rd = _make_report_dict(findings=[f], top10=[])
+        report = render_report(rd)
+
+        # Find the specific bullet line
+        for line in report.splitlines():
+            if "deduped finding pattern" in line:
+                # The annotation must be on the SAME line
+                self.assertIn("(raised by 3)", line,
+                              "annotation not on the same line as pattern: {!r}".format(line))
+                return
+        self.fail("Pattern line not found in report")
+
+    def test_merged_count_1_no_annotation_in_findings_by_file(self):
+        """merged_count=1 renders NO '(raised by ...)' annotation."""
+        report, _ = self._render_single_finding(merged_count=1)
+        self.assertNotIn("raised by", report)
+
+    def test_merged_count_absent_no_annotation_backward_compat(self):
+        """No merged_count key renders NO annotation (backward-compatible)."""
+        f = _make_finding(finding_id="F-001")
+        f.pop("merged_count", None)  # ensure absent
+        rd = _make_report_dict(findings=[f], top10=[])
+        report = render_report(rd)
+        self.assertNotIn("raised by", report)
+
+    def test_merged_count_absent_is_byte_identical_to_merged_count_1(self):
+        """A finding with no merged_count key and one with merged_count=1 produce
+        identical output (both are the no-dedup case)."""
+        f_no_key = _make_finding(finding_id="F-001")
+        f_no_key.pop("merged_count", None)
+
+        f_count_1 = _make_finding(finding_id="F-001", merged_count=1)
+
+        rd_no_key = _make_report_dict(findings=[f_no_key], top10=[])
+        rd_count_1 = _make_report_dict(findings=[f_count_1], top10=[])
+
+        report_no_key = render_report(rd_no_key)
+        report_count_1 = render_report(rd_count_1)
+
+        self.assertEqual(report_no_key, report_count_1,
+                         "Reports differ: no merged_count key vs merged_count=1")
+
+    def test_merged_count_zero_no_annotation(self):
+        """merged_count=0 renders no annotation (guard against invalid sentinel)."""
+        report, _ = self._render_single_finding(merged_count=0)
+        self.assertNotIn("raised by", report)
+
+    def test_merged_count_non_int_no_annotation(self):
+        """merged_count as a string renders no annotation (type guard)."""
+        report, _ = self._render_single_finding(merged_count="3")
+        self.assertNotIn("raised by", report)
+
+    def test_merged_count_bool_true_no_annotation(self):
+        """merged_count=True (bool) renders no annotation (bool is subclass of int;
+        must be explicitly excluded to avoid '(raised by True)' output)."""
+        report, _ = self._render_single_finding(merged_count=True)
+        self.assertNotIn("raised by", report)
+
+    # -- Top-N section -------------------------------------------------------
+
+    def test_merged_count_3_annotates_top_n_entry(self):
+        """merged_count=3 appends '(raised by 3)' on the Top-N entry line."""
+        f = _make_finding(
+            finding_id="F-001",
+            pattern="top-n deduped pattern",
+            merged_count=3,
+        )
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        report = render_report(rd)
+
+        top_n_pos = report.find("## Top 10 Priorities")
+        self.assertGreater(top_n_pos, -1)
+        fbf_pos = report.find("## Findings by File")
+        top_n_section = report[top_n_pos:fbf_pos]
+
+        self.assertIn("(raised by 3)", top_n_section,
+                      "annotation missing from Top-N section")
+
+    def test_merged_count_1_no_annotation_in_top_n(self):
+        """merged_count=1 renders NO annotation in Top-N."""
+        f = _make_finding(finding_id="F-001", merged_count=1)
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        report = render_report(rd)
+
+        top_n_pos = report.find("## Top 10 Priorities")
+        fbf_pos = report.find("## Findings by File")
+        top_n_section = report[top_n_pos:fbf_pos]
+
+        self.assertNotIn("raised by", top_n_section)
+
+    def test_merged_count_absent_no_annotation_in_top_n(self):
+        """No merged_count key renders NO annotation in Top-N."""
+        f = _make_finding(finding_id="F-001")
+        f.pop("merged_count", None)
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        report = render_report(rd)
+
+        top_n_pos = report.find("## Top 10 Priorities")
+        fbf_pos = report.find("## Findings by File")
+        top_n_section = report[top_n_pos:fbf_pos]
+
+        self.assertNotIn("raised by", top_n_section)
+
+    # -- Both sections present simultaneously --------------------------------
+
+    def test_merged_count_3_annotates_both_sections(self):
+        """merged_count=3 appears in BOTH Findings by File AND Top-N."""
+        f = _make_finding(
+            finding_id="F-001",
+            pattern="both-sections pattern",
+            merged_count=3,
+        )
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        report = render_report(rd)
+
+        top_n_pos = report.find("## Top 10 Priorities")
+        fbf_pos = report.find("## Findings by File")
+        self.assertGreater(top_n_pos, -1)
+        self.assertGreater(fbf_pos, -1)
+
+        top_n_section = report[top_n_pos:fbf_pos]
+        fbf_section = report[fbf_pos:]
+
+        self.assertIn("(raised by 3)", top_n_section,
+                      "annotation missing from Top-N section")
+        self.assertIn("(raised by 3)", fbf_section,
+                      "annotation missing from Findings by File section")
+
+    # -- Mixed: some findings deduped, some not ------------------------------
+
+    def test_only_deduped_finding_gets_annotation(self):
+        """In a mixed report, only the finding with merged_count > 1 gets the annotation."""
+        f_merged = _make_finding(
+            finding_id="F-001",
+            pattern="deduped-pattern",
+            merged_count=4,
+        )
+        f_single = _make_finding(
+            finding_id="F-002",
+            pattern="single-pattern",
+            # no merged_count key
+        )
+        f_single.pop("merged_count", None)
+
+        rd = _make_report_dict(findings=[f_merged, f_single], top10=["F-001", "F-002"])
+        report = render_report(rd)
+
+        # The merged finding gets the annotation
+        self.assertIn("(raised by 4)", report)
+
+        # Check per-line: single-pattern line must NOT have the annotation
+        for line in report.splitlines():
+            if "single-pattern" in line:
+                self.assertNotIn("raised by", line,
+                                 "single finding line has unexpected annotation: {!r}".format(line))
+
+    # -- No data mutation ----------------------------------------------------
+
+    def test_render_does_not_mutate_finding(self):
+        """render_report must not mutate the finding dict (read-only contract)."""
+        f = _make_finding(finding_id="F-001", merged_count=3)
+        original_keys = set(f.keys())
+        original_mc = f["merged_count"]
+
+        rd = _make_report_dict(findings=[f], top10=["F-001"])
+        render_report(rd)
+
+        self.assertEqual(f["merged_count"], original_mc,
+                         "merged_count was mutated during render")
+        self.assertEqual(set(f.keys()), original_keys,
+                         "finding dict keys changed during render")
+
+
 if __name__ == "__main__":
     unittest.main()

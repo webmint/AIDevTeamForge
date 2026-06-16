@@ -121,6 +121,19 @@ def _bucket_finding(finding):
 # ---------------------------------------------------------------------------
 
 
+def _merged_suffix(finding):
+    # type: (dict) -> str
+    """Return ' (raised by N)' when merged_count > 1, else empty string.
+
+    Backward-compatible: missing key or non-int value -> no annotation.
+    merged_count == 1 -> no annotation (single finding, no dedup occurred).
+    """
+    mc = finding.get("merged_count")
+    if isinstance(mc, int) and not isinstance(mc, bool) and mc > 1:
+        return " (raised by {0})".format(mc)
+    return ""
+
+
 def _render_finding_body(finding, finding_id, severity):
     # type: (dict, str, str) -> str
     """Render a single finding in the file-grouped report format.
@@ -128,6 +141,9 @@ def _render_finding_body(finding, finding_id, severity):
     The first line includes the finding_id, severity (inline), line number,
     and title.  The file path is omitted — it is the enclosing ### header.
     The `:line` token is omitted entirely when line is -1 or unknown.
+
+    When merged_count > 1 (consensus stage collapsed duplicates into this
+    finding), a '(raised by N)' annotation is appended to the title line.
 
     Detail block (Evidence, Why, Remediation, Confidence+Tags) is unchanged
     from the previous format.
@@ -148,6 +164,7 @@ def _render_finding_body(finding, finding_id, severity):
     else:
         title = "(no description)"
 
+    merged = _merged_suffix(finding)
     evidence = (finding.get("evidence") or "").strip()
     confidence = finding.get("confidence") or "Speculative"
     remediation = (
@@ -161,11 +178,11 @@ def _render_finding_body(finding, finding_id, severity):
     sev_prefix = "[{0}] ".format(severity) if severity else ""
     if location:
         lines.append(
-            "- {0}{1}{2} — {3}".format(id_prefix, sev_prefix, location, title)
+            "- {0}{1}{2} — {3}{4}".format(id_prefix, sev_prefix, location, title, merged)
         )
     else:
         lines.append(
-            "- {0}{1}— {2}".format(id_prefix, sev_prefix, title)
+            "- {0}{1}— {2}{3}".format(id_prefix, sev_prefix, title, merged)
         )
     lines.append("  Evidence:")
     lines.append("  ```")
@@ -396,6 +413,7 @@ def render_report(report_dict):
             pattern = (f.get("pattern") or "").strip()
             why = (f.get("why") or f.get("explanation") or "").strip()
             desc = pattern or (why.splitlines()[0][:120] if why else "(no description)")
+            desc = desc + _merged_suffix(f)
             confidence = f.get("confidence") or "Speculative"
             tags = f.get("tags") or []
             tags_str = " ".join(tags) if tags else ""

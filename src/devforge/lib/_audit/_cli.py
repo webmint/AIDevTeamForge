@@ -662,7 +662,13 @@ def cmd_validate_findings(args: argparse.Namespace) -> int:
 
 
 def cmd_compute_consensus(args: argparse.Namespace) -> int:
-    """Merge cross-agent findings by exact-match SHA-1 hash key.
+    """Dedup findings by exact (file, line, category) into one representative each.
+
+    Same-location same-category findings (including a single agent's
+    wording-varied re-reports) collapse to one; groups with >=2 distinct agents
+    are corroborated with a [CROSS-AGENT] tag + a one-level severity bump. Each
+    representative carries merged_count (raw findings collapsed). No SHA-1/hash,
+    no pattern-text, no semantic matching.
 
     Input: --findings <path>  (JSON list of ParsedFinding dicts, all agents combined)
     Returns 0 on success, 2 on missing/bad input.

@@ -1,31 +1,58 @@
 """_consensus -- cross-agent consensus merge for ParsedFinding records.
 
-Implements §4.3 of the /audit spec: exact-match consensus via SHA-1 hash
-of (file_path, line_number, normalised_pattern).
+Implements the dedup + corroboration stage of /audit (and any other command
+that collects multi-agent findings lists).
 
-Algorithm:
-  1. Hash key = sha1(file + ":" + str(line) + ":" + normalise(pattern))
-     normalise = lowercase + strip all punctuation chars
-  2. Group findings by hash key.
-  3. A group with ≥ 2 findings from DIFFERENT agent names → consensus.
-     - Keep the finding with the highest severity (by SEVERITY_ENUM rank).
-     - Tag it [CROSS-AGENT].
+WHY the key changed from (file, line, pattern) to (file, line, category)
+-------------------------------------------------------------------------
+The old key hashed (file, line, normalised_pattern) so two agents reporting
+the same bug with different wording — e.g. "Missing return — silent path" vs
+"Early-return omission" at the same file:line — landed in SEPARATE groups.
+This inflated confirmed-finding counts (testForge20 e2e showed 3 findings for
+the same bug) and made the corroboration signal meaningless.
+
+The category field is a fixed enum (mislogic / system_design / best_practice /
+duplication / security / blind_spot) declared by the producer.  Two findings at
+the same (file, line, category) are the same bug-class at the same location;
+wording differences are noise.  The key is mechanical (enum lookup, no semantic
+or LLM matching).
+
+Algorithm
+---------
+  1. Group key = (file_path, line_number, category)
+     category defaults to "mislogic" when missing (matches FindingSchema default).
+     line_number is exact (no tolerance — within a single pass, agents reading
+     the same code cite the same line; exact-line keeps over-merge low).
+  2. Group ALL findings by key (any agent, any wording).
+  3. Each group collapses to exactly ONE representative:
+     - "Best" = highest severity (lowest SEVERITY_ENUM index).
+     - Tie-break: alphabetically first agent name (deterministic).
+     - representative gets merged_count = total findings in the group (≥ 1).
+  4. Corroboration is gated on ≥ 2 DISTINCT agent names in the group:
+     - Tag [CROSS-AGENT] on the representative.
      - Bump severity one level (Info→Medium→High→Critical, capped at Critical).
-  4. Singletons and same-agent duplicates pass through unchanged (no merge).
+     - Add the key to consensus_map (mapping key → sorted distinct agent list).
+     A group with only same-agent duplicates is deduped (collapsed) but gets
+     NO [CROSS-AGENT] tag, NO severity bump, and NO consensus_map entry.
 
 Tie-break for "highest severity": SEVERITY_ENUM order (Critical=0, High=1,
 Medium=2, Info=3) — lower index = higher severity.  When multiple findings
 share the same highest severity, the one with alphabetically first agent
 name is kept for determinism.
 
+merged_count field
+------------------
+Each representative finding dict carries a merged_count int (≥ 1) equal to
+the number of raw findings that collapsed into it.  For a true singleton it is
+1.  Downstream consumers may surface this for auditability (e.g. "raised by N
+agents/reports").  The field is additive and does not affect existing logic.
+
 Stdlib only.  Python 3.8+.
 """
 
 from __future__ import annotations
 
-import hashlib
-import re
-import string
+import copy
 from typing import List
 
 from _shared.findings_schema import SEVERITY_ENUM  # type: ignore[import]
@@ -36,6 +63,8 @@ from _shared.findings_schema import SEVERITY_ENUM  # type: ignore[import]
 
 # SEVERITY_ENUM = ("Critical", "High", "Medium", "Info") — index 0 is highest.
 _SEV_RANK = {s: i for i, s in enumerate(SEVERITY_ENUM)}  # Critical=0 .. Info=3
+
+_DEFAULT_CATEGORY = "mislogic"
 
 
 def _bump_severity(severity, levels=1):
@@ -59,34 +88,23 @@ def _bump_severity(severity, levels=1):
 
 
 # ---------------------------------------------------------------------------
-# Normalise pattern for hashing
+# Group key
 # ---------------------------------------------------------------------------
 
-_PUNCT_TABLE = str.maketrans("", "", string.punctuation)
+def _make_group_key(finding):
+    # type: (dict) -> tuple
+    """Return the grouping key tuple for a ParsedFinding dict.
 
+    Key = (file_path, line_number, category).
 
-def _normalise_pattern(pattern):
-    # type: (str) -> str
-    """Lowercase and strip all punctuation from a pattern string."""
-    return pattern.lower().translate(_PUNCT_TABLE)
-
-
-# ---------------------------------------------------------------------------
-# Hash key
-# ---------------------------------------------------------------------------
-
-def _make_hash_key(finding):
-    # type: (dict) -> str
-    """Return the SHA-1 hex digest key for a ParsedFinding dict."""
+    file_path and line_number are taken as-is (exact; no normalisation).
+    category defaults to "mislogic" when absent or falsy, matching the
+    FindingSchema field default.
+    """
     file_path = finding.get("file", "") or ""
     line_no = finding.get("line", 0)
-    pattern = finding.get("pattern", "") or ""
-    raw = "{0}:{1}:{2}".format(
-        file_path,
-        str(line_no),
-        _normalise_pattern(pattern),
-    )
-    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    category = finding.get("category") or _DEFAULT_CATEGORY
+    return (file_path, line_no, category)
 
 
 # ---------------------------------------------------------------------------
@@ -97,18 +115,22 @@ def compute_consensus(findings):
     # type: (List[dict]) -> dict
     """Merge findings from multiple agents into a deduplicated list.
 
-    Returns a dict with keys:
-      findings      : list of ParsedFinding dicts (merged where consensus exists)
-      consensus_map : {hash_key: [agent_name, ...]} for merged findings only
-    """
-    import copy
+    Groups by (file, line, category) — see module docstring for rationale.
 
-    # Build groups keyed by hash
-    groups = {}  # type: dict
-    order = []   # preserve insertion order for output stability
+    Returns a dict with keys:
+      findings      : list of ParsedFinding dicts (one per group, each with a
+                      merged_count field indicating how many raw findings
+                      collapsed into it)
+      consensus_map : {group_key_str: [agent_name, ...]} for groups that had
+                      ≥ 2 distinct agents (corroboration gate).
+                      The key is "<file>:<line>:<category>" for readability.
+    """
+    # Build groups keyed by (file, line, category) tuple
+    groups = {}   # type: dict
+    order = []    # preserve insertion order for output stability
 
     for finding in findings:
-        key = _make_hash_key(finding)
+        key = _make_group_key(finding)
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -121,23 +143,23 @@ def compute_consensus(findings):
         group = groups[key]
         distinct_agents = sorted(set(f.get("agent", "") for f in group))
 
+        # Always collapse the group to the best representative
+        merged = _merge_group(group)
+        merged = dict(merged)
+        merged["merged_count"] = len(group)
+
         if len(distinct_agents) >= 2:
-            # Consensus: merge
-            merged = _merge_group(group)
-            # Tag [CROSS-AGENT]
+            # Corroboration: tag, bump, and record in consensus_map
             tags = list(merged.get("tags", []) or [])
             if "[CROSS-AGENT]" not in tags:
                 tags.append("[CROSS-AGENT]")
-            merged = dict(merged)
             merged["tags"] = tags
-            # Bump severity one level
             merged["severity"] = _bump_severity(merged.get("severity", "Info"), 1)
-            result_findings.append(merged)
-            consensus_map[key] = distinct_agents
-        else:
-            # No consensus: include all findings as-is (may be >1 same-agent dups)
-            for finding in group:
-                result_findings.append(copy.deepcopy(finding))
+            # Use a readable string as the consensus_map key
+            key_str = "{0}:{1}:{2}".format(key[0], key[1], key[2])
+            consensus_map[key_str] = distinct_agents
+
+        result_findings.append(merged)
 
     return {
         "findings": result_findings,
@@ -147,13 +169,12 @@ def compute_consensus(findings):
 
 def _merge_group(group):
     # type: (List[dict]) -> dict
-    """Select the best representative finding from a consensus group.
+    """Select the best representative finding from a group.
 
     "Best" = highest severity (lowest SEVERITY_ENUM index).
     Tie-break: alphabetically first agent name.
     Returns a deep copy of the selected finding.
     """
-    import copy
 
     def _sort_key(f):
         sev = f.get("severity", "Info")
