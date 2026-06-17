@@ -102,7 +102,7 @@ Run these once when you first install the template:
 - **`/execute-task`** — 6-phase per-task workflow: load context → pre-flight (contracts) → execute (agent + verify + code review) → complete → bookkeeping. Code review findings reported to user per task. WIP commits accumulate — squashed by `/finalize`.
   - `/execute-task` — next pending | `/execute-task 3` — specific | `/execute-task 1-5` — range | `/execute-task all` — all pending
 - **`/review`** — Expert code review: security (security-reviewer) + performance (performance-analyst) + test assessment (qa-reviewer). Produces structured findings saved to `specs/[feature]/review.md`. No verdict — findings only.
-- **`/verify`** — AC verification + cross-task integration check. Incorporates `/review` findings if available. Renders verdict (APPROVED/NEEDS WORK/REJECTED). Issues reported with batch bug filing.
+- **`/verify`** — AC verification + assembled-feature mechanical checks (type-check/lint/build/test together, report-only). Folds in `/review` findings if available. Renders the single verdict (APPROVED/NEEDS WORK/REJECTED) and flips the spec to Complete on APPROVED. Issues reported with batch bug filing on NEEDS WORK.
 - **`/summarize`** — PR-ready feature summary. Run after `/verify` approves, before `/finalize`.
 - **`/finalize`** — Feature documentation (tech-writer) + feature squash via `git merge-base`. The last step before creating a PR.
 

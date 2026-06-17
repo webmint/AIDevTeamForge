@@ -8,7 +8,7 @@ Use AskUserQuestion: "How should /verify check acceptance criteria?"
 - `code-only` (Recommended) — read code; no test execution; no runtime probing
 - `tests` — run tests; no runtime probing
 - `runtime-assisted` — run app + probe via Chrome DevTools MCP / API calls
-- `off` — skip AC verification
+- `off` — skip behavioral AC verification; code-reading floor only (advisory, non-blocking)
 
 Save via `.devforge/lib/configure_helper set-ac-verification-mode <choice>`.
 
@@ -17,7 +17,7 @@ Save via `.devforge/lib/configure_helper set-ac-verification-mode <choice>`.
 - **`code-only`** — `/verify` reads task output files, source code, and the spec to check that acceptance criteria are mechanically satisfied. No subprocess execution, no runtime probing. Default for projects without a stable test suite or running app.
 - **`tests`** — `/verify` runs the project's test suite (per-package, scope-aware) and checks that tests pass alongside reading code. Suitable for projects with reliable test coverage.
 - **`runtime-assisted`** — `/verify` boots the app (or assumes it is already running) and probes via Chrome DevTools MCP and/or API calls to validate user-facing behavior. Suitable for web apps with a stable dev server.
-- **`off`** — `/verify` skips AC checking entirely. Only pick this when the project has no acceptance criteria or AC verification is handled by an external pipeline.
+- **`off`** — `/verify` skips behavioral AC verification (no browser/API probing, no test execution) but still applies a code-reading floor: it reads the changed files and produces per-AC code-only statuses, noted as code-verified in the verdict (advisory, not blocking). Pick this when the project has no running app and no test suite, or when behavioral AC verification is owned by an external pipeline.
 
 If the user picks `code-only`, `tests`, or `off`, Phase 4 advances directly to Phase 5 — Q12.1 / Q12.2 / Q12.3 are NOT asked.
 

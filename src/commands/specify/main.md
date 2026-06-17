@@ -572,7 +572,7 @@ For a subsection that does not apply to this spec, record an explicit N/A marker
 
 Each subsection: at least one AC if applicable, or "N/A — [reason]". Do not collapse subsections that don't apply — explicitly mark them N/A so reviewers know they were considered.
 
-**Optional `test_anchor` field.** When a brownfield AC corresponds to an existing test, populate `--test-anchor` with `path::test_name`. Downstream `/verify` reads + runs the anchor. Leave empty when no test exists yet — `/breakdown` plans the test.
+**Optional `test_anchor` field.** When a brownfield AC corresponds to an existing test, populate `--test-anchor` with `path::test_name`. Downstream `/verify` will consume the anchor once fine-grained tests-mode test→AC mapping lands (currently deferred — today `/verify`'s `tests` mode runs the assembled suite as one mechanical gate and code-reads the ACs independently of the anchor). Leave empty when no test exists yet — `/breakdown` plans the test.
 
 See `tests/lib/fixtures/specify-sample-migration.md` for the migration_tooling AC shape (all 7 subsections populated with mixed EARS variants + paired verification commands on §5.1 + §5.7), and `tests/lib/fixtures/specify-sample-greenfield.md` for the greenfield_feature shape (`N/A` markers on §5.2 + §5.4 + `[default applied]` rendering in §8).
 

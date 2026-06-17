@@ -12,7 +12,6 @@
       { "source": "src/commands/setup-wizard.md",           "target": ".claude/commands/setup-wizard.md" },
       { "source": "src/commands/specify.md",                "target": ".claude/commands/specify.md" },
       { "source": "src/commands/onboard.md",                "target": ".claude/commands/onboard.md" },
-      { "source": "src/commands/verify.md",                 "target": ".claude/commands/verify.md" },
       { "source": "src/commands/report-bug.md",             "target": ".claude/commands/report-bug.md" },
       { "source": "src/commands/refresh-docs.md",           "target": ".claude/commands/refresh-docs.md" },
       { "source": "src/commands/research.md",               "target": ".claude/commands/research.md" },
