@@ -37,8 +37,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 ### Spec-Driven Development Flow
 
 ```
-/setup-wizard → /constitute → /onboard → /research OR /discover → /specify → /plan → /breakdown → /implement → /review → /verify → /summarize → /finalize
-   (once)         (once)       (once)    (per feat — required)     (per feat)  (per feat) (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
+/setup-wizard → /constitute → /onboard → /research OR /discover → /specify → /plan → [/grill] → /breakdown → /implement → /review → /verify → /summarize → /finalize
+   (once)         (once)       (once)    (per feat — required)     (per feat)  (per feat)  (optional,   (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
+                                                                                          high-stakes)
 ```
 
 `/research` (bug/enhancement against existing code) OR `/discover` (greenfield) is a **required precondition** for `/specify` — `/specify` blocks until a research or discover handoff exists. Use `/research` when investigating existing code, `/discover` when surveying a greenfield idea; the two cover complementary intake lanes, and either one satisfies the `/specify` gate.
@@ -47,6 +48,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 - `/discover "feature idea"` — Greenfield-feature discovery → discover handoff (required intake lane for `/specify`)
 - `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md` (blocks until a research or discover handoff exists)
 - `/plan` — Technical plan from approved spec → `specs/NNN-name/plan.md`
+- `/grill` — **Optional, opt-in** design-time adversarial review of the completed `plan.md` → `specs/NNN-name/grill.md` (run for high-stakes plans before `/breakdown`; not a mandatory gate)
 - `/breakdown` — Atomic tasks with dependencies → `specs/NNN-name/tasks/`
 - `/implement` — Drain the feature's tasks one at a time (no args); per-task hard gate before commit
 - `/review` — Feature-level emergent cross-task review → findings report
@@ -75,6 +77,9 @@ Takes an approved spec and produces a technical plan: architecture decisions, da
 
 #### `/breakdown [plan-file]`
 Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments, and verifiable Expects/Produces contracts. Saves task files to `specs/[feature]/tasks/` and writes a structured `specs/[feature]/breakdown-handoff.json` (the producer side of the breakdown→`/implement` handoff). **Requires approval before execution.**
+
+#### `/grill [plan-file]`
+**Optional, opt-in** design-time adversarial review of the completed `plan.md` — the design-level mirror of `/review`, positioned between `/plan` and `/breakdown` so a fatally-flawed design is killed before `/breakdown` decomposes it. Run it for high-stakes plans (new architecture / dependency / data model / security); it is NOT a mandatory gate. Dispatches the `devils-advocate` adversary plus a refutation pass (architect-excluded `[code-reviewer, qa-reviewer, security-reviewer]`), reusing the shared refutation engine. The adversary reads `plan.md` + `spec.md` + the recon dossier + `constitution.md` + a scoped three-ring codebase slice, with self-gated web-verification of the plan's external claims. Writes `specs/[feature]/grill.md` with a recommended 4-way disposition — PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; on RE-ENTER-UPSTREAM it also emits a backward re-entry seed (`specs/[feature]/grill-seed.json`) for the upstream `/research`/`/discover`/`/specify` commands to consume. The USER owns the final verdict at the `/breakdown` approval gate.
 
 #### `/implement`
 Drains an approved feature's breakdown tasks one at a time — NO arguments; auto-resolves the lowest-numbered incomplete feature and its next dependency-ready task, and loops. Per task: dispatch the assigned agent → scope-aware verify with self-repair (type-check / lint / build / test) → an autonomous parallel review **panel of four read-only reviewers** (code-reviewer + qa-reviewer + security-reviewer + performance-analyst, merged to a single verdict) → forcing-functions gate → a per-task HARD GATE where all findings are fixed before approval (the human reviews the ready diff and approves/repairs/skips/stops; nothing is committed before approval; approval is reachable only from a fully-clean panel, and any reviewer conflicts surface as focused questions first). On approve: mark the task complete, single WIP commit, refresh the codebase-memory graph, advance. WIP commits accumulate and are squashed by `/finalize`. Writes a `.devforge/wip.md` marker + git checkpoint for crash recovery.
