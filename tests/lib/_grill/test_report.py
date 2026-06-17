@@ -408,6 +408,19 @@ class TestRenderReportDispositionGuidance(unittest.TestCase):
     def test_revise_plan_guidance_text(self):
         result = render_report(**_minimal_render_kwargs(disposition="REVISE-PLAN"))
         self.assertIn("correctable at the plan level", result)
+        # Must route to /plan (not /breakdown) as the immediate next step.
+        self.assertIn("re-run `/plan`", result)
+        # /breakdown is mentioned only as the step AFTER /plan, not as the immediate next step.
+        # The guidance string references /breakdown after "proceeding to", so it is present
+        # but comes AFTER the /plan re-run instruction, not before it.
+        self.assertIn("/breakdown", result)
+        plan_pos = result.index("re-run `/plan`")
+        breakdown_pos = result.index("/breakdown")
+        self.assertLess(
+            plan_pos,
+            breakdown_pos,
+            "re-run `/plan` must appear before `/breakdown` in the REVISE-PLAN guidance",
+        )
 
     def test_re_enter_upstream_guidance_text(self):
         result = render_report(

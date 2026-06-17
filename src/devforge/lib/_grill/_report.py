@@ -405,7 +405,9 @@ def _render_disposition(disposition, rationale, re_entry_target, out):
     elif disposition == "REVISE-PLAN":
         out.append(
             "> The defects are real but correctable at the plan level. "
-            "Revise `plan.md` to address the confirmed findings, then re-run `/breakdown`."
+            "Revise `plan.md` to address the confirmed findings, then re-run `/plan` "
+            "(or hand-patch `plan.md`), and optionally re-run `/grill` before proceeding "
+            "to `/breakdown`."
         )
     elif disposition == "RE-ENTER-UPSTREAM":
         cmd_name = _STAGE_TO_CMD.get(re_entry_target, re_entry_target)
