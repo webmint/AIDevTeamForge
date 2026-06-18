@@ -55,7 +55,14 @@ from typing import Dict, List, Optional
 _COMPLETE_STATUSES = frozenset(["Complete", "Skipped"])
 
 # Matches the **Status**: line in any markdown file (task or spec).
-_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:\s*(.+)$", re.MULTILINE)
+#
+# IMPORTANT: uses [ \t]* (horizontal whitespace only), NOT \s*, and does NOT
+# use re.DOTALL.  This is intentional — the status value MUST appear on the
+# same line as the **Status**: marker.  Using \s* would allow the match to
+# bleed across blank lines and capture a value from a subsequent line in a
+# malformed spec (e.g. "**Status**:\n\nComplete\n" would wrongly match
+# "Complete" from the next non-empty line).
+_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:[ \t]*(.+)$", re.MULTILINE)
 
 # AC statuses that earn a checkbox tick
 _PASS_STATUSES = frozenset(["PASS", "PASS (code)"])

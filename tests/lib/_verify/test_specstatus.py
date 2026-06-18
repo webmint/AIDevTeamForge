@@ -442,6 +442,131 @@ class TestFlipSpecStatusErrors(unittest.TestCase):
             self.assertIn(key, result)
 
 
+class TestFlipSpecStatusMalformedStatusLine(unittest.TestCase):
+    """Regression: _STATUS_PATTERN must NOT bleed across blank lines.
+
+    A malformed spec where **Status**: appears on a line by itself (no value)
+    followed by blank lines and then a word on the next non-empty line must NOT
+    have that word captured as the status value.  With the old \\s* pattern,
+    "**Status**:\\n\\nComplete\\n" wrongly yielded status "Complete".
+    With the fixed [ \\t]* pattern the match fails (no value on the same line),
+    which means:
+      - _read_task_status returns None  → task treated as incomplete (flip blocks)
+      - flip_spec_status returns flipped=False with a blocker about no Status line
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_malformed_status_blank_line_does_not_bleed(self):
+        """**Status**: on its own line, value on next non-empty line → not treated as Complete."""
+        # Craft a spec where **Status**: has its value on the NEXT line (malformed).
+        malformed_spec = (
+            "# Spec: malformed\n"
+            "\n"
+            "**Status**:\n"
+            "\n"
+            "Complete\n"
+            "\n"
+            "## Overview\n"
+            "\n"
+            "Some content.\n"
+        )
+        spec_path = os.path.join(self.tmp, "spec.md")
+        with open(spec_path, "w", encoding="utf-8") as fh:
+            fh.write(malformed_spec)
+
+        result = flip_spec_status(self.tmp, [], spec_path=spec_path)
+
+        # The malformed **Status**: line has no value on the same line.
+        # The pattern must not match "Complete" from a later line.
+        # flip_spec_status should return flipped=False with a blocker.
+        self.assertFalse(
+            result["flipped"],
+            "Malformed spec with **Status**: on its own line must NOT be treated as Complete; "
+            "got flipped=True with blocker={0!r}".format(result["blocker"]),
+        )
+        self.assertIsNotNone(result["blocker"])
+        self.assertIn("no **Status**", result["blocker"],
+                      "Expected blocker to report missing Status line, got: {0!r}".format(
+                          result["blocker"]))
+
+    def test_well_formed_status_still_matches(self):
+        """Sanity: a well-formed **Status**: In Progress line still matches after the fix."""
+        well_formed_spec = (
+            "# Spec: well-formed\n"
+            "\n"
+            "**Status**: In Progress\n"
+            "\n"
+            "## Overview\n"
+            "\n"
+            "Some content.\n"
+            "\n"
+            "## 5. Acceptance Criteria\n"
+            "\n"
+            "- [ ] **AC-1**: Something.\n"
+        )
+        spec_path = os.path.join(self.tmp, "spec.md")
+        with open(spec_path, "w", encoding="utf-8") as fh:
+            fh.write(well_formed_spec)
+
+        result = flip_spec_status(self.tmp, [], spec_path=spec_path)
+
+        self.assertTrue(result["flipped"],
+                        "Well-formed spec must flip successfully; got blocker={0!r}".format(
+                            result["blocker"]))
+        with open(spec_path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("**Status**: Complete", content)
+
+    def test_malformed_task_status_blank_line_blocks_flip(self):
+        """A task file with **Status**: on its own line is treated as incomplete (blocks flip).
+
+        This exercises _read_task_status — when the pattern fails to match
+        (value on next line), the function returns None, which causes
+        flip_spec_status to return flipped=False with a 'no Status line' blocker.
+        """
+        # Write a valid spec
+        well_formed_spec = (
+            "# Spec: well-formed\n"
+            "\n"
+            "**Status**: In Progress\n"
+            "\n"
+            "## 5. Acceptance Criteria\n"
+            "\n"
+            "- [ ] **AC-1**: Something.\n"
+        )
+        spec_path = os.path.join(self.tmp, "spec.md")
+        with open(spec_path, "w", encoding="utf-8") as fh:
+            fh.write(well_formed_spec)
+
+        # Write a task with malformed **Status**: (value on next line)
+        tasks_dir = os.path.join(self.tmp, "tasks")
+        os.makedirs(tasks_dir)
+        malformed_task = (
+            "# Task 001: Do something\n"
+            "\n"
+            "**Status**:\n"
+            "\n"
+            "Complete\n"
+            "\n"
+            "## Context\n"
+        )
+        with open(os.path.join(tasks_dir, "001-task.md"), "w", encoding="utf-8") as fh:
+            fh.write(malformed_task)
+
+        result = flip_spec_status(self.tmp, [], spec_path=spec_path)
+
+        # _read_task_status returns None → treated as "no Status line" → blocked
+        self.assertFalse(result["flipped"])
+        self.assertIsNotNone(result["blocker"])
+        self.assertIn("no Status line", result["blocker"])
+
+
 class TestFlipSpecStatusExplicitSpecPath(unittest.TestCase):
     """spec_path parameter override."""
 
