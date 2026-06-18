@@ -53,7 +53,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 - `/implement` — Drain the feature's tasks one at a time (no args); per-task hard gate before commit
 - `/review` — Feature-level emergent cross-task review → findings report
 - `/verify` — Verify ACs + assembled mechanical checks, fold `/review` findings → APPROVED / NEEDS WORK / REJECTED verdict + spec flip on APPROVED
-- `/finalize` — Squash WIP commits, generate docs, clean commit
+- `/finalize` — Surgical `docs/` updates via tech-writer + squash WIP commits into a clean feature commit
 
 `/research` and `/discover` are read-only and produce no spec themselves, but their handoffs are a required precondition for `/specify` — so they belong to the spec pipeline above, not to the standalone group below.
 
@@ -94,7 +94,7 @@ The pipeline step after `/review`, before `/summarize`/`/finalize` — it OWNS t
 The pipeline step after `/verify` approves, before `/finalize` — pure SYNTHESIS that renders a PR-ready feature narrative: what was built (in user terms), change stats, key decisions, deviations, and AC status. Gates on the spec `**Status**: Complete` flip that `/verify` owns. Agent-free and renders NO verdict — the AC status is read from `/verify`'s `specs/[feature]/verification.md`, NOT re-derived from the spec. Consumes the spec + plan + each task's `## Completion Notes` + git change stats + `verification.md`, and writes ONLY `specs/[feature]/summary.md` (mutates none of its inputs). Idempotent — a re-run overwrites `summary.md`; the run makes a `[WIP]` commit that `/finalize` squashes.
 
 #### `/finalize [spec-file]`
-Generates feature-level documentation via tech-writer, then squashes all WIP commits into a single clean feature commit. Gate-checked: spec must be Complete (set by `/verify`). The last step before creating a PR.
+Dispatches tech-writer for surgical `docs/` updates (`docs/<package>/`, `docs/architecture.md`) — not a dropped `docs/features/` tier — then squashes all WIP commits into a single clean feature commit. Gate-checked: spec must be Complete (set by `/verify`). The last step before creating a PR.
 
 #### `/constitute`
 One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns.

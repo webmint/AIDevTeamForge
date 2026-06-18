@@ -193,7 +193,7 @@ Present the composed summary to the user, then point to the next pipeline step:
 ```
 Summary saved to specs/[feature]/summary.md — copy-ready for a PR description.
 
-Next: run `/finalize` to generate feature-level documentation and squash the WIP commits into a clean feature commit.
+Next: run `/finalize` to write surgical `docs/` updates via tech-writer and squash the WIP commits into a clean feature commit.
 ```
 
 Then clean up the scratch directory — nothing else needs it after the summary is written:

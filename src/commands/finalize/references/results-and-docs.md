@@ -4,7 +4,7 @@ This file is **orientation only** for the `/finalize` orchestrator. It documents
 
 ## Doc targets — the LIVE locations, NEVER `docs/features/`
 
-`/finalize` dispatches `tech-writer` in its Normal/surgical mode (D1). Under the Plan-F docs layout the per-feature `docs/features/<name>.md` tier is dropped — `tech-writer.md`'s own "When to create a NEW file vs update existing (Plan F layout — `docs/features/`, `docs/api/`, `docs/guides/` are dropped)" list names the live destinations, and the brief retargets the agent to exactly those:
+`/finalize` dispatches `tech-writer` in its Normal/surgical mode (D1). Under the Plan-F docs layout the per-feature `docs/features/<name>.md` tier is dropped — `tech-writer.md`'s own "**When to update which doc** (Plan F layout — the legacy `docs/features/`, `docs/api/`, `docs/guides/` tiers are dropped)" section names the live destinations, and the brief retargets the agent to exactly those:
 
 - `docs/<package>/<concern>/index.md` — update the Hazards section when the feature introduced a hazard worth documenting in an existing concern.
 - `docs/<package>/architecture.md` — update the `## Patterns` section (with cite-back) when the feature changed an architecture pattern within a package.

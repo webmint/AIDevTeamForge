@@ -12,7 +12,7 @@
 >
 > For architecture decisions and per-layer rules, see `docs/architecture.md`.
 >
-> Feature-level documentation lives under `docs/features/<feature-name>.md` — created by tech-writer when each feature ships, not pre-scaffolded.
+> Feature changes are reflected by tech-writer's surgical updates to the relevant `docs/<package>/` docs (and `docs/architecture.md` for project-wide changes) when a feature ships via `/finalize` — not in a per-feature file.
 
 ## What this project is for
 

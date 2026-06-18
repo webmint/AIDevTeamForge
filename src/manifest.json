@@ -17,7 +17,6 @@
       { "source": "src/commands/research.md",               "target": ".claude/commands/research.md" },
       { "source": "src/commands/security.md",               "target": ".claude/commands/security.md" },
       { "source": "src/commands/audit.md",                  "target": ".claude/commands/audit.md" },
-      { "source": "src/commands/finalize.md",               "target": ".claude/commands/finalize.md" },
       { "source": "src/commands/_recovery.md",              "target": ".claude/commands/_recovery.md" },
       { "source": "src/commands/_agent-assignment.md",      "target": ".claude/commands/_agent-assignment.md" },
       { "source": "src/commands/_context-maintenance.md",   "target": ".claude/commands/_context-maintenance.md" },
