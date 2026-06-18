@@ -1571,7 +1571,7 @@ class RenderTaskFileTests(_CwdIsolationBH):
         result = _run_bh(self.tmp_path, "render-task-file")
         self.assertEqual(result.returncode, 0, result.stderr)
         output = result.stdout
-        self.assertIn("[Filled in by execute-task after completion]", output)
+        self.assertIn("[Filled in by /implement after completion]", output)
         self.assertIn("**Completed**:", output)
         self.assertIn("**Files changed**:", output)
         self.assertIn("**Contract**: Expects", output)
@@ -2366,7 +2366,7 @@ class CliShapeBreakdownTests(_CwdIsolationBH):
             "verify-contract-chain",
             "verify-ac-coverage",
             "finalize-handoff",
-            "render-execute-task-handoff",
+            "render-implement-handoff",
         ):
             self.assertIn(sub, result.stdout)
 
@@ -2400,7 +2400,7 @@ class LauncherShimBreakdownTests(_CwdIsolationBH):
 
 
 # ---------------------------------------------------------------------------
-# Phase 4 — fixture helpers for finalize-handoff / render-execute-task-handoff
+# Phase 4 — fixture helpers for finalize-handoff / render-implement-handoff
 # ---------------------------------------------------------------------------
 
 
@@ -3209,11 +3209,11 @@ class FinalizeHandoffTests(_CwdIsolationBH):
 
 
 # ---------------------------------------------------------------------------
-# Tests: render-execute-task-handoff (Phase 4, Verb 2)
+# Tests: render-implement-handoff (Phase 4, Verb 2)
 # ---------------------------------------------------------------------------
 
 
-class RenderExecuteTaskHandoffTests(_CwdIsolationBH):
+class RenderImplementHandoffTests(_CwdIsolationBH):
 
     def _setup_tasks(self, count=3, with_checkpoint_on=None):
         """Return (feature_dir, plan_path) with 'count' task files in tasks/.
@@ -3242,27 +3242,29 @@ class RenderExecuteTaskHandoffTests(_CwdIsolationBH):
     def test_exit_0_basic(self):
         """Basic invocation: exit 0."""
         _, plan_path = self._setup_tasks()
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_block_heading_present(self):
-        """Output contains the '## Manual next step — run /execute-task' heading."""
+        """Output contains the '## Manual next step — run /implement' heading."""
         _, plan_path = self._setup_tasks()
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("## Manual next step — run /execute-task", result.stdout)
+        self.assertIn("## Manual next step — run /implement", result.stdout)
 
     def test_first_task_invocation_line(self):
-        """Output contains the '/execute-task 001' literal invocation line."""
+        """Output contains the bare '/implement' copy-paste command (no task number arg)."""
         _, plan_path = self._setup_tasks()
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("/execute-task 001", result.stdout)
+        self.assertIn("/implement", result.stdout)
+        # The copy-paste line must NOT include a task-number argument.
+        self.assertNotIn("/implement 001", result.stdout)
 
     def test_restart_reminder_present(self):
         """Output contains a restart Claude Code reminder."""
         _, plan_path = self._setup_tasks()
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
         # The restart reminder must mention restarting/relaunching.
         output_lower = result.stdout.lower()
@@ -3274,31 +3276,32 @@ class RenderExecuteTaskHandoffTests(_CwdIsolationBH):
     def test_total_task_count_present(self):
         """Output contains the total task count (3 tasks)."""
         _, plan_path = self._setup_tasks(count=3)
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("3", result.stdout)
 
     def test_review_checkpoint_count_present(self):
         """Output contains the review checkpoint count when tasks have Yes."""
         _, plan_path = self._setup_tasks(count=3, with_checkpoint_on=[1, 3])
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("2", result.stdout)  # 2 checkpoints
 
     def test_zero_checkpoints_reported(self):
         """When no tasks have review checkpoint, 0 is reported."""
         _, plan_path = self._setup_tasks(count=2, with_checkpoint_on=[])
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("0", result.stdout)
 
     def test_first_task_is_lowest_number(self):
-        """The invocation uses the numerically lowest task number, not filename alpha.
+        """The informational line names the numerically lowest task number, not filename alpha.
 
         Non-zero-padded filenames expose the alpha vs numeric gap:
         '10-bar.md' sorts BEFORE '2-foo.md' alphabetically but 2 < 10 numerically.
-        The emitter must select task 2 (emitted as '/execute-task 002' after
-        zero-padding), not task 10.
+        The emitter must select task 2 (identified as '002' after zero-padding),
+        not task 10. The bare '/implement' copy-paste line carries no task number,
+        but the informational 'First task' line must show the correct number.
         """
         feature_dir = self.tmp_path / "specs" / "002-ordered"
         feature_dir.mkdir(parents=True)
@@ -3318,14 +3321,18 @@ class RenderExecuteTaskHandoffTests(_CwdIsolationBH):
             tasks_dir, "2", "Task two", "002-ordered",
             agent="architect",
         )
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
         # task 2 → zero-padded to '002' by _parse_task_number_from_filename.
-        self.assertIn("/execute-task 002", result.stdout)
+        # The informational text (not the copy-paste line) must show '002'.
+        self.assertIn("002", result.stdout)
+        # The bare copy-paste command must NOT have any task-number argument.
+        self.assertNotIn("/implement 002", result.stdout)
+        self.assertIn("/implement", result.stdout)
 
     def test_missing_plan_exits_2(self):
         """Non-existent plan.md → exit 2."""
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", "no/plan.md")
+        result = _run_bh(self.tmp_path, "render-implement-handoff", "no/plan.md")
         self.assertEqual(result.returncode, 2)
 
     def test_missing_tasks_dir_exits_2(self):
@@ -3335,7 +3342,7 @@ class RenderExecuteTaskHandoffTests(_CwdIsolationBH):
         plan_path = feature_dir / "plan.md"
         _write_minimal_plan(str(plan_path))
 
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 2)
 
     def test_empty_tasks_dir_exits_2(self):
@@ -3346,17 +3353,131 @@ class RenderExecuteTaskHandoffTests(_CwdIsolationBH):
         _write_minimal_plan(str(plan_path))
         (feature_dir / "tasks").mkdir()
 
-        result = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 2)
 
     def test_deterministic_across_two_calls(self):
         """Two calls produce identical output (deterministic emitter)."""
         _, plan_path = self._setup_tasks()
-        r1 = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
-        r2 = _run_bh(self.tmp_path, "render-execute-task-handoff", str(plan_path))
+        r1 = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
+        r2 = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(r1.returncode, 0)
         self.assertEqual(r2.returncode, 0)
         self.assertEqual(r1.stdout, r2.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Regression: _STATUS_PATTERN must NOT bleed across blank lines
+# ---------------------------------------------------------------------------
+
+
+class TestBreakdownStatusPatternNoBleed(unittest.TestCase):
+    """breakdown_helper._STATUS_PATTERN uses [ \\t]* (not \\s*) so a malformed
+    plan file where **Status**: appears on a line by itself does NOT capture a
+    value from a subsequent non-empty line.
+
+    Tests use both direct-module access (for pattern-level assertions) and the
+    check-status-and-flip subprocess verb (for public-path round-trip coverage).
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name)
+        # Import breakdown_helper directly for pattern-level assertions.
+        import importlib
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "breakdown_helper", str(BREAKDOWN_HELPER_PY)
+        )
+        self._bh = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(self._bh)  # type: ignore[union-attr]
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    # ------------------------------------------------------------------
+    # Direct pattern-level tests
+    # ------------------------------------------------------------------
+
+    def test_malformed_blank_line_before_value_no_match(self):
+        """**Status**: on its own line, blank line, 'Draft' on next → no match.
+
+        Regression: \\s* matched across newlines; [ \\t]* does not.
+        """
+        malformed = "# Plan\n\n**Date**: 2026-01-01\n**Status**:\n\nDraft\n"
+        result = self._bh._parse_frontmatter_field(
+            malformed, self._bh._STATUS_PATTERN
+        )
+        self.assertIsNone(
+            result,
+            "Malformed plan (value on next line after blank) must return None; "
+            "got {0!r}".format(result),
+        )
+
+    def test_malformed_immediate_next_line_no_match(self):
+        """**Status**: on its own line, value immediately on next → no match."""
+        malformed = "# Plan\n\n**Date**: 2026-01-01\n**Status**:\nDraft\n"
+        result = self._bh._parse_frontmatter_field(
+            malformed, self._bh._STATUS_PATTERN
+        )
+        self.assertIsNone(
+            result,
+            "Malformed plan (value on immediate next line) must return None; "
+            "got {0!r}".format(result),
+        )
+
+    def test_well_formed_single_line_matches(self):
+        """Well-formed '**Status**: Approved' is still captured."""
+        content = "# Plan\n\n**Date**: 2026-01-01\n**Status**: Approved\n"
+        result = self._bh._parse_frontmatter_field(
+            content, self._bh._STATUS_PATTERN
+        )
+        self.assertEqual(result, "Approved")
+
+    def test_well_formed_with_tab_matches(self):
+        """**Status**:<TAB>Draft is a valid horizontal-ws layout."""
+        content = "**Status**:\tDraft\n"
+        result = self._bh._parse_frontmatter_field(
+            content, self._bh._STATUS_PATTERN
+        )
+        self.assertEqual(result, "Draft")
+
+    # ------------------------------------------------------------------
+    # CLI-level round-trip: check-status-and-flip with malformed plan
+    # ------------------------------------------------------------------
+
+    def test_check_status_and_flip_malformed_blank_before_value_not_flipped(self):
+        """check-status-and-flip on a plan whose **Status**: has no value on the
+        same line does NOT misread the next line's token as the status.
+
+        With the \\s* bug, "**Status**:\\n\\nDraft\\n" would bleed "Draft" into
+        group 1 and the verb would emit 'flipped'.  With [ \\t]* the pattern
+        finds no match → falls to the 'no Date or Status found' → exit 2.
+        """
+        malformed = (
+            "# Plan: Malformed\n\n"
+            "**Status**:\n\n"
+            "Draft\n\n"
+            "## Summary\n\nSomething.\n"
+        )
+        plan_file = self.tmp_path / "plan.md"
+        plan_file.write_text(malformed, encoding="utf-8")
+
+        result = _run_bh(self.tmp_path, "check-status-and-flip", str(plan_file))
+        # Must NOT emit 'flipped' or 'already-approved' — the malformed layout
+        # should fall through to the error path (missing both Status and Date).
+        self.assertNotEqual(
+            result.stdout.strip(),
+            "flipped",
+            "check-status-and-flip must NOT 'flip' a plan whose **Status**: "
+            "value is on the next line (bleed bug); stdout={0!r}".format(result.stdout),
+        )
+        self.assertNotEqual(
+            result.stdout.strip(),
+            "already-approved",
+            "check-status-and-flip must NOT report 'already-approved' for a "
+            "malformed plan; stdout={0!r}".format(result.stdout),
+        )
 
 
 if __name__ == "__main__":

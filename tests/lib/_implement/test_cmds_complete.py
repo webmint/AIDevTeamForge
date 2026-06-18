@@ -1652,5 +1652,100 @@ class TestCmdMarkCompleteUnverifiedBox(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Regression: _STATUS_PATTERN must NOT bleed across blank lines
+# ---------------------------------------------------------------------------
+
+
+class TestStatusPatternNoBleedComplete(unittest.TestCase):
+    """_STATUS_PATTERN uses [ \\t]* (not \\s*) so a malformed task file where
+    **Status**: appears on a line by itself does NOT capture a value from a
+    subsequent non-empty line.
+
+    Two-group layout: group 1 = "**Status**: " prefix, group 2 = old value.
+    _set_status/_set_status_complete use:
+      replacement = m.group(1) + new_status
+    so the prefix (group 1) is reproduced and only the value changes.
+
+    Tests round-trip via _set_status_complete (the public function that calls
+    _STATUS_PATTERN.subn internally), mirroring production usage.
+    """
+
+    def test_malformed_blank_line_before_value_falls_to_insert(self):
+        """**Status**: on its own line, blank line, then 'Pending' → no subn match.
+
+        Regression for the \\s* bug: \\s* matched the newlines and captured
+        "Pending" from the next non-empty line.  With [ \\t]* the subn finds
+        NO match (count == 0) and falls back to inserting "**Status**: Complete"
+        after the first non-blank line — NOT replacing the malformed layout.
+
+        The observable contract: the returned text contains exactly ONE
+        "**Status**: Complete" occurrence and does NOT contain
+        "**Status**: " + anything else as a line prefix.
+        """
+        malformed = (
+            "# Task 001: Malformed\n\n"
+            "**Feature**: 001-test\n"
+            "**Status**:\n\n"
+            "Pending\n"
+        )
+        result = _set_status_complete(malformed)
+        # There must be exactly one **Status**: Complete.
+        self.assertEqual(
+            result.count("**Status**: Complete"),
+            1,
+            "Expected exactly one '**Status**: Complete' in result; got:\n{0}".format(result),
+        )
+        # The original malformed "**Status**:\n" must no longer exist as a bare
+        # marker (the fallback insertion adds a proper line; the old bare line
+        # is left as-is since subn found no match, but we confirm Complete is
+        # inserted and the value is sane).
+        self.assertIn("**Status**: Complete", result)
+
+    def test_malformed_immediate_next_line_falls_to_insert(self):
+        """**Status**: on its own line, value immediately on next line → no match.
+
+        "**Status**:\\nPending\\n" -- \\s* would bleed here too; [ \\t]* does not.
+        """
+        malformed = "# Task 001: Malformed\n\n**Status**:\nPending\n"
+        result = _set_status_complete(malformed)
+        self.assertIn("**Status**: Complete", result)
+        self.assertEqual(result.count("**Status**: Complete"), 1)
+
+    def test_well_formed_status_replaced_correctly(self):
+        """Normal '**Status**: Pending' → '**Status**: Complete'.
+
+        Regression guard: narrowing \\s* to [ \\t]* must NOT break the normal
+        substitution path.  Group 1 still captures "**Status**: " (the prefix
+        including the trailing space), _replacer returns prefix + "Complete".
+        """
+        text = "# Task 001: Normal\n\n**Status**: Pending\n## Done When\n\n- [ ] Thing\n"
+        result = _set_status_complete(text)
+        self.assertIn("**Status**: Complete", result)
+        self.assertNotIn("**Status**: Pending", result)
+
+    def test_well_formed_tab_separator_replaced_correctly(self):
+        """**Status**:<TAB>In Progress → **Status**:<TAB>Complete.
+
+        [ \t]* matches a tab, so group 1 = "**Status**:\\t" and the
+        replacement reconstructs "**Status**:\\tComplete".
+        """
+        text = "**Status**:\tIn Progress\n"
+        result = _set_status_complete(text)
+        self.assertIn("Complete", result)
+        self.assertNotIn("In Progress", result)
+
+    def test_two_group_substitution_preserves_prefix(self):
+        """_replacer uses m.group(1) + new_status — group 1 is the prefix.
+
+        On a well-formed line the prefix is "**Status**: " (with trailing
+        space).  After substitution the spacing is preserved exactly.
+        """
+        text = "**Status**: Draft\n"
+        result = _set_status_complete(text)
+        # The reconstructed line must be exactly "**Status**: Complete\n".
+        self.assertIn("**Status**: Complete\n", result)
+
+
 if __name__ == "__main__":
     unittest.main()

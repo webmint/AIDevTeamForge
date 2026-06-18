@@ -41,7 +41,13 @@ from typing import Dict, List, Optional, Tuple
 COMPLETE_STATUSES = frozenset(["Complete", "Skipped"])
 
 # The **Status**: markdown frontmatter pattern (mirrors breakdown_helper.py).
-_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:\s*(.+)$", re.MULTILINE)
+#
+# IMPORTANT: uses [ \t]* (horizontal whitespace only), NOT \s*.  The status
+# value MUST appear on the same line as the **Status**: marker.  Using \s*
+# would allow the match to bleed across a blank line and capture a value from
+# the next non-empty line in a malformed task file (e.g. "**Status**:\n\n
+# Complete\n" would wrongly yield "Complete").
+_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:[ \t]*(.+)$", re.MULTILINE)
 
 # Exit codes (mirrors breakdown_helper.py convention).
 EXIT_OK = 0

@@ -1208,5 +1208,80 @@ class TestCompleteStatusesConstant(unittest.TestCase):
         self.assertNotIn(None, COMPLETE_STATUSES)
 
 
+# ---------------------------------------------------------------------------
+# Regression: _STATUS_PATTERN must NOT bleed across blank lines
+# ---------------------------------------------------------------------------
+
+
+class TestStatusPatternNoBleed(unittest.TestCase):
+    """_STATUS_PATTERN uses [ \\t]* (not \\s*) so a malformed task file where
+    **Status**: appears on a line by itself does NOT capture a value from a
+    subsequent non-empty line.
+
+    The test round-trips via the real public function (_read_task_status) that
+    calls _STATUS_PATTERN.search() internally, mirroring production usage.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_malformed_blank_line_before_value_returns_none(self):
+        """**Status**: on its own line, blank line, then 'Complete' → no match.
+
+        Regression for the \\s* bug: \\s* matched across newlines so
+        "**Status**:\\n\\nComplete\\n" wrongly yielded "Complete".
+        With [ \\t]* the pattern requires the value on the SAME line, so this
+        malformed layout returns None (no match) instead of bleeding.
+        """
+        f = self.tmp / "001-task.md"
+        f.write_text(
+            "# Task 001: Malformed\n\n**Status**:\n\nComplete\n",
+            encoding="utf-8",
+        )
+        result = _read_task_status(f)
+        self.assertIsNone(
+            result,
+            "Malformed task (value on next line after blank) must return None, "
+            "not bleed 'Complete' from the following line; got {0!r}".format(result),
+        )
+
+    def test_malformed_immediately_next_line_returns_none(self):
+        """**Status**: on its own line, value on the very next line → no match.
+
+        A tighter malformed layout: "**Status**:\\nComplete\\n".  \\s* would
+        also bleed here (newline is whitespace); [ \\t]* does not.
+        """
+        f = self.tmp / "001-task.md"
+        f.write_text(
+            "# Task 001: Malformed\n\n**Status**:\nComplete\n",
+            encoding="utf-8",
+        )
+        result = _read_task_status(f)
+        self.assertIsNone(
+            result,
+            "Malformed task (value on immediate next line) must return None; "
+            "got {0!r}".format(result),
+        )
+
+    def test_well_formed_single_line_still_matches(self):
+        """Well-formed '**Status**: Pending' is still captured correctly.
+
+        Confirms that narrowing \\s* to [ \\t]* does NOT break the normal case.
+        """
+        f = self.tmp / "001-task.md"
+        f.write_text("# Task 001: Normal\n\n**Status**: Pending\n", encoding="utf-8")
+        self.assertEqual(_read_task_status(f), "Pending")
+
+    def test_well_formed_with_tab_separator_matches(self):
+        """**Status**:<TAB>Complete is also a well-formed horizontal-ws layout."""
+        f = self.tmp / "001-task.md"
+        f.write_text("**Status**:\tComplete\n", encoding="utf-8")
+        self.assertEqual(_read_task_status(f), "Complete")
+
+
 if __name__ == "__main__":
     unittest.main()

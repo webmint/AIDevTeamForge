@@ -146,7 +146,13 @@ _AC_LINE_PATTERN = re.compile(r"^\s*-\s+\[[xX ]\]\s+\*\*AC-\d+\*\*", re.MULTILIN
 _AC_SUBSECTION_PATTERN = re.compile(r"^###\s+5\.\d+\s+", re.MULTILINE)
 
 # Frontmatter field patterns.
-_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:\s*(.+)$", re.MULTILINE)
+#
+# IMPORTANT: _STATUS_PATTERN uses [ \t]* (horizontal whitespace only), NOT
+# \s*.  The status value MUST appear on the same line as the **Status**:
+# marker.  Using \s* would allow the match to bleed across a blank line and
+# capture a value from the next non-empty line in a malformed spec (e.g.
+# "**Status**:\n\nDraft\n" would wrongly yield "Draft").
+_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:[ \t]*(.+)$", re.MULTILINE)
 _DATE_PATTERN = re.compile(r"^\*\*Date\*\*:\s*(.+)$", re.MULTILINE)
 _SPEC_TYPE_PATTERN = re.compile(r"^\*\*Spec type\*\*:\s*(.+)$", re.MULTILINE)
 

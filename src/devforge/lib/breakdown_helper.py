@@ -79,9 +79,9 @@ Subcommands:
       Exit 1: I/O write failure.
       Idempotent: re-running overwrites the previous breakdown-handoff.json.
 
-  render-execute-task-handoff <plan-path>
+  render-implement-handoff <plan-path>
       Emit a deterministic manual next-step block the LLM copies verbatim,
-      targeting /execute-task. Reads tasks/*.md to determine task count and
+      targeting /implement. Reads tasks/*.md to determine task count and
       first task number. Includes a restart-Claude-Code reminder.
       Exit 0; exit 2 if plan.md or tasks-dir missing/empty.
 
@@ -140,7 +140,12 @@ def _file_mtime_iso(path: str) -> str:
 # Frontmatter parsing helpers.
 # ---------------------------------------------------------------------------
 
-_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:\s*(.+)$", re.MULTILINE)
+# IMPORTANT: uses [ \t]* (horizontal whitespace only), NOT \s*.  The status
+# value MUST appear on the same line as the **Status**: marker.  Using \s*
+# would allow the match to bleed across a blank line and capture a value from
+# the next non-empty line in a malformed plan (e.g. "**Status**:\n\nDraft\n"
+# would wrongly yield "Draft").
+_STATUS_PATTERN = re.compile(r"^\*\*Status\*\*:[ \t]*(.+)$", re.MULTILINE)
 _DATE_PATTERN = re.compile(r"^\*\*Date\*\*:\s*(.+)$", re.MULTILINE)
 
 
@@ -930,10 +935,10 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
         lines.append("- [ ] {0}".format(fixed_line))
     lines.append("")
 
-    # Completion Notes — skeleton for execute-task.
+    # Completion Notes — skeleton for /implement.
     lines.append("## Completion Notes")
     lines.append("")
-    lines.append("[Filled in by execute-task after completion]")
+    lines.append("[Filled in by /implement after completion]")
     lines.append("**Completed**: [date/time]")
     lines.append("**Files changed**: [actual files]")
     lines.append("**Contract**: Expects [X/Y verified] | Produces [X/Y verified]")
@@ -1108,7 +1113,7 @@ def _parse_expects_produces(content: str) -> "Tuple[List[str], List[str]]":
     here.  Callers that need case-insensitive matching (e.g. verify-contract-chain)
     apply _normalize_bullet at COMPARISON TIME.  Callers that store the bullets
     for later consumption (e.g. finalize-handoff) receive the original-case text
-    so downstream consumers (e.g. /execute-task) can verify real code symbols.
+    so downstream consumers (e.g. /implement) can verify real code symbols.
 
     The function locates:
       - '### Expects (checked before execution)' as the start of expects bullets.
@@ -1862,12 +1867,12 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Subcommand: render-execute-task-handoff (Phase 4, Verb 2)
+# Subcommand: render-implement-handoff (Phase 4, Verb 2)
 # ---------------------------------------------------------------------------
 
 
-def cmd_render_execute_task_handoff(args: argparse.Namespace) -> int:
-    """Emit the manual next-step block targeting /execute-task.
+def cmd_render_implement_handoff(args: argparse.Namespace) -> int:
+    """Emit the manual next-step block targeting /implement.
 
     Reads plan.md to confirm it exists, then globs tasks/*.md to determine
     the first (lowest-numbered) task and total task count.
@@ -1887,7 +1892,7 @@ def cmd_render_execute_task_handoff(args: argparse.Namespace) -> int:
 
     if not plan_path.is_file():
         return _die(
-            "render-execute-task-handoff: plan not found: {0}".format(plan_path_raw)
+            "render-implement-handoff: plan not found: {0}".format(plan_path_raw)
         )
 
     plan_dir = plan_path.parent
@@ -1895,13 +1900,13 @@ def cmd_render_execute_task_handoff(args: argparse.Namespace) -> int:
 
     if not tasks_dir.is_dir():
         return _die(
-            "render-execute-task-handoff: tasks directory not found: {0}".format(tasks_dir)
+            "render-implement-handoff: tasks directory not found: {0}".format(tasks_dir)
         )
 
     task_files = _glob_task_files(str(tasks_dir))
     if not task_files:
         return _die(
-            "render-execute-task-handoff: no task files found in {0}".format(tasks_dir)
+            "render-implement-handoff: no task files found in {0}".format(tasks_dir)
         )
 
     # Determine first task number and total count.
@@ -1930,15 +1935,17 @@ def cmd_render_execute_task_handoff(args: argparse.Namespace) -> int:
             checkpoint_count += 1
 
     output = (
-        "## Manual next step — run /execute-task\n"
+        "## Manual next step — run /implement\n"
         "\n"
         "The breakdown is approved. No automated handoff exists — restart Claude Code "
         "(exit and relaunch the CLI/app so any newly-installed command is picked up), "
         "then run:\n"
         "\n"
         "```\n"
-        "/execute-task {first_number}\n"
+        "/implement\n"
         "```\n"
+        "\n"
+        "/implement will start with task {first_number}{title_suffix}.\n"
         "\n"
         "**Total tasks**: {total_tasks}\n"
         "**First task**: {first_number}{title_suffix}\n"
@@ -2121,17 +2128,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_finalize_handoff_breakdown)
 
-    # render-execute-task-handoff
+    # render-implement-handoff
     sp = sub.add_parser(
-        "render-execute-task-handoff",
+        "render-implement-handoff",
         help=(
-            "Emit the manual next-step block targeting /execute-task. "
+            "Emit the manual next-step block targeting /implement. "
             "Reads plan.md + tasks/*.md to compute task count and first task. "
             "Exit 0; exit 2 if plan.md or tasks-dir is missing or empty."
         ),
     )
     sp.add_argument("plan_path", help="Path to plan.md.")
-    sp.set_defaults(func=cmd_render_execute_task_handoff)
+    sp.set_defaults(func=cmd_render_implement_handoff)
 
     return parser
 

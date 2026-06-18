@@ -105,7 +105,18 @@ EXIT_ERR = 1
 EXIT_FINDINGS = 2
 
 # Pattern to match the **Status**: line.
-_STATUS_PATTERN = re.compile(r"^(\*\*Status\*\*:\s*)(.+)$", re.MULTILINE)
+# Group 1 = prefix ("**Status**: "), group 2 = current value.
+# _set_status uses: replacement = m.group(1) + new_status
+#   → preserves the prefix exactly (group 1) and overwrites only the value.
+#
+# IMPORTANT: uses [ \t]* (horizontal whitespace only) inside group 1, NOT \s*.
+# The status value MUST appear on the same line as the **Status**: marker.
+# Using \s* would allow the match to bleed across a blank line and capture a
+# value from the next non-empty line in a malformed task file (e.g.
+# "**Status**:\n\nComplete\n" would wrongly match "Complete").
+# On a well-formed line ("**Status**: Pending"), group 1 = "**Status**: "
+# and the replacement still reconstructs "**Status**: Complete" correctly.
+_STATUS_PATTERN = re.compile(r"^(\*\*Status\*\*:[ \t]*)(.+)$", re.MULTILINE)
 
 # Pattern to match an unticked Done-When checkbox.
 _UNCHECKED_BOX = re.compile(r"^(- \[ \] .*)$", re.MULTILINE)

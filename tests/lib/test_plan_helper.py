@@ -1418,6 +1418,7 @@ def _make_discover_memo(topic_slug="widget-search-feature", topic="Widget Search
         "topic": topic,
         "topic_slug": topic_slug,
         "date": date,
+        "verbatim_prompt": "Add full-text search capability over the widget catalog for API consumers",
         "dimensions": {
             "functional_scope": {"value": "Full-text search over widget catalog", "state": "Clear", "turns": 1},
             "users": {"value": "API consumers and internal clients", "state": "Clear", "turns": 1},
@@ -1530,6 +1531,10 @@ def _run_research_setup(devforge, research_helper_py):
 
     _rrun("--devforge-dir", str(devforge), "detect-mode", "--override", "bug")
     _rrun("--devforge-dir", str(devforge), "set-topic", "--value", "widget-stale-results")
+    _rrun(
+        "--devforge-dir", str(devforge), "set-verbatim-prompt",
+        "--value", "Widget query returns stale results after catalog update in widget_service",
+    )
     _rrun("--devforge-dir", str(devforge), "set-date", "--value", "2026-05-22")
 
     # Phase 1.
@@ -2078,6 +2083,116 @@ class RenderConsultationBlockTests(_CwdIsolation):
         result = _run(self.tmp_path, "--help")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("render-consultation-block", result.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Regression: _STATUS_PATTERN must NOT bleed across blank lines
+# ---------------------------------------------------------------------------
+
+
+class TestPlanStatusPatternNoBleed(unittest.TestCase):
+    """plan_helper._STATUS_PATTERN uses [ \\t]* (not \\s*) so a malformed spec/
+    plan file where **Status**: appears on a line by itself does NOT capture a
+    value from a subsequent non-empty line.
+
+    Tests round-trip via the public check-status-and-flip verb (subprocess),
+    mirroring production usage of _STATUS_PATTERN.search().
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    # ------------------------------------------------------------------
+    # Direct pattern-level tests (using the imported plan_helper module)
+    # ------------------------------------------------------------------
+
+    def test_malformed_blank_line_before_value_no_match(self):
+        """**Status**: on its own line, blank line, 'Draft' on next → no match.
+
+        Regression: \\s* matched across newlines; [ \\t]* does not.
+        """
+        malformed = "# Spec\n\n**Date**: 2026-01-01\n**Status**:\n\nDraft\n"
+        result = plan_helper._parse_frontmatter_field(
+            malformed, plan_helper._STATUS_PATTERN
+        )
+        self.assertIsNone(
+            result,
+            "Malformed spec (value on next line after blank) must return None; "
+            "got {0!r}".format(result),
+        )
+
+    def test_malformed_immediate_next_line_no_match(self):
+        """**Status**: on its own line, value immediately on next → no match."""
+        malformed = "# Spec\n\n**Date**: 2026-01-01\n**Status**:\nDraft\n"
+        result = plan_helper._parse_frontmatter_field(
+            malformed, plan_helper._STATUS_PATTERN
+        )
+        self.assertIsNone(
+            result,
+            "Malformed spec (value on immediate next line) must return None; "
+            "got {0!r}".format(result),
+        )
+
+    def test_well_formed_single_line_matches(self):
+        """Well-formed '**Status**: Draft' is still captured."""
+        content = "# Spec\n\n**Date**: 2026-01-01\n**Status**: Draft\n"
+        result = plan_helper._parse_frontmatter_field(
+            content, plan_helper._STATUS_PATTERN
+        )
+        self.assertEqual(result, "Draft")
+
+    def test_well_formed_with_tab_matches(self):
+        """**Status**:<TAB>Approved is a valid horizontal-ws layout."""
+        content = "**Status**:\tApproved\n"
+        result = plan_helper._parse_frontmatter_field(
+            content, plan_helper._STATUS_PATTERN
+        )
+        self.assertEqual(result, "Approved")
+
+    # ------------------------------------------------------------------
+    # CLI-level round-trip: check-status-and-flip with malformed spec
+    # ------------------------------------------------------------------
+
+    def test_check_status_and_flip_malformed_blank_before_value_treated_as_missing(self):
+        """check-status-and-flip on a spec whose **Status**: has no value on the
+        same line falls through to the 'no Status line' branch.
+
+        When **Date**: is also absent the helper exits 2 (malformed).  This
+        confirms the malformed layout is NOT mis-parsed as a valid status value
+        (which would previously yield 'flipped' or 'already-approved' due to
+        the \\s* bleed bug).
+        """
+        # A spec with **Status**: on its own line and blank then value,
+        # AND no **Date**: line → the 'no Date or Status found' path → exit 2.
+        malformed = (
+            "# Spec: Malformed\n\n"
+            "**Status**:\n\n"
+            "Draft\n\n"
+            "## 1. Overview\n\nSomething.\n"
+        )
+        spec_file = self.tmp_path / "spec.md"
+        spec_file.write_text(malformed, encoding="utf-8")
+
+        result = _run(self.tmp_path, "check-status-and-flip", str(spec_file))
+        # The helper must NOT treat the next line's "Draft" as the status value.
+        # With the fix, no **Status**: match → falls to 'no Date or Status found'
+        # path → exit 2 (malformed).
+        self.assertNotEqual(
+            result.stdout.strip(),
+            "flipped",
+            "check-status-and-flip must NOT 'flip' a spec whose **Status**: "
+            "value is on the next line (bleed bug); stdout={0!r}".format(result.stdout),
+        )
+        self.assertNotEqual(
+            result.stdout.strip(),
+            "already-approved",
+            "check-status-and-flip must NOT report 'already-approved' for a "
+            "malformed spec; stdout={0!r}".format(result.stdout),
+        )
 
 
 if __name__ == "__main__":
