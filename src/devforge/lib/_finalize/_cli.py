@@ -17,8 +17,8 @@ Phase 2 ships 3 read/compute verbs (NO git history mutation):
 Extension point for later phases: append to _SUBCOMMAND_REGISTRY and add
 the corresponding argument block in _register_subcommands's elif chain.
 
-Phase 3+ verbs (not yet wired):
-  squash              — git-mutating squash execution (Phase 3)
+Phase 3 ships the git-mutating squash verb:
+  squash              — git-mutating squash execution; gated by --confirm flag
 """
 
 from __future__ import annotations
@@ -51,6 +51,13 @@ def cmd_check_pushed(args):
     # type: (argparse.Namespace) -> int
     """Handle the check-pushed verb.  Delegates to _squash module."""
     from ._squash import cmd_check_pushed as _impl
+    return _impl(args)
+
+
+def cmd_squash(args):
+    # type: (argparse.Namespace) -> int
+    """Handle the squash verb.  Delegates to _squash module."""
+    from ._squash import cmd_squash as _impl
     return _impl(args)
 
 
@@ -158,8 +165,18 @@ _SUBCOMMAND_REGISTRY = [
         ),
         cmd_check_pushed,
     ),
-    # Phase 3:
-    #   ("squash", "...", cmd_squash),
+    (
+        "squash",
+        (
+            "Squash WIP/checkpoint commits into one clean feature commit. "
+            "Requires --confirm to execute; without it, emits a dry-run preview (no mutation). "
+            "Guards: refuses if commits already pushed; no-op when nothing to squash. "
+            "Install/wrapper repo: feat(<name>): <title> + COMMIT_ATTRIBUTION per config. "
+            "Source repo (wrapper mode): [TICKET-ID] - Description, NO attribution (D5). "
+            "Emits JSON to stdout (Phase 3)."
+        ),
+        cmd_squash,
+    ),
 ]
 
 
@@ -260,6 +277,69 @@ def _register_subcommands(subparsers):
                 dest="repo_root",
                 metavar="DIR",
                 help="Path to the git repository root to check. Default: CWD.",
+            )
+
+        elif verb == "squash":
+            sp.add_argument(
+                "--install-root",
+                default=".",
+                dest="install_root",
+                metavar="DIR",
+                help="Path to the forge install/wrapper root. Default: CWD.",
+            )
+            sp.add_argument(
+                "--source-root",
+                default=None,
+                dest="source_root",
+                metavar="DIR",
+                help=(
+                    "Path to the source repo (wrapper mode). "
+                    "When omitted, defaults to install_root (standalone)."
+                ),
+            )
+            sp.add_argument(
+                "--install-message",
+                default="",
+                dest="install_message",
+                metavar="MSG",
+                help=(
+                    "Commit subject for the install/wrapper repo. "
+                    "Convention: 'feat(<feature-name>): <spec title>'. "
+                    "COMMIT_ATTRIBUTION is appended by the verb (per config). "
+                    "Required when confirm is used."
+                ),
+            )
+            sp.add_argument(
+                "--source-message",
+                default="",
+                dest="source_message",
+                metavar="MSG",
+                help=(
+                    "Commit message for the source repo (wrapper mode only). "
+                    "Convention: '[TICKET-ID] - Description'. "
+                    "Used AS-IS — no attribution is ever appended (D5)."
+                ),
+            )
+            sp.add_argument(
+                "--confirm",
+                action="store_true",
+                default=False,
+                dest="confirm",
+                help=(
+                    "Execute the squash. Without this flag, emits a dry-run "
+                    "preview JSON (confirmed=false) and mutates nothing. "
+                    "REQUIRED to perform history mutation."
+                ),
+            )
+            sp.add_argument(
+                "--default-branch",
+                default=None,
+                dest="default_branch",
+                metavar="REF",
+                help=(
+                    "Default/trunk branch name (e.g. 'main'). "
+                    "When omitted, auto-detected via origin/HEAD -> main -> develop -> master."
+                ),
             )
 
         elif verb == "preflight":

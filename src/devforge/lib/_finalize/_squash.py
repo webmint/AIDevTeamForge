@@ -1,6 +1,6 @@
-"""_squash.py — squash-base resolution + already-pushed guard for finalize_helper.
+"""_squash.py — squash-base resolution, already-pushed guard, and squash execution.
 
-Phase 2 ships two read/compute verbs (NO git history mutation — that is Phase 3):
+Phase 2 ships two read/compute verbs (NO git history mutation):
 
   resolve-squash-base
       Compute the commit SHA to squash back to:
@@ -33,19 +33,44 @@ Phase 2 ships two read/compute verbs (NO git history mutation — that is Phase 
         no_upstream           bool  — True when the remote or upstream doesn't exist
         error                 str or None  — present and non-None only on fatal failure
 
+Phase 3 adds the git-mutating squash verb:
+
+  squash
+      Squash WIP/checkpoint commits into one clean commit.
+      Guards (enforced in-helper, regardless of what the orchestrator does):
+        1. --confirm required: without it, emits a dry-run preview JSON and exits 0
+           with confirmed=false.  NO history mutation without explicit confirmation.
+        2. Already-pushed refusal: re-runs check_pushed per repo; refuses squash for
+           any repo whose commits are already on the remote (don't rewrite shared history).
+        3. No-op when nothing to squash: each repo's no-op is determined by ITS OWN
+           squash base — install strategy="none" does NOT short-circuit the source
+           repo in wrapper mode if the source repo has a valid base.
+        4. Root-commit error: `resolve_squash_base` returns `error != None`;
+           `squash()` surfaces it via the `if base_info.get('error')` check, BEFORE
+           the per-repo no-op logic.
+      In wrapper mode (source_root != install_root), squashes BOTH repos:
+        - Install repo:  feat(<feature-name>): <title> + COMMIT_ATTRIBUTION per config
+        - Source repo:   [TICKET-ID] - Description, NO attribution, NO traces (D5).
+          This is enforced by the helper — the source path NEVER appends attribution
+          regardless of config or what the orchestrator passes as source_message.
+      Dangerous-state handling: if reset --soft succeeded but git commit failed,
+      the resulting state is reported with a DANGER_STATE flag so the caller knows
+      the working tree is in a partially-squashed state.
+      Returns a dict with per-repo outcomes.
+
 Exit codes for CLI handlers:
-  0 — success (JSON emitted to stdout)
-  2 — error (message on stderr)
+  0 — success (JSON emitted to stdout); also 0 for dry-run (confirmed=false)
+  2 — error (message on stderr) or already-pushed refusal
 
 Design notes:
 - All git operations use git -C <repo> (never a process cwd change).
 - _extract_ticket_id is imported from _implement._cmds_commit — the one
   canonical authority for the [A-Z]+-[0-9]+ Jira-style ticket token.
-  It is exercised here (Phase 2) so Phase 3's squash verb can consume a
-  tested value without re-authoring the regex.
+- _get_commit_attribution and _load_project_config are imported from
+  _implement._cmds_commit — the one canonical authority for config loading
+  and attribution reading.
 - The BSD-safe --fixed-strings form is used for all [checkpoint] / [WIP]
   greps (same discipline as _preflight.py, _summarize, etc.).
-- NO git reset --soft, NO git commit in this module (Phase 3 adds those).
 
 Stdlib only.  Python 3.8+.
 """
@@ -56,10 +81,13 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Import the canonical ticket-ID extractor from implement — do NOT re-author.
-from _implement._cmds_commit import _extract_ticket_id  # type: ignore  # noqa: F401
+# Import canonical helpers from implement — do NOT re-author any of these.
+from _implement._cmds_commit import _extract_ticket_id       # type: ignore  # noqa: F401
+from _implement._cmds_commit import _get_commit_attribution  # type: ignore  # noqa: F401
+from _implement._cmds_commit import _load_project_config     # type: ignore  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -483,3 +511,380 @@ def cmd_check_pushed(args):
         return 2
 
     return 0
+
+
+# ---------------------------------------------------------------------------
+# squash — Phase 3: the net-new git-mutating core
+# ---------------------------------------------------------------------------
+
+
+def _git_reset_soft(repo_root, base_sha):
+    # type: (str, str) -> Optional[str]
+    """Run git -C <repo_root> reset --soft <base_sha>.
+
+    Returns None on success, error message string on failure.
+    Never raises.
+    """
+    rc, stdout, stderr = _git(["reset", "--soft", base_sha], repo_root)
+    if rc != 0:
+        return "git reset --soft {0} failed in {1!r} (rc={2}): {3}".format(
+            base_sha[:12], repo_root, rc, stderr.strip() or stdout.strip()
+        )
+    return None
+
+
+def _git_commit_simple(repo_root, message):
+    # type: (str, str) -> Tuple[Optional[str], Optional[str]]
+    """Run git -C <repo_root> commit -m <message>.
+
+    Returns (new_head_sha, error_or_none).
+    Never raises.
+    """
+    rc, stdout, stderr = _git(["commit", "-m", message], repo_root)
+    if rc != 0:
+        return None, "git commit failed in {0!r} (rc={1}): {2}".format(
+            repo_root, rc, stderr.strip() or stdout.strip()
+        )
+    # Read the new HEAD SHA.
+    rc2, head_out, _ = _git(["rev-parse", "HEAD"], repo_root)
+    if rc2 != 0:
+        return None, "commit succeeded but could not read HEAD SHA in {0!r}".format(
+            repo_root
+        )
+    head_sha = head_out.strip()
+    return (head_sha if head_sha else None), None
+
+
+def squash(
+    install_root,          # type: str
+    source_root,           # type: str
+    install_message,       # type: str
+    source_message,        # type: str
+    confirm=False,         # type: bool
+    default_branch=None,   # type: Optional[str]
+):
+    # type: (...) -> Dict
+    """Squash WIP/checkpoint commits in install repo and (wrapper mode) source repo.
+
+    Parameters
+    ----------
+    install_root:
+        Absolute path to the forge install/wrapper root.
+    source_root:
+        Absolute path to the source tree.  Equals install_root in standalone mode.
+    install_message:
+        The orchestrator-composed commit subject for the install/wrapper repo
+        (e.g. 'feat(001-my-feature): implement widget catalog').
+        The verb APPENDS COMMIT_ATTRIBUTION from config when non-empty.
+    source_message:
+        The orchestrator-composed commit message for the source repo
+        (e.g. '[PROJ-123] - Implement widget catalog').
+        Used AS-IS — the verb NEVER appends attribution to the source repo.
+        This is a hard invariant enforced here, not by the caller.
+    confirm:
+        When False: dry-run — emits preview JSON (the exact commit messages that WILL
+            be used, attribution already included — no mutation).
+        When True: execute the squash.
+    default_branch:
+        Branch name for squash-base resolution.  None = auto-detect.
+
+    Returns a dict (always — never raises):
+      confirmed          bool         — True if execution was attempted (not dry-run)
+      install_repo       dict or None — per-repo outcome for the install repo
+      source_repo        dict or None — per-repo outcome for the source repo (None = standalone)
+      error              str or None  — top-level error (e.g. squash-base resolution failure)
+
+    Per-repo outcome dict:
+      repo               str          — absolute path to the repo
+      squash_base        str or None  — SHA squashed back to
+      head_sha           str or None  — new HEAD SHA after squash (None if refused/failed)
+      message_used       str or None  — exact commit message used
+      attribution_applied bool        — True when attribution was appended (install repo only)
+      refused            bool         — True when squash was refused (already pushed / no base)
+      refusal_reason     str or None  — human-readable refusal reason
+      danger_state       bool         — True when reset --soft succeeded but commit failed
+      error              str or None  — per-repo error message
+    """
+    abs_install = os.path.realpath(install_root)
+    abs_source  = os.path.realpath(source_root)
+    is_wrapper  = (abs_source != abs_install)
+
+    result = {
+        "confirmed":   confirm,
+        "install_repo": None,
+        "source_repo":  None,
+        "error":        None,
+    }  # type: Dict
+
+    # --- Resolve the squash base (no mutation) ---
+    base_info = resolve_squash_base(
+        install_root=abs_install,
+        source_root=abs_source,
+        default_branch=default_branch,
+    )
+
+    # Fatal error from resolve_squash_base (e.g. root-commit-checkpoint) — surface, no mutation.
+    if base_info.get("error"):
+        result["error"] = base_info["error"]
+        return result
+
+    install_base = base_info.get("install_squash_base")
+    source_base  = base_info.get("source_squash_base")
+
+    # --- Load attribution config (from install_root's .devforge/) ---
+    # Done before the per-repo logic so dry-run preview includes the attribution.
+    try:
+        config = _load_project_config(Path(abs_install))
+    except ValueError:
+        config = {}
+    attribution = _get_commit_attribution(config)
+
+    # Compose the final install message (subject + optional attribution trailer).
+    if attribution:
+        install_final_message = install_message + attribution
+    else:
+        install_final_message = install_message
+
+    # Source repo message is ALWAYS the caller-supplied string with NO attribution.
+    # This is enforced HERE, never delegated to the caller (D5).
+    source_final_message = source_message  # attribution is NEVER appended here
+
+    # --- Per-repo no-op check ---
+    # Each repo's no-op is determined by ITS OWN squash base, not the install
+    # strategy.  install_base=None means install repo has nothing to squash;
+    # source_base=None means source repo has nothing to squash (or is standalone).
+    install_no_op = (install_base is None)
+    source_no_op  = (not is_wrapper) or (source_base is None)
+
+    # --- Dry-run (no --confirm): return preview without any mutation ---
+    if not confirm:
+        if install_no_op:
+            result["install_repo"] = {
+                "repo":               abs_install,
+                "squash_base":        None,
+                "head_sha":           None,
+                "message_used":       None,
+                "attribution_applied": False,
+                "refused":            False,
+                "refusal_reason":     "nothing to squash (no WIP/checkpoint commits found)",
+                "danger_state":       False,
+                "error":              None,
+            }
+        else:
+            result["install_repo"] = {
+                "repo":               abs_install,
+                "squash_base":        install_base,
+                "head_sha":           None,
+                "message_used":       install_final_message,
+                "attribution_applied": bool(attribution),
+                "refused":            False,
+                "refusal_reason":     None,
+                "danger_state":       False,
+                "error":              None,
+            }
+        if is_wrapper:
+            if source_no_op:
+                result["source_repo"] = {
+                    "repo":               abs_source,
+                    "squash_base":        None,
+                    "head_sha":           None,
+                    "message_used":       None,
+                    "attribution_applied": False,
+                    "refused":            False,
+                    "refusal_reason":     "could not resolve squash base for source repo",
+                    "danger_state":       False,
+                    "error":              None,
+                }
+            else:
+                result["source_repo"] = {
+                    "repo":               abs_source,
+                    "squash_base":        source_base,
+                    "head_sha":           None,
+                    "message_used":       source_final_message,
+                    "attribution_applied": False,  # NEVER for source repo
+                    "refused":            False,
+                    "refusal_reason":     None,
+                    "danger_state":       False,
+                    "error":              None,
+                }
+        return result
+
+    # --- Execute the squash (--confirm provided) ---
+
+    # ---- Install repo ----
+    if install_no_op:
+        result["install_repo"] = {
+            "repo":               abs_install,
+            "squash_base":        None,
+            "head_sha":           None,
+            "message_used":       None,
+            "attribution_applied": False,
+            "refused":            False,
+            "refusal_reason":     "nothing to squash (no WIP/checkpoint commits found)",
+            "danger_state":       False,
+            "error":              None,
+        }
+    else:
+        install_outcome = _squash_one_repo(
+            repo_root=abs_install,
+            squash_base=install_base,
+            message=install_final_message,
+            attribution_applied=bool(attribution),
+            repo_label="install",
+        )
+        result["install_repo"] = install_outcome
+
+    # ---- Source repo (wrapper mode only) ----
+    if is_wrapper:
+        if source_no_op:
+            result["source_repo"] = {
+                "repo":               abs_source,
+                "squash_base":        None,
+                "head_sha":           None,
+                "message_used":       None,
+                "attribution_applied": False,
+                "refused":            False,
+                "refusal_reason":     "could not resolve squash base for source repo",
+                "danger_state":       False,
+                "error":              None,
+            }
+        else:
+            source_outcome = _squash_one_repo(
+                repo_root=abs_source,
+                squash_base=source_base,
+                message=source_final_message,
+                # Source repo NEVER gets attribution — hard-coded False here (D5).
+                attribution_applied=False,
+                repo_label="source",
+            )
+            result["source_repo"] = source_outcome
+
+    return result
+
+
+def _squash_one_repo(repo_root, squash_base, message, attribution_applied, repo_label):
+    # type: (str, str, str, bool, str) -> Dict
+    """Squash one repo (install or source) via reset --soft + commit.
+
+    Returns a per-repo outcome dict.  Never raises.
+
+    D6 guard: runs check_pushed first; refuses if already pushed.
+    Dangerous-state handling: if reset succeeded but commit failed, sets
+    danger_state=True in the returned dict so the caller knows the history
+    is in a partially-squashed state.
+    """
+    outcome = {
+        "repo":               repo_root,
+        "squash_base":        squash_base,
+        "head_sha":           None,
+        "message_used":       message,
+        "attribution_applied": attribution_applied,
+        "refused":            False,
+        "refusal_reason":     None,
+        "danger_state":       False,
+        "error":              None,
+    }  # type: Dict
+
+    # Guard: already pushed → refuse (never rewrite shared history).
+    push_check = check_pushed(repo_root)
+    if push_check.get("error"):
+        outcome["refused"] = True
+        outcome["refusal_reason"] = (
+            "could not determine push status for {0} repo ({1}): {2}".format(
+                repo_label, repo_root, push_check["error"]
+            )
+        )
+        outcome["error"] = push_check["error"]
+        return outcome
+
+    if push_check.get("is_pushed"):
+        outcome["refused"] = True
+        outcome["refusal_reason"] = (
+            "{0} repo ({1}) branch {2!r} has already been pushed to origin — "
+            "refusing squash to avoid rewriting shared history".format(
+                repo_label, repo_root, push_check.get("branch")
+            )
+        )
+        return outcome
+
+    # Run git reset --soft <base>.
+    reset_err = _git_reset_soft(repo_root, squash_base)
+    if reset_err is not None:
+        outcome["error"] = reset_err
+        return outcome
+
+    # Run git commit (the point of no return after reset --soft).
+    new_sha, commit_err = _git_commit_simple(repo_root, message)
+    if commit_err is not None:
+        # reset --soft succeeded but commit failed — DANGER STATE.
+        # The working tree has all changes staged but no commit yet.
+        outcome["danger_state"] = True
+        outcome["error"] = (
+            "DANGER STATE: git reset --soft succeeded but git commit failed "
+            "in {0} repo ({1}). Working tree is staged but uncommitted. "
+            "Commit manually with: git -C {1} commit -m '<message>'. "
+            "Original error: {2}".format(repo_label, repo_root, commit_err)
+        )
+        return outcome
+
+    outcome["head_sha"] = new_sha
+    return outcome
+
+
+def cmd_squash(args):
+    # type: (object) -> int
+    """Handle the squash verb.
+
+    Without --confirm: emits dry-run preview JSON (confirmed=false), exits 0.
+    With --confirm: executes the squash, emits result JSON.
+    Exits 2 on fatal errors (squash-base resolution failure, already-pushed
+    refusal in either repo, or dangerous half-complete state).
+    """
+    install_root    = getattr(args, "install_root", ".") or "."
+    source_root     = getattr(args, "source_root",  None) or install_root
+    install_message = getattr(args, "install_message", "") or ""
+    source_message  = getattr(args, "source_message",  "") or ""
+    confirm         = bool(getattr(args, "confirm", False))
+    default_branch  = getattr(args, "default_branch", None) or None
+
+    result = squash(
+        install_root=os.path.realpath(install_root),
+        source_root=os.path.realpath(source_root),
+        install_message=install_message,
+        source_message=source_message,
+        confirm=confirm,
+        default_branch=default_branch,
+    )
+
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+
+    # Top-level error (e.g. root-commit squash base, unresolvable base).
+    if result.get("error"):
+        sys.stderr.write("squash: {0}\n".format(result["error"]))
+        return 2
+
+    # Per-repo refusals or errors.
+    exit_code = 0
+    for repo_key in ("install_repo", "source_repo"):
+        repo_out = result.get(repo_key)
+        if repo_out is None:
+            continue
+        if repo_out.get("danger_state"):
+            sys.stderr.write("squash: {0}\n".format(repo_out.get("error", "")))
+            exit_code = 2
+        elif repo_out.get("error"):
+            sys.stderr.write(
+                "squash ({0}): {1}\n".format(repo_key, repo_out["error"])
+            )
+            exit_code = 2
+        elif repo_out.get("refused"):
+            sys.stderr.write(
+                "squash ({0}): refused — {1}\n".format(
+                    repo_key, repo_out.get("refusal_reason", "")
+                )
+            )
+            # Refused but not a dangerous state — still exit 2 so the orchestrator
+            # knows the squash did not complete.
+            exit_code = 2
+
+    return exit_code
