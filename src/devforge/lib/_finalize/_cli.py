@@ -9,13 +9,15 @@ Phase 1 (scaffold) ships 1 verb:
                + source_root / wrapper_mode resolution from CLAUDE.md
                + WIP/checkpoint detection (the "Nothing to finalize" no-op signal)
 
-Extension point for later phases: append to _SUBCOMMAND_REGISTRY and add
-the corresponding argument block in _register_subcommands's elif chain.
-
-Phase 2+ verbs (not yet wired — listed here for orientation):
+Phase 2 ships 3 read/compute verbs (NO git history mutation):
   gather-change-data  — assembled scope via _shared.feature_scope + merge-base
   resolve-squash-base — wrapper/install squash base + source-repo base
   check-pushed        — already-pushed guard (origin/<branch>..HEAD)
+
+Extension point for later phases: append to _SUBCOMMAND_REGISTRY and add
+the corresponding argument block in _register_subcommands's elif chain.
+
+Phase 3+ verbs (not yet wired):
   squash              — git-mutating squash execution (Phase 3)
 """
 
@@ -29,6 +31,27 @@ import sys
 # ---------------------------------------------------------------------------
 # Phase 1 handler: preflight
 # ---------------------------------------------------------------------------
+
+
+def cmd_gather_change_data(args):
+    # type: (argparse.Namespace) -> int
+    """Handle the gather-change-data verb.  Delegates to _changes module."""
+    from ._changes import cmd_gather_change_data as _impl
+    return _impl(args)
+
+
+def cmd_resolve_squash_base(args):
+    # type: (argparse.Namespace) -> int
+    """Handle the resolve-squash-base verb.  Delegates to _squash module."""
+    from ._squash import cmd_resolve_squash_base as _impl
+    return _impl(args)
+
+
+def cmd_check_pushed(args):
+    # type: (argparse.Namespace) -> int
+    """Handle the check-pushed verb.  Delegates to _squash module."""
+    from ._squash import cmd_check_pushed as _impl
+    return _impl(args)
 
 
 def cmd_preflight(args):
@@ -107,10 +130,34 @@ _SUBCOMMAND_REGISTRY = [
         ),
         cmd_preflight,
     ),
-    # Phase 2+ verbs will be appended here:
-    #   ("gather-change-data", "...", cmd_gather_change_data),
-    #   ("resolve-squash-base", "...", cmd_resolve_squash_base),
-    #   ("check-pushed", "...", cmd_check_pushed),
+    (
+        "gather-change-data",
+        (
+            "Assemble the feature-branch changed-file list + scope_block + merge_base "
+            "via _shared.feature_scope (heading_label='Finalize Scope') for the "
+            "tech-writer brief. Emits JSON to stdout (Phase 2)."
+        ),
+        cmd_gather_change_data,
+    ),
+    (
+        "resolve-squash-base",
+        (
+            "Compute the squash base SHA for the install repo (merge-base on a feature "
+            "branch; oldest [checkpoint] parent on DEFAULT_BRANCH) and, in wrapper mode, "
+            "the source repo (merge-base scoped to source_root). Emits JSON to stdout. "
+            "NO git history mutation (Phase 2)."
+        ),
+        cmd_resolve_squash_base,
+    ),
+    (
+        "check-pushed",
+        (
+            "Report whether the current branch's commits have been pushed to "
+            "origin/<branch>. Emits JSON to stdout. Safe-to-squash = NOT is_pushed. "
+            "Handles no-remote / no-upstream gracefully (Phase 2)."
+        ),
+        cmd_check_pushed,
+    ),
     # Phase 3:
     #   ("squash", "...", cmd_squash),
 ]
@@ -141,7 +188,81 @@ def _register_subcommands(subparsers):
     for verb, help_text, handler in _SUBCOMMAND_REGISTRY:
         sp = subparsers.add_parser(verb, help=help_text)
 
-        if verb == "preflight":
+        if verb == "gather-change-data":
+            sp.add_argument(
+                "--feature-dir",
+                default="",
+                dest="feature_dir",
+                metavar="DIR",
+                help="Path to the specs/NNN-feature/ directory (for context in the scope block).",
+            )
+            sp.add_argument(
+                "--source-root",
+                default=".",
+                dest="source_root",
+                metavar="DIR",
+                help="Absolute path to the source repo (where git runs). Default: CWD.",
+            )
+            sp.add_argument(
+                "--install-root",
+                default=None,
+                dest="install_root",
+                metavar="DIR",
+                help=(
+                    "Absolute path to the forge install root (.devforge/ lives here). "
+                    "When omitted, defaults to source_root (standalone)."
+                ),
+            )
+            sp.add_argument(
+                "--base",
+                default=None,
+                dest="base",
+                metavar="REF",
+                help=(
+                    "Base git ref for the diff (e.g. 'main'). "
+                    "When omitted, auto-detected via origin/HEAD -> main -> develop -> master."
+                ),
+            )
+
+        elif verb == "resolve-squash-base":
+            sp.add_argument(
+                "--install-root",
+                default=".",
+                dest="install_root",
+                metavar="DIR",
+                help="Path to the forge install/wrapper root. Default: CWD.",
+            )
+            sp.add_argument(
+                "--source-root",
+                default=None,
+                dest="source_root",
+                metavar="DIR",
+                help=(
+                    "Path to the source repo (wrapper mode). "
+                    "When omitted, defaults to install_root (standalone)."
+                ),
+            )
+            sp.add_argument(
+                "--default-branch",
+                default=None,
+                dest="default_branch",
+                metavar="REF",
+                help=(
+                    "Default/trunk branch name (e.g. 'main'). "
+                    "When omitted, auto-detected via origin/HEAD -> main -> develop -> master."
+                ),
+            )
+
+        elif verb == "check-pushed":
+            sp.add_argument(
+                "--repo-root",
+                default=".",
+                dest="repo_root",
+                metavar="DIR",
+                help="Path to the git repository root to check. Default: CWD.",
+            )
+
+        elif verb == "preflight":
             sp.add_argument(
                 "--workspace-root",
                 default=".",

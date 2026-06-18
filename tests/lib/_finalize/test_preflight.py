@@ -1098,10 +1098,18 @@ class TestLauncherSmoke(unittest.TestCase):
         verbs = [v for v, _, _ in _SUBCOMMAND_REGISTRY]
         self.assertIn("preflight", verbs)
 
-    def test_registry_phase1_has_one_verb(self):
-        """Phase 1 ships 1 verb (preflight); later phases add more."""
+    def test_registry_has_phase2_verbs(self):
+        """Phase 2 adds gather-change-data, resolve-squash-base, check-pushed."""
         from _finalize._cli import _SUBCOMMAND_REGISTRY
-        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 1)
+        verbs = [v for v, _, _ in _SUBCOMMAND_REGISTRY]
+        # Phase 1: preflight
+        self.assertIn("preflight", verbs)
+        # Phase 2: read/compute verbs (no mutation yet)
+        self.assertIn("gather-change-data", verbs)
+        self.assertIn("resolve-squash-base", verbs)
+        self.assertIn("check-pushed", verbs)
+        # Total through Phase 2: 4 verbs
+        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 4)
 
     def test_registry_entries_are_triples(self):
         from _finalize._cli import _SUBCOMMAND_REGISTRY
