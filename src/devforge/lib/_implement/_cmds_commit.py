@@ -18,7 +18,9 @@ Algorithm
 5. Compose message:
    - wrapper mode:   "[TICKET-ID] - <title> (Task NNN)"
    - standalone:     "[WIP] task: <title> (Task NNN)"
-6. Append COMMIT_ATTRIBUTION exactly as stored (may be empty/absent → no append).
+6. Append COMMIT_ATTRIBUTION: in STANDALONE mode, append verbatim when non-empty
+   (empty/absent → no append). In WRAPPER mode, NO attribution is appended — the
+   SOURCE repo commit must carry no AI traces (D5 / Phase 6 belt-and-suspenders).
 7. Stage paths individually (`git add -- <path>`). NEVER `git add -A`.
    - WRAPPER mode:   stage ONLY source touched_files in the SOURCE repo
                      (`git -C <source_root> add -- <file>`).
@@ -70,9 +72,11 @@ Design notes:
   resolve_workspace() is the canonical detector (via PROJECT_ROOT); WORKSPACE_MODE
   is consulted for compatibility when the config contains it.
 - COMMIT_ATTRIBUTION: stored verbatim in project-config.json. May be an empty
-  string (ai_attribution == "No") or "\\n\\nCo-Authored-By: Claude <...>". The
-  value is appended directly to the message body (no extra newline added); if
-  absent (key not in config), no attribution line is added.
+  string (ai_attribution == "No") or "\\n\\nCo-Authored-By: Claude <...>". In
+  STANDALONE mode the value is appended directly to the message body (no extra
+  newline added); if absent (key not in config), no attribution line is added.
+  In WRAPPER mode attribution is SUPPRESSED entirely — the source-repo WIP commit
+  must carry no AI traces (D5 / Phase 6).
 - Staging safety: each path is staged individually so an unrelated dirty file
   in the working tree is NEVER committed.  git add -A is never used.
 - subprocess timeout: 30 s per git call. Generous but bounded.
@@ -425,7 +429,13 @@ def cmd_wip_commit(args):
         ticket_id = ""
 
     # --- Compose commit message ---
-    message = _compose_message(is_wrapper, ticket_id, title, number, attribution)
+    # D5 (Phase 6 belt-and-suspenders): the SOURCE (product) repo WIP commit
+    # must carry NO AI traces regardless of the COMMIT_ATTRIBUTION config.
+    # In wrapper mode the commit lands in the source repo, so attribution is
+    # suppressed here.  In standalone mode attribution is applied normally —
+    # the single repo follows the Commit Convention the user opted into.
+    message_attribution = "" if is_wrapper else attribution
+    message = _compose_message(is_wrapper, ticket_id, title, number, message_attribution)
 
     # --- Stage paths individually (NEVER git add -A) ---
     if is_wrapper:

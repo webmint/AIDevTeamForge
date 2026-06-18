@@ -433,6 +433,40 @@ class TestCmdWipCommit(unittest.TestCase):
         msg = _git_last_message(self.root)
         self.assertIn("Co-Authored-By: Claude", msg)
 
+    def test_standalone_attribution_unchanged_phase6_regression(self):
+        """Phase 6 regression: standalone WIP commit STILL appends attribution (byte-identical).
+
+        The Phase 6 change must NOT strip attribution from the standalone path.
+        This test proves the standalone arm is byte-identical to before Phase 6.
+        """
+        attribution = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        _write_project_config(
+            self.root, workspace_mode="standalone", commit_attribution=attribution
+        )
+        _write_wip_md(self.root)
+
+        self._create_staged_files("tasks/001-define-types.md", "tasks/README.md")
+
+        args = _make_fake_args(
+            files=json.dumps([]),
+            task_file="tasks/001-define-types.md",
+            index="tasks/README.md",
+            number="001",
+            title="Define types",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        # Standalone: attribution IS appended — the user opted in via ai_attribution config.
+        self.assertIn("Co-Authored-By: Claude", msg,
+                      "Standalone WIP commit must still carry attribution after Phase 6 (no regression)")
+        # Full expected message for byte-identical verification.
+        expected = "[WIP] task: Define types (Task 001)" + attribution
+        self.assertEqual(msg, expected,
+                         "Standalone message must be byte-identical to pre-Phase-6; "
+                         "got: {0!r}".format(msg))
+
     def test_no_attribution_when_absent(self):
         """No Co-Authored-By line when COMMIT_ATTRIBUTION is absent."""
         _write_project_config(self.root, workspace_mode="standalone", commit_attribution="")
@@ -1037,8 +1071,17 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
             self.assertNotIn("audit", cf,
                              "Install-root churn must not appear in source commit")
 
-    def test_wrapper_attribution_appended_in_source_commit(self):
-        """Wrapper mode: COMMIT_ATTRIBUTION is still appended when present."""
+    def test_wrapper_source_commit_no_attribution_when_set(self):
+        """Phase 6 D5: wrapper-mode SOURCE commit carries NO AI trace even when
+        COMMIT_ATTRIBUTION is configured.
+
+        This is the belt-and-suspenders guard for the already-pushed-skip edge:
+        if /finalize refuses to squash (WIP commits already pushed), the source
+        WIP commits must be traceless on the remote.
+
+        Assertion flipped from the pre-Phase-6 expectation that attribution WAS
+        appended (the old test name was test_wrapper_attribution_appended_in_source_commit).
+        """
         attribution = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
         source_dir, task_rel, index_rel = self._setup_wrapper(
             "bugfix/MIG-123", attribution=attribution
@@ -1057,7 +1100,44 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         self.assertEqual(rc, EXIT_OK)
 
         msg = _git_last_message(source_dir)
-        self.assertIn("Co-Authored-By: Claude", msg)
+        # D5: the source repo commit must carry NO Co-Authored-By / no AI trace,
+        # regardless of the COMMIT_ATTRIBUTION config value.
+        self.assertNotIn("Co-Authored-By", msg,
+                         "Source WIP commit must not contain Co-Authored-By (D5 traceless)")
+        self.assertNotIn("Co-Author", msg,
+                         "Source WIP commit must not contain any Co-Author trailer (D5)")
+        # The subject line itself must be intact.
+        self.assertIn("[MIG-123] - Define types (Task 001)", msg)
+
+    def test_wrapper_source_commit_traceless_real_git_fixture(self):
+        """Phase 6 D5: real two-repo git fixture — wrapper source commit has NO attribution.
+
+        Verifies the exact format:  '[TICKET-ID] - <title> (Task NNN)' with nothing
+        after it, even when COMMIT_ATTRIBUTION is a non-empty string.
+        """
+        attribution = "\n\nCo-Authored-By: Claude Opus <noreply@anthropic.com>"
+        source_dir, task_rel, index_rel = self._setup_wrapper(
+            "spec/FEAT-99-add-widget", attribution=attribution
+        )
+        src_file = self._stage_source_file(source_dir, "src/feature.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file=task_rel,
+            index=index_rel,
+            number="003",
+            title="Add widget",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+
+        msg = _git_last_message(source_dir)
+        # Exact format: subject only, no trailer.
+        expected = "[FEAT-99] - Add widget (Task 003)"
+        self.assertEqual(msg, expected,
+                         "Source WIP commit message must be exactly the traceless "
+                         "subject line; got: {0!r}".format(msg))
 
     def test_wrapper_source_branch_without_ticket_uses_full_branch(self):
         """Wrapper mode: source branch without Jira token → full branch name as TICKET-ID."""
