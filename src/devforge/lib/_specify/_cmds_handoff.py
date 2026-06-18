@@ -22,7 +22,7 @@ find-handoffs:
   Glob research/**/handoff.json AND discover/*.handoff.json under the repo
   root (parent of .devforge dir).  Filter by mtime within a --since window.
   Emit one line per hit; skip corrupt or schema-invalid files silently.
-  Exit 0 even on zero hits.
+  Exit 0 on zero hits (unless --require is passed; see cmd_find_handoffs for gate behavior).
 
 Stdlib only. Python 3.8+.
 """
@@ -622,13 +622,18 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
     """Glob research/**/handoff.json and discover/*.handoff.json; filter by mtime.
 
     --since accepts: "<N> day(s)", "<N> hour(s)", "<N> minute(s)".
+    --require: when set, exit 2 with a BLOCKED message on zero hits instead of
+      exit 0.  Callers that need the handoff-exists precondition (e.g. Phase 0.4)
+      pass --require; callers that only want the list (e.g. multi-pick UI) omit it.
+      The --require path does NOT offer an override or escape hatch.
+
     Output format (newest first):
       <mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <summary>
     For research: mode_or_verdict = "mode=<mode>", summary from plan_seeds.recommended_approach_summary.
     For discover: mode_or_verdict = "verdict=<verdict>", summary from plan_seeds.recommended_option_rationale.
     Summary truncated to 80 chars.
     Skips corrupt or schema-invalid files silently.
-    Exit 0 even on zero hits.
+    Exit 0 on zero hits (unless --require).
     """
     since_str = getattr(args, "since", None) or ""
     since_seconds = _parse_since_seconds(since_str)
@@ -738,6 +743,19 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
 
     # Sort newest first (across both lists merged).
     hits.sort(key=lambda h: h["mtime_ts"], reverse=True)
+
+    # --require gate: block when zero hits instead of exit 0.
+    require = getattr(args, "require", False)
+    if require and not hits:
+        sys.stderr.write(
+            "BLOCKED: /specify requires a research or discover handoff.\n"
+            "No research or discover handoff found within the --since window.\n"
+            "\n"
+            "Run one of the following first, then retry /specify:\n"
+            "  /research \"<topic>\"  — for a bug or enhancement against existing code\n"
+            "  /discover \"<idea>\"   — for a greenfield feature\n"
+        )
+        return 2
 
     for h in hits:
         sys.stdout.write(

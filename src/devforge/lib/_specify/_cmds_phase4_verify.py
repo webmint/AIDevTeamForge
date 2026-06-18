@@ -21,6 +21,7 @@ from ._schema import (
 )
 from ._state import _load_state
 from ._validators import _die
+from _shared.text_overlap import tokenize_for_overlap  # type: ignore[import]
 
 
 def cmd_verify_coverage(args: argparse.Namespace) -> int:
@@ -231,6 +232,94 @@ def cmd_check_constitution_compliance(args: argparse.Namespace) -> int:
                     rule[:120], tag, (body or "")[:120], ", ".join(overlap),
                 )
             )
+    return 0
+
+
+def cmd_verify_scope_coherence(args: argparse.Namespace) -> int:
+    """Non-blocking token-overlap scan: §5 ACs / §4 affected-areas vs §6 OOS.
+
+    For each §6 Out-of-Scope entry, extracts salient terms via the shared
+    tokenize_for_overlap helper, then checks whether any §5 AC statement or
+    §4 affected-area impact shares tokens with those terms.  A shared token
+    indicates the AC or affected-area may mandate behaviour that the §6 entry
+    explicitly excludes — a §5 ↔ §6 coherence contradiction.
+
+    This is a heuristic check that WILL produce false positives (two entries
+    sharing a noun without truly conflicting).  The posture is therefore
+    intentionally NON-BLOCKING: warnings are written to stderr but the
+    command always exits 0.  The author is prompted to reconcile manually —
+    either drop the §6 entry (the concern is in scope) or weaken/remove the
+    §5/§4 mandate (the concern is out of scope).  The check must not
+    auto-resolve; that decision belongs to the author.
+
+    Recovery advisory (inline per warning): reconcile — drop the §6 entry
+    (concern is in scope) OR weaken/remove the §5/§4 mandate (concern is out
+    of scope).
+    """
+    try:
+        state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        sys.stderr.write(
+            "verify-scope-coherence: state read failed: "
+            "{0} (non-blocking)\n".format(err)
+        )
+        return 0
+
+    oos_entries = state.get("out_of_scope", [])
+    if not oos_entries:
+        return 0
+
+    # Build target list: (tag, text) pairs from §5 ACs and §4 affected areas.
+    targets: List[Tuple[str, str]] = []
+    for ac in state.get("acceptance_criteria", []):
+        statement = (ac.get("statement") or "").strip()
+        if statement:
+            targets.append(("AC {0}".format(ac.get("ac_id", "?")), statement))
+    for area in state.get("affected_areas", []):
+        impact = (area.get("impact") or "").strip()
+        if impact:
+            targets.append((
+                "Affected area {0!r}".format(area.get("area", "?")),
+                impact,
+            ))
+
+    if not targets:
+        return 0
+
+    warnings: List[Tuple[str, str, str, List[str]]] = []
+    for oos in oos_entries:
+        oos_text = (oos.get("content") or "").strip()
+        if not oos_text:
+            continue
+        oos_tokens = set(tokenize_for_overlap(oos_text))
+        if not oos_tokens:
+            continue
+        for tag, body in targets:
+            body_tokens = set(tokenize_for_overlap(body))
+            overlap = oos_tokens & body_tokens
+            if overlap:
+                warnings.append((oos_text, tag, body, sorted(overlap)))
+
+    if warnings:
+        sys.stderr.write(
+            "verify-scope-coherence: §5/§4 entries may mandate behaviour "
+            "excluded by §6 Out-of-Scope (non-blocking — review and reconcile):\n"
+        )
+        for oos_text, tag, body, overlap in warnings:
+            sys.stderr.write(
+                "  - §6 OOS: {0}\n"
+                "    {1}: {2}\n"
+                "    overlap tokens: {3}\n"
+                "    reconcile: drop the §6 entry (concern is in scope) OR"
+                " weaken/remove the §5/§4 mandate (concern is out of scope).\n"
+                .format(
+                    oos_text[:120],
+                    tag,
+                    body[:120],
+                    ", ".join(overlap),
+                )
+            )
+    # Always exit 0 — non-blocking warning, mirrors check-constitution-compliance.
     return 0
 
 

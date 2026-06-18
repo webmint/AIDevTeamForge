@@ -38,6 +38,7 @@ from ._cmds_phase3 import (
     cmd_verify_mandatory_reads,
 )
 from ._cmds_phase4_setters import (
+    _LANDABLE_BUCKETS,
     cmd_add_ac,
     cmd_assign_feature_name,
     cmd_assign_spec_number,
@@ -50,6 +51,7 @@ from ._cmds_phase4_setters import (
     cmd_set_current_state,
     cmd_set_date,
     cmd_set_desired_behavior,
+    cmd_set_finding_landed,
     cmd_set_overview,
 )
 from ._cmds_phase4_verify import (
@@ -60,6 +62,7 @@ from ._cmds_phase4_verify import (
     cmd_verify_coverage,
     cmd_verify_numerical_consistency,
     cmd_verify_rendered,
+    cmd_verify_scope_coherence,
 )
 from ._cmds_handoff import (
     cmd_find_handoffs,
@@ -406,6 +409,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--mark-na", action="store_true", default=False, dest="mark_na",
         help="Record subsection-level N/A marker (requires --n-a-reason).",
     )
+    sp.add_argument(
+        "--finding-ref", action="append", dest="finding_ref", default=None,
+        metavar="FINDING_ID",
+        help="Phase 1.5 finding_id to land in this AC (repeatable).",
+    )
     sp.set_defaults(func=cmd_add_ac)
 
     sp = sub.add_parser(
@@ -456,6 +464,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="contract_doc_ref",
         help="EITHER --protocol OR --contract-doc-ref required for --kind external_system.",
     )
+    sp.add_argument(
+        "--finding-ref", action="append", dest="finding_ref", default=None,
+        metavar="FINDING_ID",
+        help="Phase 1.5 finding_id to land as this Constraint (repeatable).",
+    )
     sp.set_defaults(func=cmd_record_constraint)
 
     sp = sub.add_parser(
@@ -485,7 +498,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--impact", required=True, choices=list(IMPACT_ENUM),
     )
     sp.add_argument("--mitigation", required=True)
+    sp.add_argument(
+        "--finding-ref", action="append", dest="finding_ref", default=None,
+        metavar="FINDING_ID",
+        help="Phase 1.5 finding_id to land as this Risk (repeatable).",
+    )
     sp.set_defaults(func=cmd_record_risk)
+
+    sp = sub.add_parser(
+        "set-finding-landed",
+        help="Directly flip landed_in/landed_ref on a Phase 1.5 finding.",
+    )
+    sp.add_argument(
+        "--finding-id", required=True, dest="finding_id",
+        help="finding_id of the finding to update (e.g. F-constitution-1).",
+    )
+    sp.add_argument(
+        "--landed-in", required=True, dest="landed_in",
+        choices=list(_LANDABLE_BUCKETS),
+        help="Destination bucket (AC / Constraint / OOS / Risk).",
+    )
+    sp.add_argument(
+        "--landed-ref", default="", dest="landed_ref",
+        help="Optional reference to the landing entry (e.g. AC-3, Constraint-1).",
+    )
+    sp.set_defaults(func=cmd_set_finding_landed)
 
     sp = sub.add_parser(
         "verify-coverage",
@@ -521,6 +558,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to constitution.md (default: ./constitution.md).",
     )
     sp.set_defaults(func=cmd_check_constitution_compliance)
+
+    sp = sub.add_parser(
+        "verify-scope-coherence",
+        help=(
+            "Non-blocking: flag §5 ACs / §4 affected-areas whose text "
+            "token-overlaps a §6 Out-of-Scope entry (§5↔§6 contradiction "
+            "candidate). Exits 0 always; warnings to stderr."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_scope_coherence)
 
     sp = sub.add_parser(
         "render", help="Emit 9-section spec markdown to stdout.",
@@ -622,6 +669,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--since", required=True,
         help="Duration window, e.g. '7 days', '24 hours', '1 hour'.",
+    )
+    sp.add_argument(
+        "--require", action="store_true", default=False,
+        help=(
+            "Exit 2 with a BLOCKED message when zero handoffs are found. "
+            "Used by Phase 0.4 to enforce the research/discover precondition. "
+            "No override path exists."
+        ),
     )
     sp.set_defaults(func=cmd_find_handoffs)
 

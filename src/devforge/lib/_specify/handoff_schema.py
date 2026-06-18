@@ -377,7 +377,7 @@ class DownstreamLinks:
     """Back-references filled as the artefact flows through the pipeline.
 
     plan_path is filled by /plan; execute_task_commit_shas accumulates
-    SHAs per /execute-task invocation.
+    SHAs per /implement invocation.
     NOTE: spec_path is NOT duplicated here -- Handoff.spec_path is the
     canonical artifact location; duplication would create two sources.
     """

@@ -2506,14 +2506,21 @@ class TestPhase4SectionSetters(unittest.TestCase):
     def test_record_out_of_scope_with_finding_ref(self):
         with tempfile.TemporaryDirectory() as td:
             dev = self._dev(td)
+            # Record the finding first so the ref is valid.
+            r = _run([
+                "--devforge-dir", str(dev), "record-finding",
+                "--source-path", "constitution.md",
+                "--content", "CI runner migration finding",
+            ])
+            fid = r.stdout.strip()
             _run([
                 "--devforge-dir", str(dev), "record-out-of-scope",
                 "--content", "Migrate CI runner",
-                "--finding-ref", "F-constitution-1",
+                "--finding-ref", fid,
             ])
             state = json.loads((dev / "specify-state.json").read_text())
             self.assertEqual(state["out_of_scope"][0]["content"], "Migrate CI runner")
-            self.assertEqual(state["out_of_scope"][0]["finding_ref"], "F-constitution-1")
+            self.assertEqual(state["out_of_scope"][0]["finding_ref"], fid)
 
     def test_record_constraint_enforces_kind_enum(self):
         with tempfile.TemporaryDirectory() as td:
@@ -3253,6 +3260,308 @@ class TestPhase4CheckConstitutionCompliance(unittest.TestCase):
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("review", r.stderr.lower())
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — verify-scope-coherence (non-blocking §5↔§6 token-overlap check).
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4VerifyScopeCoherence(unittest.TestCase):
+    """Tests for verify-scope-coherence.
+
+    All tests use the real producer (record-out-of-scope / add-ac /
+    record-affected-area subcommands) to populate state — no hand-authored
+    JSON fixtures.
+
+    The check is intentionally NON-BLOCKING: it always exits 0 even when it
+    surfaces warnings.  A hard exit-2 would block on heuristic false positives,
+    which is explicitly rejected by OQ-3 (RESOLVED: non-blocking warning).
+    """
+
+    # ------------------------------------------------------------------
+    # Trip-wire test: the canonical §5↔§6 contradiction from the plan.
+    # §6 marks "overlapping-load race hardening" OOS; §5 mandates
+    # "branch on the load outcome [to avoid the shared slot]".
+    # Both share salient tokens (load, branch, slot, etc.) — the check
+    # must surface a WARNING naming both entries, then exit 0.
+    # ------------------------------------------------------------------
+
+    def test_tripwire_oos_vs_ac_flags_warning_and_exits_zero(self):
+        """§6 OOS + §5 AC sharing salient tokens → WARNING to stderr, exit 0."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            # Producer: record the §6 OOS entry (overlapping-load race hardening).
+            r_oos = _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content",
+                "overlapping-load race hardening — out of scope",
+            ])
+            self.assertEqual(r_oos.returncode, 0, r_oos.stderr)
+
+            # Producer: record a §5 AC that mandates branching on load outcome.
+            r_ac = _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "event_driven",
+                "--statement",
+                "WHEN a section's load fails, the system shall branch on"
+                " the load outcome to avoid the shared slot.",
+            ])
+            self.assertEqual(r_ac.returncode, 0, r_ac.stderr)
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            self.assertEqual(r.returncode, 0,
+                             "verify-scope-coherence must exit 0 (non-blocking); "
+                             "stderr: " + r.stderr)
+            # A warning must appear naming the OOS entry.
+            self.assertIn("overlapping-load race hardening", r.stderr,
+                          "Expected OOS entry text in warning")
+            # The warning must name the AC (either its id or statement fragment).
+            self.assertTrue(
+                "load" in r.stderr or "branch" in r.stderr or "slot" in r.stderr,
+                "Expected overlap token reference in warning; stderr: " + r.stderr,
+            )
+            # The warning must tag the conflicting entry as an AC.
+            self.assertIn("AC", r.stderr,
+                          "Expected 'AC' tag in warning; stderr: " + r.stderr)
+            # The reconcile advisory must be present.
+            self.assertIn("reconcile", r.stderr,
+                          "Expected reconciliation advisory in warning")
+
+    # ------------------------------------------------------------------
+    # Clean spec: no §5/§4 mandate overlapping §6 → no warning, exit 0.
+    # ------------------------------------------------------------------
+
+    def test_clean_spec_no_warning_exit_zero(self):
+        """A spec where §5 and §6 don't overlap → no warning, exit 0."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            # §6: authentication is out of scope.
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content", "authentication and authorisation — out of scope",
+            ])
+            # §5: an AC about rendering — no overlap with auth.
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The renderer shall produce deterministic markdown output.",
+            ])
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            # No warning should be surfaced.
+            self.assertNotIn(
+                "verify-scope-coherence:", r.stderr,
+                "Expected no warning for a clean spec; stderr: " + r.stderr,
+            )
+
+    # ------------------------------------------------------------------
+    # False-positive tolerance: §6 and §5 share an incidental noun
+    # (e.g. "system") — acceptable false-positive, must not block (exit 0).
+    # The test documents the known false-positive posture explicitly.
+    # ------------------------------------------------------------------
+
+    def test_false_positive_incidental_noun_is_warned_but_non_blocking(self):
+        """Incidental shared noun causes a false-positive warning — exit 0."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            # §6 entry mentions "distributed caching" (with generic noun "cache").
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content", "distributed caching layer — out of scope",
+            ])
+            # §5 AC about invalidating cache entries — shares token "cache".
+            # This is a false positive: the AC refers to a local cache, not the
+            # distributed layer, but the token overlap fires anyway.
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "event_driven",
+                "--statement",
+                "WHEN a configuration changes, the system shall"
+                " invalidate local cache entries.",
+            ])
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            # Non-blocking: must exit 0 even on a false-positive warning.
+            self.assertEqual(
+                r.returncode, 0,
+                "verify-scope-coherence must exit 0 on false-positive; "
+                "stderr: " + r.stderr,
+            )
+            # The check will have flagged "cache" as the overlap token.
+            # That is acceptable — the advisory prompts author review, not auto-block.
+            # (We don't assert *no* warning here: the false-positive is expected.)
+
+    # ------------------------------------------------------------------
+    # §4 affected-area check: OOS entry overlaps §4 area impact.
+    # ------------------------------------------------------------------
+
+    def test_oos_vs_affected_area_impact_flags_warning_exit_zero(self):
+        """§6 OOS tokens overlap a §4 affected-area impact → WARNING, exit 0."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            # §6: retry logic is out of scope.
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content", "retry logic for transient network failures — out of scope",
+            ])
+            # §4 affected area whose impact description mentions retry behaviour.
+            _run([
+                "--devforge-dir", str(dev), "record-affected-area",
+                "--area", "API client",
+                "--files", '["src/api/client.py"]',
+                "--impact",
+                "Must implement retry with exponential backoff on network failures.",
+            ])
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            self.assertEqual(r.returncode, 0,
+                             "Non-blocking: must exit 0; stderr: " + r.stderr)
+            # Warning must name the OOS entry and the affected area.
+            self.assertIn("retry", r.stderr,
+                          "Expected 'retry' token in warning; stderr: " + r.stderr)
+            self.assertIn("Affected area", r.stderr,
+                          "Expected affected-area tag in warning; stderr: " + r.stderr)
+
+    # ------------------------------------------------------------------
+    # Empty §6 (no OOS entries): no warning, exit 0.
+    # ------------------------------------------------------------------
+
+    def test_empty_oos_no_warning_exit_zero(self):
+        """No §6 entries → no-op, exit 0, no stderr output."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            # Add a §5 AC but no §6 OOS entry.
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_preservation",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The system shall preserve existing API contracts.",
+            ])
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stderr.strip(), "",
+                             "Expected no stderr for empty OOS; got: " + r.stderr)
+
+    # ------------------------------------------------------------------
+    # §6 OOS present but no §5 ACs or §4 affected areas: no targets,
+    # must exit 0 and emit no warnings (exercises the `if not targets`
+    # early-return path in cmd_verify_scope_coherence).
+    # ------------------------------------------------------------------
+
+    def test_oos_present_no_targets_exit_zero(self):
+        """§6 OOS entry recorded, no §5 AC or §4 affected-area → exit 0, no stderr."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            # Record an OOS entry but deliberately add no AC and no affected area.
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content", "system-level monitoring integration — out of scope",
+            ])
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(
+                r.stderr.strip(), "",
+                "Expected no stderr when no targets exist; got: " + r.stderr,
+            )
+
+    # ------------------------------------------------------------------
+    # Stopword regression: "system" and "shall" in OOS + EARS ACs must
+    # NOT fire a spurious overlap warning (F1 fix verification).
+    # ------------------------------------------------------------------
+
+    def test_system_shall_scope_stopwords_no_spurious_warning(self):
+        """OOS entry containing 'system' + EARS ACs starting 'The system shall'
+        → NO spurious overlap warning after stopword fix (F1)."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            # §6 OOS entry that mentions "system" and "scope" — universal words
+            # that should NOT match every EARS AC that starts "The system shall".
+            _run([
+                "--devforge-dir", str(dev), "record-out-of-scope",
+                "--content",
+                "system-level monitoring integration — out of scope",
+            ])
+
+            # §5 ACs using canonical EARS ubiquitous form ("The system shall …")
+            # sharing ONLY the stopwords "system", "shall", "scope" with the OOS entry.
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_change",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The system shall emit deterministic markdown output.",
+            ])
+            _run([
+                "--devforge-dir", str(dev), "add-ac",
+                "--subsection", "behavior_preservation",
+                "--ears-variant", "ubiquitous",
+                "--statement",
+                "The system shall preserve existing API contracts.",
+            ])
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            self.assertEqual(r.returncode, 0,
+                             "verify-scope-coherence must exit 0; stderr: " + r.stderr)
+            # No warning should be surfaced — "system", "shall", "scope" are
+            # stopwords and must NOT create spurious overlap.
+            self.assertNotIn(
+                "verify-scope-coherence:", r.stderr,
+                "Spurious warning from stopword tokens; stderr: " + r.stderr,
+            )
+
+    # ------------------------------------------------------------------
+    # Empty spec (no §5, no §4, no §6): no-op, exit 0.
+    # ------------------------------------------------------------------
+
+    def test_empty_state_exit_zero(self):
+        """Fresh-reset state with nothing recorded → exit 0, no output."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+
+            r = _run([
+                "--devforge-dir", str(dev), "verify-scope-coherence",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stderr.strip(), "",
+                             "Expected no stderr for empty state; got: " + r.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -4400,6 +4709,10 @@ def _build_minimal_handoff(devforge: Path, handoff_out: Path) -> subprocess.Comp
 
     _run_research(["--devforge-dir", df, "detect-mode", "--override", "enhancement"])
     _run_research(["--devforge-dir", df, "set-topic", "--value", "auth-token-refresh"])
+    _run_research([
+        "--devforge-dir", df, "set-verbatim-prompt",
+        "--value", "Auth token not refreshed on expiry in services/auth",
+    ])
     _run_research(["--devforge-dir", df, "set-date", "--value", "2026-05-19"])
 
     # Phase 1 — 2 findings + 2 hypotheses + required fields.
@@ -5001,6 +5314,10 @@ def _build_minimal_discover_handoff(devforge: Path, handoff_out: Path) -> subpro
 
     # Set topic.
     _run_discover(["--devforge-dir", df, "set-topic", "--value", "audit-log-persistence"])
+    _run_discover([
+        "--devforge-dir", df, "set-verbatim-prompt",
+        "--value", "Build an audit log persistence system for tracking state changes",
+    ])
     _run_discover(["--devforge-dir", df, "set-date", "--value", "2026-05-20"])
 
     # Set all 8 rubric dimensions to Clear.

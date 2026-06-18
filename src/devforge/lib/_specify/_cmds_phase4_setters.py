@@ -7,7 +7,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from ._schema import (
     AC_SUBSECTION_ENUM,
@@ -17,12 +17,13 @@ from ._schema import (
     EARS_VARIANT_ENUM,
     FEATURE_NAME_RE,
     IMPACT_ENUM,
+    LANDED_IN_ENUM,
     LIKELIHOOD_ENUM,
     SPEC_NUMBER_DIR_RE,
     SPEC_NUMBER_WIDTH,
     SPECS_ROOT_DEFAULT,
 )
-from ._state import _state_transaction
+from ._state import _load_state, _state_transaction
 from ._validators import (
     _die,
     _validate_constitution_anchor_ref,
@@ -31,6 +32,43 @@ from ._validators import (
     _validate_nfr_quantifier,
     _validate_scalar,
 )
+
+
+def _parse_finding_refs(raw: Optional[List[str]]) -> List[str]:
+    """Normalise the --finding-ref list: strip whitespace, drop empties."""
+    if not raw:
+        return []
+    return [r.strip() for r in raw if r.strip()]
+
+
+def _validate_finding_refs(
+    state: Dict[str, Any], finding_ids: List[str],
+) -> Optional[str]:
+    """Return an error string if any id is not found; None on success."""
+    known = {f.get("finding_id") for f in state.get("findings", [])}
+    unknown = [fid for fid in finding_ids if fid not in known]
+    if unknown:
+        return "unknown finding id(s): {0}".format(", ".join(unknown))
+    return None
+
+
+def _flip_findings(
+    state: Dict[str, Any],
+    finding_ids: List[str],
+    bucket: str,
+    landed_ref: str,
+) -> None:
+    """Flip landed_in / landed_ref on each named finding in state.
+
+    Pre-condition: all ids are known (caller validated with
+    _validate_finding_refs before entering the transaction).
+    Re-landing a finding to the same bucket is a no-op. Re-landing to a
+    different bucket succeeds (the new bucket + ref overwrite the old).
+    """
+    for finding in state.get("findings", []):
+        if finding.get("finding_id") in finding_ids:
+            finding["landed_in"] = bucket
+            finding["landed_ref"] = landed_ref
 
 
 def _existing_spec_numbers(specs_root: Path) -> List[int]:
@@ -202,18 +240,33 @@ def cmd_record_affected_area(args: argparse.Namespace) -> int:
 
 
 def cmd_record_out_of_scope(args: argparse.Namespace) -> int:
-    """Append a §6 OOS entry {content, finding_ref}."""
+    """Append a §6 OOS entry {content, finding_ref} and flip finding landed_in."""
     try:
         content = _validate_scalar(args.content, "content")
     except ValueError as err:
         return _die(str(err), code=2)
     finding_ref = (args.finding_ref or "").strip()
+    finding_ids = [finding_ref] if finding_ref else []
+    # Pre-validate finding refs with a read-only load before opening the
+    # write transaction. This guarantees no partial write is structurally
+    # possible: the transaction body only appends + flips (no error paths).
+    if finding_ids:
+        try:
+            ro_state = _load_state(args.devforge_dir)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("record-out-of-scope: {0}".format(err))
+        err_msg = _validate_finding_refs(ro_state, finding_ids)
+        if err_msg:
+            return _die("record-out-of-scope: {0}".format(err_msg), code=2)
     try:
         with _state_transaction(args.devforge_dir) as state:
+            oos_ref = "OOS-{0}".format(len(state["out_of_scope"]) + 1)
             state["out_of_scope"].append({
                 "content": content,
                 "finding_ref": finding_ref,
             })
+            if finding_ids:
+                _flip_findings(state, finding_ids, "OOS", oos_ref)
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-out-of-scope: {0}".format(err))
     return 0
@@ -235,6 +288,8 @@ def cmd_record_constraint(args: argparse.Namespace) -> int:
         content = _validate_scalar(args.content, "content")
     except ValueError as err:
         return _die(str(err), code=2)
+
+    finding_ids = _parse_finding_refs(getattr(args, "finding_ref", None))
 
     record: Dict[str, Any] = {"kind": kind, "content": content}
 
@@ -263,9 +318,26 @@ def cmd_record_constraint(args: argparse.Namespace) -> int:
         if (args.contract_doc_ref or "").strip():
             record["contract_doc_ref"] = args.contract_doc_ref.strip()
 
+    # Pre-validate finding refs with a read-only load before opening the
+    # write transaction. This guarantees no partial write is structurally
+    # possible: the transaction body only appends + flips (no error paths).
+    if finding_ids:
+        try:
+            ro_state = _load_state(args.devforge_dir)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("record-constraint: {0}".format(err))
+        err_msg = _validate_finding_refs(ro_state, finding_ids)
+        if err_msg:
+            return _die("record-constraint: {0}".format(err_msg), code=2)
+
     try:
         with _state_transaction(args.devforge_dir) as state:
+            constraint_ref = "Constraint-{0}".format(
+                len(state["constraints"]) + 1,
+            )
             state["constraints"].append(record)
+            if finding_ids:
+                _flip_findings(state, finding_ids, "Constraint", constraint_ref)
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-constraint: {0}".format(err))
     return 0
@@ -302,14 +374,29 @@ def cmd_record_risk(args: argparse.Namespace) -> int:
         mitigation = _validate_scalar(args.mitigation, "mitigation")
     except ValueError as err:
         return _die(str(err), code=2)
+    finding_ids = _parse_finding_refs(getattr(args, "finding_ref", None))
+    # Pre-validate finding refs with a read-only load before opening the
+    # write transaction. This guarantees no partial write is structurally
+    # possible: the transaction body only appends + flips (no error paths).
+    if finding_ids:
+        try:
+            ro_state = _load_state(args.devforge_dir)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("record-risk: {0}".format(err))
+        err_msg = _validate_finding_refs(ro_state, finding_ids)
+        if err_msg:
+            return _die("record-risk: {0}".format(err_msg), code=2)
     try:
         with _state_transaction(args.devforge_dir) as state:
+            risk_ref = "Risk-{0}".format(len(state["risks"]) + 1)
             state["risks"].append({
                 "risk": risk,
                 "likelihood": likelihood,
                 "impact": impact,
                 "mitigation": mitigation,
             })
+            if finding_ids:
+                _flip_findings(state, finding_ids, "Risk", risk_ref)
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-risk: {0}".format(err))
     return 0
@@ -377,6 +464,18 @@ def cmd_add_ac(args: argparse.Namespace) -> int:
             code=2,
         )
 
+    finding_ids = _parse_finding_refs(getattr(args, "finding_ref", None))
+    # Pre-validate finding refs with a read-only load before opening the
+    # write transaction. This guarantees no partial write is structurally
+    # possible: the transaction body only appends + flips (no error paths).
+    if finding_ids:
+        try:
+            ro_state = _load_state(args.devforge_dir)
+        except (OSError, json.JSONDecodeError) as err:
+            return _die("add-ac: {0}".format(err))
+        err_msg = _validate_finding_refs(ro_state, finding_ids)
+        if err_msg:
+            return _die("add-ac: {0}".format(err_msg), code=2)
     try:
         with _state_transaction(args.devforge_dir) as state:
             ac_id = (args.ac_id or "").strip() or _next_ac_id(state)
@@ -389,7 +488,69 @@ def cmd_add_ac(args: argparse.Namespace) -> int:
                 "test_anchor": test_anchor,
                 "n_a_reason": "",
             })
+            if finding_ids:
+                _flip_findings(state, finding_ids, "AC", ac_id)
     except (OSError, json.JSONDecodeError) as err:
         return _die("add-ac: {0}".format(err))
     sys.stdout.write(ac_id + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Standalone landing setter (for findings not landed via §5-§9 setters)
+# ---------------------------------------------------------------------------
+
+# Accepted buckets for set-finding-landed: all of LANDED_IN_ENUM minus
+# "unlanded" (the caller intends to land, not un-land).
+_LANDABLE_BUCKETS: Tuple[str, ...] = tuple(
+    b for b in LANDED_IN_ENUM if b != "unlanded"
+)
+
+
+def cmd_set_finding_landed(args: argparse.Namespace) -> int:
+    """Directly flip landed_in / landed_ref on a named finding.
+
+    Use this when the landing is not driven by a §5-§9 setter call (e.g.
+    correcting a typo in landed_ref, or applying a landing that was done
+    outside the helper).
+
+    --finding-id  required; must match a recorded finding's finding_id.
+    --landed-in   required; one of AC / Constraint / OOS / Risk.
+    --landed-ref  optional; the id/label of the landing entry (e.g. "AC-3").
+    """
+    finding_id = (getattr(args, "finding_id", None) or "").strip()
+    if not finding_id:
+        return _die(
+            "set-finding-landed: --finding-id is required and non-empty",
+            code=2,
+        )
+    landed_in = (getattr(args, "landed_in", None) or "").strip()
+    if not landed_in:
+        return _die(
+            "set-finding-landed: --landed-in is required and non-empty",
+            code=2,
+        )
+    if landed_in not in _LANDABLE_BUCKETS:
+        return _die(
+            "set-finding-landed: --landed-in {0!r} not in {1!r}".format(
+                landed_in, _LANDABLE_BUCKETS,
+            ),
+            code=2,
+        )
+    landed_ref = (getattr(args, "landed_ref", None) or "").strip()
+    # Pre-validate the finding-id with a read-only load before opening the
+    # write transaction. This guarantees no partial write is structurally
+    # possible: the transaction body only flips (no error paths remain).
+    try:
+        ro_state = _load_state(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-finding-landed: {0}".format(err))
+    err_msg = _validate_finding_refs(ro_state, [finding_id])
+    if err_msg:
+        return _die("set-finding-landed: {0}".format(err_msg), code=2)
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            _flip_findings(state, [finding_id], landed_in, landed_ref)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-finding-landed: {0}".format(err))
     return 0
