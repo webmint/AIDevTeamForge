@@ -1,6 +1,6 @@
 # 24 — SUMMARIZE COMMAND REDESIGN PLAN
 
-**Status:** **DRAFTED 2026-06-17, not started** on `develop-2.0-init`. Nothing is built yet — this plan is the artifact. Redesigns the stale pre-pivot `/summarize` draft (`src/_pending/commands/summarize.md`, 5 phases) into a live, emitted, pipeline-wired command at `src/commands/summarize/main.md` + `references/` + a `src/devforge/lib/_summarize/` helper subpackage + a `summarize_helper{,.py}` launcher, structurally modeled on the just-shipped `/verify` command (plan 22). It REUSES one already-shipped piece — the assembled-feature scope resolver `_shared/feature_scope.py` (created by plan 22 Phase 0) — rather than re-implementing or re-extracting it. `/summarize` is **pure synthesis**: it runs NO finder ensemble, NO refutation engine, and NO verdict. It writes one artifact, `specs/[feature]/summary.md`, idempotently, and mutates none of its inputs. Scope is `/summarize` ONLY — `/finalize` is the sibling follow-on plan 25.
+**Status:** **✅ DONE 2026-06-18** — all phases (1–5) shipped on `develop-2.0-init` (committed `8f978e1`); Phase 5 testForge20 e2e VALIDATED. Redesigns the stale pre-pivot `/summarize` draft (`src/_pending/commands/summarize.md`, 5 phases) into a live, emitted, pipeline-wired command at `src/commands/summarize/main.md` + `references/` + a `src/devforge/lib/_summarize/` helper subpackage + a `summarize_helper{,.py}` launcher, structurally modeled on the just-shipped `/verify` command (plan 22). It REUSES one already-shipped piece — the assembled-feature scope resolver `_shared/feature_scope.py` (created by plan 22 Phase 0) — rather than re-implementing or re-extracting it. `/summarize` is **pure synthesis**: it runs NO finder ensemble, NO refutation engine, and NO verdict. It writes one artifact, `specs/[feature]/summary.md`, idempotently, and mutates none of its inputs. Scope is `/summarize` ONLY — `/finalize` is the sibling follow-on plan 25.
 
 ## Scope & assumptions
 
@@ -210,7 +210,15 @@ python -m pytest tests/scripts/   # expect: green (emit still works with summari
 
 DoD: `summarize` is in `_PROMOTED` (so it emits/installs); the stale `src/commands/summarize.md` flat-file entry is removed from `src/manifest.json:18` (so `update.sh` does not sync a non-existent source); the stale `src/_pending/commands/summarize.md` is deleted with no live consumer; the `src/CLAUDE.md` Command-Details body reconciles to the redesigned command (pipeline position + Workflow chain unchanged); the cross-ref sweep is clean (every inventoried `/summarize` reference still accurate; the `_verify/_report.py:296,452` producer pointers + the `finalize.md:47-50` consumer gate honored); the install ride shows `summarize command: yes` with N references, 0 `{{` leaks, and an executable helper; `CHANGELOG.md` + repo-root `CLAUDE.md` updated; author→reviewer + python→reviewer + claude-code-guide loops applied.
 
-### Phase 5 — testForge20 e2e (USER-DRIVEN — HARD GATE)
+### Phase 5 — testForge20 e2e — ✅ VALIDATED 2026-06-18
+
+**Validated outcome (2026-06-18):** the e2e passed. `/summarize` was surgically delivered into testForge20 (a wrapper-mode project, `source_root = db-cse-ui-strata`) without a reinstall — `cp` the `_summarize/` helper + `summarize_helper{,.py}` launchers into `.devforge/lib/`, and the command emitted via the real emitter (`--only summarize`) to scratch then copied into `.claude/commands/`. Running `/summarize` on feature `001-catalog-tab-order` (spec at `**Status**: Complete`) wrote `specs/001-catalog-tab-order/summary.md` with all six sections populated from the real artifacts. Observed:
+
+- **AC status taken verbatim from `verification.md` (D3)** — all 12 ACs (AC-1…AC-12) reproduced with their exact statuses, preserving the subtle `PASS (code)` vs plain `PASS` distinction (not re-derived from the spec, not homogenized).
+- **Wrapper-mode source changes included (validates the Phase 3 `--install-root` fix)** — the Files-changed section showed `2 files changed, 296 insertions(+), 1 deletion(-)` for the source repo `db-cse-ui-strata`, grouped under `packages/pkg-cse-catalog/`.
+- **No verdict rendered (D1)** — the summary references `APPROVED (per /verify)` but renders none of its own.
+- The Deviations section correctly surfaced a real deviation (the scoped per-task verification / monorepo `TS18003` PACKAGE_STACKS gap), from the task completion notes.
+- A `[WIP] Feature summary: 001-catalog-tab-order` commit landed (D6); the run is read-only on the spec (D4).
 
 **Objective:** the repo's standard manual e2e gate — confirm `/summarize` works end to end on a real feature that finished `/implement` + `/review` + `/verify` (APPROVED).
 
