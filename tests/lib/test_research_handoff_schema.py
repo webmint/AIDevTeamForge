@@ -768,7 +768,7 @@ class TestEdgeCases(unittest.TestCase):
     """Edge cases not listed in the plan but required for completeness."""
 
     def test_schema_version_mismatch_rejects(self):
-        """schema_version != '1.0' raises ValueError."""
+        """schema_version outside accepted set raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             _handoff(schema_version="2.0")
         self.assertIn("schema_version", str(ctx.exception))
@@ -863,6 +863,118 @@ class TestEdgeCases(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIn("int", msg)
         self.assertIn("service", msg)
+
+
+# ---------------------------------------------------------------------------
+# TestVerbatimPrompt — Step 1 (18-SCOPE-FIDELITY-AND-PROMPT-INTAKE-PLAN.md)
+# Tests for Intent.verbatim_prompt: validation, round-trip, back-compat.
+# ---------------------------------------------------------------------------
+
+
+class TestVerbatimPrompt(unittest.TestCase):
+    """Tests for Intent.verbatim_prompt field added in schema v1.1."""
+
+    # --- Intent.verbatim_prompt field-level validation ---
+
+    def test_verbatim_prompt_none_tolerated(self):
+        """Intent with verbatim_prompt=None does not raise (back-compat default)."""
+        i = _intent()  # uses default verbatim_prompt=None
+        self.assertIsNone(i.verbatim_prompt)
+
+    def test_verbatim_prompt_nonempty_accepted(self):
+        """Intent with a non-empty verbatim_prompt is accepted."""
+        full_prompt = (
+            "Config value not applied at startup. "
+            "Suspected cause: env var read before process env is populated by the launcher."
+        )
+        i = hs.Intent(
+            symptom_summary="Config value not applied",
+            desired_summary="Config applied correctly",
+            scope="file-local",
+            verbatim_prompt=full_prompt,
+        )
+        self.assertEqual(i.verbatim_prompt, full_prompt)
+
+    def test_verbatim_prompt_empty_string_rejected(self):
+        """Intent with verbatim_prompt='' raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            hs.Intent(
+                symptom_summary="Config value not applied",
+                desired_summary="Config applied correctly",
+                scope="file-local",
+                verbatim_prompt="",
+            )
+        self.assertIn("verbatim_prompt", str(ctx.exception))
+
+    def test_verbatim_prompt_whitespace_only_rejected(self):
+        """Intent with verbatim_prompt='   ' (whitespace only) raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            hs.Intent(
+                symptom_summary="Config value not applied",
+                desired_summary="Config applied correctly",
+                scope="file-local",
+                verbatim_prompt="   ",
+            )
+        self.assertIn("verbatim_prompt", str(ctx.exception))
+
+    # --- Round-trip: full prompt with "Suspected cause:" tail ---
+
+    def test_verbatim_prompt_carried_into_handoff_distinct_from_topic(self):
+        """verbatim_prompt survives Handoff construction unchanged.
+
+        The full prompt contains a 'Suspected cause:' tail that the topic
+        field would not carry. Assert intent.verbatim_prompt equals the full
+        prompt, not the paraphrased topic.
+        """
+        full_prompt = (
+            "Config value not applied at startup. "
+            "Suspected cause: env var read before process env is populated by the launcher."
+        )
+        topic_only = "Config value not applied at startup."  # shorter — what set-topic stores
+
+        intent_with_full_prompt = hs.Intent(
+            symptom_summary="Config value not applied at startup",
+            desired_summary="Config applied correctly on first read",
+            scope="file-local",
+            verbatim_prompt=full_prompt,
+        )
+        h = _handoff(intent=intent_with_full_prompt)
+        self.assertEqual(h.intent.verbatim_prompt, full_prompt)
+        self.assertNotEqual(h.intent.verbatim_prompt, topic_only)
+
+    # --- Back-compat: v1.0 handoff dict loads without verbatim_prompt ---
+
+    def test_back_compat_v1_0_handoff_dict_loads_without_verbatim_prompt(self):
+        """A handoff dict with schema_version='1.0' and no verbatim_prompt key loads.
+
+        Simulates _dict_to_dataclass reconstructing a pre-v1.1 handoff.json
+        that lacks the verbatim_prompt key. The Intent must tolerate the absent
+        field (Optional[str] = None default).
+        """
+        # Construct an Intent without verbatim_prompt — simulates what
+        # _dict_to_dataclass does when the key is absent from JSON.
+        i = hs.Intent(
+            symptom_summary="Old symptom text",
+            desired_summary="Old desired state",
+            scope="file-local",
+            # verbatim_prompt intentionally omitted — default None
+        )
+        self.assertIsNone(i.verbatim_prompt)
+
+        # Also verify Handoff accepts schema_version="1.0".
+        h = _handoff(schema_version="1.0", intent=i)
+        self.assertEqual(h.schema_version, "1.0")
+        self.assertIsNone(h.intent.verbatim_prompt)
+
+    def test_schema_version_1_0_accepted(self):
+        """schema_version='1.0' is accepted (back-compat — frozenset allows both 1.0 and 1.1)."""
+        h = _handoff(schema_version="1.0")
+        self.assertEqual(h.schema_version, "1.0")
+
+    def test_schema_version_1_1_accepted(self):
+        """schema_version='1.1' is the current version and must be accepted."""
+        h = _handoff(schema_version="1.1")
+        self.assertEqual(h.schema_version, "1.1")
 
 
 if __name__ == "__main__":

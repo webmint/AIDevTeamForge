@@ -64,12 +64,89 @@ Reset chain (runs in the turn determined by the branch above):
 .devforge/lib/discover_helper reset-memo
 .devforge/lib/discover_helper reset-report
 .devforge/lib/discover_helper set-topic --value "<topic>"
+.devforge/lib/discover_helper set-verbatim-prompt --value "<full raw $ARGUMENTS>"
 .devforge/lib/discover_helper set-date --value $(date -u +%Y-%m-%d)
 ```
 
-`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`.
+`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/discover` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence feature description; the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4.0's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
 
 Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/discover-scope.json` + `.devforge/discover-report.json` are overwritten with fresh defaults. `/discover` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
+
+### Phase 0.4 — Suspected-fit classification (pre-rubric, runs before Phase 1)
+
+A `/discover` prompt sometimes carries a placement guess alongside the feature idea — a clause asserting WHERE the feature should live or HOW it should be built ("this belongs in the auth module", "we should reuse the existing queue", "probably a new service", "the bottleneck is …"). Scan the verbatim prompt persisted by `set-verbatim-prompt` for any such lead-in BEFORE the eight-dimension rubric runs. A user-supplied placement or mechanism guess is a CLAIM TO RECONCILE, not a fact: it MUST NOT silently become a scope dimension's value or the recommended design option. It belongs in the user-belief lane that Phase 2's Stream B fit-check reconciles against codebase reality.
+
+When such a clause is present, record it as a gap against the `integration_points` dimension (the dimension whose captured value is explicitly the user's BELIEF about where the feature lives — see the Rubric dimensions table — reconciled vs reality in Phase 2):
+
+```bash
+.devforge/lib/discover_helper record-gap \
+    --dimension integration_points \
+    --description "user-supplied placement guess (confirm via Phase 2 fit-check): <verbatim guess>"
+```
+
+Recording it as a gap (not as a settled `integration_points` value) keeps the guess a claim the fit-check must confirm or refute — the same separation `/research` enforces via its hypothesis lane. This pre-rubric classifier is the home Step 5's binary-classification gate routes `hypothesis` statements into (per plan 18 Step 5 — the user-facing front door over this same lane). **Discover's hypothesis lane diverges from `/research`'s and a Step-5 builder must respect the divergence:** discover's lane IS the `record-gap --dimension integration_points` call already above in this Phase 0.4 — it has NO `record-hypothesis` verb (that is `/research`-only). Do NOT mirror `/research`'s `record-hypothesis` into `/discover`; route a classified `hypothesis` to this `record-gap` call instead. And discover's backstop against a leaked guess is the Phase 2 fit-check + the Step-5 echo-back human gate, NOT a `verify-hypothesis-suppression` gate (no such verb exists for `/discover` — see the callout below). The captured guess does NOT enter any scope dimension's value and does NOT pre-commit a design option.
+
+When the prompt carries NO placement or mechanism guess, this step is a no-op — proceed directly to Phase 0.5.
+
+**No mechanical suppression gate in `/discover`.** Unlike `/research`, `/discover` has no hypothesis/probe-tier machinery and no `verify-hypothesis-suppression` verb. The discover backstop against a guess leaking into design direction is the Phase 2 Stream B fit-check plus the Step-5 echo-back human gate, NOT a mechanical suppression check.
+
+### Phase 0.5 — Intake-interrogation gate (user-facing front door, runs before Phase 1)
+
+Phase 0.4 silently recorded any placement / mechanism guess as a gap against `integration_points`; Phase 0.5 is the USER-FACING front door over that same machinery. It surfaces the framework's interpretation of the verbatim prompt for ONE confirmation before the Phase 1 rubric commits scoping cost — this is the gate that closes the over-solve failure (plan 18 Step 5: in the original failure the user never saw, and so could never correct, the framework's interpretation). Phase 0.5 does NOT re-run Phase 0.4's detection logic — it reuses the detection decision Phase 0.4 made (a placement / mechanism guess is a scope-expander; everything else is a requirement) and adds the minimality challenge + echo-back + confirmation on top. Phase 0.4's only helper call is `record-gap --dimension integration_points` for the guess; the binary `requirement`-vs-scope-expander split is first persisted at Phase 0.5 Step 1, via `record-intake-classification`.
+
+**Discover lane divergence (do NOT mirror `/research`).** Discover has NO `record-hypothesis` verb and NO research-shaped hypothesis lane — a classified scope-expander routes to `record-gap --dimension integration_points` (the Phase 0.4 call already above), NOT to `record-hypothesis`. The echo-back render uses scope-expander wording ("Scope-expanders to verify — NOT requirements"), not the research "suspected cause" wording. This is the same divergence stated in Phase 0.4; a builder must preserve it. `record-intake-classification --kind hypothesis` is the tag the discover echo-back reads — that `hypothesis` kind value names a scope-expander here, not a bug-cause hypothesis.
+
+**PROPORTIONALITY (HARD requirement — not advice).** The gate is PROPORTIONATE, inheriting the same proportionality the Phase 1 rubric already carries (its turn caps + accept-gaps coverage exit). Auto-classify the easy parts; surface to the user ONLY the high-stakes ambiguities — conflations (a requirement mixed with a placement guess), scope-expanders (a "we should also …" speculative addition not in the stated feature intent), and big-design-driving placement guesses (a "this belongs in module X" guess that would shape the design). It is NOT a 20-question inquisition. A clean prompt — no scope-expander, no placement guess, one obvious minimal scope — passes with ONE echo-back confirmation and ZERO interrogation. Over-interrogating a trivial feature idea is itself the over-build failure mode this gate exists to fight.
+
+#### Step 1 — Binary-classify each statement
+
+Partition the verbatim prompt (the field `set-verbatim-prompt` persisted in Phase 0.3) into statements and classify each as one of TWO classes: `requirement` (the feature intent — what the user asked for) vs `hypothesis` (a scope-expander or placement guess). Reuse Phase 0.4's detection: a placement / mechanism clause ("this belongs in the auth module", "we should reuse the existing queue", "probably a new service") was already detected there and recorded as a gap against `integration_points` via `record-gap`; here that same statement is ALSO tagged `hypothesis` for the echo-back. Everything else is a `requirement`. Record each statement:
+
+```bash
+.devforge/lib/discover_helper record-intake-classification \
+    --statement "<the prompt statement, verbatim or lightly paraphrased>" \
+    --kind <requirement|hypothesis> \
+    --minimal-fix "<see Step 2 — pass on requirement statements>"
+```
+
+The setter is idempotent on `--statement`: re-recording the same statement overwrites its prior `--kind` + `--minimal-fix` (this is the mechanism the `correct` branch in Step 3 uses). `--kind` must be exactly `requirement` or `hypothesis` (the helper rejects any other value with exit 2); the `hypothesis` value names a scope-expander in discover, per the divergence above. A classified scope-expander is ALSO routed to `record-gap --dimension integration_points` (per Phase 0.4) — `record-intake-classification` does NOT route it automatically; the two calls are separate. On a clean single-requirement feature idea this is ONE call with `--kind requirement`; do not manufacture extra statements to classify.
+
+#### Step 2 — Minimality challenge
+
+Compose the SIMPLEST scope that satisfies the stated feature intent ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest scope — a "we should also …" speculative feature, an extra integration the user only guessed at — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal scope. `--minimal-fix` is optional on the setter (omit it on `hypothesis`/scope-expander statements — their minimal scope is the feature without the speculative addition), but for the requirement statement carrying the feature intent it is REQUIRED: it is the surface the user confirms or corrects.
+
+#### Step 3 — Echo-back + ONE confirmation
+
+Render the echo-back block and surface it for confirmation:
+
+```bash
+.devforge/lib/discover_helper render-intake-echo
+```
+
+The helper owns the block shape — `## Intake interpretation` with a `### Requirements (what you asked for)` section (each requirement + its `Minimal scope:` line), a `### Scope-expanders to verify — NOT requirements` section (omitted entirely when no scope-expander was classified — the proportionality rule), and a `### Minimal scope` section. The scope-expanders section is where a "we should also …" addition or placement guess surfaces as "scope-expander to verify, not a requirement," and its routing text names `record-gap --dimension integration_points` (NOT a research hypothesis lane). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — this is the established verbatim-echo convention; the orchestrator does NOT re-shape the block.
+
+Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]`. End the turn. The user's reply opens the next turn.
+
+- On `confirm`: proceed to Phase 1.
+- On `correct`: the user names what was misclassified (a statement that should flip `requirement`↔scope-expander, or a minimal scope that scoped too wide). Re-record the affected statement(s) via `record-intake-classification` (the idempotent overwrite on `--statement`), then re-run `render-intake-echo` and echo the corrected block ONCE more. Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]` (same options — this is the ONE bounded correction). End the turn. On the next reply: `confirm` → proceed to Phase 1; `correct` (or any other reply) → proceed to Phase 1 regardless. The gate allows AT MOST one correction pass — it does not loop, so even a second `correct` advances to Phase 1 rather than re-entering this branch.
+
+When the prompt is a clean single-requirement feature idea with no scope-expander and one obvious minimal scope, Steps 1-2 are a single `record-intake-classification --kind requirement --minimal-fix "…"` call and Step 3 is one echo-back the user confirms in a single turn — zero interrogation, per the proportionality requirement above.
+
+### Phase 0.6 — Re-entry from `/grill` (conditional — skip if no seed)
+
+Before beginning the investigation, check for a `/grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"discovery"` (this command's stage), you are re-entering from a `/grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS discovery / build-vs-buy stage's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `grill_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/grill` is ever removed). The seed carries these fields:
+
+- `feature` — the feature this seed was emitted for; read it from the seed and state it up front in your re-entry message (do NOT infer it from the file path).
+- `prior_conclusion` — what the previous discovery / build-vs-buy conclusion was; it was invalidated, so do NOT re-derive it.
+- `invalidating_evidence` — how `/grill` proved it wrong, grounded in the plan / spec / code.
+- `must_satisfy` — what this re-run must now additionally satisfy; address it explicitly.
+- `carried_findings` — prior findings to carry forward; stay monotonic (never re-surface a finding a prior pass already disproved).
+
+State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 normally, with the seed's directive constraining the investigation.
+
+This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
+
+When no `specs/*/grill-seed.json` file matches `target_stage == "discovery"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1.
 
 ## Phase 1 — Scoping dialogue (rubric Q&A)
 

@@ -72,6 +72,7 @@ from ._cmds_core import (  # noqa: E402
     cmd_set_date,
     cmd_set_summary,
     cmd_set_topic,
+    cmd_set_verbatim_prompt,
     cmd_verify,
 )
 from ._cmds_design import (  # noqa: E402
@@ -95,6 +96,11 @@ from ._cmds_fit import (  # noqa: E402
 from ._cmds_handoff import (  # noqa: E402
     cmd_append_outcome,
     cmd_finalize_handoff,
+)
+from ._cmds_intake import (  # noqa: E402
+    INTAKE_KIND_ENUM,
+    cmd_record_intake_classification,
+    cmd_render_intake_echo,
 )
 from ._cmds_scope import (  # noqa: E402
     _make_scope_dim_setter,
@@ -168,6 +174,23 @@ def _register_subcommands(subparsers) -> None:
     )
     sp.add_argument("--value", required=True, help="Topic text (user's original input).")
     sp.set_defaults(func=cmd_set_topic)
+
+    sp = subparsers.add_parser(
+        "set-verbatim-prompt",
+        help=(
+            "Persist the full raw prompt text to memo.verbatim_prompt. "
+            "Called at Phase 0.3 right after set-topic, before scoping. "
+            "Distinct from set-topic: carries the full $ARGUMENTS including any "
+            "'we should also ...' additions or hypothesis guesses the one-sentence "
+            "topic loses."
+        ),
+    )
+    sp.add_argument(
+        "--value",
+        required=True,
+        help="Full raw prompt text (verbatim, multi-sentence ok).",
+    )
+    sp.set_defaults(func=cmd_set_verbatim_prompt)
 
     sp = subparsers.add_parser(
         "set-date",
@@ -477,6 +500,51 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_verify)
+
+    # Step 5 — intake-interrogation gate.
+    sp = subparsers.add_parser(
+        "record-intake-classification",
+        help=(
+            "Persist a per-statement binary intake classification "
+            "(requirement vs hypothesis/scope-expander) + the minimal_fix. "
+            "Called once per statement in the verbatim prompt. "
+            "Re-recording the same statement replaces its entry (idempotent). "
+            "NOTE discover lane: 'hypothesis' = scope-expander / placement guess; "
+            "route to record-gap --dimension integration_points separately."
+        ),
+    )
+    sp.add_argument(
+        "--statement",
+        required=True,
+        help="The prompt statement being classified (verbatim or paraphrased).",
+    )
+    sp.add_argument(
+        "--kind",
+        required=True,
+        choices=list(INTAKE_KIND_ENUM),
+        help="Binary classification: 'requirement' or 'hypothesis' (scope-expander).",
+    )
+    sp.add_argument(
+        "--minimal-fix",
+        default=None,
+        dest="minimal_fix",
+        help=(
+            "The minimal scope that satisfies this statement's desired feature intent. "
+            "Optional; typically set for requirement statements."
+        ),
+    )
+    sp.set_defaults(func=cmd_record_intake_classification)
+
+    sp = subparsers.add_parser(
+        "render-intake-echo",
+        help=(
+            "Render the discover intake echo-back block (requirements / "
+            "scope-expanders-to-verify / minimal scope) to stdout. "
+            "Orchestrator copies verbatim to user before one confirmation. "
+            "Proportional: no scope-expanders section when none recorded."
+        ),
+    )
+    sp.set_defaults(func=cmd_render_intake_echo)
 
     # Step 3 -- finalize-handoff.
     sp = subparsers.add_parser(

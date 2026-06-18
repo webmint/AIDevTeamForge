@@ -1041,5 +1041,116 @@ class TestConstraintValidation(unittest.TestCase):
         self.assertIn("kind", str(ctx.exception))
 
 
+# ---------------------------------------------------------------------------
+# TestVerbatimPrompt — Step 1 (18-SCOPE-FIDELITY-AND-PROMPT-INTAKE-PLAN.md)
+# Tests for Intent.verbatim_prompt: validation, round-trip, back-compat.
+# ---------------------------------------------------------------------------
+
+
+class TestVerbatimPrompt(unittest.TestCase):
+    """Tests for Intent.verbatim_prompt field added in discover schema v1.1."""
+
+    # --- Intent.verbatim_prompt field-level validation ---
+
+    def test_verbatim_prompt_none_tolerated(self):
+        """Intent with verbatim_prompt=None (default) does not raise."""
+        i = _intent()  # uses default verbatim_prompt=None
+        self.assertIsNone(i.verbatim_prompt)
+
+    def test_verbatim_prompt_nonempty_accepted(self):
+        """Intent with a non-empty verbatim_prompt is accepted."""
+        full_prompt = (
+            "Audit log persistence. "
+            "We should also track actor identity and make events queryable by resource ID."
+        )
+        i = hs.Intent(
+            feature_concept="Audit log persistence",
+            topic="audit-log-persistence",
+            topic_slug="audit-log-persistence",
+            verbatim_prompt=full_prompt,
+        )
+        self.assertEqual(i.verbatim_prompt, full_prompt)
+
+    def test_verbatim_prompt_empty_string_rejected(self):
+        """Intent with verbatim_prompt='' raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            hs.Intent(
+                feature_concept="Audit log persistence",
+                topic="audit-log-persistence",
+                topic_slug="audit-log-persistence",
+                verbatim_prompt="",
+            )
+        self.assertIn("verbatim_prompt", str(ctx.exception))
+
+    def test_verbatim_prompt_whitespace_only_rejected(self):
+        """Intent with verbatim_prompt='   ' (whitespace only) raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            hs.Intent(
+                feature_concept="Audit log persistence",
+                topic="audit-log-persistence",
+                topic_slug="audit-log-persistence",
+                verbatim_prompt="   ",
+            )
+        self.assertIn("verbatim_prompt", str(ctx.exception))
+
+    # --- Round-trip: full prompt with "we should also" tail ---
+
+    def test_verbatim_prompt_carried_into_handoff_distinct_from_topic(self):
+        """verbatim_prompt survives Handoff construction unchanged.
+
+        The full prompt contains 'we should also ...' additions that the topic
+        field would not carry. Assert intent.verbatim_prompt equals the full
+        prompt, not the paraphrased topic.
+        """
+        full_prompt = (
+            "Audit log persistence. "
+            "We should also track actor identity and make events queryable by resource ID."
+        )
+        topic_only = "Audit log persistence."  # shorter — what set-topic stores
+
+        intent_with_full_prompt = hs.Intent(
+            feature_concept="Audit log persistence with actor tracking",
+            topic="audit-log-persistence",
+            topic_slug="audit-log-persistence",
+            verbatim_prompt=full_prompt,
+        )
+        h = _handoff(intent=intent_with_full_prompt)
+        self.assertEqual(h.intent.verbatim_prompt, full_prompt)
+        self.assertNotEqual(h.intent.verbatim_prompt, topic_only)
+
+    # --- Back-compat: v1.0 handoff dict loads without verbatim_prompt ---
+
+    def test_back_compat_v1_0_intent_loads_without_verbatim_prompt(self):
+        """An Intent constructed without verbatim_prompt (pre-v1.1) loads without error.
+
+        Simulates _dict_to_dataclass reconstructing a pre-v1.1 handoff.json
+        that lacks the verbatim_prompt key. The Intent must tolerate the absent
+        field (Optional[str] = None default).
+        """
+        i = hs.Intent(
+            feature_concept="Old feature concept",
+            topic="old-topic",
+            topic_slug="old-topic",
+            # verbatim_prompt intentionally omitted — default None
+        )
+        self.assertIsNone(i.verbatim_prompt)
+
+    def test_schema_version_1_0_accepted(self):
+        """schema_version='1.0' is accepted (back-compat — frozenset allows both 1.0 and 1.1)."""
+        h = _handoff(schema_version="1.0")
+        self.assertEqual(h.schema_version, "1.0")
+
+    def test_schema_version_1_1_accepted(self):
+        """schema_version='1.1' is the current version and must be accepted."""
+        h = _handoff(schema_version="1.1")
+        self.assertEqual(h.schema_version, "1.1")
+
+    def test_schema_version_2_0_rejected(self):
+        """schema_version='2.0' is rejected (outside the frozenset)."""
+        with self.assertRaises(ValueError) as ctx:
+            _handoff(schema_version="2.0")
+        self.assertIn("schema_version", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

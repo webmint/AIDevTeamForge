@@ -45,10 +45,20 @@ def default_memo_state() -> dict:
     return {
         "mode": None,
         "topic_slug": None,
+        # verbatim_prompt (v1.1): the raw user prompt text, persisted by
+        # set-verbatim-prompt at Phase 0.3 right after set-topic.
+        # None until set; finalize-handoff guards on this field before
+        # constructing Intent.verbatim_prompt.
+        "verbatim_prompt": None,
         "dimensions": {d: _empty_dimension() for d in RUBRIC_DIMENSIONS},
         "gaps": [],
         "override_recorded": False,
         "conflicts": [],
+        # Step 5 — intake classification records. Each entry:
+        # {statement: str, kind: "requirement"|"hypothesis", minimal_fix: str|None}.
+        # Appended by record-intake-classification; read by render-intake-echo.
+        # Append-only; re-recording the same statement replaces its entry (idempotent).
+        "intake_classifications": [],
     }
 
 

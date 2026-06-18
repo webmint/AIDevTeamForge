@@ -2137,5 +2137,300 @@ class TestVerifyRuleG(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
 
 
+# ---------------------------------------------------------------------------
+# Step 5 — intake-interrogation gate: record-intake-classification +
+#           render-intake-echo for discover_helper.
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverRecordIntakeClassification(unittest.TestCase):
+    """record-intake-classification setter: persists binary classification + minimal_fix."""
+
+    def test_requirement_kind_persisted(self):
+        """A requirement statement is stored with kind='requirement'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "revision history log for quote changes",
+                "--kind", "requirement",
+                "--minimal-fix", "append-only history table with quote_id + timestamp + diff",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "discover-scope.json").read_text())
+            classifications = state.get("intake_classifications", [])
+            self.assertEqual(len(classifications), 1)
+            entry = classifications[0]
+            self.assertEqual(entry["statement"], "revision history log for quote changes")
+            self.assertEqual(entry["kind"], "requirement")
+            self.assertEqual(entry["minimal_fix"], "append-only history table with quote_id + timestamp + diff")
+
+    def test_hypothesis_kind_persisted_as_scope_expander(self):
+        """A 'hypothesis' kind (scope-expander/placement guess) is stored with kind='hypothesis'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "we should also add real-time notifications for reviewers",
+                "--kind", "hypothesis",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "discover-scope.json").read_text())
+            classifications = state.get("intake_classifications", [])
+            self.assertEqual(len(classifications), 1)
+            entry = classifications[0]
+            self.assertEqual(entry["kind"], "hypothesis")
+            self.assertIsNone(entry["minimal_fix"])
+
+    def test_multiple_statements_appended(self):
+        """Multiple calls append distinct entries."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "quote revision history",
+                "--kind", "requirement",
+                "--minimal-fix", "history table",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "we should also support export to PDF",
+                "--kind", "hypothesis",
+            ])
+            state = json.loads((Path(devforge) / "discover-scope.json").read_text())
+            classifications = state["intake_classifications"]
+            self.assertEqual(len(classifications), 2)
+            kinds = [e["kind"] for e in classifications]
+            self.assertIn("requirement", kinds)
+            self.assertIn("hypothesis", kinds)
+
+    def test_idempotent_re_record_same_statement(self):
+        """Re-recording the same statement replaces the entry (idempotent)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            stmt = "quote revision history"
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", stmt,
+                "--kind", "requirement",
+                "--minimal-fix", "old minimal scope",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", stmt,
+                "--kind", "requirement",
+                "--minimal-fix", "corrected minimal scope",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "discover-scope.json").read_text())
+            classifications = state["intake_classifications"]
+            self.assertEqual(len(classifications), 1, "should not append duplicate")
+            self.assertEqual(classifications[0]["minimal_fix"], "corrected minimal scope")
+
+    def test_invalid_kind_rejected(self):
+        """An invalid --kind value is rejected with exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "some statement",
+                "--kind", "context",   # not in INTAKE_KIND_ENUM
+            ])
+            self.assertEqual(r.returncode, 2, "invalid kind should exit 2")
+
+    def test_empty_statement_rejected(self):
+        """An empty --statement is rejected with exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "   ",
+                "--kind", "requirement",
+            ])
+            self.assertEqual(r.returncode, 2, "empty statement should exit 2")
+
+    def test_default_memo_has_intake_classifications_field(self):
+        """default_memo_state must include intake_classifications as empty list."""
+        import discover_helper
+        memo = discover_helper.default_memo_state()
+        self.assertIn("intake_classifications", memo)
+        self.assertEqual(memo["intake_classifications"], [])
+
+    def test_round_trip_no_minimal_fix_is_none(self):
+        """When --minimal-fix is not passed, minimal_fix persists as None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "quote revision history",
+                "--kind", "requirement",
+            ])
+            state = json.loads((Path(devforge) / "discover-scope.json").read_text())
+            entry = state["intake_classifications"][0]
+            self.assertIsNone(entry["minimal_fix"])
+
+
+class TestDiscoverRenderIntakeEcho(unittest.TestCase):
+    """render-intake-echo verb: discover-flavored echo-back block."""
+
+    def _record(self, devforge, statement, kind, minimal_fix=None):
+        argv = [
+            "--devforge-dir", str(devforge),
+            "record-intake-classification",
+            "--statement", statement,
+            "--kind", kind,
+        ]
+        if minimal_fix is not None:
+            argv += ["--minimal-fix", minimal_fix]
+        _run(argv)
+
+    def test_requirements_section_present(self):
+        """Requirements section lists requirement statements."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(
+                devforge,
+                "quote revision history log",
+                "requirement",
+                minimal_fix="append-only history table",
+            )
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertIn("## Intake interpretation", out)
+            self.assertIn("### Requirements (what you asked for)", out)
+            self.assertIn("quote revision history log", out)
+            self.assertIn("append-only history table", out)
+
+    def test_scope_expanders_section_present_when_hypotheses_exist(self):
+        """When hypothesis (scope-expander) entries exist, their section appears with discover-flavored wording."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "quote revision history", "requirement", "history table")
+            self._record(devforge, "we should also add real-time notifications", "hypothesis")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            # Discover-specific wording.
+            self.assertIn("Scope-expanders to verify", out)
+            self.assertIn("NOT requirements", out)
+            self.assertIn("we should also add real-time notifications", out)
+            # Must NOT say "Hypotheses to verify" (that's research wording).
+            self.assertNotIn("Hypotheses to verify — NOT requirements", out)
+
+    def test_scope_expanders_section_omitted_when_no_hypotheses(self):
+        """Proportionality: no scope-expanders section when none recorded."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "quote revision history log", "requirement", "history table")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertNotIn("Scope-expanders to verify", out)
+
+    def test_minimal_scope_section_present(self):
+        """Minimal scope section always present; uses 'Minimal scope' (not 'Minimal fix')."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(
+                devforge,
+                "quote revision history",
+                "requirement",
+                minimal_fix="append-only history table with quote_id + diff",
+            )
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertIn("### Minimal scope", out)
+            self.assertIn("append-only history table with quote_id + diff", out)
+
+    def test_empty_classifications_emits_notice(self):
+        """When no classifications recorded, emits a notice comment."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("no classifications recorded", r.stdout)
+
+    def test_minimal_scope_not_set_when_no_minimal_fix(self):
+        """When requirement has no minimal_fix, minimal scope shows '(not set)'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "quote revision history", "requirement")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("(not set)", r.stdout)
+
+    def test_discover_divergence_no_research_wording(self):
+        """Discover echo-back must not use research-specific 'suspected cause' wording."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "quote revision history", "requirement", "history table")
+            self._record(devforge, "maybe also support DOCX export", "hypothesis")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            # Discover section heading must be scope-expander flavored.
+            self.assertIn("Scope-expanders to verify", out)
+            # Must NOT use research "Hypotheses to verify — NOT requirements".
+            # The discover block uses "Scope-expanders to verify — NOT requirements".
+            self.assertNotIn("Suspected causes", out)
+            # integration_points routing note must appear.
+            self.assertIn("integration_points", out)
+
+    def test_section_order(self):
+        """Requirements section must precede Scope-expanders section in output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "quote revision history", "requirement", "history table")
+            self._record(devforge, "add DOCX export too", "hypothesis")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            req_pos = out.index("### Requirements")
+            expander_pos = out.index("### Scope-expanders")
+            self.assertLess(req_pos, expander_pos)
+
+    def test_hypothesis_only_omits_requirements_header_and_minimal_scope(self):
+        """F2: when only a hypothesis (scope-expander) is recorded (no requirements),
+        the '### Requirements' header, '*(no requirements classified)*' placeholder,
+        and '### Minimal scope' section must all be absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "maybe also add DOCX export", "hypothesis")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertNotIn("### Minimal scope", out)
+            self.assertNotIn("no requirements classified", out)
+            # The scope-expander itself must still be present.
+            self.assertIn("maybe also add DOCX export", out)
+
+
 if __name__ == "__main__":
     unittest.main()

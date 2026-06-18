@@ -62,11 +62,25 @@ def default_memo_state() -> dict:
         "topic": None,
         "topic_slug": None,
         "date": None,
+        # verbatim_prompt (v1.1): the raw user prompt text, persisted by
+        # set-verbatim-prompt at Phase 0.3 right after set-topic.
+        # None until set; finalize-handoff guards on this field before
+        # constructing Intent.verbatim_prompt.
+        "verbatim_prompt": None,
         "dimensions": {d: _empty_dimension() for d in RUBRIC_DIMENSIONS},
         "references": [],
         "gaps": [],
         "override_recorded": False,
         "conflicts": [],
+        # Step 5 — intake classification records. Each entry:
+        # {statement: str, kind: "requirement"|"hypothesis", minimal_fix: str|None}.
+        # Appended by record-intake-classification; read by render-intake-echo.
+        # NOTE discover lane divergence: a "hypothesis" kind here is a
+        # scope-expander or placement guess, routed to record-gap
+        # --dimension integration_points — NOT a research-style suspected
+        # cause. discover has no record-hypothesis verb.
+        # Idempotent: same statement replaces existing entry.
+        "intake_classifications": [],
     }
 
 

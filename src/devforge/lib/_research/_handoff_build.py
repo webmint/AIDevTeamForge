@@ -375,10 +375,19 @@ def _build_handoff_from_state(memo, report, research_md_path, devforge_dir=None)
         or ""
     ).strip()
 
+    # verbatim_prompt: persisted by set-verbatim-prompt at Phase 0.3.
+    # Caller (cmd_finalize_handoff) already guards on non-empty; read here
+    # for schema construction. None-safe: schema field is Optional, but
+    # the finalize guard ensures this is always a non-empty string for new
+    # handoffs. Back-compat: old state files without this key return None;
+    # finalize guard prevents None from reaching here for new writes.
+    verbatim_prompt = (memo.get("verbatim_prompt") or "").strip() or None
+
     intent = handoff_schema.Intent(
         symptom_summary=symptom_text or "(not set)",
         desired_summary=desired_text or "(not set)",
         scope=_derive_scope(scope_text),
+        verbatim_prompt=verbatim_prompt,
     )
 
     # spec_seeds block

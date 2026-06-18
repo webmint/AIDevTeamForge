@@ -173,7 +173,7 @@ class TestBuildHandoffWorthPursuingFull(unittest.TestCase):
         handoff = _build_handoff_from_state(self.memo, self.report)
         self.assertIsInstance(handoff, hs.Handoff)
         self.assertEqual(handoff.handoff_kind, "discover")
-        self.assertEqual(handoff.schema_version, "1.0")
+        self.assertEqual(handoff.schema_version, "1.1")
 
     def test_intent_populated(self):
         handoff = _build_handoff_from_state(self.memo, self.report)

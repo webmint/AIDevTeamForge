@@ -27,6 +27,7 @@ from ._cmds_basic import (
     cmd_reset_report,
     cmd_set_date,
     cmd_set_topic,
+    cmd_set_verbatim_prompt,
     cmd_summary,
 )
 from ._cmds_phase0 import (
@@ -69,7 +70,12 @@ from ._cmds_dataflow import (
     cmd_record_value_production_site,
     cmd_set_value_semantics,
 )
-from ._cmds_render_verify import cmd_render, cmd_verify
+from ._cmds_render_verify import cmd_render, cmd_verify, cmd_verify_hypothesis_suppression
+from ._cmds_intake import (
+    INTAKE_KIND_ENUM,
+    cmd_record_intake_classification,
+    cmd_render_intake_echo,
+)
 from ._cmds_handoff import (
     cmd_append_outcome,
     cmd_check_outcome,
@@ -129,6 +135,22 @@ def _register_subcommands(subparsers) -> None:
     )
     sp.add_argument("--value", required=True, help="Topic text (user's original input).")
     sp.set_defaults(func=cmd_set_topic)
+
+    sp = subparsers.add_parser(
+        "set-verbatim-prompt",
+        help=(
+            "Persist the full raw prompt text to memo.verbatim_prompt. "
+            "Called at Phase 0.3 right after set-topic, before the rubric. "
+            "Distinct from set-topic: carries the full $ARGUMENTS including any "
+            "'Suspected cause:' tail or other context the one-sentence topic loses."
+        ),
+    )
+    sp.add_argument(
+        "--value",
+        required=True,
+        help="Full raw prompt text (verbatim, multi-sentence ok).",
+    )
+    sp.set_defaults(func=cmd_set_verbatim_prompt)
 
     sp = subparsers.add_parser(
         "set-date",
@@ -501,6 +523,16 @@ def _register_subcommands(subparsers) -> None:
     )
     sp.set_defaults(func=cmd_verify)
 
+    sp = subparsers.add_parser(
+        "verify-hypothesis-suppression",
+        help=(
+            "Gate: exit 2 when any unverified hypothesis cause overlaps the "
+            "recommended-approach rationale (MEDIUM/LOW probe tier or unresolved "
+            "feasibility discriminator). Exit 0 when clean or tier is HIGH."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_hypothesis_suppression)
+
     # Phase 2.4c setters
     sp = subparsers.add_parser(
         "record-fix-path-helper",
@@ -686,6 +718,49 @@ def _register_subcommands(subparsers) -> None:
         help='JSON array of "path:line" tokens whose code the script inlines verbatim.',
     )
     sp.set_defaults(func=cmd_record_probe_script)
+
+    # Step 5 — intake-interrogation gate.
+    sp = subparsers.add_parser(
+        "record-intake-classification",
+        help=(
+            "Persist a per-statement binary intake classification "
+            "(requirement vs hypothesis) + the minimal_fix for that statement. "
+            "Called once per statement in the verbatim prompt. "
+            "Re-recording the same statement replaces its entry (idempotent)."
+        ),
+    )
+    sp.add_argument(
+        "--statement",
+        required=True,
+        help="The prompt statement being classified (verbatim or paraphrased).",
+    )
+    sp.add_argument(
+        "--kind",
+        required=True,
+        choices=list(INTAKE_KIND_ENUM),
+        help="Binary classification: 'requirement' or 'hypothesis'.",
+    )
+    sp.add_argument(
+        "--minimal-fix",
+        default=None,
+        dest="minimal_fix",
+        help=(
+            "The simplest change that satisfies this statement's desired outcome. "
+            "Optional; pass for requirement statements. For hypothesis statements "
+            "the fix is 'verify first', not a code change."
+        ),
+    )
+    sp.set_defaults(func=cmd_record_intake_classification)
+
+    sp = subparsers.add_parser(
+        "render-intake-echo",
+        help=(
+            "Render the intake echo-back block (requirements / hypotheses-to-verify / "
+            "minimal scope) to stdout. Orchestrator copies verbatim to user before "
+            "one confirmation. Proportional: no hypothesis section when none recorded."
+        ),
+    )
+    sp.set_defaults(func=cmd_render_intake_echo)
 
     # Step 7 — append-outcome.
     sp = subparsers.add_parser(

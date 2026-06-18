@@ -736,6 +736,27 @@ class TestPhase1Setters(unittest.TestCase):
             rep = self._read_report(devforge)
             self.assertEqual(len(rep["hypotheses"]), 1)
             self.assertTrue(rep["hypotheses"][0]["runtime_probe_needed"])
+            # First recorded hypothesis auto-assigned label "A".
+            self.assertEqual(rep["hypotheses"][0]["label"], "A")
+        finally:
+            tmp.cleanup()
+
+    def test_record_hypothesis_label_sequence(self):
+        """Second and third hypotheses get labels B and C in record order."""
+        tmp, devforge = self._fresh()
+        try:
+            for cause in ("first cause", "second cause", "third cause"):
+                _run([
+                    "--devforge-dir", str(devforge), "record-hypothesis",
+                    "--cause", cause,
+                    "--falsifier", "falsifier for " + cause,
+                    "--runtime-probe-needed", "no",
+                ])
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["hypotheses"]), 3)
+            self.assertEqual(rep["hypotheses"][0]["label"], "A")
+            self.assertEqual(rep["hypotheses"][1]["label"], "B")
+            self.assertEqual(rep["hypotheses"][2]["label"], "C")
         finally:
             tmp.cleanup()
 
@@ -3751,6 +3772,11 @@ def _build_domain_single_layer_bug_state(devforge):
         ])
     _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
     _run(["--devforge-dir", str(devforge), "set-topic", "--value", "order-bloc-stale"])
+    _run([
+        "--devforge-dir", str(devforge), "set-verbatim-prompt",
+        "--value",
+        "Order BLoC fetch returns stale rows after refresh. Suspected cause: last-fetch-wins race in Service.loadData.",
+    ])
     _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-17"])
 
     _run([
@@ -6518,6 +6544,11 @@ def _build_minimal_bug_state_for_handoff(devforge):
 
     _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
     _run(["--devforge-dir", str(devforge), "set-topic", "--value", "config-not-applied"])
+    _run([
+        "--devforge-dir", str(devforge), "set-verbatim-prompt",
+        "--value",
+        "Config value not applied at startup. Suspected cause: env var read before process env is populated by the launcher.",
+    ])
     _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
 
     # Phase 1: findings, hypotheses, root cause, verify-step.
@@ -6742,11 +6773,68 @@ class TestFinalizeHandoff(unittest.TestCase):
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("complexity not set", r.stderr)
 
+    def test_finalize_handoff_rejects_missing_verbatim_prompt(self):
+        """State with all other required fields set but verbatim_prompt omitted -> exit 2.
+
+        F2: required-on-write guard for verbatim_prompt must fire and identify
+        the missing field in stderr. Mirrors test_finalize_handoff_rejects_missing_*.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "bug"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "config-not-applied"])
+            _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
+            # Intentionally skip set-verbatim-prompt.
+            _run([
+                "--devforge-dir", str(devforge), "set-approach",
+                "--name", "Option A",
+                "--description", "fix it",
+                "--addresses-hypotheses", "[]",
+                "--does-not-cover", "[]",
+                "--pros", "[]",
+                "--cons", "[]",
+                "--complexity", "Low",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A",
+                "--rationale", "best option",
+                "--hypotheses-addressed", "[]",
+                "--hypotheses-not-covered", "[]",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-complexity",
+                "--codebase-changes", "Low", "--codebase-notes", "1 file",
+                "--risk", "Low", "--risk-notes", "narrow",
+                "--verify-cost", "Low", "--verify-notes", "unit test",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            r = _run_finalize(devforge, Path(tmp) / "handoff.json")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("verbatim_prompt not set", r.stderr)
+
     def test_finalize_handoff_round_trip_bug_mode(self):
         """Write full bug-mode state via setters; run finalize-handoff; parse output JSON.
 
         Asserts all 7 top-level keys present and types match schema.
+        F1: assert verbatim_prompt in the emitted JSON equals the FULL seeded prompt,
+        NOT the topic or topic slug.
         """
+        # The verbatim prompt seeded in _build_minimal_bug_state_for_handoff.
+        _FULL_PROMPT = (
+            "Config value not applied at startup. Suspected cause: env var read before "
+            "process env is populated by the launcher."
+        )
+        _TOPIC_SLUG = "config-not-applied"
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_minimal_bug_state_for_handoff(devforge)
@@ -6760,7 +6848,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                         "mode", "intent", "spec_seeds", "plan_seeds",
                         "probe", "downstream_links"):
                 self.assertIn(key, data, "missing top-level key: {0}".format(key))
-            self.assertEqual(data["schema_version"], "1.0")
+            self.assertEqual(data["schema_version"], "1.1")
             self.assertEqual(data["mode"], "bug")
             self.assertIsInstance(data["intent"], dict)
             self.assertIsInstance(data["spec_seeds"], dict)
@@ -6768,6 +6856,20 @@ class TestFinalizeHandoff(unittest.TestCase):
             self.assertIsInstance(data["probe"], dict)
             self.assertIsInstance(data["downstream_links"], dict)
             self.assertIsNone(data.get("outcome"))
+            # F1: integration round-trip must carry the full verbatim prompt through
+            # state -> finalize-handoff -> emitted JSON. A topic-vs-prompt regression
+            # (where the topic slug is emitted instead) must fail this assertion.
+            self.assertEqual(
+                data["intent"]["verbatim_prompt"],
+                _FULL_PROMPT,
+                "verbatim_prompt in emitted JSON must equal the full seeded prompt, "
+                "not a paraphrased topic or slug",
+            )
+            self.assertNotEqual(
+                data["intent"]["verbatim_prompt"],
+                _TOPIC_SLUG,
+                "verbatim_prompt must not be the topic slug",
+            )
 
     def test_finalize_handoff_feature_addition_mode(self):
         """Non-bug mode (enhancement) populates spec_type_hint as feature_addition.
@@ -6782,6 +6884,10 @@ class TestFinalizeHandoff(unittest.TestCase):
             # Use "enhancement" (actual MODE_ENUM value; "feature_addition" is schema-only).
             _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "enhancement"])
             _run(["--devforge-dir", str(devforge), "set-topic", "--value", "add-export"])
+            _run([
+                "--devforge-dir", str(devforge), "set-verbatim-prompt",
+                "--value", "Add an export endpoint to the API so users can download their data as CSV.",
+            ])
             _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
             _run([
                 "--devforge-dir", str(devforge), "set-approach",
@@ -8618,6 +8724,10 @@ def _build_minimal_discover_handoff_for_check_outcome(tmp_root):
     _run_discover(["--devforge-dir", df, "reset-report"])
 
     _run_discover(["--devforge-dir", df, "set-topic", "--value", "audit-log-persistence"])
+    _run_discover([
+        "--devforge-dir", df, "set-verbatim-prompt",
+        "--value", "Audit log persistence feature. Persist structured audit events to durable storage so all state changes are logged.",
+    ])
     _run_discover(["--devforge-dir", df, "set-date", "--value", "2026-05-20"])
 
     for dim, val in (
@@ -8845,6 +8955,743 @@ class TestCheckOutcomeDispatch(unittest.TestCase):
                 "unmarked\n",
                 "Research unmarked must be exactly 'unmarked\\n', got: " + repr(r.stdout),
             )
+
+
+def _run_verify_hyp_suppression(devforge, extra_env=None):
+    """Run research_helper verify-hypothesis-suppression and return CompletedProcess."""
+    env = None
+    if extra_env:
+        import os as _os
+        env = dict(_os.environ)
+        env.update(extra_env)
+    return subprocess.run(
+        [sys.executable, str(_HELPER_PY), "--devforge-dir", str(devforge),
+         "verify-hypothesis-suppression"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+
+class TestVerifyHypothesisSuppression(unittest.TestCase):
+    """verify-hypothesis-suppression: unverified hypothesis must not appear in plan direction.
+
+    Round-trip via real research_helper setters (subprocess). State is built
+    with actual helper calls; only post-build JSON edits are used to set up
+    specific overlap or probe-feasibility scenarios.
+
+    Covered cases:
+      1. Trip-wire regression: tier-3 suspected-cause cause-text overlaps
+         recommended-approach rationale → exit 2 with stderr naming the hypothesis.
+         Overlap fires HONESTLY on the shared identifier "getconfigurationitems",
+         NOT on hand-inserted padding.
+      2. HIGH-grade (tier-1.5) hypothesis CONFIRMED (in hypotheses_addressed) →
+         exit 0 (a confirmed primary hypothesis may become the design).
+      3. HIGH-grade session, runner-up hypothesis NOT in hypotheses_addressed but
+         overlapping rationale → exit 2 (runner-up is gated even in HIGH-grade session).
+      4. Clean handoff with no unverified-hypothesis overlap → exit 0.
+      5. Unverified hypothesis present but NOT overlapping the rationale → exit 0.
+      6. Pure-paraphrase approach (same mechanism, disjoint vocabulary) → exit 0.
+         KNOWN LIMITATION: the check catches identifier/vocabulary reuse only; it
+         does NOT catch semantic paraphrase. Pure-paraphrase leakage is caught by
+         the Step-5 intake echo-back human gate, not by this mechanical backstop.
+    """
+
+    def _build_base_and_inject(self, devforge, cause_text, rationale_text,
+                                probe_feasibility=None, hypotheses_addressed=None):
+        """Build bug state via real setters, then patch cause + rationale + probe_feasibility.
+
+        Uses _build_bug_state for the skeleton, then overwrites:
+        - hypotheses[0].cause with cause_text (the first hypothesis is the
+          suspected-cause under test; the second is left unchanged).
+        - recommended_approach.rationale with rationale_text.
+        - probe_feasibility dict if supplied (else leave None fields intact).
+        - recommended_approach.hypotheses_addressed if supplied (else leave
+          the _build_bug_state default intact).
+        """
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+
+        # Replace first hypothesis cause with the test-specific cause.
+        if data.get("hypotheses"):
+            data["hypotheses"][0]["cause"] = cause_text
+
+        # Replace rationale to control overlap.
+        if data.get("recommended_approach") is None:
+            data["recommended_approach"] = {}
+        data["recommended_approach"]["rationale"] = rationale_text
+
+        # Patch hypotheses_addressed when specified.
+        if hypotheses_addressed is not None:
+            data["recommended_approach"]["hypotheses_addressed"] = hypotheses_addressed
+
+        # Patch probe_feasibility when specified.
+        if probe_feasibility is not None:
+            data["probe_feasibility"] = probe_feasibility
+
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_trip_wire_tier3_cause_overlaps_rationale_exits_nonzero(self):
+        """Regression: tier-3 suspected cause 'getConfigurationItems returns Promise void'
+        overlaps the realistic testForge20 approach summary
+        'widen getConfigurationItems to a discriminated outcome carrying items inline'
+        → exit 2 naming the hypothesis.
+
+        This is the concrete trip-wire from Step 2 line 125 of the plan:
+          "Suspected cause: getConfigurationItems returns Promise<void>" (tier-3)
+          should NOT appear in: "widen getConfigurationItems to a discriminated
+          outcome carrying items inline."
+        Overlap fires HONESTLY on the shared identifier "getconfigurationitems"
+        (len=24, well above min_len=4). "void" is 4 chars and passes the length
+        filter but does not appear in the rationale — the overlap is solely on
+        "getconfigurationitems". No tokens are hand-inserted into the rationale
+        to force a match.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "getConfigurationItems returns Promise void"
+            # Realistic testForge20-style recommended-approach summary.
+            # Shares "getconfigurationitems" with the cause honestly — the
+            # identifier names the API being changed, so it MUST appear in both.
+            rationale = (
+                "widen getConfigurationItems to a discriminated outcome "
+                "carrying items inline"
+            )
+            # probe_feasibility: None fields → unresolved → unverified (tier unknown).
+            # This is the default state from _build_bug_state (no set-probe-feasibility call).
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("verify-hypothesis-suppression", r.stderr)
+            # Stderr must name the hypothesis cause; the overlapping token is
+            # "getconfigurationitems" (the shared API identifier).
+            self.assertIn("getConfigurationItems", r.stderr)
+
+    def test_trip_wire_tier3_via_explicit_feasibility(self):
+        """Tier-3 from explicit feasibility (auth_required=True, no chrome_mcp) +
+        cause overlaps rationale → exit 2.
+
+        auth_required=True without Chrome MCP → _classify_probe_tier returns tier=3.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "promise resolution timing causes data loss"
+            rationale = "resolve timing issue by reordering promise resolution calls"
+            probe_feasibility = {
+                "data_shape_only": False,
+                "auth_required": True,
+                "network_dependent": False,
+                "timing_dependent": False,
+                "is_test_code": False,
+            }
+            self._build_base_and_inject(devforge, cause, rationale, probe_feasibility)
+            # Ensure chrome MCP is NOT available (no env var override).
+            r = _run_verify_hyp_suppression(devforge, extra_env={"DEVFORGE_CHROME_MCP_AVAILABLE": ""})
+            self.assertEqual(r.returncode, 2, r.stderr)
+            # Stderr must name the overlapping hypothesis cause.
+            self.assertIn("promise", r.stderr.lower())
+
+    def test_high_grade_tier1_5_confirmed_hypothesis_in_rationale_exits_zero(self):
+        """HIGH-grade (tier-1.5) session: hypothesis explicitly confirmed in
+        hypotheses_addressed may appear in the recommended approach → exit 0.
+
+        Tier-1 requires: data_shape_only=True, not auth/network/timing, not is_test_code,
+        AND test_infra_status = present. Since we cannot control init.yaml in the temp
+        dir to fake test_infra, we use tier=1.5 instead (data_shape_only=True,
+        test_infra absent → tier=1.5), which also grades HIGH.
+
+        The gate exempts a hypothesis only when BOTH: (1) session is HIGH-grade AND
+        (2) the hypothesis LABEL appears in recommended_approach.hypotheses_addressed.
+
+        _build_base_and_inject replaces hypotheses[0].cause with the test-specific cause;
+        that hypothesis still carries label "A" (auto-assigned by record-hypothesis in
+        record order). hypotheses_addressed must contain "A" (the label), not the cause
+        text, to trigger the exemption.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Hypothesis cause uses tokens that also appear in rationale.
+            cause = "sortItems comparator returns incorrect ordering"
+            rationale = "fix the sortItems comparator to return stable ordering"
+            probe_feasibility = {
+                "data_shape_only": True,
+                "auth_required": False,
+                "network_dependent": False,
+                "timing_dependent": False,
+                "is_test_code": False,
+            }
+            # data_shape_only=True + no auth/network + test_infra absent
+            # → _classify_probe_tier → tier=1.5 → HIGH grade.
+            # Hypothesis at index 0 carries label "A" (first recorded).
+            # "A" in hypotheses_addressed → label match → confirmed → exempt → exit 0.
+            self._build_base_and_inject(
+                devforge, cause, rationale, probe_feasibility,
+                hypotheses_addressed=["A"],
+            )
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_high_grade_runner_up_not_in_hypotheses_addressed_still_gated(self):
+        """HIGH-grade (tier-1.5) session but runner-up hypothesis NOT in
+        hypotheses_addressed: the runner-up is still gated even in a HIGH-grade session.
+
+        Validates F2 fix: the gate evaluates per-hypothesis, not per-session.
+        A runner-up whose cause overlaps the rationale is flagged exit 2
+        even though the session tier is HIGH-grade.
+
+        _build_base_and_inject replaces hypotheses[0].cause with runner_up_cause.
+        That hypothesis carries label "A" (first recorded). hypotheses_addressed
+        contains only "B" (the second, primary hypothesis at index 1), so "A" is
+        NOT in confirmed_labels → runner-up is gated → exit 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Runner-up cause shares the identifier "getOrderItems" with the rationale.
+            # This hypothesis is at index 0 (label "A") but is NOT in hypotheses_addressed.
+            runner_up_cause = "getOrderItems caches stale data on retry"
+            rationale = "widen getOrderItems to return a discriminated result"
+            probe_feasibility = {
+                "data_shape_only": True,
+                "auth_required": False,
+                "network_dependent": False,
+                "timing_dependent": False,
+                "is_test_code": False,
+            }
+            # hypotheses_addressed names only the primary hypothesis (label "B",
+            # i.e. the SECOND recorded hypothesis), NOT the runner-up (label "A").
+            self._build_base_and_inject(
+                devforge, runner_up_cause, rationale, probe_feasibility,
+                hypotheses_addressed=["B"],
+            )
+            r = _run_verify_hyp_suppression(devforge)
+            # Runner-up (label "A") overlaps rationale via "getorderitems" → exit 2.
+            self.assertEqual(r.returncode, 2, "runner-up should be gated: " + r.stderr)
+            self.assertIn("getOrderItems", r.stderr)
+
+    def test_pure_paraphrase_exits_zero_known_limitation(self):
+        """KNOWN LIMITATION: pure-paraphrase approach that encodes the same mechanism
+        as an unverified hypothesis using entirely different vocabulary → exit 0.
+
+        The check is a literal identifier/vocabulary-reuse backstop only. A recommended
+        approach that says "widen the outcome to carry success or failure inline" encodes
+        the same mechanism as "getConfigurationItems returns Promise<void>" but shares
+        NO significant token with that cause text (no shared identifier or keyword passes
+        the min_len=4 + stopword filter). The gate correctly exits 0 — it cannot detect
+        pure paraphrase by design. This gap is caught by the Step-5 intake echo-back
+        human gate, not by this mechanical check.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Unverified cause (None feasibility → unresolved → unverified).
+            cause = "getConfigurationItems returns Promise void"
+            # Pure-paraphrase rationale: encodes the same mechanism (widen the
+            # outcome type to carry items vs. void) but shares NO significant token
+            # with the cause. "widen", "outcome", "carry", "success", "failure",
+            # "inline" are all unique to the rationale; "getconfigurationitems",
+            # "returns", "promise" appear only in the cause. No overlap → exit 0.
+            rationale = "widen the outcome to carry success or failure inline"
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            # KNOWN LIMITATION: pure paraphrase is not detected. Exit 0.
+            self.assertEqual(r.returncode, 0,
+                             "pure paraphrase should exit 0 (known limitation): " + r.stderr)
+
+    def test_clean_handoff_no_overlap_exits_zero(self):
+        """Clean handoff: unverified probe (None feasibility) but no hypothesis
+        cause-token overlaps the rationale → exit 0.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Cause and rationale share no significant tokens.
+            cause = "cache invalidation stale data"
+            rationale = "move sort logic into derived computed property"
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_unverified_hypothesis_not_in_rationale_exits_zero(self):
+        """Unverified hypothesis is present as an open concern but its cause-text
+        does NOT appear in the recommended approach → exit 0.
+
+        This is the 'hypothesis in open question, not in plan direction' case.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Tier-3 because feasibility unresolved (None fields).
+            cause = "network timeout causes partial write corruption"
+            # Rationale about sort logic — completely disjoint tokens.
+            rationale = "replace inline sort with stable comparator function"
+            self._build_base_and_inject(devforge, cause, rationale)
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_empty_state_exits_zero(self):
+        """Missing state files (no prior setter calls) → no hypotheses, no rationale,
+        gate exits 0 without error.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Do NOT call any setters — state files are absent.
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_no_recommended_approach_exits_zero(self):
+        """Unresolved feasibility + hypotheses but no recommended_approach yet
+        → nothing to gate against → exit 0.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Wipe the recommended approach.
+            data["recommended_approach"] = None
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_tier2_chrome_mcp_cause_overlaps_rationale_exits_nonzero(self):
+        """Tier-2 (auth_required=True WITH chrome MCP available) is also MEDIUM-grade.
+        Hypothesis cause overlapping rationale → exit 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            cause = "authentication token expires during long running session"
+            rationale = "refresh authentication token before session expiration"
+            probe_feasibility = {
+                "data_shape_only": False,
+                "auth_required": True,
+                "network_dependent": False,
+                "timing_dependent": False,
+                "is_test_code": False,
+            }
+            self._build_base_and_inject(devforge, cause, rationale, probe_feasibility)
+            # DEVFORGE_CHROME_MCP_AVAILABLE=1 → tier=2 (MEDIUM).
+            r = _run_verify_hyp_suppression(devforge, extra_env={"DEVFORGE_CHROME_MCP_AVAILABLE": "1"})
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("authentication", r.stderr.lower())
+
+    def test_confirmed_exempt_label_match_exits_zero(self):
+        """Confirmed-exempt: HIGH-grade session, hypothesis whose label IS in
+        hypotheses_addressed, cause-text overlaps the rationale → exit 0.
+
+        This is the case that was wrongly flagged before the label-match fix:
+        when hypotheses_addressed holds labels ("A", "B", ...) but the old
+        code compared cause text against those labels, the exemption could
+        NEVER fire (a cause like "processOrders reads stale cache" != "A").
+        After the fix the exemption fires correctly.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # Tier-1.5 (data_shape_only=True, test_infra absent) → HIGH grade.
+            probe_feasibility = {
+                "data_shape_only": True,
+                "auth_required": False,
+                "network_dependent": False,
+                "timing_dependent": False,
+                "is_test_code": False,
+            }
+            # Hypothesis at index 0 (label "A") shares "processorders" and "cache"
+            # with the rationale — strong identifier overlap.
+            cause = "processOrders reads stale cache on retry"
+            rationale = "flush processOrders cache before each retry attempt"
+            # hypotheses_addressed contains label "A" → confirmed → exempt → exit 0.
+            self._build_base_and_inject(
+                devforge, cause, rationale, probe_feasibility,
+                hypotheses_addressed=["A"],
+            )
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(
+                r.returncode, 0,
+                "confirmed hypothesis (label A in hypotheses_addressed) should be "
+                "exempt but was flagged: " + r.stderr,
+            )
+
+    def test_unconfirmed_gated_label_not_in_addressed(self):
+        """Unconfirmed-gated: HIGH-grade session, hypothesis whose label is NOT in
+        hypotheses_addressed (a runner-up), cause overlaps rationale → exit 2.
+
+        The hypothesis at index 0 carries label "A". hypotheses_addressed contains
+        only "B" (the second hypothesis, which is the primary confirmed one). "A"
+        is not in confirmed_labels → runner-up is gated → exit 2.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            probe_feasibility = {
+                "data_shape_only": True,
+                "auth_required": False,
+                "network_dependent": False,
+                "timing_dependent": False,
+                "is_test_code": False,
+            }
+            # Runner-up at index 0 (label "A") shares "fetchProducts" with rationale.
+            runner_up_cause = "fetchProducts returns incomplete dataset on pagination"
+            rationale = "extend fetchProducts to include total count in response"
+            # Only label "B" (the second hypothesis) is addressed — "A" is the runner-up.
+            self._build_base_and_inject(
+                devforge, runner_up_cause, rationale, probe_feasibility,
+                hypotheses_addressed=["B"],
+            )
+            r = _run_verify_hyp_suppression(devforge)
+            self.assertEqual(
+                r.returncode, 2,
+                "runner-up hypothesis (label A not in hypotheses_addressed) should "
+                "be gated but was exempt: " + r.stderr,
+            )
+            self.assertIn("fetchProducts", r.stderr)
+
+    def test_low_grade_gated_regardless_of_hypotheses_addressed(self):
+        """Low-grade-gated: MEDIUM-grade session, any hypothesis with cause overlapping
+        rationale → exit 2 even if its label is in hypotheses_addressed.
+
+        Grade MEDIUM means session_is_high_grade=False → confirmed_labels stays empty
+        → no hypothesis is exempt regardless of hypotheses_addressed content.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            # auth_required=True, no Chrome MCP → tier-3 → LOW grade.
+            probe_feasibility = {
+                "data_shape_only": False,
+                "auth_required": True,
+                "network_dependent": False,
+                "timing_dependent": False,
+                "is_test_code": False,
+            }
+            cause = "refreshSession token expires before request completes"
+            rationale = "pre-warm refreshSession token before issuing the request"
+            # Put label "A" in hypotheses_addressed — but grade is LOW so the
+            # session is NOT high-grade and confirmed_labels stays empty.
+            self._build_base_and_inject(
+                devforge, cause, rationale, probe_feasibility,
+                hypotheses_addressed=["A"],
+            )
+            # No DEVFORGE_CHROME_MCP_AVAILABLE → tier-3 → LOW grade.
+            r = _run_verify_hyp_suppression(
+                devforge, extra_env={"DEVFORGE_CHROME_MCP_AVAILABLE": ""}
+            )
+            self.assertEqual(
+                r.returncode, 2,
+                "LOW-grade session should gate hypothesis regardless of "
+                "hypotheses_addressed content: " + r.stderr,
+            )
+            self.assertIn("refreshsession", r.stderr.lower())
+
+
+# ---------------------------------------------------------------------------
+# Step 5 — intake-interrogation gate: record-intake-classification +
+#           render-intake-echo for research_helper.
+# ---------------------------------------------------------------------------
+
+
+class TestRecordIntakeClassification(unittest.TestCase):
+    """record-intake-classification setter: persists binary classification + minimal_fix."""
+
+    def test_requirement_kind_persisted(self):
+        """A requirement statement is stored with kind='requirement'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "render empty section + error toast on load failure",
+                "--kind", "requirement",
+                "--minimal-fix", "branch render on load-failure flag; show empty + toast",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            classifications = state.get("intake_classifications", [])
+            self.assertEqual(len(classifications), 1)
+            entry = classifications[0]
+            self.assertEqual(entry["statement"], "render empty section + error toast on load failure")
+            self.assertEqual(entry["kind"], "requirement")
+            self.assertEqual(entry["minimal_fix"], "branch render on load-failure flag; show empty + toast")
+
+    def test_hypothesis_kind_persisted(self):
+        """A hypothesis statement is stored with kind='hypothesis' and optional minimal_fix."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "Suspected cause: last-fetch-wins race in Service.loadData",
+                "--kind", "hypothesis",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            classifications = state.get("intake_classifications", [])
+            self.assertEqual(len(classifications), 1)
+            entry = classifications[0]
+            self.assertEqual(entry["kind"], "hypothesis")
+            self.assertIsNone(entry["minimal_fix"])
+
+    def test_multiple_statements_appended(self):
+        """Multiple calls append distinct entries."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "render empty section on load failure",
+                "--kind", "requirement",
+                "--minimal-fix", "branch on load_failed flag",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "Suspected cause: fetch race",
+                "--kind", "hypothesis",
+            ])
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            classifications = state["intake_classifications"]
+            self.assertEqual(len(classifications), 2)
+            kinds = [e["kind"] for e in classifications]
+            self.assertIn("requirement", kinds)
+            self.assertIn("hypothesis", kinds)
+
+    def test_idempotent_re_record_same_statement(self):
+        """Re-recording the same statement replaces the entry (idempotent)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            stmt = "render empty section on load failure"
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", stmt,
+                "--kind", "requirement",
+                "--minimal-fix", "old fix",
+            ])
+            # Re-record with corrected minimal_fix.
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", stmt,
+                "--kind", "requirement",
+                "--minimal-fix", "corrected fix",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            classifications = state["intake_classifications"]
+            self.assertEqual(len(classifications), 1, "should not append duplicate")
+            self.assertEqual(classifications[0]["minimal_fix"], "corrected fix")
+
+    def test_invalid_kind_rejected(self):
+        """An invalid --kind value is rejected with exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "some statement",
+                "--kind", "context",   # not in INTAKE_KIND_ENUM
+            ])
+            self.assertEqual(r.returncode, 2, "invalid kind should exit 2")
+
+    def test_empty_statement_rejected(self):
+        """An empty --statement is rejected with exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "   ",
+                "--kind", "requirement",
+            ])
+            self.assertEqual(r.returncode, 2, "empty statement should exit 2")
+
+    def test_default_memo_has_intake_classifications_field(self):
+        """default_memo_state must include intake_classifications as empty list."""
+        memo = research_helper.default_memo_state()
+        self.assertIn("intake_classifications", memo)
+        self.assertEqual(memo["intake_classifications"], [])
+
+    def test_round_trip_no_minimal_fix_is_none(self):
+        """When --minimal-fix is not passed, minimal_fix persists as None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-intake-classification",
+                "--statement", "desired outcome: items never leak from prior load",
+                "--kind", "requirement",
+            ])
+            state = json.loads((Path(devforge) / "research-state.json").read_text())
+            entry = state["intake_classifications"][0]
+            self.assertIsNone(entry["minimal_fix"])
+
+
+class TestRenderIntakeEcho(unittest.TestCase):
+    """render-intake-echo verb: produces structured echo-back block."""
+
+    def _record(self, devforge, statement, kind, minimal_fix=None):
+        """Helper: call record-intake-classification."""
+        argv = [
+            "--devforge-dir", str(devforge),
+            "record-intake-classification",
+            "--statement", statement,
+            "--kind", kind,
+        ]
+        if minimal_fix is not None:
+            argv += ["--minimal-fix", minimal_fix]
+        _run(argv)
+
+    def test_requirements_section_present(self):
+        """Requirements section lists requirement statements."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(
+                devforge,
+                "render empty section on load failure",
+                "requirement",
+                minimal_fix="branch on load_failed flag",
+            )
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertIn("## Intake interpretation", out)
+            self.assertIn("### Requirements (what you asked for)", out)
+            self.assertIn("render empty section on load failure", out)
+            self.assertIn("branch on load_failed flag", out)
+
+    def test_hypothesis_section_present_when_hypotheses_exist(self):
+        """When hypotheses exist, the 'Hypotheses to verify' section appears."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "render empty + toast", "requirement", "branch on flag")
+            self._record(devforge, "Suspected cause: fetch race in loadData", "hypothesis")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertIn("### Hypotheses to verify", out)
+            self.assertIn("NOT requirements", out)
+            self.assertIn("Suspected cause: fetch race in loadData", out)
+            # Must also surface the requirement.
+            self.assertIn("render empty + toast", out)
+
+    def test_hypothesis_section_omitted_when_no_hypotheses(self):
+        """Proportionality: when there are no hypotheses the section is absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "show empty section on failure", "requirement", "if flag: empty")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertNotIn("Hypotheses to verify", out)
+            self.assertNotIn("NOT requirements", out)
+
+    def test_minimal_scope_section_present(self):
+        """Minimal scope section is always present and surfaces the first req's minimal_fix."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(
+                devforge,
+                "render empty section on load failure",
+                "requirement",
+                minimal_fix="branch render on load_failed; show empty + toast",
+            )
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertIn("### Minimal scope", out)
+            self.assertIn("branch render on load_failed; show empty + toast", out)
+
+    def test_empty_classifications_emits_notice(self):
+        """When no classifications recorded, emits the notice comment."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("no classifications recorded", r.stdout)
+
+    def test_minimal_scope_not_set_when_no_minimal_fix(self):
+        """When requirement has no minimal_fix, minimal scope shows '(not set)'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "render empty section", "requirement")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("(not set)", r.stdout)
+
+    def test_hypothesis_only_omits_requirements_header_and_minimal_scope(self):
+        """F2: when only a hypothesis is recorded (no requirements), the
+        '### Requirements' header, '*(no requirements classified)*' placeholder,
+        and '### Minimal scope' section must all be absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(devforge, "Suspected cause: race in loadData", "hypothesis")
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertNotIn("### Minimal scope", out)
+            self.assertNotIn("no requirements classified", out)
+            # The hypothesis itself must still be present.
+            self.assertIn("Suspected cause: race in loadData", out)
+
+    def test_requirement_inline_label_uses_minimal_scope(self):
+        """F3: inline per-requirement label must read 'Minimal scope:' not 'Minimal fix:'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            self._record(
+                devforge,
+                "render empty section on failure",
+                "requirement",
+                minimal_fix="branch on load_failed flag",
+            )
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            self.assertIn("Minimal scope:", out)
+            self.assertNotIn("Minimal fix:", out)
+
+    def test_testforge20_trip_wire(self):
+        """Concrete trip-wire from plan Step 5: suspected-cause → hypothesis,
+        desired outcome → requirement; hypothesis section NOT requirements."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            # The over-build scenario: desired outcome is the requirement.
+            self._record(
+                devforge,
+                "render empty section and error toast; never leak prior items on load failure",
+                "requirement",
+                minimal_fix="branch the render on load-failure; show empty + toast",
+            )
+            # The suspected cause is a hypothesis — must NOT be treated as requirement.
+            self._record(
+                devforge,
+                "Suspected cause: inline-items mechanism not handling empty state",
+                "hypothesis",
+            )
+            r = _run(["--devforge-dir", str(devforge), "render-intake-echo"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = r.stdout
+            # Requirement must be in the Requirements section.
+            self.assertIn("render empty section and error toast", out)
+            # Suspected cause must be labeled as NOT requirement.
+            self.assertIn("Suspected cause: inline-items mechanism not handling empty state", out)
+            self.assertIn("NOT requirements", out)
+            # Minimal scope must surface the minimal change (no inline-items mechanism).
+            self.assertIn("branch the render on load-failure", out)
+            # The hypothesis section must clearly separate hypotheses from requirements.
+            req_pos = out.index("### Requirements")
+            hyp_pos = out.index("### Hypotheses to verify")
+            self.assertLess(req_pos, hyp_pos, "Requirements section must precede Hypotheses section")
 
 
 if __name__ == "__main__":

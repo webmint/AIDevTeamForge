@@ -58,12 +58,77 @@ If `$ARGUMENTS` is non-empty, treat it as the topic. If empty, ask the user via 
 .devforge/lib/research_helper reset-memo
 .devforge/lib/research_helper reset-report
 .devforge/lib/research_helper set-topic --value "<topic>"
+.devforge/lib/research_helper set-verbatim-prompt --value "<full raw $ARGUMENTS>"
 .devforge/lib/research_helper set-date --value $(date -u +%Y-%m-%d)
 ```
 
-`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`.
+`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/research` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence prompt (e.g. a symptom plus a trailing "Suspected cause:" hypothesis); the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
 
 Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/research-state.json` + `.devforge/research-report.json` are overwritten with fresh defaults. `/research` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
+
+### Phase 0.4 — Suspected-cause classification (pre-rubric, runs before Phase 1)
+
+A `/research` prompt often carries a mechanism guess alongside the symptom — a trailing "Suspected cause: …" clause (or an equivalent lead-in: "I think it's …", "probably because …", "root cause is …", "this is caused by …"). Scan the verbatim prompt persisted by `set-verbatim-prompt` for any such lead-in BEFORE the six-dimension rubric runs. A user- or research-supplied mechanism guess is a CLAIM TO DISPROVE, not a fact: it MUST NOT silently become the `desired` dimension, any other rubric dimension, or the eventual recommended approach. It belongs in the hypothesis lane.
+
+When a suspected-cause clause is present, hold the verbatim mechanism text in working memory now (so it is not lost during the rubric) and carry it forward as one of the candidates Phase 2.5 enumerates. There is no pre-rubric setter for a standalone hypothesis — the suspected cause is persisted by the existing Phase 2.6 `record-hypothesis` call (which requires `--cause`, `--falsifier`, and `--runtime-probe-needed`), alongside the ≥2 enumerated candidates. The point of capturing it here is to guarantee the guessed mechanism enters Phase 2.5 as a hypothesis to disprove — with its own falsifier (the observation that would refute the guessed mechanism) — rather than bleeding into a rubric dimension. This pre-rubric classifier is the home Step 5's binary-classification gate routes `hypothesis` statements into (per plan 18 Step 5 — the user-facing front door over this same lane); treating the suspected cause as a falsifiable hypothesis is what makes it a typed, gate-detectable claim rather than free prose. The captured mechanism feeds Phase 2.5 hypothesis enumeration; it never enters `symptom` / `desired` or any rubric dimension.
+
+When the prompt carries NO suspected-cause lead-in, this step is a no-op — proceed directly to Phase 0.5.
+
+### Phase 0.5 — Intake-interrogation gate (user-facing front door, runs before Phase 1)
+
+Phase 0.4 silently classified a suspected cause and held it in working memory for the hypothesis lane; Phase 0.5 is the USER-FACING front door over that same machinery. It surfaces the framework's interpretation of the verbatim prompt for ONE confirmation before the Phase 1 rubric commits investigation cost — this is the gate that closes the over-solve failure (plan 18 Step 5: in the original failure the user never saw, and so could never correct, the framework's interpretation). Phase 0.5 does NOT re-run Phase 0.4's detection logic — it reuses the detection decision Phase 0.4 made in working memory (the `hypothesis`-vs-`requirement` split) and adds the minimality challenge + echo-back + confirmation on top. Phase 0.5 Step 1 is where that decision is first persisted, via `record-intake-classification`; Phase 0.4 makes no helper call for the classification.
+
+**PROPORTIONALITY (HARD requirement — not advice).** The gate is PROPORTIONATE, inheriting the same proportionality the Phase 1 rubric already carries (its turn caps + accept-gaps coverage exit). Auto-classify the easy parts; surface to the user ONLY the high-stakes ambiguities — conflations (a requirement mixed with a hypothesis), scope-expanders (an extra distinction or state not in the stated desired outcome), and big-design-driving hypotheses (a mechanism guess that would shape the architecture). It is NOT a 20-question inquisition. A clean prompt — no hypothesis, no scope-expander, one obvious minimal fix — passes with ONE echo-back confirmation and ZERO interrogation. Over-interrogating a trivial bug is itself the over-build failure mode this gate exists to fight.
+
+#### Step 1 — Binary-classify each statement
+
+Partition the verbatim prompt (the field `set-verbatim-prompt` persisted in Phase 0.3) into statements and classify each as one of TWO classes: `requirement` (the desired outcome — what the user asked for) vs `hypothesis` (a suspected cause or mechanism guess). Reuse Phase 0.4's detection: a `"Suspected cause:"` lead-in (or equivalent — "I think it's …", "probably because …", "root cause is …") was already detected there and held in working memory for the hypothesis lane; it will be persisted via `record-hypothesis` at Phase 2.6. Here that same statement is ALSO tagged `hypothesis` for the echo-back. Everything else is a `requirement`. Record each statement:
+
+```bash
+.devforge/lib/research_helper record-intake-classification \
+    --statement "<the prompt statement, verbatim or lightly paraphrased>" \
+    --kind <requirement|hypothesis> \
+    --minimal-fix "<see Step 2 — pass on requirement statements>"
+```
+
+The setter is idempotent on `--statement`: re-recording the same statement overwrites its prior `--kind` + `--minimal-fix` (this is the mechanism the `correct` branch in Step 3 uses). `--kind` must be exactly `requirement` or `hypothesis` (the helper rejects any other value with exit 2). On a clean single-requirement prompt this is ONE call with `--kind requirement`; do not manufacture extra statements to classify.
+
+#### Step 2 — Minimality challenge
+
+Compose the SIMPLEST change that satisfies the stated desired outcome ALONE, and pass it as `--minimal-fix` on the requirement statement. Any addition beyond that simplest change — a guessed mechanism, an extra distinction, a new state — is an "extra" the user must CONSCIOUSLY opt into; it is never assumed into the minimal fix. Concretely for the trip-wire this gate exists to catch: a prompt whose desired outcome is "render an empty section plus an error toast on load failure, never leak the prior items" yields the minimal fix "branch the render on load-failure; show empty + toast" — with NO inline-items mechanism and NO empty-vs-failure split, because neither is in the stated desired outcome. `--minimal-fix` is optional on the setter (omit it on `hypothesis` statements — their minimal fix is "verify first", not a code change), but for the requirement statement carrying the desired outcome it is REQUIRED: it is the surface the user confirms or corrects.
+
+#### Step 3 — Echo-back + ONE confirmation
+
+Render the echo-back block and surface it for confirmation:
+
+```bash
+.devforge/lib/research_helper render-intake-echo
+```
+
+The helper owns the block shape — `## Intake interpretation` with a `### Requirements (what you asked for)` section (each requirement + its `Minimal scope:` line), a `### Hypotheses to verify — NOT requirements` section (omitted entirely when no hypothesis was classified — the proportionality rule), and a `### Minimal scope` section. The hypotheses section is where a suspected cause surfaces as "hypothesis to verify, not a requirement." Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) — this is the established verbatim-echo convention; the orchestrator does NOT re-shape the block.
+
+Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]`. End the turn. The user's reply opens the next turn.
+
+- On `confirm`: proceed to Phase 1.
+- On `correct`: the user names what was misclassified (a statement that should flip `requirement`↔`hypothesis`, or a minimal fix that scoped too wide). Re-record the affected statement(s) via `record-intake-classification` (the idempotent overwrite on `--statement`), then re-run `render-intake-echo` and echo the corrected block ONCE more. Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["confirm", "correct"]` (same options — this is the ONE bounded correction). End the turn. On the next reply: `confirm` → proceed to Phase 1; `correct` (or any other reply) → proceed to Phase 1 regardless. The gate allows AT MOST one correction pass — it does not loop, so even a second `correct` advances to Phase 1 rather than re-entering this branch.
+
+When the prompt is a clean single-requirement bug with no hypothesis and one obvious minimal fix, Steps 1-2 are a single `record-intake-classification --kind requirement --minimal-fix "…"` call and Step 3 is one echo-back the user confirms in a single turn — zero interrogation, per the proportionality requirement above.
+
+### Phase 0.6 — Re-entry from `/grill` (conditional — skip if no seed)
+
+Before beginning the investigation, check for a `/grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"research"` (this command's stage), you are re-entering from a `/grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS research investigation's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `grill_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/grill` is ever removed). The seed carries these fields:
+
+- `feature` — the feature this seed was emitted for; read it from the seed and state it up front in your re-entry message (do NOT infer it from the file path).
+- `prior_conclusion` — what the previous research investigation concluded; it was invalidated, so do NOT re-derive it.
+- `invalidating_evidence` — how `/grill` proved it wrong, grounded in the plan / spec / code.
+- `must_satisfy` — what this re-run must now additionally satisfy; address it explicitly.
+- `carried_findings` — prior findings to carry forward; stay monotonic (never re-surface a finding a prior pass already disproved).
+
+State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 normally, with the seed's directive constraining the investigation.
+
+This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
+
+When no `specs/*/grill-seed.json` file matches `target_stage == "research"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1.
 
 ## Phase 1 — Symptom clarification (rubric Q&A)
 
@@ -825,6 +890,20 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 8b (cross-layer rule) rejects a bug-mode report where the primary symptom's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers[].file_line` is in the same package as the symptom — at least one helper must trace through a package boundary; see Phase 2.4c Stopping rule. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Check 13 (single-layer recommendation gate) rejects a bug-mode report where all `fix_path_helpers[].file_line` resolve to one package AND `recommended_approach.single_layer_justification` / `cites` are missing or empty — supply both via `set-recommended-approach --single-layer-justification ... --cites '[...]'` (see Phase 3 step 3). Check 13 is suppressed when check 8b applies (presentation-layer symptom + same-package helpers); in that case the single-layer escape path cannot satisfy verify and the only recovery is adding a cross-layer helper. Check 14 (fix-path-helper anchor gate) rejects a bug-mode report where any `fix_path_helpers[]` entry's `file_line` does not anchor to a recorded finding (exact match OR same path within ±5 lines) — see Phase 2.4c Step 1 anchor gate. Check 17 (literal-archaeology gate) rejects a bug-mode report whose `recommended_approach.rationale` OR the linked approach's `description` contains literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) where `<X>` is a recognizable primitive literal AND no `literal_archaeology` row exists for `<X>` at a `findings[].file_line` — recovery: run Phase 2.5b archaeology + `record-literal-archaeology`, then re-run `verify`. Check 18 (argument-duplication shape check) rejects a bug-mode report whose `recommended_approach.proposed_call_shape` contains the same identifier (bare / dotted / optional-chained) more than once in its arg list — argument duplication signals the default-source belongs at a different layer; recovery: escalate the default-source upstream (wrapper signature / state initialization / use-case default) and re-call `set-recommended-approach` with a non-duplicating `--proposed-call-shape`. Shapes that could not be parsed (nested calls, unsupported syntax) are treated as non-duplicating — same fail-soft rule as the setter gate. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
 
 On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` from scratch (all prior state will be overwritten).
+
+### Hypothesis-suppression gate
+
+After `verify` exits 0, run the dedicated hypothesis-suppression gate (this is a separate verb from `verify`, not one of its 18 checks):
+
+```bash
+.devforge/lib/research_helper verify-hypothesis-suppression
+```
+
+The gate defends the Phase 0.4 / Step 5 separation at finalize time: an UNVERIFIED suspected-cause hypothesis must not also reappear as design direction. Mechanically, the helper token-overlaps each unverified hypothesis's `--cause` text against `recommended_approach.rationale` (the text that becomes `plan_seeds.recommended_approach_summary` in the handoff) and exits 2 on any shared identifier/vocabulary token. A hypothesis is exempt from the gate ONLY when it is CONFIRMED, and confirmation requires BOTH conditions together: the session/probe grade is HIGH (tier 1 / 1.5 — not MEDIUM/LOW and not feasibility-discriminator-unresolved) AND the hypothesis is recorded as addressed in `recommended_approach.hypotheses_addressed` (matched by its label). Behaviorally: confirmed (HIGH-grade AND addressed) → exempt; anything else → gated. An unconfirmed hypothesis stays gated even in a HIGH-grade session — a runner-up that the session did not confirm but whose mechanism leaks into the rationale is still flagged, because HIGH grade alone is not confirmation without the addressed-label match. Exit 0 → clean (no recommended approach yet, or no unverified mechanism leaked); exit 1 → state unreadable; exit 2 → a leak was found.
+
+**Scope of this check (do not over-trust it).** This is a MODERATE mechanical backstop: it catches a leaked mechanism when the recommended approach REUSES the cause's identifiers/vocabulary — the common case, since an approach summary usually names the API / symbol it changes. It does NOT catch pure semantic paraphrase: a recommended approach that encodes the same mechanism in entirely different words shares zero tokens and passes. Paraphrase leakage is caught by Step 5's echo-back human gate (plan 18 Step 5), not by this check.
+
+On exit 2: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). The recovery is exactly what the stderr names — move the mechanism into an open question via `record-gap` (record it against the `desired` dimension with a `"confirm <mechanism> before designing"` description), then remove the mechanism from the recommended approach by re-calling `set-recommended-approach` with a `--rationale` that no longer encodes the unverified cause. Re-run `verify-hypothesis-suppression` after the fix; cap at 3 iterations, then surface to the user and end the turn.
 
 ### Render
 

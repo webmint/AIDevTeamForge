@@ -1,4 +1,4 @@
-"""handoff_schema — dataclass schema for the research → specify → plan → execute-task handoff artefact.
+"""handoff_schema — dataclass schema for the research → specify → plan → /implement handoff artefact.
 
 Single source of truth for the shape of `handoff.json` emitted by
 `research_helper finalize-handoff` (Step 3) and consumed by
@@ -47,7 +47,7 @@ from typing import Dict, List, Optional, Tuple
 # Schema version constant.
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 
 # ---------------------------------------------------------------------------
@@ -253,16 +253,30 @@ def compute_confidence_grade(
 
 @dataclass
 class Intent:
-    """Research intent block — symptom, desired state, and scope."""
+    """Research intent block — symptom, desired state, scope, and verbatim prompt.
+
+    verbatim_prompt (added v1.1): the raw user prompt text, unmodified.
+
+    Back-compat (OQ-1 RESOLVED): the field defaults to None so that pre-v1.1
+    handoff.json records loaded via _dict_to_dataclass do not raise on
+    construction (absent field -> None -> tolerate-missing-on-read branch).
+    When non-None, it must be non-empty after strip (same _require_nonempty
+    idiom as other optional string fields). New handoffs always supply a
+    non-empty string via _build_handoff_from_state, which guards on the
+    state value before constructing Intent.
+    """
 
     symptom_summary: str
     desired_summary: str
     scope: str  # one of _VALID_SCOPE
+    verbatim_prompt: Optional[str] = None
 
     def __post_init__(self):
         _require_nonempty(self.symptom_summary, "Intent.symptom_summary")
         _require_nonempty(self.desired_summary, "Intent.desired_summary")
         _require_in_enum(self.scope, _VALID_SCOPE, "Intent.scope")
+        if self.verbatim_prompt is not None:
+            _require_nonempty(self.verbatim_prompt, "Intent.verbatim_prompt")
 
 
 # ---------------------------------------------------------------------------
@@ -960,10 +974,12 @@ class Handoff:
     outcome: Optional[Outcome] = None
 
     def __post_init__(self):
-        # schema_version lock.
-        if self.schema_version != SCHEMA_VERSION:
+        # schema_version check: accept all shipped versions:
+        # 1.0 (original) and 1.1 (added verbatim_prompt).
+        _ACCEPTED_SCHEMA_VERSIONS = frozenset({"1.0", "1.1"})
+        if self.schema_version not in _ACCEPTED_SCHEMA_VERSIONS:
             raise ValueError(
-                f"Handoff.schema_version must be {SCHEMA_VERSION!r}, "
+                f"Handoff.schema_version must be one of {sorted(_ACCEPTED_SCHEMA_VERSIONS)!r}, "
                 f"got {self.schema_version!r}"
             )
 

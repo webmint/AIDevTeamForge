@@ -127,6 +127,27 @@ def cmd_set_topic(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_verbatim_prompt(args: argparse.Namespace) -> int:
+    """Persist the full raw prompt text to memo.verbatim_prompt.
+
+    Called at Phase 0.3 immediately after set-topic, before scoping runs.
+    The prompt text is stored verbatim (internal whitespace preserved, leading/
+    trailing whitespace stripped). This is a DISTINCT field from the one-sentence
+    topic set by set-topic: the full prompt may carry 'we should also ...'
+    scope-expanders or hypothesis guesses that the paraphrased topic loses.
+    """
+    try:
+        value = _validate_scalar(args.value, "verbatim_prompt")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    try:
+        with _state_transaction(args.devforge_dir, "memo") as memo:
+            memo["verbatim_prompt"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-verbatim-prompt: {0}".format(err))
+    return 0
+
+
 def cmd_set_date(args: argparse.Namespace) -> int:
     """Set memo.date + report.date. Format YYYY-MM-DD enforced.
 

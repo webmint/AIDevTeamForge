@@ -76,8 +76,33 @@ def cmd_record_runner_up_framing(args: argparse.Namespace) -> int:
     return 0
 
 
+def _hypothesis_label(index):
+    # type: (int) -> str
+    """Convert a zero-based hypothesis index to an uppercase letter label.
+
+    Index 0 → "A", 1 → "B", ..., 25 → "Z", 26 → "AA", 27 → "AB", etc.
+    Follows spreadsheet-column naming for indices beyond 25 (unlikely in
+    practice but avoids a silent failure on long hypothesis lists).
+    """
+    label = ""
+    n = index
+    while True:
+        label = chr(ord("A") + (n % 26)) + label
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return label
+
+
 def cmd_record_hypothesis(args: argparse.Namespace) -> int:
-    """Append a {cause, falsifier, runtime_probe_needed} Hypothesis."""
+    """Append a {label, cause, falsifier, runtime_probe_needed} Hypothesis.
+
+    label is auto-assigned in record order: first hypothesis → "A",
+    second → "B", etc. The label is what recommended_approach.hypotheses_addressed
+    references so the verify-hypothesis-suppression exemption can match by
+    label rather than by cause text (which would couple the setter and the
+    verify check to a fragile string-equality comparison).
+    """
     try:
         cause = _validate_scalar(args.cause, "hypothesis.cause")
         falsifier = _validate_scalar(args.falsifier, "hypothesis.falsifier")
@@ -86,8 +111,15 @@ def cmd_record_hypothesis(args: argparse.Namespace) -> int:
     runtime = args.runtime_probe_needed == "yes"
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
-            report.setdefault("hypotheses", []).append(
-                {"cause": cause, "falsifier": falsifier, "runtime_probe_needed": runtime}
+            existing = report.setdefault("hypotheses", [])
+            label = _hypothesis_label(len(existing))
+            existing.append(
+                {
+                    "label": label,
+                    "cause": cause,
+                    "falsifier": falsifier,
+                    "runtime_probe_needed": runtime,
+                }
             )
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-hypothesis: {0}".format(err))

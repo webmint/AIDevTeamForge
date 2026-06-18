@@ -68,6 +68,12 @@ def cmd_finalize_handoff(args):
                 "(run set-recommended-option first)",
                 code=2,
             )
+    if not memo.get("verbatim_prompt"):
+        return _die(
+            "finalize-handoff: memo.verbatim_prompt not set "
+            "(run set-verbatim-prompt first)",
+            code=2,
+        )
 
     try:
         handoff = _build_handoff_from_state(memo, report)

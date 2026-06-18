@@ -104,6 +104,12 @@ def cmd_finalize_handoff(args):
         return _die(
             "finalize-handoff: complexity not set (run set-complexity first)", code=2
         )
+    if not memo.get("verbatim_prompt"):
+        return _die(
+            "finalize-handoff: memo.verbatim_prompt not set "
+            "(run set-verbatim-prompt first)",
+            code=2,
+        )
 
     # Step 4: probe_feasibility completeness guard (all 5 booleans must be set
     # before the classifier runs — None means LLM skipped set-probe-feasibility).

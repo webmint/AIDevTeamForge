@@ -39,11 +39,13 @@ def _make_memo(
     topic_slug="audit-log-persistence",
     date="2026-05-20",
     override_recorded=False,
+    verbatim_prompt="Audit Log Persistence. We need to persist structured audit events to durable storage so all state changes are logged with timestamp and actor.",
 ):
     return {
         "topic": topic,
         "topic_slug": topic_slug,
         "date": date,
+        "verbatim_prompt": verbatim_prompt,
         "dimensions": {
             "functional_scope": {"value": "Persist audit events to DB", "state": "Clear", "turns": 1},
             "users": {"value": "Backend services", "state": "Clear", "turns": 1},
@@ -165,6 +167,13 @@ class TestFinalizeHandoffRoundTrip(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_round_trip(self):
+        # The verbatim prompt seeded by _make_memo (default value).
+        _FULL_PROMPT = (
+            "Audit Log Persistence. We need to persist structured audit events to "
+            "durable storage so all state changes are logged with timestamp and actor."
+        )
+        _TOPIC = "Audit Log Persistence"
+        _TOPIC_SLUG = "audit-log-persistence"
         devforge = self.tmp / ".devforge"
         emit = self.tmp / "discover" / "2026-05-20-audit-log-persistence.handoff.json"
         memo = _make_memo()
@@ -178,12 +187,31 @@ class TestFinalizeHandoffRoundTrip(unittest.TestCase):
 
         data = _load_json(emit)
         self.assertEqual(data["handoff_kind"], "discover")
-        self.assertEqual(data["schema_version"], "1.0")
+        self.assertEqual(data["schema_version"], "1.1")
         self.assertIn("intent", data)
         self.assertIn("spec_seeds", data)
         self.assertIn("plan_seeds", data)
         self.assertIn("discovery_block", data)
         self.assertIsNone(data.get("outcome"))
+        # F1: integration round-trip must carry the full verbatim prompt through
+        # state -> finalize-handoff -> emitted JSON. A topic-vs-prompt regression
+        # (where the topic or slug is emitted instead) must fail this assertion.
+        self.assertEqual(
+            data["intent"]["verbatim_prompt"],
+            _FULL_PROMPT,
+            "verbatim_prompt in emitted JSON must equal the full seeded prompt, "
+            "not the topic or topic slug",
+        )
+        self.assertNotEqual(
+            data["intent"]["verbatim_prompt"],
+            _TOPIC,
+            "verbatim_prompt must not be the topic string",
+        )
+        self.assertNotEqual(
+            data["intent"]["verbatim_prompt"],
+            _TOPIC_SLUG,
+            "verbatim_prompt must not be the topic slug",
+        )
 
     def test_internal_fields_stripped_from_plan_seeds(self):
         devforge = self.tmp / ".devforge"
@@ -312,6 +340,109 @@ class TestFinalizeHandoffRejectsWhenGMirrorViolation(unittest.TestCase):
         rc = cmd_finalize_handoff(args)
         self.assertEqual(rc, 2)
         self.assertFalse(emit.is_file())
+
+
+# ---------------------------------------------------------------------------
+# F2: finalize-handoff rejects missing verbatim_prompt.
+# ---------------------------------------------------------------------------
+
+
+class TestFinalizeHandoffRejectsMissingVerbatimPrompt(unittest.TestCase):
+    """State with all other required fields set but verbatim_prompt omitted -> exit 2.
+
+    F2: required-on-write guard for verbatim_prompt must fire and identify the
+    missing field in stderr. Mirrors TestFinalizeHandoffRejectsMissingTopicSlug
+    and TestFinalizeHandoffRejectsMissingVerdict.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_exits_2_when_verbatim_prompt_missing(self):
+        devforge = self.tmp / ".devforge"
+        emit = self.tmp / "out.handoff.json"
+        # Seed a memo without verbatim_prompt (set to None explicitly).
+        memo = _make_memo(verbatim_prompt=None)
+        report = _make_report()
+        _write_state(devforge, memo, report)
+        args = _finalize_args(devforge, str(emit))
+
+        import io
+        import unittest.mock
+        stderr_capture = io.StringIO()
+        with unittest.mock.patch("sys.stderr", stderr_capture):
+            rc = cmd_finalize_handoff(args)
+
+        self.assertEqual(rc, 2)
+        self.assertFalse(emit.is_file())
+        self.assertIn("verbatim_prompt not set", stderr_capture.getvalue())
+
+
+# ---------------------------------------------------------------------------
+# F3: discover set-verbatim-prompt CLI setter end-to-end.
+# ---------------------------------------------------------------------------
+
+
+import subprocess as _subprocess  # noqa: E402 (imported here for F3 only)
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_DISCOVER_HELPER_PY = _REPO_ROOT / "src" / "devforge" / "lib" / "discover_helper.py"
+
+
+def _run_discover(argv):
+    """Run discover_helper.py with argv; return CompletedProcess."""
+    return _subprocess.run(
+        [sys.executable, str(_DISCOVER_HELPER_PY)] + list(argv),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+class TestSetVerbatimPrompt(unittest.TestCase):
+    """CLI end-to-end tests for discover_helper set-verbatim-prompt.
+
+    F3: Research already exercises its setter end-to-end; this gives
+    discover parity so the integration path is fully covered.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_set_verbatim_prompt_persists_to_memo(self):
+        """set-verbatim-prompt --value <text> -> memo.verbatim_prompt equals the value."""
+        import json as _json
+        devforge = self.tmp / ".devforge"
+        full_prompt = (
+            "Audit Log Persistence. We need to persist structured audit events to "
+            "durable storage so all state changes are logged with timestamp and actor."
+        )
+        r = _run_discover([
+            "--devforge-dir", str(devforge),
+            "set-verbatim-prompt", "--value", full_prompt,
+        ])
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        from _discover._state import MEMO_FILE_NAME  # noqa: E402
+        memo = _json.loads((devforge / MEMO_FILE_NAME).read_text(encoding="utf-8"))
+        self.assertEqual(memo["verbatim_prompt"], full_prompt)
+
+    def test_set_verbatim_prompt_empty_value_exits_2(self):
+        """set-verbatim-prompt --value '' -> exit 2 (empty value rejected)."""
+        devforge = self.tmp / ".devforge"
+        r = _run_discover([
+            "--devforge-dir", str(devforge),
+            "set-verbatim-prompt", "--value", "",
+        ])
+        self.assertEqual(r.returncode, 2, "empty value should exit 2; got: " + r.stderr)
 
 
 # ---------------------------------------------------------------------------

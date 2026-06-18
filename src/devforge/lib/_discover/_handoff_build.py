@@ -25,18 +25,27 @@ from . import handoff_schema
 
 def _build_intent(memo):
     # type: (dict) -> handoff_schema.Intent
-    """Build Intent from memo.topic + topic_slug + dimensions.functional_scope."""
+    """Build Intent from memo.topic + topic_slug + dimensions.functional_scope + verbatim_prompt.
+
+    verbatim_prompt (v1.1): read from memo.verbatim_prompt, persisted by
+    set-verbatim-prompt at Phase 0.3. cmd_finalize_handoff guards on non-empty
+    before calling _build_handoff_from_state, so None/empty here is only
+    possible if called directly from tests (back-compat). Pass as None when
+    absent so schema tolerates-missing-on-read for old state files.
+    """
     topic = (memo.get("topic") or "").strip()
     topic_slug = (memo.get("topic_slug") or "").strip()
     dims = memo.get("dimensions") or {}
     fs = dims.get("functional_scope") or {}
     scope_summary = (fs.get("value") or "").strip() or None
+    verbatim_prompt = (memo.get("verbatim_prompt") or "").strip() or None
 
     return handoff_schema.Intent(
         feature_concept=topic or "(not set)",
         topic=topic or "(not set)",
         topic_slug=topic_slug or "unknown",
         scope_summary=scope_summary,
+        verbatim_prompt=verbatim_prompt,
     )
 
 

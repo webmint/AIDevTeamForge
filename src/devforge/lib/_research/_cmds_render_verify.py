@@ -3,6 +3,10 @@
 cmd_render emits the report markdown via _render_report_md. cmd_verify
 runs the 18-check cross-state validator. Each check enumerated in the
 cmd_verify docstring; violations accumulate then emit to stderr.
+cmd_verify_hypothesis_suppression is a dedicated gate that ensures an
+unverified suspected-cause hypothesis (probe tier 2 or 3, or feasibility
+discriminator unresolved) does not appear in plan_seeds direction
+(recommended_approach rationale). Exits non-zero on a match.
 """
 
 from __future__ import annotations
@@ -19,10 +23,47 @@ from ._layer_package import (
     _is_presentation_layer,
 )
 from _shared.literal_call_shape import _detect_arg_duplication, _detect_literal_replacement
+from _shared.text_overlap import tokenize_for_overlap as _tokenize_hypothesis
+from ._probe_tier import _classify_probe_tier, _read_test_infra_status
 from ._render import _render_report_md
 from ._state import _load_memo, _load_report
 from ._topic_conflicts import detect_direct_conflicts
 from ._validators import _die, _has_anchor_finding
+
+
+def _probe_tier_is_unverified(probe_feasibility, test_infra_status, chrome_mcp, test_infra,
+                               topic_slug, research_date):
+    # type: (dict, Optional[str], bool, Optional[dict], str, str) -> bool
+    """Return True when the classified probe tier is MEDIUM or LOW (tier 2 or 3).
+
+    A tier-2 or tier-3 investigation has no test-result evidence; any
+    mechanism hypothesised is unverified. Tier-1 and tier-1.5 investigations
+    can produce test-result evidence that confirms a hypothesis to HIGH grade.
+
+    Also returns True when any probe_feasibility value is None — the LLM
+    has not resolved the feasibility discriminator, so the tier is unknown
+    and must be treated as unverified.
+    """
+    # Unresolved feasibility = unverified (discriminator not set).
+    feasibility_values = [
+        probe_feasibility.get("data_shape_only"),
+        probe_feasibility.get("auth_required"),
+        probe_feasibility.get("network_dependent"),
+        probe_feasibility.get("timing_dependent"),
+        probe_feasibility.get("is_test_code"),
+    ]
+    if any(v is None for v in feasibility_values):
+        return True
+
+    classified = _classify_probe_tier(
+        feasibility=probe_feasibility,
+        test_infra_status=test_infra_status,
+        chrome_mcp=chrome_mcp,
+        test_infra=test_infra,
+        topic_slug=topic_slug or "topic",
+        research_date=research_date or "1970-01-01",
+    )
+    return classified["tier"] in ("2", "3")
 
 
 def cmd_render(args: argparse.Namespace) -> int:
@@ -579,3 +620,137 @@ def cmd_verify(args: argparse.Namespace) -> int:
             sys.stderr.write("research_helper verify: {0}\n".format(v))
         return 2
     return 0
+
+
+def cmd_verify_hypothesis_suppression(args: argparse.Namespace) -> int:
+    """Gate: unverified hypothesis must not appear in recommended-approach direction.
+
+    An unverified hypothesis is any recorded hypothesis (report.hypotheses[].cause)
+    that is NOT confirmed by the current session. A hypothesis is considered confirmed
+    (and exempt from the gate) only when BOTH conditions hold:
+      1. The session's probe tier is HIGH-grade (tier 1 or 1.5, i.e. NOT MEDIUM/LOW
+         grade per _classify_probe_tier and NOT feasibility-discriminator unresolved).
+      2. The hypothesis cause appears in report.recommended_approach.hypotheses_addressed
+         (it is the primary or an explicitly addressed confirmed hypothesis, NOT a runner-up
+         whose confirmation status is unknown).
+
+    Any hypothesis that does not satisfy both conditions is treated as unverified.
+    This catches the concrete failure mode where a runner-up hypothesis in an otherwise
+    HIGH-grade session silently leaks into design direction without being confirmed.
+
+    The check performs token-overlap between each unverified hypothesis's cause text
+    and report.recommended_approach.rationale (which becomes plan_seeds.recommended_
+    approach_summary in the handoff). Overlap is identifier/vocabulary matching: split
+    on non-alphanumeric boundaries, lowercase, drop tokens shorter than 4 chars and
+    stopwords. A match on any token means the unverified mechanism leaked into design
+    direction.
+
+    Known limitation: this check catches IDENTIFIER/VOCABULARY reuse only, not
+    semantic paraphrase. A recommended approach that encodes the same mechanism as
+    an unverified hypothesis using entirely different vocabulary will pass this check.
+    Pure-paraphrase leakage is caught by the Step-5 intake echo-back human gate,
+    not by this mechanical backstop.
+
+    Exit codes:
+      0 — no unverified hypothesis overlaps the recommended approach (clean).
+      1 — state files unreadable.
+      2 — at least one unverified hypothesis cause-token found in the recommended
+          approach; stderr names the hypothesis cause + overlapping tokens.
+
+    Recovery: move the mechanism into an open question ("confirm <mechanism> before
+    designing") via record-gap, then remove it from the recommended approach rationale
+    via set-recommended-approach.
+    """
+    import json as _json
+    try:
+        memo = _load_memo(args.devforge_dir)
+        report = _load_report(args.devforge_dir)
+    except (OSError, _json.JSONDecodeError) as err:
+        sys.stderr.write(
+            "research_helper verify-hypothesis-suppression: cannot load state: {0}\n".format(err)
+        )
+        return 1
+
+    # Derive probe tier for this research session.
+    probe_feasibility = report.get("probe_feasibility") or {}
+    topic_slug = memo.get("topic_slug") or "topic"
+    research_date = report.get("date") or "1970-01-01"
+
+    # _classify_probe_tier needs test_infra_status + test_infra. Read from
+    # .devforge/init.yaml if available (same pattern as _build_handoff_from_state).
+    _devforge_dir = args.devforge_dir if args.devforge_dir else ".devforge"
+    test_infra_status, test_infra = _read_test_infra_status(_devforge_dir)
+
+    # DEVFORGE_CHROME_MCP_AVAILABLE env var determines chrome_mcp (same as
+    # _chrome_mcp_available() in _probe_tier.py, imported inline to keep the
+    # dependency explicit and test-mockable via env var).
+    import os as _os
+    chrome_mcp = _os.environ.get("DEVFORGE_CHROME_MCP_AVAILABLE", "") == "1"
+
+    session_is_high_grade = not _probe_tier_is_unverified(
+        probe_feasibility=probe_feasibility,
+        test_infra_status=test_infra_status,
+        chrome_mcp=chrome_mcp,
+        test_infra=test_infra,
+        topic_slug=topic_slug,
+        research_date=research_date,
+    )
+
+    # Collect the recommended-approach rationale (the plan_seeds direction text).
+    rec = report.get("recommended_approach") or {}
+    rationale = (rec.get("rationale") or "").strip()
+    if not rationale:
+        # No recommended approach yet — nothing to gate against.
+        return 0
+
+    rationale_tokens = set(_tokenize_hypothesis(rationale))
+    if not rationale_tokens:
+        return 0
+
+    # Build the set of hypothesis LABELS that are explicitly confirmed by the
+    # recommended approach. A hypothesis is confirmed when the session is HIGH-grade
+    # AND its label (e.g. "A", "B") appears in recommended_approach.hypotheses_addressed.
+    # Runner-up hypotheses and any whose label is not listed in hypotheses_addressed
+    # are NOT confirmed — even in a HIGH-grade session — because their per-hypothesis
+    # confirmation status is unknown at verify-hypothesis-suppression call time.
+    #
+    # hypotheses_addressed holds short label strings (assigned at record-hypothesis
+    # time: first hypothesis → "A", second → "B", etc.).  Comparing cause TEXT
+    # against those labels would always fail because a cause like
+    # "getConfigurationItems returns Promise<void>" never equals a label "A".
+    # The match must be label-to-label.
+    confirmed_labels = set()  # type: set
+    if session_is_high_grade:
+        addressed = rec.get("hypotheses_addressed") or []
+        for addr in addressed:
+            if isinstance(addr, str) and addr.strip():
+                confirmed_labels.add(addr.strip())
+
+    # Check each hypothesis cause for token overlap with the rationale.
+    violations_found = False
+    for hyp in (report.get("hypotheses") or []):
+        cause = (hyp.get("cause") or "").strip()
+        if not cause:
+            continue
+        # A hypothesis is exempt only if it is explicitly confirmed:
+        # HIGH-grade session AND its label appears in hypotheses_addressed.
+        # Hypotheses recorded before the label field was added carry no label;
+        # treat label absence as not-confirmed (conservative: gate fires).
+        hyp_label = (hyp.get("label") or "").strip()
+        if hyp_label and hyp_label in confirmed_labels:
+            continue
+        cause_tokens = set(_tokenize_hypothesis(cause))
+        overlap = cause_tokens & rationale_tokens
+        if overlap:
+            # Report the first overlapping token (lexicographically) for determinism.
+            sample_token = min(overlap)
+            sys.stderr.write(
+                "research_helper verify-hypothesis-suppression: "
+                "unverified hypothesis cause {0!r} overlaps recommended approach "
+                "(token: {1!r}); move the mechanism to an open question via "
+                "record-gap and remove it from the recommended approach "
+                "rationale via set-recommended-approach\n".format(cause, sample_token)
+            )
+            violations_found = True
+
+    return 2 if violations_found else 0
