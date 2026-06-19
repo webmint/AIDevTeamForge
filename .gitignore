@@ -3,6 +3,10 @@
 .claude/session-state.md
 .claude/wip.md
 
+# Python bytecode — always regenerated from source, never tracked
+__pycache__/
+*.py[cod]
+
 # Local vault for in-flight redo work (not for commit)
 .vault/
 
