@@ -156,7 +156,7 @@ verify       → updates specs/NNN-name/spec.md status to Complete; Phase 9 tria
 summarize    → creates specs/NNN-name/summary.md (PR-ready feature summary)
 finalize     → squashes WIP commits + surgical docs/ updates via tech-writer
 report-bug   → creates bugs/NNN-description.md
-fix          → updates bugs/NNN-description.md status to Fixed (when given a bug file)
+fix          → writes a [WIP] commit in the source repo (no spec/bugs/ files written)
 audit        → creates audits/YYYY-MM-DD-audit.md (dated, not overwritten; standalone, not in workflow chain)
 ```
 
@@ -261,7 +261,7 @@ Md files are walked by `codebase-memory-mcp index_repository` automatically. The
 
 ### Status Lifecycle
 - `Open` — reported, not yet being fixed
-- `In Progress` — currently being fixed via the fix command
+- `In Progress` — currently being fixed
 - `Fixed` — fix applied and verified
 
 ### Bug File Format
@@ -306,13 +306,13 @@ Md files are walked by `codebase-memory-mcp index_repository` automatically. The
 
 ## Fix Notes
 
-[Filled in by the fix command after resolution — root cause, what was changed, commit reference]
+[Filled in after resolution — root cause, what was changed, commit reference]
 ```
 
 **Field notes:**
 - `Feature` and `AC` are populated by verify. report-bug sets them to N/A.
 - `Expected Behavior` and `Actual Behavior` are populated by verify (from spec + verification evidence). report-bug may omit them if unknown.
-- `Related Issues` is populated when multiple bugs are filed in the same batch. Helps the fix command know what else is being addressed.
+- `Related Issues` is populated when multiple bugs are filed in the same batch. Helps whoever resolves the batch know what else is being addressed.
 - `File(s)` should use area/function references, not line numbers — line numbers shift after other fixes are applied.
 
 ### How Bug Files Are Created
@@ -320,8 +320,8 @@ Md files are walked by `codebase-memory-mcp index_repository` automatically. The
 - report-bug — standalone manual bug reporting
 
 ### How Bug Files Are Resolved
-- `fix bugs/NNN-xxx.md` — reads the bug file, fixes the issue, updates status to Fixed
-- Manual: user can edit the status directly if fixing outside the workflow
+- Manual: the user edits `**Status**: Fixed` after resolving the issue (the `Open → In Progress → Fixed` lifecycle is not driven by any command)
+- Re-running `/verify` re-proves the ACs against the remediated diff
 
 ## Cleanup Rules
 

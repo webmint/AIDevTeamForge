@@ -70,7 +70,7 @@ Bug file format (verbatim from storage-rules.md lines 268–310)
   [cross-links to other bugs filed in the same batch, or omitted if standalone]
 
   ## Fix Notes
-  [Filled in by the fix command after resolution]
+  [Filled in after resolution]
 
 Numbering
 ---------
@@ -232,7 +232,7 @@ def _format_bug(
     lines.append("")
     lines.append("## Fix Notes")
     lines.append("")
-    lines.append("_Filled in by the fix command after resolution._")
+    lines.append("_Filled in after resolution._")
     lines.append("")
 
     return "\n".join(lines)

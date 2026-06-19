@@ -197,6 +197,13 @@ class TestFileBugsFormat(unittest.TestCase):
         content = self._write_one()
         self.assertIn("## Fix Notes", content)
 
+    def test_fix_notes_phrasing_no_command_reference(self):
+        """Round-trip: Fix Notes body must say 'Filled in after resolution'
+        and must NOT say 'by the fix command' (plan 26 D4 — manual lifecycle)."""
+        content = self._write_one()
+        self.assertIn("Filled in after resolution", content)
+        self.assertNotIn("by the fix command", content)
+
     def test_single_bug_no_related(self):
         """A single bug in the batch has no Related Issues."""
         content = self._write_one()

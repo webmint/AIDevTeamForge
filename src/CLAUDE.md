@@ -44,6 +44,8 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 `/research` (bug/enhancement against existing code) OR `/discover` (greenfield) is a **required precondition** for `/specify` — `/specify` blocks until a research or discover handoff exists. Use `/research` when investigating existing code, `/discover` when surveying a greenfield idea; the two cover complementary intake lanes, and either one satisfies the `/specify` gate.
 
+`/fix` is **not a linear step** — it is a proposal-only remediation loop OFF `/review` and `/verify` (and off an in-window conversational defect), run inside the post-`/implement`/pre-`/summarize` window; the model OFFERS it, the user invokes it. It never appears in the arrow chain above.
+
 - `/research "topic"` — Investigate a bug or enhancement against the existing codebase → research handoff (required intake lane for `/specify`)
 - `/discover "feature idea"` — Greenfield-feature discovery → discover handoff (required intake lane for `/specify`)
 - `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md` (blocks until a research or discover handoff exists)
@@ -53,6 +55,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 - `/implement` — Drain the feature's tasks one at a time (no args); per-task hard gate before commit
 - `/review` — Feature-level emergent cross-task review → findings report
 - `/verify` — Verify ACs + assembled mechanical checks, fold `/review` findings → APPROVED / NEEDS WORK / REJECTED verdict + spec flip on APPROVED
+- `/fix` — **Proposal-only remediation loop** (NOT a linear step) OFFERED off `/review` findings / `/verify` NEEDS WORK / an in-window conversational defect → gated fix via `/implement`'s back half → `[WIP] fix:` commit
 - `/finalize` — Surgical `docs/` updates via tech-writer + squash WIP commits into a clean feature commit
 
 `/research` and `/discover` are read-only and produce no spec themselves, but their handoffs are a required precondition for `/specify` — so they belong to the spec pipeline above, not to the standalone group below.
@@ -89,6 +92,9 @@ Feature-level emergent cross-task review — runs after `/implement` drains a fe
 
 #### `/verify [spec-file]`
 The pipeline step after `/review`, before `/summarize`/`/finalize` — it OWNS the verdict (`/review` is findings-only). Proves the spec's acceptance criteria PASS/FAIL/PARTIAL via the **ac-verifier** agent, whose method is set by `ac_verification_mode` in `.devforge/project-config.json` (`runtime-assisted` probes the running app via Chrome DevTools MCP and/or API using the `ac_runtime_*` config; `tests` / `code-only` / `off` read code). Runs the assembled-feature mechanical checks (type-check / lint / build / test across all the feature's tasks together, reusing `implement_helper verify-touched` report-only — no self-repair), folds in `/review`'s findings (warns if `review.md` is missing), and renders the single APPROVED / NEEDS WORK / REJECTED verdict to `specs/[feature]/verification.md`. On APPROVED it flips the spec `**Status**:` → Complete (after a task-completion cross-check) and ticks the passed AC boxes; on NEEDS WORK it can file bugs to `bugs/`; on REJECTED (a spec-level problem) the user revises the spec via `/specify` → `/plan` → `/breakdown` and re-implements, rather than filing bugs. It does NOT re-review — `/review` owns cross-task code-quality reasoning.
+
+#### `/fix`
+**Proposal-only gated remediation loop** — NOT a linear pipeline step and NOT a cold bug-fixer. OFFERED (never auto-invoked — the model proposes, the user types `/fix`) off `/review`'s findings, `/verify`'s NEEDS WORK verdict, or an in-window conversational defect the user raised and the model code-confirmed, all inside the post-`/implement`/pre-`/summarize` window. Consumes those already-diagnosed findings (`specs/[feature]/review.md` / `specs/[feature]/verification.md`) — it never invents a defect — triages and scopes them, then reuses `/implement`'s back half by CALLING the `implement_helper` verbs (scope-aware verify + self-repair → four-reviewer panel → forcing-functions gate → two-stage hard gate → `[WIP] fix:` commit); it copies no machinery. Writes NO `bugs/` file (filing is the separate "defer" arm). A "fix" that turns out to need an architectural/behavior change bounces to `/specify` instead.
 
 #### `/summarize [spec-file]`
 The pipeline step after `/verify` approves, before `/finalize` — pure SYNTHESIS that renders a PR-ready feature narrative: what was built (in user terms), change stats, key decisions, deviations, and AC status. Gates on the spec `**Status**: Complete` flip that `/verify` owns. Agent-free and renders NO verdict — the AC status is read from `/verify`'s `specs/[feature]/verification.md`, NOT re-derived from the spec. Consumes the spec + plan + each task's `## Completion Notes` + git change stats + `verification.md`, and writes ONLY `specs/[feature]/summary.md` (mutates none of its inputs). Idempotent — a re-run overwrites `summary.md`; the run makes a `[WIP]` commit that `/finalize` squashes.
