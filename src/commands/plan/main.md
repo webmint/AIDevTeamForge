@@ -21,7 +21,7 @@ Usage: `/plan [spec-file]` (e.g. `/plan specs/008-prevent-duplicate-config-optio
 ## Context in the Workflow
 
 ```
-/research (optional) → /specify → /plan → /breakdown → /execute-task → /review → /verify → /summarize → /finalize
+/research (optional) → /specify → /plan → /breakdown → /implement → /review → /verify → /summarize → /finalize
 ```
 
 `/plan` runs AFTER the spec is approved, BEFORE task breakdown. It answers technical questions the spec intentionally left open (specs describe WHAT, plans describe HOW).
@@ -324,6 +324,8 @@ The architect inherits the parent session's Read tool surface and will fetch the
 2. Are there architectural decisions with multiple valid approaches not resolved by Phase 0 research? Return as Key Design Decisions table rows (`decision | chosen | why | rejected`).
 3. Any dependency-direction or package-boundary risks? Return as Risk seeds (likelihood / impact / mitigation hint).
 4. Any constitution rules at risk under this approach? Return as one-line flags for the Constitution Compliance section.
+5. What is the MINIMAL change that satisfies the in-scope ACs? Return as a one-line statement of the smallest design that meets the §5 acceptance criteria — the baseline the Key Design Decisions must not exceed without justification.
+6. For each Key Design Decision, is the concern it addresses in scope per the spec's §6 Out of Scope? Return one line per decision, in one of two conditional forms — in-scope: `decision → in-scope: <AC/constraint cited>` (the OOS half is omitted); OOS-reaching: `decision → OOS: <§6 entry> → escalate` (the in-scope half is omitted). A decision whose concern §6 excludes must NOT be silently solved — the architect escalates it to the user per its Rule 6 (termination), triggered by its Rule 9 OOS-respect check, and the orchestrator surfaces the escalation to the user rather than transcribing the decision.
 
 **Return shape:** architect MUST author table rows verbatim-ready for Phase 2 transcription (no orchestrator paraphrasing) and the architect's standard output already carries a `### Specialists Consulted` block (per its Output Format); the orchestrator transcribes those entries — plus any specialists it consulted directly — into the plan's **Specialist Consultation** table (one row each, with Verdict + Cites).
 
@@ -389,6 +391,14 @@ Save to `specs/[feature-name]/plan.md`. The Layer Map below shows a Domain/Data/
 |----------|----------------|-----|----------------------|
 | [decision] | [approach] | [rationale] | [alternatives] |
 
+### Established-Convention Departures
+
+[Include this subsection ONLY if ≥1 Key Design Decision is flagged "DEPARTURE" in its Why column (per architect Rule 3). Omit the entire subsection — heading and table — when there are no departures (e.g. greenfield or first-touch concerns).]
+
+| Departure | Established Pattern Left | Why Necessary |
+|-----------|--------------------------|---------------|
+| [new pattern chosen] | [what the codebase already does for this concern] | [why the established pattern genuinely doesn't work here] |
+
 ### File Impact
 
 | File | Action | What Changes |
@@ -444,6 +454,8 @@ Before presenting the plan to the user, verify completeness:
    - Revise the plan to add the missing coverage.
    - If you cannot determine the implementation path, add it to the plan's Risk Assessment as: "AC-[N] has no clear implementation path — requires clarification during breakdown".
 4. Check the reverse: does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning (add to the plan's File Impact table with a note).
+5. **Surface departures.** If any Key Design Decision is flagged `DEPARTURE` in its Why column (per architect Rule 3), fill the `### Established-Convention Departures` subsection — one row per departure — and include the departures line in the Phase 3 approval summary. If there are no departures, omit both the subsection and the summary line entirely; do not emit an empty section or a "none" line (greenfield stays silent).
+6. **Out-of-scope-respect trace.** For each Key Design Decision, read its `Why` rationale and confirm it traces to an in-scope AC or constraint — and that it does NOT reference a term the spec marked Out of Scope in §6, nor an unverified hypothesis carried in from the user's prompt or upstream handoff. Flag any decision whose rationale reaches into §6 OOS: a decision solving an excluded concern is an over-solve. On a flag, do not silently keep the decision — re-enter Phase 1.3, have the architect either re-scope the decision to the in-scope baseline (its Phase 1.3 sub-question 5 minimal change) or escalate the §6 concern to the user per its Rule 6 (termination), triggered by its Rule 9 OOS-respect check. This is the read-side backstop for the §6-respect the architect's sub-question 6 asks at Phase 1.3 (defense in depth — sub-question 6 prevents an OOS-reaching decision; this step catches one that slipped through). **v1 is an LLM-prose step** the orchestrator performs by reading each decision's rationale against the spec's §6 entries (the same §6 lines `render-findings-from-spec` enumerated at Phase 1.5). The mechanized form — a `plan_helper` token-overlap scan of decision rationales against the §6 OOS terms (the same token-overlap technique `/specify`'s `verify-scope-coherence` already uses to warn when a §5 AC / §4 affected-area mandates a concern the §6 Out-of-Scope excludes — structurally identical: §6 OOS as the source term-set, a second text body as the scan target) — is **DEFERRED** to a later pass, built only after empirical miss-rate justifies it; it is NOT part of v1.
 
 ## PHASE 3: User Approval
 
@@ -462,6 +474,7 @@ Present a summary. The block below is LLM-authored (not helper-driven — plan s
 **Approach**: [1-2 sentences]
 **Files affected**: [count] ([N] new, [M] modified)
 **Key decisions**: [list the most important ones]
+**Departures from convention**: [include this line ONLY if ≥1 departure flagged: "[N] flagged — review §Established-Convention Departures before approving"; omit the entire line when none]
 **Risks**: [high-risk items if any]
 **Supporting docs**: [list what was generated]"
 
