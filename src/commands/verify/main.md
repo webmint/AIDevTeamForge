@@ -157,7 +157,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-verify"
 .devforge/lib/verify_helper check-status-and-flip --feature-dir <feature> --to phase3
 ```
 
-Prove each AC item PASS / FAIL / PARTIAL. The verification METHOD is selected by `ac_verification_mode`; in every mode the orchestrator dispatches the `ac-verifier` agent, and the agent's `## Verification modes` section owns the per-mode behavior. `/verify` reports AC failures — it NEVER fixes them (fixing is the owning engineer's job, via `/implement`).
+Prove each AC item PASS / FAIL / PARTIAL. The verification METHOD is selected by `ac_verification_mode`; in every mode the orchestrator dispatches the `ac-verifier` agent, and the agent's `## Verification modes` section owns the per-mode behavior. `/verify` reports AC failures — it NEVER fixes them; remediation happens separately (via `/fix` for a NEEDS-WORK finding, or a fresh `/specify` → `/plan` → `/breakdown` cycle for a spec-level change), not in `/verify`.
 
 ### 3.1 — Read the AC config + parse the spec's ACs
 
@@ -296,7 +296,7 @@ Append feature-level lessons to `.devforge/memory.md` — what the ASSEMBLED fea
 Tell the user where `verification.md` was written and the next step, branched on the verdict:
 
 - **APPROVED** — the spec is Complete (PHASE 6, unless a flip blocker was reported); next is `/summarize` then `/finalize`.
-- **NEEDS WORK** — proceed to PHASE 9 (issue report + batch bug-filing); after fixing the blockers via `/implement`, re-run `/verify`.
+- **NEEDS WORK** — offer the user a two-arm fix-or-file choice for the blocking issues (these are ALTERNATIVES, not a pipeline): **(A)** run `/fix` to remediate the blockers now (a gated remediation loop reusing `/implement`'s back-half verify + review-panel + commit — re-running `/verify` afterward re-checks the ACs against the remediated diff), or **(B)** file bugs to defer (PHASE 9 — the batch bug-filing path below). `/verify` only PROPOSES `/fix` — it never runs it, and it writes no `bugs/` file itself except via the PHASE-9 `file-bugs` path the user elects; the user types `/fix` to take arm A, or proceeds into PHASE 9 to take arm B. Do NOT suggest re-running `/implement` here — `/implement` drains approved tasks, which does not fix a NEEDS-WORK finding; `/fix` does.
 - **REJECTED** — the feature has a spec-level problem; revise the spec via `/specify` → `/plan` → `/breakdown`, then re-implement.
 
 On APPROVED or REJECTED, skip PHASE 9 and go straight to the cleanup block below.
@@ -354,7 +354,7 @@ Then mark the run complete so an interrupted re-run can distinguish a finished v
 ## Important rules
 
 1. **`/verify` OWNS the verdict** — unlike `/review` (findings only), `/verify` renders the single APPROVED / NEEDS WORK / REJECTED verdict via the deterministic `compute-verdict` verb. The verdict is `/verify`'s defining job.
-2. **`/verify` does NOT fix code** — it reports AC failures, mechanical-check failures, and hygiene flags, and renders a verdict; it never edits source. Fixing is the owning engineer's job (via `/implement`). The `verify-touched` reuse is report-only at `--iteration 0` with NO self-repair loop.
+2. **`/verify` does NOT fix code** — it reports AC failures, mechanical-check failures, and hygiene flags, and renders a verdict; it never edits source. Remediation happens separately (via `/fix` for a NEEDS-WORK finding, or a fresh `/specify` → `/plan` → `/breakdown` cycle for a spec-level change), not in `/verify`. The `verify-touched` reuse is report-only at `--iteration 0` with NO self-repair loop.
 3. **`/verify` does NOT re-review** — it has no finder ensemble and no refutation pass (those are `/review`'s job, and the `_shared` refutation engine is deliberately NOT reused here). `/verify` folds in `/review`'s already-refuted findings via `read-review-findings` and points to the `/review` report for cross-task code-quality reasoning.
 4. **Constitution violations always block APPROVED** (D7) — a confirmed `[CONSTITUTION-VIOLATION]` from the review findings forces REJECTED; a contested one forces at least NEEDS WORK. `compute-verdict` enforces this structurally; never override it.
 5. **`/verify` WRITES BACK to the spec** — on APPROVED (and only after the task cross-check passes), `flip-spec-status` flips `spec.md`'s `**Status**:` to Complete and ticks the passed AC boxes. This is the deliberate departure: `/verify` is the only review/verify command that mutates its input, because it owns the Complete lifecycle transition `/summarize` and `/finalize` gate on. On NEEDS WORK / REJECTED the spec is untouched.

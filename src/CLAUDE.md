@@ -112,6 +112,10 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 
 - `/setup-wizard` — Re-run initial project setup (regenerates config files)
 
+### Conversational fix-or-file offer
+
+When the user points out a defect AND you confirm it is real by reading the actual code AND the active feature is implemented-but-not-yet-summarized (verify with `.devforge/lib/fix_helper in-fix-window --feature <feature>` — exit 0 = in-window; any other result, whether out-of-window or the helper is unavailable/errors, → treat as not in-window and offer file-only), offer a two-arm choice: run `/fix` to remediate now (a gated remediation loop), or file a bug to defer. All three conditions are required (user-raised AND code-confirmed AND in-window) — if any is absent (the defect is unconfirmed, you originated it, or no feature is in that window), offer only to file a bug, never `/fix`. Never auto-run `/fix` — propose it; the user invokes it.
+
 ## Available Agents
 
 {{AGENT_LIST}}

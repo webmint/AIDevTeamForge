@@ -307,6 +307,8 @@ Then mark the run complete so an interrupted re-run can distinguish a finished r
 
 Finally, point the user to the next step: tell them `specs/[feature]/review.md` was written (findings only), it is not committed, and the next command is `/verify` — which consumes `review.md` and folds its findings into the acceptance-criteria verdict.
 
+Then, ONLY when the report's confirmed-or-high-stakes findings set is non-empty (the inline summary just printed in PHASE 4.3 showed a non-zero `confirmed` or `contested` count — the same set the headline surfaced; do not re-read `$WORKDIR/partition.json`, which the cleanup above already deleted), ALSO offer the user a two-arm fix-or-file choice for those findings, ALONGSIDE the `/verify` next-step (it does not replace it — `/review` still points to `/verify`): **(A)** run `/fix` to remediate the surfaced findings now (a gated remediation loop reusing `/implement`'s back-half verify + review-panel + commit), or **(B)** file a bug to defer. `/review` only PROPOSES — it never runs `/fix` itself and writes no `bugs/` file (it stays findings-only); the user types `/fix` to take arm A, or files a bug to take arm B. When the report is findings-empty (both the `confirmed` and `contested` counts are zero), propose NOTHING here — no `/fix` offer on a clean report.
+
 ## Important rules
 
 1. **Findings only, NO verdict** — `/review` never renders a pass/fail, an approval, or a "ready to ship" line. The verdict is `/verify`'s job; `/review` produces `specs/[feature]/review.md` and `/verify` consumes it.
