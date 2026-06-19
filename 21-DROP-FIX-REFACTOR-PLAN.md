@@ -101,7 +101,7 @@ Add ONE entry under the existing `## [Unreleased]` heading recording the removal
 
 ### D5 — Scope is ONLY `/fix` + `/refactor`
 
-`/security` and `/audit` are explicitly NOT dropped. `/security` is read-only and non-duplicating; `/audit` is the periodic safety net from D1 / §4. Every "standalone flows" enumeration that lists all four (e.g. `src/CLAUDE.md` "Standalone" group, `src/commands/specify/main.md` standalone-gate paragraph) must KEEP `/audit` + `/security` while removing `/fix` + `/refactor`.
+`/security` and `/audit` are explicitly NOT dropped. `/security` is read-only and non-duplicating; `/audit` is the periodic safety net from D1 / §4. Every "standalone flows" enumeration that lists all four (e.g. `src/CLAUDE.md` "Standalone" group, `src/commands/specify/main.md` standalone-gate paragraph) must KEEP `/audit` + `/security` while removing `/fix` + `/refactor`. **NOTE (2026-06-19):** `/security` was subsequently dropped (never-emitted pre-pivot draft) — see `CHANGELOG.md` `[Unreleased]` → Removed. D5's "keep `/security`" directive is therefore superseded: its retention premise (`/security` "read-only and non-duplicating") no longer holds, because `/audit` runs the same `security-reviewer` agent in every scope mode `/security` offered. `/audit` is now the sole surviving standalone command.
 
 ### D6 — Record the rationale (§1–§5) IN this plan
 

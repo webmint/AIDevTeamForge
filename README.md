@@ -109,7 +109,6 @@ Run these once when you first install the template:
 ### Standalone Commands (use anytime)
 
 ```
-/security src/api/             ← security review (file, dir, or --full for codebase)
 /audit                         ← adversarial whole-codebase audit (periodic, after several specs)
 /report-bug "description"     ← log a bug for later
 /refresh-docs                  ← update stale documentation
@@ -117,7 +116,6 @@ Run these once when you first install the template:
 /discover "feature idea"        ← greenfield-feature discovery (pre-/specify)
 ```
 
-- **`/security`** — On-demand security review. Target a file, directory, uncommitted changes, or full codebase (`--full`). Launches security-reviewer agent with constitution context. Reports Critical/High/Medium/Info with CWE identifiers and remediation. Read-only.
 - **`/audit`** — Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Launches code-reviewer, architect, qa-reviewer, and security-reviewer in **adversarial mode** with a structured Mislogic Hunt Checklist (naming lies, lying comments, off-by-one, cross-file contradictions, dead branches, contradictory configs, etc.). Reads recent `specs/*/review.md` to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim quote from the actual code; ungrounded findings are discarded by Phase 4 validation. Writes dated reports to `audits/YYYY-MM-DD-audit.md`. Read-only, not auto-committed, **not part of any workflow chain** — invoke manually after several specs ship.
 - **`/report-bug`** — Creates structured bug file in `bugs/` with status lifecycle (Open → In Progress → Fixed).
 - **`/refresh-docs`** — Lightweight doc update using git delta. Tech-writer in Refresh Mode.

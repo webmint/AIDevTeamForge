@@ -15,7 +15,6 @@
       { "source": "src/commands/report-bug.md",             "target": ".claude/commands/report-bug.md" },
       { "source": "src/commands/refresh-docs.md",           "target": ".claude/commands/refresh-docs.md" },
       { "source": "src/commands/research.md",               "target": ".claude/commands/research.md" },
-      { "source": "src/commands/security.md",               "target": ".claude/commands/security.md" },
       { "source": "src/commands/audit.md",                  "target": ".claude/commands/audit.md" },
       { "source": "src/commands/_recovery.md",              "target": ".claude/commands/_recovery.md" },
       { "source": "src/commands/_agent-assignment.md",      "target": ".claude/commands/_agent-assignment.md" },

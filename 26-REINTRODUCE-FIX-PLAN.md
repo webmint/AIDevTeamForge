@@ -54,7 +54,7 @@ The framework converged on a pattern plan 21 D1 did not anticipate: **shared eng
 
 - **A cold, standalone bug** the developer notices on their own still goes hand-fix / full-chain. The boundary plan 21 §4 drew survives intact — `/fix` is never a free-text cold bug-fixer (D2): the conversational offer fires ONLY when the USER raises a defect the model code-confirms inside the post-`/implement`/pre-`/summarize` window, and every out-of-window or model-originated defect is offered the file-a-bug path only.
 - **`/refactor` stays dropped** (D5). Plan 21 §2's argument (front = `/audit`, back = `/implement`, no uncovered slice) is sound and untouched.
-- **Plan 21 D2–D6 stand** — the `wip.md` discriminator mechanism, the `_pending`-tail dereferencing, the CHANGELOG/DEVELOPMENT-STATUS conventions, the `/security`+`/audit` survival, and the recorded-rationale requirement are all unchanged.
+- **Plan 21 D2–D6 stand** — the `wip.md` discriminator mechanism, the `_pending`-tail dereferencing, the CHANGELOG/DEVELOPMENT-STATUS conventions, the `/audit` survival (`/security` was subsequently dropped 2026-06-19 — see `CHANGELOG.md`; `/audit` is now the sole surviving standalone command), and the recorded-rationale requirement are all unchanged.
 
 ## Reuse architecture (confirmed decisions)
 
