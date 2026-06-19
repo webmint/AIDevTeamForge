@@ -10,10 +10,15 @@ Coverage:
     - Ticket at start: PROJ-42-do-thing → PROJ-42.
 
   _compose_message:
+    Task mode (fix_mode=False, default):
     - Wrapper mode: "[TICKET-ID] - <title> (Task NNN)".
     - Non-wrapper mode: "[WIP] task: <title> (Task NNN)".
     - With attribution: attribution appended verbatim.
     - Empty attribution: no trailing newline/suffix.
+    Fix mode (fix_mode=True):
+    - Non-wrapper: "[WIP] fix: <title>" (no Task suffix).
+    - Wrapper: "[TICKET-ID] - <title>" (no Task suffix).
+    - Attribution rules identical to task mode.
 
   _get_commit_attribution:
     - Key present with value → value returned.
@@ -21,16 +26,30 @@ Coverage:
     - Key present, empty string → empty string.
 
   cmd_wip_commit (integration, real git tempdir):
+    Task mode:
     - Non-wrapper: commit message format "[WIP] task: <title> (Task NNN)".
     - Wrapper mode: commit message format "[TICKET-ID] - <title> (Task NNN)".
     - COMMIT_ATTRIBUTION honored (appended when present).
     - COMMIT_ATTRIBUTION absent → no attribution line in message.
-    - ONLY named paths committed (critical safety assertion):
-        a dirty unrelated file must remain uncommitted after the commit.
+    - ONLY named paths committed (critical safety assertion).
     - wip.md cleared after successful commit.
     - --files invalid JSON → exit 1, stderr.
     - --files as non-array JSON → exit 1, stderr.
     - Staging a non-existent file → exit 2, stderr.
+
+    Fix mode (new):
+    - Standalone fix: stages only touched_files, message "[WIP] fix: <title>", exit 0.
+    - Wrapper fix: stages only touched_files in source repo, message "[TICKET-ID] - <title>", exit 0.
+    - Fix mode with attribution: attribution appended in standalone; suppressed in wrapper.
+    - Fix mode only named paths committed (no task/index in commit).
+    - wip.md cleared after fix commit.
+    - emits JSON {committed:true, head_sha, message} in fix mode.
+
+    Mixed mode (new):
+    - --task-file only (missing --index and --number) → EXIT_ERR with message naming missing args.
+    - --index only → EXIT_ERR.
+    - --number only → EXIT_ERR.
+    - --task-file + --index (missing --number) → EXIT_ERR.
 
 Design notes:
 - Each test creates its own git tempdir to avoid cross-test contamination.
@@ -224,7 +243,7 @@ def _make_fake_args(**kwargs):
     a.files = kwargs.get("files", "[]")
     a.task_file = kwargs.get("task_file", "")
     a.index = kwargs.get("index", "")
-    a.number = kwargs.get("number", "001")
+    a.number = kwargs.get("number", "")
     a.title = kwargs.get("title", "Define types")
     a.root = kwargs.get("root", ".")
     return a
@@ -286,6 +305,39 @@ class TestComposeMessage(unittest.TestCase):
     def test_wrapper_empty_attribution_no_suffix(self):
         msg = _compose_message(True, "X-1", "Title", "003", "")
         self.assertFalse(msg.endswith("\n"), "No trailing newline when attribution is empty")
+
+    # --- Fix mode (fix_mode=True) ---
+
+    def test_fix_mode_non_wrapper_no_attribution(self):
+        msg = _compose_message(False, "", "null guard", "", "", fix_mode=True)
+        self.assertEqual(msg, "[WIP] fix: null guard")
+
+    def test_fix_mode_non_wrapper_no_task_suffix(self):
+        """Fix mode must NOT contain '(Task' in the message."""
+        msg = _compose_message(False, "", "null guard", "001", "", fix_mode=True)
+        self.assertNotIn("Task", msg)
+        self.assertNotIn("(", msg)
+
+    def test_fix_mode_non_wrapper_with_attribution(self):
+        attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        msg = _compose_message(False, "", "null guard", "", attr, fix_mode=True)
+        self.assertEqual(msg, "[WIP] fix: null guard" + attr)
+
+    def test_fix_mode_wrapper_no_task_suffix(self):
+        msg = _compose_message(True, "MIG-99", "null guard", "", "", fix_mode=True)
+        self.assertEqual(msg, "[MIG-99] - null guard")
+        self.assertNotIn("Task", msg)
+
+    def test_fix_mode_wrapper_with_attribution(self):
+        attr = "\n\nCo-Authored-By: X <x@x.com>"
+        msg = _compose_message(True, "MIG-99", "null guard", "", attr, fix_mode=True)
+        self.assertEqual(msg, "[MIG-99] - null guard" + attr)
+
+    def test_task_mode_unchanged_by_fix_mode_flag_false(self):
+        """Explicitly passing fix_mode=False must produce the same result as default."""
+        msg_default = _compose_message(False, "", "Do thing", "007", "")
+        msg_explicit = _compose_message(False, "", "Do thing", "007", "", fix_mode=False)
+        self.assertEqual(msg_default, msg_explicit)
 
 
 # ---------------------------------------------------------------------------
@@ -1212,6 +1264,514 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         finally:
             import shutil
             shutil.rmtree(standalone_tmpdir, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Fix mode integration tests — standalone
+# ---------------------------------------------------------------------------
+
+
+class TestCmdWipCommitFixModeStandalone(unittest.TestCase):
+    """Integration tests for cmd_wip_commit fix mode in a standalone repo.
+
+    Fix mode: --files + --title present; --task-file, --index, --number all absent.
+    Expected: stage only touched files, message "[WIP] fix: <title>", exit 0.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.root, _ = _init_git_repo(self.tmpdir)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _stage_file(self, relpath, content="# fix\n"):
+        full = self.root / relpath
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text(content)
+        env = _git_env()
+        subprocess.run(
+            ["git", "add", "--", str(full)],
+            cwd=str(self.root), capture_output=True, env=env, check=True,
+        )
+        return relpath
+
+    def test_fix_mode_standalone_message_format(self):
+        """Standalone fix mode: message is '[WIP] fix: <title>'."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        self.assertEqual(msg, "[WIP] fix: null guard")
+
+    def test_fix_mode_standalone_no_task_suffix_in_message(self):
+        """Fix mode message must not contain '(Task NNN)'."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+        self._stage_file("src/b.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py", "src/b.py"]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        self.assertNotIn("Task", msg)
+        self.assertNotIn("(", msg)
+
+    def test_fix_mode_standalone_stages_only_touched_files(self):
+        """Fix mode stages ONLY the files in --files (no task/index)."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+        self._stage_file("src/b.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py", "src/b.py"]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        committed = _git_log_name_only(self.root)
+        self.assertIn("src/a.py", committed)
+        self.assertIn("src/b.py", committed)
+        # Confirm no task/ or index-like paths crept in.
+        for cf in committed:
+            self.assertNotIn("tasks", cf)
+            self.assertNotIn("README", cf)
+
+    def test_fix_mode_standalone_exit_ok_json_output(self):
+        """Fix mode emits {committed: true, head_sha, message} JSON on stdout."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+
+        import io
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            args = _make_fake_args(
+                files=json.dumps(["src/a.py"]),
+                task_file="",
+                index="",
+                number="",
+                title="null guard",
+                root=str(self.root),
+            )
+            rc = cmd_wip_commit(args)
+        finally:
+            output = sys.stdout.getvalue()
+            sys.stdout = old_stdout
+
+        self.assertEqual(rc, EXIT_OK)
+        result = json.loads(output.strip())
+        self.assertTrue(result["committed"])
+        self.assertIsInstance(result["head_sha"], str)
+        self.assertGreater(len(result["head_sha"]), 0)
+        self.assertEqual(result["message"], "[WIP] fix: null guard")
+
+    def test_fix_mode_standalone_wip_cleared(self):
+        """Fix mode clears wip.md on success."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        wip_path = self.root / ".devforge" / "wip.md"
+        self.assertTrue(wip_path.exists())
+        self._stage_file("src/a.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertFalse(wip_path.exists(), "wip.md must be cleared after fix commit")
+
+    def test_fix_mode_standalone_with_attribution(self):
+        """Fix mode standalone: attribution IS appended (same rule as task mode)."""
+        attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        _write_project_config(self.root, workspace_mode="standalone",
+                              commit_attribution=attr)
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(self.root)
+        expected = "[WIP] fix: null guard" + attr
+        self.assertEqual(msg, expected)
+
+    def test_fix_mode_standalone_unrelated_file_stays_uncommitted(self):
+        """Fix mode: unrelated dirty file NOT swept into commit (safety)."""
+        _write_project_config(self.root, workspace_mode="standalone")
+        _write_wip_md(self.root)
+        self._stage_file("src/a.py")
+
+        # Dirty unrelated file — never in --files.
+        dirty = self.root / "src" / "unrelated.py"
+        dirty.write_text("# not part of this fix\n")
+
+        args = _make_fake_args(
+            files=json.dumps(["src/a.py"]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+
+        committed = _git_log_name_only(self.root)
+        for cf in committed:
+            self.assertNotIn("unrelated", cf,
+                             "Dirty unrelated file must not be in fix commit")
+
+        status = _git_status_short(self.root)
+        self.assertTrue(
+            "unrelated.py" in status or "src/" in status,
+            "Unrelated file must remain untracked after fix commit: {0!r}".format(status),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Fix mode integration tests — wrapper
+# ---------------------------------------------------------------------------
+
+
+class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
+    """Integration tests for cmd_wip_commit fix mode in wrapper layout.
+
+    Fix mode wrapper: stage ONLY source touched_files in the SOURCE repo;
+    message "[TICKET-ID] - <title>" with no "(Task NNN)" suffix;
+    attribution suppressed (D5 traceless).
+    """
+
+    def setUp(self):
+        self.install_tmpdir = tempfile.mkdtemp()
+        self.install_root = Path(self.install_tmpdir)
+        self.source_name = "src-repo"
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.install_tmpdir, ignore_errors=True)
+
+    def _setup_wrapper_fix(self, source_branch="bugfix/MIG-123", attribution=""):
+        """Set up wrapper fixture for fix mode (no task file / index needed)."""
+        source_dir = _init_source_repo(
+            self.install_root, self.source_name, source_branch
+        )
+        _write_project_config(
+            self.install_root,
+            workspace_mode="wrapper",
+            commit_attribution=attribution,
+            project_root=self.source_name,
+        )
+        _write_wip_md(self.install_root)
+        return source_dir
+
+    def _stage_source_file(self, source_dir, relpath, content="// fix\n"):
+        full = source_dir / relpath
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text(content)
+        env = _git_env()
+        subprocess.run(
+            ["git", "add", "--", str(full)],
+            cwd=str(source_dir), capture_output=True, env=env, check=True,
+        )
+        return relpath
+
+    def test_fix_mode_wrapper_message_format(self):
+        """Wrapper fix mode: message is '[TICKET-ID] - <title>' (no Task suffix)."""
+        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(source_dir)
+        self.assertEqual(msg, "[MIG-456] - null guard")
+
+    def test_fix_mode_wrapper_no_task_suffix(self):
+        """Wrapper fix mode: message must NOT contain '(Task NNN)'."""
+        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(source_dir)
+        self.assertNotIn("Task", msg)
+
+    def test_fix_mode_wrapper_stages_only_source_files(self):
+        """Wrapper fix mode: only source touched_files are in the source repo commit."""
+        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+
+        committed = _git_log_name_only(source_dir)
+        self.assertIn(src_file, committed)
+        for cf in committed:
+            self.assertNotIn("tasks", cf)
+            self.assertNotIn("specs", cf)
+
+    def test_fix_mode_wrapper_commit_lands_in_source_repo(self):
+        """Wrapper fix mode: commit lands in the SOURCE repo, not install root."""
+        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        import io
+        old_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            args = _make_fake_args(
+                files=json.dumps([src_file]),
+                task_file="",
+                index="",
+                number="",
+                title="null guard",
+                root=str(self.install_root),
+            )
+            rc = cmd_wip_commit(args)
+        finally:
+            output = sys.stdout.getvalue()
+            sys.stdout = old_stdout
+
+        self.assertEqual(rc, EXIT_OK)
+        result = json.loads(output.strip())
+        # head_sha must match the source repo's HEAD.
+        actual_source_sha = _git_head_sha(source_dir)
+        self.assertEqual(result["head_sha"], actual_source_sha)
+
+    def test_fix_mode_wrapper_no_attribution_d5(self):
+        """Wrapper fix mode: D5 — source commit carries NO Co-Authored-By even when configured."""
+        attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+        source_dir = self._setup_wrapper_fix("bugfix/MIG-456", attribution=attr)
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(source_dir)
+        self.assertNotIn("Co-Authored-By", msg,
+                         "Wrapper fix commit must be traceless (D5)")
+        self.assertNotIn("Co-Author", msg)
+        # Subject must be exact.
+        self.assertEqual(msg, "[MIG-456] - null guard")
+
+    def test_fix_mode_wrapper_wip_cleared_in_install_root(self):
+        """Wrapper fix mode: wip.md in the INSTALL root is cleared."""
+        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        wip_path = self.install_root / ".devforge" / "wip.md"
+        self.assertTrue(wip_path.exists())
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        self.assertFalse(wip_path.exists(), "wip.md must be cleared after wrapper fix commit")
+
+    def test_fix_mode_wrapper_ticket_from_source_branch(self):
+        """Wrapper fix mode: ticket-id extracted from SOURCE repo branch."""
+        source_dir = self._setup_wrapper_fix("feature/FEAT-99-add-thing")
+        src_file = self._stage_source_file(source_dir, "src/widget.ts")
+
+        args = _make_fake_args(
+            files=json.dumps([src_file]),
+            task_file="",
+            index="",
+            number="",
+            title="null guard",
+            root=str(self.install_root),
+        )
+        rc = cmd_wip_commit(args)
+        self.assertEqual(rc, EXIT_OK)
+        msg = _git_last_message(source_dir)
+        self.assertEqual(msg, "[FEAT-99] - null guard")
+
+
+# ---------------------------------------------------------------------------
+# Mixed mode tests — some but not all of --task-file/--index/--number given
+# ---------------------------------------------------------------------------
+
+
+class TestCmdWipCommitMixedMode(unittest.TestCase):
+    """Tests that mixed-mode invocations are rejected with EXIT_ERR."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.root, _ = _init_git_repo(self.tmpdir)
+        _write_project_config(self.root, workspace_mode="standalone")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _run_mixed(self, **kwargs):
+        """Run cmd_wip_commit and capture stderr; return (rc, stderr_text)."""
+        import io
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            args = _make_fake_args(**kwargs, root=str(self.root))
+            rc = cmd_wip_commit(args)
+            err = sys.stderr.getvalue()
+        finally:
+            sys.stderr = old_stderr
+        return rc, err
+
+    def test_task_file_only_is_mixed(self):
+        """--task-file alone (no --index, no --number) → EXIT_ERR mixed-mode."""
+        rc, err = self._run_mixed(
+            files=json.dumps([]),
+            task_file="tasks/001.md",
+            index="",
+            number="",
+            title="Do thing",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("mixed mode", err)
+        self.assertIn("--index", err)
+        self.assertIn("--number", err)
+
+    def test_index_only_is_mixed(self):
+        """--index alone → EXIT_ERR mixed-mode."""
+        rc, err = self._run_mixed(
+            files=json.dumps([]),
+            task_file="",
+            index="tasks/README.md",
+            number="",
+            title="Do thing",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("mixed mode", err)
+        self.assertIn("--task-file", err)
+        self.assertIn("--number", err)
+
+    def test_number_only_is_mixed(self):
+        """--number alone → EXIT_ERR mixed-mode."""
+        rc, err = self._run_mixed(
+            files=json.dumps([]),
+            task_file="",
+            index="",
+            number="001",
+            title="Do thing",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("mixed mode", err)
+        self.assertIn("--task-file", err)
+        self.assertIn("--index", err)
+
+    def test_task_file_and_index_missing_number(self):
+        """--task-file + --index but no --number → EXIT_ERR mixed-mode."""
+        rc, err = self._run_mixed(
+            files=json.dumps([]),
+            task_file="tasks/001.md",
+            index="tasks/README.md",
+            number="",
+            title="Do thing",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("mixed mode", err)
+        self.assertIn("--number", err)
+
+    def test_task_file_and_number_missing_index(self):
+        """--task-file + --number but no --index → EXIT_ERR mixed-mode."""
+        rc, err = self._run_mixed(
+            files=json.dumps([]),
+            task_file="tasks/001.md",
+            index="",
+            number="001",
+            title="Do thing",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("mixed mode", err)
+        self.assertIn("--index", err)
+
+    def test_index_and_number_missing_task_file(self):
+        """--index + --number but no --task-file → EXIT_ERR mixed-mode."""
+        rc, err = self._run_mixed(
+            files=json.dumps([]),
+            task_file="",
+            index="tasks/README.md",
+            number="001",
+            title="Do thing",
+        )
+        self.assertEqual(rc, EXIT_ERR)
+        self.assertIn("mixed mode", err)
+        self.assertIn("--task-file", err)
 
 
 if __name__ == "__main__":

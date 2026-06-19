@@ -1,12 +1,28 @@
-"""_cmds_commit -- wip-commit verb for implement_helper.
+"""_cmds_commit -- wip-commit verb for implement_helper and fix_helper.
 
 Stage only the explicitly named paths, compose a commit message per
 wrapper/standalone convention, and commit.  After a successful commit,
 clear the wip.md marker.
 
+Two modes
+---------
+TASK mode (/implement):   --files + --task-file + --index + --number + --title all present.
+  Stages source touched_files + task_file + index (standalone) or only source
+  touched_files (wrapper).  Message: "[WIP] task: <title> (Task NNN)" (standalone)
+  / "[TICKET-ID] - <title> (Task NNN)" (wrapper).
+
+FIX mode (/fix):          --files + --title present; --task-file, --index, --number ALL absent.
+  Stages ONLY the touched files in both standalone and wrapper mode (there is no
+  task file or index to stage).  Message: "[WIP] fix: <title>" (standalone)
+  / "[TICKET-ID] - <title>" (wrapper; no "(Task NNN)" suffix).
+
+MIXED (some but not all of --task-file/--index/--number present): rejected with
+  EXIT_ERR and a clear stderr message naming the missing arguments.
+
 Algorithm
 ---------
-1. Parse --files (JSON array), --task-file, --index (required staging targets).
+1. Parse --files (JSON array).  Mode detection (task / fix / mixed) from
+   --task-file, --index, --number.
 2. Resolve workspace via resolve_workspace(--root): gives install_root,
    source_root, is_wrapper.  Config is loaded from install_root.
 3. Read .devforge/project-config.json for COMMIT_ATTRIBUTION.
@@ -15,20 +31,17 @@ Algorithm
      to get the SOURCE repo branch; extract [A-Z]+-[0-9]+ ticket token
      (e.g. `bugfix/MIG-123` → `MIG-123`); fall back to full branch name.
    - STANDALONE mode: ticket-id is unused (non-wrapper message format).
-5. Compose message:
-   - wrapper mode:   "[TICKET-ID] - <title> (Task NNN)"
-   - standalone:     "[WIP] task: <title> (Task NNN)"
+5. Compose message per mode (see Two modes above).
 6. Append COMMIT_ATTRIBUTION: in STANDALONE mode, append verbatim when non-empty
    (empty/absent → no append). In WRAPPER mode, NO attribution is appended — the
    SOURCE repo commit must carry no AI traces (D5 / Phase 6 belt-and-suspenders).
+   Attribution rules are IDENTICAL in task and fix modes.
 7. Stage paths individually (`git add -- <path>`). NEVER `git add -A`.
-   - WRAPPER mode:   stage ONLY source touched_files in the SOURCE repo
-                     (`git -C <source_root> add -- <file>`).
-                     Do NOT stage --task-file or --index (per D1 — those are
-                     wrapper artifacts, left uncommitted; mark-complete already
-                     wrote them to disk).
-   - STANDALONE mode: stage source touched_files + task_file + index in the
-                     single repo (unchanged from before).
+   TASK mode:
+   - WRAPPER: stage ONLY source touched_files in the SOURCE repo (task_file and
+     index are wrapper artifacts, left uncommitted per D1).
+   - STANDALONE: stage source touched_files + task_file + index together.
+   FIX mode (both wrapper and standalone): stage ONLY source touched_files.
 8. Commit in the TARGET repo:
    - WRAPPER mode:   `git -C <source_root> commit -m <msg>` in SOURCE repo.
    - STANDALONE mode: `git commit -m <msg>` (single repo).
@@ -38,11 +51,13 @@ Algorithm
 
 Arguments (argparse):
   --files     <json>   Required. JSON array of source-relative touched file paths.
-  --task-file <path>   Required. Path to the task .md file (install-root-relative
-                       in wrapper mode; not staged there per D1).
-  --index     <path>   Required. Path to tasks/README.md index file (install-root-
+  --task-file <path>   Optional. Path to the task .md file (install-root-relative
+                       in wrapper mode; not staged there per D1).  All three of
+                       --task-file, --index, --number must be given together or
+                       not at all; giving a subset is a mixed-mode error.
+  --index     <path>   Optional. Path to tasks/README.md index file (install-root-
                        relative in wrapper mode; not staged per D1).
-  --number    <str>    Required. Task number string, e.g. "001".
+  --number    <str>    Optional. Task number string, e.g. "001".
   --title     <str>    Required. Task title.
   --root      <path>   Optional. Install root; defaults to cwd.
 
@@ -76,7 +91,8 @@ Design notes:
   STANDALONE mode the value is appended directly to the message body (no extra
   newline added); if absent (key not in config), no attribution line is added.
   In WRAPPER mode attribution is SUPPRESSED entirely — the source-repo WIP commit
-  must carry no AI traces (D5 / Phase 6).
+  must carry no AI traces (D5 / Phase 6).  These rules apply equally in task and
+  fix modes.
 - Staging safety: each path is staged individually so an unrelated dirty file
   in the working tree is NEVER committed.  git add -A is never used.
 - subprocess timeout: 30 s per git call. Generous but bounded.
@@ -190,18 +206,31 @@ def _extract_ticket_id(branch):
     return branch
 
 
-def _compose_message(is_wrapper, ticket_id, title, number, attribution):
-    # type: (bool, str, str, str, str) -> str
+def _compose_message(is_wrapper, ticket_id, title, number, attribution,
+                     fix_mode=False):
+    # type: (bool, str, str, str, str, bool) -> str
     """Compose the commit message with optional attribution.
 
-    wrapper mode:  "[TICKET-ID] - <title> (Task NNN)"
-    non-wrapper:   "[WIP] task: <title> (Task NNN)"
-    Attribution is appended verbatim when non-empty.
+    Task mode (fix_mode=False):
+      wrapper:     "[TICKET-ID] - <title> (Task NNN)"
+      non-wrapper: "[WIP] task: <title> (Task NNN)"
+
+    Fix mode (fix_mode=True):
+      wrapper:     "[TICKET-ID] - <title>"    (no "(Task NNN)" suffix)
+      non-wrapper: "[WIP] fix: <title>"       (no "(Task NNN)" suffix)
+
+    Attribution is appended verbatim when non-empty (identical rule for both modes).
     """
-    if is_wrapper:
-        subject = "[{0}] - {1} (Task {2})".format(ticket_id, title, number)
+    if fix_mode:
+        if is_wrapper:
+            subject = "[{0}] - {1}".format(ticket_id, title)
+        else:
+            subject = "[WIP] fix: {0}".format(title)
     else:
-        subject = "[WIP] task: {0} (Task {1})".format(title, number)
+        if is_wrapper:
+            subject = "[{0}] - {1} (Task {2})".format(ticket_id, title, number)
+        else:
+            subject = "[WIP] task: {0} (Task {1})".format(title, number)
 
     if attribution:
         return subject + attribution
@@ -299,7 +328,14 @@ def _git_head_sha(repo_root):
 
 def add_args_wip_commit(parser):
     # type: (object) -> None
-    """Register wip-commit arguments on the given subparser."""
+    """Register wip-commit arguments on the given subparser.
+
+    Two modes are supported:
+      Task mode (/implement): --files + --task-file + --index + --number + --title.
+      Fix mode  (/fix):       --files + --title only (--task-file/--index/--number absent).
+    Providing some but not all of --task-file/--index/--number is rejected at
+    runtime with EXIT_ERR (mixed-mode error).
+    """
     parser.add_argument(
         "--files",
         required=True,
@@ -307,24 +343,36 @@ def add_args_wip_commit(parser):
     )
     parser.add_argument(
         "--task-file",
-        required=True,
+        required=False,
+        default="",
         dest="task_file",
-        help="Path to the task .md file to stage.",
+        help=(
+            "Path to the task .md file to stage (task mode only). "
+            "Must be given together with --index and --number, or not at all."
+        ),
     )
     parser.add_argument(
         "--index",
-        required=True,
-        help="Path to tasks/README.md index file to stage.",
+        required=False,
+        default="",
+        help=(
+            "Path to tasks/README.md index file to stage (task mode only). "
+            "Must be given together with --task-file and --number, or not at all."
+        ),
     )
     parser.add_argument(
         "--number",
-        required=True,
-        help="Task number string, e.g. '001'.",
+        required=False,
+        default="",
+        help=(
+            "Task number string, e.g. '001' (task mode only). "
+            "Must be given together with --task-file and --index, or not at all."
+        ),
     )
     parser.add_argument(
         "--title",
         required=True,
-        help="Task title string.",
+        help="Task title string (required in both task and fix modes).",
     )
     parser.add_argument(
         "--root",
@@ -340,19 +388,28 @@ def add_args_wip_commit(parser):
 
 def cmd_wip_commit(args):
     # type: (object) -> int
-    """Stage named paths and create a per-task WIP commit.
+    """Stage named paths and create a WIP commit (task mode or fix mode).
 
-    In WRAPPER mode (PROJECT_ROOT != "."):
-      - Ticket-id derived from the SOURCE repo branch (D2).
-      - Stage ONLY source touched_files in the SOURCE repo (precise staging, D1).
-      - task_file and index are NOT staged (wrapper artifacts, left uncommitted per D1).
-      - Commit lands in the SOURCE repo on its branch.
-      - wip.md is cleared in the INSTALL root (where .devforge/ lives).
-      - Emitted head_sha is the SOURCE repo's new HEAD.
+    Task mode (/implement) — all of --task-file, --index, --number are present:
+      In WRAPPER mode:
+        - Ticket-id derived from the SOURCE repo branch (D2).
+        - Stage ONLY source touched_files in the SOURCE repo (D1).
+        - task_file and index are NOT staged (wrapper artifacts, left uncommitted per D1).
+        - Commit lands in the SOURCE repo.
+        - wip.md is cleared in the INSTALL root.
+        - Emitted head_sha is the SOURCE repo's new HEAD.
+      In STANDALONE mode:
+        - Stage source touched_files + task_file + index all in the single repo.
+        - Message: "[WIP] task: <title> (Task NNN)".
 
-    In STANDALONE mode (PROJECT_ROOT == "."):
-      - Unchanged from before: stage source touched_files + task_file + index
-        all in the single repo; commit there; clear wip.md there.
+    Fix mode (/fix) — none of --task-file, --index, --number are present:
+      Stage ONLY source touched_files in both wrapper and standalone mode.
+      Message: "[WIP] fix: <title>" (standalone) / "[TICKET-ID] - <title>" (wrapper).
+      Attribution and ticket-id derivation are identical to task mode.
+      No "(Task NNN)" suffix.
+
+    Mixed mode (some but not all of --task-file/--index/--number present):
+      Rejected immediately with EXIT_ERR and a descriptive stderr message.
 
     Parameters
     ----------
@@ -386,23 +443,36 @@ def cmd_wip_commit(args):
         )
         return EXIT_ERR
 
-    task_file = getattr(args, "task_file", "")
-    index = getattr(args, "index", "")
-    number = getattr(args, "number", "")
-    title = getattr(args, "title", "")
+    task_file = getattr(args, "task_file", "") or ""
+    index = getattr(args, "index", "") or ""
+    number = getattr(args, "number", "") or ""
+    title = getattr(args, "title", "") or ""
 
-    if not task_file:
-        sys.stderr.write("wip-commit: --task-file is required\n")
-        return EXIT_ERR
-    if not index:
-        sys.stderr.write("wip-commit: --index is required\n")
-        return EXIT_ERR
-    if not number:
-        sys.stderr.write("wip-commit: --number is required\n")
-        return EXIT_ERR
     if not title:
         sys.stderr.write("wip-commit: --title is required\n")
         return EXIT_ERR
+
+    # --- Mode detection ---
+    task_present = bool(task_file) and bool(index) and bool(number)
+    task_absent = (not task_file) and (not index) and (not number)
+
+    if not task_present and not task_absent:
+        # Mixed: some but not all of --task-file/--index/--number were given.
+        missing = []
+        if not task_file:
+            missing.append("--task-file")
+        if not index:
+            missing.append("--index")
+        if not number:
+            missing.append("--number")
+        sys.stderr.write(
+            "wip-commit: mixed mode — provide all of --task-file, --index, "
+            "--number (task mode) or none of them (fix mode). "
+            "Missing: {0}\n".format(", ".join(missing))
+        )
+        return EXIT_ERR
+
+    fix_mode = task_absent  # True → fix mode; False → task mode
 
     # --- Load project config (from install_root where .devforge/ lives) ---
     try:
@@ -434,15 +504,20 @@ def cmd_wip_commit(args):
     # In wrapper mode the commit lands in the source repo, so attribution is
     # suppressed here.  In standalone mode attribution is applied normally —
     # the single repo follows the Commit Convention the user opted into.
+    # Attribution suppression rule is identical in task and fix modes.
     message_attribution = "" if is_wrapper else attribution
-    message = _compose_message(is_wrapper, ticket_id, title, number, message_attribution)
+    message = _compose_message(
+        is_wrapper, ticket_id, title, number, message_attribution,
+        fix_mode=fix_mode,
+    )
 
     # --- Stage paths individually (NEVER git add -A) ---
-    if is_wrapper:
-        # D1: stage ONLY the source touched_files in the SOURCE repo.
-        # task_file and index are wrapper artifacts — they are NOT staged here.
-        # mark-complete already wrote them to disk; they will be committed
-        # separately (or not at all per D1 policy).
+    if is_wrapper or fix_mode:
+        # Wrapper task mode (D1): stage ONLY the source touched_files in the SOURCE repo.
+        #   task_file and index are wrapper artifacts — they are NOT staged here.
+        #   mark-complete already wrote them to disk.
+        # Fix mode (both wrapper and standalone): no task_file or index exists;
+        #   stage ONLY source touched_files.
         seen = set()  # type: ignore
         to_stage = []  # type: List[str]
         for p in list(touched):
@@ -450,7 +525,7 @@ def cmd_wip_commit(args):
                 seen.add(p)
                 to_stage.append(p)
     else:
-        # Standalone: stage source touched_files + task_file + index together.
+        # Standalone task mode: stage source touched_files + task_file + index together.
         seen = set()
         to_stage = []
         for p in list(touched) + [task_file, index]:
