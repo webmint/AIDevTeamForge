@@ -534,7 +534,7 @@ Only when the LLM observes a pattern that genuinely spans multiple units without
 
 ### A.3: Bare Command Names in Documentation (MANDATORY)
 
-In any `docs/*.md` prose that names a workflow command — `onboard`, `constitute`, `specify`, `plan`, `breakdown`, `execute-task`, `verify`, etc. — use the **bare command name**. The `/` sigil belongs in user-facing command output (wizard summaries, command headers) where the user would actually type it; documentation prose reads better without it.
+In any `docs/*.md` prose that names a workflow command — `onboard`, `constitute`, `specify`, `plan`, `breakdown`, `implement`, `verify`, etc. — use the **bare command name**. The `/` sigil belongs in user-facing command output (wizard summaries, command headers) where the user would actually type it; documentation prose reads better without it.
 
 - ✅ RIGHT: "Run onboard again after significant changes."
 - ❌ WRONG: "Run `/onboard` again..."

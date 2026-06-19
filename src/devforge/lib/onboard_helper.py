@@ -406,7 +406,7 @@ _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 # does trigger.
 _WORKFLOW_COMMANDS = (
     "onboard", "setup-wizard", "constitute", "specify",
-    "plan", "breakdown", "execute-task", "verify",
+    "plan", "breakdown", "implement", "verify",
 )
 _SIGIL_RE = re.compile(
     r"(?<![\w/.])([/$])(" + "|".join(_WORKFLOW_COMMANDS) + r")\b"

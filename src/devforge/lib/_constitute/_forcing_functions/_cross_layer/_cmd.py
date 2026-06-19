@@ -76,7 +76,7 @@ def cmd_verify_cross_layer_imports(args: argparse.Namespace) -> int:
     # cmd_verify_magic_enum at _magic_enum/_cmd.py).  This is a family-wide
     # design choice: a corrupt config silently gives a "clean" signal,
     # which in a CI gate context could mask gate-not-running.  Phase 5
-    # (/execute-task wire-in) may promote this to EXIT_FINDINGS once the
+    # (/implement wire-in) may promote this to EXIT_FINDINGS once the
     # detector family is wired into CI gates.  Do NOT diverge Phase 3
     # from Phase 1 in isolation — change requires a cross-family audit.
     try:

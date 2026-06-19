@@ -95,7 +95,7 @@ def emit_findings(rule: str, findings: List[Finding]) -> int:
       ``Finding.path`` contains ``:`` (e.g., Windows drive letters
       ``C:\\src\\foo.ts``).  Naive ``:`` splitters in editor / hook
       consumers may misparse the prefix.  Downstream surfaces
-      (/execute-task gate relay; pre-commit hook output) MUST consume the
+      (/implement gate relay; pre-commit hook output) MUST consume the
       stdout JSON for programmatic finding extraction; stderr is for human
       eyeballing only.
     * Multi-line ``Finding.summary`` would break the one-line-per-finding

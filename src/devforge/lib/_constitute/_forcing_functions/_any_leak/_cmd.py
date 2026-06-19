@@ -24,7 +24,7 @@ Config-parse error (exit 0)
 Malformed JSON exits EXIT_CLEAN with a stderr note.  This is a family-wide
 design choice consistent with Phase 1 (cmd_verify_magic_enum) and Phase 3
 (cmd_verify_cross_layer_imports): a corrupt config silently gives a "clean"
-signal.  Phase 5 (/execute-task wire-in) may promote this to EXIT_FINDINGS
+signal.  Phase 5 (/implement wire-in) may promote this to EXIT_FINDINGS
 once the detector family is wired into CI gates.  Do NOT diverge Phase 4
 from Phase 1/3 in isolation — change requires a cross-family audit.
 """

@@ -1,7 +1,7 @@
 """handoff_schema -- dataclass schema for the breakdown-handoff artefact.
 
 Single source of truth for the shape of ``specs/NNN-<slug>/breakdown-handoff.json``
-emitted by ``breakdown_helper finalize-handoff`` and consumed by ``/execute-task``
+emitted by ``breakdown_helper finalize-handoff`` and consumed by ``/implement``
 (consumer not yet implemented; will conform to this schema).
 
 Design notes:
