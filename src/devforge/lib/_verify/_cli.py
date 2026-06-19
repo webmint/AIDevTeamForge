@@ -802,7 +802,7 @@ def cmd_file_bugs(args):
       2 — argument error
       1 — I/O error
     """
-    from ._bugs import file_bugs
+    from .._shared.bug_file import file_bugs
 
     issues_path = getattr(args, "issues", None) or ""
     bugs_dir = getattr(args, "bugs_dir", None) or ""

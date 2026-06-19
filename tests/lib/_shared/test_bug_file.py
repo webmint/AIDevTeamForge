@@ -1,4 +1,4 @@
-"""Tests for src/devforge/lib/_shared/bug_file.py (relocated from _verify/_bugs.py)
+"""Tests for src/devforge/lib/_shared/bug_file.py
 
 Coverage:
   file_bugs:
@@ -6,7 +6,8 @@ Coverage:
       - Written file starts with "# Bug NNN: <title>"
       - **Status**: Open
       - **Severity**: as given
-      - **Source**: verify
+      - **Source**: verify (default)
+      - **Source**: <custom> when source param supplied
       - **Feature**: as given (feature spec path)
       - **AC**: as given (ac_ref field)
       - **Reported**: as given (date)
@@ -18,6 +19,11 @@ Coverage:
       - ## Evidence section present
       - ## Related Issues section present
       - ## Fix Notes section present
+
+    source param:
+      - Default (omitted) → **Source**: verify
+      - source="manual"   → **Source**: manual
+      - source="fix"      → **Source**: fix
 
     Numbering:
       - Empty bugs/ dir → starts at 001
@@ -208,6 +214,75 @@ class TestFileBugsFormat(unittest.TestCase):
         """A single bug in the batch has no Related Issues."""
         content = self._write_one()
         self.assertIn("standalone", content.lower())
+
+
+# ---------------------------------------------------------------------------
+# source param tests (new behavior)
+# ---------------------------------------------------------------------------
+
+
+class TestFileBugsSourceParam(unittest.TestCase):
+    """Verify the source parameter is correctly threaded into the bug file."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.bugs_dir = os.path.join(self.tmp, "bugs")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write_one(self, source_kwarg=None):
+        kwargs = dict(
+            bugs_dir=self.bugs_dir,
+            issues=[_issue()],
+            feature_spec_path="specs/001-cart/spec.md",
+            date="2026-06-16",
+        )
+        if source_kwarg is not None:
+            kwargs["source"] = source_kwarg
+        paths = file_bugs(**kwargs)
+        self.assertEqual(len(paths), 1)
+        with open(paths[0], encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_default_source_is_verify(self):
+        """Omitting source renders **Source**: verify (byte-identical to prior behavior)."""
+        content = self._write_one()
+        self.assertIn("**Source**: verify", content)
+
+    def test_explicit_source_verify(self):
+        """Passing source='verify' explicitly also renders **Source**: verify."""
+        content = self._write_one(source_kwarg="verify")
+        self.assertIn("**Source**: verify", content)
+
+    def test_source_manual(self):
+        """source='manual' renders **Source**: manual."""
+        content = self._write_one(source_kwarg="manual")
+        self.assertIn("**Source**: manual", content)
+        self.assertNotIn("**Source**: verify", content)
+
+    def test_source_fix(self):
+        """source='fix' renders **Source**: fix."""
+        content = self._write_one(source_kwarg="fix")
+        self.assertIn("**Source**: fix", content)
+        self.assertNotIn("**Source**: verify", content)
+
+    def test_source_propagates_across_batch(self):
+        """All bugs in a batch use the same source value."""
+        paths = file_bugs(
+            bugs_dir=self.bugs_dir,
+            issues=[_issue(title="Bug A"), _issue(title="Bug B")],
+            feature_spec_path="specs/001/spec.md",
+            date="2026-06-16",
+            source="manual",
+        )
+        self.assertEqual(len(paths), 2)
+        for p in paths:
+            with open(p, encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn("**Source**: manual", content)
+            self.assertNotIn("**Source**: verify", content)
 
 
 # ---------------------------------------------------------------------------

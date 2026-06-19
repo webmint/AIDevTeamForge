@@ -1,11 +1,16 @@
-"""_bugs.py — write bug reports to bugs/NNN-*.md for /verify PHASE 9.
+"""bug_file.py — write bug reports to bugs/NNN-*.md in storage-rules.md format.
+
+Extracted from _verify/_bugs.py and promoted to _shared/ so callers other
+than /verify can file bugs with a custom Source field.
 
 Public surface
 --------------
-  file_bugs(bugs_dir, issues, feature_spec_path, date) -> list[str]
+  file_bugs(bugs_dir, issues, feature_spec_path, date, source="verify")
+      -> list[str]
+
       Scan bugs_dir for highest existing NNN prefix, assign sequential
       numbers from there.  For each issue dict, write bugs/NNN-<slug>.md
-      in the EXACT src/devforge/storage-rules.md:267–310 format.
+      in the EXACT src/devforge/storage-rules.md format.
 
       Parameters
       ----------
@@ -32,18 +37,21 @@ Public surface
           or "N/A" for standalone bugs.
       date : str
           YYYY-MM-DD.  REQUIRED — never call the clock.
+      source : str
+          Value for the **Source** field in the bug file.  Defaults to
+          "verify" so existing callers need no change.
 
       Returns
       -------
       list[str]  Paths of the bug files written, in order.
 
-Bug file format (verbatim from storage-rules.md lines 268–310)
---------------------------------------------------------------
+Bug file format (verbatim from storage-rules.md)
+-------------------------------------------------
   # Bug NNN: [Short Title]
 
   **Status**: Open
   **Severity**: Critical | Warning | Info
-  **Source**: verify
+  **Source**: <source>
   **Feature**: [spec path]
   **AC**: [AC-N or N/A]
   **Reported**: [YYYY-MM-DD]
@@ -97,7 +105,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -164,6 +172,7 @@ def _format_bug(
     feature_spec_path, # type: str
     date,              # type: str
     related_paths,     # type: List[str]
+    source,            # type: str
 ):
     # type: (...) -> str
     """Render a single bug file in storage-rules.md format."""
@@ -182,7 +191,7 @@ def _format_bug(
     lines.append("")
     lines.append("**Status**: Open")
     lines.append("**Severity**: {0}".format(severity))
-    lines.append("**Source**: verify")
+    lines.append("**Source**: {0}".format(source))
     lines.append("**Feature**: {0}".format(feature_spec_path or "N/A"))
     lines.append("**AC**: {0}".format(ac_ref))
     lines.append("**Reported**: {0}".format(date))
@@ -243,8 +252,8 @@ def _format_bug(
 # ---------------------------------------------------------------------------
 
 
-def file_bugs(bugs_dir, issues, feature_spec_path, date):
-    # type: (str, List[Dict], str, str) -> List[str]
+def file_bugs(bugs_dir, issues, feature_spec_path, date, source="verify"):
+    # type: (str, List[Dict], str, str, str) -> List[str]
     """Write bug files in bugs/NNN-<slug>.md format.
 
     Parameters
@@ -257,6 +266,9 @@ def file_bugs(bugs_dir, issues, feature_spec_path, date):
         Path to the feature spec (e.g. specs/001-auth/spec.md).
     date : str
         YYYY-MM-DD.  REQUIRED — never call the clock.
+    source : str
+        Value for the **Source** field.  Defaults to "verify" so existing
+        callers that omit the argument are byte-identical to before.
 
     Returns
     -------
@@ -294,6 +306,7 @@ def file_bugs(bugs_dir, issues, feature_spec_path, date):
             feature_spec_path=feature_spec_path,
             date=date,
             related_paths=related,
+            source=source,
         )
 
         # Atomic write
