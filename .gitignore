@@ -2,6 +2,7 @@
 .npm-cache/
 .claude/session-state.md
 .claude/wip.md
+.claude/scheduled_tasks.lock
 
 # Python bytecode — always regenerated from source, never tracked
 __pycache__/
