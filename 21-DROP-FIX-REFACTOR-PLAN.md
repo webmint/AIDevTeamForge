@@ -17,6 +17,8 @@ These are decided, not open (no `## Open questions` section — the decision is 
 
 ## Why DROP, not rework (the anti-future-hallucination payload)
 
+> **Note (2026-06-19):** D1 below is SUPERSEDED by `26-REINTRODUCE-FIX-PLAN.md` (D1 only). This section's reasoning is retained as the record for the `/refactor` drop and the cold-bug boundary, which both still stand. See plan 26 `## Why supersede plan 21 D1` for the D1 reversal.
+
 `/fix` and `/refactor` are stale pre-pivot drafts at `src/_pending/commands/fix.md` (23.5K) and `src/_pending/commands/refactor.md` (25.3K). Neither is emitted, so neither exists in any installed target project — yet both are *described as live* across the consumer overlay (`src/CLAUDE.md`), crash-recovery prose, the verification-boundary line, and several agents. That described-but-absent state is exactly the future-hallucination seed the repo `CLAUDE.md` "Pre-empt future-session hallucination" rule warns about: a fresh session reading the consumer overlay would believe `/fix` and `/refactor` are shipping commands.
 
 The decision to DROP rather than rework rests on a structural finding from the design discussion. It is recorded here in full so that no future session — seeing the phantom references being removed — mistakes the removal for an oversight and "restores" `/fix`.
@@ -75,6 +77,8 @@ Hand-fixes lose two things a command would have given:
 ## Settled decisions
 
 ### D1 — No fast-path command or tier
+
+> **⚠️ SUPERSEDED 2026-06-19 (D1 ONLY) by `26-REINTRODUCE-FIX-PLAN.md`.** `/fix` is reintroduced — but as a thin CALLER over `/implement`'s back-half engine (`implement_helper verify-touched` / `merge-review-panel` / `run-forcing-functions-gate` / `wip-commit`), not the deleted v1.28 COPY draft this plan removed. The reversal reasoning is plan 26 `## Why supersede plan 21 D1`: the framework converged on "shared engine underneath, distinct command surface per distinct workflow moment" (`/review` vs `/verify` over `_shared/`; `/verify` reusing `verify-touched`), which dissolves §1's duplication tax; plan 21 §5's accepted cost (lost verify gate + clean commit) is exactly what a gated `/fix` restores. **Only D1 is reversed — every other plan-21 decision (the `/refactor` drop, D2–D6) stands, and the cold-bug boundary §4 drew is preserved (`/fix` is never a free-text cold bug-fixer).**
 
 The framework is a feature pipeline. Small fixes are hand-fixed and run through existing tools (§4). Do NOT build `/fix`, `/refactor`, a routing edge, or an `/implement` fix-mode. The duplication-free option set has exactly two members (§1); a fast path is not one of them.
 
