@@ -16,17 +16,16 @@ Every phase transition requires explicit user approval. The per-feature intake (
 /path/to/AIDevTeamForge/install.sh /path/to/your-project
 ```
 
-This copies `.claude/`, `specs/`, `bugs/`, `research/`, `scripts/`, and `.mcp.json` into your project (excluding `settings.local.json`, which is project-owned). It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run `/setup-wizard`.
+This copies `.claude/`, `specs/`, `bugs/`, `research/`, `scripts/`, and `.mcp.json` into your project (excluding `settings.local.json`, which is project-owned). It also writes `.claude/template-version` to track which version you're on. Then open it in Claude Code and run the setup chain `/init-forge → /generate-docs → /configure → /constitute`.
 
-The wizard will:
+The setup chain will:
    - Detect workspace mode (standalone vs wrapper around a client project)
    - Detect your project structure (or interview you for greenfield projects)
    - Ask clarifying questions about your stack
    - Ask whether commits should include AI co-author attribution (default: no)
    - Ask which model each agent tier should use — Think tier (opus), Do tier (sonnet), Verify tier (sonnet); tech-writer is always sonnet
    - Ask how acceptance criteria should be verified — Auto (browser + API with fallback), Browser only, API only, or Off. Auto-detects dev server URL
-   - Generate `CLAUDE.md`, `constitution.md`, agents, hooks, and memory
-   - Remove the templates directory when done
+   - Populate `CLAUDE.md`, `constitution.md`, the project config, the `docs/` knowledge base, and prune the agent set to the project's natures
 
 ### MCP Servers
 
@@ -63,11 +62,11 @@ When the template is improved, you can push updates to projects that already use
 
 ### Project config
 
-`/setup-wizard` writes `.claude/project-config.json` with all template variable values (framework, language, architecture, model tiers, etc.). `update.sh` reads this file to apply placeholder substitution when updating agents and CLAUDE.md. For projects that predate this feature, the update script auto-extracts values from the existing `CLAUDE.md` and agent files as a one-time migration.
+`/configure` writes the project config with all template variable values (framework, language, architecture, model tiers, etc.). `update.sh` reads this file to apply placeholder substitution when updating agents and CLAUDE.md. For projects that predate this feature, the update script auto-extracts values from the existing `CLAUDE.md` and agent files as a one-time migration.
 
 ### Three-way merge
 
-Agents and CLAUDE.md use three-way merge (`git merge-file`) to apply only the template diff while preserving all project customizations — wizard-added framework-specific items, custom sections, and manual edits. Baselines (snapshots of the substituted template) are stored in `.claude/agents/.baseline/` and `.claude/.baseline/`. The setup wizard saves baselines during generation, so the very first `update.sh` run can three-way merge immediately — no bootstrap needed.
+Agents and CLAUDE.md use three-way merge (`git merge-file`) to apply only the template diff while preserving all project customizations — setup-added framework-specific items, custom sections, and manual edits. Baselines (snapshots of the substituted template) are stored in `.claude/agents/.baseline/` and `.claude/.baseline/`. Baselines are saved during setup, so the very first `update.sh` run can three-way merge immediately — no bootstrap needed.
 
 ### Version tracking
 
@@ -182,7 +181,7 @@ bugs/
 - **Constitution compliance**: Checked in pre-flight before every task — commands guard against empty `constitution.md` and prompt the user to run `/constitute` first
 - **Cross-task contracts**: Each task declares what it expects (preconditions) and produces (postconditions). Preconditions are verified before execution; postconditions after. Contract violations stop execution with upstream tracing
 - **Review checkpoint gates**: Auto-placed at dependency convergence points and layer boundaries. User reviews preceding work before continuing in batch mode
-- **Commit convention**: All commits follow Conventional Commits format. AI co-author attribution is off by default — no `Co-Authored-By` trailers, no AI mentions in commit messages. Opt-in during `/setup-wizard`. All workflow commits use scoped `git add` (specific files only, never `git add -A`)
+- **Commit convention**: All commits follow Conventional Commits format. AI co-author attribution is off by default — no `Co-Authored-By` trailers, no AI mentions in commit messages. Opt-in via the `COMMIT_ATTRIBUTION` config field that `/configure` writes. All workflow commits use scoped `git add` (specific files only, never `git add -A`)
 - **Pre-squash safety check**: Before squashing WIP commits, workflows verify no commits were pushed to the remote — skips squash if history was already shared
 - **Auto-compact**: In batch execution, pauses and prompts user-initiated compaction at heavy context load to prevent degradation
 
@@ -227,12 +226,12 @@ my-workspace/                    # Wrapper (your git repo)
 - `/execute-task` verifies no Claude artifacts were created inside the inner project
 
 ### Setup
-Run `install.sh`, then `/setup-wizard`. The wizard auto-detects nested git repos, confirms wrapper mode with you, and asks about adding the inner folder to `.gitignore`.
+Run `install.sh`, then the setup chain `/init-forge → /generate-docs → /configure → /constitute`. `/init-forge` auto-detects nested git repos and resolves the workspace mode (standalone vs wrapper) with you; adding the inner folder to `.gitignore` is confirmed during setup.
 
 ## Greenfield Support
 
 Works with empty/new projects:
-- `/setup-wizard` interviews you about intended stack instead of scanning code
+- The setup chain interviews you about the intended stack instead of scanning code — `/init-forge` resolves the project state (greenfield vs existing) and `/configure` captures the stack into the project config
 - `/constitute` builds constitution from user preferences + framework best practices
 - `/specify` creates specs even when there's no existing code to reference
 - `/plan` follows the constitution's scaffolding guide for file placement
@@ -240,7 +239,7 @@ Works with empty/new projects:
 
 ## Customization
 
-After running `/setup-wizard`:
+After running the setup chain (`/init-forge → /generate-docs → /configure → /constitute`):
 - `.claude/agents/*.md` — Add domain-specific knowledge
 - `.claude/memory/MEMORY.md` — Pre-seed with known patterns
 - `CLAUDE.md` — Adjust workflow steps
@@ -250,4 +249,4 @@ After running `/setup-wizard`:
 
 ## Template Files
 
-The `.claude/templates/` directory contains raw templates with `{{PLACEHOLDER}}` variables. Consumed by `/setup-wizard` and can be deleted after setup.
+The `.claude/templates/` directory contains raw templates with `{{PLACEHOLDER}}` variables. Consumed by `/configure` (which substitutes the `{{KEY}}` placeholders) and can be deleted after setup.

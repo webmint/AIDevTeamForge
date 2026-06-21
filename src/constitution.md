@@ -5,7 +5,7 @@ Last updated: {{DATE}}
 
 > Sections marked `[universal]` are pre-populated with rules that apply to ALL projects.
 > Sections marked `[project-specific]` are populated by `constitute` based on your codebase or interview answers.
-> Header fields in Section 1 are populated by the setup wizard from Phase 1 detection + Phase 2 answers. Per-stack details for multi-stack projects (Sections 3.2 / 3.4) follow the same paired-rendering rules as agent files — see `CLAUDE.md` `## Packages` section for the per-package breakdown.
+> Header fields in Section 1 are populated during project setup: `/init-forge` resolves the structural facts and `/configure` substitutes the header placeholders. Per-stack details for multi-stack projects (Sections 3.2 / 3.4) follow the same paired-rendering rules as agent files — see `CLAUDE.md` `## Packages` section for the per-package breakdown.
 
 ---
 

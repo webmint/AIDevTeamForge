@@ -6,7 +6,7 @@
 
 > Commands named in backticks (e.g. `constitute`, `generate-docs`) are invoked with the `/` prefix in Claude Code (e.g. `/constitute`).
 >
-> This file is the project overview. The setup wizard fills in the name and description from Phase 2 answers; `constitute` and `generate-docs` may append deeper context; the tech-writer agent updates this file as features ship.
+> This file is the project overview. The name and description are filled during project setup (`/init-forge` captures the structural facts; `/configure` substitutes `{{PROJECT_NAME}}` / `{{PROJECT_DESCRIPTION}}`); `constitute` and `generate-docs` may append deeper context; the tech-writer agent updates this file as features ship.
 >
 > For technical stack details (framework, language, build commands, per-package breakdown for monorepos), see the project primer (`CLAUDE.md`). That file is the runtime-facing source of truth for stack facts.
 >

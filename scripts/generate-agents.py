@@ -27,9 +27,9 @@ Model tier is translated into Claude boot-safe defaults (NOT placeholders)
 so Claude Code can parse these files at launch without error:
   opus | sonnet | sonnet | haiku (per tier)
 
-Defaults live in `scripts/lib/install_defaults.py`. The wizard OVERWRITES
-these values via key-based regex replacement (not placeholder substitution)
-when it has user answers — see `setup-wizard/references/agents.md` §6.4.
+Defaults live in `scripts/lib/install_defaults.py`. The post-install config
+step may OVERWRITE these values via key-based regex replacement (not
+placeholder substitution) when project-specific answers are available.
 
 {{UPPERCASE}} placeholders in body prose pass through untouched — wizard
 substitutes them post-install with project-specific answers (FRAMEWORK,
@@ -157,8 +157,8 @@ def _yaml_escape_double(s: str) -> str:
 #
 # Emit boot-safe defaults (not placeholder tokens). Values come from
 # `scripts/lib/install_defaults.py` — the single source of truth. The
-# wizard OVERWRITES these via key-based regex replacement when it has
-# user answers. See `setup-wizard/references/agents.md` §6.4.
+# post-install config step may OVERWRITE these via key-based regex
+# replacement when project-specific answers are available.
 
 
 def _claude_tier_model(tier: str) -> str:

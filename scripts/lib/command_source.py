@@ -3,13 +3,10 @@
 Handles both flat and folder-based command sources from src/commands/:
 
     Flat:    src/commands/<name>.md
-    Folder:  src/commands/setup-wizard/
+    Folder:  src/commands/audit/
                main.md
                references/
-                 detect.md
-                 questions.md
-                 populate.md
-                 agents.md
+                 <phase-guide>.md
 
 The folder pattern is for commands too large to be comfortable in one file —
 orchestrator in main.md, phase guides in references/. References are loaded
@@ -56,7 +53,7 @@ def rewrite_refs(text: str, target_prefix: str) -> str:
     """Rewrite `references/<h>.md` → `<target_prefix>/<h>.md`.
 
     `target_prefix` is a project-relative path (e.g.,
-    `.claude/commands/setup-wizard/references`). Idempotent: running on
+    `.claude/commands/audit/references`). Idempotent: running on
     already-rewritten text is a no-op (the pattern no longer matches the
     expanded form).
     """
@@ -111,7 +108,7 @@ def processed(
     """Return (body, references_dict) with all `references/X.md` paths rewritten.
 
     `target_prefix` is the runtime-native project-relative path where references
-    will live — e.g., `.claude/commands/setup-wizard/references`. Both the main
+    will live — e.g., `.claude/commands/audit/references`. Both the main
     body AND every reference file's content get rewritten (helpers cross-reference
     each other).
     """

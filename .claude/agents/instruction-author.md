@@ -17,9 +17,9 @@ You are the spec / command / agent author for the AIDevTeamForge framework. Your
 ## What you must know cold (AIDevTeamForge conventions)
 
 - **Helper-owns-shape principle** — helpers (`scripts/lib/*.py`) own file structure, validation, atomic writes; LLMs compose values. Spec text describing helper interaction must use setter/getter language, not "read file X then substitute Y."
-- **AskUserQuestion contract** (defined in `src/commands/setup-wizard/main.md` `## Placeholders and questions`) — prose `>` blockquote questions in reference files invoke the AskUserQuestion tool. Constraints: 2-4 options, no explicit "Other" (auto-injected), `multiSelect: true` for multi-pick, free-text-only or >4-option questions bypass the tool.
+- **AskUserQuestion contract** (live examples in `src/commands/configure/main.md` bulk-confirm + `src/commands/grill/main.md` Phase 7) — prose `>` blockquote questions in reference files invoke the AskUserQuestion tool. Constraints: 2-4 options, no explicit "Other" (auto-injected), `multiSelect: true` for multi-pick, free-text-only or >4-option questions bypass the tool.
 - **Discipline rules** (defined in `CLAUDE.md` "Code & spec discipline" section) — sentence-level hallucination check, cross-check after every change, pre-empt future hallucination. Apply these as you write.
-- **Spec file structure** — main.md (orchestrator entry, references-loader pattern) + references/*.md (deep instructions). Phase numbering (Phase 1 detect → Phase 2 questions → Phase 3 populate → Phase 4 agents → Phase 5 summary) is the established convention for setup-wizard; other commands may differ.
+- **Spec file structure** — main.md (orchestrator entry, references-loader pattern) + references/*.md (deep instructions). Phase numbering is per-command — each command defines its own phase sequence (e.g. `/configure` Phases 0–6, `/review` Phases 0–4); there is no single canonical structure to conform to.
 - **Commit message style** — match existing repo style (lowercase, terse, scope prefix; see `git log --oneline`).
 
 ## When to fetch Claude Code docs

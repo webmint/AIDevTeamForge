@@ -9,7 +9,6 @@
       { "source": "src/commands/constitute.md",             "target": ".claude/commands/constitute.md" },
       { "source": "src/commands/implement.md",               "target": ".claude/commands/implement.md" },
       { "source": "src/commands/plan.md",                   "target": ".claude/commands/plan.md" },
-      { "source": "src/commands/setup-wizard.md",           "target": ".claude/commands/setup-wizard.md" },
       { "source": "src/commands/specify.md",                "target": ".claude/commands/specify.md" },
       { "source": "src/commands/refresh-docs.md",           "target": ".claude/commands/refresh-docs.md" },
       { "source": "src/commands/research.md",               "target": ".claude/commands/research.md" },

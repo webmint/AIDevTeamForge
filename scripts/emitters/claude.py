@@ -10,12 +10,11 @@ Responsibilities:
   - src/commands/constitute/main.md    → target/.claude/commands/constitute.md
   (both flat and folder-based sources supported during migration)
 
-  NOTE: /setup-wizard and /onboard are no longer emitted. The architecture
-  pivot replaces /setup-wizard with /init-forge (Phase 1 detection) + /configure
+  NOTE: /setup-wizard and /onboard have been retired. The architecture pivot
+  replaced /setup-wizard with /init-forge (Phase 1 detection) + /configure
   (Phase 2-4 work), and /onboard with /generate-docs (brownfield doc generation).
-  /onboard is retired (plan 29 C); the src/commands/setup-wizard/ source tree is
-  kept pending its own retirement (plan 30) — it still hosts the agent-generator
-  spec read by scripts/generate-agents.py — and does not ship into target projects.
+  /onboard retired in plan 29 C; /setup-wizard retired in plan 30. Neither has a
+  source tree under src/commands/ anymore.
 
 Handled by other generators, not this emitter:
   - CoreLLM files (CLAUDE.md)      → scripts/generate-corellm.py

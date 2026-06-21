@@ -114,10 +114,6 @@ Standalone adversarial whole-codebase audit for periodic "second opinion" qualit
 #### `/report-bug "<description>" [--file <path>] [--severity Critical|Warning|Info]`
 Standalone **pure-capture** bug report — writes one `bugs/NNN-<slug>.md` record (`**Status**: Open`, `**Source**: manual`, the description, the optional `--file`, and the severity — default `Warning`) and stops. The `NNN` prefix is assigned by the helper (it scans `bugs/` for the highest number and increments); the file lands in the working tree uncommitted. Dispatches no agent, reads no source to confirm the defect, and does NOT advance or close the bug — the `Open → In Progress → Fixed` lifecycle is manual. The file-it-for-later counterpart to `/fix`'s remediate-now path; it never proposes or chains into `/fix`. Forward pointer only: `/research "<description>"` to investigate, or `/specify "<description>"` to address it as a feature. **NOT part of any workflow chain.**
 
-#### Additional Commands
-
-- `/setup-wizard` — Re-run initial project setup (regenerates config files)
-
 ### Conversational fix-or-file offer
 
 When the user points out a defect AND you confirm it is real by reading the actual code AND the active feature is implemented-but-not-yet-summarized (verify with `.devforge/lib/fix_helper in-fix-window --feature <feature>` — exit 0 = in-window; any other result, whether out-of-window or the helper is unavailable/errors, → treat as not in-window and offer file-only), offer a two-arm choice: run `/fix` to remediate now (a gated remediation loop), or run `/report-bug` to file a bug and defer. All three conditions are required (user-raised AND code-confirmed AND in-window) — if any is absent (the defect is unconfirmed, you originated it, or no feature is in that window), offer only `/report-bug`, never `/fix`. Never auto-run `/fix` — propose it; the user invokes it.
@@ -290,4 +286,4 @@ If a task execution is interrupted (power loss, terminal crash, network drop), t
 - [Constitution](constitution.md) — Project rules and patterns
 - [Specs](specs/) — Feature specifications, plans, and tasks
 - [Memory](.devforge/memory.md) — Persistent learnings
-- [Project Config](.devforge/project-config.json) — Wizard answers plus per-stack arrays (`LANGUAGES`, `FRAMEWORKS`, `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`) and per-package `PACKAGE_STACKS` records
+- [Project Config](.devforge/project-config.json) — `/configure` answers plus per-stack arrays (`LANGUAGES`, `FRAMEWORKS`, `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`) and per-package `PACKAGE_STACKS` records

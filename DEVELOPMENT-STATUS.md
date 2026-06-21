@@ -7,7 +7,6 @@ A reusable spec-driven development template for Claude Code. Combines a structur
 ## What's Built
 
 ### Commands (18 commands + 5 shared partials in `.claude/commands/`)
-- `setup-wizard.md` — Interactive project setup, auto-detects stack or interviews for greenfield; saves baselines for three-way merge on first run; detects DEFAULT_BRANCH; conditionally adds Chrome MCP based on AC_VERIFICATION setting
 - `constitute.md` — Generates constitution from codebase analysis (existing) or interview (greenfield)
 - `research.md` — Bug + enhancement investigation. Hard-gated on the 4-command setup chain. Phase 0 rubric (6 dimensions, helper-owned state at `.devforge/research-state.json`) clarifies the symptom; Phase 1 runs orchestrator-inline (no subagent dispatch) using the codebase-memory-mcp graph + `docs/` corpus with mandatory `search_graph` → `search_code` fallback chain, a parallel-pattern sweep over the primary file, and ≥2 falsifiable hypotheses; Phase 2 composes a structured report (mode-aware verdict, optional structured root cause for bugs, optional runtime-probe block, approaches with hypothesis citation, complexity); Phase 3 saves to `research/YYYY-MM-DD-<topic-slug>.md` with a copy-pasteable `/specify` handoff section
 - `discover.md` — Greenfield-feature discovery (parallel to `/research`, but pre-`/specify` for features with no existing related code). Same 4-command setup-chain hard gate. Phase 0 pre-flight (setup-chain artefact check + CBM index refresh) + topic capture with fresh-every-run state reset. Phase 1 scopes the idea across 8 rubric dimensions (`functional_scope`, `users`, `inputs_outputs`, `integration_points`, `constraints`, `non_goals`, `success_criteria`, `edge_cases`) via helper-owned state at `.devforge/discover-scope.json`; bounded turns (3 follow-ups/dim), pre-rubric `references` capture, helper-side direct-conflict detection + LLM-side drift classification, `[NEEDS CLARIFICATION]` gap markers on accepted partial exit. Phase 2 runs three sequential orchestrator-inline steps (no subagent dispatch): Step 2.0 project-wide internal canonical-pattern search (extracts capability verbs from `functional_scope`, scans via `search_graph` + `search_code`, records `internal:<path>` prior-art BEFORE web survey), Step 2.1 web survey (WebSearch + Context7 + WebFetch) narrowed to GAP capabilities, Step 2.2 fit-check (docs layer + CBM structural chain) reconciling user-belief vs codebase-reality with mandatory `--module-path` grounding from CBM result rows. Phase 3 composes the report (summary, prior art, integration surface, fit assessment, 2-3 design options, build-vs-buy, derisk plan, constitution constraints) at `.devforge/discover-report.json` with verdict-flip rule (Strained/Misfit fit OR Major-refactor effort → `Reconsider` unless override recorded) AND invariant G cite-rule (when `internal:` prior-art exists, `recommended_option.rationale` MUST cite at least one internal path). Phase 4 saves to `discover/YYYY-MM-DD-<topic-slug>.md` with a copy-pasteable `/specify` handoff section when verdict allows proceeding
@@ -36,22 +35,22 @@ By project type: `frontend-engineer`, `backend-engineer`, `architect`, `mobile-e
 By detected stack: `db-engineer`, `devops-engineer`, `design-auditor`, `api-designer`, `performance-analyst`, `migration-engineer`
 By config: `ac-verifier` (when `AC_VERIFICATION != "off"`)
 
-Setup wizard decides which agents to generate based on detected stack and user preferences (including AC verification mode).
+`install.sh` (via `generate-agents.py`) generates the full agent set from `src/agents/*.md`; `/configure` then prunes `.claude/agents/` to the project's natures based on detected stack and config (including AC verification mode).
 
 ### Supporting Templates (in `.claude/templates/`)
 - `CLAUDE.template.md` — Main project config (including Type Check Command and Lint Command fields), workflow commands, key rules (Always/Never lists), commit convention (format + attribution)
-- `constitution.md` — Pre-populated universal rules + project-specific placeholders. Placed at project root by `install.sh` (presence-guarded for brownfield); setup-wizard §5.7 substitutes header placeholders (name/type/framework/language/workspace/source-root, plus error-handling and testing summaries); `/constitute` fills the `[project-specific]` body sections later. Renamed from `constitution.template.md` as part of the "install places, wizard populates" alignment.
+- `constitution.md` — Pre-populated universal rules + project-specific placeholders. Placed at project root by `install.sh` (presence-guarded for brownfield); `/configure` substitutes the header placeholders (name/type/framework/language/workspace/source-root, plus error-handling and testing summaries); `/constitute` fills the `[project-specific]` body sections later. Renamed from `constitution.template.md` as part of the "install places, `/configure` populates" alignment.
 - `settings.template.json` — PostToolUse type-checking hook + default permissions (Edit, Write, Bash, Agent, read tools, task tools, MCP tools)
 - `spec.template.md` — Feature spec template with 10 sections
 - `storage-rules.md` — Full storage conventions for specs, tasks (with contracts and review checkpoint fields), bugs, and docs
 
-> Persistent memory scaffold now lives at `src/devforge/memory.md` (4-section starter installed verbatim into `.devforge/memory.md`; wizard §5.6 seeds it from Phase 1 detection). The richer `memory.template.md` with placeholders was removed as orphaned code — nothing consumed it.
+> Persistent memory scaffold now lives at `src/devforge/memory.md` (4-section starter installed verbatim into `.devforge/memory.md`; seeded during setup). The richer `memory.template.md` with placeholders was removed as orphaned code — nothing consumed it.
 
 ### Update System
 - `update.sh` — Manifest-driven update script with 4 strategies: overwrite (template-owned), three-way merge via `git merge-file` (agents + CLAUDE.md), smart merge (JSON/text), copy-if-missing
 - **Three-way merge**: stores baseline snapshots of substituted templates in `.claude/agents/.baseline/` and `.claude/.baseline/`. On update, computes diff (baseline → new template) and applies it to current file — preserves all project customizations while propagating template improvements
 - **Placeholder validation**: after substitution, checks for remaining `{{...}}` patterns; skips file if found (prevents destroying agents with broken config values)
-- `.claude/project-config.json` — Machine-readable config written by `/setup-wizard`, stores all template variable values (including `TYPE_CHECK_COMMAND`, `LINT_COMMAND`, `COMMIT_ATTRIBUTION`, `MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY`) for `update.sh` placeholder substitution
+- `.devforge/project-config.json` — Machine-readable config written by `/configure`, stores all template variable values (including `TYPE_CHECK_COMMAND`, `LINT_COMMAND`, `COMMIT_ATTRIBUTION`, `MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY`) for `update.sh` placeholder substitution
 - `.claude/template-manifest.json` — Defines file ownership categories and update strategies; self-updates (template-owned)
 - One-time migration: extracts config from existing `CLAUDE.md` and agent files when `project-config.json` is missing
 
@@ -63,12 +62,12 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - `discover/` — Empty discovery directory with .gitkeep (discovery reports from `/discover`)
 
 ### Wrapper Mode
-- Setup wizard detects nested git repos at depth 1 and offers wrapper mode
+- `/init-forge` detects nested git repos at depth 1 and resolves the workspace mode (standalone vs wrapper)
 - `SOURCE_ROOT` variable propagated through CLAUDE.md → all commands read it
 - All commands scope source scanning to the Source Root path
 - Git auto-commits apply to both repos — wrapper gets workflow commits, source repo gets per-task WIP commits squashed into one clean commit (`[TICKET-ID] - Description`) at `/verify`
 - `/execute-task` Phase 3.3 verifies no Claude artifacts leak into the inner project
-- `install.sh --wrapper` pre-configures the `.gitignore` entry for the inner folder
+- `/init-forge` detects nested git repos and confirms adding the inner folder to `.gitignore` during STEP 0
 - CLAUDE.md template has conditional `{{WRAPPER_MODE_SECTION}}` (omitted for standalone)
 - Memory template tracks `{{WORKSPACE_MODE}}` (standalone/wrapper) and `{{SOURCE_ROOT}}`
 
@@ -84,7 +83,7 @@ Setup wizard decides which agents to generate based on detected stack and user p
 2. **Hard gates at every phase transition** — spec, plan, breakdown all require explicit user approval
 3. **Per-feature storage** — everything in `specs/NNN-feature-name/` with tasks as individual numbered files in `tasks/` subfolder
 4. **Sequential numbering** — features: 001, 002...; tasks within feature: 001, 002...
-5. **All agents as templates, wizard selects** — 17 templates, setup wizard conditionally generates based on project
+5. **All agents as templates, `/configure` prunes** — `install.sh` generates the full agent set from `src/agents/*.md`; `/configure` prunes `.claude/agents/` to the project's natures
 6. **Universal constitution rules pre-populated** — SOLID, DRY, KISS, error handling, code quality, workflow rules all built-in; `/constitute` preserves these `[universal]` sections verbatim and only populates `[project-specific]` sections
 7. **Two-layer documentation** — implementing agents write inline docs (JSDoc/docstrings) as part of code; code-reviewer verifies inline docs per-task; tech-writer generates feature-level docs in `docs/` at `/finalize` time (once per feature, not per task). `/refresh-docs` catches stale docs via git delta
 8. **Greenfield support** — all commands work for empty/new projects
@@ -92,12 +91,12 @@ Setup wizard decides which agents to generate based on detected stack and user p
 10. **Doc generation for existing projects** — `/generate-docs` builds the `docs/` knowledge base (concern → package → project tiers) for all agents
 11. **Wrapper mode for client-invisible AI** — template wraps around existing project folder; zero Claude traces in the client's repo
 12. **Cross-task contracts prevent silent drift** — each task declares Expects/Produces; preconditions catch upstream semantic errors before they compound, postconditions verify the task delivered what downstream tasks need
-13. **Configurable AI attribution** — commits default to no Claude/AI mention; opt-in via setup wizard. Rule stored in CLAUDE.md and enforced by all commit-creating commands
-14. **Tiered agent models** — agents use 3 model tiers: Think (opus — architect, api-designer, security-reviewer), Do (sonnet — implementation agents), Verify (sonnet — review/test agents). Configurable via setup wizard (`MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY` in project-config.json)
-15. **Three-way merge for updates** — `update.sh` uses `git merge-file` with baselines to apply only template diffs, preserving all project customizations (wizard-added items, custom sections, manual edits)
-16. **AC verification is opt-in and project-conditional** — setup wizard asks if AC should be verified via browser (Chrome MCP), API calls, or code reading. Chrome MCP only installed for auto/browser-only projects. `/verify` Phase 2 launches the ac-verifier agent when enabled, with graceful fallback to code reading
+13. **Configurable AI attribution** — commits default to no Claude/AI mention; opt-in via the `COMMIT_ATTRIBUTION` config field that `/configure` writes. Rule stored in CLAUDE.md and enforced by all commit-creating commands
+14. **Tiered agent models** — agents use 3 model tiers: Think (opus — architect, api-designer, security-reviewer), Do (sonnet — implementation agents), Verify (sonnet — review/test agents). Configurable via `/configure` (`MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY` in project-config.json)
+15. **Three-way merge for updates** — `update.sh` uses `git merge-file` with baselines to apply only template diffs, preserving all project customizations (setup-added items, custom sections, manual edits)
+16. **AC verification is opt-in and project-conditional** — `/configure` asks if AC should be verified via browser (Chrome MCP), API calls, or code reading (the `ac_verification_mode` config field). Chrome MCP only installed for auto/browser-only projects. `/verify` Phase 2 launches the ac-verifier agent when enabled, with graceful fallback to code reading
 17. **Per-task code review, feature-level review + verdict at epic level** — code-reviewer runs after each `/execute-task` task (findings reported to user: address/continue/stop). `/review` owns the feature-level cross-task review (findings only); `/verify` owns the verdict — AC verification + assembled mechanical checks + the APPROVED/NEEDS WORK/REJECTED decision — and does NOT re-review
-18. **Language-agnostic agent templates** — type safety rules use `{{TYPE_SAFETY_RULES}}` placeholder generated by setup wizard based on detected language. No hardcoded TypeScript-specific items. Agent templates use `Inline docs` not `JSDoc`
+18. **Language-agnostic agent templates** — type safety rules use a `{{TYPE_SAFETY_RULES}}` placeholder that `/configure` substitutes based on detected language. No hardcoded TypeScript-specific items. Agent templates use `Inline docs` not `JSDoc`
 
 ### Context Maintenance (Phase 5.2)
 - `/execute-task` includes Phase 5.2: Context Maintenance after each task
@@ -120,9 +119,9 @@ Setup wizard decides which agents to generate based on detected stack and user p
 - The `docs/` folder structure might need adjustment per project type
 - Consider adding a `/commit` command that summarizes changes
 - Consider a `/status` command to show current feature progress
-- The setup wizard could detect more frameworks/tools
-- ~~Agent templates use `{{PLACEHOLDER}}` variables — wizard must replace all of them~~ **FIXED: `update.sh` now applies placeholder substitution using `.claude/project-config.json`**
-- ~~`constitution.md` stub generation (step 3.5 in wizard) — template content TBD~~ **FIXED: wizard copies template with resolved headers, preserves sentinel strings**
+- The setup chain could detect more frameworks/tools
+- ~~Agent templates use `{{PLACEHOLDER}}` variables — setup must replace all of them~~ **FIXED: `/configure` and `update.sh` apply placeholder substitution using `.devforge/project-config.json`**
+- ~~`constitution.md` stub generation during setup — template content TBD~~ **FIXED: `install.sh` copies the template with sentinel strings preserved; `/configure` substitutes the resolved headers**
 - ~~`/clarify` command overlap with `/specify`~~ **RESOLVED: `/clarify` removed, clarification absorbed into `/specify` Phase 2**
 - Consider spec validation agents (R1 from competitive analysis) — plan-spec cross-reference already added, spec validation is lower priority with per-task code review as safety net
 - ~~Consider if tech-writer should also update inline code docs (JSDoc/docstrings) or just `docs/` folder~~ ~~**DECIDED: both. Tech-writer updates inline docs (JSDoc/docstrings) AND `docs/` folder.**~~ **REVISED (plan 21): tech-writer is verify-only for inline docs — the implementing agent writes them; tech-writer flags gaps and writes only `docs/`.**

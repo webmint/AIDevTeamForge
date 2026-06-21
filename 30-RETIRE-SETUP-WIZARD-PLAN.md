@@ -1,6 +1,29 @@
 # 30 — RETIRE /setup-wizard
 
-**Status**: DRAFTED 2026-06-21, not started. Split out from `29-…-SINGLE-ROOT-PLAN.md` Workstream C when the onboard retirement shipped: `/onboard` retired cleanly, but `/setup-wizard` cannot be deleted by removal alone — it still carries two live responsibilities that must be MIGRATED first. The user chose "retire fully" (2026-06-21); this plan is the migration that makes a clean deletion possible.
+**Status**: SHIPPED 2026-06-21 (working tree). Both "blocker" Open Questions DISSOLVED on investigation — neither migration was actually needed:
+- **OQ2 (generator-spec relocation) — DISSOLVED**: `generate-agents.py` reads `src/agents/*.md` (line 4, 260 `args.src.glob("*.md")`), NOT `setup-wizard/references/agents.md`. Lines 32/161 were stale COMMENT pointers to a file that *no longer existed*. No relocation — just dropped the dead comments. Agent generation is fully independent of setup-wizard (verified: scratch `install.sh` + `update.sh` both regenerate 18 agents with setup-wizard gone).
+- **OQ1 (agent-restore wording) — RESOLVED to `update.sh`**: `update.sh` runs `generate-agents.py` (line 715) → regenerates `.claude/agents/`. The four command specs (`audit`/`fix`/`grill`/`review`) now say "re-run `update.sh`" instead of "run `/setup-wizard`".
+
+Done (verified: emitter test 9 OK; scratch install exit 0 = 18 agents, no setup-wizard command, no wizard_render shipped; update exit 0 = 18 agents regenerate):
+- Deleted `src/commands/setup-wizard/` + `src/devforge/lib/wizard_render{,.py}` + `tests/lib/test_wizard_render.py`.
+- `generate-agents.py`: dropped the 2 dead `agents.md §6.4` comment pointers (generalized "wizard" → "post-install config step").
+- `src/manifest.json`: removed the `setup-wizard.md` entry.
+- `scripts/lib/command_source.py`: docstring examples `setup-wizard` → `audit`.
+- `src/devforge/lib/detect_report.py`: docstring reworded — ORPHANED (its sole consumer setup-wizard is gone; flagged dead-code, see below).
+- `scripts/emitters/claude.py` + `install.sh`: retirement notes / dropped wizard_render from comments.
+- Repointed (instruction-author + instruction-reviewer loop): 4 command specs agent-install refs → `update.sh`; `src/CLAUDE.md` removed the `/setup-wizard` catalog entry; `src/constitution.md` + `src/docs/overview.md` shipped-template header/name provenance → `/init-forge`+`/configure`; README + DEVELOPMENT-STATUS de-wizared (setup section → 2.0 chain, mechanism prose reattributed to `/configure` / `install.sh` / generalized).
+- `.claude/agents/instruction-author.md`: repointed the AskUserQuestion-contract + phase-numbering anchors off the deleted `setup-wizard/main.md` (review F2).
+- Path fix (review F1): `.claude/project-config.json` → `.devforge/project-config.json` in DEVELOPMENT-STATUS. Wrapper-gitignore staleness fix (F3): `install.sh --wrapper` → `/init-forge` STEP 0.
+
+**Follow-ups NOT done here:**
+- `detect_report.py` (+ `tests/lib/test_detect_report.py`) is now ORPHANED dead code (zero functional consumers) — its own docstring authorizes removal "when /setup-wizard is decommissioned". A dedicated deletion pass is warranted (left in place this commit to avoid scope-creeping a 42KB+helper+tests deletion the user didn't explicitly greenlight).
+- **2.0 docs refresh** (the original "Related debt" below): README + DEVELOPMENT-STATUS still carry non-wizard pre-2.0 staleness — `/execute-task` (now `/implement`), `docs/features/*` (dropped tier), stale command/agent counts. The wizard-scrub touched these files but deliberately did NOT chase the broader staleness.
+
+---
+
+### (original draft preserved below for rationale)
+
+Split out from `29-…-SINGLE-ROOT-PLAN.md` Workstream C when the onboard retirement shipped: `/onboard` retired cleanly, but `/setup-wizard` was *believed* to carry two live responsibilities. (Investigation 2026-06-21 showed both were already vestigial — see Status above.)
 
 ## Why setup-wizard can't just be deleted (investigated 2026-06-21)
 
