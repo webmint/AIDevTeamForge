@@ -77,7 +77,7 @@ N+1. Minimal scope — change only what the task requires.
 N+2. {grounding rule — verbatim, see below}.
 ```
 
-`architect` and `tech-writer` keep additional substantive sections **beyond** this skeleton (architect's decision-output format, tech-writer's 3 operating modes). They conform section NAMES and Rules style — they are not flattened to the minimal skeleton.
+`architect` and `tech-writer` keep additional substantive sections **beyond** this skeleton (architect's decision-output format, tech-writer's 2 operating modes — Normal + Skeleton-Fill). They conform section NAMES and Rules style — they are not flattened to the minimal skeleton.
 
 ## The four role-families
 
@@ -114,7 +114,7 @@ The **target** roster is **17** agents in four families (16 exist today; `qa-rev
 
 - Multi-section substance is preserved. Conform section NAMES and Rules style only; do not flatten.
 - `architect` is the **reference implementation** for the Boundaries / specialist-consulting discipline — match its shape when authoring any agent's `## Boundaries & Handoffs`.
-- `tech-writer` keeps its 3 operating modes.
+- `tech-writer` keeps its 2 operating modes (Normal + Skeleton-Fill).
 
 ## Unified severity (D1)
 

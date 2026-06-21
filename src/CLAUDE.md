@@ -37,9 +37,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 ### Spec-Driven Development Flow
 
 ```
-/setup-wizard → /constitute → /onboard → /research OR /discover → /specify → /plan → [/grill] → /breakdown → /implement → /review → /verify → /summarize → /finalize
-   (once)         (once)       (once)    (per feat — required)     (per feat)  (per feat)  (optional,   (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
-                                                                                          high-stakes)
+/init-forge → /generate-docs → /configure → /constitute → /research OR /discover → /specify → /plan → [/grill] → /breakdown → /implement → /review → /verify → /summarize → /finalize
+  (once)         (once)         (once)       (once)     (per feat — required)     (per feat)  (per feat)  (optional,   (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
+                                                                                                        high-stakes)
 ```
 
 `/research` (bug/enhancement against existing code) OR `/discover` (greenfield) is a **required precondition** for `/specify` — `/specify` blocks until a research or discover handoff exists. Use `/research` when investigating existing code, `/discover` when surveying a greenfield idea; the two cover complementary intake lanes, and either one satisfies the `/specify` gate.
@@ -102,11 +102,11 @@ The pipeline step after `/verify` approves, before `/finalize` — pure SYNTHESI
 #### `/finalize [spec-file]`
 Dispatches tech-writer for surgical `docs/` updates (`docs/<package>/`, `docs/architecture.md`) — not a dropped `docs/features/` tier — then squashes all WIP commits into a single clean feature commit. Gate-checked: spec must be Complete (set by `/verify`). The last step before creating a PR.
 
+#### `/generate-docs`
+One-time brownfield doc generation (second command in the 4-command setup chain) — reads the indexed codebase and builds the `docs/` knowledge base in bottom-up tiers (concern → package → project + glossary) via the `generate_docs_helper` setter API (tech-writer in Skeleton-Fill Mode). Handles both monorepo and standalone single-root layouts. The replacement for the retired `/onboard`. Re-run when the codebase structure changes significantly.
+
 #### `/constitute`
 One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns.
-
-#### `/onboard`
-One-time deep codebase scan for existing projects. Uses the tech-writer agent to generate comprehensive documentation in `docs/` — the knowledge base for all agents. Run once after `/constitute`.
 
 #### `/audit [--full | --uncommitted | --top N | path] [--passes N]`
 Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Three scope modes: **broad** (`--full` / empty — whole codebase), **hotspot** (`--top N`, default 25 — risk-scored files by churn × CBM-callers × size, for large repos), **narrow** (file / directory / `--uncommitted`). **Full-spectrum** — one run hunts five dimensions: mislogic (lying names/comments, dead branches, cross-file contradictions) + **system design** (layering/SOLID/god-component) + **language/framework best practices** (type-safety suppression, untyped boundaries, reactivity/lifecycle misuse, perf-idiom smells) + **duplication/divergence** + **constitution-principle adherence** — system/software design, NOT visual. Launches code-reviewer, architect, qa-reviewer, and security-reviewer in **adversarial mode** with two structured checklists (Mislogic Hunt + Best-Practices/System-Design); each finding declares a `Category` (`mislogic | system_design | best_practice | duplication | security | blind_spot`) and the report buckets by it. Subjective best-practice findings are marked `Likely`/`Speculative`, never `Certain`. Reads up to 5 recent `specs/*/review.md` files to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim Evidence quote from the actual code; Phase 4 validation re-reads cited files and discards ungrounded findings. Writes dated reports to `audits/YYYY-MM-DD-audit.md` and prints inline summary. `--passes N` (clamped 1–3) overrides the **mode-conditional default** — broad/hotspot default to 2 passes (union findings to widen recall), narrow defaults to 1 — and composes with all three scope modes; multi-pass costs K× and is for periodic deep audits, and multi-pass recurrence is descriptive only — it no longer inflates a finding's confidence. Before ranking, a **refutation pass** cross-examines each finding (routed to a non-author reviewer; default-dismiss unless the defect is demonstrated from quoted code) and gates which findings reach the report. The report then separates CONFIRMED findings (the `## Top N Priorities` + `## Findings by File` headline) from DISMISSED + low-stakes uncertain findings (a `## Dismissed / Worth a Glance` appendix); high-stakes `[CONTESTED]` findings (`security` / `[CONSTITUTION-VIOLATION]` the refuter could not confirm) are surfaced in the headline flagged, never buried. Read-only, not auto-committed, **NOT part of any workflow chain** — invoke manually after several specs ship.

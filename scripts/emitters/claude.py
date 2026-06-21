@@ -6,17 +6,16 @@ runtime files into the target project.
 
 Responsibilities:
   - src/commands/init-forge/main.md    → target/.claude/commands/init-forge.md
-  - src/commands/onboard/main.md       → target/.claude/commands/onboard.md
-  - src/commands/onboard/references/*.md
-                                       → target/.claude/commands/onboard/references/*.md
   - src/commands/generate-docs/main.md → target/.claude/commands/generate-docs.md
   - src/commands/constitute/main.md    → target/.claude/commands/constitute.md
   (both flat and folder-based sources supported during migration)
 
-  NOTE: /setup-wizard is no longer emitted. The architecture pivot replaces
-  it with /init-forge (Phase 1 detection) and the upcoming /configure
-  (Phase 2-4 work). The src/commands/setup-wizard/ source tree is kept
-  for reference + migration but does not ship into target projects.
+  NOTE: /setup-wizard and /onboard are no longer emitted. The architecture
+  pivot replaces /setup-wizard with /init-forge (Phase 1 detection) + /configure
+  (Phase 2-4 work), and /onboard with /generate-docs (brownfield doc generation).
+  /onboard is retired (plan 29 C); the src/commands/setup-wizard/ source tree is
+  kept pending its own retirement (plan 30) — it still hosts the agent-generator
+  spec read by scripts/generate-agents.py — and does not ship into target projects.
 
 Handled by other generators, not this emitter:
   - CoreLLM files (CLAUDE.md)      → scripts/generate-corellm.py
@@ -48,7 +47,7 @@ from lib.command_source import (  # noqa: E402
 # add it here. Full generalized iteration (loop all src/commands/ entries)
 # stays commented below until every command has passed its CLI-agnostic +
 # audit passes — premature promotion would ship broken skills.
-_PROMOTED = ("init-forge", "onboard", "generate-docs", "configure", "constitute", "research", "discover", "specify", "plan", "breakdown", "implement", "pr-review", "audit", "review", "verify", "grill", "summarize", "finalize", "fix", "report-bug")
+_PROMOTED = ("init-forge", "generate-docs", "configure", "constitute", "research", "discover", "specify", "plan", "breakdown", "implement", "pr-review", "audit", "review", "verify", "grill", "summarize", "finalize", "fix", "report-bug")
 
 
 def emit(src: Path, target: Path, only: "str | None" = None) -> None:

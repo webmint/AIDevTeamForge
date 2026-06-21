@@ -882,8 +882,8 @@ done
 
 # ── Execute: re-emit promoted dir-shaped commands ──────────────────────────
 # manifest.json's mergeFiles + templateOwned cover flat command files only.
-# Promoted dir-shaped commands (init-forge, onboard, generate-docs,
-# configure, constitute, research) live at src/commands/<name>/main.md +
+# Promoted dir-shaped commands (init-forge, generate-docs, configure,
+# constitute, research, …) live at src/commands/<name>/main.md +
 # (optional) references/ and are
 # emitted to .claude/commands/<name>.md by scripts/emitters/claude.py.
 # Without re-running the emitter, edits to dir-shaped command sources never
@@ -898,7 +898,7 @@ if [ -n "$PYTHON3_CMD" ]; then
   if $PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" \
        --src "$TEMPLATE_DIR/src" \
        --target "$TARGET_DIR" >/dev/null 2>&1; then
-    added "Re-emitted promoted commands (init-forge, onboard, generate-docs, configure, constitute, research)"
+    added "Re-emitted promoted commands (init-forge, generate-docs, configure, constitute, research, …)"
   else
     warn "Promoted-command re-emit failed — dir-shaped commands may be stale"
   fi

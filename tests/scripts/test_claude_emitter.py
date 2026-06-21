@@ -235,7 +235,7 @@ class OnlyFlagTests(unittest.TestCase):
         # Spot-check a handful of commands that have been stable since the
         # emitter was first written — if these are missing, the default-arg
         # path regressed.
-        for name in ("plan", "implement", "audit", "onboard"):
+        for name in ("plan", "implement", "audit", "constitute"):
             self.assertIn(
                 name, emitted,
                 f"command '{name}' missing in full emit (default only=None path): {emitted!r}",

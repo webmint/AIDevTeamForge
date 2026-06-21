@@ -8,7 +8,7 @@ Install it into any project — existing or greenfield — and get a full AI dev
 
 Your workflow's **hard gates, specialized agents, and automated hooks** as the foundation. Spec-kit's **structured intake** (research → specify → plan → tasks) layered on top for scoping quality.
 
-Every phase transition requires explicit user approval. Optional steps (research, onboard) can be skipped when not needed.
+Every phase transition requires explicit user approval. The per-feature intake (`/research` or `/discover`) is required before `/specify`; pick the lane that fits.
 
 ## Installation
 
@@ -82,12 +82,13 @@ Requires `jq` for JSON merging and `perl` for placeholder substitution (both pre
 Run these once when you first install the template:
 
 ```
-/setup-wizard → /constitute → /onboard
+/init-forge → /generate-docs → /configure → /constitute
 ```
 
-- **`/setup-wizard`** — Interactive wizard. Auto-detects stack for existing codebases, interviews for greenfield. Generates CLAUDE.md, agents, settings, memory, constitution stub. Detects DEFAULT_BRANCH. Conditionally adds Chrome MCP for frontend projects.
+- **`/init-forge`** — Bootstrap: resolves the structural fields (workspace mode, project root, default branch, project state) and writes `.devforge/index.json`.
+- **`/generate-docs`** — Builds the `docs/` knowledge base from the indexed codebase in bottom-up tiers (concern → package → project + glossary) via the tech-writer agent in Skeleton-Fill Mode. The knowledge base for all agents. Handles monorepo and standalone single-root layouts.
+- **`/configure`** — Populates the project config, prunes `.claude/agents/` to the project's natures, and substitutes `{{KEY}}` placeholders in the framework templates.
 - **`/constitute`** — Deep codebase analysis (existing) or preference-based interview (greenfield). Produces `constitution.md` — non-negotiable rules, architecture decisions, patterns.
-- **`/onboard`** — (Existing projects only) Deep scan that generates comprehensive `docs/` via tech-writer agent. The knowledge base for all agents. Skip for greenfield (docs built incrementally).
 
 ### Feature Development (repeat per feature)
 
@@ -159,9 +160,10 @@ bugs/
 
 | Transition | Gate |
 |-----------|------|
-| setup-wizard → constitute | User confirms generated config |
-| constitute → onboard | User approves constitution |
-| onboard → specify | Docs generated (existing) or skipped (greenfield) |
+| init-forge → generate-docs | Structural fields confirmed |
+| generate-docs → configure | Docs knowledge base generated |
+| configure → constitute | Config + agents confirmed |
+| constitute → specify (via research/discover) | User approves constitution; intake handoff exists |
 | specify → plan | User approves spec |
 | plan → breakdown | User approves technical plan |
 | breakdown → execute | User approves task list |
@@ -220,7 +222,7 @@ my-workspace/                    # Wrapper (your git repo)
 
 ### How it works
 - All Claude artifacts stay in the wrapper root — nothing leaks into the inner project
-- All source scanning (`/constitute`, `/onboard`, agents) targets the inner folder
+- All source scanning (`/constitute`, `/generate-docs`, agents) targets the inner folder
 - Git auto-commits apply to both repos — wrapper gets workflow commits, source repo gets per-task WIP commits that are squashed into one clean commit (`[TICKET-ID] - Description`, extracted from source branch name) when `/verify` approves the feature
 - `/execute-task` verifies no Claude artifacts were created inside the inner project
 
