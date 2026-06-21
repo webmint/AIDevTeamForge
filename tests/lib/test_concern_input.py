@@ -269,6 +269,80 @@ class CmdConcernInputTests(unittest.TestCase):
         self.assertIn("import { ref }", footer["comment_rich_span"])
         self.assertRegex(payload["source_stamp"], r"^[0-9a-f]{16}$")
 
+    def test_single_root_pkg_dot_tree_renders_children(self):
+        # FIX 2 (non-split path): pkg="." must NOT produce a "." component in
+        # subfolder_prefix. PurePosixPath normalization: "src/main/" (no leading
+        # "./"). This ensures _build_tree's startswith match finds the files and
+        # renders child entries (not just the bare header line).
+        src = self.root / "src" / "main"
+        src.mkdir(parents=True)
+        (src / "app.ts").write_text("export function main() {}\n", encoding="utf-8")
+        (src / "helpers").mkdir()
+        (src / "helpers" / "util.ts").write_text("export const x = 1;\n", encoding="utf-8")
+        args = argparse.Namespace(
+            devforge_dir=str(self.devforge),
+            package=".",
+            concern="main",
+            split_threshold_kb=50,
+        )
+        self.devforge.mkdir(parents=True, exist_ok=True)
+        code, out, err = self._run(args)
+        self.assertEqual(code, 0, msg=err)
+        payload = json.loads(out)
+        self.assertEqual(payload["concern"], "main")
+        self.assertEqual(payload["package"], ".")
+        # subfolder must be "src/main/" not "./src/main/"
+        self.assertEqual(payload["subfolder"], "src/main/")
+        # tree_text must have child entries, not just the header
+        tree = payload["tree_text"]
+        self.assertIn("app.ts", tree)
+        self.assertIn("helpers", tree)
+        self.assertIn("util.ts", tree)
+        # files paths must be "src/main/..." not "./src/main/..."
+        paths = {f["path"] for f in payload["files"]}
+        self.assertIn("src/main/app.ts", paths)
+        self.assertIn("src/main/helpers/util.ts", paths)
+        self.assertRegex(payload["source_stamp"], r"^[0-9a-f]{16}$")
+
+    def test_single_root_pkg_dot_split_yields_nonempty_sub_concerns(self):
+        # FIX 2 (split path): pkg="." with split-eligible content must produce
+        # non-empty sub_concerns. The bug was that "./src/components/" as prefix
+        # matched zero files from the walk (stored as "src/components/alpha/f.ts"),
+        # so every child group was empty and the defensive fallback collapsed it
+        # to single-batch (emitting `split:true, sub_concerns:[]` before the fix).
+        import sys
+        # Import _make_big_file inline so this test is self-contained.
+        def _make_big_file(path: Path, kb: int) -> None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            line = "// TODO real content: " + ("X" * 100) + "\n"
+            n = max(1, (kb * 1024) // len(line.encode("utf-8")) + 1)
+            path.write_text(line * n, encoding="utf-8")
+
+        base = self.root / "src" / "components"
+        for child in ("alpha", "beta"):
+            _make_big_file(base / child / "f.ts", kb=25)
+        args = argparse.Namespace(
+            devforge_dir=str(self.devforge),
+            package=".",
+            concern="components",
+            split_threshold_kb=5,
+        )
+        self.devforge.mkdir(parents=True, exist_ok=True)
+        code, out, err = self._run(args)
+        self.assertEqual(code, 0, msg=err)
+        payload = json.loads(out)
+        self.assertTrue(payload.get("split"), msg=f"expected split:true, got {payload}")
+        self.assertEqual(len(payload["sub_concerns"]), 2)
+        names = sorted(sc["concern"] for sc in payload["sub_concerns"])
+        self.assertEqual(names, ["alpha", "beta"])
+        # subfolder in parent_meta tree must not have leading "./"
+        self.assertEqual(payload["subfolder"], "src/components/")
+        # Each sub_concern subfolder also must not have leading "./"
+        for sc in payload["sub_concerns"]:
+            self.assertFalse(sc["subfolder"].startswith("./"), msg=sc["subfolder"])
+            self.assertTrue(sc["subfolder"].startswith("src/components/"), msg=sc["subfolder"])
+        self.assertRegex(payload["source_stamp"], r"^[0-9a-f]{16}$")
+
 
 if __name__ == "__main__":
     unittest.main()

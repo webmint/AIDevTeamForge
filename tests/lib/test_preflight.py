@@ -117,6 +117,39 @@ class EnumerateConcernsTests(unittest.TestCase):
         pairs = _enumerate_concerns(self.devforge, self.root)
         self.assertEqual(pairs, [("pkg-a", "real")])
 
+    def test_single_root_enumerated(self):
+        # Standalone single-root project: packages == {"."}
+        # The `.` package must be enumerated (not skipped), and its src/ subdirs
+        # each become a concern keyed with "." as the package path.
+        for subdir in ("main", "preload", "renderer"):
+            (self.root / "src" / subdir).mkdir(parents=True)
+        _write_index_json(self.devforge, packages={".": {}})
+        pairs = _enumerate_concerns(self.devforge, self.root)
+        self.assertEqual(
+            sorted(pairs),
+            [(".", "main"), (".", "preload"), (".", "renderer")],
+        )
+
+    def test_single_root_no_src_returns_empty(self):
+        # Standalone single-root project with no src/ directory → graceful empty.
+        _write_index_json(self.devforge, packages={".": {}})
+        pairs = _enumerate_concerns(self.devforge, self.root)
+        self.assertEqual(pairs, [])
+
+    def test_monorepo_root_src_skipped(self):
+        # FIX 3 — actual guard verification.
+        # The existing test_two_packages_with_concerns didn't create a root src/,
+        # so it passed even without the `and has_non_dot` guard. This test proves
+        # the guard actually fires: root src/ EXISTS on disk but is skipped because
+        # there are other (non-`.`) package keys in the index.
+        (self.root / "src" / "some_concern").mkdir(parents=True)
+        (self.root / "pkg-a" / "src" / "concern_a").mkdir(parents=True)
+        _write_index_json(self.devforge, packages={".": {}, "pkg-a": {}})
+        pairs = _enumerate_concerns(self.devforge, self.root)
+        # Monorepo: "." must be skipped; only pkg-a concerns enumerated.
+        self.assertIn(("pkg-a", "concern_a"), pairs)
+        self.assertNotIn((".", "some_concern"), pairs)
+
 
 class ReadPriorStampTests(unittest.TestCase):
     def setUp(self):
@@ -228,6 +261,22 @@ class DiffConcernTests(unittest.TestCase):
         empty_concern.mkdir()
         result = _diff_concern("pkg-a", "ghost", self.root, self.docs)
         self.assertEqual(result["status"], "empty")
+
+    def test_diff_concern_single_root_pkg(self):
+        # FIX 4 — pkg="." must not produce "./src/main/" prefix, which would
+        # break startswith matching against stored "src/main/app.ts" paths.
+        # PurePosixPath normalization: str(PurePosixPath(".") / "src" / "main")
+        # → "src/main", so the prefix becomes "src/main/" (no leading "./").
+        src = self.root / "src" / "main"
+        src.mkdir(parents=True)
+        (src / "app.ts").write_text(
+            "export function main() { return 42; }\n", encoding="utf-8"
+        )
+        result = _diff_concern(".", "main", self.root, self.docs)
+        self.assertEqual(result["status"], "new")
+        self.assertIsNotNone(result["source_stamp"])
+        self.assertRegex(result["source_stamp"], r"^[0-9a-f]{16}$")
+        self.assertIsNone(result["prior_stamp"])
 
 
 class CmdPreflightTests(unittest.TestCase):

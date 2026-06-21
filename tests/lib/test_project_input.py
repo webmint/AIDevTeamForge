@@ -12,8 +12,16 @@ Cases:
   8.  _compute_source_stamp: deterministic across reorderings
   9.  _compute_source_stamp: changes when package stamp changes
  10.  cmd_project_input: synthetic project end-to-end
- 11.  cmd_project_input: no package overviews → exit 2
+ 11.  cmd_project_input: no package overviews AND no concern docs → exit 2
  12.  cmd_project_input: --project label override
+ 13.  _enumerate_concern_docs: depth-1 index.md discovery
+ 14.  _enumerate_concern_docs: nested index.md not picked up at depth-1
+ 15.  _enumerate_concern_docs: missing docs/ → []
+ 16.  _read_concern_seed: parses frontmatter + Purpose from index.md
+ 17.  _read_concern_seed: missing file → None
+ 18.  _read_concern_seed: malformed frontmatter → None
+ 19.  cmd_project_input: single-root fallback via concern docs (end-to-end)
+ 20.  cmd_project_input: package-overview path unaffected when overviews exist (regression)
 
 Stdlib only. Python 3.8+.
 """
@@ -23,6 +31,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -42,8 +51,10 @@ from _generate_docs._project_input import (  # noqa: E402
     _collect_project_root_files,
     _compute_source_stamp,
     _detect_tech_stack,
+    _enumerate_concern_docs,
     _enumerate_packages_with_overviews,
     _extract_key_commands,
+    _read_concern_seed,
     _read_package_seed,
     _resolve_effective_project_root,
     _walk_entry_point_candidates,
@@ -216,11 +227,13 @@ class CmdProjectInputTests(unittest.TestCase):
         self.assertIn("README.md", names)
         self.assertRegex(payload["source_stamp"], r"^[0-9a-f]{16}$")
 
-    def test_no_package_overviews_exit_2(self):
+    def test_no_package_overviews_and_no_concern_docs_exit_2(self):
+        # Neither docs/<pkg>/overview.md nor docs/<concern>/index.md exist.
+        # The docs/ dir itself is absent — guarantees both enumerators return [].
         args = argparse.Namespace(project="", devforge_dir=str(self.devforge))
         code, _, err = _run(cmd_project_input, args)
         self.assertEqual(code, 2)
-        self.assertIn("no package overviews", err)
+        self.assertIn("no package overviews or concern docs", err)
 
     def test_project_label_default_to_root_basename(self):
         self._write_overview("pkg-a")
@@ -926,6 +939,304 @@ class BuildDepGraphMermaidTests(unittest.TestCase):
                         node_id.isalnum() or all(c.isalnum() for c in node_id),
                         msg=f"non-alnum node id: {node_id!r}",
                     )
+
+
+_CONCERN_INDEX_TEMPLATE = """---
+concern: {concern}
+package: {concern}
+files: {files}
+source_stamp: stamp-{stamp}
+last_indexed: {last_indexed}
+---
+
+# {concern}
+
+## Purpose
+
+{purpose}
+
+## Structure
+
+- module.ts — exports
+"""
+
+
+class EnumerateConcernDocsTests(unittest.TestCase):
+    """Tests for _enumerate_concern_docs (cases 13-15)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.docs = self.root / "docs"
+
+    def _write_index(self, rel_concern: str, content: str = "stub"):
+        path = self.docs / rel_concern / "index.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def test_depth1_index_md_discovered(self):
+        self._write_index("main")
+        self._write_index("preload")
+        result = _enumerate_concern_docs(self.root)
+        self.assertEqual(result, ["main", "preload"])
+
+    def test_sorted_output(self):
+        self._write_index("zzz-concern")
+        self._write_index("aaa-concern")
+        self._write_index("mmm-concern")
+        result = _enumerate_concern_docs(self.root)
+        self.assertEqual(result, sorted(result))
+
+    def test_nested_index_does_not_register_grandparent(self):
+        # docs/pkg-a/foo/index.md exists but docs/pkg-a/index.md does NOT.
+        # pkg-a must NOT appear in the result.
+        nested = self.docs / "pkg-a" / "foo"
+        nested.mkdir(parents=True)
+        (nested / "index.md").write_text("nested", encoding="utf-8")
+        result = _enumerate_concern_docs(self.root)
+        self.assertNotIn("pkg-a", result)
+
+    def test_nested_index_does_not_register_when_no_depth1(self):
+        # Only nested layout — depth-1 enumerator returns empty list.
+        nested = self.docs / "pkg-a" / "foo"
+        nested.mkdir(parents=True)
+        (nested / "index.md").write_text("nested", encoding="utf-8")
+        result = _enumerate_concern_docs(self.root)
+        self.assertEqual(result, [])
+
+    def test_grandparent_appears_only_when_depth1_index_also_exists(self):
+        # docs/pkg-a/index.md exists AND docs/pkg-a/foo/index.md exists.
+        # pkg-a should appear (depth-1), foo should NOT (it's a grandchild of docs/).
+        self._write_index("pkg-a")
+        nested = self.docs / "pkg-a" / "foo"
+        nested.mkdir(parents=True)
+        (nested / "index.md").write_text("nested", encoding="utf-8")
+        result = _enumerate_concern_docs(self.root)
+        self.assertIn("pkg-a", result)
+        self.assertNotIn("foo", result)
+
+    def test_non_dir_entries_skipped(self):
+        self.docs.mkdir(parents=True, exist_ok=True)
+        (self.docs / "some-file.md").write_text("# top-level\n", encoding="utf-8")
+        self._write_index("real-concern")
+        result = _enumerate_concern_docs(self.root)
+        self.assertEqual(result, ["real-concern"])
+
+    def test_missing_docs_dir_returns_empty(self):
+        result = _enumerate_concern_docs(self.root)
+        self.assertEqual(result, [])
+
+    @unittest.skipUnless(
+        hasattr(os, "symlink"), "platform does not support symlinks"
+    )
+    def test_intra_docs_symlink_not_deduplicated(self):
+        # docs/real/index.md exists; docs/alias -> docs/real is a symlink.
+        # Both `alias` and `real` are distinct depth-1 dirs so both must appear
+        # exactly once. The old resolve()-based path would yield `real` for both,
+        # deduplicating them incorrectly; entry.name yields `alias` and `real`.
+        self._write_index("real")
+        try:
+            os.symlink(str(self.docs / "real"), str(self.docs / "alias"))
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink creation failed on this FS")
+        result = _enumerate_concern_docs(self.root)
+        self.assertIn("real", result)
+        self.assertIn("alias", result)
+        # No duplicate entries — both appear exactly once.
+        self.assertEqual(result.count("real"), 1)
+        self.assertEqual(result.count("alias"), 1)
+
+
+class ReadConcernSeedTests(unittest.TestCase):
+    """Tests for _read_concern_seed (cases 16-18)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def _write_index(self, concern: str, content: str):
+        path = self.root / "docs" / concern / "index.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def test_parses_frontmatter_and_purpose(self):
+        self._write_index(
+            "main",
+            _CONCERN_INDEX_TEMPLATE.format(
+                concern="main", stamp="abc123", purpose="Main concern purpose.",
+                files=3, last_indexed="2026-05-08",
+            ),
+        )
+        seed = _read_concern_seed(self.root, "main")
+        self.assertIsNotNone(seed)
+        self.assertEqual(seed["package"], "main")
+        self.assertEqual(seed["frontmatter"]["source_stamp"], "stamp-abc123")
+        self.assertIn("Main concern purpose.", seed["purpose_text"])
+
+    def test_purpose_bounded_at_next_heading(self):
+        self._write_index(
+            "renderer",
+            "---\npackage: \".\"\nsource_stamp: \"xyz\"\n---\n"
+            "\n# renderer\n\n## Purpose\n\nRenderer does rendering.\n\n"
+            "## Structure\n\n- render.ts\n",
+        )
+        seed = _read_concern_seed(self.root, "renderer")
+        self.assertIsNotNone(seed)
+        self.assertIn("Renderer does rendering.", seed["purpose_text"])
+        self.assertNotIn("render.ts", seed["purpose_text"])
+
+    def test_package_key_is_concern_name(self):
+        self._write_index(
+            "worker",
+            "---\npackage: \".\"\nsource_stamp: \"s1\"\n---\n\n## Purpose\n\nWorker purpose.\n",
+        )
+        seed = _read_concern_seed(self.root, "worker")
+        self.assertIsNotNone(seed)
+        self.assertEqual(seed["package"], "worker")
+
+    def test_missing_file_returns_none(self):
+        self.assertIsNone(_read_concern_seed(self.root, "ghost-concern"))
+
+    def test_malformed_frontmatter_returns_none(self):
+        self._write_index("bad", "no frontmatter at all\n")
+        self.assertIsNone(_read_concern_seed(self.root, "bad"))
+
+
+class CmdProjectInputConcernFallbackTests(unittest.TestCase):
+    """Tests for single-root fallback via concern docs (case 19)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        self.devforge.mkdir()
+
+    def _write_concern_index(self, concern: str, stamp: str = "X", purpose: str = "stub purpose"):
+        path = self.root / "docs" / concern / "index.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            _CONCERN_INDEX_TEMPLATE.format(
+                concern=concern, stamp=stamp, purpose=purpose,
+                files=2, last_indexed="2026-05-08",
+            ),
+            encoding="utf-8",
+        )
+
+    def test_single_root_fallback_exits_0(self):
+        self._write_concern_index("main", stamp="m1", purpose="Main module purpose.")
+        self._write_concern_index("renderer", stamp="r1", purpose="Renderer purpose.")
+        # Provide a root manifest so mechanical extraction has something.
+        (self.root / "package.json").write_text("{}", encoding="utf-8")
+        args = argparse.Namespace(project="my-single-root", devforge_dir=str(self.devforge))
+        code, out, err = _run(cmd_project_input, args)
+        self.assertEqual(code, 0, msg=err)
+
+    def test_single_root_fallback_seeds_from_concerns(self):
+        self._write_concern_index("main", stamp="m1", purpose="Main module purpose.")
+        self._write_concern_index("renderer", stamp="r1", purpose="Renderer purpose.")
+        (self.root / "README.md").write_text("# single-root project\n", encoding="utf-8")
+        args = argparse.Namespace(project="single", devforge_dir=str(self.devforge))
+        code, out, err = _run(cmd_project_input, args)
+        self.assertEqual(code, 0, msg=err)
+        payload = json.loads(out)
+        self.assertEqual(payload["project"], "single")
+        self.assertEqual(
+            sorted(s["package"] for s in payload["package_seeds"]),
+            ["main", "renderer"],
+        )
+        self.assertRegex(payload["source_stamp"], r"^[0-9a-f]{16}$")
+        root_file_paths = [r["path"] for r in payload["project_root_files"]]
+        self.assertIn("README.md", root_file_paths)
+
+    def test_single_root_fallback_purpose_text_in_seed(self):
+        self._write_concern_index("main", stamp="m1", purpose="The main concern is entry.")
+        (self.root / "package.json").write_text("{}", encoding="utf-8")
+        args = argparse.Namespace(project="", devforge_dir=str(self.devforge))
+        code, out, _ = _run(cmd_project_input, args)
+        self.assertEqual(code, 0)
+        payload = json.loads(out)
+        main_seed = next(s for s in payload["package_seeds"] if s["package"] == "main")
+        self.assertIn("The main concern is entry.", main_seed["purpose_text"])
+
+    def test_single_root_fallback_not_triggered_when_overviews_exist(self):
+        # Both concern index AND package overview exist — package path wins.
+        overview_dir = self.root / "docs" / "pkg-a"
+        overview_dir.mkdir(parents=True)
+        (overview_dir / "overview.md").write_text(
+            _PKG_OVERVIEW_TEMPLATE.format(pkg="pkg-a", stamp="pA", purpose="Pkg-A purpose."),
+            encoding="utf-8",
+        )
+        # Also write a concern index — it should NOT be used.
+        self._write_concern_index("main", stamp="m1", purpose="Concern purpose.")
+        args = argparse.Namespace(project="", devforge_dir=str(self.devforge))
+        code, out, _ = _run(cmd_project_input, args)
+        self.assertEqual(code, 0)
+        payload = json.loads(out)
+        pkg_names = [s["package"] for s in payload["package_seeds"]]
+        self.assertIn("pkg-a", pkg_names)
+        # concern seed must not appear — package-overview path was taken
+        self.assertNotIn("main", pkg_names)
+
+    def test_both_empty_exits_2_with_updated_message(self):
+        # No docs/ dir at all — both enumerators return [].
+        args = argparse.Namespace(project="", devforge_dir=str(self.devforge))
+        code, _, err = _run(cmd_project_input, args)
+        self.assertEqual(code, 2)
+        self.assertIn("no package overviews or concern docs", err)
+
+    def test_concern_docs_found_but_all_malformed_exits_2(self):
+        # docs/bad/index.md exists (no frontmatter) — _enumerate_concern_docs
+        # returns ['bad'] but _read_concern_seed returns None → package_seeds == [].
+        # Exit code must be 2 AND stderr must use the concern-specific message
+        # (not the package-overview message), validating FIX 2's gating logic.
+        bad_dir = self.root / "docs" / "bad"
+        bad_dir.mkdir(parents=True)
+        (bad_dir / "index.md").write_text("no frontmatter here\n", encoding="utf-8")
+        args = argparse.Namespace(project="", devforge_dir=str(self.devforge))
+        code, _, err = _run(cmd_project_input, args)
+        self.assertEqual(code, 2)
+        # Concern-path message (FIX 2).
+        self.assertIn("concern docs", err)
+        self.assertIn("concern index.md", err)
+        # Must NOT say "package overviews" (that's the wrong path's message).
+        self.assertNotIn("package overviews", err)
+
+
+class CmdProjectInputRegressionTests(unittest.TestCase):
+    """Regression: multi-package path still works after concern fallback added (case 20)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.devforge = self.root / ".devforge"
+        self.devforge.mkdir()
+
+    def _write_overview(self, rel_pkg: str, stamp: str = "X", purpose: str = "stub purpose"):
+        path = self.root / "docs" / rel_pkg / "overview.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            _PKG_OVERVIEW_TEMPLATE.format(pkg=rel_pkg, stamp=stamp, purpose=purpose),
+            encoding="utf-8",
+        )
+
+    def test_multi_package_path_unaffected(self):
+        self._write_overview("pkg-a", purpose="Alpha.")
+        self._write_overview("packages/pkg-b", purpose="Beta.")
+        (self.root / "README.md").write_text("# project\n", encoding="utf-8")
+        args = argparse.Namespace(project="multi-pkg", devforge_dir=str(self.devforge))
+        code, out, err = _run(cmd_project_input, args)
+        self.assertEqual(code, 0, msg=err)
+        payload = json.loads(out)
+        self.assertEqual(payload["project"], "multi-pkg")
+        self.assertEqual(len(payload["package_seeds"]), 2)
+        self.assertEqual(
+            sorted(s["package"] for s in payload["package_seeds"]),
+            ["packages/pkg-b", "pkg-a"],
+        )
 
 
 if __name__ == "__main__":
