@@ -6,9 +6,9 @@
 
 On repos where not every developer uses the framework, `docs/` drifts as non-framework devs commit changes that never run `/generate-docs`. Re-syncing periodically is the natural fix, but `/generate-docs` is disproportionately expensive for that job because every run pays a fixed overhead regardless of how small the delta is:
 
-- A full CBM `index_repository` reindex in preflight (`src/commands/generate-docs/main.md:77` — "CBM `index_repository` reindexes").
+- A CBM `index_repository` reindex in preflight (the non-incremental full pass, as opposed to `detect_changes`) (`src/commands/generate-docs/main.md:77` — "CBM `index_repository` reindexes").
 - A whole-tree `source_stamp` scan to compute the per-concern delta.
-- A cost gate that recommends confirming above $5 / 5 min (`src/commands/generate-docs/main.md:79`, the split-aware cost-gate section).
+- A cost gate that recommends confirming above $5 / 5 min (`src/commands/generate-docs/main.md:92`, the threshold sentence; the `### Cost gate (split-aware estimate)` section heading is at :79).
 
 The LLM compose work is ALREADY stamp-gated today — unchanged concerns skip dispatch via `source_stamp` (`src/commands/generate-docs/main.md` Phase 2 only processes `status ∈ {changed, new}`). So the waste is NOT recomposition; it is the fixed preflight + whole-tree-scan overhead paid even when one file changed, plus the lack of any way to scope a run to a subset of the tree.
 
@@ -18,7 +18,7 @@ Add an incremental MODE to the existing `/generate-docs` command. **NOT a standa
 
 1. Read `.devforge/cbm-last-indexed-sha` (the JSON stamp maintained by `cbm_sync_helper`, shape `{"git_sha": "<sha>", "indexed_at": "<iso8601>"}`; see the CBM-sync hooks in `src/CLAUDE.md`) and extract its `git_sha` field.
 2. `git diff <git_sha>..HEAD --name-only` → the changed source files (cheap; no whole-tree hashing).
-3. Map the changed files → only the affected concern/package docs; regenerate only those; propagate to the project tier only if a changed concern bubbles up; update the stamp.
+3. Map the changed files → only the affected concern/package docs; regenerate only those; propagate to the project tier only if a changed concern bubbles up; update the stamp. The concern/package topology comes from `.devforge/index.json` (already read by `generate_docs_helper preflight` for the `vue_extract` check), so a stripped preflight that skips the `source_stamp` hashing — or a direct `index.json` read — supplies the changed-file → concern-dir mapping without the whole-tree scan.
 4. Swap the full `index_repository` preflight for `detect_changes` (incremental CBM); skip the whole-tree `source_stamp` scan.
 
 The git-delta-since-last-index IS the scoping mechanism, so no `--module` flag is needed — the changed-file set already names the subset to regenerate.
