@@ -314,12 +314,16 @@ Phase 5.2 — prune-agents          (dry-run → bulk-confirm with keep/drop lis
                                    prune-agents --apply on yes; os.unlink per dropped file)
 Phase 5.3 — substitute-templates  (regex-based {{KEY}} replacement across CLAUDE.md +
                                    .claude/agents/*.md; per-file atomic write)
-Phase 6 — Verify + summary        (verify cross-checks 29-field configure.yaml + 37-key
+Phase 6 — lint-ignore             (dry-run → bulk-confirm → lint-ignore --apply on yes;
+                                   excludes framework folders from the consumer's
+                                   linters by config-file presence; NON-FATAL,
+                                   default-SKIP on ambiguous reply)
+Phase 7 — Verify + summary        (verify cross-checks 29-field configure.yaml + 37-key
                                    project-config.json + round-trip identity; summary echoes
                                    field-by-field report verbatim)
 ```
 
-Retry budgets: 3 per setter on validation failure; 3 per bulk-prompt parse failure; on 4th surface-failure-and-continue. Stop discipline: Phase 3 + Phase 5.2 echoes MUST end assistant turn (plain prose has no harness wait-for-user affordance; explicit "do not advance" directive in spec).
+Retry budgets: 3 per setter on validation failure; 3 per bulk-prompt parse failure; on 4th surface-failure-and-continue. Stop discipline: Phase 3 + Phase 5.2 + Phase 6 echoes MUST end assistant turn (plain prose has no harness wait-for-user affordance; explicit "do not advance" directive in spec).
 
 ### 4.3 Field-source map (29 configure.yaml + 5 init.yaml + 3 derived = 37 project-config.json keys)
 
