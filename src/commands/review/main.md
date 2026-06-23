@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # /review — Feature-Level Emergent Cross-Task Review
 
-`/review` is the pipeline step run after `/implement` drains a feature's tasks and before `/verify`. It catches the ONE review job nothing else in the pipeline owns: **emergent cross-task issues** that the `/implement` per-task panel STRUCTURALLY cannot see because it reviews each task's diff in isolation. It dispatches a 5-finder ensemble — `code-reviewer`, `architect`, `qa-reviewer`, `security-reviewer`, `performance-analyst` — in EMERGENT-CROSS-TASK MODE over the ASSEMBLED feature diff (every task's changes together, the union of the feature's accumulated WIP commits), validates every finding against the actual source to discard hallucinations, cross-examines the survivors with a refutation pass (default-dismiss unless the defect is demonstrable as emergent at feature scope), and writes a findings-only report to `specs/[feature]/review.md`. Read-only — it never modifies source, never auto-commits. State + render shape are owned by `.devforge/lib/review_helper`; the orchestrator composes values via verb subcommands.
+`/review` is the pipeline step run after `/implement` drains a feature's tasks and before `/verify`. It catches the ONE review job nothing else in the pipeline owns: **emergent cross-task issues** that the `/implement` per-task panel STRUCTURALLY cannot see because it reviews each task's diff in isolation. It dispatches a 5-finder ensemble — `code-reviewer`, `architect`, `qa-reviewer`, `security-reviewer`, `performance-analyst` — in EMERGENT-CROSS-TASK MODE over the ASSEMBLED feature diff (every task's changes together, the union of the feature's accumulated WIP commits), validates every finding against the actual source to discard hallucinations, cross-examines the survivors with a refutation pass (default-dismiss unless the defect is demonstrable as emergent at feature scope), and writes a findings-only report to `specs/[feature]/review.md`. Read-only on source — it never modifies source; it WIP-commits only its OWN artifacts (`review.md` + `review-state.json`) in an install-repo-only, fail-soft `[WIP]` commit that folds into `/finalize`'s squash. State + render shape are owned by `.devforge/lib/review_helper`; the orchestrator composes values via verb subcommands.
 
 **`/review` produces FINDINGS ONLY — it does NOT render a verdict.** The verdict is `/verify`'s job: `/verify` consumes `specs/[feature]/review.md` (folding its findings into the verdict, and warning if it is missing), and `/audit` reads recent `specs/*/review.md` files for its recurring-issue scan. Do not add a pass/fail line, an approval line, or a "ready to ship" judgment.
 
@@ -21,9 +21,11 @@ This file lives at `src/commands/review/main.md` in the AIDevTeamForge template 
 
 The ONLY file this command writes under the repo is:
 
-- `specs/[feature]/review.md` — the rendered feature-review report. Produced by the helper's `render-report` verb in PHASE 4; FINDINGS ONLY (no verdict). Idempotent: re-running `/review` on the same feature OVERWRITES `review.md` (the helper does an atomic write). Not committed, not staged — `/verify` consumes it next.
+- `specs/[feature]/review.md` — the rendered feature-review report. Produced by the helper's `render-report` verb in PHASE 4; FINDINGS ONLY (no verdict). Idempotent: re-running `/review` on the same feature OVERWRITES `review.md` (the helper does an atomic write). `/verify` consumes it next.
 
 Per-feature run state lives in `specs/[feature]/review-state.json` (helper-owned, advanced via `check-status-and-flip --feature-dir <feature>`).
+
+At the end of PHASE 4, `/review` WIP-commits its own artifacts — `review.md` and the per-feature `review-state.json` — via `.devforge/lib/artifact_helper commit-artifacts`. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/review` continues — the report is already written). The `[WIP]` commit folds into `/finalize`'s squash, so the final PR is unchanged.
 
 ### Intermediate scratch files (orchestrator-written, helper-consumed) — all under `$WORKDIR`
 
@@ -292,22 +294,30 @@ WORKDIR="${TMPDIR:-/tmp}/forge-review"
 
 `render-inline-summary` reads the same `$WORKDIR/partition.json` and prints the count-first `## Review Complete` block — findings by severity, the confirmed / contested / dismissed / uncertain counts, finders skipped, and the findings-only reminder. Copy the helper's stdout VERBATIM into your final user-facing message as a fenced code block (this follows the count-first audit-format discipline).
 
-Then clean up the scratch directory in one step — `render-inline-summary` was the last reader of `$WORKDIR/partition.json`, so nothing else needs the scratch:
-
-```bash
-WORKDIR="${TMPDIR:-/tmp}/forge-review"
-rm -rf "$WORKDIR"
-```
-
 Then mark the run complete so an interrupted re-run can distinguish a finished review from a stopped one:
 
 ```bash
 .devforge/lib/review_helper check-status-and-flip --feature-dir <feature> --to phase4 --status complete
 ```
 
-Finally, point the user to the next step: tell them `specs/[feature]/review.md` was written (findings only), it is not committed, and the next command is `/verify` — which consumes `review.md` and folds its findings into the acceptance-criteria verdict.
+Then WIP-commit `/review`'s own artifacts so the work is git-safe at this step. Run this UNCONDITIONALLY (every completed `/review` run wrote `review.md` in PHASE 4):
 
-Then, ONLY when the report's confirmed-or-high-stakes findings set is non-empty (the inline summary just printed in PHASE 4.3 showed a non-zero `confirmed` or `contested` count — the same set the headline surfaced; do not re-read `$WORKDIR/partition.json`, which the cleanup above already deleted), ALSO offer the user a two-arm fix-or-file choice for those findings, ALONGSIDE the `/verify` next-step (it does not replace it — `/review` still points to `/verify`): **(A)** run `/fix` to remediate the surfaced findings now (a gated remediation loop reusing `/implement`'s back-half verify + review-panel + commit), or **(B)** file a bug to defer. `/review` only PROPOSES — it never runs `/fix` itself and writes no `bugs/` file (it stays findings-only); the user types `/fix` to take arm A, or files a bug to take arm B. When the report is findings-empty (both the `confirmed` and `contested` counts are zero), propose NOTHING here — no `/fix` offer on a clean report.
+```bash
+.devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/review.md", "specs/<feature>/review-state.json"]' --label 'review: <NNN>-<slug>'
+```
+
+Substitute `<feature>` with the resolved feature dir and `<NNN>-<slug>` with the feature id. `commit-artifacts` stages ONLY the named paths and makes a `[WIP] review: <NNN>-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the report is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. The `[WIP]` commit reads only the named `specs/[feature]/` paths, NOT `$WORKDIR`, so it is safe to run before the scratch cleanup. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged.
+
+Then point the user to the next step: tell them `specs/[feature]/review.md` was written (findings only) and WIP-committed, and the next command is `/verify` — which consumes `review.md` and folds its findings into the acceptance-criteria verdict.
+
+Then, ONLY when the report's confirmed-or-high-stakes findings set is non-empty (the inline summary just printed in PHASE 4.3 showed a non-zero `confirmed` or `contested` count — the same set the headline surfaced; use that printed count, do not re-read `$WORKDIR/partition.json`), ALSO offer the user a two-arm fix-or-file choice for those findings, ALONGSIDE the `/verify` next-step (it does not replace it — `/review` still points to `/verify`): **(A)** run `/fix` to remediate the surfaced findings now (a gated remediation loop reusing `/implement`'s back-half verify + review-panel + commit), or **(B)** file a bug to defer. `/review` only PROPOSES — it never runs `/fix` itself and writes no `bugs/` file (it stays findings-only); the user types `/fix` to take arm A, or files a bug to take arm B. When the report is findings-empty (both the `confirmed` and `contested` counts are zero), propose NOTHING here — no `/fix` offer on a clean report.
+
+Finally, clean up the scratch directory in one step — `render-inline-summary` (PHASE 4.3) was the last reader of `$WORKDIR/partition.json` and the `commit-artifacts` step above reads only the `specs/[feature]/` paths, so nothing else needs the scratch:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-review"
+rm -rf "$WORKDIR"
+```
 
 ## Important rules
 
@@ -319,5 +329,5 @@ Then, ONLY when the report's confirmed-or-high-stakes findings set is non-empty 
 6. **Evidence-first** — every finding must be grounded in a verbatim quote from real cross-task code; `validate-findings` discards ungrounded ones, and the refutation pass cross-examines each survivor before it reaches the headline.
 7. **Wrapper-mode aware** — finders read source files from the resolved Source Root (`--source-root` to `resolve-feature-scope`; `--install-root` for wrapper-mode path prefixing); `specs/[feature]/` always lives at the workspace root.
 8. **Graceful degradation** — a **finder** whose `.claude/agents/<name>.md` is absent is skipped (PHASE 2.1) and noted (the report's "Finders skipped" line), never fatal; only ALL five finders missing stops the run with an `update.sh` re-run prompt. There is no separate refuter-existence check: because `route-refutation --finders` receives only the present-finders list, an absent agent simply never serves as a refuter — refuter absence is handled automatically.
-9. **Read-only** — no source modifications, no fixes, no auto-commit of the report.
+9. **Read-only on source** — no source modifications, no fixes. `/review` does WIP-commit its OWN artifacts (`review.md` + `review-state.json`) via `artifact_helper commit-artifacts` at the end of PHASE 4 — an install-repo-only, fail-soft `[WIP]` commit that folds into `/finalize`'s squash; it never commits or modifies source.
 10. **Cleanup is last** — all intermediate scratch lives in `$WORKDIR` (`${TMPDIR:-/tmp}/forge-review`), outside the repo, and is swept by the single `rm -rf "$WORKDIR"` at the end of PHASE 4 (after the inline summary), never mid-run.

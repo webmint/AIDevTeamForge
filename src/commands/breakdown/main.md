@@ -17,6 +17,8 @@ Usage: `/breakdown [plan-file]` (e.g. `/breakdown specs/008-prevent-duplicate-co
 - `specs/NNN-<feature>/tasks/README.md` — task index with dependency graph, risk assessment, and review checkpoints (required).
 - `specs/NNN-<feature>/breakdown-handoff.json` — structured producer-side handoff (best-effort; see Phase 5).
 
+After approval (Phase 5), `/breakdown` WIP-commits these artifacts — the whole `tasks/` directory plus `breakdown-handoff.json` — via `.devforge/lib/artifact_helper commit-artifacts`. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/breakdown` continues — the artifacts are already written). The `[WIP]` commit folds into `/finalize`'s squash, so the final PR is unchanged. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/implement`'s wrapper path stages ONLY source code in the source repo and leaves the task files uncommitted, so this commit is NOT redundant there. (In standalone mode `/implement` already tracks the task files, so re-staging unchanged ones is a harmless no-op; `breakdown-handoff.json` is newly tracked either way.)
+
 ## Context in the Workflow
 
 ```
@@ -393,6 +395,14 @@ The helper parses `<plan-dir>/tasks/*.md` + the tasks `README.md` and atomic-wri
 - Non-zero exit (Exit 2 → plan or task files missing, a task carries a placeholder agent, or rendered content failed schema validation; Exit 1 → I/O error writing `breakdown-handoff.json`, e.g. permissions or disk-full) → the helper could not write or validate the handoff. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT abort — continue to the `render-implement-handoff` block below. The structured handoff is best-effort; the manual block is the guaranteed human bridge.
 
 The `breakdown-handoff.json` is the **producer side** of the breakdown→implement handoff. The `/implement` consumer reads this producer's contract. There is no auto-dispatch and no auto-consume: the manual block below remains how the user launches `/implement`.
+
+Now WIP-commit `/breakdown`'s own artifacts so the work is git-safe at this step. Run this UNCONDITIONALLY (the task files + index were written in Phase 3 and approved in Phase 4; `breakdown-handoff.json` was just written above, best-effort):
+
+```bash
+.devforge/lib/artifact_helper commit-artifacts --paths '["specs/NNN-<feature>/tasks", "specs/NNN-<feature>/breakdown-handoff.json"]' --label 'breakdown: NNN-<slug>'
+```
+
+Substitute `NNN-<feature>` with the resolved feature dir name and `NNN-<slug>` with the feature id. Passing the `tasks` DIRECTORY path stages every task file plus `tasks/README.md` under it (the verb passes a directory path to `git add` unchanged, identical to `git add specs/NNN-<feature>/tasks`). `commit-artifacts` stages ONLY the named paths and makes a `[WIP] breakdown: NNN-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already written, so note the warning and CONTINUE; do NOT abort); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/implement`'s wrapper path stages ONLY source code in the source repo and leaves these uncommitted — so the commit is NOT redundant there. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged. If `finalize-handoff` above failed to write `breakdown-handoff.json`, that path is simply not present and the verb stages only the `tasks` directory — a benign skip, not a failure.
 
 Then emit the deterministic manual next-step block via the helper:
 

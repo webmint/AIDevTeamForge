@@ -15,6 +15,9 @@ Usage: `/research "<topic>"` (e.g. `/research "items not sorted in admin product
 - `.devforge/research-state.json` — SymptomMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/research-report.json` — ResearchReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
 - `<install_root>/research/YYYY-MM-DD-<topic-slug>.md` — rendered report. Helper's `render` writes to stdout; orchestrator saves it via the Phase 4 save prompt. Filename slug is auto-derived by the helper from the topic.
+- `<install_root>/research/YYYY-MM-DD-<topic-slug>/handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff` on save (nested alongside the flat `.md` file).
+
+On save, Phase 4 `[WIP]`-commits the rendered report + its `handoff.json` into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
 
 ## Phase 0 — Pre-flight gate
 
@@ -947,6 +950,18 @@ After the rendered `.md` is written:
 
 5. If the helper exits non-zero, tell the user `"Research .md saved at <abs md path> but handoff.json failed: <stderr>. Re-run finalize-handoff manually after fixing the missing state."` and end the turn.
 6. If the helper exits 0, capture the stdout `wrote: <abs path>` for the closing message.
+
+### WIP-commit the artifacts (mandatory on save)
+
+After the rendered `.md` AND `handoff.json` are both written, `[WIP]`-commit them so the work is git-safe immediately. Compose `--paths` from the two paths you just wrote — the saved `.md` path (the same bytes-on-disk path from "On save", including any `-2`/`-3` suffix if the name collided) and the `handoff.json` path from the step above — and use the topic slug for the label:
+
+```bash
+.devforge/lib/artifact_helper commit-artifacts \
+    --paths '["research/<saved-md-filename>.md", "research/<date>-<topic-slug>/handoff.json"]' \
+    --label "research: <topic-slug>"
+```
+
+The helper stages those paths in the install repo and makes a `[WIP] research: <topic-slug>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL — always run it once both files are written. It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already saved, so warn the user with the helper's stderr and continue to the closing message; do NOT abort the command or re-run the save); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
 
 ### On skip
 

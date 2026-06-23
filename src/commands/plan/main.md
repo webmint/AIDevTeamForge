@@ -18,6 +18,8 @@ Usage: `/plan [spec-file]` (e.g. `/plan specs/008-prevent-duplicate-config-optio
 - `specs/NNN-<feature>/data-model.md` — when the feature involves new or changed entities (conditional).
 - `specs/NNN-<feature>/contracts.md` — when the feature involves new or changed API contracts (conditional).
 
+On approve, Phase 4 `[WIP]`-commits `plan.md` + `plan-handoff.json` (plus whichever of `research.md` / `data-model.md` / `contracts.md` this run actually wrote) into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
+
 ## Context in the Workflow
 
 ```
@@ -503,6 +505,18 @@ The helper parses the rendered `plan.md` and atomic-writes `specs/NNN-<feature>/
 - Non-zero exit (Exit 2 → `plan.md` not found or rendered content failed schema validation; Exit 1 → I/O error writing `plan-handoff.json`, e.g. permissions or disk-full) → the helper could not write or validate the handoff. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT abort — continue to the `render-breakdown-handoff` text block below. The structured handoff is best-effort; the manual text block is the guaranteed human bridge.
 
 The `plan-handoff.json` is the **producer side** of the plan→breakdown handoff, consumed by `breakdown_helper read-plan-handoff` in `/breakdown` Phase 0. There is no auto-dispatch and no auto-consume: the manual text block below remains how the user launches `/breakdown`.
+
+**WIP-commit the plan artifacts.** With `plan.md` written in Phase 2 and `plan-handoff.json` written above, `[WIP]`-commit the plan artifacts so the work is git-safe immediately. Compose `--paths` from `plan.md` + `plan-handoff.json` plus whichever optional supporting docs THIS run wrote — include `research.md` (if Phase 0 generated it), `data-model.md` (if Phase 1.1 drafted it), and `contracts.md` (if Phase 1.2 drafted it); omit the ones this run did not write. Use the feature directory name (`NNN-<feature>`) for the label.
+
+The block below shows the mandatory two-entry minimum — append `"specs/<NNN>-<feature>/research.md"`, `"specs/<NNN>-<feature>/data-model.md"`, and/or `"specs/<NNN>-<feature>/contracts.md"` to the `--paths` array for whichever of those THIS run wrote (omit the ones it did not). The array is composed at runtime, not copied verbatim.
+
+```bash
+.devforge/lib/artifact_helper commit-artifacts \
+    --paths '["specs/<NNN>-<feature>/plan.md", "specs/<NNN>-<feature>/plan-handoff.json"]' \
+    --label "plan: <NNN>-<feature>"
+```
+
+The helper stages those paths in the install repo and makes a `[WIP] plan: <NNN>-<feature>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL — always run it, even if `finalize-handoff` above exited non-zero (`plan.md` still exists, and the helper benign-skips any `--paths` entry that was not written). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifact is already written, so warn the user with the helper's stderr and continue to the `render-breakdown-handoff` block below; do NOT abort the approve flow); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
 
 Then emit the deterministic handoff block via the helper:
 

@@ -16,6 +16,9 @@ Usage: `/discover "<topic>"` (e.g. `/discover "audit log persistence layer"` or 
 - `.devforge/discover-scope.json` — ScopingMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/discover-report.json` — DiscoveryReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
 - `<install_root>/discover/YYYY-MM-DD-<topic-slug>.md` — rendered report. Helper's `render` writes to stdout; orchestrator saves it via the Phase 4 save prompt. Filename slug is auto-derived by the helper from the topic.
+- `<install_root>/discover/YYYY-MM-DD-<topic-slug>.handoff.json` — the specify-bound handoff, written by Phase 4.0's `finalize-handoff` (sibling to the rendered report).
+
+On save, Phase 4 `[WIP]`-commits the rendered report + its `.handoff.json` into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
 
 ## Phase 0 — Pre-flight gate
 
@@ -566,9 +569,19 @@ Compute the filename from helper state: `discover/<report.date>-<memo.topic_slug
 
 Write the rendered text captured in Phase 3 (the same bytes printed there) to the chosen path. Use the helper-rendered bytes verbatim — do not re-format or re-shape.
 
+After the report is written, `[WIP]`-commit it together with the `.handoff.json` Phase 4.0 wrote so the work is git-safe immediately. Compose `--paths` from the saved report path (the same bytes-on-disk path above, including any `-2`/`-3` suffix if the name collided) and the sibling handoff path `discover/<date>-<topic-slug>.handoff.json`, and use the topic slug for the label:
+
+```bash
+.devforge/lib/artifact_helper commit-artifacts \
+    --paths '["discover/<saved-md-filename>.md", "discover/<date>-<topic-slug>.handoff.json"]' \
+    --label "discover: <topic-slug>"
+```
+
+The helper stages those paths in the install repo and makes a `[WIP] discover: <topic-slug>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL — always run it once the report is written. It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already saved, so warn the user with the helper's stderr and continue; do NOT abort the command or re-run the save); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
+
 ### On skip
 
-The rendered report stays in the assistant message only. No file is written. `.devforge/discover-scope.json` and `.devforge/discover-report.json` remain on disk until the next `/discover` invocation overwrites them.
+The rendered report stays in the assistant message only. No file is written. `.devforge/discover-scope.json` and `.devforge/discover-report.json` remain on disk until the next `/discover` invocation overwrites them. No `[WIP]` commit fires on skip — re-run `/discover` and save to produce both `.md` and `.handoff.json`.
 
 ### Closing message
 

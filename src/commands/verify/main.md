@@ -24,8 +24,9 @@ The files this command writes under the repo are:
 - `specs/[feature]/verification.md` — the rendered verification report (AC table, code-quality block, folded review findings, issues, and the verdict). Produced by the helper's `render-report` verb in PHASE 5. Idempotent: re-running `/verify` on the same feature OVERWRITES `verification.md` (the helper does an atomic write).
 - `specs/[feature]/spec.md` — **mutated only on an APPROVED verdict** (PHASE 6): the spec `**Status**:` line flips to `Complete` and the passed AC checkboxes tick `- [ ]` → `- [x]`. This is the deliberate write-back that `/summarize` and `/finalize` gate on. On NEEDS WORK / REJECTED the spec is left unchanged.
 - `bugs/NNN-<slug>.md` — **written only on a NEEDS WORK verdict** (PHASE 9), one file per issue the user elects to file, in the `.devforge/storage-rules.md` bug format (`Source: verify`). Sequential `NNN` numbering scanned from the existing `bugs/` directory.
+- `specs/[feature]/verify-state.json` — per-feature run state (helper-owned, advanced via `check-status-and-flip --feature-dir <feature>`). Committed alongside `verification.md` in the end-of-run `[WIP]` commit (the `commit-artifacts` `--paths` lists both).
 
-Per-feature run state lives in `specs/[feature]/verify-state.json` (helper-owned, advanced via `check-status-and-flip --feature-dir <feature>`).
+At the end of the run, `/verify` WIP-commits its OWN report artifacts — `verification.md` and the per-feature `verify-state.json` — via `.devforge/lib/artifact_helper commit-artifacts`. It commits ONLY those two paths: the spec-status flip to `spec.md` (PHASE 6) and any `bugs/NNN-*.md` files (PHASE 9) are NOT part of this commit. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/verify` continues — the report is already written). The `[WIP]` commit folds into `/finalize`'s squash, so the final PR is unchanged.
 
 ### Intermediate scratch files (orchestrator-written, helper-consumed) — all under `$WORKDIR`
 
@@ -338,17 +339,25 @@ Write that array to `$WORKDIR/issues.json`, then make the `file-bugs` call above
 
 ## Cleanup
 
-Clean up the scratch directory in one step — nothing else needs the scratch after the report + summary + (optional) bug-filing:
+First mark the run complete so an interrupted re-run can distinguish a finished verification from a stopped one, recording the run's verdict into state via `--verdict`. Use `<verdict>` — the literal APPROVED / NEEDS WORK / REJECTED value the orchestrator read from `$WORKDIR/verdict.json` in PHASE 5.3 (the `verdict` field) and has held since; inline the verdict value you already hold — do NOT re-read the scratch file here:
+
+```bash
+.devforge/lib/verify_helper check-status-and-flip --feature-dir <feature> --to phase9 --status complete --verdict "<verdict>"
+```
+
+Then WIP-commit `/verify`'s own report artifacts so the work is git-safe at this step. Run this UNCONDITIONALLY for every verdict (`verification.md` was written in PHASE 5.2 regardless of verdict):
+
+```bash
+.devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/verification.md", "specs/<feature>/verify-state.json"]' --label 'verify: <NNN>-<slug>'
+```
+
+Substitute `<feature>` with the resolved feature dir and `<NNN>-<slug>` with the feature id. This commits ONLY `verification.md` + `verify-state.json` — NOT `spec.md` (the PHASE-6 spec-status flip is a separate write, not folded into this commit) and NOT any `bugs/NNN-*.md` file from PHASE 9. `commit-artifacts` stages ONLY the named paths and makes a `[WIP] verify: <NNN>-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the report is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged.
+
+Finally, clean up the scratch directory in one step — nothing else needs the scratch after the report + summary + (optional) bug-filing + the commit above (the commit reads only `specs/[feature]/` paths, never `$WORKDIR`):
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-verify"
 rm -rf "$WORKDIR"
-```
-
-Then mark the run complete so an interrupted re-run can distinguish a finished verification from a stopped one, recording the run's verdict into state via `--verdict`. Use `<verdict>` — the literal APPROVED / NEEDS WORK / REJECTED value the orchestrator read from `$WORKDIR/verdict.json` in PHASE 5.3 (the `verdict` field) and has held since; the cleanup `rm -rf "$WORKDIR"` above already deleted `$WORKDIR/verdict.json`, so inline the verdict value you already hold — do NOT re-read the scratch file here:
-
-```bash
-.devforge/lib/verify_helper check-status-and-flip --feature-dir <feature> --to phase9 --status complete --verdict "<verdict>"
 ```
 
 ## Important rules
