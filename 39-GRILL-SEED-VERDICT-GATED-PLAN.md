@@ -1,0 +1,98 @@
+# 39 — GRILL SEED VERDICT-GATED (write the seed from the USER'S choice, not the recommendation)
+
+**Status:** Phases 1–3 BUILT + green 2026-06-24 on `develop-2.0-init` (uncommitted). Phase 4 (testForge20 e2e) user-driven. Phase 0 signed off (Option A; OQ-1/OQ-2 resolved = matching-pick). Builds on plan 36 (`06b78be`) + plan 37 (`a32d449`). Closes the "orphan seed on override" case left open by plan 36's D3 (which deferred seed lifecycle to "the next `/grill` run"). Plan 36 added `/plan` as the 4th seed consumer and REVISE-PLAN as a seed-writer; plan 37 (`a32d449`, per-step artifact commit) made `/grill` PHASE 6 WIP-commit its own artifacts incl. the seed.
+
+## Problem — "orphan seed on override"
+
+`/grill` recommends a 4-way disposition for a plan: PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL. Today the seed is written from the RECOMMENDATION, but the user's DECISION happens one phase later — and the user can override. The two events are split across two phases:
+
+- **PHASE 6** (`src/commands/grill/main.md:295`, "Report (+ seed on RE-ENTER-UPSTREAM or REVISE-PLAN)") — BEFORE the user decides — when the recommended disposition is RE-ENTER-UPSTREAM OR REVISE-PLAN, calls `write-seed --target-stage <stage>` (`main.md:331`), then unconditionally WIP-commits the run's artifacts via `artifact_helper commit-artifacts` (`main.md:339`, plan 37's per-step commit — `grill-seed.json` is added to `--paths` when `write-seed` ran).
+- **PHASE 7** (`main.md:350`, "Human gate") — AFTER — the USER makes the final call via AskUserQuestion (`Proceed` / `Revise plan` / `Re-enter upstream` / `Kill`) and may OVERRIDE the recommendation; the user owns the verdict.
+
+The bug: if the user overrides a seed-writing recommendation to a non-seed choice — `/grill` recommends REVISE-PLAN (seed written with `target_stage="plan"`), the user picks `Proceed` — the seed is an ORPHAN. It persists on disk AND is committed (plan 37), and a later `/plan` run's grill-re-entry block (plan 36, Phase 4) globs `specs/*/grill-seed.json`, matches the `target_stage="plan"` seed, and obeys it — silently undoing the user's "Proceed" decision. The same orphan risk exists for an overridden RE-ENTER-UPSTREAM seed (a future `/specify` / `/discover` / `/research` consumes it).
+
+Plan 36's D3 deferred seed lifecycle (deletion / `cycle_count`) to "the next `/grill` run" as a v1 simplification, matching `/specify`'s consumer block. That deferral is fine for the in-band loop but leaves the OVERRIDE case open: a seed the user explicitly rejected stays live until a next grill that may never run. This plan closes the override case at the source — by writing the seed only when the user's verdict authorizes it.
+
+## Decisions (proposed — sign off at Phase 0)
+
+- **D1 — the seed must reflect the user's VERDICT, not the recommendation (PROPOSED = Option A). Move `write-seed` (and the seed's WIP-commit) OUT of PHASE 6 and INTO PHASE 7, gated on the user's choice.** The seed is written ONLY when the user picks a seed-producing option at the PHASE-7 gate: `Revise plan` → `target_stage="plan"`; `Re-enter upstream` → the recommended upstream stage. `Proceed` / `Kill` → no seed is ever written. Consequence: the consumers (`/plan`, `/specify`, `/discover`, `/research`) only ever see seeds the user actually authorized, so the orphan case cannot occur by construction.
+
+  **Option B (considered, NOT recommended):** keep `write-seed` in PHASE 6, but in PHASE 7 DELETE `specs/[feature]/grill-seed.json` when the user picks `Proceed` / `Kill`. Rejected because plan 37 COMMITS the seed in PHASE 6 — so B must not only delete an on-disk file but also un-stage / reverse a committed artifact (a `git rm` + a second commit, or a reset), leaving a committed-then-deleted artifact in the run's WIP history. Option A never creates the seed unless authorized, so there is nothing to delete, un-stage, or reverse — strictly less machinery and no committed orphan to clean up.
+
+- **D2 — which user choices produce a seed.** `Revise plan` → seed `target_stage="plan"`; `Re-enter upstream` → seed `target_stage=<the PHASE-5 recommended upstream stage>` (`spec` | `discovery` | `research`); `Proceed` → none; `Kill` → none. The seed INPUTS (`prior_conclusion` / `invalidating_evidence` / `must_satisfy` / `carried_findings` / `cycle_count` / `provenance`) are still composed in PHASE 5 (`main.md:283`) and carried forward — but to PHASE 7 instead of PHASE 6. Today they are carried to PHASE 6 (the seed write site); this plan carries them one phase further to the PHASE-7 action arms.
+
+- **D3 — coordinate with plan 37's per-step commit.** PHASE 6 still WIP-commits `grill.md` + `grill-state.json` UNCONDITIONALLY (every run reaches PHASE 6 with a written `grill.md`); only `grill-seed.json` leaves the PHASE-6 `--paths` list. The seed's commit moves to PHASE 7 — a SECOND, conditional `commit-artifacts` call that runs only on a seed-producing user choice (i.e. only when `write-seed` ran this turn). Both commits fold into `/finalize`'s squash, so the final PR is unchanged. This is the only plan-37 interaction: the seed leaves PHASE 6's commit and gets its own PHASE-7 commit.
+
+- **D4 — likely pure-spec, no helper change (PROBABLY NONE — confirm at Phase 0/1).** Option A reuses the existing `write-seed` and `commit-artifacts` verbs unchanged; it only invokes them later (in PHASE 7, gated on the user's choice). No verb signature, validation, or schema changes. Phase 0/1 confirms no helper change is needed before Phase 1 edits the spec. If a tiny helper change emerges, it routes through python-engineer → python-reviewer (Phase 2, conditional).
+
+- **D5 — `cycle_count` / bounded loop unchanged.** `cycle_count` semantics (incremented at the NEXT `/grill` run's seed composition, `main.md:289`) and the PHASE-7 bounded-loop escalation ("after 2 cycles … escalate to the user", `main.md:367`) are NOT altered. Only the TIMING of the seed write moves from PHASE 6 to PHASE 7; the counter the seed carries and the escalation cap are untouched.
+
+## Open questions
+
+- **OQ-1 — RESOLVED (matching-pick).** Cross-override (which seed-producing pick is honored). The PHASE-7 options always offer `Revise plan` and offer `Re-enter upstream` only when the recommendation is RE-ENTER-UPSTREAM (`main.md:363` guard). Two cross-override cases need a rule:
+  - The user picks a seed-producing option that DIFFERS from the recommended seed-disposition — e.g. `/grill` recommended RE-ENTER-UPSTREAM (PHASE-5 composed the seed inputs framed for an upstream stage, e.g. `prior_conclusion` = "what `spec` concluded …") but the user picks `Revise plan`. The composed inputs no longer match the chosen disposition's framing.
+  - The user picks `Revise plan` even though `/grill` recommended PROCEED — in which case PHASE 5 composed NO seed inputs at all (the seed inputs are only composed for a RE-ENTER-UPSTREAM or REVISE-PLAN recommendation, `main.md:283`).
+
+  Resolution (ratified at Phase 0): **write the seed ONLY when the user's choice MATCHES the recommended seed-producing disposition** (recommended REVISE-PLAN + user picks `Revise plan` → write the `plan` seed; recommended RE-ENTER-UPSTREAM + user picks `Re-enter upstream` → write the upstream seed). Any CROSS-pick or a `Revise plan` pick when no seed inputs were composed → NO seed; route the user to a manual revision (re-run `/plan` / hand-patch `plan.md` with no directed seed). This keeps the seed always-consistent with its composed inputs and never fabricates inputs PHASE 5 did not produce.
+
+- **OQ-2 — RESOLVED (matching-pick).** The always-offered `Revise plan` option. Given OQ-1: `Revise plan` produces a seed ONLY when REVISE-PLAN was the recommendation (so the PHASE-5 inputs exist), and otherwise routes to a manual `/plan` re-run with no seed. This is the same rule as OQ-1's resolution, scoped to the always-available `Revise plan` choice (resolved at Phase 0: "yes — seed only on a matching recommendation").
+
+## Phases
+
+### Phase 0 — Sign-off — DONE
+
+Ratified D1 Option A (seed written in PHASE 7 gated on the user's verdict, not in PHASE 6 from the recommendation), D2–D5, and resolved OQ-1 / OQ-2 to the matching-pick default (seed written only when the user's PHASE-7 pick matches the recommended seed-disposition; cross-pick / `Proceed` / `Kill` → no seed). Confirmed D4 — Option A needs NO helper change (the existing `write-seed` + `commit-artifacts` verbs are reused, only relocated); Phase 2 is a self-doc-only fix (see below), not a logic change.
+
+**Verify:** D1 Option A confirmed (seed write moves to PHASE 7, gated on the user's verdict); D2–D5 confirmed; OQ-1 / OQ-2 resolved to a single cross-override rule; D4's "no helper change" confirmed or a specific helper gap named for Phase 2.
+
+### Phase 1 — `grill/main.md`: relocate `write-seed` + the seed commit into the PHASE-7 action arms — DONE
+
+DONE: the seed `write-seed` + its `commit-artifacts` were moved from PHASE 6 into PHASE 7's matching re-entry arms; PHASE 6 commits only `grill.md` + `grill-state.json`; the PHASE-7 preamble no longer announces a seed; the bounded-loop escalation is preserved; the helper verbs + `render-report --re-entry-target` are untouched. Reviewed CLEAN (instruction-reviewer) + conformance-confirmed (claude-code-guide). The original execution plan:
+
+Move the seed write and the seed's WIP-commit out of PHASE 6 and into PHASE 7's per-choice action arms, per the Phase-0 cross-override rule:
+
+- **PHASE 6 (`main.md:295` heading + `main.md:326`–`342`)** — remove the `write-seed` block (`main.md:331`) and the "RE-ENTER-UPSTREAM OR REVISE-PLAN — emit the backward seed" sub-section (`main.md:326`). PHASE 6 keeps the UNCONDITIONAL `grill.md` + `grill-state.json` WIP-commit (`main.md:339`), but `grill-seed.json` leaves its `--paths` list (the seed no longer exists at PHASE 6) — drop the "(When `write-seed` ran, add the seed path …)" conditional-paths note (`main.md:342`). Re-title the PHASE-6 heading to drop "+ seed on RE-ENTER-UPSTREAM or REVISE-PLAN".
+- **PHASE 5 (`main.md:283`–`293`)** — keep composing the seed inputs for a RE-ENTER-UPSTREAM OR REVISE-PLAN recommendation, but carry them forward to PHASE 7 (not PHASE 6). Reword the carry-forward sentence (`main.md:293`) to name PHASE 7 as the seed-write site.
+- **PHASE 7 (`main.md:350`–`375`)** — in the `Revise plan` and `Re-enter upstream` action arms (`main.md:366`–`367`), when the user's choice MATCHES the recommended seed-disposition (per the Phase-0 rule), call `write-seed --target-stage <stage>` with the PHASE-5 inputs, then a SECOND conditional `commit-artifacts --paths '["specs/<feature>/grill-seed.json"]' --label 'grill-seed: <NNN>-<slug>'`. The `Proceed` / `Kill` arms write no seed. **PHASE-7 preamble (`main.md:352`):** REMOVE the parenthetical seed-announcement ("and, on RE-ENTER-UPSTREAM OR REVISE-PLAN, `specs/[feature]/grill-seed.json`") from the AskUserQuestion preamble entirely — under Option A the seed does NOT exist at preamble-time (it is written only by the matching post-choice arm), so the preamble must not announce a not-yet-written file. MOVE the "seed written" confirmation INTO each seed-producing action arm's post-choice prose, AFTER `write-seed` runs in that arm (so the user is told the seed exists only once it does). Reconcile the cross-override no-seed path (per OQ-1/OQ-2) so a cross-pick or a no-inputs `Revise plan` routes to a manual revision with an explicit "no directed seed written" note. Keep the seed-write BEFORE the PHASE-7 scratch sweep (`main.md:373`, `rm -rf "$WORKDIR"`) — the sweep stays the last step.
+- **Outputs section (`main.md:29`)** — change "written when the disposition is RE-ENTER-UPSTREAM OR REVISE-PLAN" to "written when the USER chooses `Revise plan` or `Re-enter upstream` at the PHASE-7 gate (matching the recommended seed-disposition)".
+- **Rules (`main.md:386`, rule 8)** — reconcile the "when `write-seed` ran" parenthetical so the seed commit is described as a PHASE-7 conditional, not a PHASE-6 one.
+
+These files ship into a target project's `.claude/commands/grill/`, so the edits route through instruction-author → instruction-reviewer → claude-code-guide (UNCONDITIONAL — instruction-reviewer owns the multi-site cross-consistency check; claude-code-guide confirms authoring conformance). Line numbers are current as of this draft — re-verify before editing, since earlier edits shift the later sites.
+
+**Verify:** PHASE 6 no longer calls `write-seed` and no longer lists `grill-seed.json` in any `--paths`; PHASE 6 still unconditionally commits `grill.md` + `grill-state.json`; PHASE 7's `Revise plan` / `Re-enter upstream` arms call `write-seed` + a conditional seed commit ONLY on a verdict matching the recommended seed-disposition; `Proceed` / `Kill` write no seed; a cross-override pick writes no seed and routes to a manual revision; the seed write precedes the PHASE-7 sweep; the Outputs section + rule 8 describe a PHASE-7 user-verdict-gated seed; no `main.md` sentence claims the seed is written from the recommendation in PHASE 6.
+
+### Phase 2 — helper self-doc fix — DONE
+
+DONE — a small self-doc fix, NOT N/A. `src/devforge/lib/_grill/_cli.py`: the two stale `write-seed … (Phase 5)` labels were reworded to the phase-agnostic "(human-gate re-entry arm)". 402 `_grill` tests green. No logic change — the existing `write-seed` + `commit-artifacts` verbs are reused unchanged (D4 held); only their relocation in `main.md` (Phase 1) drove the label reword.
+
+**Verify:** the `_cli.py` `write-seed` labels no longer cite "(Phase 5)"; 402 `_grill` tests green via python-engineer → python-reviewer; no verb signature / validation / schema change.
+
+### Phase 3 — Docs / cross-ref reconcile + sweep — DONE
+
+DONE: reconciled the seed-timing framing to the verdict-gated matching-pick wording at `src/commands/grill/references/report-format.md` (the §"The re-entry seed" opening + the REVISE-PLAN/RE-ENTER-UPSTREAM verdict-guidance bullets + the `target_stage` value attribution), `src/CLAUDE.md` (the `/grill` paragraph), and repo-root `CLAUDE.md` (the "Where to find what" table `/grill` row — a 3rd site found during review). Reviewed CLEAN. The original reconcile plan:
+
+Reconcile the docs that describe WHEN the seed is written:
+
+- `src/commands/grill/references/report-format.md:82` (the REVISE-PLAN verdict-guidance bullet) + `:83` (the RE-ENTER-UPSTREAM bullet) — both currently state the orchestrator "emits a `grill-seed.json` … on re-entry"; reconcile to "emits the seed when the USER chooses the matching disposition at the human gate", so the report's own guidance does not imply the seed is written from the recommendation.
+- `src/commands/grill/references/report-format.md:165-168` (the `## The re-entry seed (RE-ENTER-UPSTREAM or REVISE-PLAN)` section opening) — currently reads "When the disposition is RE-ENTER-UPSTREAM or REVISE-PLAN, the orchestrator ALSO calls `grill_helper write-seed` …", the exact "seed follows the recommendation disposition" framing this plan fixes. Reconcile the opening sentence to "When the USER chooses Revise plan or Re-enter upstream at the PHASE-7 human gate (matching the recommended seed-disposition), the orchestrator calls `grill_helper write-seed` …", so the section describes the seed as written from the user's verdict, not the recommendation. The rest of the section (the `target_stage` / payload-field enumeration, the schema-owner note) stays correct and unchanged.
+- `src/CLAUDE.md` (the `/grill` and `/plan` catalog entries) — the `/grill` entry's "on either non-terminal disposition it also emits a backward re-entry seed" line (`src/CLAUDE.md:85`) reconciles to "when the user chooses the matching disposition at the human gate — `Revise plan` on a REVISE-PLAN recommendation, `Re-enter upstream` on a RE-ENTER-UPSTREAM recommendation; cross-picks write no seed" (this phrasing reflects OQ-1's RECOMMENDED default, which Phase 0 ratifies — author it as the pending-Phase-0 resolution, not settled fact, and adjust if Phase 0 resolves OQ-1 differently); the `/plan` entry's "consumes a `/grill` REVISE-PLAN re-entry seed … when present" line stays correct (the consumer is unchanged — it still globs and obeys a present seed; this plan only changes WHICH seeds exist).
+- Run the cross-ref sweep for `grill-seed.json`, `write-seed`, and `ReEntrySeed` across `src/` to confirm no site still asserts the seed is written in PHASE 6 / from the recommendation.
+
+This plan's status line is updated as phases land.
+
+**Verify:** `report-format.md:82`/`:83` AND the `report-format.md:165-168` re-entry-seed section describe a user-verdict-gated seed write (none still says "the orchestrator ALSO calls `write-seed`" off the recommendation disposition); the `src/CLAUDE.md` `/grill` entry describes the seed as written at the human gate on the MATCHING choice (carrying OQ-1's matching-recommendation constraint, phrased as the pending-Phase-0 resolution); the `/plan` consumer entry is unchanged and still correct; the cross-ref sweep finds no site asserting a PHASE-6 / from-recommendation seed write.
+
+### Phase 4 — testForge20 / mintEnvoy e2e (user-driven, HARD GATE)
+
+On a real install, run `/grill` on a `plan.md` to a REVISE-PLAN (or RE-ENTER-UPSTREAM) recommendation, then at the PHASE-7 human gate OVERRIDE to `Proceed`. Confirm NO `specs/[feature]/grill-seed.json` is written (and none is committed). Then re-run `/plan` and confirm its grill-re-entry block is a clean no-op (no seed to consume). For the positive path, run `/grill` to a REVISE-PLAN recommendation, pick `Revise plan` at the gate, and confirm the seed IS written (`target_stage: "plan"`) + committed, and a re-run `/plan` consumes it.
+
+**Verify:** an overridden-to-`Proceed` run writes + commits NO `grill-seed.json`, and the subsequent `/plan` re-entry block no-ops; a `Revise plan` pick on a matching REVISE-PLAN recommendation writes + commits the `plan` seed and the re-run `/plan` consumes it; `Kill` writes no seed.
+
+## When resuming work
+
+- This plan closes the OVERRIDE case plan 36's D3 deferred — read plan 36 (`36-GRILL-UNIVERSAL-REENTRY-PLAN.md`, `06b78be`) D3 first: it deferred seed lifecycle (deletion / `cycle_count`) to "the next `/grill` run". This plan does NOT add deletion or lifecycle to the consumers; it prevents the orphan at the source by writing the seed only on the user's authorizing verdict.
+- Plan 37 (`37-PER-STEP-ARTIFACT-COMMIT-PLAN.md`, `a32d449`) is the load-bearing interaction: `/grill` PHASE 6 WIP-commits its artifacts incl. the seed. D3 here moves ONLY the seed's commit to PHASE 7 (a second conditional `commit-artifacts`); the `grill.md` + `grill-state.json` commit stays UNCONDITIONAL in PHASE 6. Do not move the whole PHASE-6 commit.
+- D1 Option A (write the seed in PHASE 7, gated on the user's verdict) is the central decision — Option B (write in PHASE 6, delete on override) is rejected because plan 37 commits the seed, so B must reverse a committed artifact. Do not re-open B without re-reading why A wins.
+- The cross-override rule (OQ-1 / OQ-2) is the subtle part of Phase 1: write the seed ONLY when the user's pick MATCHES the recommended seed-disposition; any cross-pick or a `Revise plan` pick with no PHASE-5-composed inputs → no seed, manual revision. Ratify this at Phase 0 before editing PHASE 7.
+- The consumers (`/plan` Phase 0a.7 / `/specify` / `/discover` / `/research` re-entry blocks) are UNCHANGED by this plan — they still glob, match `target_stage`, obey a present seed, and no-op on absence. This plan only changes WHICH seeds exist on disk, not how they are consumed.
+- `cycle_count` + the bounded-loop escalation (D5) are untouched — only the seed-write TIMING moves.

@@ -26,11 +26,11 @@ This file lives at `src/commands/grill/main.md` in the AIDevTeamForge template r
 The files this command writes under the repo are:
 
 - `specs/[feature]/grill.md` — the rendered design-grill report. Produced by the helper's `render-report` verb in PHASE 6; carries the surviving findings AND the recommended 4-way disposition. Idempotent: re-running `/grill` on the same feature OVERWRITES `grill.md` (the helper does an atomic write).
-- `specs/[feature]/grill-seed.json` — written when the disposition is RE-ENTER-UPSTREAM OR REVISE-PLAN. Produced by the helper's `write-seed` verb in PHASE 6; the structured BACKWARD handoff the named re-entry command consumes on re-entry so the re-run is directed, not a repeat. On RE-ENTER-UPSTREAM the seed targets an upstream stage (`spec` / `discovery` / `research`) for `/specify` / `/discover` / `/research`; on REVISE-PLAN the seed targets `plan` for `/plan`. Not written for PROCEED or KILL.
+- `specs/[feature]/grill-seed.json` — written in PHASE 7 when the user chooses the matching re-entry at the human gate — `Revise plan` on a REVISE-PLAN recommendation (`target_stage=plan`, for `/plan`), or `Re-enter upstream` on a RE-ENTER-UPSTREAM recommendation (an upstream stage `spec` / `discovery` / `research`, for `/specify` / `/discover` / `/research`). Produced by the helper's `write-seed` verb; the structured BACKWARD handoff the named re-entry command consumes on re-entry so the re-run is directed, not a repeat. Not written for Proceed, Kill, or a cross-pick (the user picking a re-entry that does not match the recommendation).
 
 Per-feature run state lives in `specs/[feature]/grill-state.json` (helper-owned, advanced via `check-status-and-flip --feature-dir <feature>`).
 
-At the end of PHASE 6, `/grill` WIP-commits its own artifacts — `grill.md`, the per-feature `grill-state.json`, and `grill-seed.json` when `write-seed` ran — via `.devforge/lib/artifact_helper commit-artifacts`. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/grill` continues — the report is already written). The `[WIP]` commit folds into `/finalize`'s squash, so the final PR is unchanged.
+At the end of PHASE 6, `/grill` WIP-commits its own report artifacts — `grill.md` and the per-feature `grill-state.json` — via `.devforge/lib/artifact_helper commit-artifacts`. When the user authorizes a matching re-entry at the PHASE-7 human gate, the `grill-seed.json` written there is WIP-committed in that same matching arm. Each commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/grill` continues — the report is already written). The `[WIP]` commit folds into `/finalize`'s squash, so the final PR is unchanged.
 
 ### Intermediate scratch files (orchestrator-written, helper-consumed) — all under `$WORKDIR`
 
@@ -280,7 +280,7 @@ This is ORCHESTRATOR REASONING, not a helper verb — there is no `classify` ver
 
 PROCEED is the no-surviving-attack / all-accepted-as-risk case — outside this YES/NO tree (the empty-`validated.json` branch in PHASE 3 already routes there; reach it here too when every survivor is accepted as risk).
 
-Synthesize ONE recommended disposition for the whole run (the most severe survivor's routing wins: KILL > RE-ENTER-UPSTREAM > REVISE-PLAN > PROCEED) plus a `rationale` paragraph naming the surviving findings that drove it. For a **RE-ENTER-UPSTREAM** OR a **REVISE-PLAN** disposition, ALSO compose the re-entry-seed inputs PHASE 6's `write-seed` needs:
+Synthesize ONE recommended disposition for the whole run (the most severe survivor's routing wins: KILL > RE-ENTER-UPSTREAM > REVISE-PLAN > PROCEED) plus a `rationale` paragraph naming the surviving findings that drove it. For a **RE-ENTER-UPSTREAM** OR a **REVISE-PLAN** disposition, ALSO compose the re-entry-seed inputs PHASE 7's matching re-entry arm needs for its `write-seed` call (the seed is written only if the user picks the matching re-entry at the human gate):
 
 - `target_stage` — the SEED TOKEN, NOT the slash-command name. For RE-ENTER-UPSTREAM it is the nearest upstream stage `spec` | `discovery` | `research`; for REVISE-PLAN it is `plan`. `write-seed --target-stage` accepts all four (`spec` | `discovery` | `research` | `plan`); it rejects any other value with exit 2.
 - `prior_conclusion` — for RE-ENTER-UPSTREAM, what that upstream stage concluded that is now invalidated; for REVISE-PLAN, the flawed plan decision the revision must replace.
@@ -290,9 +290,9 @@ Synthesize ONE recommended disposition for the whole run (the most severe surviv
 - `carried_findings` — prior findings carried forward, monotonic (empty on a first grill; for REVISE-PLAN, the remaining confirmed findings the revision must address).
 - `provenance` — a pointer to this `specs/[feature]/grill.md` / the plan path.
 
-Carry the disposition + rationale (+ the seed inputs for RE-ENTER-UPSTREAM or REVISE-PLAN) forward to PHASE 6.
+Carry the disposition + rationale forward to PHASE 6 (the report), and carry the seed inputs (for RE-ENTER-UPSTREAM or REVISE-PLAN) forward to PHASE 7's matching re-entry arm — that arm writes the seed only if the user's pick matches the recommendation.
 
-## PHASE 6 — Report (+ seed on RE-ENTER-UPSTREAM or REVISE-PLAN)
+## PHASE 6 — Report
 
 ```bash
 .devforge/lib/grill_helper check-status-and-flip --feature-dir <feature> --to report
@@ -323,23 +323,13 @@ DATE="$(date +%Y-%m-%d)"
 
 `render-report` validates the disposition (exit 2 on a bad value, or on a `--re-entry-target` that is missing for RE-ENTER-UPSTREAM or present for another disposition). The report leads with CONFIRMED findings (a force-ranked Top Priorities list + a by-file/by-category grouped listing), surfaces high-stakes `[CONTESTED]` findings IN that headline flagged, drops dismissed + low-stakes uncertain findings to a `## Dismissed / Worth a Glance` appendix, and renders the `## Disposition` section. Stdout is a JSON ack `{path, confirmed, contested, dismissed, uncertain}`; the `path` is the written `specs/[feature]/grill.md`. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
 
-**RE-ENTER-UPSTREAM OR REVISE-PLAN — emit the backward seed.** When the disposition is RE-ENTER-UPSTREAM OR REVISE-PLAN, ALSO write the re-entry seed the named re-entry command consumes on re-entry. `<stage>` is the PHASE-5 `target_stage` token: the nearest upstream stage (`spec` | `discovery` | `research`) for RE-ENTER-UPSTREAM, OR `plan` for REVISE-PLAN.
-
-```bash
-WORKDIR="${TMPDIR:-/tmp}/forge-grill"
-# <stage> is per-disposition: the upstream stage for RE-ENTER-UPSTREAM, or `plan` for REVISE-PLAN.
-.devforge/lib/grill_helper write-seed --feature <feature> --target-stage <stage> --prior-conclusion "<prior-conclusion>" --invalidating-evidence "<invalidating-evidence>" --must-satisfy "<must-satisfy>" --cycle-count <N> --carried-findings "<carried-csv>" --provenance "specs/[feature]/grill.md"
-```
-
-`write-seed` builds a `ReEntrySeed` from the PHASE-5 seed inputs and writes `specs/[feature]/grill-seed.json` via an atomic write. `--target-stage` (`spec` | `discovery` | `research` | `plan`), `--prior-conclusion`, `--invalidating-evidence`, `--must-satisfy`, and `--provenance` are all REQUIRED and non-empty (the schema rejects an empty value with exit 2). `--cycle-count` is an int ≥ 1 (default 1; increment when this run itself re-entered from a prior seed). `--carried-findings` is a comma-separated list of prior finding descriptions carried forward (monotonic compounding; may be empty). Stdout is a JSON ack `{path}`. Do NOT call `write-seed` for PROCEED or KILL — no seed is produced for those two dispositions (this is what keeps the consumer blocks inert when `/grill` neither routes upstream nor recommends a plan revision). On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
-
-**WIP-commit the grill artifacts.** Now that `grill.md` (and, when `write-seed` ran above, `grill-seed.json`) is written, commit `/grill`'s own outputs so the work is git-safe at this step. Run this UNCONDITIONALLY (every `/grill` run reaches here with a written `grill.md`). Include `grill-seed.json` in `--paths` ONLY when `write-seed` ran this turn (i.e. the seed file was written) — omit it otherwise; list only what this run actually produced. `grill-state.json` is always included — it lives under `specs/[feature]/` and is part of what this run wrote:
+**WIP-commit the grill report artifacts.** Now that `grill.md` is written, commit `/grill`'s own report outputs so the work is git-safe at this step. Run this UNCONDITIONALLY (every `/grill` run reaches here with a written `grill.md`). `grill-state.json` is always included — it lives under `specs/[feature]/` and is part of what this run wrote. The seed (`grill-seed.json`) is NOT committed here — it is not written until the PHASE-7 human gate, and only when the user authorizes a matching re-entry; that arm commits it itself:
 
 ```bash
 .devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/grill.md", "specs/<feature>/grill-state.json"]' --label 'grill: <NNN>-<slug>'
 ```
 
-(When `write-seed` ran, add the seed path: `--paths '["specs/<feature>/grill.md", "specs/<feature>/grill-seed.json", "specs/<feature>/grill-state.json"]'`.) Substitute `<feature>` with the resolved feature dir and `<NNN>-<slug>` with the feature id. `commit-artifacts` stages ONLY the named paths and makes a `[WIP] grill: <NNN>-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the report is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged.
+Substitute `<feature>` with the resolved feature dir and `<NNN>-<slug>` with the feature id. `commit-artifacts` stages ONLY the named paths and makes a `[WIP] grill: <NNN>-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the report is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged.
 
 Then mark the run complete so an interrupted re-run can distinguish a finished grill from a stopped one:
 
@@ -349,23 +339,43 @@ Then mark the run complete so an interrupted re-run can distinguish a finished g
 
 ## PHASE 7 — Human gate (the user owns the verdict)
 
-The disposition is a RECOMMENDATION; the human makes the final call. Present the recommended disposition + its rationale (print the report's `## Disposition` block, or summarize it), tell the user `specs/[feature]/grill.md` was written (and, on RE-ENTER-UPSTREAM OR REVISE-PLAN, `specs/[feature]/grill-seed.json`), and capture the user's choice via AskUserQuestion so the next step is explicit:
+The disposition is a RECOMMENDATION; the human makes the final call. Present the recommended disposition + its rationale (print the report's `## Disposition` block, or summarize it), tell the user `specs/[feature]/grill.md` was written, and capture the user's choice via AskUserQuestion so the next step is explicit:
 
 > The grill recommends a disposition for this plan. What do you want to do?
 
 Options (2–4; AskUserQuestion auto-injects "Other"):
 
 - `Proceed` — the plan is sound; run `/breakdown`.
-- `Revise plan` — re-run `/plan` (which detects and consumes the emitted `grill-seed.json` so the revision is directed) or hand-patch `plan.md`, then optionally re-run `/grill`.
-- `Re-enter upstream` — re-run the named upstream command (`/specify`, `/discover`, or `/research`), handing it `grill-seed.json`.
+- `Revise plan` — re-run `/plan` or hand-patch `plan.md`, then optionally re-run `/grill`.
+- `Re-enter upstream` — re-run the named upstream command (`/specify`, `/discover`, or `/research`).
 - `Kill` — stop; the design is fatally flawed (re-run `/plan` with a wholly different approach).
 
-(Always offer `Proceed` and `Kill` as the outer brackets, and `Revise plan` as an always-available choice (recommended when the disposition is REVISE-PLAN). Omit `Re-enter upstream` when the disposition is not RE-ENTER-UPSTREAM — it is only meaningful when a seed targeting an upstream stage was written.) Then act on the choice:
+(Always offer `Proceed` and `Kill` as the outer brackets, and `Revise plan` as an always-available choice (recommended when the disposition is REVISE-PLAN). Omit `Re-enter upstream` when the disposition is not RE-ENTER-UPSTREAM — it is only meaningful when the PHASE-5 disposition routed to an upstream stage.) Then act on the choice:
 
-- **Proceed** → tell the user the next command is `/breakdown`.
-- **Revise plan** → tell the user to re-run `/plan`, which will detect and consume the emitted `grill-seed.json` (`target_stage="plan"`) so the revision is directed, not a repeat (or hand-patch `plan.md`), then optionally re-`/grill`.
-- **Re-enter upstream** → tell the user to re-run the named upstream command, which will detect and consume `grill-seed.json` so the re-run is directed, not a repeat. **Bounded loop:** after 2 kill→re-propose / re-entry cycles on the same feature (the seed's `cycle_count`), escalate to the user — "this feature may be intractable as framed — decide" — rather than looping again.
-- **Kill** → stop; the design is abandoned. The recovery is a wholly new design via re-run `/plan`.
+- **Proceed** → tell the user the next command is `/breakdown`. Write no seed.
+- **Revise plan** → two cases, by whether this matches the recommendation:
+  - **Matching (the recommendation was REVISE-PLAN)** → NOW write the re-entry seed from the PHASE-5 seed inputs, targeting `plan`, then WIP-commit it (see the seed-write + commit block below; pass `--target-stage plan`). Then tell the user to re-run `/plan`, which will detect and consume the emitted `grill-seed.json` (`target_stage="plan"`) so the revision is directed at the grill's confirmed findings, not a repeat (or hand-patch `plan.md`), then optionally re-`/grill`.
+  - **Cross-pick (the recommendation was NOT REVISE-PLAN)** → write NO seed. Tell the user to re-run `/plan` manually (an undirected revision — there is no seed to consume) or hand-patch `plan.md`, then optionally re-`/grill`.
+- **Re-enter upstream** → this option is offered only when the recommendation was RE-ENTER-UPSTREAM, so it is matching by construction. NOW write the re-entry seed from the PHASE-5 seed inputs, targeting the PHASE-5 nearest upstream stage (`spec` | `discovery` | `research`), then WIP-commit it (see the seed-write + commit block below; pass `--target-stage <stage>`). Then tell the user to re-run the named upstream command, which will detect and consume `grill-seed.json` so the re-run is directed, not a repeat. **Bounded loop:** after 2 kill→re-propose / re-entry cycles on the same feature (the seed's `cycle_count`), escalate to the user — "this feature may be intractable as framed — decide" — rather than looping again.
+- **Kill** → stop; the design is abandoned. The recovery is a wholly new design via re-run `/plan`. Write no seed.
+
+**Seed-write + commit block (matching re-entry arms only).** Run this ONLY inside the matching `Revise plan` or `Re-enter upstream` arm above — never for `Proceed`, `Kill`, or a cross-pick. `<stage>` is the arm's target stage: `plan` for a matching REVISE-PLAN, or the PHASE-5 nearest upstream stage (`spec` | `discovery` | `research`) for RE-ENTER-UPSTREAM. First write the seed:
+
+```bash
+WORKDIR="${TMPDIR:-/tmp}/forge-grill"
+# <stage> is per-arm: `plan` for a matching Revise plan, or the upstream stage for Re-enter upstream.
+.devforge/lib/grill_helper write-seed --feature <feature> --target-stage <stage> --prior-conclusion "<prior-conclusion>" --invalidating-evidence "<invalidating-evidence>" --must-satisfy "<must-satisfy>" --cycle-count <N> --carried-findings "<carried-csv>" --provenance "specs/[feature]/grill.md"
+```
+
+`write-seed` builds a `ReEntrySeed` from the PHASE-5 seed inputs and writes `specs/[feature]/grill-seed.json` via an atomic write. `--target-stage` (`spec` | `discovery` | `research` | `plan`), `--prior-conclusion`, `--invalidating-evidence`, `--must-satisfy`, and `--provenance` are all REQUIRED and non-empty (the schema rejects an empty value with exit 2). `--cycle-count` is an int ≥ 1 (default 1; increment when this run itself re-entered from a prior seed). `--carried-findings` is a comma-separated list of prior finding descriptions carried forward (monotonic compounding; may be empty). Stdout is a JSON ack `{path}`. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+
+Then WIP-commit the seed so it is git-safe (mirrors the PHASE-6 report commit — install-repo-only, fail-soft):
+
+```bash
+.devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/grill-seed.json"]' --label 'grill-seed: <NNN>-<slug>'
+```
+
+Substitute `<feature>` with the resolved feature dir and `<NNN>-<slug>` with the feature id. `commit-artifacts` stages ONLY the named path and makes a `[WIP] grill-seed: <NNN>-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the seed is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged.
 
 Finally, sweep the scratch directory — `render-report` was the last reader of `$WORKDIR/partition.json`, so nothing else needs the scratch:
 
@@ -383,7 +393,7 @@ rm -rf "$WORKDIR"
 5. **No relitigation** — the adversary attacks the CHOSEN design's demonstrable defects, not its taste; a "I would have built it differently" objection is dismissed by the refutation pass. A grounded defect inherited from upstream routes RE-ENTER-UPSTREAM, it does not become a plan attack.
 6. **Constitution violations are always Critical** — never downgraded, regardless of confidence; a `[CONSTITUTION-VIOLATION]` the refuter dismissed is surfaced `[CONTESTED]` in the headline, never buried.
 7. **The disposition is a RECOMMENDATION** — `/grill` recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; the human owns the final call at the `/breakdown` approval gate. The backward re-entry loop is bounded (escalate to the human after the cap).
-8. **Read-only on source** — no source modifications, no fixes to the plan or spec. `/grill` does WIP-commit its OWN artifacts (`grill.md` + `grill-state.json` +, when `write-seed` ran, `grill-seed.json`) via `artifact_helper commit-artifacts` at the end of PHASE 6 — an install-repo-only, fail-soft `[WIP]` commit that folds into `/finalize`'s squash; it never commits source or modifies the plan/spec.
+8. **Read-only on source** — no source modifications, no fixes to the plan or spec. `/grill` does WIP-commit its OWN artifacts via `artifact_helper commit-artifacts` — `grill.md` + `grill-state.json` at the end of PHASE 6, and `grill-seed.json` in PHASE 7's matching re-entry arm when the user authorizes it — install-repo-only, fail-soft `[WIP]` commits that fold into `/finalize`'s squash; it never commits source or modifies the plan/spec.
 9. **Wrapper-mode aware** — the adversary reads source files from the resolved Source Root (`source_root` from `preflight`); `specs/[feature]/` always lives at the workspace root.
 10. **Cleanup is last** — all intermediate scratch lives in `$WORKDIR` (`${TMPDIR:-/tmp}/forge-grill`), outside the repo, and is swept by the single `rm -rf "$WORKDIR"` at the end of PHASE 7, never mid-run.
 ```
