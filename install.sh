@@ -139,6 +139,40 @@ if [ -n "$ONLY_CMD" ]; then
     echo "  shared deps: .devforge/lib/_shared/"
     helper_found=true
   fi
+  # Ship _implement/ always: _artifact/_cli.py imports resolve_workspace from
+  # _implement._workspace at import time (before main()'s catch-all), so a
+  # --only delivery to an install missing _implement/ would hard-crash the
+  # launcher with an ImportError rather than failing gracefully. Mirror the
+  # _shared/ always-copy pattern — resolve_workspace is not moved (heavier
+  # change) so the dependency must be satisfied instead.
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_implement" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_implement"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_implement" "$TARGET_DIR/.devforge/lib/_implement"
+    rm -rf "$TARGET_DIR/.devforge/lib/_implement/__pycache__"
+    echo "  implement deps: .devforge/lib/_implement/"
+    helper_found=true
+  fi
+  # Ship artifact_helper always: every edited command (Phases 2-9 of plan 37)
+  # calls .devforge/lib/artifact_helper commit-artifacts. A surgical --only
+  # delivery of ANY command that uses the verb requires artifact_helper to be
+  # present — mirror the _shared/ always-copy pattern.
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_artifact" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_artifact"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_artifact" "$TARGET_DIR/.devforge/lib/_artifact"
+    rm -rf "$TARGET_DIR/.devforge/lib/_artifact/__pycache__"
+    echo "  artifact helper: .devforge/lib/_artifact/"
+    helper_found=true
+  fi
+  for _artifact_launcher in "artifact_helper" "artifact_helper.py"; do
+    if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_artifact_launcher" ]; then
+      cp "$TEMPLATE_DIR/src/devforge/lib/$_artifact_launcher" "$TARGET_DIR/.devforge/lib/$_artifact_launcher"
+      echo "  artifact launcher: .devforge/lib/$_artifact_launcher"
+      helper_found=true
+    fi
+  done
+  if [ -f "$TARGET_DIR/.devforge/lib/artifact_helper" ]; then
+    chmod +x "$TARGET_DIR/.devforge/lib/artifact_helper"
+  fi
   for _launcher in "${cmd_u}_helper" "${cmd_u}_helper.py"; do
     if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_launcher" ]; then
       cp "$TEMPLATE_DIR/src/devforge/lib/$_launcher" "$TARGET_DIR/.devforge/lib/$_launcher"
