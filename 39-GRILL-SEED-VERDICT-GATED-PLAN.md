@@ -1,6 +1,6 @@
 # 39 — GRILL SEED VERDICT-GATED (write the seed from the USER'S choice, not the recommendation)
 
-**Status:** Phases 1–3 BUILT + green 2026-06-24 on `develop-2.0-init` (uncommitted). Phase 4 (testForge20 e2e) user-driven. Phase 0 signed off (Option A; OQ-1/OQ-2 resolved = matching-pick). Builds on plan 36 (`06b78be`) + plan 37 (`a32d449`). Closes the "orphan seed on override" case left open by plan 36's D3 (which deferred seed lifecycle to "the next `/grill` run"). Plan 36 added `/plan` as the 4th seed consumer and REVISE-PLAN as a seed-writer; plan 37 (`a32d449`, per-step artifact commit) made `/grill` PHASE 6 WIP-commit its own artifacts incl. the seed.
+**Status:** ✅ CLOSED 2026-06-24 — committed `a908e91` on `develop-2.0-init`. Phase 4 testForge20 e2e DEFERRED by maintainer 2026-06-24 (not blocking). Phase 0 signed off (Option A; OQ-1/OQ-2 resolved = matching-pick). Builds on plan 36 (`06b78be`) + plan 37 (`a32d449`). Closes the "orphan seed on override" case left open by plan 36's D3 (which deferred seed lifecycle to "the next `/grill` run"). Plan 36 added `/plan` as the 4th seed consumer and REVISE-PLAN as a seed-writer; plan 37 (`a32d449`, per-step artifact commit) made `/grill` PHASE 6 WIP-commit its own artifacts incl. the seed.
 
 ## Problem — "orphan seed on override"
 

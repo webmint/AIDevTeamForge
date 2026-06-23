@@ -1,6 +1,6 @@
 # 36 — GRILL UNIVERSAL RE-ENTRY (REVISE-PLAN → `/plan` consumer)
 
-**Status:** IN PROGRESS — Phases 1, 2, 3a BUILT + green (402 tests pass). On `develop-2.0-init`. Remaining: Phase 3b (`grill/main.md` + `report-format.md` spec wiring), Phase 4 (`/plan` consumer block), Phase 5 (docs reconcile); Phase 6 e2e is user-driven. Discovered 2026-06-23 alongside plan 35: across two mintEnvoy `/grill` runs BOTH produced confirmed findings, so REVISE-PLAN is the common outcome — and it has no machine-readable path back into `/plan`. OQ-1 (string vs structured `carried_findings`) is RESOLVED (a): `carried_findings` stays `List[str]`.
+**Status:** ✅ CLOSED 2026-06-24 — all build phases (1–5) shipped + committed `06b78be` on `develop-2.0-init` (402 tests pass). Phase 6 testForge20 e2e DEFERRED by maintainer 2026-06-24 (not blocking). Discovered 2026-06-23 alongside plan 35: across two mintEnvoy `/grill` runs BOTH produced confirmed findings, so REVISE-PLAN is the common outcome — and it has no machine-readable path back into `/plan`. OQ-1 (string vs structured `carried_findings`) is RESOLVED (a): `carried_findings` stays `List[str]`.
 
 ## Problem
 
