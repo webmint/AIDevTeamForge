@@ -242,5 +242,46 @@ class OnlyFlagTests(unittest.TestCase):
             )
 
 
+# ---------------------------------------------------------------------------
+# ListFlagTests
+# ---------------------------------------------------------------------------
+
+class ListFlagTests(unittest.TestCase):
+    """--list prints the canonical _PROMOTED names, one per line, exit 0,
+    without requiring --src/--target."""
+
+    def _run_main_with_argv(self, argv):
+        import io
+        import contextlib
+
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+        old_argv = sys.argv
+        sys.argv = argv
+        try:
+            with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+                exit_code = _claude.main()
+        finally:
+            sys.argv = old_argv
+        return exit_code, stdout_buf.getvalue(), stderr_buf.getvalue()
+
+    def test_list_prints_promoted_one_per_line(self):
+        exit_code, stdout, _ = self._run_main_with_argv(["claude.py", "--list"])
+        self.assertEqual(exit_code, 0, "--list must exit 0")
+        lines = stdout.splitlines()
+        self.assertEqual(
+            lines,
+            list(_claude._PROMOTED),
+            "--list output must be _PROMOTED names in order, one per line",
+        )
+
+    def test_list_requires_no_src_or_target(self):
+        # No --src/--target supplied: must not error.
+        exit_code, stdout, stderr = self._run_main_with_argv(["claude.py", "--list"])
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stderr, "", f"--list must produce no stderr; got: {stderr!r}")
+        self.assertTrue(stdout.strip(), "--list must print something to stdout")
+
+
 if __name__ == "__main__":
     unittest.main()

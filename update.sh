@@ -594,6 +594,45 @@ DERIVED_UPDATE="$(grep -v '^MISSING' /tmp/update_derived_$$ 2>/dev/null || true)
 DERIVED_ADD="$(grep '^MISSING' /tmp/update_derived_$$ 2>/dev/null | cut -f2,3,4 || true)"
 rm -f /tmp/update_derived_$$
 
+# ── Agent delivery: new + removed (FIX C) ──────────────────────────────────
+# The generated:agents three-way merge above only touches agents present in the
+# installed snapshot (.devforge/template/.claude/agents) AND live in the target.
+# That correctly skips agents the user pruned via /configure, but it can neither
+# DELIVER a genuinely-new framework agent (absent from the old snapshot) nor
+# PRUNE a framework-removed one. Compute both sets here against the union of
+# {current src/agents roster, snapshot}. AGENTS_TGT_DIR is the install target
+# for generated:agents (always .claude/agents per the manifest).
+AGENTS_TGT_DIR=".claude/agents"
+AGENTS_SNAP_DIR="$TARGET_DIR/.devforge/template/$AGENTS_TGT_DIR"
+
+# NEW agents: in the current roster (src/agents/*.md) but NOT in the snapshot.
+# An agent absent from the snapshot was not installed last time → if it is also
+# absent from the live target it is genuinely new (the user could not have
+# pruned what never shipped). Install it.
+NEW_AGENTS=""
+if [ -d "$TEMPLATE_DIR/src/agents" ]; then
+  NEW_AGENTS="$(for af in "$TEMPLATE_DIR/src/agents/"*.md; do
+    [ -f "$af" ] || continue
+    name="$(basename "$af")"
+    if [ ! -f "$AGENTS_SNAP_DIR/$name" ]; then
+      echo "$name"
+    fi
+  done)"
+fi
+
+# REMOVED agents: present in the snapshot but NOT in the current roster →
+# framework-removed. Prune from both the live target and the snapshot.
+REMOVED_AGENTS=""
+if [ -d "$AGENTS_SNAP_DIR" ]; then
+  REMOVED_AGENTS="$(for sf in "$AGENTS_SNAP_DIR/"*.md; do
+    [ -f "$sf" ] || continue
+    name="$(basename "$sf")"
+    if [ ! -f "$TEMPLATE_DIR/src/agents/$name" ]; then
+      echo "$name"
+    fi
+  done)"
+fi
+
 # Filter copyIfMissing to only files that are actually missing in target
 COPY_IF_MISSING_ACTUAL=""
 echo "$COPY_IF_MISSING_FILES" | while IFS= read -r f; do true; done  # no-op to check
@@ -656,7 +695,13 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
   [ -z "$line" ] && continue
   entry_type="$(printf '%s' "$line" | cut -f1)"
   if [ "$entry_type" = "AGENT" ]; then
+    agent_name="$(printf '%s' "$line" | cut -f2)"
     tgt="$(printf '%s' "$line" | cut -f3)"
+    # A snapshot+live agent dropped from the roster is reported as PRUNE below;
+    # suppress the redundant THREE-WAY MERGE line for it (Finding 2).
+    if printf '%s\n' "$REMOVED_AGENTS" | grep -qxF "$agent_name"; then
+      continue
+    fi
   else
     tgt="$(printf '%s' "$line" | cut -f2)"
   fi
@@ -666,6 +711,45 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
     info "BASELINE INIT  $tgt (snapshot will be saved; future updates will three-way merge)"
   fi
 done
+
+# New framework agents to install (FIX C)
+echo "$NEW_AGENTS" | while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  added "ADD (new agent)  $AGENTS_TGT_DIR/$name"
+done
+
+# Framework-removed agents to prune (FIX C)
+echo "$REMOVED_AGENTS" | while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  overwrt "PRUNE  $AGENTS_TGT_DIR/$name"
+done
+
+# Removed/leftover commands to prune (FIX B) — compute the canonical command set
+# from the emitter and flag any *.md directly under .claude/commands/ that is no
+# longer canonical. Guard on Python; the emitter step already warns when absent.
+CANONICAL_COMMANDS=""
+if [ -n "$PYTHON3_CMD" ]; then
+  CANONICAL_COMMANDS="$($PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" --list 2>/dev/null || true)"
+fi
+if [ -n "$PYTHON3_CMD" ] && [ -d "$TARGET_DIR/.claude/commands" ]; then
+  for cf in "$TARGET_DIR/.claude/commands/"*.md; do
+    [ -f "$cf" ] || continue
+    cname="$(basename "$cf" .md)"
+    if ! printf '%s\n' "$CANONICAL_COMMANDS" | grep -qxF "$cname"; then
+      overwrt "PRUNE  .claude/commands/$cname.md"
+    fi
+  done
+fi
+
+# Stale helpers to prune (FIX D)
+if [ -d "$TARGET_DIR/.devforge/lib" ]; then
+  find "$TARGET_DIR/.devforge/lib" -type f -not -path '*/__pycache__/*' 2>/dev/null | { while IFS= read -r fp; do
+    rel="${fp#"$TARGET_DIR"/.devforge/lib/}"
+    if [ ! -e "$TEMPLATE_DIR/src/devforge/lib/$rel" ]; then
+      overwrt "PRUNE  .devforge/lib/$rel"
+    fi
+  done; } || true
+fi
 
 # Skipped (projectOwned) — just list a summary
 PROJECT_OWNED_FILES="$(echo "$PROJECT_OWNED_PATTERNS" | expand_patterns "$TARGET_DIR" 2>/dev/null || true)"
@@ -699,6 +783,45 @@ echo "$TEMPLATE_OWNED_FILES" | while IFS=$'\t' read -r src tgt; do
   overwrt "Overwritten: $tgt"
 done
 
+# ── Execute: restore executable bits on shipped scripts (FIX E) ────────────
+# The templateOwned apply loop uses plain `cp` (no -p), which drops the
+# executable bit. The CBM hook scripts (.claude/hooks/*) and the opt-in
+# git-hook templates (.devforge/templates/git-hooks/*.sh) must stay runnable.
+if [ -d "$TARGET_DIR/.claude/hooks" ]; then
+  for _hk in "$TARGET_DIR/.claude/hooks/"*; do
+    [ -f "$_hk" ] && chmod +x "$_hk"
+  done
+fi
+if [ -d "$TARGET_DIR/.devforge/templates/git-hooks" ]; then
+  for _gh in "$TARGET_DIR/.devforge/templates/git-hooks/"*.sh; do
+    [ -f "$_gh" ] && chmod +x "$_gh"
+  done
+fi
+
+# ── Execute: prune removed helpers + restore launcher bits (FIX D) ─────────
+# .devforge/lib/ is 100% framework-owned (manifest src/devforge/lib/** → .devforge/lib/**).
+# The templateOwned loop OVERWRITES every current helper but never deletes
+# helpers the framework removed (e.g. onboard_helper). Mirror the source: any
+# file under .devforge/lib/ with no counterpart under src/devforge/lib/ is
+# stale and pruned. __pycache__ dirs are stripped wholesale (never reported).
+if [ -d "$TARGET_DIR/.devforge/lib" ]; then
+  find "$TARGET_DIR/.devforge/lib" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$TARGET_DIR/.devforge/lib" -type f 2>/dev/null | { while IFS= read -r fp; do
+    rel="${fp#"$TARGET_DIR"/.devforge/lib/}"
+    if [ ! -e "$TEMPLATE_DIR/src/devforge/lib/$rel" ]; then
+      rm -f "$fp"
+      overwrt "Pruned: .devforge/lib/$rel"
+    fi
+  done; } || true
+  # Remove now-empty subdirs left behind (e.g. a fully-pruned helper subpackage
+  # like _onboard/) so .devforge/lib/ exactly mirrors the source layout.
+  find "$TARGET_DIR/.devforge/lib" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+  # cp drops the executable bit on the extension-less launcher scripts.
+  for _ln in "$TARGET_DIR/.devforge/lib/"*_helper; do
+    [ -f "$_ln" ] && chmod +x "$_ln"
+  done
+fi
+
 # ── Execute: templateDerived (update generated files from templates) ───────
 # Three-way merge for template-derived files:
 # - baseline = .devforge/template/<path> (snapshot of last installed version, raw/un-substituted)
@@ -707,9 +830,13 @@ done
 # Applies only the template diff (baseline→new) to current, preserving project customizations.
 # Baseline is created at install time, so the first update can merge immediately (no gap).
 
-# Pre-generate agents once if any AGENT entries exist in this update run.
+# Pre-generate agents once if any AGENT work exists this run — either existing
+# snapshot agents to three-way merge OR new framework agents to install (FIX C).
 REGEN_AGENTS_DIR=""
-if echo "$DERIVED_UPDATE" | grep -q '^AGENT	'; then
+AGENT_WORK=false
+if echo "$DERIVED_UPDATE" | grep -q '^AGENT	'; then AGENT_WORK=true; fi
+if [ -n "$NEW_AGENTS" ]; then AGENT_WORK=true; fi
+if [ "$AGENT_WORK" = true ]; then
   if [ -n "$PYTHON3_CMD" ]; then
     REGEN_AGENTS_DIR="$(mktemp -d)"
     if ! $PYTHON3_CMD "$TEMPLATE_DIR/scripts/generate-agents.py" \
@@ -801,6 +928,55 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
   fi
 
   rm -f "$new_tpl"
+done
+
+# ── Execute: install NEW framework agents (FIX C) ──────────────────────────
+# An agent in the current roster but absent from the snapshot is genuinely new
+# (devils-advocate, qa-reviewer, …). Copy the regenerated+substituted file into
+# the live target AND write the raw regenerated file into the snapshot so future
+# runs three-way merge it. Same substitution + unresolved-placeholder guard as
+# the merge path. Requires REGEN_AGENTS_DIR; if regen failed it was already warned.
+echo "$NEW_AGENTS" | while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  if [ -z "$REGEN_AGENTS_DIR" ]; then continue; fi
+  regen_src="$REGEN_AGENTS_DIR/.claude/agents/$name"
+  if [ ! -f "$regen_src" ]; then
+    warn "Regenerated agent not found: $name — skipping new-agent install"
+    continue
+  fi
+  new_agent="$(mktemp)"
+  cp "$regen_src" "$new_agent"
+  if [ "$HAS_CONFIG" = true ]; then
+    substitute_placeholders "$new_agent" "$PROJECT_CONFIG"
+  fi
+  # First-write semantics (Finding 1): a new framework agent that a new command
+  # depends on (e.g. devils-advocate → /grill) MUST always land. Unlike the
+  # three-way-merge path, we do NOT skip on unresolved placeholders — install.sh
+  # ships agents with placeholders intact for the later /configure to fill, and
+  # an unconfigured target already expects unresolved placeholders everywhere.
+  # Write it anyway; the next /configure substitutes it.
+  mkdir -p "$TARGET_DIR/$AGENTS_TGT_DIR"
+  cp "$new_agent" "$TARGET_DIR/$AGENTS_TGT_DIR/$name"
+  if grep -q '{{[A-Z_]*}}' "$new_agent"; then
+    warn "Installed new agent $AGENTS_TGT_DIR/$name with unresolved placeholders — run /configure to populate them."
+  else
+    added "Installed new agent: $AGENTS_TGT_DIR/$name"
+  fi
+  rm -f "$new_agent"
+  # Seed the snapshot with the raw (un-substituted) regenerated file so future
+  # updates three-way merge this agent.
+  mkdir -p "$AGENTS_SNAP_DIR"
+  cp "$regen_src" "$AGENTS_SNAP_DIR/$name"
+done
+
+# ── Execute: prune framework-removed agents (FIX C) ────────────────────────
+# An agent in the snapshot but absent from the current roster was removed from
+# the framework. Delete it from both the live target and the snapshot.
+echo "$REMOVED_AGENTS" | while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  rm -f "$TARGET_DIR/$AGENTS_TGT_DIR/$name"
+  rm -f "$AGENTS_SNAP_DIR/$name"
+  overwrt "Pruned removed agent: $AGENTS_TGT_DIR/$name"
 done
 
 # Cleanup agent regeneration temp dir
@@ -904,6 +1080,30 @@ if [ -n "$PYTHON3_CMD" ]; then
   fi
 else
   warn "Python 3 not found — promoted commands will not be re-emitted this run"
+fi
+
+# ── Execute: prune removed commands (FIX B) ────────────────────────────────
+# After the emitter re-delivers the canonical command set, remove any *.md
+# directly under .claude/commands/ whose basename is no longer canonical
+# (dead commands like onboard / setup-wizard) along with its references dir.
+# Guard on Python — the emitter step above already warned if it is missing.
+if [ -n "$PYTHON3_CMD" ] && [ -d "$TARGET_DIR/.claude/commands" ]; then
+  canon_cmds="$($PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" --list 2>/dev/null || true)"
+  if [ -n "$canon_cmds" ]; then
+    for cf in "$TARGET_DIR/.claude/commands/"*.md; do
+      [ -f "$cf" ] || continue
+      cname="$(basename "$cf" .md)"
+      if ! printf '%s\n' "$canon_cmds" | grep -qxF "$cname"; then
+        rm -f "$cf"
+        if [ -d "$TARGET_DIR/.claude/commands/$cname" ]; then
+          rm -rf "$TARGET_DIR/.claude/commands/$cname"
+        fi
+        overwrt "Pruned command: .claude/commands/$cname.md"
+      fi
+    done
+  else
+    warn "Could not list canonical commands — skipping command prune this run"
+  fi
 fi
 
 # ── Write version marker ──────────────────────────────────────────────────

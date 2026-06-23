@@ -95,15 +95,36 @@ def emit(src: Path, target: Path, only: "str | None" = None) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Claude runtime emitter")
-    parser.add_argument("--src", type=Path, required=True, help="Template src/ directory")
-    parser.add_argument("--target", type=Path, required=True, help="Target project directory")
+    parser.add_argument("--src", type=Path, help="Template src/ directory")
+    parser.add_argument("--target", type=Path, help="Target project directory")
     parser.add_argument(
         "--only",
         default=None,
         metavar="NAME",
         help="Emit a single promoted command instead of all (must be in the promoted list).",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Print the canonical promoted command names (one per line) and exit; "
+        "ignores --src/--target.",
+    )
     args = parser.parse_args()
+
+    # Machine-readable contract: one promoted command name per line, in
+    # _PROMOTED order, no other output. Short-circuits before --src/--target
+    # are required so `claude.py --list` works with no other arguments.
+    if args.list:
+        for cmd_name in _PROMOTED:
+            print(cmd_name)
+        return 0
+
+    if args.src is None:
+        print("error: --src is required", file=sys.stderr)
+        return 1
+    if args.target is None:
+        print("error: --target is required", file=sys.stderr)
+        return 1
 
     if not args.src.is_dir():
         print(f"error: --src '{args.src}' is not a directory", file=sys.stderr)
