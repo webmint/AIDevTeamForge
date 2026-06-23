@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # /grill — Adversarial Design Grill
 
-`/grill` is a standalone, opt-in pipeline stage positioned BETWEEN `/plan` and `/breakdown`. It is the design-level mirror of `/review`: `/plan` builds the design, and `/grill` attacks the FINISHED design (`plan.md` and the `spec.md` it implements) before `/breakdown` spends effort decomposing it and `/implement` writes the code — while killing a fatally-flawed design is still cheap. It dispatches the `devils-advocate` adversary in ADVERSARIAL DESIGN-GRILL MODE, validates every attack against the actual artifacts to discard ungrounded ones, cross-examines the survivors with a refutation pass (default-dismiss unless the defect is demonstrable from quoted evidence), writes a findings report to `specs/[feature]/grill.md`, and recommends a 4-way disposition. Read-only — it never modifies source, never modifies the plan or spec, never auto-commits. State + render shape are owned by `.devforge/lib/grill_helper`; the orchestrator composes values via verb subcommands.
+`/grill` is a standalone, opt-in pipeline stage positioned BETWEEN `/plan` and `/breakdown`. It is the design-level mirror of `/review`: `/plan` builds the design, and `/grill` attacks the FINISHED design (`plan.md` and the `spec.md` it implements) before `/breakdown` spends effort decomposing it and `/implement` writes the code — while killing a fatally-flawed design is still cheap. It dispatches the `devils-advocate` adversary in ADVERSARIAL DESIGN-GRILL MODE, validates every attack against the actual artifacts to discard ungrounded ones, cross-examines the survivors with a refutation pass (default-dismiss unless the defect is demonstrable from quoted evidence), writes a findings report to `specs/[feature]/grill.md`, and recommends a 4-way disposition. Read-only on source — it never modifies source, never modifies the plan or spec; it WIP-commits only its OWN artifacts (the report + seed + state) in an install-repo-only, fail-soft `[WIP]` commit that folds into `/finalize`'s squash. State + render shape are owned by `.devforge/lib/grill_helper`; the orchestrator composes values via verb subcommands.
 
 The genuine gap it fills: `/plan` *compares* 2–3 alternatives and the architect picks a winner, but nobody ever attacks the winner — comparison is optimization, not refutation. By charter the architect is an OPTIMIZER / decision authority ("decide HOW", "own the final architectural call"), not an adversary chartered to attack the design it chose. So the chosen design is never adversarially attacked anywhere in the pipeline. `/grill` is the only place it is.
 
@@ -25,10 +25,12 @@ This file lives at `src/commands/grill/main.md` in the AIDevTeamForge template r
 
 The files this command writes under the repo are:
 
-- `specs/[feature]/grill.md` — the rendered design-grill report. Produced by the helper's `render-report` verb in PHASE 6; carries the surviving findings AND the recommended 4-way disposition. Idempotent: re-running `/grill` on the same feature OVERWRITES `grill.md` (the helper does an atomic write). Not committed, not staged.
-- `specs/[feature]/grill-seed.json` — written ONLY when the disposition is RE-ENTER-UPSTREAM. Produced by the helper's `write-seed` verb in PHASE 6; the structured BACKWARD handoff the named upstream command (`/specify`, `/discover`, or `/research`) consumes on re-entry so the re-run is directed, not a repeat. Not written for any other disposition.
+- `specs/[feature]/grill.md` — the rendered design-grill report. Produced by the helper's `render-report` verb in PHASE 6; carries the surviving findings AND the recommended 4-way disposition. Idempotent: re-running `/grill` on the same feature OVERWRITES `grill.md` (the helper does an atomic write).
+- `specs/[feature]/grill-seed.json` — written when the disposition is RE-ENTER-UPSTREAM OR REVISE-PLAN. Produced by the helper's `write-seed` verb in PHASE 6; the structured BACKWARD handoff the named re-entry command consumes on re-entry so the re-run is directed, not a repeat. On RE-ENTER-UPSTREAM the seed targets an upstream stage (`spec` / `discovery` / `research`) for `/specify` / `/discover` / `/research`; on REVISE-PLAN the seed targets `plan` for `/plan`. Not written for PROCEED or KILL.
 
 Per-feature run state lives in `specs/[feature]/grill-state.json` (helper-owned, advanced via `check-status-and-flip --feature-dir <feature>`).
+
+At the end of PHASE 6, `/grill` WIP-commits its own artifacts — `grill.md`, the per-feature `grill-state.json`, and `grill-seed.json` when `write-seed` ran — via `.devforge/lib/artifact_helper commit-artifacts`. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/grill` continues — the report is already written). The `[WIP]` commit folds into `/finalize`'s squash, so the final PR is unchanged.
 
 ### Intermediate scratch files (orchestrator-written, helper-consumed) — all under `$WORKDIR`
 
@@ -141,7 +143,7 @@ Carry the manifest's `feature_dir` forward as `<feature>` (every later `--featur
 
 ### 2.1 — Adversary-existence check
 
-The adversary agent is present when `.claude/agents/devils-advocate.md` exists. If it is ABSENT, tell the user to re-run `update.sh` to (re)generate the `devils-advocate` agent and end the turn — `/grill` cannot run without its single finder (there is no graceful-degradation fallback; the adversary IS the command). When present, carry `devils-advocate` forward as the single present finder for PHASE 4's `route-refutation --finders` and PHASE 6's `render-report --finders`.
+The adversary agent is present when `.claude/agents/devils-advocate.md` exists. If it is ABSENT, tell the user to re-run `update.sh` to (re)generate the `devils-advocate` agent and end the turn — `/grill` cannot run without its single finder (there is no graceful-degradation fallback; the adversary IS the command). When present, carry `devils-advocate` forward as the single present finder — it is the author passed into PHASE 4's `route-refutation --finders` (alongside the refuters PHASE 4.0 determines) and the lone finder PHASE 6 passes to `render-report --finders`.
 
 ### 2.2 — Build the adversary brief
 
@@ -194,7 +196,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-grill"
 printf '%s' '{"confirmed": [], "dismissed": [], "uncertain": [], "contested": []}' > "$WORKDIR/partition.json"
 ```
 
-In the PHASE-6 `render-report` call, pass `--refuters ""` (no refuter ran), `--disposition PROCEED`, and a `--rationale` stating the adversary found no grounded design defect. The report then renders a clean, no-findings grill with a PROCEED disposition.
+In the PHASE-6 `render-report` call, pass `--refuters ""` (no refuter ran), `--finders-skipped ""` (PHASE 4.0 was skipped along with the rest of PHASE 4, so no refuter was found absent — nothing was consulted because there was nothing to refute), `--disposition PROCEED`, and a `--rationale` stating the adversary found no grounded design defect. The report then renders a clean, no-findings grill with a PROCEED disposition.
 
 ## PHASE 4 — Refute (cross-examination)
 
@@ -204,16 +206,20 @@ In the PHASE-6 `render-report` call, pass `--refuters ""` (no refuter ran), `--d
 
 Refutation runs ONCE on the working list, AFTER validation and BEFORE classification. Its job is to invert the default from "assume a defect" to "assume correct unless proven": each finding is cross-examined by a non-author refuter whose default verdict is NOT-a-defect, and only the survivors flow to the classification + report. The refuters are the architect-EXCLUDED priority `[code-reviewer, qa-reviewer, security-reviewer]` — the architect is NEVER a refuter (it authored the design and must judge neither the attacks on it nor the refutation). Read `references/refutation-preamble.md` in full now — it is the refuter brief text and the verdict output contract, injected verbatim by `render-verify-brief`.
 
-The four steps below are a per-refuter dispatch loop.
+The steps below are a per-refuter dispatch loop, opened by a present-refuter determination.
+
+### 4.0 — Determine the present refuters
+
+`route-refutation` can only SELECT a refuter that is passed to it in `--finders`; the priority list `[code-reviewer, qa-reviewer, security-reviewer]` only RANKS among the agents passed, it does not make any of them present. So before routing, determine which refuters are installed: for EACH agent in the architect-excluded priority order `[code-reviewer, qa-reviewer, security-reviewer]`, test whether `.claude/agents/<name>.md` exists (the same presence test PHASE 2.1 uses for `devils-advocate`). Build two comma-lists from the result — `<present-refuters>` (the installed ones, in priority order) and `<skipped-refuters>` (the absent ones). These three are plan-15 standard core reviewers and are normally all installed, so `<skipped-refuters>` is normally empty. Carry both lists forward: 4.1 passes `<present-refuters>` into `route-refutation --finders`, and PHASE 6 passes `<skipped-refuters>` into `render-report --finders-skipped`.
 
 ### 4.1 — Route each finding to a non-author refuter
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-grill"
-.devforge/lib/grill_helper route-refutation --findings "$WORKDIR/validated.json" --finders "devils-advocate" > "$WORKDIR/refutation-routes.json"
+.devforge/lib/grill_helper route-refutation --findings "$WORKDIR/validated.json" --finders "devils-advocate,<present-refuters>" > "$WORKDIR/refutation-routes.json"
 ```
 
-`route-refutation` groups the working list by each finding's `agent` (the authoring finder — `devils-advocate`) and assigns each group the FIRST agent, by the fixed architect-excluded priority order `[code-reviewer, qa-reviewer, security-reviewer]`, that is NOT the author. Because the sole author is `devils-advocate` (never in the refuter priority list), every finding routes to the first PRESENT priority refuter. Stdout (captured to `$WORKDIR/refutation-routes.json`) is a list of `{refuter, findings}` groups — each group is one refuter and the bare-array subset of findings routed to it. `--finders "devils-advocate"` passes the present-finders list (only `devils-advocate` ran); the architect is never returned as a refuter because it is absent from the priority list. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+`route-refutation` selects a refuter for each finding from the agents passed in `--finders`, choosing the FIRST in the architect-excluded priority order `[code-reviewer, qa-reviewer, security-reviewer]` that is present in `--finders` AND is not the finding's author. `devils-advocate` is passed because it is the author — the `!= author` rule then excludes it from refuting its own findings; the present refuters (4.0's `<present-refuters>`) must be passed too or none can be selected and the finding falls back to author self-refutation. The architect is never passed and never a refuter. Because `<present-refuters>` is passed in `--finders` alongside `devils-advocate`, the author (`devils-advocate`) is in the pool but never chosen (excluded by the `!= author` rule), and `code-reviewer` — first in the priority list — receives all findings when it is present. Stdout (captured to `$WORKDIR/refutation-routes.json`) is a list of `{refuter, findings}` groups — each group is one refuter and the bare-array subset of findings routed to it. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
 
 ### 4.2 — Dispatch each refuter over its routed subset, in batches
 
@@ -274,9 +280,19 @@ This is ORCHESTRATOR REASONING, not a helper verb — there is no `classify` ver
 
 PROCEED is the no-surviving-attack / all-accepted-as-risk case — outside this YES/NO tree (the empty-`validated.json` branch in PHASE 3 already routes there; reach it here too when every survivor is accepted as risk).
 
-Synthesize ONE recommended disposition for the whole run (the most severe survivor's routing wins: KILL > RE-ENTER-UPSTREAM > REVISE-PLAN > PROCEED) plus a `rationale` paragraph naming the surviving findings that drove it. For a **RE-ENTER-UPSTREAM** disposition, ALSO compose the re-entry-seed inputs PHASE 6's `write-seed` needs: `target_stage` (the nearest stage as the SEED TOKEN `spec` | `discovery` | `research` — NOT the slash-command name `/specify` / `/discover` / `/research`; the schema rejects any other value with exit 2), `prior_conclusion` (what that upstream stage concluded that is now invalidated), `invalidating_evidence` (the grounded grill finding that invalidates it), `must_satisfy` (what the re-run must additionally satisfy), `cycle_count` (the bounded-compounding-loop counter — 1 for a first grill, incremented when this run itself re-entered from a prior seed), `carried_findings` (prior findings carried forward, monotonic — empty on a first grill), and `provenance` (a pointer to this `specs/[feature]/grill.md` / the plan path). Carry the disposition + rationale (+ the seed inputs for RE-ENTER-UPSTREAM) forward to PHASE 6.
+Synthesize ONE recommended disposition for the whole run (the most severe survivor's routing wins: KILL > RE-ENTER-UPSTREAM > REVISE-PLAN > PROCEED) plus a `rationale` paragraph naming the surviving findings that drove it. For a **RE-ENTER-UPSTREAM** OR a **REVISE-PLAN** disposition, ALSO compose the re-entry-seed inputs PHASE 6's `write-seed` needs:
 
-## PHASE 6 — Report (+ seed on RE-ENTER-UPSTREAM)
+- `target_stage` — the SEED TOKEN, NOT the slash-command name. For RE-ENTER-UPSTREAM it is the nearest upstream stage `spec` | `discovery` | `research`; for REVISE-PLAN it is `plan`. `write-seed --target-stage` accepts all four (`spec` | `discovery` | `research` | `plan`); it rejects any other value with exit 2.
+- `prior_conclusion` — for RE-ENTER-UPSTREAM, what that upstream stage concluded that is now invalidated; for REVISE-PLAN, the flawed plan decision the revision must replace.
+- `invalidating_evidence` — the grounded grill finding that invalidates it.
+- `must_satisfy` — for RE-ENTER-UPSTREAM, what the re-run must additionally satisfy; for REVISE-PLAN, the fix the revised plan must meet.
+- `cycle_count` — the bounded-compounding-loop counter (1 for a first grill, incremented when this run itself re-entered from a prior seed).
+- `carried_findings` — prior findings carried forward, monotonic (empty on a first grill; for REVISE-PLAN, the remaining confirmed findings the revision must address).
+- `provenance` — a pointer to this `specs/[feature]/grill.md` / the plan path.
+
+Carry the disposition + rationale (+ the seed inputs for RE-ENTER-UPSTREAM or REVISE-PLAN) forward to PHASE 6.
+
+## PHASE 6 — Report (+ seed on RE-ENTER-UPSTREAM or REVISE-PLAN)
 
 ```bash
 .devforge/lib/grill_helper check-status-and-flip --feature-dir <feature> --to report
@@ -287,7 +303,7 @@ Capture today's date, then render the report from the partition + the PHASE-5 di
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-grill"
 DATE="$(date +%Y-%m-%d)"
-.devforge/lib/grill_helper render-report --partition "$WORKDIR/partition.json" --feature <feature> --date "$DATE" --finders "devils-advocate" --finders-skipped "<skipped-csv>" --refuters "<refuters-csv>" --source-root <source-root> --framework "<framework>" --scope-files <file-count> --disposition <DISPOSITION> --rationale "<rationale>"
+.devforge/lib/grill_helper render-report --partition "$WORKDIR/partition.json" --feature <feature> --date "$DATE" --finders "devils-advocate" --finders-skipped "<skipped-refuters>" --refuters "<refuters-csv>" --source-root <source-root> --framework "<framework>" --scope-files <file-count> --disposition <DISPOSITION> --rationale "<rationale>"
 ```
 
 `render-report` reads `$WORKDIR/partition.json` (the four buckets from PHASE 4) directly and renders the full grill markdown (skeleton documented in `references/report-format.md`), writing it to `specs/[feature]/grill.md` via an atomic write, OVERWRITING any prior `grill.md` (idempotent). The flags:
@@ -296,8 +312,8 @@ DATE="$(date +%Y-%m-%d)"
 - `--feature <feature>` — the resolved feature dir; `grill.md` is written here.
 - `--date "$DATE"` — `YYYY-MM-DD` (required for deterministic output; the helper never calls the clock).
 - `--finders "devils-advocate"` — the single finder invoked.
-- `--finders-skipped "<skipped-csv>"` — the comma-separated names of any refuter agents (code-reviewer / qa-reviewer / security-reviewer) the orchestrator found ABSENT during PHASE 4; the helper renders them on the report's "Finders skipped (not installed): …" line. This is normally empty — the PHASE-2.1 adversary-existence check hard-exits if `devils-advocate` itself is missing, and the refuters are standard always-present agents — so pass `""` when none were skipped.
-- `--refuters "<refuters-csv>"` — the refuter agents that actually ran (the distinct `refuter` values from `$WORKDIR/refutation-routes.json`), comma-separated. Pass `""` when no refuter ran (the empty-`validated.json` branch).
+- `--finders-skipped "<skipped-refuters>"` — in `/grill`, refuters are the only non-adversary agents, so the shared `--finders-skipped` flag (a report-labeling flag inherited from `/audit` + `/review`, where the report's "finders" ARE the refuter pool) carries them — the `<skipped-refuters>` comma-list PHASE 4.0 built: the refuter agents (code-reviewer / qa-reviewer / security-reviewer) the 4.0 presence check found ABSENT (no `.claude/agents/<name>.md`); the helper renders them on the report's "Finders skipped (not installed): …" line. This is normally empty — the refuters are plan-15 standard core reviewers normally all installed — so pass `""` when 4.0 found none skipped.
+- `--refuters "<refuters-csv>"` — the refuter agents that actually ran: the distinct `refuter` values read from `$WORKDIR/refutation-routes.json`, comma-separated. In the normal grill case this is the same set as `<present-refuters>` (every present refuter is non-author and receives at least one finding when findings exist), but read it from the routes file rather than reusing `<present-refuters>` directly. Pass `""` when no refuter ran (the empty-`validated.json` branch).
 - `--source-root <source-root>` — the Source Root from `$WORKDIR/preflight.json`.
 - `--framework "<framework>"` — the Framework / Language from `$WORKDIR/preflight.json`.
 - `--scope-files <file-count>` — the plan-scope file count (the static manifest scopes the plan + its referenced specs; pass `2` for the plan + spec).
@@ -307,14 +323,23 @@ DATE="$(date +%Y-%m-%d)"
 
 `render-report` validates the disposition (exit 2 on a bad value, or on a `--re-entry-target` that is missing for RE-ENTER-UPSTREAM or present for another disposition). The report leads with CONFIRMED findings (a force-ranked Top Priorities list + a by-file/by-category grouped listing), surfaces high-stakes `[CONTESTED]` findings IN that headline flagged, drops dismissed + low-stakes uncertain findings to a `## Dismissed / Worth a Glance` appendix, and renders the `## Disposition` section. Stdout is a JSON ack `{path, confirmed, contested, dismissed, uncertain}`; the `path` is the written `specs/[feature]/grill.md`. On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
 
-**RE-ENTER-UPSTREAM only — emit the backward seed.** When and only when the disposition is RE-ENTER-UPSTREAM, ALSO write the re-entry seed the named upstream command consumes on re-entry:
+**RE-ENTER-UPSTREAM OR REVISE-PLAN — emit the backward seed.** When the disposition is RE-ENTER-UPSTREAM OR REVISE-PLAN, ALSO write the re-entry seed the named re-entry command consumes on re-entry. `<stage>` is the PHASE-5 `target_stage` token: the nearest upstream stage (`spec` | `discovery` | `research`) for RE-ENTER-UPSTREAM, OR `plan` for REVISE-PLAN.
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-grill"
+# <stage> is per-disposition: the upstream stage for RE-ENTER-UPSTREAM, or `plan` for REVISE-PLAN.
 .devforge/lib/grill_helper write-seed --feature <feature> --target-stage <stage> --prior-conclusion "<prior-conclusion>" --invalidating-evidence "<invalidating-evidence>" --must-satisfy "<must-satisfy>" --cycle-count <N> --carried-findings "<carried-csv>" --provenance "specs/[feature]/grill.md"
 ```
 
-`write-seed` builds a `ReEntrySeed` from the PHASE-5 seed inputs and writes `specs/[feature]/grill-seed.json` via an atomic write. `--target-stage` (`spec` | `discovery` | `research`), `--prior-conclusion`, `--invalidating-evidence`, `--must-satisfy`, and `--provenance` are all REQUIRED and non-empty (the schema rejects an empty value with exit 2). `--cycle-count` is an int ≥ 1 (default 1; increment when this run itself re-entered from a prior seed). `--carried-findings` is a comma-separated list of prior finding descriptions carried forward (monotonic compounding; may be empty). Stdout is a JSON ack `{path}`. Do NOT call `write-seed` for any other disposition — no seed is produced when `/grill` does not route upstream (this is what keeps the upstream consumer blocks inert). On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+`write-seed` builds a `ReEntrySeed` from the PHASE-5 seed inputs and writes `specs/[feature]/grill-seed.json` via an atomic write. `--target-stage` (`spec` | `discovery` | `research` | `plan`), `--prior-conclusion`, `--invalidating-evidence`, `--must-satisfy`, and `--provenance` are all REQUIRED and non-empty (the schema rejects an empty value with exit 2). `--cycle-count` is an int ≥ 1 (default 1; increment when this run itself re-entered from a prior seed). `--carried-findings` is a comma-separated list of prior finding descriptions carried forward (monotonic compounding; may be empty). Stdout is a JSON ack `{path}`. Do NOT call `write-seed` for PROCEED or KILL — no seed is produced for those two dispositions (this is what keeps the consumer blocks inert when `/grill` neither routes upstream nor recommends a plan revision). On a non-zero exit, copy the helper's stderr VERBATIM and end the turn.
+
+**WIP-commit the grill artifacts.** Now that `grill.md` (and, when `write-seed` ran above, `grill-seed.json`) is written, commit `/grill`'s own outputs so the work is git-safe at this step. Run this UNCONDITIONALLY (every `/grill` run reaches here with a written `grill.md`). Include `grill-seed.json` in `--paths` ONLY when `write-seed` ran this turn (i.e. the seed file was written) — omit it otherwise; list only what this run actually produced. `grill-state.json` is always included — it lives under `specs/[feature]/` and is part of what this run wrote:
+
+```bash
+.devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/grill.md", "specs/<feature>/grill-state.json"]' --label 'grill: <NNN>-<slug>'
+```
+
+(When `write-seed` ran, add the seed path: `--paths '["specs/<feature>/grill.md", "specs/<feature>/grill-seed.json", "specs/<feature>/grill-state.json"]'`.) Substitute `<feature>` with the resolved feature dir and `<NNN>-<slug>` with the feature id. `commit-artifacts` stages ONLY the named paths and makes a `[WIP] grill: <NNN>-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the report is already written, so note the warning and CONTINUE; do NOT end the turn); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged.
 
 Then mark the run complete so an interrupted re-run can distinguish a finished grill from a stopped one:
 
@@ -324,21 +349,21 @@ Then mark the run complete so an interrupted re-run can distinguish a finished g
 
 ## PHASE 7 — Human gate (the user owns the verdict)
 
-The disposition is a RECOMMENDATION; the human makes the final call. Present the recommended disposition + its rationale (print the report's `## Disposition` block, or summarize it), tell the user `specs/[feature]/grill.md` was written (and, on RE-ENTER-UPSTREAM, `specs/[feature]/grill-seed.json`), and capture the user's choice via AskUserQuestion so the next step is explicit:
+The disposition is a RECOMMENDATION; the human makes the final call. Present the recommended disposition + its rationale (print the report's `## Disposition` block, or summarize it), tell the user `specs/[feature]/grill.md` was written (and, on RE-ENTER-UPSTREAM OR REVISE-PLAN, `specs/[feature]/grill-seed.json`), and capture the user's choice via AskUserQuestion so the next step is explicit:
 
 > The grill recommends a disposition for this plan. What do you want to do?
 
 Options (2–4; AskUserQuestion auto-injects "Other"):
 
 - `Proceed` — the plan is sound; run `/breakdown`.
-- `Revise plan` — re-run `/plan` (or hand-patch `plan.md`), then optionally re-run `/grill`.
+- `Revise plan` — re-run `/plan` (which detects and consumes the emitted `grill-seed.json` so the revision is directed) or hand-patch `plan.md`, then optionally re-run `/grill`.
 - `Re-enter upstream` — re-run the named upstream command (`/specify`, `/discover`, or `/research`), handing it `grill-seed.json`.
 - `Kill` — stop; the design is fatally flawed (re-run `/plan` with a wholly different approach).
 
-(Show only the options that match the run — always offer the recommended disposition's option plus `Proceed`/`Kill` as the bracketing choices; omit `Re-enter upstream` when no seed was written.) Then act on the choice:
+(Always offer `Proceed` and `Kill` as the outer brackets, and `Revise plan` as an always-available choice (recommended when the disposition is REVISE-PLAN). Omit `Re-enter upstream` when the disposition is not RE-ENTER-UPSTREAM — it is only meaningful when a seed targeting an upstream stage was written.) Then act on the choice:
 
 - **Proceed** → tell the user the next command is `/breakdown`.
-- **Revise plan** → tell the user to re-run `/plan` (then optionally re-`/grill`).
+- **Revise plan** → tell the user to re-run `/plan`, which will detect and consume the emitted `grill-seed.json` (`target_stage="plan"`) so the revision is directed, not a repeat (or hand-patch `plan.md`), then optionally re-`/grill`.
 - **Re-enter upstream** → tell the user to re-run the named upstream command, which will detect and consume `grill-seed.json` so the re-run is directed, not a repeat. **Bounded loop:** after 2 kill→re-propose / re-entry cycles on the same feature (the seed's `cycle_count`), escalate to the user — "this feature may be intractable as framed — decide" — rather than looping again.
 - **Kill** → stop; the design is abandoned. The recovery is a wholly new design via re-run `/plan`.
 
@@ -358,7 +383,7 @@ rm -rf "$WORKDIR"
 5. **No relitigation** — the adversary attacks the CHOSEN design's demonstrable defects, not its taste; a "I would have built it differently" objection is dismissed by the refutation pass. A grounded defect inherited from upstream routes RE-ENTER-UPSTREAM, it does not become a plan attack.
 6. **Constitution violations are always Critical** — never downgraded, regardless of confidence; a `[CONSTITUTION-VIOLATION]` the refuter dismissed is surfaced `[CONTESTED]` in the headline, never buried.
 7. **The disposition is a RECOMMENDATION** — `/grill` recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; the human owns the final call at the `/breakdown` approval gate. The backward re-entry loop is bounded (escalate to the human after the cap).
-8. **Read-only** — no source modifications, no fixes to the plan or spec, no auto-commit of the report or the seed.
+8. **Read-only on source** — no source modifications, no fixes to the plan or spec. `/grill` does WIP-commit its OWN artifacts (`grill.md` + `grill-state.json` +, when `write-seed` ran, `grill-seed.json`) via `artifact_helper commit-artifacts` at the end of PHASE 6 — an install-repo-only, fail-soft `[WIP]` commit that folds into `/finalize`'s squash; it never commits source or modifies the plan/spec.
 9. **Wrapper-mode aware** — the adversary reads source files from the resolved Source Root (`source_root` from `preflight`); `specs/[feature]/` always lives at the workspace root.
 10. **Cleanup is last** — all intermediate scratch lives in `$WORKDIR` (`${TMPDIR:-/tmp}/forge-grill`), outside the repo, and is swept by the single `rm -rf "$WORKDIR"` at the end of PHASE 7, never mid-run.
 ```

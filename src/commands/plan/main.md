@@ -96,6 +96,22 @@ Stdout is one of four forms:
 - `drift <a>..<b> <file-1> <file-2> ...` — one or more spec-cited files changed since the spec was stamped. Tell the user the spec's cited files changed since it was stamped, listing the changed files from the `<file-...>` tokens. If the `drift` token carries no `<file-...>` tokens (only the two SHAs), do not claim specific files changed — tell the user the spec has drifted from its stamp but the cited-file list could not be computed (the spec file may have moved). Then ask via `AskUserQuestion` `"Spec-cited files changed since the spec was written — proceed with planning?"` — single-line text — with options `["proceed", "cancel"]`. On `cancel`, tell the user `"Re-check the spec against the changed files before re-running /plan."` and end the turn. On `proceed`, continue to Phase 0b with the resolved path.
 - `not-a-git-repo` (exit 2) — the drift check cannot run (no git repository / no HEAD / git binary missing). Tell the user `"Spec drift check unavailable (not a git repository); proceeding without it."` and proceed to Phase 0b with the resolved path. The drift check is advisory — a non-git target must NOT block planning.
 
+## PHASE 0a.7: Re-entry from /grill (conditional — skip if no seed)
+
+Before beginning the plan work, check for a `/grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"plan"` (this command's stage), you are re-entering from a `/grill` REVISE-PLAN disposition: the design-time grill proved correctable defects in this feature's `plan.md`, and this re-run must address the confirmed findings rather than re-derive the flawed plan. Read the seed DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `plan_helper` verb to read it (the read stays helper-free so this block remains valid even if `/grill` is later removed). The seed carries these fields:
+
+- `feature` — the feature this directive applies to; state it up front (do NOT infer it from the file path).
+- `prior_conclusion` — the flawed plan decision `/grill` invalidated; do NOT repeat it in the revised plan.
+- `invalidating_evidence` — how `/grill` proved that plan decision wrong (grounded in `plan.md` / `spec.md` / code).
+- `must_satisfy` — what the revised plan must now satisfy; address it explicitly in the revised `plan.md`.
+- `carried_findings` — the remaining confirmed grill findings to address; stay monotonic (never re-introduce a defect a prior pass fixed).
+
+State up front in your first user-facing message that you are running in grill-revision mode for the named `feature`, and how this run addresses each `must_satisfy` item. The planning phases below run normally with this directive constraining what they produce — Phase 2 writes `plan.md` to the same path (overwriting the prior draft), so the result REPLACES rather than hand-patches the existing plan; the grill directive ensures the replacement addresses the confirmed findings rather than re-deriving the flawed decisions.
+
+This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` (the seed's lifecycle is owned by the next `/grill` run — v1 simplification; do not add seed-deletion logic here).
+
+When no `specs/*/grill-seed.json` file matches `target_stage == "plan"`, this block is a no-op — proceed normally to Phase 0b with the resolved path (the normal case — `/grill` is opt-in, and no seed with `target_stage="plan"` is ever produced unless a `/grill` run reaches a REVISE-PLAN verdict).
+
 ## PHASE 0b: Status flip
 
 The act of running `/plan` constitutes approval of the spec for planning. Flip Draft → Approved structurally via the helper:

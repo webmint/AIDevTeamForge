@@ -1279,7 +1279,8 @@ class TestWriteSeed(unittest.TestCase):
         self.assertEqual(seed["cycle_count"], 3)
 
     def test_all_target_stages_accepted(self):
-        for stage in ("spec", "discovery", "research"):
+        # Phase 1: "plan" is now the 4th valid target stage.
+        for stage in ("spec", "discovery", "research", "plan"):
             feat_dir = os.path.join(self.tmp, "s-{0}".format(stage))
             os.makedirs(feat_dir, exist_ok=True)
             args = [
@@ -1294,6 +1295,33 @@ class TestWriteSeed(unittest.TestCase):
             code, out, err = _capture(args)
             self.assertEqual(code, 0,
                              "stage {0!r} should be accepted; err: {1}".format(stage, err))
+
+    def test_write_seed_target_stage_plan_round_trip(self):
+        """Phase 1+2: write-seed with --target-stage plan writes valid JSON."""
+        feat_dir = os.path.join(self.tmp, "s-plan")
+        os.makedirs(feat_dir, exist_ok=True)
+        args = [
+            "write-seed",
+            "--feature", feat_dir,
+            "--target-stage", "plan",
+            "--prior-conclusion", "Plan assumed synchronous payment processing.",
+            "--invalidating-evidence", "grill F-002: SLA requires < 200ms.",
+            "--must-satisfy", "Plan must address async processing.",
+            "--provenance", os.path.join(feat_dir, "grill.md"),
+            "--cycle-count", "2",
+            "--carried-findings", "prior finding A,prior finding B",
+        ]
+        code, out, err = _capture(args)
+        self.assertEqual(code, 0, "write-seed with --target-stage plan failed; err: {0}".format(err))
+        ack = json.loads(out)
+        self.assertIn("path", ack)
+        # Round-trip: read back the JSON and verify target_stage == "plan".
+        with open(ack["path"], encoding="utf-8") as fh:
+            seed = json.load(fh)
+        self.assertEqual(seed["target_stage"], "plan")
+        self.assertEqual(seed["source"], "grill")
+        self.assertEqual(seed["cycle_count"], 2)
+        self.assertEqual(seed["carried_findings"], ["prior finding A", "prior finding B"])
 
 
 if __name__ == "__main__":

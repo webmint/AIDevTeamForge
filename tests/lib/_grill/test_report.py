@@ -66,6 +66,7 @@ if str(_LIB_DIR) not in sys.path:
 
 from _grill._report import (  # noqa: E402
     DISPOSITION_VERDICTS,
+    _UPSTREAM_STAGES,
     build_seed,
     render_report,
     write_grill_report,
@@ -163,7 +164,12 @@ class TestRenderReportStructure(unittest.TestCase):
             self.assertIn("**Verdict**: {0}".format(verdict), result, msg=verdict)
 
     def test_re_enter_upstream_includes_target_stage_in_disposition(self):
-        for stage in SEED_TARGET_STAGES:
+        # Iterate only _UPSTREAM_STAGES (spec/discovery/research) -- "plan" is
+        # a valid SEED_TARGET_STAGES entry for write-seed/build_seed but is NOT
+        # a valid re_entry_target for RE-ENTER-UPSTREAM (REVISE-PLAN is the
+        # correct disposition for same-stage plan revisions; "plan" passed here
+        # raises ValueError per the _UPSTREAM_STAGES guard).
+        for stage in _UPSTREAM_STAGES:
             kwargs = _minimal_render_kwargs(
                 disposition="RE-ENTER-UPSTREAM", re_entry_target=stage
             )
@@ -489,6 +495,20 @@ class TestRenderReportValidation(unittest.TestCase):
 
     def test_re_enter_upstream_bad_target_raises(self):
         kwargs = _minimal_render_kwargs(
+            disposition="RE-ENTER-UPSTREAM", re_entry_target="bogus-stage"
+        )
+        with self.assertRaises(ValueError) as ctx:
+            render_report(**kwargs)
+        self.assertIn("bogus-stage", str(ctx.exception))
+
+    def test_re_enter_upstream_plan_target_raises(self):
+        # "plan" is valid in SEED_TARGET_STAGES (for write-seed/build_seed
+        # with a REVISE-PLAN seed) but is NOT valid as a RE-ENTER-UPSTREAM
+        # re_entry_target.  RE-ENTER-UPSTREAM means the defect is rooted in an
+        # upstream stage (spec/discovery/research).  "plan" passed here must
+        # raise ValueError per the _UPSTREAM_STAGES guard added in the
+        # Design-X fix.
+        kwargs = _minimal_render_kwargs(
             disposition="RE-ENTER-UPSTREAM", re_entry_target="plan"
         )
         with self.assertRaises(ValueError) as ctx:
@@ -616,8 +636,10 @@ class TestBuildSeed(unittest.TestCase):
         self.assertEqual(seed.provenance, "specs/007-payment/plan.md")
 
     def test_invalid_target_stage_raises(self):
+        # "plan" was previously invalid here; it is now a valid stage per
+        # Phase 1.  Use a genuinely bogus value.
         with self.assertRaises(ValueError):
-            build_seed(**_valid_seed_kwargs(target_stage="plan"))
+            build_seed(**_valid_seed_kwargs(target_stage="bogus"))
 
     def test_cycle_count_zero_raises(self):
         with self.assertRaises(ValueError):

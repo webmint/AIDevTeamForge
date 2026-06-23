@@ -833,7 +833,7 @@ def cmd_write_seed(args):
     """Build a ReEntrySeed and write it to <feature>/grill-seed.json.
 
     Input: --feature <dir>               (feature directory)
-           --target-stage <stage>        (spec|discovery|research)
+           --target-stage <stage>        (spec|discovery|research|plan)
            --prior-conclusion <str>      (what the upstream stage concluded)
            --invalidating-evidence <str> (the grounded finding that invalidates it)
            --must-satisfy <str>          (what the re-run must additionally satisfy)
@@ -992,7 +992,7 @@ _SUBCOMMAND_REGISTRY = [
     ),
     (
         "write-seed",
-        "Build + write grill-seed.json backward handoff for RE-ENTER-UPSTREAM (Phase 5).",
+        "Build + write grill-seed.json backward handoff for RE-ENTER-UPSTREAM or REVISE-PLAN (Phase 5).",
         cmd_write_seed,
     ),
 ]
@@ -1446,7 +1446,7 @@ def _register_subcommands(subparsers):
                 dest="target_stage",
                 metavar="STAGE",
                 help=(
-                    "Upstream stage to re-enter: spec | discovery | research."
+                    "Re-entry target stage: spec | discovery | research | plan."
                 ),
             )
             sp.add_argument(

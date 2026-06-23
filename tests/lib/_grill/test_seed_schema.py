@@ -63,6 +63,13 @@ class TestModuleConstants(unittest.TestCase):
         self.assertIsInstance(SEED_SCHEMA_VERSION, str)
         self.assertTrue(len(SEED_SCHEMA_VERSION) > 0)
 
+    # Phase 1: "plan" added as the 4th valid target stage.
+    def test_plan_in_seed_target_stages(self):
+        self.assertIn("plan", SEED_TARGET_STAGES)
+
+    def test_seed_target_stages_has_exactly_four_members(self):
+        self.assertEqual(len(SEED_TARGET_STAGES), 4)
+
 
 # ---------------------------------------------------------------------------
 # Happy path: one test per target_stage value.
@@ -84,6 +91,39 @@ class TestReEntrySeedHappyPath(unittest.TestCase):
     def test_target_stage_research(self):
         seed = _make_seed(target_stage="research")
         self.assertEqual(seed.target_stage, "research")
+
+    def test_target_stage_plan(self):
+        """Phase 1: target_stage='plan' is the new 4th valid value."""
+        seed = _make_seed(
+            target_stage="plan",
+            carried_findings=["prior finding from first grill pass"],
+            cycle_count=2,
+        )
+        self.assertEqual(seed.target_stage, "plan")
+        self.assertEqual(seed.source, "grill")
+        self.assertEqual(seed.cycle_count, 2)
+        self.assertEqual(seed.carried_findings, ["prior finding from first grill pass"])
+
+    def test_target_stage_plan_all_ten_fields(self):
+        """Phase 1: full 10-field construction with target_stage='plan'."""
+        seed = ReEntrySeed(
+            seed_version="1",
+            source="grill",
+            target_stage="plan",
+            feature="005-payment-flow",
+            prior_conclusion="Plan assumed synchronous payment processing.",
+            invalidating_evidence="grill F-002: SLA requires < 200ms; sync path is 800ms.",
+            must_satisfy="Plan must address async payment processing with idempotency.",
+            cycle_count=1,
+            carried_findings=[],
+            provenance="specs/005-payment-flow/grill.md",
+        )
+        self.assertEqual(seed.seed_version, "1")
+        self.assertEqual(seed.source, "grill")
+        self.assertEqual(seed.target_stage, "plan")
+        self.assertEqual(seed.feature, "005-payment-flow")
+        self.assertEqual(seed.cycle_count, 1)
+        self.assertEqual(seed.carried_findings, [])
 
     def test_carried_findings_with_items(self):
         seed = _make_seed(
@@ -191,8 +231,11 @@ class TestSourceValidation(unittest.TestCase):
 class TestTargetStageValidation(unittest.TestCase):
 
     def test_invalid_target_stage(self):
+        # "bogus" is not in SEED_TARGET_STAGES and must raise ValueError.
+        # (Note: "plan" was previously invalid and used here; it is now a valid
+        # stage per Phase 1 — replaced with a genuinely invalid value.)
         with self.assertRaises(ValueError) as ctx:
-            _make_seed(target_stage="plan")
+            _make_seed(target_stage="bogus")
         self.assertIn("target_stage", str(ctx.exception))
 
     def test_invalid_target_stage_empty(self):
