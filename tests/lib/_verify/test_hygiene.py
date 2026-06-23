@@ -624,6 +624,7 @@ class TestOutputShape(unittest.TestCase):
         required = {
             "scope_creep", "leftover_artifacts",
             "scope_creep_checked", "files_checked", "files_unreadable",
+            "files_skipped",
         }
         self.assertEqual(set(result.keys()), required)
 
@@ -815,8 +816,331 @@ class TestCheckHygieneCLI(unittest.TestCase):
         expected = {
             "scope_creep", "leftover_artifacts",
             "scope_creep_checked", "files_checked", "files_unreadable",
+            "files_skipped",
         }
         self.assertEqual(set(data.keys()), expected)
+
+
+# ---------------------------------------------------------------------------
+# Tests — _is_code_file predicate (direct unit tests)
+# ---------------------------------------------------------------------------
+
+class TestIsCodeFile(unittest.TestCase):
+    """_is_code_file returns False for known prose/data files, True for code."""
+
+    def setUp(self):
+        # Import the private predicate for direct testing.
+        from _verify._hygiene import _is_code_file
+        self._is_code_file = _is_code_file
+
+    def _check(self, path, expected):
+        result = self._is_code_file(path)
+        self.assertEqual(
+            result, expected,
+            "_is_code_file({!r}) expected {} got {}".format(path, expected, result),
+        )
+
+    # --- Skip by extension ---
+
+    def test_md_is_skipped(self):
+        self._check("README.md", False)
+
+    def test_md_uppercase_is_skipped(self):
+        """Extension check is case-insensitive."""
+        self._check("notes.MD", False)
+
+    def test_html_is_skipped(self):
+        self._check("design/reference.html", False)
+
+    def test_htm_is_skipped(self):
+        self._check("page.htm", False)
+
+    def test_txt_is_skipped(self):
+        self._check("notes.txt", False)
+
+    def test_json_is_skipped(self):
+        self._check("package.json", False)
+
+    def test_yaml_is_skipped(self):
+        self._check("config.yaml", False)
+
+    def test_yml_is_skipped(self):
+        self._check(".github/workflows/ci.yml", False)
+
+    def test_csv_is_skipped(self):
+        self._check("data/export.csv", False)
+
+    def test_svg_is_skipped(self):
+        self._check("assets/logo.svg", False)
+
+    def test_lock_is_skipped(self):
+        self._check("package-lock.json.lock", False)
+
+    # --- Skip by path segment (forge-artifact directories) ---
+
+    def test_specs_top_level_is_skipped(self):
+        self._check("specs/001-foo/spec.md", False)
+
+    def test_specs_in_subdir_is_skipped(self):
+        """Wrapper-mode: subproject/specs/... must also be excluded."""
+        self._check("subproject/specs/001-foo/spec.md", False)
+
+    def test_docs_is_skipped(self):
+        self._check("docs/overview.md", False)
+
+    def test_design_is_skipped(self):
+        self._check("design/reference.html", False)
+
+    def test_audits_is_skipped(self):
+        self._check("audits/2026-06-audit.md", False)
+
+    def test_research_is_skipped(self):
+        self._check("research/2026-06-foo.md", False)
+
+    def test_discover_is_skipped(self):
+        self._check("discover/2026-06-foo.md", False)
+
+    def test_bugs_is_skipped(self):
+        self._check("bugs/001-bad-thing.md", False)
+
+    def test_devforge_is_skipped(self):
+        self._check(".devforge/memory.md", False)
+
+    def test_devforge_nested_is_skipped(self):
+        self._check(".devforge/lib/configure_helper", False)
+
+    # --- Code files that must pass through (True) ---
+
+    def test_py_source_is_code(self):
+        self._check("src/foo.py", True)
+
+    def test_ts_source_is_code(self):
+        self._check("src/a.ts", True)
+
+    def test_tsx_source_is_code(self):
+        self._check("src/Component.tsx", True)
+
+    def test_go_source_is_code(self):
+        self._check("cmd/main.go", True)
+
+    def test_rs_source_is_code(self):
+        self._check("src/lib.rs", True)
+
+    def test_services_api_py_is_code(self):
+        self._check("services/api/x.py", True)
+
+    def test_no_extension_is_code(self):
+        """Makefile, Dockerfile, etc. have no extension — treated as code."""
+        self._check("Makefile", True)
+        self._check("Dockerfile", True)
+
+    def test_dotslash_prefix_stripped(self):
+        """Leading './' is stripped before classification."""
+        self._check("./src/foo.py", True)
+        self._check("./specs/001-x/spec.md", False)
+
+    def test_file_named_after_skip_dir_is_code(self):
+        """F2: A FILE whose name matches a skip-dir is NOT excluded.
+
+        Only directory segments (all but the last) are scanned — the filename
+        itself is excluded via ``segments[:-1]``.  A file named ``docs.py``
+        inside ``src/`` is source code, not a forge-artifact directory.
+        """
+        self._check("src/docs.py", True)
+
+    def test_no_extension_in_non_skip_dir_is_code(self):
+        """F2: A no-extension file (e.g. Makefile) in a non-skip dir passes through."""
+        self._check("src/Makefile", True)
+
+
+# ---------------------------------------------------------------------------
+# Tests — file-type gate integration (mixed file tree)
+# ---------------------------------------------------------------------------
+
+class TestFileTypeGate(unittest.TestCase):
+    """check_hygiene skips prose/data files and only flags real source files."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _make_tree(self):
+        """Build a mixed-type temp file tree; return (py_path, md_path, html_path,
+        spec_path, normal_py_path) as absolute paths."""
+        # src/Foo.py — real Python with a debug print
+        src_dir = os.path.join(self.tmp_dir, "src")
+        os.makedirs(src_dir, exist_ok=True)
+        py_path = os.path.join(src_dir, "Foo.py")
+        with open(py_path, "w", encoding="utf-8") as fh:
+            fh.write('def foo():\n    print("x")\n    return 1\n')
+
+        # README.md — contains text that would match debug_print and
+        # commented-code regexes if scanned as source.
+        md_path = os.path.join(self.tmp_dir, "README.md")
+        with open(md_path, "w", encoding="utf-8") as fh:
+            fh.write("### Expects:\nSome prose here.\n// print() is called\n")
+
+        # design/reference.html — HTML comment containing print(
+        design_dir = os.path.join(self.tmp_dir, "design")
+        os.makedirs(design_dir, exist_ok=True)
+        html_path = os.path.join(design_dir, "reference.html")
+        with open(html_path, "w", encoding="utf-8") as fh:
+            fh.write("<!-- // print() -->\n<p>Hello</p>\n")
+
+        # specs/001-feat/spec.md — spec artifact containing headings
+        spec_dir = os.path.join(self.tmp_dir, "specs", "001-feat")
+        os.makedirs(spec_dir, exist_ok=True)
+        spec_path = os.path.join(spec_dir, "spec.md")
+        with open(spec_path, "w", encoding="utf-8") as fh:
+            fh.write("### Expects:\n// print() inside a code example block\n")
+
+        # services/api/bar.py — another clean source file (no artifacts)
+        api_dir = os.path.join(self.tmp_dir, "services", "api")
+        os.makedirs(api_dir, exist_ok=True)
+        normal_py_path = os.path.join(api_dir, "bar.py")
+        with open(normal_py_path, "w", encoding="utf-8") as fh:
+            fh.write("def bar(x):\n    return x * 2\n")
+
+        return py_path, md_path, html_path, spec_path, normal_py_path
+
+    def test_only_source_files_produce_artifacts(self):
+        """Prose/data files produce zero leftover_artifacts findings."""
+        py_path, md_path, html_path, spec_path, normal_py = self._make_tree()
+        all_files = [py_path, md_path, html_path, spec_path, normal_py]
+
+        result = check_hygiene(all_files, None, self.tmp_dir)
+
+        # Only py_path should produce findings (has bare print())
+        finding_files = {a["file"] for a in result["leftover_artifacts"]}
+        self.assertIn(py_path, finding_files)
+
+        # No findings from prose files
+        self.assertNotIn(md_path, finding_files)
+        self.assertNotIn(html_path, finding_files)
+        self.assertNotIn(spec_path, finding_files)
+
+    def test_files_skipped_count_matches_prose_files(self):
+        """files_skipped equals the number of non-code files in changed_files."""
+        py_path, md_path, html_path, spec_path, normal_py = self._make_tree()
+        # 3 prose/data files: md, html, spec.md
+        all_files = [py_path, md_path, html_path, spec_path, normal_py]
+
+        result = check_hygiene(all_files, None, self.tmp_dir)
+
+        self.assertEqual(result["files_skipped"], 3)
+
+    def test_files_checked_excludes_skipped_files(self):
+        """files_checked only counts code files actually read."""
+        py_path, md_path, html_path, spec_path, normal_py = self._make_tree()
+        all_files = [py_path, md_path, html_path, spec_path, normal_py]
+
+        result = check_hygiene(all_files, None, self.tmp_dir)
+
+        # 2 code files: py_path + normal_py
+        self.assertEqual(result["files_checked"], 2)
+
+    def test_files_skipped_key_present_with_zero(self):
+        """files_skipped=0 when no prose files are present."""
+        src_dir = os.path.join(self.tmp_dir, "src")
+        os.makedirs(src_dir, exist_ok=True)
+        py_path = os.path.join(src_dir, "only.py")
+        with open(py_path, "w", encoding="utf-8") as fh:
+            fh.write("x = 1\n")
+
+        result = check_hygiene([py_path], None, self.tmp_dir)
+
+        self.assertIn("files_skipped", result)
+        self.assertEqual(result["files_skipped"], 0)
+
+
+# ---------------------------------------------------------------------------
+# Tests — scope-creep gate (prose/data files never reported as scope-creep)
+# ---------------------------------------------------------------------------
+
+class TestScopeCreepFileTypeGate(unittest.TestCase):
+    """Non-code files are never reported in scope_creep, even when absent from baseline."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)
+
+    def _write(self, relpath, content="placeholder\n"):
+        # type: (str, str) -> str
+        full = os.path.join(self.tmp_dir, relpath)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        return full
+
+    def test_specs_md_not_scope_creep(self):
+        """specs/NNN-foo/spec.md NOT in baseline → NOT reported as scope_creep."""
+        spec_path = self._write(os.path.join("specs", "001-foo", "spec.md"))
+        src_file = self._write(os.path.join("src", "clean.py"), "x = 1\n")
+
+        # Baseline only contains src/clean.py (a code file).
+        result = check_hygiene(
+            changed_files=[spec_path, src_file],
+            scope_baseline=[src_file],
+            source_root=self.tmp_dir,
+        )
+
+        self.assertTrue(result["scope_creep_checked"])
+        self.assertNotIn(spec_path, result["scope_creep"])
+
+    def test_design_html_not_scope_creep(self):
+        """design/reference.html NOT in baseline → NOT reported as scope_creep."""
+        html_path = self._write(
+            os.path.join("design", "reference.html"),
+            "<html><body></body></html>\n",
+        )
+        src_file = self._write(os.path.join("src", "main.py"), "x = 1\n")
+
+        result = check_hygiene(
+            changed_files=[html_path, src_file],
+            scope_baseline=[src_file],
+            source_root=self.tmp_dir,
+        )
+
+        self.assertNotIn(html_path, result["scope_creep"])
+
+    def test_unplanned_py_file_is_scope_creep(self):
+        """A genuine unplanned .py file IS still reported as scope_creep."""
+        planned = self._write(os.path.join("src", "planned.py"), "x = 1\n")
+        unplanned = self._write(os.path.join("src", "unplanned.py"), "y = 2\n")
+        spec_md = self._write(os.path.join("specs", "001-x", "spec.md"))
+
+        result = check_hygiene(
+            changed_files=[planned, unplanned, spec_md],
+            scope_baseline=[planned],
+            source_root=self.tmp_dir,
+        )
+
+        # The prose file is NOT scope-creep
+        self.assertNotIn(spec_md, result["scope_creep"])
+        # The unplanned code file IS scope-creep
+        self.assertIn(unplanned, result["scope_creep"])
+        # The planned code file is NOT scope-creep
+        self.assertNotIn(planned, result["scope_creep"])
+
+    def test_md_file_not_scope_creep_even_with_empty_baseline(self):
+        """An .md file with a non-empty baseline is never reported as scope-creep."""
+        md_path = self._write("CHANGELOG.md", "# Log\n")
+        src_file = self._write(os.path.join("src", "a.py"), "x = 1\n")
+
+        result = check_hygiene(
+            changed_files=[md_path],
+            scope_baseline=[src_file],  # non-empty baseline → check runs
+            source_root=self.tmp_dir,
+        )
+
+        self.assertTrue(result["scope_creep_checked"])
+        self.assertNotIn(md_path, result["scope_creep"])
 
 
 if __name__ == "__main__":

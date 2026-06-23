@@ -15,11 +15,16 @@ Coverage:
       - Contested [CONSTITUTION-VIOLATION] finding → NEEDS WORK (D7: never APPROVED)
       - Critical finding in review_findings → NEEDS WORK
       - High finding in review_findings → NEEDS WORK
-      - scope_creep non-empty → NEEDS WORK
-      - leftover_artifacts non-empty → NEEDS WORK
       - 2-AC/1-fail (50%, failing_count=1 < 2 threshold) → NEEDS WORK (not REJECTED)
       - 1-AC/1-fail (100%, failing_count=1 < 2 threshold) → NEEDS WORK (not REJECTED)
       - 1-FAIL/1-UNVERIFIED (1 verifiable, 100%, failing_count=1) → NEEDS WORK (not REJECTED)
+    Hygiene advisory paths (NEVER block verdict):
+      - scope_creep non-empty, everything else clean → APPROVED (hygiene is advisory)
+      - leftover_artifacts non-empty, everything else clean → APPROVED (hygiene is advisory)
+      - scope_creep + leftover_artifacts both non-empty, everything else clean → APPROVED
+      - hygiene_flags type NEVER appears in blockers
+      - hygiene advisory reason appears in reasons when hygiene flags present
+      - hygiene flags + real blocker (FAIL AC) → NEEDS WORK driven by real blocker, not hygiene
     REJECTED paths:
       - Confirmed [CONSTITUTION-VIOLATION] → REJECTED (D7: ALWAYS)
       - failing_count>=2 AND failure_rate>=50% → REJECTED (2-AC/2-fail = 100%)
@@ -119,8 +124,8 @@ def _finding(severity="High", tags=None, category="mislogic"):
     }
 
 
-def _constitution_finding(verdict_bucket="confirmed", contested=False):
-    """A constitution violation finding."""
+def _constitution_finding():
+    """A constitution violation finding (confirmed-style — place in review["confirmed"] or ["contested"] explicitly)."""
     return {
         "severity": "High",
         "file": "src/a.py",
@@ -404,7 +409,8 @@ class TestComputeVerdictNeedsWork(unittest.TestCase):
         )
         self.assertEqual(result["verdict"], "APPROVED")
 
-    def test_scope_creep_needs_work(self):
+    def test_scope_creep_is_advisory_not_blocking(self):
+        """Hygiene change: scope_creep alone must NOT block — result is APPROVED."""
         hygiene = _empty_hygiene()
         hygiene["scope_creep"] = ["src/unrelated.py"]
         result = compute_verdict(
@@ -414,11 +420,16 @@ class TestComputeVerdictNeedsWork(unittest.TestCase):
             hygiene=hygiene,
             ac_verification_mode="code-only",
         )
-        self.assertEqual(result["verdict"], "NEEDS WORK")
+        self.assertEqual(result["verdict"], "APPROVED")
+        # hygiene_flags must NOT appear in blockers
         blocker_types = [b["type"] for b in result["blockers"]]
-        self.assertIn("hygiene_flags", blocker_types)
+        self.assertNotIn("hygiene_flags", blocker_types)
+        # hygiene advisory reason IS present
+        reasons_text = " ".join(result["reasons"])
+        self.assertIn("advisory", reasons_text.lower())
 
-    def test_leftover_artifacts_needs_work(self):
+    def test_leftover_artifacts_is_advisory_not_blocking(self):
+        """Hygiene change: leftover_artifacts alone must NOT block — result is APPROVED."""
         hygiene = _empty_hygiene()
         hygiene["leftover_artifacts"] = [{"file": "src/a.py", "line": 5, "artifact": "console.log"}]
         result = compute_verdict(
@@ -428,7 +439,9 @@ class TestComputeVerdictNeedsWork(unittest.TestCase):
             hygiene=hygiene,
             ac_verification_mode="code-only",
         )
-        self.assertEqual(result["verdict"], "NEEDS WORK")
+        self.assertEqual(result["verdict"], "APPROVED")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertNotIn("hygiene_flags", blocker_types)
 
     def test_contested_constitution_violation_needs_work(self):
         """D7 invariant: contested [CONSTITUTION-VIOLATION] → NEEDS WORK, never APPROVED."""
@@ -481,6 +494,126 @@ class TestComputeVerdictNeedsWork(unittest.TestCase):
             ac_verification_mode="code-only",
         )
         self.assertEqual(result["verdict"], "NEEDS WORK")
+
+
+class TestComputeVerdictHygieneAdvisory(unittest.TestCase):
+    """Hygiene flags are ADVISORY — they never block the verdict.
+
+    Explicit tests for the demoted hygiene check (scope_creep / leftover_artifacts
+    are never added to blockers; they appear only as advisory reason lines).
+    """
+
+    def test_scope_creep_only_approved(self):
+        """scope_creep non-empty, everything else clean → APPROVED."""
+        hygiene = _empty_hygiene()
+        hygiene["scope_creep"] = ["src/unrelated.py", "src/other.py"]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=_empty_review(),
+            hygiene=hygiene,
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "APPROVED")
+        self.assertEqual(result["blockers"], [])
+
+    def test_leftover_artifacts_only_approved(self):
+        """leftover_artifacts non-empty, everything else clean → APPROVED."""
+        hygiene = _empty_hygiene()
+        hygiene["leftover_artifacts"] = [
+            {"file": "src/a.py", "line": 5, "artifact": "console.log"},
+            {"file": "src/b.py", "line": 12, "artifact": "TODO: fix this"},
+        ]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=_empty_review(),
+            hygiene=hygiene,
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "APPROVED")
+        self.assertEqual(result["blockers"], [])
+
+    def test_both_hygiene_flags_approved(self):
+        """scope_creep + leftover_artifacts both non-empty, everything else clean → APPROVED."""
+        hygiene = _empty_hygiene()
+        hygiene["scope_creep"] = ["src/x.py"]
+        hygiene["leftover_artifacts"] = [{"file": "src/x.py", "line": 3, "artifact": "debugger"}]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=_empty_review(),
+            hygiene=hygiene,
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "APPROVED")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertNotIn("hygiene_flags", blocker_types)
+
+    def test_hygiene_flags_advisory_reason_present(self):
+        """When hygiene flags are set, an advisory reason line appears in reasons."""
+        hygiene = _empty_hygiene()
+        hygiene["scope_creep"] = ["src/x.py"]
+        hygiene["leftover_artifacts"] = [{"file": "src/y.py", "line": 1, "artifact": "TODO"}]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=_empty_review(),
+            hygiene=hygiene,
+            ac_verification_mode="code-only",
+        )
+        reasons_text = " ".join(result["reasons"])
+        self.assertIn("advisory", reasons_text.lower())
+        self.assertIn("non-blocking", reasons_text.lower())
+
+    def test_hygiene_plus_real_blocker_needs_work(self):
+        """Hygiene flags + a real blocker (FAIL AC) → NEEDS WORK driven by real blocker.
+
+        The presence of hygiene flags is incidental — the verdict is NEEDS WORK
+        because of the ac_failure blocker, not because of hygiene.
+        """
+        hygiene = _empty_hygiene()
+        hygiene["scope_creep"] = ["src/unrelated.py"]
+        hygiene["leftover_artifacts"] = [{"file": "src/a.py", "line": 1, "artifact": "console.log"}]
+        result = compute_verdict(
+            ac_results=[_ac("FAIL"), _ac("PASS", "AC-2"), _ac("PASS", "AC-3")],
+            mechanical_status="pass",
+            review_findings=_empty_review(),
+            hygiene=hygiene,
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("ac_failure", blocker_types)
+        self.assertNotIn("hygiene_flags", blocker_types)
+
+    def test_hygiene_type_never_in_blockers_any_scenario(self):
+        """hygiene_flags type is never emitted in blockers under any scenario."""
+        scenarios = [
+            # (scope_creep, leftover_artifacts, ac_status, mechanical)
+            (["src/a.py"], [], "PASS", "pass"),
+            ([], [{"file": "b.py", "line": 1, "artifact": "TODO"}], "PASS", "pass"),
+            (["src/a.py"], [{"file": "b.py", "line": 1, "artifact": "TODO"}], "FAIL", "failed"),
+            ([], [], "PASS", "pass"),
+        ]
+        for scope_creep, leftover, ac_status, mech in scenarios:
+            with self.subTest(scope_creep=scope_creep, ac_status=ac_status, mech=mech):
+                hygiene = _empty_hygiene()
+                hygiene["scope_creep"] = scope_creep
+                hygiene["leftover_artifacts"] = leftover
+                result = compute_verdict(
+                    ac_results=[_ac(ac_status)],
+                    mechanical_status=mech,
+                    review_findings=_empty_review(),
+                    hygiene=hygiene,
+                    ac_verification_mode="code-only",
+                )
+                blocker_types = [b["type"] for b in result["blockers"]]
+                self.assertNotIn(
+                    "hygiene_flags", blocker_types,
+                    msg="hygiene_flags appeared in blockers for scenario: "
+                        "scope_creep={0}, ac={1}, mech={2}".format(scope_creep, ac_status, mech),
+                )
 
 
 class TestComputeVerdictRejected(unittest.TestCase):
@@ -771,10 +904,11 @@ class TestComputeVerdictEdgeCases(unittest.TestCase):
         self.assertEqual(result["verdict"], "APPROVED")
 
     def test_multiple_blockers_needs_work(self):
-        """Multiple non-REJECTED blockers → NEEDS WORK when failure rate < 50%."""
+        """Real blockers (FAIL AC + mechanical) → NEEDS WORK regardless of hygiene flags."""
         hygiene = _empty_hygiene()
         hygiene["scope_creep"] = ["src/extra.py"]
-        # 1/3 = 33% < 50% failure rate → NEEDS WORK (not REJECTED) despite multiple blockers
+        # 1/3 = 33% < 50% failure rate → NEEDS WORK (not REJECTED)
+        # scope_creep is advisory — NEEDS WORK is driven by ac_failure + mechanical_failed
         result = compute_verdict(
             ac_results=[_ac("FAIL"), _ac("PASS", "AC-2"), _ac("PASS", "AC-3")],
             mechanical_status="self_repair",
@@ -783,6 +917,11 @@ class TestComputeVerdictEdgeCases(unittest.TestCase):
             ac_verification_mode="code-only",
         )
         self.assertEqual(result["verdict"], "NEEDS WORK")
+        # Real blockers are present; hygiene_flags is NOT
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("ac_failure", blocker_types)
+        self.assertIn("mechanical_failed", blocker_types)
+        self.assertNotIn("hygiene_flags", blocker_types)
 
     def test_1_fail_2_pass_under_threshold(self):
         """1 FAIL out of 3 verifiable = 33% → NEEDS WORK, not REJECTED."""

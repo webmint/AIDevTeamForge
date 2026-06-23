@@ -316,6 +316,57 @@ class TestRenderReport(unittest.TestCase):
         self.assertIn("Leftover artifacts", content)
         self.assertIn("1 flagged", content)
 
+    def test_hygiene_scope_creep_renders_advisory_label(self):
+        """Scope-creep lines in Code Quality carry an advisory / non-blocking label."""
+        hygiene = _empty_hygiene()
+        hygiene["scope_creep"] = ["src/unrelated.py"]
+        hygiene["scope_creep_checked"] = True
+        content = self._build_report(hygiene=hygiene)
+        # The advisory label must appear on the scope creep line
+        self.assertIn("advisory", content.lower())
+        self.assertIn("does not block", content.lower())
+        self.assertIn("src/unrelated.py", content)
+
+    def test_hygiene_leftover_artifacts_renders_advisory_label(self):
+        """Leftover-artifacts lines in Code Quality carry an advisory / non-blocking label."""
+        hygiene = _empty_hygiene()
+        hygiene["leftover_artifacts"] = [{"file": "a.py", "line": 1, "artifact": "console.log"}]
+        content = self._build_report(hygiene=hygiene)
+        self.assertIn("advisory", content.lower())
+        self.assertIn("does not block", content.lower())
+        self.assertIn("1 flagged", content)
+
+    def test_hygiene_flags_produce_approved_not_needs_work(self):
+        """Hygiene flags alone must not flip the verdict to NEEDS WORK in the report."""
+        hygiene = _empty_hygiene()
+        hygiene["scope_creep"] = ["src/x.py"]
+        hygiene["leftover_artifacts"] = [{"file": "src/y.py", "line": 2, "artifact": "TODO"}]
+        hygiene["scope_creep_checked"] = True
+        # Use the real compute_verdict — it should return APPROVED
+        ac_results = [{"id": "AC-1", "text": "", "checked": False, "subsection": "",
+                       "status": "PASS", "evidence": ""}]
+        verdict = compute_verdict(
+            ac_results=ac_results,
+            mechanical_status="pass",
+            review_findings=_missing_review(),
+            hygiene=hygiene,
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(verdict["verdict"], "APPROVED",
+                         "Hygiene flags alone must not produce NEEDS WORK")
+        content = render_report(
+            verdict=verdict,
+            ac_results=ac_results,
+            review_findings=_missing_review(),
+            hygiene=hygiene,
+            feature=self.tmp,
+            date_str="2026-06-16",
+            mechanical_status="pass",
+            ac_verification_mode="code-only",
+        )
+        self.assertIn("**APPROVED**", content)
+        self.assertIn("advisory", content.lower())
+
     def test_header_has_feature_and_date(self):
         content = self._build_report()
         self.assertIn("# Feature Verification", content)
