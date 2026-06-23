@@ -391,7 +391,7 @@ For each `decisions[]` entry, render `applies_to` as a comma-separated list (or 
 .devforge/lib/configure_helper substitute-templates
 ```
 
-`substitute-templates` reads `.devforge/project-config.json` + `.devforge/init.yaml`, walks `CLAUDE.md` + every `.claude/agents/*.md` file remaining after Phase 5.2, and replaces every `{{KEY}}` placeholder atomically per file. Exit codes:
+`substitute-templates` reads `.devforge/project-config.json` + `.devforge/init.yaml`, walks `CLAUDE.md` + every `.claude/agents/*.md` file remaining after Phase 5.2 + any present `docs/overview.md` + `docs/architecture.md` stubs (each included only when the file exists; absent → silently skipped), and replaces every `{{KEY}}` placeholder atomically per file. Exit codes:
 
 - Exit 0 → every template substituted; no `{{KEY}}` markers remain.
 - Exit 1 → `project-config.json` missing or malformed, OR `CLAUDE.md` missing, OR a per-file write failed. Surface stderr verbatim and ABORT. (Note: `.devforge/init.yaml` missing is NOT an exit-1 condition for this subcommand — substitute-templates falls back to empty `packages_detected` when init.yaml is absent. The init.yaml dependency is enforced earlier by Phase 0's pre-flight gate and by `render-config` exit 1.)

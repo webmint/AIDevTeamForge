@@ -3881,6 +3881,147 @@ class SubstituteTemplatesTests(_EnvIsolationMixin, unittest.TestCase):
         result = self._read_claude_md()
         self.assertEqual(result, "See {{UPPERCASE}} convention for details.")
 
+    # ------------------------------------------------------------------
+    # Docs-file substitution helpers + tests (added for docs-target fix)
+    # ------------------------------------------------------------------
+
+    _SRC_DOCS_DIR = _REPO_ROOT / "src" / "docs"
+
+    def _write_docs_md(self, name: str, content: str) -> None:
+        """Write content to <install_root>/docs/<name>."""
+        docs_dir = self.install_root / "docs"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        (docs_dir / name).write_text(content, encoding="utf-8")
+
+    def _read_docs_md(self, name: str) -> str:
+        """Read <install_root>/docs/<name>."""
+        return (self.install_root / "docs" / name).read_text(encoding="utf-8")
+
+    def _copy_real_docs_stub(self, name: str) -> None:
+        """Copy the shipped src/docs/<name> stub into install_root/docs/."""
+        src = self._SRC_DOCS_DIR / name
+        content = src.read_text(encoding="utf-8")
+        self._write_docs_md(name, content)
+
+    def test_docs_overview_placeholders_substituted(self):
+        """Real overview.md stub: after substitute, zero {{...}} markers remain."""
+        import re
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "demo-forge")
+        _run_configure(self.devforge_dir, "set-project-description", "A demo forge project")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        self._copy_real_docs_stub("overview.md")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_docs_md("overview.md")
+        leftover = re.findall(r"\{\{[A-Z_]+\}\}", result)
+        self.assertEqual(leftover, [], "leftover placeholders: {0}".format(leftover))
+        # H1 must contain the real project name.
+        self.assertIn("demo-forge", result.splitlines()[0])
+
+    def test_docs_overview_prose_not_corrupted(self):
+        """Real overview.md stub: blockquote prose on line 9 survives substitution intact.
+
+        The reworded line-9 prose describes what fills the overview — it contains
+        the literal text 'the project name and description' which must survive
+        unchanged and must NOT be corrupted into e.g. 'substitutes demo-forge'.
+        """
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "demo-forge")
+        _run_configure(self.devforge_dir, "set-project-description", "A demo forge project")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        self._copy_real_docs_stub("overview.md")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_docs_md("overview.md")
+        # The stable phrase from line 9's blockquote prose.
+        self.assertIn("the project name and description", result)
+
+    def test_docs_architecture_placeholders_substituted(self):
+        """Real architecture.md stub: after substitute, zero {{...}} markers remain
+        and the H1 contains the project name."""
+        import re
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "demo-forge")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        self._copy_real_docs_stub("architecture.md")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_docs_md("architecture.md")
+        leftover = re.findall(r"\{\{[A-Z_]+\}\}", result)
+        self.assertEqual(leftover, [], "leftover placeholders: {0}".format(leftover))
+        # H1 must be "# Architecture — demo-forge"
+        self.assertIn("Architecture", result.splitlines()[0])
+        self.assertIn("demo-forge", result.splitlines()[0])
+
+    def test_docs_absent_presence_guard(self):
+        """No docs/ dir at all: substitute exits 0, CLAUDE.md substituted, no crash."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "guarded-project")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        # Deliberately do NOT create docs/ dir.
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        result = self._read_claude_md()
+        self.assertIn("guarded-project", result)
+        self.assertNotIn("{{PROJECT_NAME}}", result)
+
+    def test_docs_only_overview_present(self):
+        """docs/overview.md present but docs/architecture.md absent:
+        exit 0; overview has zero leftover {{...}}; architecture.md NOT created.
+
+        This exercises the per-file .is_file() guard on the partial-presence
+        path — only overview.md exists, architecture.md must be skipped without
+        being created.
+        """
+        import re
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "partial-docs-forge")
+        _run_configure(self.devforge_dir, "set-project-description", "Partial docs test")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        # Only overview — no architecture.
+        self._copy_real_docs_stub("overview.md")
+        proc = self._run_substitute()
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+        # overview.md must be fully substituted.
+        result = self._read_docs_md("overview.md")
+        leftover = re.findall(r"\{\{[A-Z_]+\}\}", result)
+        self.assertEqual(leftover, [], "leftover placeholders: {0}".format(leftover))
+        # architecture.md must NOT have been created.
+        arch_path = self.install_root / "docs" / "architecture.md"
+        self.assertFalse(arch_path.exists(), "architecture.md must not be created by substitute")
+
+    def test_docs_substitution_idempotent(self):
+        """Running substitute twice on docs stubs: second run exits 0, byte-identical."""
+        self._write_init_yaml()
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-project-name", "idempotent-forge")
+        _run_configure(self.devforge_dir, "set-project-description", "Idempotent test")
+        self._write_project_config_json()
+        self._write_claude_md("Project: {{PROJECT_NAME}}")
+        self._copy_real_docs_stub("overview.md")
+        self._copy_real_docs_stub("architecture.md")
+        # First run.
+        proc1 = self._run_substitute()
+        self.assertEqual(proc1.returncode, 0, proc1.stderr.decode())
+        overview_after_first = self._read_docs_md("overview.md")
+        arch_after_first = self._read_docs_md("architecture.md")
+        # Second run — no {{}} markers remain; must be a no-op.
+        proc2 = self._run_substitute()
+        self.assertEqual(proc2.returncode, 0, proc2.stderr.decode())
+        self.assertEqual(self._read_docs_md("overview.md"), overview_after_first)
+        self.assertEqual(self._read_docs_md("architecture.md"), arch_after_first)
+
 
 # ---------------------------------------------------------------------------
 # Step 5a: SchemaProjectNaturesTests (~3)
