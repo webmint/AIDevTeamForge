@@ -1,6 +1,6 @@
 # 33 — FINALIZE STAGES SPEC ARTIFACTS PLAN
 
-**Status:** NOT STARTED — decisions drafted, awaiting Phase-0 sign-off. On `develop-2.0-init`.
+**Status:** SUPERSEDED by 37-PER-STEP-ARTIFACT-COMMIT-PLAN.md — finalize-only (33 D1) + inline-git (33 D6) replaced by per-step artifact commits via a shared verb; 33's whole-dir/install-repo-only safety-net survives as 37 D4 (the /finalize safety-net). Do NOT execute plan 33.
 
 Fixes a confirmed framework gap: the spec-driven pipeline NEVER git-commits a feature's planning artifacts (`spec.md`, `plan.md`, `research.md`, the `*-handoff.json` files, `review.md`, `verification.md`, the `*-state.json` files). They accumulate untracked in the working tree for the whole feature lifecycle, so the PR that ships after `/finalize` contains code with no spec/plan/review, and a `git clean -fdx` would silently delete them. This plan extends `/finalize` (the single point that already assembles the clean feature commit and already stages `docs/` right before the squash) to ALSO stage the feature's `specs/<feature>/` directory before the squash, so the planning artifacts fold into the same clean commit the code lands in. Scope is `/finalize` ONLY — NOT a new command, NOT a change to `/implement`.
 
