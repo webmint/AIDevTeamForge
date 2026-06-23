@@ -1,6 +1,6 @@
 # 35 — GRILL REFUTER ROUTING FIX
 
-**Status:** BUILD DONE 2026-06-23 on `develop-2.0-init` (working tree, uncommitted) — only testForge20/mintEnvoy e2e remains, user-driven. Discovered during a mintEnvoy `/grill` run on feature `003-app-shell-layout`. Phase 1 (spec fix) shipped via instruction-author → instruction-reviewer (3 prose findings applied) → claude-code-guide (presence-check soundness → D3). Empirically validated against `_shared/_verify.py route_refutation`: old `--finders "devils-advocate"` self-refutes; new `--finders "devils-advocate,<present-refuters>"` routes to `code-reviewer`, degrades to `qa-reviewer` when code-reviewer absent. No helper changed.
+**Status:** ✅ CLOSED 2026-06-24 — committed `06b78be` on `develop-2.0-init`. testForge20/mintEnvoy e2e DEFERRED by maintainer 2026-06-24 (not blocking — the fix is empirically validated, see below). Discovered during a mintEnvoy `/grill` run on feature `003-app-shell-layout`. Phase 1 (spec fix) shipped via instruction-author → instruction-reviewer (3 prose findings applied) → claude-code-guide (presence-check soundness → D3). Empirically validated against `_shared/_verify.py route_refutation`: old `--finders "devils-advocate"` self-refutes; new `--finders "devils-advocate,<present-refuters>"` routes to `code-reviewer`, degrades to `qa-reviewer` when code-reviewer absent. No helper changed.
 
 ## The bug
 
