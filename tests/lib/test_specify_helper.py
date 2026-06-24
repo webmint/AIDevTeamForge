@@ -5820,5 +5820,456 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             self.assertIn("kind=research", lines[0])
 
 
+# ---------------------------------------------------------------------------
+# Dedupe boundary tests — import-handoff dedupe for both discover and research lanes.
+# ---------------------------------------------------------------------------
+
+class TestImportHandoffDedupe(unittest.TestCase):
+    """Tests for boundary dedupe in specify_helper import-handoff (both lanes).
+
+    Cases:
+      (a) clean (no-dup) handoff ingests UNCHANGED — regression anchor.
+      (b) duplicate/whitespace-variant handoff lands DEDUPED — per-bucket,
+          first-occurrence values preserved, relative order preserved, and a
+          same-content constraint with DIFFERENT kind is NOT merged.
+      (c) re-importing either handoff a second time is a state NO-OP — the
+          four buckets are byte-identical to after the first import.
+    Also verifies per-entry stderr drop lines are emitted for case (b).
+    Unit-test for the shared _dedupe_seeds helper directly (research lane coverage
+    without building a full research handoff round-trip).
+    """
+
+    def _make_devforge(self, tmp_path: Path) -> Path:
+        d = tmp_path / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_import(self, devforge: Path, handoff_path: Path):
+        return _run([
+            "--devforge-dir", str(devforge),
+            "import-handoff",
+            "--handoff-path", str(handoff_path),
+        ])
+
+    def _build_discover_handoff(self, tmp_path: Path) -> Path:
+        """Build a real discover handoff via the real producer (no hand-authored fixtures)."""
+        devforge_d = tmp_path / "discover_df"
+        devforge_d.mkdir(exist_ok=True)
+        discover_dir = tmp_path / "discover"
+        discover_dir.mkdir(exist_ok=True)
+        handoff_out = discover_dir / "2026-05-20-audit-log-persistence.handoff.json"
+        r = _build_minimal_discover_handoff(devforge_d, handoff_out)
+        if r.returncode != 0:
+            raise RuntimeError(
+                "_build_minimal_discover_handoff failed: " + r.stderr
+            )
+        return handoff_out
+
+    def _read_seed_buckets(self, devforge: Path) -> dict:
+        """Return the four seed buckets from specify-state.json as a plain dict."""
+        state = json.loads(
+            (devforge / "specify-state.json").read_text(encoding="utf-8")
+        )
+        return {
+            "constraints": state["constraints"],
+            "affected_areas": state["affected_areas"],
+            "risks": state["risks"],
+            "open_questions": state["open_questions"],
+        }
+
+    # ------------------------------------------------------------------
+    # Case (a): clean (no-dup) discover handoff ingests UNCHANGED.
+    # ------------------------------------------------------------------
+
+    def test_dedupe_case_a_clean_handoff_unchanged(self):
+        """(a) A clean handoff (no dups) ingests byte-identical to a non-deduped run.
+
+        Regression anchor: the dedupe step must be a no-op on well-formed input.
+        Asserts that each bucket contains exactly the entries the real producer
+        emitted — no items dropped.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp_path)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            # Read the producer output to know ground-truth counts.
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            seeds = data["spec_seeds"]
+            expected_constraints = len(seeds["constraints"])
+            expected_areas = len(seeds["affected_areas"])
+            expected_risks = len(seeds["risks"])
+            expected_oqs = len(seeds["open_questions"])
+
+            r = self._run_import(devforge, handoff_out)
+            self.assertEqual(r.returncode, 0, "import failed: " + r.stderr)
+
+            # No drop lines should appear on stderr (clean input).
+            self.assertNotIn("dedupe", r.stderr, "unexpected dedupe drop on clean input")
+
+            buckets = self._read_seed_buckets(devforge)
+            self.assertEqual(len(buckets["constraints"]), expected_constraints,
+                             "constraints count changed on clean input")
+            self.assertEqual(len(buckets["affected_areas"]), expected_areas,
+                             "affected_areas count changed on clean input")
+            self.assertEqual(len(buckets["risks"]), expected_risks,
+                             "risks count changed on clean input")
+            self.assertEqual(len(buckets["open_questions"]), expected_oqs,
+                             "open_questions count changed on clean input")
+
+    # ------------------------------------------------------------------
+    # Case (b): duplicate + whitespace-variant handoff lands DEDUPED.
+    # ------------------------------------------------------------------
+
+    def test_dedupe_case_b_dedupes_all_four_buckets(self):
+        """(b) Duplicate/whitespace-variant entries land deduped; same-content different-kind NOT merged.
+
+        Injects:
+        - duplicate constraint (exact copy of first constraint) — should drop to 1
+        - whitespace-variant constraint (extra trailing space) — same kind/content → drop
+        - same-content DIFFERENT-kind constraint — must survive (NOT a dup)
+        - duplicate affected_area (exact area name) — drop to 1
+        - whitespace-variant risk (internal whitespace added) — drop to 1
+        - duplicate open_question — drop to 1
+        Asserts: each bucket has the correct distinct count; first-occurrence
+        value preserved (not the whitespace variant); order preserved; stderr
+        contains per-entry drop lines naming section and surviving key.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp_path)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            seeds = data["spec_seeds"]
+
+            # --- Patch spec_seeds to inject duplicates ---
+
+            # Constraint: use first constraint as base, add two duplicates + one different-kind.
+            # The producer emits 2 nfr constraints; we'll take the first and create dups.
+            orig_c0 = seeds["constraints"][0]  # e.g. kind=nfr, content="100ms p99 write latency"
+            c_exact_dup = dict(orig_c0)  # exact duplicate
+            # whitespace variant: trailing space on content
+            c_ws_variant = dict(orig_c0, content=orig_c0["content"] + " ")
+            # different kind — same content, kind=constitution_anchor; requires constitution_ref
+            # Use kind=follow (not in discover schema). Actually discover schema has nfr/constitution_anchor/external_system.
+            # Use constitution_anchor with a constitution_ref — same content, different kind.
+            c_diff_kind = {
+                "kind": "constitution_anchor",
+                "content": orig_c0["content"],
+                "quantifier": None,
+                "constitution_ref": "§3.1 Example",
+                "protocol": None,
+                "contract_doc_ref": None,
+            }
+            seeds["constraints"] = [
+                orig_c0,          # survivor 1
+                c_exact_dup,      # exact dup → drop
+                c_ws_variant,     # ws-variant dup → drop
+                c_diff_kind,      # different kind → survivor 2
+            ]
+            self.assertEqual(len(seeds["constraints"]), 4,
+                             "pre-import: expected 4 injected constraints (3 nfr dups + 1 different-kind)")
+
+            # Affected area: use the only area, add exact dup and ws-variant.
+            orig_a0 = seeds["affected_areas"][0]
+            a_exact_dup = dict(orig_a0)
+            a_ws_variant = dict(orig_a0, area="  " + orig_a0["area"] + "  ")
+            seeds["affected_areas"] = [
+                orig_a0,        # survivor
+                a_exact_dup,    # exact dup → drop
+                a_ws_variant,   # ws-variant → drop
+            ]
+            self.assertEqual(len(seeds["affected_areas"]), 3,
+                             "pre-import: expected 3 injected affected_areas")
+
+            # Risk: use first risk, add one with internal whitespace variation.
+            orig_r0 = seeds["risks"][0]
+            # Insert an extra space inside the risk text
+            risk_text_parts = orig_r0["risk"].split(" ", 1)
+            if len(risk_text_parts) == 2:
+                r_ws_variant = dict(orig_r0,
+                                    risk=risk_text_parts[0] + "  " + risk_text_parts[1])
+            else:
+                r_ws_variant = dict(orig_r0, risk=orig_r0["risk"] + "  ")
+            seeds["risks"] = [
+                orig_r0,        # survivor
+                r_ws_variant,   # ws-variant dup → drop
+            ]
+            self.assertEqual(len(seeds["risks"]), 2,
+                             "pre-import: expected 2 injected risks (1 original + 1 ws-variant)")
+
+            # Open questions: add two identical questions.
+            q_text = "Should we index the audit table?"
+            seeds["open_questions"] = [
+                {"question": q_text, "blocking": False},
+                {"question": q_text, "blocking": False},   # exact dup → drop
+                {"question": q_text + " ", "blocking": False},  # ws-variant → drop
+            ]
+            self.assertEqual(len(seeds["open_questions"]), 3,
+                             "pre-import: expected 3 injected open_questions")
+
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            r = self._run_import(devforge, handoff_out)
+            self.assertEqual(r.returncode, 0, "import with dups failed: " + r.stderr)
+
+            # --- Assert stderr drop lines ---
+            stderr = r.stderr
+            # Expect at least one drop line per section that had dups.
+            self.assertIn("dedupe constraints", stderr,
+                          "expected constraint drop lines in stderr")
+            self.assertIn("dedupe affected_areas", stderr,
+                          "expected affected_area drop lines in stderr")
+            self.assertIn("dedupe risks", stderr,
+                          "expected risk drop lines in stderr")
+            self.assertIn("dedupe open_questions", stderr,
+                          "expected open_question drop lines in stderr")
+            # Each drop line must contain "collapsed into surviving".
+            for line in stderr.splitlines():
+                if "dedupe" in line:
+                    self.assertIn("collapsed into surviving", line,
+                                  "drop line missing 'collapsed into surviving': " + line)
+
+            buckets = self._read_seed_buckets(devforge)
+
+            # Constraints: orig_c0 + c_diff_kind survive (exact + ws-variant dropped).
+            self.assertEqual(len(buckets["constraints"]), 2,
+                             "expected 2 distinct constraints (1 nfr + 1 constitution_anchor)")
+            surviving_kinds = {c["kind"] for c in buckets["constraints"]}
+            self.assertEqual(surviving_kinds, {"nfr", "constitution_anchor"},
+                             "different-kind constraint must survive")
+
+            # First occurrence value preserved (NOT the whitespace variant).
+            nfr_survivors = [c for c in buckets["constraints"] if c["kind"] == "nfr"]
+            self.assertEqual(len(nfr_survivors), 1)
+            self.assertEqual(nfr_survivors[0]["content"], orig_c0["content"],
+                             "first-occurrence value must be preserved, not ws-variant")
+
+            # Affected areas: 1 survivor (exact + ws-variant dropped).
+            self.assertEqual(len(buckets["affected_areas"]), 1,
+                             "expected 1 distinct affected_area")
+            self.assertEqual(buckets["affected_areas"][0]["area"], orig_a0["area"],
+                             "first-occurrence area value must be preserved")
+
+            # Risks: 1 survivor (ws-variant dropped).
+            self.assertEqual(len(buckets["risks"]), 1,
+                             "expected 1 distinct risk")
+            self.assertEqual(buckets["risks"][0]["risk"], orig_r0["risk"],
+                             "first-occurrence risk value must be preserved")
+
+            # Open questions: 1 survivor (exact dup + ws-variant dropped).
+            self.assertEqual(len(buckets["open_questions"]), 1,
+                             "expected 1 distinct open_question")
+            # question_id must be gap-free (hq-1, not hq-2 or hq-3).
+            self.assertEqual(buckets["open_questions"][0]["question_id"], "hq-1",
+                             "open_question_id must be gap-free after dedupe")
+
+    # ------------------------------------------------------------------
+    # Case (c): re-import is a state NO-OP.
+    # ------------------------------------------------------------------
+
+    def test_dedupe_case_c_reimport_is_noop(self):
+        """(c) Re-importing a handoff a second time leaves the four buckets byte-identical.
+
+        Verifies idempotency: the second import overwrites with the same data so
+        the parsed JSON buckets before and after are identical.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp_path)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            # Inject a duplicate to make dedupe fire on both imports.
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            seeds = data["spec_seeds"]
+            if seeds["constraints"]:
+                orig_c = seeds["constraints"][0]
+                seeds["constraints"].append(dict(orig_c))  # duplicate
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            # First import.
+            r1 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r1.returncode, 0, "first import failed: " + r1.stderr)
+            buckets_after_first = self._read_seed_buckets(devforge)
+
+            # Second import (re-import same handoff).
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, "second import failed: " + r2.stderr)
+            buckets_after_second = self._read_seed_buckets(devforge)
+
+            # Buckets must be byte-identical (same JSON content).
+            self.assertEqual(
+                json.dumps(buckets_after_first, sort_keys=True),
+                json.dumps(buckets_after_second, sort_keys=True),
+                "re-import must be a NO-OP — buckets differ after second import",
+            )
+
+    # ------------------------------------------------------------------
+    # Unit test: _dedupe_seeds helper directly (research lane coverage).
+    # ------------------------------------------------------------------
+
+    def test_dedupe_seeds_unit_research_lane(self):
+        """Unit test of _dedupe_seeds via research-schema dataclass instances.
+
+        Exercises the shared helper on hand-built research.handoff_schema
+        objects — avoids the cost of a full research handoff round-trip while
+        still covering the research-schema types (Constraint / AffectedArea /
+        Risk / OpenQuestion from _research.handoff_schema).
+        """
+        import sys
+        sys.path.insert(0, str(ROOT / "src" / "devforge" / "lib"))
+        from _research import handoff_schema as rhs
+        from _specify._cmds_handoff import (
+            _dedupe_seeds,
+            _constraint_key,
+            _affected_area_key,
+            _risk_key,
+            _open_question_key,
+        )
+
+        # --- Constraint dedupe (research schema uses "follow" and "nfr" kinds) ---
+        c1 = rhs.Constraint(kind="nfr", content="Latency < 100ms", quantifier="p99")
+        c2_exact = rhs.Constraint(kind="nfr", content="Latency < 100ms", quantifier="p99")
+        c2_ws = rhs.Constraint(kind="nfr", content="Latency  <  100ms", quantifier="p99")
+        # Different kind: same content — must NOT be merged.
+        c3_follow = rhs.Constraint(kind="follow", content="Latency < 100ms")
+
+        result_c = _dedupe_seeds(
+            [c1, c2_exact, c2_ws, c3_follow],
+            _constraint_key, "constraints"
+        )
+        self.assertEqual(len(result_c), 2,
+                         "expected 2 survivors (nfr + follow, not 4 or 1)")
+        self.assertIs(result_c[0], c1, "first-occurrence object must survive")
+        self.assertIs(result_c[1], c3_follow, "different-kind constraint must survive")
+
+        # --- AffectedArea dedupe (research schema: no is_internal_extension_candidate) ---
+        a1 = rhs.AffectedArea(area="services/auth", files=["auth.py:10"], impact="Major")
+        a2_exact = rhs.AffectedArea(area="services/auth", files=["auth.py:20"], impact="Minor")
+        a3_ws = rhs.AffectedArea(area="  services/auth  ", files=[], impact="None")
+
+        result_a = _dedupe_seeds(
+            [a1, a2_exact, a3_ws],
+            _affected_area_key, "affected_areas"
+        )
+        self.assertEqual(len(result_a), 1, "expected 1 survivor for affected_areas")
+        self.assertIs(result_a[0], a1, "first-occurrence object must survive")
+
+        # --- Risk dedupe ---
+        r1 = rhs.Risk(risk="DB migration fails",
+                      likelihood="Med", impact="High", mitigation="test in staging")
+        r2_ws = rhs.Risk(risk="DB  migration  fails",
+                         likelihood="Low", impact="Low", mitigation="different")
+
+        result_r = _dedupe_seeds(
+            [r1, r2_ws],
+            _risk_key, "risks"
+        )
+        self.assertEqual(len(result_r), 1, "expected 1 survivor for risks")
+        self.assertIs(result_r[0], r1, "first-occurrence object must survive")
+
+        # --- OpenQuestion dedupe ---
+        q1 = rhs.OpenQuestion(question="Is the token idempotent?", blocking=True)
+        q2_exact = rhs.OpenQuestion(question="Is the token idempotent?", blocking=False)
+        q3_ws = rhs.OpenQuestion(question=" Is the token idempotent? ", blocking=False)
+
+        result_q = _dedupe_seeds(
+            [q1, q2_exact, q3_ws],
+            _open_question_key, "open_questions"
+        )
+        self.assertEqual(len(result_q), 1, "expected 1 survivor for open_questions")
+        self.assertIs(result_q[0], q1, "first-occurrence object must survive")
+
+        # --- Empty list is a no-op ---
+        result_empty = _dedupe_seeds([], _constraint_key, "constraints")
+        self.assertEqual(result_empty, [])
+
+        # --- No duplicates: output equals input ---
+        c_distinct = rhs.Constraint(kind="follow", content="Auth must be deterministic")
+        result_nodups = _dedupe_seeds([c1, c_distinct], _constraint_key, "constraints")
+        self.assertEqual(len(result_nodups), 2)
+        self.assertIs(result_nodups[0], c1)
+        self.assertIs(result_nodups[1], c_distinct)
+
+    def test_dedupe_case_b_stderr_names_section_and_keys(self):
+        """(b) Stderr drop lines are per-entry, naming section + surviving key + dropped key.
+
+        Complementary to test_dedupe_case_b_dedupes_all_four_buckets:
+        focuses specifically on the stderr output shape (not just 'dedupe' in stderr).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp_path)
+            handoff_out = self._build_discover_handoff(tmp_path)
+
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            seeds = data["spec_seeds"]
+            orig_constraint_count = len(seeds["constraints"])
+
+            # Add one exact duplicate constraint.
+            if seeds["constraints"]:
+                seeds["constraints"].append(dict(seeds["constraints"][0]))
+            self.assertEqual(len(seeds["constraints"]), orig_constraint_count + 1,
+                             "pre-import: constraint injection should have added one dup")
+
+            # Add one whitespace-variant open question.
+            q_raw = "Test question alpha"
+            q_ws_variant = " Test question alpha "  # leading + trailing space
+            seeds["open_questions"] = [
+                {"question": q_raw, "blocking": False},
+                {"question": q_ws_variant, "blocking": False},  # ws-variant dup
+            ]
+            self.assertEqual(len(seeds["open_questions"]), 2,
+                             "pre-import: expected 2 open_questions (1 original + 1 ws-variant)")
+
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            r = self._run_import(devforge, handoff_out)
+            self.assertEqual(r.returncode, 0, "import failed: " + r.stderr)
+
+            drop_lines = [
+                line for line in r.stderr.splitlines() if "dedupe" in line
+            ]
+            self.assertGreater(len(drop_lines), 0,
+                               "expected at least one dedupe drop line")
+
+            for line in drop_lines:
+                # Must name the section.
+                self.assertTrue(
+                    any(sec in line for sec in
+                        ("constraints", "affected_areas", "risks", "open_questions")),
+                    "drop line must name section: " + line,
+                )
+                # Must name the surviving key.
+                self.assertIn("collapsed into surviving", line,
+                              "drop line must name surviving key: " + line)
+                # Must name the dropped key.
+                self.assertIn("dropped", line,
+                              "drop line must name dropped key: " + line)
+
+            # For the whitespace-variant open_question drop, the logged dropped text
+            # must DIFFER from the logged surviving text — proving raw field values
+            # are logged, not the normalized key (which would be identical for both).
+            oq_drop_lines = [
+                line for line in r.stderr.splitlines()
+                if "dedupe open_questions" in line
+            ]
+            self.assertEqual(len(oq_drop_lines), 1,
+                             "expected exactly 1 open_questions drop line")
+            oq_line = oq_drop_lines[0]
+            # Extract the dropped and surviving repr sections.
+            # Line shape: "... dropped <repr> → collapsed into surviving <repr>"
+            dropped_part = oq_line.split("→ collapsed into surviving")[0]
+            surviving_part = oq_line.split("→ collapsed into surviving")[1]
+            # The raw variant text has whitespace; the raw original does not.
+            # They must differ in the log — if they were identical, the log is useless.
+            self.assertNotEqual(
+                dropped_part.strip(), surviving_part.strip(),
+                "dropped and surviving repr must differ for a whitespace-variant dup; "
+                "got identical text — raw field values are not being logged: " + oq_line,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
