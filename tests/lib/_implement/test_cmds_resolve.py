@@ -264,10 +264,38 @@ def _write_minimal_readme(path, task_rows):
     path.write_text(content, encoding="utf-8")
 
 
+def _ensure_agents_dir(tmp_dir, agent_stems=None):
+    """Create .claude/agents/ in tmp_dir with stub *.md files for each stem.
+
+    This satisfies breakdown_helper's roster-validation gate, which fails
+    closed when no *.md agent files are present.  The agents here must cover
+    every agent name used by _write_task_md calls in this test module.
+    """
+    if agent_stems is None:
+        agent_stems = ["backend-engineer"]
+    agents_dir = Path(tmp_dir) / ".claude" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    for stem in agent_stems:
+        stub = agents_dir / (stem + ".md")
+        if not stub.exists():
+            stub.write_text("# {0}\n".format(stem), encoding="utf-8")
+    return agents_dir
+
+
 def _run_finalize_handoff(tmp_dir, plan_path):
-    """Run breakdown_helper finalize-handoff as subprocess."""
+    """Run breakdown_helper finalize-handoff as subprocess.
+
+    Creates a minimal .claude/agents/ roster in tmp_dir so the new
+    roster-validation gate (verify-agent-roster inside finalize-handoff) passes.
+    The roster covers all agents used by _write_task_md in this test module.
+    """
+    agents_dir = _ensure_agents_dir(tmp_dir)
     return subprocess.run(
-        [sys.executable, str(_BREAKDOWN_HELPER_PY), "finalize-handoff", str(plan_path)],
+        [
+            sys.executable, str(_BREAKDOWN_HELPER_PY), "finalize-handoff",
+            str(plan_path),
+            "--agents-dir", str(agents_dir),
+        ],
         cwd=str(tmp_dir),
         capture_output=True,
         text=True,

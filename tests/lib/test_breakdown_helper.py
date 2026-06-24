@@ -2522,7 +2522,19 @@ class FinalizeHandoffTests(_CwdIsolationBH):
     Build a real feature dir (plan.md + tasks/ + README.md) using the real
     producer helpers, run finalize-handoff, then reconstruct the JSON through
     the Breakdown/TaskRow/Provenance dataclasses to prove schema validity.
+
+    setUp populates a .claude/agents/ roster in tmp_path with all agents used
+    by _setup_feature_dir tasks so the new roster-validation gate is satisfied
+    without changing individual test call sites.
     """
+
+    def setUp(self):
+        super().setUp()
+        # Populate the default .claude/agents roster so the roster-validation
+        # gate inside finalize-handoff passes in all tests that don't supply
+        # an explicit --agents-dir.  Agents here must cover every agent name
+        # used by _write_full_task_file calls in this class.
+        _make_agents_dir(self.tmp_path, ["backend-engineer", "qa-engineer"])
 
     def _setup_feature_dir(self, with_plan_handoff=False, with_spec=False):
         """Return (feature_dir, plan_path, tasks_dir) for a two-task feature.
@@ -3478,6 +3490,594 @@ class TestBreakdownStatusPatternNoBleed(unittest.TestCase):
             "check-status-and-flip must NOT report 'already-approved' for a "
             "malformed plan; stdout={0!r}".format(result.stdout),
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests: verify-agent-roster (Phase 3.5 — agent-roster validation)
+# ---------------------------------------------------------------------------
+
+
+def _make_agents_dir(parent_dir, agent_stems):
+    """Create a .claude/agents/ directory with *.md stubs for each stem.
+
+    Returns the Path to the agents directory.
+    """
+    agents_dir = parent_dir / ".claude" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    for stem in agent_stems:
+        (agents_dir / (stem + ".md")).write_text(
+            "# {0}\n\nAgent definition.\n".format(stem), encoding="utf-8"
+        )
+    return agents_dir
+
+
+class VerifyAgentRosterTests(_CwdIsolationBH):
+    """Tests for verify-agent-roster verb and _validate_agent_roster function."""
+
+    # ------------------------------------------------------------------
+    # Happy-path: all assigned agents installed
+    # ------------------------------------------------------------------
+
+    def test_all_agents_installed_exit_0(self):
+        """All tasks assign agents that are in the roster → exit 0."""
+        feature_dir = self.tmp_path / "specs" / "001-roster-happy"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Build frontend", "001-roster-happy",
+            agent="frontend-engineer",
+        )
+        _write_full_task_file(
+            tasks_dir, "002", "Write tests", "001-roster-happy",
+            agent="qa-engineer",
+            depends_on="001",
+        )
+
+        agents_dir = _make_agents_dir(self.tmp_path, ["frontend-engineer", "qa-engineer", "devops-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_ok_line_shape_correct(self):
+        """Exit-0 stdout matches 'agent-roster: ok (N tasks, M agents installed)'."""
+        feature_dir = self.tmp_path / "specs" / "002-okline"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Define types", "002-okline",
+            agent="backend-engineer",
+        )
+
+        agents_dir = _make_agents_dir(self.tmp_path, ["backend-engineer", "frontend-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Must mention task count and agent count.
+        self.assertIn("agent-roster: ok", result.stdout)
+        self.assertIn("1 tasks", result.stdout)
+        self.assertIn("2 agents installed", result.stdout)
+
+    # ------------------------------------------------------------------
+    # One absent agent → exit 2 with offender + Available agents
+    # ------------------------------------------------------------------
+
+    def test_one_absent_agent_exit_2(self):
+        """One task assigns an absent agent → exit 2."""
+        feature_dir = self.tmp_path / "specs" / "003-absent"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Build frontend", "003-absent",
+            agent="backend-engineer",  # not in roster
+        )
+
+        agents_dir = _make_agents_dir(self.tmp_path, ["frontend-engineer", "qa-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2)
+
+    def test_absent_agent_stdout_names_offender(self):
+        """Exit-2 stdout names the task file and the absent agent."""
+        feature_dir = self.tmp_path / "specs" / "004-offender"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Build api", "004-offender",
+            agent="backend-engineer",  # not in roster
+        )
+
+        agents_dir = _make_agents_dir(self.tmp_path, ["frontend-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Agent roster findings", result.stdout)
+        self.assertIn("backend-engineer", result.stdout)
+        self.assertIn("001-build-api.md", result.stdout)
+
+    def test_absent_agent_stdout_lists_available_agents(self):
+        """Exit-2 stdout includes 'Available agents:' with the sorted roster."""
+        feature_dir = self.tmp_path / "specs" / "005-available"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Backend task", "005-available",
+            agent="backend-engineer",  # not in roster
+        )
+
+        agents_dir = _make_agents_dir(self.tmp_path, ["frontend-engineer", "qa-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Available agents:", result.stdout)
+        self.assertIn("frontend-engineer", result.stdout)
+        self.assertIn("qa-engineer", result.stdout)
+
+    # ------------------------------------------------------------------
+    # Empty / missing agents dir → fail-closed exit 2
+    # ------------------------------------------------------------------
+
+    def test_missing_agents_dir_fail_closed(self):
+        """Non-existent --agents-dir → fail-closed exit 2 with 'no agent roster found'."""
+        feature_dir = self.tmp_path / "specs" / "006-nodir"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Some task", "006-nodir",
+            agent="backend-engineer",
+        )
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(self.tmp_path / "does-not-exist"),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no agent roster found", result.stderr)
+
+    def test_empty_agents_dir_fail_closed(self):
+        """Agents dir exists but has no *.md files → fail-closed exit 2."""
+        feature_dir = self.tmp_path / "specs" / "007-emptydir"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Some task", "007-emptydir",
+            agent="backend-engineer",
+        )
+
+        # Create agents dir but with no *.md files.
+        agents_dir = self.tmp_path / "empty-agents"
+        agents_dir.mkdir()
+        (agents_dir / "README.txt").write_text("no agents here", encoding="utf-8")
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no agent roster found", result.stderr)
+
+    def test_md_suffixed_directory_not_counted_as_agent(self):
+        """A directory named 'some-agent.md/' in agents-dir is NOT an installed agent.
+
+        FIX 2: the roster comprehension now requires f.is_file() in addition
+        to f.suffix == '.md'.  A *.md-named directory would previously inject
+        its stem into the installed roster, silently bypassing the fail-closed
+        gate for tasks that assigned that name.
+        """
+        feature_dir = self.tmp_path / "specs" / "008b-dirmd"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Tricky task", "008b-dirmd",
+            agent="sneaky-agent",  # the name we plant as a directory
+        )
+
+        # Create the agents dir with a DIRECTORY named sneaky-agent.md
+        # (and no real *.md files) so the only *.md path is a dir, not a file.
+        agents_dir = self.tmp_path / "agents-with-dir"
+        agents_dir.mkdir()
+        (agents_dir / "sneaky-agent.md").mkdir()  # a directory, not a file!
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        # The directory must NOT be counted — so roster is empty → fail-closed.
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no agent roster found", result.stderr)
+
+    # ------------------------------------------------------------------
+    # No task files → exit 2 with 'no task files found'
+    # ------------------------------------------------------------------
+
+    def test_no_task_files_exit_2(self):
+        """Empty tasks dir → exit 2 with 'no task files found'."""
+        tasks_dir = self.tmp_path / "empty-tasks"
+        tasks_dir.mkdir()
+        agents_dir = _make_agents_dir(self.tmp_path, ["frontend-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no task files found", result.stderr)
+
+    # ------------------------------------------------------------------
+    # Placeholder / empty agent → NOT flagged by verify-agent-roster
+    # ------------------------------------------------------------------
+
+    def test_placeholder_agent_not_flagged(self):
+        """Task with unfilled placeholder '[assigned agent name]' → not flagged.
+
+        verify-agent-roster's scope is roster MEMBERSHIP of resolved names only.
+        Placeholder detection is finalize-handoff's concern.
+        """
+        feature_dir = self.tmp_path / "specs" / "008-placeholder"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        # Write a skeleton WITHOUT filling the agent — leaves placeholder.
+        skeleton = _render_task_file_raw("001", "Placeholder task", "008-placeholder")
+        (tasks_dir / "001-placeholder-task.md").write_text(skeleton, encoding="utf-8")
+
+        agents_dir = _make_agents_dir(self.tmp_path, ["frontend-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        # Should exit 0 — the placeholder task is not flagged here.
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("agent-roster: ok", result.stdout)
+
+    def test_empty_agent_value_not_flagged(self):
+        """Task with empty **Agent**: value → not flagged by verify-agent-roster."""
+        feature_dir = self.tmp_path / "specs" / "009-emptyagent"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        skeleton = _render_task_file_raw("001", "Empty agent task", "009-emptyagent")
+        # Replace agent placeholder with empty string.
+        skeleton = re.sub(
+            r"(\*\*Agent\*\*:)\s*\[assigned agent name\]",
+            r"\g<1> ",
+            skeleton,
+        )
+        (tasks_dir / "001-empty-agent-task.md").write_text(skeleton, encoding="utf-8")
+
+        agents_dir = _make_agents_dir(self.tmp_path, ["frontend-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        # Not flagged — empty agent is finalize-handoff's concern.
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    # ------------------------------------------------------------------
+    # Non-default --agents-dir path (wrapper mode simulation)
+    # ------------------------------------------------------------------
+
+    def test_custom_agents_dir_resolves_correctly(self):
+        """--agents-dir pointing at a non-default path resolves correctly.
+
+        Simulates wrapper mode where the install root differs from cwd.
+        """
+        feature_dir = self.tmp_path / "specs" / "010-customdir"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Frontend work", "010-customdir",
+            agent="frontend-engineer",
+        )
+
+        # Custom path: not .claude/agents, simulates a wrapper install root.
+        custom_install = self.tmp_path / "wrapper-install"
+        agents_dir = _make_agents_dir(custom_install, ["frontend-engineer", "backend-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("agent-roster: ok", result.stdout)
+
+    def test_custom_agents_dir_absent_agent_reports_correctly(self):
+        """Custom --agents-dir with an absent agent still reports the offender."""
+        feature_dir = self.tmp_path / "specs" / "011-customabsent"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Backend work", "011-customabsent",
+            agent="backend-engineer",
+        )
+
+        custom_install = self.tmp_path / "wrapper-install2"
+        agents_dir = _make_agents_dir(custom_install, ["frontend-engineer"])
+
+        result = _run_bh(
+            self.tmp_path, "verify-agent-roster", str(tasks_dir),
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("backend-engineer", result.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Tests: finalize-handoff + --agents-dir (Piece 3 fold-in)
+# ---------------------------------------------------------------------------
+
+
+class FinalizeHandoffAgentRosterTests(_CwdIsolationBH):
+    """Tests for the agent-roster validation fold-in to finalize-handoff."""
+
+    def _setup_feature_with_agents(self, agents, task_agents, with_plan_handoff=False):
+        """Return (feature_dir, plan_path, tasks_dir, agents_dir).
+
+        agents: list of agent stems to install in the roster.
+        task_agents: list of agent names to assign to sequential tasks.
+        """
+        feature_dir = self.tmp_path / "specs" / "001-roster-finalize"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_rich_plan(str(plan_path), status="Approved")
+
+        if with_plan_handoff:
+            r = _run_plan_helper_finalize(plan_path, self.tmp_path)
+            self.assertEqual(r.returncode, 0, "plan_helper finalize-handoff failed: " + r.stderr)
+
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        for i, agent_name in enumerate(task_agents, start=1):
+            num = str(i).zfill(3)
+            _write_full_task_file(
+                tasks_dir, num, "Task {0}".format(i), "001-roster-finalize",
+                agent=agent_name,
+            )
+
+        _write_readme(tasks_dir)
+        agents_dir = _make_agents_dir(self.tmp_path, agents)
+        return feature_dir, plan_path, tasks_dir, agents_dir
+
+    # ------------------------------------------------------------------
+    # finalize-handoff with absent agent → exit 2, no handoff written
+    # ------------------------------------------------------------------
+
+    def test_finalize_absent_agent_exits_2(self):
+        """finalize-handoff with one absent agent → exit 2."""
+        _, plan_path, _, agents_dir = self._setup_feature_with_agents(
+            agents=["frontend-engineer", "qa-engineer"],
+            task_agents=["backend-engineer"],  # not installed
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff", str(plan_path),
+            "--completed-at", "2026-05-24T12:00:00Z",
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+
+    def test_finalize_absent_agent_writes_no_handoff(self):
+        """finalize-handoff with absent agent must NOT write breakdown-handoff.json."""
+        feature_dir, plan_path, _, agents_dir = self._setup_feature_with_agents(
+            agents=["frontend-engineer"],
+            task_agents=["backend-engineer"],  # not installed
+        )
+
+        _run_bh(
+            self.tmp_path, "finalize-handoff", str(plan_path),
+            "--completed-at", "2026-05-24T12:00:00Z",
+            "--agents-dir", str(agents_dir),
+        )
+        handoff = feature_dir / "breakdown-handoff.json"
+        self.assertFalse(
+            handoff.exists(),
+            "breakdown-handoff.json must NOT be written when agent is not installed",
+        )
+
+    def test_finalize_absent_agent_stdout_names_offender(self):
+        """finalize-handoff exit-2 stdout names the absent agent."""
+        _, plan_path, _, agents_dir = self._setup_feature_with_agents(
+            agents=["frontend-engineer"],
+            task_agents=["backend-engineer"],  # not installed
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff", str(plan_path),
+            "--completed-at", "2026-05-24T12:00:00Z",
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("backend-engineer", result.stdout)
+        self.assertIn("## Agent roster findings", result.stdout)
+
+    def test_finalize_no_roster_fail_closed(self):
+        """finalize-handoff with missing roster → fail-closed exit 2, no handoff."""
+        feature_dir, plan_path, _, _ = self._setup_feature_with_agents(
+            agents=["backend-engineer"],
+            task_agents=["backend-engineer"],
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff", str(plan_path),
+            "--completed-at", "2026-05-24T12:00:00Z",
+            "--agents-dir", str(self.tmp_path / "no-such-agents-dir"),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no agent roster found", result.stderr)
+        handoff = feature_dir / "breakdown-handoff.json"
+        self.assertFalse(handoff.exists())
+
+    # ------------------------------------------------------------------
+    # finalize-handoff success path: byte-identical to existing tests
+    # ------------------------------------------------------------------
+
+    def test_finalize_all_agents_installed_success(self):
+        """finalize-handoff with all agents installed → exit 0, JSON written."""
+        _, plan_path, _, agents_dir = self._setup_feature_with_agents(
+            agents=["backend-engineer", "qa-engineer"],
+            task_agents=["backend-engineer"],
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff", str(plan_path),
+            "--completed-at", "2026-05-24T12:00:00Z",
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        written = Path(result.stdout.strip())
+        self.assertEqual(written.name, "breakdown-handoff.json")
+        self.assertTrue(written.is_file())
+
+    def test_finalize_success_path_schema_valid(self):
+        """finalize-handoff success: JSON reconstructs through schema without raising."""
+        import json as _json
+        _, plan_path, _, agents_dir = self._setup_feature_with_agents(
+            agents=["backend-engineer"],
+            task_agents=["backend-engineer"],
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff", str(plan_path),
+            "--completed-at", "2026-05-24T12:00:00Z",
+            "--agents-dir", str(agents_dir),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        written = Path(result.stdout.strip())
+        raw = _json.loads(written.read_text(encoding="utf-8"))
+
+        from _breakdown.handoff_schema import Breakdown, Provenance, TaskRow
+        prov = Provenance(
+            upstream_handoff_path=raw["provenance"]["upstream_handoff_path"],
+            upstream_handoff_kind=raw["provenance"]["upstream_handoff_kind"],
+            plan_path=raw["provenance"]["plan_path"],
+            spec_path=raw["provenance"]["spec_path"],
+        )
+        task_rows = [
+            TaskRow(
+                number=t["number"],
+                title=t["title"],
+                agent=t["agent"],
+                depends_on=t["depends_on"],
+                blocks=t["blocks"],
+                touched_files=t["touched_files"],
+                expects=t["expects"],
+                produces=t["produces"],
+                ac_addressed=t["ac_addressed"],
+                doc_refs=t["doc_refs"],
+                review_checkpoint=t["review_checkpoint"],
+            )
+            for t in raw["tasks"]
+        ]
+        from _breakdown.handoff_schema import SCHEMA_VERSION, HANDOFF_KIND
+        Breakdown(
+            schema_version=raw["schema_version"],
+            handoff_kind=raw["handoff_kind"],
+            tasks_dir=raw["tasks_dir"],
+            breakdown_completed_at=raw["breakdown_completed_at"],
+            provenance=prov,
+            tasks=task_rows,
+            additions=raw["additions"],
+            dependency_graph=raw["dependency_graph"],
+        )
+        # No exception = schema valid.
+
+    def test_finalize_without_agents_dir_fails_closed(self):
+        """Intentional fail-closed behavior: no --agents-dir → exit 2.
+
+        Without an explicit --agents-dir, finalize-handoff defaults to
+        .claude/agents in cwd, which does not exist in this fixture.
+        The roster-validation gate fails closed — exit 2 with "no agent
+        roster found" — and the handoff file is NOT written.
+
+        This documents the deliberate behavior change introduced by the
+        roster gate: callers must pass --agents-dir pointing to the installed
+        roster, or populate .claude/agents in cwd before invoking.
+        """
+        feature_dir = self.tmp_path / "specs" / "002-defaultpath"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_rich_plan(str(plan_path), status="Approved")
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Some task", "002-defaultpath",
+            agent="backend-engineer",
+        )
+        _write_readme(tasks_dir)
+
+        # No --agents-dir supplied → defaults to .claude/agents in cwd.
+        # .claude/agents does not exist in our tmp dir → fail-closed.
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff", str(plan_path),
+            "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no agent roster found", result.stderr)
 
 
 if __name__ == "__main__":

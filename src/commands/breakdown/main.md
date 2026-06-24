@@ -240,6 +240,7 @@ Assign exactly ONE agent per task by the file's owning package/stack (see `## Pa
 | API endpoints, controllers, middleware, services, server-side logic — and the backend stack's domain models, types, interfaces, contracts, and business/state logic | backend-engineer |
 | UI components, styles, routes, composables, stores — and the frontend stack's domain models, types, interfaces, and state management (BLoC / Redux / Pinia) | frontend-engineer |
 | Mobile screens, navigation, native modules, platform-specific code, app lifecycle — and the mobile stack's domain models, types, and state | mobile-engineer |
+| Non-server host / runtime-entrypoint code — Electron main process, desktop-app `main`, CLI entrypoint, Tauri core — i.e. the app's host process, NOT a backend server | the owning package's stack implementer per `## Packages` / `PACKAGE_STACKS` (the app's primary implementer — e.g. the frontend/app engineer that owns the rest of the codebase) — NOT `backend-engineer` by default |
 | Bug investigation with runtime symptoms | runtime-debugger |
 | Performance-critical path or optimization task | owning stack engineer (backend/frontend/mobile-engineer, per the file's layer) — `performance-analyst` diagnoses and recommends during `/review`, it never implements |
 | Auth, secrets, input validation, security hardening | owning stack engineer (backend-engineer for server-side auth/secrets/validation; frontend-engineer for client-side) — `security-reviewer` reviews during `/review`, it never implements |
@@ -247,10 +248,12 @@ Assign exactly ONE agent per task by the file's owning package/stack (see `## Pa
 | API contract design, OpenAPI specs, endpoint structure | api-designer |
 | CI/CD, Docker, deployment config, infrastructure | devops-engineer |
 | Data migration scripts, backward compatibility layers | migration-engineer |
-| Accessibility, design system compliance, UI audit | design-auditor |
+| Accessibility, design-system compliance, visual-fidelity work on UI files | owning stack engineer (frontend-engineer / mobile-engineer, per the file's layer) |
 | Unclear or mixed | split per the rule below — never `architect` |
 
 A mixed or unclear task is a decomposition smell, not a routing problem: split it until each piece maps to exactly one stack's implementer; if a piece genuinely spans stacks (e.g. a backend API plus its frontend consumer), break it into per-stack tasks joined by a dependency edge. If splitting is genuinely impossible, escalate to the human. Never assign `architect` to write code — the architect cannot implement.
+
+Host / runtime-entrypoint code that is non-renderer but also not a backend server (an Electron main process, a desktop-app `main`, a CLI entrypoint, a Tauri core) is NOT a `backend-engineer` task by default — route it via the host / runtime-entrypoint row above to the owning package's stack implementer per `## Packages` / `PACKAGE_STACKS`. For a desktop / Electron / CLI app whose code is one app stack, that is the app's primary implementer (the engineer that owns the rest of the codebase), never backend-by-default.
 
 If the owning stack's implementer is not generated for this project (not all projects generate all agents), split or escalate to the human — never fall back to `architect` (the architect cannot write code). `performance-analyst` and `security-reviewer` are READ-ONLY reviewers — they run during `/review` (and `/audit`) on the changed files and are never assigned an implementation task. For a genuinely perf- or security-focused investigation, the diagnosis still routes to the owning stack engineer to implement the fix; the reviewer recommends, the engineer changes the code.
 
@@ -328,7 +331,7 @@ The helper takes no arguments and owns the column names and verdict enum. Copy i
 
 ## PHASE 3.5: Integrity gates
 
-Two forcing-functions walk the task set mechanically. Do not proceed to Phase 4 with an unresolved violation unless it is explicitly recorded in the index Risk Assessment.
+Three forcing-functions walk the task set mechanically. Contract-chain and AC-coverage findings MAY be carried to Phase 4 as a documented deferral — explicitly recorded in the index `## Risk Assessment` with a one-line justification. The agent-roster gate has NO such bypass: it is a HARD gate, and a roster violation must be re-routed before Phase 4 (a task literally cannot be implemented by an agent that is not installed).
 
 **Contract chain** — orphan `Produces` / unsatisfied `Expects`:
 
@@ -350,6 +353,19 @@ Two forcing-functions walk the task set mechanically. Do not proceed to Phase 4 
 - Exit 2 with a `## Uncovered acceptance criteria` block on stdout → copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Every uncovered AC must get a covering task (return to Phase 3 to add it) or be explicitly flagged in the index `## Risk Assessment` as having no implementation path.
 - Exit 2 on stderr → the tasks directory is missing or the spec is unreadable. Copy the helper's stderr VERBATIM into a fenced code block and resolve the named problem before re-running.
 
+**Agent roster** — every assigned agent is actually installed in this project's `.claude/agents/` roster:
+
+```bash
+.devforge/lib/breakdown_helper verify-agent-roster <tasks-dir>
+```
+
+Pass only the tasks directory — do NOT pass `--agents-dir`. The verb defaults to `.claude/agents` relative to the working directory, which is correct in both standalone and wrapper mode: the helper is invoked via the relative path `.devforge/lib/breakdown_helper`, so the working directory is always the install root, where `.claude/` lives.
+
+- Exit 0 (`agent-roster: ok (N tasks, M agents installed)`) → every assigned agent is installed. No action.
+- Exit 2 with a `## Agent roster findings` block on stdout → one or more tasks assign an agent that is NOT installed for this project (the block lists each offending task filename and its uninstalled agent name, plus an `Available agents:` line). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). For each offender, RE-ROUTE the task to an installed agent that owns the file's stack — re-enter Phase 3, consult the Agent Assignment table, and apply its split-or-escalate rule — then re-run this gate; NEVER fall back to `architect` (it cannot write code). This is a HARD gate: do not proceed to Phase 4 with an unresolved roster offender.
+- Exit 2 with `no agent roster found...` on stderr → `.claude/agents/` is missing or has no agent files (a broken install). Copy the helper's stderr VERBATIM into a fenced code block; this is an install problem to resolve before breakdown can assign agents.
+- Exit 2 with `no task files...` on stderr → the tasks directory is missing or empty (Phase 3 did not write the task files). Copy the helper's stderr VERBATIM into a fenced code block; return to Phase 3.
+
 ## PHASE 4: User approval (HARD GATE)
 
 **Mode-dependent execution path** (mirrors `/plan` Phase 3):
@@ -368,7 +384,8 @@ Present a summary. This block is LLM-authored (breakdown state lives on disk in 
 **Riskiest tasks**: [list High-risk tasks and why]
 **Review checkpoints**: [count] (before tasks [list])
 **Contract chain**: [ok | N findings recorded in Risk Assessment]
-**AC coverage**: [all covered | N flagged in Risk Assessment]"
+**AC coverage**: [all covered | N flagged in Risk Assessment]
+**Agent roster**: all agents installed"
 
 Then ask via `AskUserQuestion`:
 
@@ -392,7 +409,10 @@ On `approve`, first write the structured breakdown→implement handoff via the h
 The helper parses `<plan-dir>/tasks/*.md` + the tasks `README.md` and atomic-writes `<plan-dir>/breakdown-handoff.json` (a structured handoff carrying the per-task machine contract — agent, depends_on, touched_files, expects, produces, ac_addressed, review_checkpoint — plus provenance to the sibling `plan-handoff.json`). Handle the exit code:
 
 - Exit 0 → the helper wrote `specs/NNN-<feature>/breakdown-handoff.json` and printed its path on stdout. Surface the written path to the user in one line, e.g. `"Structured breakdown handoff written: <path>."`
-- Non-zero exit (Exit 2 → plan or task files missing, a task carries a placeholder agent, or rendered content failed schema validation; Exit 1 → I/O error writing `breakdown-handoff.json`, e.g. permissions or disk-full) → the helper could not write or validate the handoff. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT abort — continue to the `render-implement-handoff` block below. The structured handoff is best-effort; the manual block is the guaranteed human bridge.
+- Non-zero exit → the helper could not write or validate the handoff. `finalize-handoff` runs the roster check internally as a backstop, so capture BOTH stdout and stderr and branch on their content:
+  - If STDOUT contains a `## Agent roster findings` block → this is a HARD failure, NOT best-effort: one or more tasks assign an uninstalled agent. Copy that stdout block VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then HALT and return to Phase 3.5 to re-route the offending task per its gate; do NOT continue to the `render-implement-handoff` block. (In normal flow the Phase 3.5 roster gate already caught this, so this stdout-block path should rarely fire.)
+  - Else if STDERR contains `no agent roster found` → this is a HARD failure (broken install — `.claude/agents/` is missing or empty). Copy the helper's stderr VERBATIM into a fenced code block, then HALT and resolve the install before re-running; do NOT continue to the `render-implement-handoff` block.
+  - Else (any other non-zero cause — Exit 2 → plan or task files missing, a task carries a placeholder agent, or rendered content failed schema validation; Exit 1 → I/O error writing `breakdown-handoff.json`, e.g. permissions or disk-full) → copy the helper's stderr VERBATIM into a fenced code block, then do NOT abort. Continue to the `render-implement-handoff` block below. The structured handoff is best-effort for these causes; the manual block is the guaranteed human bridge.
 
 The `breakdown-handoff.json` is the **producer side** of the breakdown→implement handoff. The `/implement` consumer reads this producer's contract. There is no auto-dispatch and no auto-consume: the manual block below remains how the user launches `/implement`.
 
