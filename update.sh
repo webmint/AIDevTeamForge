@@ -71,8 +71,8 @@ fi
 # ── Surgical mode: --only <command> ─────────────────────────────────────────
 # Re-emit a SINGLE command + overwrite its helper subpackage, skipping the
 # manifest-driven sync, three-way merges, and the version-marker bump. Same
-# bounded set as `install.sh --only`. Needs neither jq nor perl (no JSON merge,
-# no placeholder substitution). Composes with --dry-run / --force.
+# bounded set as `install.sh --only`. Needs no jq (no JSON merge) and does no
+# placeholder substitution. Composes with --dry-run / --force.
 if [ -n "$ONLY_CMD" ]; then
   PY=""
   if command -v python3 >/dev/null 2>&1; then PY="python3"
@@ -150,13 +150,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# ── Check for perl (required for placeholder substitution) ───────────────
-if ! command -v perl >/dev/null 2>&1; then
-  err "perl is required for placeholder substitution but was not found."
-  exit 1
-fi
-
-# ── Detect Python 3 (required for agent regeneration) ────────────────────
+# ── Detect Python 3 (required for placeholder substitution + agent regen) ──
 PYTHON3_CMD=""
 if command -v python3 >/dev/null 2>&1; then
   PYTHON3_CMD="python3"
@@ -164,6 +158,10 @@ elif command -v py >/dev/null 2>&1; then
   PYTHON3_CMD="py"
 elif command -v python >/dev/null 2>&1 && [ "$(python -c 'import sys; print(sys.version_info[0])' 2>/dev/null)" = "3" ]; then
   PYTHON3_CMD="python"
+fi
+if [ -z "$PYTHON3_CMD" ]; then
+  err "Python 3 is required (placeholder substitution + agent regeneration) but was not found."
+  exit 1
 fi
 
 # ── Load manifest ──────────────────────────────────────────────────────────
@@ -214,237 +212,44 @@ if [ -f "$CHANGELOG" ] && [ "$TARGET_VERSION" != "(unknown)" ] && [ "$TARGET_VER
 fi
 
 # ── Project config ────────────────────────────────────────────────────────
-PROJECT_CONFIG="$TARGET_DIR/.claude/project-config.json"
+PROJECT_CONFIG="$TARGET_DIR/.devforge/project-config.json"
 HAS_CONFIG=false
 
-# Substitute {{PLACEHOLDER}} variables in a file using project config.
-# Uses perl for safe multi-line replacement via environment variables.
+# Substitute {{PLACEHOLDER}} variables in a file via the framework renderer.
+# Delegates to `configure_helper substitute-file` so the {{KEY}} map (singular
+# <-> plural aliases, the PACKAGE_STACKS table, and identity passthroughs like
+# {{UPPERCASE}}) stays single-sourced in _render.py instead of being
+# re-implemented as a drift-prone literal jq loop here. The legacy second
+# positional arg (config path) is accepted but ignored. Returns the helper's
+# exit code: 0 = fully substituted (known/identity placeholders only),
+# 2 = an unknown placeholder remains (file left unchanged), 1 = config/file error.
 substitute_placeholders() {
   local file="$1"
-  local config="$2"
-
-  local keys
-  keys="$(jq -r 'keys[]' "$config")"
-
-  for key in $keys; do
-    local value
-    value="$(jq -r --arg k "$key" '.[$k]' "$config")"
-    export "TPL_$key=$value"
-    perl -i -0pe "s/\\{\\{${key}\\}\\}/\$ENV{\"TPL_${key}\"}/g" "$file"
-    unset "TPL_$key"
-  done
+  "$PYTHON3_CMD" "$TEMPLATE_DIR/src/devforge/lib/configure_helper.py" \
+    --devforge-dir "$TARGET_DIR/.devforge" --install-root "$TARGET_DIR" \
+    substitute-file --file "$file"
 }
 
-# One-time migration: extract project config from existing CLAUDE.md.
-# Called when project-config.json doesn't exist yet.
-migrate_project_config() {
-  local claude_md="$TARGET_DIR/CLAUDE.md"
-  local config_out="$TARGET_DIR/.claude/project-config.json"
-
-  if [ ! -f "$claude_md" ]; then
-    warn "No CLAUDE.md found — cannot extract project config."
-    warn "Run /configure in your project to populate .devforge/configure.yaml + project-config.json"
-    return 1
-  fi
-
-  info "Migrating: extracting project config from existing CLAUDE.md..."
-
-  # Extract simple key-value pairs from the known **Key**: value format
-  local proj_name proj_type framework language build_tool build_cmd project_root
-  local architecture error_handling api_layer state_mgmt styling monorepo
-  local type_check_cmd lint_cmd project_mode
-
-  proj_name="$(grep '^\*\*Name\*\*:' "$claude_md" | sed 's/\*\*Name\*\*: *//' | head -1)"
-  proj_type="$(grep '^\*\*Type\*\*:' "$claude_md" | sed 's/\*\*Type\*\*: *//' | head -1)"
-  framework="$(grep '^\*\*Framework\*\*:' "$claude_md" | sed 's/\*\*Framework\*\*: *//' | head -1)"
-  language="$(grep '^\*\*Language\*\*:' "$claude_md" | sed 's/\*\*Language\*\*: *//' | head -1)"
-  build_tool="$(grep '^\*\*Build Tool\*\*:' "$claude_md" | sed 's/\*\*Build Tool\*\*: *//' | head -1)"
-  build_cmd="$(grep '^\*\*Build Command\*\*:' "$claude_md" | sed 's/\*\*Build Command\*\*: *//' | head -1)"
-  type_check_cmd="$(grep '^\*\*Type Check Command\*\*:' "$claude_md" | sed 's/\*\*Type Check Command\*\*: *//' | head -1)"
-  lint_cmd="$(grep '^\*\*Lint Command\*\*:' "$claude_md" | sed 's/\*\*Lint Command\*\*: *//' | head -1)"
-  project_root="$(grep '^\*\*Project Root\*\*:' "$claude_md" | sed 's/\*\*Project Root\*\*: *//' | head -1)"
-  architecture="$(grep '^\*\*Pattern\*\*:' "$claude_md" | sed 's/\*\*Pattern\*\*: *//' | head -1)"
-  error_handling="$(grep '^\*\*Error Handling\*\*:' "$claude_md" | sed 's/\*\*Error Handling\*\*: *//' | head -1)"
-  api_layer="$(grep '^\*\*API Layer\*\*:' "$claude_md" | sed 's/\*\*API Layer\*\*: *//' | head -1)"
-  state_mgmt="$(grep '^\*\*State Management\*\*:' "$claude_md" | sed 's/\*\*State Management\*\*: *//' | head -1)"
-  styling="$(grep '^\*\*Styling\*\*:' "$claude_md" | sed 's/\*\*Styling\*\*: *//' | head -1)"
-  monorepo="$(grep '^\*\*Monorepo\*\*:' "$claude_md" | sed 's/\*\*Monorepo\*\*: *//' | head -1)"
-
-  # Detect project mode: check if project-config.json hint exists, else infer from source file count
-  project_mode="existing"
-  local src_root="${project_root:-.}"
-  if [ "$src_root" != "." ]; then
-    src_root="$TARGET_DIR/$src_root"
-  else
-    src_root="$TARGET_DIR"
-  fi
-  local src_count
-  src_count="$(find "$src_root" -maxdepth 3 -type f \( -name '*.ts' -o -name '*.js' -o -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.vue' -o -name '*.tsx' -o -name '*.jsx' -o -name '*.svelte' \) -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/dist/*' -not -path '*/build/*' 2>/dev/null | wc -l | tr -d ' ')"
-  if [ "$src_count" -le 5 ] 2>/dev/null; then
-    project_mode="greenfield"
-  fi
-
-  # Fallback for type check/lint commands based on language if not found in CLAUDE.md
-  if [ -z "$type_check_cmd" ] || [ "$type_check_cmd" = "N/A" ]; then
-    case "$(echo "$language" | tr '[:upper:]' '[:lower:]')" in
-      *typescript*) type_check_cmd="tsc --noEmit --pretty 2>&1 | head -20" ;;
-      *python*)     type_check_cmd="python -m py_compile" ;;
-      *go*)         type_check_cmd="go vet ./..." ;;
-      *rust*)       type_check_cmd="cargo check 2>&1 | head -20" ;;
-      *)            type_check_cmd="N/A" ;;
-    esac
-  fi
-  if [ -z "$lint_cmd" ] || [ "$lint_cmd" = "N/A" ]; then
-    lint_cmd="N/A"
-  fi
-
-  # Extract PROJECT_PATHS from an existing agent file (agents have ## Project Paths section)
-  local project_paths=""
-  local sample_agent
-  sample_agent="$(find "$TARGET_DIR/.claude/agents" -name '*.md' -type f 2>/dev/null | head -1)"
-  if [ -n "$sample_agent" ]; then
-    project_paths="$(awk '/^## Project Paths/{found=1; next} /^## /{found=0} found{print}' "$sample_agent" | sed '/^$/d')"
-  fi
-
-  # Extract multi-line sections from CLAUDE.md
-  local project_structure dev_commands agent_list
-  project_structure="$(awk '/^## Project Structure/{found=1; next} /^## /{found=0} found{print}' "$claude_md")"
-  dev_commands="$(awk '/^## Development Commands/{found=1; next} /^## /{found=0} found{print}' "$claude_md")"
-  agent_list="$(awk '/^## Available Agents/{found=1; next} /^## /{found=0} found{print}' "$claude_md")"
-
-  # Detect testing framework from existing agent or CLAUDE.md
-  local testing=""
-  if [ -f "$TARGET_DIR/.claude/agents/qa-engineer.md" ]; then
-    testing="$(grep '^\*\*Testing\*\*:' "$TARGET_DIR/.claude/agents/qa-engineer.md" | sed 's/\*\*Testing\*\*: *//' | head -1)"
-  fi
-
-  # Extract agent model tiers from existing agent frontmatter
-  # Think tier: architect, api-designer, security-reviewer
-  # Do tier: backend-engineer, frontend-engineer, mobile-engineer, db-engineer, devops-engineer, migration-engineer, runtime-debugger, performance-analyst, design-auditor
-  # Verify tier: code-reviewer, ac-verifier, qa-engineer
-  local model_think="" model_do="" model_verify=""
-  for agent_name in architect api-designer security-reviewer; do
-    local agent_file="$TARGET_DIR/.claude/agents/${agent_name}.md"
-    if [ -f "$agent_file" ]; then
-      model_think="$(grep '^model:' "$agent_file" | sed 's/model: *//' | head -1)"
-      break
-    fi
-  done
-  for agent_name in frontend-engineer backend-engineer db-engineer; do
-    local agent_file="$TARGET_DIR/.claude/agents/${agent_name}.md"
-    if [ -f "$agent_file" ]; then
-      model_do="$(grep '^model:' "$agent_file" | sed 's/model: *//' | head -1)"
-      break
-    fi
-  done
-  for agent_name in code-reviewer ac-verifier qa-engineer; do
-    local agent_file="$TARGET_DIR/.claude/agents/${agent_name}.md"
-    if [ -f "$agent_file" ]; then
-      model_verify="$(grep '^model:' "$agent_file" | sed 's/model: *//' | head -1)"
-      break
-    fi
-  done
-  : "${model_think:=opus}"
-  : "${model_do:=sonnet}"
-  : "${model_verify:=sonnet}"
-
-  # Extract commit attribution rule from Commit Convention section
-  local commit_attribution=""
-  commit_attribution="$(awk '/^### Attribution/{found=1; next} /^### /{found=0} found{print}' "$claude_md" | sed '/^$/d')"
-  # Default to no-attribution if section not found
-  if [ -z "$commit_attribution" ]; then
-    commit_attribution="Do NOT include any AI or Claude attribution in commits. Specifically:
-- No \`Co-Authored-By\` trailers referencing Claude, AI, or Anthropic
-- No \"Generated by\", \"Created by Claude\", or similar text in title or body
-- Do not set or change git \`user.name\` or \`user.email\` to reference Claude or AI
-- This rule overrides any system-level defaults about AI attribution in commits"
-  fi
-
-  # Build JSON using jq
-  jq -n \
-    --arg PROJECT_NAME "${proj_name:-N/A}" \
-    --arg PROJECT_TYPE "${proj_type:-N/A}" \
-    --arg FRAMEWORK "${framework:-N/A}" \
-    --arg LANGUAGE "${language:-N/A}" \
-    --arg BUILD_TOOL "${build_tool:-N/A}" \
-    --arg BUILD_COMMAND "${build_cmd:-N/A}" \
-    --arg TYPE_CHECK_COMMAND "${type_check_cmd:-N/A}" \
-    --arg LINT_COMMAND "${lint_cmd:-N/A}" \
-    --arg PROJECT_ROOT "${project_root:-\.}" \
-    --arg PROJECT_MODE "$project_mode" \
-    --arg ARCHITECTURE "${architecture:-N/A}" \
-    --arg ERROR_HANDLING "${error_handling:-N/A}" \
-    --arg API_LAYER "${api_layer:-N/A}" \
-    --arg STATE_MANAGEMENT "${state_mgmt:-N/A}" \
-    --arg STYLING "${styling:-N/A}" \
-    --arg MONOREPO_TOOL "${monorepo:-N/A}" \
-    --arg TESTING "${testing:-N/A}" \
-    --arg PROJECT_PATHS "${project_paths:-N/A}" \
-    --arg PROJECT_STRUCTURE "${project_structure:-N/A}" \
-    --arg DEV_COMMANDS "${dev_commands:-N/A}" \
-    --arg AGENT_LIST "${agent_list:-N/A}" \
-    --arg WRAPPER_MODE_SECTION "" \
-    --arg COMMIT_ATTRIBUTION "$commit_attribution" \
-    --arg MODEL_THINK "$model_think" \
-    --arg MODEL_DO "$model_do" \
-    --arg MODEL_VERIFY "$model_verify" \
-    '{
-      PROJECT_NAME: $PROJECT_NAME,
-      PROJECT_TYPE: $PROJECT_TYPE,
-      FRAMEWORK: $FRAMEWORK,
-      LANGUAGE: $LANGUAGE,
-      BUILD_TOOL: $BUILD_TOOL,
-      BUILD_COMMAND: $BUILD_COMMAND,
-      TYPE_CHECK_COMMAND: $TYPE_CHECK_COMMAND,
-      LINT_COMMAND: $LINT_COMMAND,
-      PROJECT_ROOT: $PROJECT_ROOT,
-      PROJECT_MODE: $PROJECT_MODE,
-      ARCHITECTURE: $ARCHITECTURE,
-      ERROR_HANDLING: $ERROR_HANDLING,
-      API_LAYER: $API_LAYER,
-      STATE_MANAGEMENT: $STATE_MANAGEMENT,
-      STYLING: $STYLING,
-      MONOREPO_TOOL: $MONOREPO_TOOL,
-      TESTING: $TESTING,
-      PROJECT_PATHS: $PROJECT_PATHS,
-      PROJECT_STRUCTURE: $PROJECT_STRUCTURE,
-      DEV_COMMANDS: $DEV_COMMANDS,
-      AGENT_LIST: $AGENT_LIST,
-      WRAPPER_MODE_SECTION: $WRAPPER_MODE_SECTION,
-      COMMIT_ATTRIBUTION: $COMMIT_ATTRIBUTION,
-      MODEL_THINK: $MODEL_THINK,
-      MODEL_DO: $MODEL_DO,
-      MODEL_VERIFY: $MODEL_VERIFY
-    }' > "$config_out"
-
-  info "Wrote .claude/project-config.json — please review extracted values."
-  return 0
-}
-
-# Check for project config — migrate if missing
+# Check for project config. It is a render artifact (rebuilt by /configure from
+# .devforge/configure.yaml + .devforge/init.yaml). If it is missing but the
+# source configure.yaml exists, rebuild it via the renderer — the single source
+# of truth — rather than scraping the old flat format out of CLAUDE.md.
 if [ -f "$PROJECT_CONFIG" ]; then
   HAS_CONFIG=true
-else
-  warn "No .claude/project-config.json found in target project."
-  if migrate_project_config; then
+elif [ -f "$TARGET_DIR/.devforge/configure.yaml" ]; then
+  warn "No .devforge/project-config.json — rebuilding from .devforge/configure.yaml"
+  if "$PYTHON3_CMD" "$TEMPLATE_DIR/src/devforge/lib/configure_helper.py" \
+       --devforge-dir "$TARGET_DIR/.devforge" --install-root "$TARGET_DIR" \
+       render-config >/dev/null 2>&1 && [ -f "$PROJECT_CONFIG" ]; then
     HAS_CONFIG=true
+    added "Rebuilt .devforge/project-config.json"
   else
-    warn "Skipping placeholder substitution for agents and CLAUDE.md."
-    warn "Re-run /configure to populate .devforge/configure.yaml + project-config.json"
+    warn "Could not rebuild project-config.json — skipping placeholder substitution."
+    warn "Run /configure to populate .devforge/configure.yaml + project-config.json"
   fi
-fi
-
-# Migrate old AGENT_MODEL → MODEL_THINK/MODEL_DO/MODEL_VERIFY
-if [ "$HAS_CONFIG" = true ]; then
-  old_model="$(jq -r '.AGENT_MODEL // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
-  has_new_keys="$(jq -r '.MODEL_THINK // empty' "$PROJECT_CONFIG" 2>/dev/null || true)"
-  if [ -n "$old_model" ] && [ -z "$has_new_keys" ]; then
-    info "Migrating AGENT_MODEL → MODEL_THINK/MODEL_DO/MODEL_VERIFY (Think=$old_model, Do=sonnet, Verify=sonnet)"
-    jq --arg model "$old_model" '
-      . + {MODEL_THINK: $model, MODEL_DO: "sonnet", MODEL_VERIFY: "sonnet"}
-      | del(.AGENT_MODEL)
-    ' "$PROJECT_CONFIG" > "${PROJECT_CONFIG}.tmp" && mv "${PROJECT_CONFIG}.tmp" "$PROJECT_CONFIG"
-  fi
+else
+  warn "No .devforge config found — skipping placeholder substitution."
+  warn "Run /configure to populate .devforge/configure.yaml + project-config.json"
 fi
 
 # Validate config values — warn about placeholder-in-placeholder
@@ -882,13 +687,17 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
   else
     cp "$TEMPLATE_DIR/$src" "$new_tpl"
   fi
+  # Substitute via the renderer; skip the file if it cannot fully substitute
+  # (exit 2 = unknown placeholder, exit 1 = config/file error). The renderer
+  # knows {{UPPERCASE}} is an identity passthrough, so a clean file exits 0 —
+  # do NOT grep for {{...}} here (that would false-positive on {{UPPERCASE}}).
   if [ "$HAS_CONFIG" = true ]; then
-    substitute_placeholders "$new_tpl" "$PROJECT_CONFIG"
-  fi
-
-  # Validate no unresolved placeholders
-  if grep -q '{{[A-Z_]*}}' "$new_tpl"; then
-    warn "Skipped $tgt — unresolved placeholders (check project-config.json)"
+    if ! substitute_placeholders "$new_tpl"; then
+      warn "Skipped $tgt — unresolved placeholders (check .devforge/project-config.json)"
+      rm -f "$new_tpl"; continue
+    fi
+  else
+    warn "Skipped $tgt — no .devforge/project-config.json; run /configure"
     rm -f "$new_tpl"; continue
   fi
 
@@ -896,8 +705,11 @@ echo "$DERIVED_UPDATE" | while IFS= read -r line; do
   if [ -f "$baseline_raw" ]; then
     baseline_sub="$(mktemp)"
     cp "$baseline_raw" "$baseline_sub"
+    # Best-effort substitution of the merge baseline (ignore exit: a removed
+    # legacy placeholder leaving it partly raw degrades to a safe merge
+    # conflict, never a hard abort under set -e).
     if [ "$HAS_CONFIG" = true ]; then
-      substitute_placeholders "$baseline_sub" "$PROJECT_CONFIG"
+      substitute_placeholders "$baseline_sub" || true
     fi
 
     tmp_current="$(mktemp)"
@@ -947,7 +759,7 @@ echo "$NEW_AGENTS" | while IFS= read -r name; do
   new_agent="$(mktemp)"
   cp "$regen_src" "$new_agent"
   if [ "$HAS_CONFIG" = true ]; then
-    substitute_placeholders "$new_agent" "$PROJECT_CONFIG"
+    substitute_placeholders "$new_agent" || true
   fi
   # First-write semantics (Finding 1): a new framework agent that a new command
   # depends on (e.g. devils-advocate → /grill) MUST always land. Unlike the

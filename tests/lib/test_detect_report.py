@@ -621,6 +621,22 @@ class YamlRoundTripTests(unittest.TestCase):
         self.assertIn("value: null", text)
         self.assertIn("value: \"N/A\"", text)
 
+    def test_single_quotes_rejected_with_actionable_message(self):
+        # The emitter only writes double-quoted scalars.  A single-quoted value
+        # means the file was edited outside the setter API.  The parser must
+        # raise YamlParseError with a message that tells the user why and how
+        # to remediate.
+        with self.assertRaises(detect_report.YamlParseError) as ctx:
+            detect_report.parse_yaml("project_root: 'myproject'\n")
+        self.assertIn(
+            "single-quoted strings are not supported",
+            str(ctx.exception),
+        )
+        self.assertIn(
+            "values are written double-quoted by the owning helper",
+            str(ctx.exception),
+        )
+
 
 # ---------------------------------------------------------------------------
 # AtomicWriteTests
