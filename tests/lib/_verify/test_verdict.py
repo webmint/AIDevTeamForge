@@ -15,9 +15,24 @@ Coverage:
       - Contested [CONSTITUTION-VIOLATION] finding → NEEDS WORK (D7: never APPROVED)
       - Critical finding in review_findings → NEEDS WORK
       - High finding in review_findings → NEEDS WORK
+      - Confirmed Medium finding (non-constitution) → NEEDS WORK (D3 — any-confirmed-Medium gates)
       - 2-AC/1-fail (50%, failing_count=1 < 2 threshold) → NEEDS WORK (not REJECTED)
       - 1-AC/1-fail (100%, failing_count=1 < 2 threshold) → NEEDS WORK (not REJECTED)
       - 1-FAIL/1-UNVERIFIED (1 verifiable, 100%, failing_count=1) → NEEDS WORK (not REJECTED)
+    Medium-finding gate paths (D3 — any-confirmed-Medium → NEEDS WORK; D4 — hygiene stays advisory):
+      - One confirmed Medium non-constitution finding → NEEDS WORK, medium_finding blocker present
+      - Info-severity finding only → APPROVED (Info non-gating)
+      - Confirmed High → still NEEDS WORK (unchanged behavior)
+      - Confirmed constitution violation → REJECTED (unchanged; constitution path, not medium path)
+      - Plan-34 regression: clean feature with only hygiene flags (scope_creep /
+        leftover_artifacts) → APPROVED (hygiene advisory, not blocking; Medium gate
+        does NOT re-block on hygiene)
+      - CONTESTED Medium (in contested, not confirmed) → APPROVED if nothing else blocks
+        (confirmed-only per D3; contested Medium does not gate)
+      - Medium that is also a constitution violation → handled by constitution path,
+        not double-counted as plain medium_finding
+      - Multiple confirmed Medium findings → single medium_finding blocker, detail lists up to 3
+      - More than 3 confirmed Medium findings → truncated summary with "+ N more"
     Hygiene advisory paths (NEVER block verdict):
       - scope_creep non-empty, everything else clean → APPROVED (hygiene is advisory)
       - leftover_artifacts non-empty, everything else clean → APPROVED (hygiene is advisory)
@@ -396,8 +411,8 @@ class TestComputeVerdictNeedsWork(unittest.TestCase):
         )
         self.assertEqual(result["verdict"], "NEEDS WORK")
 
-    def test_medium_finding_not_blocking(self):
-        """Medium/Info findings alone do NOT block."""
+    def test_medium_finding_blocks_needs_work(self):
+        """D3: confirmed Medium finding → NEEDS WORK (not APPROVED as before D3)."""
         review = _empty_review()
         review["confirmed"] = [_finding(severity="Medium")]
         result = compute_verdict(
@@ -407,7 +422,9 @@ class TestComputeVerdictNeedsWork(unittest.TestCase):
             hygiene=_empty_hygiene(),
             ac_verification_mode="code-only",
         )
-        self.assertEqual(result["verdict"], "APPROVED")
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("medium_finding", blocker_types)
 
     def test_scope_creep_is_advisory_not_blocking(self):
         """Hygiene change: scope_creep alone must NOT block — result is APPROVED."""
@@ -993,6 +1010,311 @@ class TestComputeVerdictEdgeCases(unittest.TestCase):
         )
         types = [b["type"] for b in result["blockers"]]
         self.assertIn("constitution_confirmed", types)
+
+
+class TestComputeVerdictMediumGate(unittest.TestCase):
+    """D3 / D4 — confirmed Medium findings gate the /verify verdict.
+
+    D3 threshold: any confirmed (post-refutation) Medium non-constitution finding
+    → NEEDS WORK.  Info stays advisory/non-gating.  Medium never escalates to
+    REJECTED.  Contested Medium does NOT gate (confirmed-only per D3/OQ-3).
+
+    D4: hygiene (scope_creep / leftover_artifacts) stays advisory.  The Medium gate
+    reads only real CODE findings, never hygiene flags.  A clean feature with only
+    hygiene flags must still be APPROVED (plan-34 regression guard).
+    """
+
+    def test_confirmed_medium_non_constitution_needs_work(self):
+        """One confirmed Medium non-constitution finding → NEEDS WORK, medium_finding blocker."""
+        review = _empty_review()
+        review["confirmed"] = [_finding(severity="Medium", category="mislogic")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("medium_finding", blocker_types)
+
+    def test_medium_finding_blocker_detail_content(self):
+        """medium_finding blocker detail mentions count and the pattern."""
+        review = _empty_review()
+        review["confirmed"] = [_finding(severity="Medium", category="best_practice")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        blocker = next(b for b in result["blockers"] if b["type"] == "medium_finding")
+        self.assertIn("1", blocker["detail"])
+        self.assertIn("Medium", blocker["detail"])
+
+    def test_info_finding_only_approved(self):
+        """Info-severity finding only → APPROVED (Info stays advisory/non-gating)."""
+        review = _empty_review()
+        review["confirmed"] = [_finding(severity="Info", category="mislogic")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "APPROVED")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertNotIn("medium_finding", blocker_types)
+
+    def test_confirmed_high_still_needs_work(self):
+        """Confirmed High → still NEEDS WORK (unchanged critical_high_finding behavior)."""
+        review = _empty_review()
+        review["confirmed"] = [_finding(severity="High", category="mislogic")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("critical_high_finding", blocker_types)
+        # medium_finding should NOT also appear for a High-severity finding
+        self.assertNotIn("medium_finding", blocker_types)
+
+    def test_confirmed_constitution_violation_still_rejected(self):
+        """Confirmed constitution violation → REJECTED (unchanged; constitution path)."""
+        review = _empty_review()
+        review["confirmed"] = [_constitution_finding()]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "REJECTED")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("constitution_confirmed", blocker_types)
+
+    def test_plan34_regression_hygiene_only_approved(self):
+        """Plan-34 regression: clean feature with only hygiene flags → APPROVED.
+
+        The Medium gate reads only real CODE findings, NEVER hygiene flags.
+        scope_creep and leftover_artifacts stay advisory (D4).
+        This is the mandatory plan-34 false-positive regression guard.
+        """
+        hygiene = _empty_hygiene()
+        hygiene["scope_creep"] = ["specs/001-feature/review.md", "design/reference.html"]
+        hygiene["leftover_artifacts"] = [
+            {"file": "src/a.ts", "line": 5, "artifact": "console.log"},
+        ]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=_empty_review(),
+            hygiene=hygiene,
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "APPROVED")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertNotIn("medium_finding", blocker_types)
+        self.assertNotIn("hygiene_flags", blocker_types)
+        self.assertEqual(result["blockers"], [])
+
+    def test_contested_medium_does_not_gate(self):
+        """CONTESTED Medium (in contested, not confirmed) → does NOT gate (confirmed-only per D3).
+
+        Result is APPROVED if nothing else blocks.
+        """
+        review = _empty_review()
+        # Medium finding placed in contested, not confirmed
+        review["contested"] = [_finding(severity="Medium", category="best_practice")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "APPROVED")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertNotIn("medium_finding", blocker_types)
+
+    def test_medium_constitution_violation_uses_constitution_path_not_medium(self):
+        """A Medium-severity constitution violation is handled by constitution_confirmed,
+        NOT also counted as a medium_finding blocker.
+
+        The `not _is_constitution_violation(f)` exclusion in the medium_confirmed gather
+        prevents double-counting.
+        """
+        review = _empty_review()
+        # Medium severity but it is a constitution violation
+        medium_constitution = {
+            "severity": "Medium",
+            "file": "src/a.py",
+            "line": 10,
+            "pattern": "Medium-severity constitution rule break",
+            "category": "constitution",
+            "tags": ["[CONSTITUTION-VIOLATION]"],
+            "confidence": "Likely",
+        }
+        review["confirmed"] = [medium_constitution]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        # Constitution violation path fires → REJECTED
+        self.assertEqual(result["verdict"], "REJECTED")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("constitution_confirmed", blocker_types)
+        # medium_finding must NOT appear — the exclusion works
+        self.assertNotIn("medium_finding", blocker_types)
+
+    def test_medium_never_escalates_to_rejected(self):
+        """Medium findings NEVER escalate to REJECTED (only NEEDS WORK per D3).
+
+        Even with a large number of confirmed Medium findings, the verdict stays
+        NEEDS WORK, not REJECTED.  REJECTED stays reserved for constitution violations
+        and high AC failure rates.
+        """
+        review = _empty_review()
+        review["confirmed"] = [
+            _finding(severity="Medium", category="mislogic"),
+            _finding(severity="Medium", category="best_practice"),
+            _finding(severity="Medium", category="duplication"),
+            _finding(severity="Medium", category="system_design"),
+            _finding(severity="Medium", category="mislogic"),
+        ]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        self.assertNotEqual(result["verdict"], "REJECTED")
+
+    def test_multiple_medium_findings_single_blocker(self):
+        """Multiple confirmed Medium findings → single medium_finding blocker."""
+        review = _empty_review()
+        review["confirmed"] = [
+            _finding(severity="Medium", category="mislogic"),
+            _finding(severity="Medium", category="best_practice"),
+        ]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        medium_blockers = [b for b in result["blockers"] if b["type"] == "medium_finding"]
+        # Exactly one medium_finding blocker regardless of finding count
+        self.assertEqual(len(medium_blockers), 1)
+        self.assertIn("2", medium_blockers[0]["detail"])
+
+    def test_more_than_3_medium_findings_truncated_summary(self):
+        """More than 3 confirmed Medium findings → summary truncated with '+ N more'."""
+        review = _empty_review()
+        review["confirmed"] = [
+            _finding(severity="Medium", category="mislogic"),
+            _finding(severity="Medium", category="best_practice"),
+            _finding(severity="Medium", category="duplication"),
+            _finding(severity="Medium", category="system_design"),
+        ]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        reasons_text = " ".join(result["reasons"])
+        self.assertIn("+ 1 more", reasons_text)
+
+    def test_medium_with_passing_acs_needs_work(self):
+        """Confirmed Medium + all ACs pass → NEEDS WORK driven by medium_finding."""
+        review = _empty_review()
+        review["confirmed"] = [_finding(severity="Medium")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS"), _ac("PASS", "AC-2"), _ac("PASS", "AC-3")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("medium_finding", blocker_types)
+        # Only the medium_finding blocker — no AC blocker
+        self.assertNotIn("ac_failure", blocker_types)
+
+    def test_medium_in_off_mode_still_gates(self):
+        """Confirmed Medium gates the verdict in all modes, including ac_verification_mode=off.
+
+        The Medium gate is independent of ac_verification_mode — it reads review findings,
+        not AC results.
+        """
+        review = _empty_review()
+        review["confirmed"] = [_finding(severity="Medium")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="off",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        blocker_types = [b["type"] for b in result["blockers"]]
+        self.assertIn("medium_finding", blocker_types)
+
+    def test_medium_reason_line_present(self):
+        """A confirmed Medium finding produces a reason line describing the finding."""
+        review = _empty_review()
+        review["confirmed"] = [_finding(severity="Medium", category="best_practice")]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        reasons_text = " ".join(result["reasons"])
+        self.assertIn("Medium", reasons_text)
+
+    def test_medium_and_high_together_both_blockers(self):
+        """BOTH a confirmed High AND a confirmed Medium → NEEDS WORK (not REJECTED), both blocker types present.
+
+        Guards against a future edit accidentally making Medium escalate to REJECTED
+        when a High co-occurs.  The High fires critical_high_finding; the Medium fires
+        medium_finding independently.  Neither path touches is_rejected.
+        """
+        review = _empty_review()
+        review["confirmed"] = [
+            _finding(severity="High", category="mislogic"),
+            _finding(severity="Medium", category="best_practice"),
+        ]
+        result = compute_verdict(
+            ac_results=[_ac("PASS")],
+            mechanical_status="pass",
+            review_findings=review,
+            hygiene=_empty_hygiene(),
+            ac_verification_mode="code-only",
+        )
+        self.assertEqual(result["verdict"], "NEEDS WORK")
+        types = [b["type"] for b in result["blockers"]]
+        self.assertIn("critical_high_finding", types)
+        self.assertIn("medium_finding", types)
 
 
 if __name__ == "__main__":

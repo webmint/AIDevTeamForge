@@ -308,7 +308,7 @@ On APPROVED or REJECTED, skip PHASE 9 and go straight to the cleanup block below
 .devforge/lib/verify_helper check-status-and-flip --feature-dir <feature> --to phase9
 ```
 
-**Only on a NEEDS WORK verdict.** Present the blocking issues to the user (the verdict `blockers` + the failing ACs + the folded Critical/High review findings — the same set surfaced in `verification.md`), then offer to file bugs: **all** (file one bug per issue), **select** (the user names which to file), or **none** (skip filing). When the user elects to file some or all, compose the issue array and write it to scratch, then call `file-bugs`:
+**Only on a NEEDS WORK verdict.** Present the blocking issues to the user (the verdict `blockers` — which covers AC failures, mechanical check failures, Critical/High/Medium review findings, and any constitution blocker — the same set surfaced in `verification.md`), then offer to file bugs: **all** (file one bug per issue), **select** (the user names which to file), or **none** (skip filing). When the user elects to file some or all, compose the issue array and write it to scratch, then call `file-bugs`:
 
 ```bash
 WORKDIR="${TMPDIR:-/tmp}/forge-verify"
