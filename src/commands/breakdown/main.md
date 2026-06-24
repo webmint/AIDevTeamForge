@@ -16,6 +16,7 @@ Usage: `/breakdown [plan-file]` (e.g. `/breakdown specs/008-prevent-duplicate-co
 - `specs/NNN-<feature>/tasks/NNN-<title>.md` — one rendered task file per task (required).
 - `specs/NNN-<feature>/tasks/README.md` — task index with dependency graph, risk assessment, and review checkpoints (required).
 - `specs/NNN-<feature>/breakdown-handoff.json` — structured producer-side handoff (best-effort; see Phase 5).
+- `specs/NNN-<feature>/design-manifest.json` — per-element design-fidelity disposition manifest (conditional; written only when the feature has a `design/reference.html` — see Phase 2.5).
 
 After approval (Phase 5), `/breakdown` WIP-commits these artifacts — the whole `tasks/` directory plus `breakdown-handoff.json` — via `.devforge/lib/artifact_helper commit-artifacts`. The commit lands in the INSTALL repo only (never the wrapper-mode source/product repo) and is fail-soft (a git failure warns and `/breakdown` continues — the artifacts are already written). The `[WIP]` commit folds into `/finalize`'s squash, so the final PR is unchanged. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/implement`'s wrapper path stages ONLY source code in the source repo and leaves the task files uncommitted, so this commit is NOT redundant there. (In standalone mode `/implement` already tracks the task files, so re-staging unchanged ones is a harmless no-op; `breakdown-handoff.json` is newly tracked either way.)
 
@@ -255,9 +256,68 @@ A mixed or unclear task is a decomposition smell, not a routing problem: split i
 
 Host / runtime-entrypoint code that is non-renderer but also not a backend server (an Electron main process, a desktop-app `main`, a CLI entrypoint, a Tauri core) is NOT a `backend-engineer` task by default — route it via the host / runtime-entrypoint row above to the owning package's stack implementer per `## Packages` / `PACKAGE_STACKS`. For a desktop / Electron / CLI app whose code is one app stack, that is the app's primary implementer (the engineer that owns the rest of the codebase), never backend-by-default.
 
-If the owning stack's implementer is not generated for this project (not all projects generate all agents), split or escalate to the human — never fall back to `architect` (the architect cannot write code). `performance-analyst` and `security-reviewer` are READ-ONLY reviewers — they run during `/review` (and `/audit`) on the changed files and are never assigned an implementation task. For a genuinely perf- or security-focused investigation, the diagnosis still routes to the owning stack engineer to implement the fix; the reviewer recommends, the engineer changes the code.
+If the owning stack's implementer is not generated for this project (not all projects generate all agents), split or escalate to the human — never fall back to `architect` (the architect cannot write code). `performance-analyst`, `security-reviewer`, and `design-auditor` are READ-ONLY reviewers — they run during `/review` (and `/audit`) on the changed files and are never assigned an implementation task (`design-auditor` runs the `/review` runtime design-fidelity check when the feature has a design reference + manifest). For a genuinely perf- or security-focused investigation, the diagnosis still routes to the owning stack engineer to implement the fix; the reviewer recommends, the engineer changes the code.
 
 **Halt rule:** if you reach Phase 3 without having completed the architect consultation, halt, invoke the architect now, then record its validation provenance in the tasks index Specialist Consultation table (Phase 3) before writing any task file. Task files written without a corresponding Specialist Consultation entry are a hard error.
+
+## PHASE 2.5: Design-fidelity intake gate (CONDITIONAL — fires only when the feature has a design reference)
+
+**This phase runs ONLY when the feature implements against a design reference.** A design reference is a `design/reference.html` file at the workspace root (the single HTML artifact the feature's UI implements against). If no such file exists, this feature is not UI-against-a-reference work — SKIP this entire phase and proceed directly to Phase 3. Non-UI features and UI features with no `design/reference.html` are NOT blocked by this gate.
+
+When a `design/reference.html` DOES exist, this gate produces a per-element disposition manifest — the pre-code contract that classifies every reference element before any task file is written — and HALTS intake if any reference value cannot be resolved or any element is left unclassified. The gate runs at INTAKE (before Phase 3 writes task files), not at verify: a fidelity gap is escalated to the user BEFORE code is written, never after. The `design_helper` owns the manifest's structure, validation, and the gap-list computation; the orchestrator composes only the disposition values.
+
+**Detect the design reference.** Check whether `design/reference.html` exists at the workspace root. If it does not exist, tell the user `"No design/reference.html for this feature; skipping the design-fidelity intake gate."` and proceed to Phase 3. If it exists, continue.
+
+**Step 1 — Resolve the reference into elements + a gap-list.** Run the helper, capturing its stdout JSON to a scratch file outside the work tree (the helper's next verb reads a file path, not a pipe):
+
+```bash
+mkdir -p "${TMPDIR:-/tmp}/forge-breakdown"
+.devforge/lib/design_helper resolve-reference --html-path design/reference.html \
+  > "${TMPDIR:-/tmp}/forge-breakdown/design-reference.json"
+```
+
+**Check the exit code before proceeding.** Because the command redirects stdout to a file, a non-zero exit (exit 2 — `design/reference.html` was not found or could not be read) leaves an empty/partial JSON file and the helper's informative stderr is the only diagnostic. If the exit code is non-zero, copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. Proceed to Step 2 ONLY on exit 0.
+
+On exit 0 the verb has emitted a JSON object carrying the `data-ref`-anchored element list (each element's `data_ref`, tag, id, classes, inline style), the resolved CSS values, and a `gap_list` of unresolvable classes/undefined tokens (a class with no CSS definition on disk, a `var(--token)` with no definition in the collected CSS). The gap-list is NOT escalated here — it is carried into the manifest and enforced by `validate-manifest` (Step 4), which is the single halt point for both unresolvable values and unclassified elements.
+
+**Step 2 — Initialize the skeleton manifest.** Produce a skeleton manifest (every element unclassified) from the resolve-reference output, and write it to the feature's manifest path via Write:
+
+```bash
+.devforge/lib/design_helper init-manifest \
+  --reference-json "${TMPDIR:-/tmp}/forge-breakdown/design-reference.json"
+```
+
+The verb emits the skeleton manifest JSON to stdout — every element carries `disposition: ""` (unclassified) and the `gap_list` is copied in. Exit 2 means the reference JSON could not be read — copy the helper's stderr VERBATIM into a fenced code block and end the turn. Otherwise write the helper's stdout VERBATIM to `specs/NNN-<feature>/design-manifest.json` via Write (substitute `NNN-<feature>` with the resolved feature dir name). Do not edit the structure; you will fill only the disposition values in Step 3.
+
+**Step 3 — Classify every element's disposition (judgment step, WITH the architect consult already performed in Phase 2).** This is the orchestrator's composition step. For each element in `specs/NNN-<feature>/design-manifest.json`, set its `disposition` field to exactly one of:
+
+- **`MATCH`** — the element is in scope; its runtime values (color, border, radius, spacing, typography, `:hover`, `:focus-visible`) must equal the reference 1:1.
+- **`DEFER-EMPTY`** — the element's CONTENT is out of scope (an empty mount slot), but the CONTAINER's box model (border, padding, dimensions) still matches the reference 1:1.
+- **`STATIC-PLACEHOLDER`** — the element's content is fixed/hardcoded, but its styling still matches the reference 1:1.
+- **`DEVIATE`** — an explicit, recorded decision to depart from the reference. A `DEVIATE` element REQUIRES a non-empty `deviate_reason` field stating why; that reason is the audit trail.
+
+The Phase-2 architect validation of task boundaries and the design decisions it surfaced are the basis for these classifications — classify in light of that consultation, not independently of it. Write the classified `specs/NNN-<feature>/design-manifest.json` via Edit (set each `disposition`, and the `deviate_reason` on every `DEVIATE` element).
+
+**Step 4 — Validate the manifest (the HALT point).** Run the validator against the classified manifest:
+
+```bash
+.devforge/lib/design_helper validate-manifest \
+  --manifest-path specs/NNN-<feature>/design-manifest.json
+```
+
+Substitute `NNN-<feature>` with the resolved feature dir name. The verb emits a `{valid, errors}` JSON object to stdout and, on failure, one error line per problem to stderr. It enforces two rules: every element MUST carry a disposition (an unclassified element fails, naming the element), and the gap-list MUST be empty (each unresolvable class/token fails, naming the token with a "supply the missing artifact or record a DEVIATE entry" instruction).
+
+- **Exit 0** — the manifest is fully classified with an empty gap-list. The intake gate passes. Remove the scratch dir, then proceed to Phase 3:
+
+  ```bash
+  rm -rf "${TMPDIR:-/tmp}/forge-breakdown"
+  ```
+- **Exit 1** — validation errors. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then HALT and escalate. Two distinct failure classes appear in the stderr, with distinct recovery paths — tell the user which applies and that intake cannot proceed until it is resolved. Do NOT write any task file. End the turn; the user's resolution opens the next turn, after which re-run from the step named below for the failure they fixed, then re-validate.
+  - **An unclassified element** (`element '<data-ref>': disposition is unclassified`) → the element was left blank in Step 3. Recovery: re-enter Step 3 to set its `disposition` (and `deviate_reason` if `DEVIATE`), then re-run Step 4.
+  - **A gap-list entry** (`gap-list: unresolvable class/token '<token>'`) → a class or token in the reference could not be resolved on disk. The `gap_list` is a SEPARATE top-level field of the manifest; reclassifying an element does NOT clear it. Two accurate recovery paths: (1) **supply the missing artifact** — add the missing stylesheet or define the missing token at its source, then re-run from Step 1 to recompute the gap-list from the updated reference; or (2) **accept it as a known deviation** — manually edit `specs/NNN-<feature>/design-manifest.json` to REMOVE that token from the `gap_list` array AND set the corresponding element's `disposition` to `DEVIATE` with a `deviate_reason` recording the acceptance, then re-run Step 4 to re-validate. Path 1 re-runs from Step 1; path 2 is a manual edit followed by Step 4.
+- **Exit 2** — the manifest file could not be read or parsed (a Step 2/Step 3 write problem). Copy the helper's stderr VERBATIM into a fenced code block, then end the turn.
+
+The validated `specs/NNN-<feature>/design-manifest.json` PERSISTS as the design-fidelity CONTRACT for the feature. It declares, per element, what the two downstream fidelity gates enforce: a `MATCH` element's runtime values must equal the reference 1:1 (color, border, radius, spacing, typography, `:hover`, `:focus-visible`); a `DEFER-EMPTY` element's container box model must match 1:1 while its content is out of scope; a `STATIC-PLACEHOLDER` element's styling must match 1:1 while its content is fixed; a `DEVIATE` element is exempt, its `deviate_reason` the audit trail. The manifest is consumed by two enforcement concerns: `/implement`'s per-task forcing-functions gate runs the write-time provenance check `verify-design-tokens` against it (no hardcoded color literals, no `var(--x, <literal>)` fallbacks, token-binding on `MATCH` elements, `:hover` + `:focus-visible` on interactive elements), and `/review`'s PHASE 2.5 dispatches `design-auditor` to read it for the review-time runtime-conformance check (each in-scope element's rendered values against the reference per its disposition). This phase only PRODUCES that contract; it does not itself run either enforcement.
 
 ## PHASE 3: Write tasks
 
@@ -419,10 +479,10 @@ The `breakdown-handoff.json` is the **producer side** of the breakdown→impleme
 Now WIP-commit `/breakdown`'s own artifacts so the work is git-safe at this step. Run this UNCONDITIONALLY (the task files + index were written in Phase 3 and approved in Phase 4; `breakdown-handoff.json` was just written above, best-effort):
 
 ```bash
-.devforge/lib/artifact_helper commit-artifacts --paths '["specs/NNN-<feature>/tasks", "specs/NNN-<feature>/breakdown-handoff.json"]' --label 'breakdown: NNN-<slug>'
+.devforge/lib/artifact_helper commit-artifacts --paths '["specs/NNN-<feature>/tasks", "specs/NNN-<feature>/breakdown-handoff.json", "specs/NNN-<feature>/design-manifest.json"]' --label 'breakdown: NNN-<slug>'
 ```
 
-Substitute `NNN-<feature>` with the resolved feature dir name and `NNN-<slug>` with the feature id. Passing the `tasks` DIRECTORY path stages every task file plus `tasks/README.md` under it (the verb passes a directory path to `git add` unchanged, identical to `git add specs/NNN-<feature>/tasks`). `commit-artifacts` stages ONLY the named paths and makes a `[WIP] breakdown: NNN-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already written, so note the warning and CONTINUE; do NOT abort); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/implement`'s wrapper path stages ONLY source code in the source repo and leaves these uncommitted — so the commit is NOT redundant there. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged. If `finalize-handoff` above failed to write `breakdown-handoff.json`, that path is simply not present and the verb stages only the `tasks` directory — a benign skip, not a failure.
+Substitute `NNN-<feature>` with the resolved feature dir name and `NNN-<slug>` with the feature id. Passing the `tasks` DIRECTORY path stages every task file plus `tasks/README.md` under it (the verb passes a directory path to `git add` unchanged, identical to `git add specs/NNN-<feature>/tasks`). `commit-artifacts` stages ONLY the named paths and makes a `[WIP] breakdown: NNN-<slug>` commit in the INSTALL repo (never the wrapper-mode source/product repo). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already written, so note the warning and CONTINUE; do NOT abort); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op. **In WRAPPER mode this is the FIRST per-step commit that tracks the task files + `tasks/README.md` in the install repo** — `/implement`'s wrapper path stages ONLY source code in the source repo and leaves these uncommitted — so the commit is NOT redundant there. The `[WIP]` commit folds into `/finalize`'s squash, leaving the final PR unchanged. If `finalize-handoff` above failed to write `breakdown-handoff.json`, that path is simply not present and the verb stages only the present paths — a benign skip, not a failure. The `design-manifest.json` path is likewise present only when Phase 2.5 produced it (a feature with a `design/reference.html`); for a non-UI feature it is simply absent and skipped.
 
 Then emit the deterministic manual next-step block via the helper:
 

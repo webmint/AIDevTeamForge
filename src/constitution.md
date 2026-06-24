@@ -128,6 +128,22 @@ function process(input) {
 
 Search for it using Grep and Glob before creating a new one. Duplicating existing functionality is worse than not having it — it creates confusion about which version to use and doubles the maintenance burden.
 
+### 3.8 Design Fidelity [universal]
+
+**This is a narrow carve-out, not an overturn of the styling stance.** Styling is normally grounded in the existing component library and any design reference (Figma / design spec) — that stance is UNCHANGED. This rule adds ONE obligation, and only WHEN a design reference exists.
+
+- **When a design reference exists, match it 1:1.** Every in-scope element's rendered/computed VALUES must equal the reference: color, border, radius, spacing, typography, `:hover`, and `:focus-visible`. Only the values must match — markup may be rebuilt freely with clean semantic classes. "Semantically equivalent markup" is not a defense for a wrong border, wrong spacing, or a missing hover/focus state.
+- **When no design reference exists, this rule does not apply.** Ground styling in the existing components, exactly as before. The 1:1 obligation is conditional on a reference being present.
+
+**Design fidelity is enforced by two ORTHOGONAL checks, and neither is redundant with the other.** They cover two different defect classes, and neither can cover the other's hole:
+
+- **Static provenance check (write-time, reads source text).** Component styles use no hardcoded color/border/spacing literals (no hex / `rgb()` / `hsl()` / named colors), no `var(--x, <literal>)` fallbacks, and bind to defined tokens; an undefined token must FAIL LOUDLY rather than silently render a fallback; interactive elements declare both `:hover` and `:focus-visible`. This reads only source text, so it CANNOT catch a correct token binding that still produces the wrong rendered spacing or proportion.
+- **Runtime conformance check (reads rendered/computed values).** The in-scope element's rendered values match the reference 1:1. This reads RESOLVED values with no provenance — a hardcoded `#e8e6e3` and a `var(--border)` that resolves to `#e8e6e3` are indistinguishable once rendered — so it CANNOT catch a token bypass.
+
+Two defect classes, two checks, neither redundant. A future reader MUST NOT delete the static provenance check as "already covered by the runtime check," nor drop the runtime check as "the static check already enforces tokens." The orthogonality is the reason there are two checks and not one.
+
+*Backed by* `constitute_helper verify-design-tokens` when `forcing_functions.design_token_provenance.enabled = true` in `.devforge/constitute.json` — hardcoded color/border/spacing literals in component style files surface as exit-2 findings when `constitute_helper verify-design-tokens` is run directly or via the optional `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` hook.
+
 ---
 
 ## 4. Patterns & Anti-Patterns

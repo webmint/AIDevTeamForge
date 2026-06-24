@@ -1,7 +1,7 @@
 ```yaml
 name: ac-verifier
 description: "Use to verify a feature's acceptance criteria and report a per-AC pass/fail status. The verification method is set by ac_verification_mode: observe the running app (browser/API) under runtime-assisted, run the test suite under tests, or read code under code-only or off. Use proactively after implementation when a spec's AC items need verification; runtime-assisted requires the app to be running."
-tools: Read, Grep, Glob, Bash, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__press_key, mcp__chrome-devtools__hover, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__evaluate_script
+tools: Read, Grep, Glob, Bash, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__press_key, mcp__chrome-devtools__hover, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__evaluate_script
 model_tier: verify
 applies_to: ["all"]
 ```

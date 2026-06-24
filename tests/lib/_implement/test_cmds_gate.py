@@ -333,13 +333,16 @@ class TestGetRuleToVerb(unittest.TestCase):
         mapping = _get_rule_to_verb()
         self.assertIsInstance(mapping, dict)
 
-    def test_covers_exactly_three_rules(self):
-        """Exactly the 3 currently-defined rules are present — no more, no fewer."""
+    def test_covers_exactly_four_rules(self):
+        """Exactly the 4 currently-defined rules are present — no more, no fewer.
+        Updated from 3 when design_token_provenance was added in plan 40 Phase 4.
+        """
         mapping = _get_rule_to_verb()
         expected_keys = {
             "magic_enum_duplication",
             "cross_layer_imports",
             "any_with_generated_available",
+            "design_token_provenance",
         }
         self.assertEqual(set(mapping.keys()), expected_keys)
 

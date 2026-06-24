@@ -3210,11 +3210,11 @@ class TestParseUniversalBlocks(unittest.TestCase):
 
     _CONSTITUTION_PATH = _REPO_ROOT / "src" / "constitution.md"
 
-    def test_happy_path_all_10_sections_present(self):
-        """Real constitution.md → all 10 universal sections in result dict."""
+    def test_happy_path_all_11_sections_present(self):
+        """Real constitution.md → all 11 universal sections in result dict."""
         d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
         expected_keys = {
-            "§3.5", "§3.6", "§3.7",
+            "§3.5", "§3.6", "§3.7", "§3.8",
             "§4.1", "§4.2", "§4.3",
             "§6.1", "§6.2", "§6.3", "§6.4",
         }
@@ -3498,7 +3498,7 @@ def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
     real ``src/constitution.md`` — no body values are invented.
 
     Sections populated:
-    - code_quality_standards: §3.5, §3.6, §3.7
+    - code_quality_standards: §3.5, §3.6, §3.7, §3.8
     - patterns_and_antipatterns universal buckets: §4.1, §4.2, §4.3
     - workflow_rules: §6.1, §6.2, §6.3, §6.4
     """
@@ -3508,8 +3508,8 @@ def _build_in_sync_constitute_json(devforge_dir: Path) -> None:
 
     state = constitute_helper.default_state()
 
-    # --- code_quality_standards sections: §3.5, §3.6, §3.7 ---
-    for number in ("3.5", "3.6", "3.7"):
+    # --- code_quality_standards sections: §3.5, §3.6, §3.7, §3.8 ---
+    for number in ("3.5", "3.6", "3.7", "3.8"):
         sect_key = "§" + number
         sec = canonical.get(sect_key, {})
         rules = [
@@ -3709,6 +3709,160 @@ class TestForgeInternalVerifyUniversalDefaults(unittest.TestCase):
                 len(drift_entries), 0,
                 msg="Expected at least one DRIFT entry for §3.6 in JSON findings"
             )
+
+
+# ---------------------------------------------------------------------------
+# §3.8 Design Fidelity — universal section persistence tests.
+# ---------------------------------------------------------------------------
+
+
+class TestDesignFidelityUniversalSection(unittest.TestCase):
+    """Tests that §3.8 Design Fidelity is a tracked universal section.
+
+    Covers the four requirements:
+    1. §3.8 is in _UNIVERSAL_SECTIONS.
+    2. A re-rendered constitution from seeded state includes §3.8 content.
+    3. verify-universal-defaults detects a missing §3.8 (exit 2, MISSING).
+    4. verify-universal-defaults passes when §3.8 is in sync (exit 0).
+    """
+
+    def test_section_key_in_universal_sections(self):
+        """§3.8 is listed in _UNIVERSAL_SECTIONS."""
+        from _constitute._schema import _UNIVERSAL_SECTIONS
+        self.assertIn("§3.8", _UNIVERSAL_SECTIONS)
+
+    def test_render_from_seeded_state_includes_design_fidelity(self):
+        """Re-render from seeded state preserves §3.8 content.
+
+        Seeds §3.8 into code_quality_standards (tag=universal), renders via
+        _render_constitution, and asserts the orthogonality statement and both
+        check descriptions survive in the rendered output.
+        """
+        state = constitute_helper.default_state()
+        state["project_name"] = "TestProj"
+        state["generated_date"] = "2026-01-01"
+        state["last_updated"] = "2026-01-01"
+        state["mode"] = "existing-codebase"
+        state["project_identity"] = {
+            "name": "TestProj",
+            "type": "web",
+            "domain": "test",
+            "stack": "Python",
+        }
+
+        # Seed §3.8 using the same body text that verify-universal-defaults
+        # compares against: sourced from the real canonical parser.
+        canonical = constitute_helper._parse_universal_blocks(
+            _REPO_ROOT / "src" / "constitution.md"
+        )
+        sec38 = canonical.get("§3.8", {})
+        self.assertTrue(sec38, "§3.8 absent from src/constitution.md — check heading")
+        rules_38 = [
+            {"tag": r["tag_or_label"], "text": r["body"]}
+            for r in sec38.get("rules", [])
+        ]
+        state["code_quality_standards"].append(
+            {
+                "number": "3.8",
+                "title": sec38.get("heading", "Design Fidelity"),
+                "tag": "universal",
+                "description": None,
+                "rules": rules_38,
+                "tables": [],
+                "code_examples": [],
+            }
+        )
+
+        from _constitute._render import _render_constitution
+        rendered = _render_constitution(state)
+
+        # §3.8 heading must appear.
+        self.assertIn("3.8 Design Fidelity", rendered,
+                      msg="§3.8 heading not found in rendered output")
+        # The orthogonality statement must survive re-render.
+        self.assertIn("ORTHOGONAL", rendered,
+                      msg="Orthogonality statement lost in re-render")
+        # Both check descriptions must survive.
+        self.assertIn("Static provenance check", rendered,
+                      msg="Static provenance check description lost in re-render")
+        self.assertIn("Runtime conformance check", rendered,
+                      msg="Runtime conformance check description lost in re-render")
+        # The narrow carve-out (reference-present => 1:1) must survive.
+        self.assertIn("1:1", rendered,
+                      msg="1:1 matching obligation lost in re-render")
+
+    def test_verify_universal_defaults_detects_missing_38(self):
+        """verify-universal-defaults exits 2 with MISSING §3.8 when §3.8 absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer_root = Path(tmp)
+            devforge = consumer_root / ".devforge"
+
+            # Build state WITHOUT §3.8.
+            state = constitute_helper.default_state()
+            devforge.mkdir(parents=True, exist_ok=True)
+            out = devforge / "constitute.json"
+            out.write_text(
+                json.dumps(state, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(_HELPER_PY),
+                    "forge-internal:verify-universal-defaults",
+                    "--consumer-path", str(consumer_root),
+                    "--canonical-path", str(canonical_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 2,
+                             msg="Expected exit 2 when §3.8 is absent")
+            self.assertIn("§3.8", result.stderr,
+                          msg="§3.8 not mentioned in MISSING findings")
+            self.assertIn("MISSING", result.stderr)
+
+            report = json.loads(result.stdout)
+            missing_38 = [
+                f for f in report["findings"]
+                if f.get("kind") == "MISSING" and f.get("section") == "§3.8"
+            ]
+            self.assertGreater(len(missing_38), 0,
+                               msg="No MISSING §3.8 entry in JSON findings")
+
+    def test_verify_universal_defaults_passes_with_38_in_sync(self):
+        """verify-universal-defaults exits 0 when §3.8 body matches canonical.
+
+        Uses _build_in_sync_constitute_json which now includes §3.8.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            consumer_root = Path(tmp)
+            devforge = consumer_root / ".devforge"
+            _build_in_sync_constitute_json(devforge)
+
+            canonical_path = _REPO_ROOT / "src" / "constitution.md"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(_HELPER_PY),
+                    "forge-internal:verify-universal-defaults",
+                    "--consumer-path", str(consumer_root),
+                    "--canonical-path", str(canonical_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0,
+                             msg="Expected exit 0 with §3.8 in sync: " + result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["findings"], [],
+                             msg="Expected zero findings with §3.8 in sync")
 
 
 if __name__ == "__main__":
