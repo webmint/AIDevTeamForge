@@ -20,6 +20,7 @@
 
 # ── Resolve the template repo path (where this script lives) ───────────────
 TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$TEMPLATE_DIR/scripts/constitution-drift-check.sh"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
 TARGET_DIR=""
@@ -239,6 +240,10 @@ if [ ! -f "$TARGET_DIR/constitution.md" ]; then
   cp "$TEMPLATE_DIR/src/constitution.md" "$TARGET_DIR/constitution.md"
 else
   echo "  existing constitution.md detected — leaving as-is"
+  # Constitution drift check (plan 44): the presence guard above skips placing a
+  # fresh constitution, so the existing one may be stale relative to the template.
+  # WARN-ONLY + fail-soft; never blocks the install.
+  forge_check_constitution_drift "$TARGET_DIR" "$TEMPLATE_DIR"
 fi
 
 # ── Place docs/ stubs (per-file presence-guarded) ─────────────────────────

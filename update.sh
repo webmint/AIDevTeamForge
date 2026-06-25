@@ -45,6 +45,7 @@ while [ $# -gt 0 ]; do
 done
 
 TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$TEMPLATE_DIR/scripts/constitution-drift-check.sh"
 
 if [ -z "$TARGET_DIR" ]; then
   echo "Usage: update.sh [--dry-run] [--force] <target-project-directory>"
@@ -185,6 +186,11 @@ header "AIDevTeamForge — Update"
 info "Template version: ${BOLD}$TEMPLATE_VERSION${NC}"
 info "Target version:   ${BOLD}$TARGET_VERSION${NC}"
 info "Target path:      $TARGET_DIR"
+
+# Constitution drift check (plan 44) — runs BEFORE the equal-version bail so a
+# same-version-but-drifted install (code byte-current, constitution stale) is
+# still caught. WARN-ONLY + fail-soft; never blocks the update.
+forge_check_constitution_drift "$TARGET_DIR" "$TEMPLATE_DIR"
 
 if [ "$TEMPLATE_VERSION" = "$TARGET_VERSION" ]; then
   warn "Target is already on version $TEMPLATE_VERSION."
