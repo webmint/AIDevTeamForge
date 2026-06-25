@@ -3221,6 +3221,208 @@ class FinalizeHandoffTests(_CwdIsolationBH):
 
 
 # ---------------------------------------------------------------------------
+# Tests: finalize-handoff — design-manifest chokepoint (plan 42 Phase 2)
+# ---------------------------------------------------------------------------
+#
+# Real-fixture discipline: manifest JSON is produced via the real round-trip
+# (_make_valid_manifest / _make_invalid_manifest defined in the Phase 1 section
+# below) — NOT hand-authored JSON strings.
+#
+# CWD CONTRACT: _run_bh sets cwd=self.tmp_path (via the helper), and
+# _validate_manifest_present calls Path.cwd() to locate design/reference.html.
+# So "workspace_root" == self.tmp_path, and the reference must live at
+# self.tmp_path / "design" / "reference.html".
+#
+# NOTE: _make_valid_manifest / _make_invalid_manifest / _write_reference_html are
+# defined in the VerifyManifestPresentTests section further below in this file.
+# They are module-level helpers and are available here because Python reads the
+# whole module before running tests.
+
+
+class FinalizeHandoffManifestGateTests(_CwdIsolationBH):
+    """Tests for the design-manifest chokepoint folded into finalize-handoff.
+
+    Verifies plan 42 Phase 2 (WI-1): _validate_manifest_present is called inside
+    finalize-handoff; a reference-present feature with a missing or invalid
+    design-manifest.json CANNOT produce breakdown-handoff.json.
+
+    setUp provides the full finalize-handoff environment:
+      - specs/NNN-slug/plan.md
+      - specs/NNN-slug/tasks/ with one filled task file
+      - specs/NNN-slug/tasks/README.md
+      - .claude/agents/ roster covering the task's agent
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Populate the agent roster so the roster-validation gate passes in all
+        # tests (we are testing the manifest gate here, not the roster gate).
+        _make_agents_dir(self.tmp_path, ["backend-engineer"])
+
+    def _setup_feature(self, slug):
+        # type: (str) -> "tuple"
+        """Build a minimal valid finalize-handoff fixture under self.tmp_path.
+
+        Returns (feature_dir, plan_path, tasks_dir).
+        """
+        feature_dir = self.tmp_path / "specs" / slug
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Define types", slug,
+            agent="backend-engineer",
+            expects=[],
+            produces=["TypeDef exported"],
+            ac_ids="AC-1",
+        )
+        _write_readme(tasks_dir)
+        return feature_dir, plan_path, tasks_dir
+
+    # ------------------------------------------------------------------
+    # Case 1: no reference.html — non-UI feature, MUST be unaffected
+    # ------------------------------------------------------------------
+
+    def test_no_reference_exits_0_writes_handoff(self):
+        """Non-regression: no design/reference.html → exit 0, handoff written.
+
+        This is the CRITICAL non-regression: non-UI features must pass through
+        finalize-handoff exactly as before plan 42 Phase 2 was introduced.
+        """
+        _, plan_path, _ = self._setup_feature("m001-no-ref")
+        # Deliberately do NOT create design/reference.html.
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+        # breakdown-handoff.json must have been written.
+        written = Path(result.stdout.strip())
+        self.assertEqual(written.name, "breakdown-handoff.json")
+        self.assertTrue(written.is_file(), "breakdown-handoff.json was not written")
+
+    # ------------------------------------------------------------------
+    # Case 2: reference present + manifest absent → exit 2, no handoff
+    # ------------------------------------------------------------------
+
+    def test_reference_present_manifest_absent_exits_2(self):
+        """design/reference.html present, manifest absent → exit 2."""
+        _, plan_path, _ = self._setup_feature("m002-ref-no-manifest")
+        _write_reference_html(self.tmp_path / "design")
+        # Deliberately do NOT create design-manifest.json.
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+
+    def test_reference_present_manifest_absent_no_handoff_written(self):
+        """When manifest absent, breakdown-handoff.json must NOT be written."""
+        feature_dir, plan_path, _ = self._setup_feature("m003-no-handoff-written")
+        _write_reference_html(self.tmp_path / "design")
+
+        _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        handoff = feature_dir / "breakdown-handoff.json"
+        self.assertFalse(handoff.exists(), "breakdown-handoff.json must NOT be written on manifest violation")
+
+    def test_reference_present_manifest_absent_findings_block_on_stdout(self):
+        """When manifest absent, stdout has '## Design manifest findings' block."""
+        _, plan_path, _ = self._setup_feature("m004-findings-block")
+        _write_reference_html(self.tmp_path / "design")
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Design manifest findings", result.stdout)
+
+    # ------------------------------------------------------------------
+    # Case 3: reference present + valid manifest → exit 0, handoff written
+    # ------------------------------------------------------------------
+
+    def test_reference_present_valid_manifest_exits_0(self):
+        """design/reference.html + fully-classified manifest → exit 0."""
+        feature_dir, plan_path, _ = self._setup_feature("m005-valid-manifest")
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_valid_manifest(feature_dir, html_path)
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_reference_present_valid_manifest_writes_handoff(self):
+        """With valid manifest, breakdown-handoff.json IS written."""
+        feature_dir, plan_path, _ = self._setup_feature("m006-handoff-written")
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_valid_manifest(feature_dir, html_path)
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+        written = Path(result.stdout.strip())
+        self.assertEqual(written.name, "breakdown-handoff.json")
+        self.assertTrue(written.is_file(), "breakdown-handoff.json must be written when manifest is valid")
+
+    # ------------------------------------------------------------------
+    # Case 4: reference present + invalid manifest → exit 2, no handoff
+    # ------------------------------------------------------------------
+
+    def test_reference_present_invalid_manifest_exits_2(self):
+        """design/reference.html + unclassified element in manifest → exit 2."""
+        feature_dir, plan_path, _ = self._setup_feature("m007-invalid-manifest")
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_invalid_manifest(feature_dir, html_path)
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+
+    def test_reference_present_invalid_manifest_no_handoff_written(self):
+        """When manifest invalid, breakdown-handoff.json must NOT be written."""
+        feature_dir, plan_path, _ = self._setup_feature("m008-invalid-no-handoff")
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_invalid_manifest(feature_dir, html_path)
+
+        _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        handoff = feature_dir / "breakdown-handoff.json"
+        self.assertFalse(handoff.exists(), "breakdown-handoff.json must NOT be written on invalid manifest")
+
+    def test_reference_present_invalid_manifest_findings_block_on_stdout(self):
+        """When manifest invalid, stdout has '## Design manifest findings' block."""
+        feature_dir, plan_path, _ = self._setup_feature("m009-invalid-block")
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_invalid_manifest(feature_dir, html_path)
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-05-24T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Design manifest findings", result.stdout)
+
+
+# ---------------------------------------------------------------------------
 # Tests: render-implement-handoff (Phase 4, Verb 2)
 # ---------------------------------------------------------------------------
 
@@ -4078,6 +4280,549 @@ class FinalizeHandoffAgentRosterTests(_CwdIsolationBH):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("no agent roster found", result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Tests: verify-manifest-present (Phase 3.5 — design-manifest-presence gate)
+# ---------------------------------------------------------------------------
+#
+# Real-fixture discipline (per test-first rules):
+#   Manifest JSON fixtures are produced via the real library round-trip:
+#     resolve_reference(html_path) -> dict
+#     init_manifest_from_reference(result) -> ManifestContainer (all unclassified)
+#     Caller then mutates dispositions to produce valid/invalid states.
+#   NO hand-authored JSON strings are used as test inputs.
+
+# Make the _design package importable for round-trip fixture production.
+_DESIGN_LIB_DIR = REPO_ROOT_P1 / "src" / "devforge" / "lib"
+if str(_DESIGN_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_DESIGN_LIB_DIR))
+
+
+# Minimal reference.html used to seed real fixtures.  Contains two data-ref
+# elements whose classes are defined inline in the <style> block so
+# resolve_reference produces a ZERO-gap-list result (gap_list is empty →
+# valid after classification).  This keeps fixture setup simple.
+_REFERENCE_HTML_SIMPLE = """\
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    .card {
+      padding: 8px;
+      border: 1px solid #ccc;
+    }
+    .header {
+      font-size: 18px;
+    }
+    :root {
+      --color-primary: #007bff;
+    }
+  </style>
+</head>
+<body>
+  <div data-ref="card-item" class="card">Card content</div>
+  <header data-ref="page-header" class="header">Page Header</header>
+</body>
+</html>
+"""
+
+
+def _write_reference_html(design_dir):
+    # type: (Path) -> Path
+    """Write the simple reference.html to design_dir and return its path."""
+    design_dir.mkdir(parents=True, exist_ok=True)
+    html_path = design_dir / "reference.html"
+    html_path.write_text(_REFERENCE_HTML_SIMPLE, encoding="utf-8")
+    return html_path
+
+
+def _make_valid_manifest(feature_dir, html_path):
+    # type: (Path, Path) -> Path
+    """Produce a VALID manifest via the real round-trip:
+
+    1. resolve_reference(html_path) → raw result dict (gap_list should be [])
+    2. init_manifest_from_reference(result) → skeleton with all dispositions=""
+    3. Set every element's disposition to DISPOSITION_MATCH (all classified)
+    4. Serialize to feature_dir/design-manifest.json
+
+    Returns the manifest path.
+    """
+    from _design._reference import resolve_reference  # type: ignore[import]
+    from _design._manifest import init_manifest_from_reference  # type: ignore[import]
+    from _design._schema import DISPOSITION_MATCH, manifest_to_json  # type: ignore[import]
+
+    raw = resolve_reference(str(html_path))
+    container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
+    # Classify every element as MATCH to produce a valid manifest.
+    for elem in container.elements:
+        elem.disposition = DISPOSITION_MATCH
+    # gap_list must be empty for valid; our simple HTML has no gaps.
+    # (If for some reason there are gaps, clear them — fixture invariant.)
+    container.gap_list = []
+
+    manifest_path = feature_dir / "design-manifest.json"
+    manifest_path.write_text(manifest_to_json(container), encoding="utf-8")
+    return manifest_path
+
+
+def _make_invalid_manifest(feature_dir, html_path):
+    # type: (Path, Path) -> Path
+    """Produce an INVALID manifest via the real round-trip.
+
+    Same as _make_valid_manifest but ONE element is left unclassified
+    (disposition="") so validate_manifest returns a non-empty error list.
+
+    Returns the manifest path.
+    """
+    from _design._reference import resolve_reference  # type: ignore[import]
+    from _design._manifest import init_manifest_from_reference  # type: ignore[import]
+    from _design._schema import DISPOSITION_MATCH, manifest_to_json  # type: ignore[import]
+
+    raw = resolve_reference(str(html_path))
+    container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
+    elements = container.elements
+    if not elements:
+        raise RuntimeError("Fixture HTML produced no elements — check _REFERENCE_HTML_SIMPLE")
+    # Classify all BUT the first element (leave it unclassified for the error case).
+    for elem in elements[1:]:
+        elem.disposition = DISPOSITION_MATCH
+    # First element stays disposition="" (unclassified).
+    container.gap_list = []
+
+    manifest_path = feature_dir / "design-manifest.json"
+    manifest_path.write_text(manifest_to_json(container), encoding="utf-8")
+    return manifest_path
+
+
+class VerifyManifestPresentTests(_CwdIsolationBH):
+    """Tests for verify-manifest-present verb (plan 42 Phase 1, WI-1).
+
+    All manifest fixtures are round-tripped via:
+      resolve_reference -> init_manifest_from_reference -> manual disposition fill
+    NO hand-authored JSON strings used (per real-fixture discipline).
+    """
+
+    # ------------------------------------------------------------------
+    # Happy path: no reference.html — non-UI feature, trivial pass
+    # ------------------------------------------------------------------
+
+    def test_no_reference_exits_0(self):
+        """No design/reference.html → exit 0 (non-UI feature trivial pass)."""
+        feature_dir = self.tmp_path / "specs" / "001-no-ref"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_no_reference_stdout_says_skip(self):
+        """No reference → stdout one-liner contains 'skip' and 'not a design'."""
+        feature_dir = self.tmp_path / "specs" / "002-skip"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("skip", result.stdout)
+        self.assertIn("design", result.stdout.lower())
+
+    def test_no_reference_scope_only_exits_3(self):
+        """--scope-only, no reference → exit 3 (not in design scope)."""
+        feature_dir = self.tmp_path / "specs" / "003-scope-absent"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present", str(tasks_dir), "--scope-only"
+        )
+        self.assertEqual(result.returncode, 3, result.stderr + result.stdout)
+
+    # ------------------------------------------------------------------
+    # reference present + manifest absent → exit 2
+    # ------------------------------------------------------------------
+
+    def test_reference_present_manifest_absent_exits_2(self):
+        """reference.html present but manifest absent → exit 2."""
+        feature_dir = self.tmp_path / "specs" / "004-absent"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        # Write reference.html to workspace root's design/ dir.
+        _write_reference_html(self.tmp_path / "design")
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+
+    def test_reference_present_manifest_absent_stdout_findings_block(self):
+        """Exit-2 stdout is a '## Design manifest findings' block."""
+        feature_dir = self.tmp_path / "specs" / "005-block"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        _write_reference_html(self.tmp_path / "design")
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Design manifest findings", result.stdout)
+
+    def test_reference_present_manifest_absent_stdout_names_remedy(self):
+        """Exit-2 block mentions PHASE 2.5 remedy."""
+        feature_dir = self.tmp_path / "specs" / "006-remedy"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        _write_reference_html(self.tmp_path / "design")
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2)
+        # Must mention the remedy (PHASE 2.5)
+        self.assertIn("2.5", result.stdout)
+
+    def test_reference_present_manifest_absent_stdout_names_reference_path(self):
+        """Exit-2 block names the reference file path."""
+        feature_dir = self.tmp_path / "specs" / "007-refpath"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        _write_reference_html(self.tmp_path / "design")
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("design/reference.html", result.stdout)
+
+    # ------------------------------------------------------------------
+    # reference present + invalid manifest → exit 2 naming errors
+    # ------------------------------------------------------------------
+
+    def test_reference_present_invalid_manifest_exits_2(self):
+        """reference present + unclassified element in manifest → exit 2."""
+        feature_dir = self.tmp_path / "specs" / "008-invalid"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_invalid_manifest(feature_dir, html_path)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+
+    def test_reference_present_invalid_manifest_stdout_findings_block(self):
+        """Exit-2 stdout is a '## Design manifest findings' block naming the error."""
+        feature_dir = self.tmp_path / "specs" / "009-invalid-block"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_invalid_manifest(feature_dir, html_path)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Design manifest findings", result.stdout)
+
+    def test_reference_present_invalid_manifest_stdout_names_unclassified_element(self):
+        """Exit-2 stdout names the unclassified element from the real manifest."""
+        feature_dir = self.tmp_path / "specs" / "010-names-element"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_invalid_manifest(feature_dir, html_path)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2)
+        # The first element left unclassified is 'card-item' (first data-ref in HTML).
+        self.assertIn("card-item", result.stdout)
+        # Message must indicate 'unclassified'.
+        self.assertIn("unclassified", result.stdout)
+
+    # ------------------------------------------------------------------
+    # reference present + VALID manifest → exit 0
+    # ------------------------------------------------------------------
+
+    def test_reference_present_valid_manifest_exits_0(self):
+        """reference present + fully-classified manifest → exit 0."""
+        feature_dir = self.tmp_path / "specs" / "011-valid"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_valid_manifest(feature_dir, html_path)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_reference_present_valid_manifest_stdout_ok_line(self):
+        """Exit-0 stdout contains 'design-manifest: ok'."""
+        feature_dir = self.tmp_path / "specs" / "012-ok-line"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_valid_manifest(feature_dir, html_path)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("design-manifest: ok", result.stdout)
+
+    # ------------------------------------------------------------------
+    # --scope-only with reference present → exit 0
+    # ------------------------------------------------------------------
+
+    def test_scope_only_reference_present_exits_0(self):
+        """--scope-only, reference present → exit 0."""
+        feature_dir = self.tmp_path / "specs" / "013-scope-present"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        _write_reference_html(self.tmp_path / "design")
+
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present", str(tasks_dir), "--scope-only"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_scope_only_no_manifest_check(self):
+        """--scope-only: does NOT check manifest even when reference present + manifest absent."""
+        feature_dir = self.tmp_path / "specs" / "014-scope-no-manifest"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        _write_reference_html(self.tmp_path / "design")
+        # Deliberately do NOT create manifest.
+
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present", str(tasks_dir), "--scope-only"
+        )
+        # Should exit 0 — scope-only ignores manifest state.
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    # ------------------------------------------------------------------
+    # Broken state: missing tasks dir → exit 2 on stderr
+    # ------------------------------------------------------------------
+
+    def test_missing_tasks_dir_exits_2_on_stderr(self):
+        """Non-existent tasks-dir → exit 2 with a message on stderr."""
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present",
+            str(self.tmp_path / "specs" / "999-nonexistent" / "tasks"),
+        )
+        self.assertEqual(result.returncode, 2, result.stdout)
+        # Error must be on stderr, not stdout.
+        self.assertTrue(
+            result.stderr.strip(),
+            "Expected a stderr message for broken-state but got none",
+        )
+
+    def test_missing_tasks_dir_stdout_empty(self):
+        """Non-existent tasks-dir → stdout is empty (error goes to stderr only)."""
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present",
+            str(self.tmp_path / "specs" / "999b-empty" / "tasks"),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout.strip(), "")
+
+    # ------------------------------------------------------------------
+    # --reference-path override: custom reference path
+    # ------------------------------------------------------------------
+
+    def test_custom_reference_path_absent_exits_0(self):
+        """--reference-path pointing to nonexistent file → exit 0 (skip)."""
+        feature_dir = self.tmp_path / "specs" / "015-custom-ref"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present", str(tasks_dir),
+            "--reference-path", "custom/alt-reference.html",
+        )
+        # No file at that path → skip.
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("skip", result.stdout)
+
+    def test_custom_reference_path_present_checks_manifest(self):
+        """--reference-path pointing to an existing file → manifest check fires."""
+        feature_dir = self.tmp_path / "specs" / "016-custom-ref-present"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        # Write reference at the custom path.
+        custom_ref_dir = self.tmp_path / "custom"
+        html_path = _write_reference_html(custom_ref_dir)
+        # rename to alt-reference.html
+        alt_html_path = custom_ref_dir / "alt-reference.html"
+        html_path.rename(alt_html_path)
+
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present", str(tasks_dir),
+            "--reference-path", "custom/alt-reference.html",
+        )
+        # Reference present, manifest absent → exit 2.
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Design manifest findings", result.stdout)
+
+    # ------------------------------------------------------------------
+    # --manifest-path override: explicit manifest path
+    # ------------------------------------------------------------------
+
+    def test_manifest_path_override_valid(self):
+        """--manifest-path pointing to a valid manifest → exit 0."""
+        feature_dir = self.tmp_path / "specs" / "017-manifest-override"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        # Write manifest to a NON-DEFAULT location.
+        alt_manifest_dir = self.tmp_path / "alt-manifests"
+        alt_manifest_dir.mkdir()
+        alt_manifest_path = alt_manifest_dir / "my-manifest.json"
+
+        # Produce via real round-trip but write to alt path.
+        from _design._reference import resolve_reference  # type: ignore[import]
+        from _design._manifest import init_manifest_from_reference  # type: ignore[import]
+        from _design._schema import DISPOSITION_MATCH, manifest_to_json  # type: ignore[import]
+
+        raw = resolve_reference(str(html_path))
+        container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
+        for elem in container.elements:
+            elem.disposition = DISPOSITION_MATCH
+        container.gap_list = []
+        alt_manifest_path.write_text(manifest_to_json(container), encoding="utf-8")
+
+        result = _run_bh(
+            self.tmp_path, "verify-manifest-present", str(tasks_dir),
+            "--manifest-path", str(alt_manifest_path),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("design-manifest: ok", result.stdout)
+
+    # ------------------------------------------------------------------
+    # Round-trip integrity: elements in the real reference → named in errors
+    # ------------------------------------------------------------------
+
+    def test_real_roundtrip_element_names_in_error(self):
+        """The REAL element name from the round-trip HTML appears in the error block.
+
+        This test is the round-trip integrity check: the element data-ref
+        values in _REFERENCE_HTML_SIMPLE ('card-item', 'page-header') must
+        flow through resolve_reference -> init_manifest_from_reference and
+        appear verbatim in the validate_manifest error message when unclassified.
+        """
+        feature_dir = self.tmp_path / "specs" / "018-roundtrip"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        # Leave ALL elements unclassified (use raw skeleton from init_manifest).
+        from _design._reference import resolve_reference  # type: ignore[import]
+        from _design._manifest import init_manifest_from_reference  # type: ignore[import]
+        from _design._schema import manifest_to_json  # type: ignore[import]
+
+        raw = resolve_reference(str(html_path))
+        container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
+        # All elements left unclassified — gap_list already empty.
+        container.gap_list = []
+        (feature_dir / "design-manifest.json").write_text(
+            manifest_to_json(container), encoding="utf-8"
+        )
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2)
+        # Both data-ref names must appear in the error block.
+        self.assertIn("card-item", result.stdout)
+        self.assertIn("page-header", result.stdout)
+
+    # ------------------------------------------------------------------
+    # _reference_present shared predicate (unit test via library import)
+    # ------------------------------------------------------------------
+
+    def test_reference_present_fn_absent(self):
+        """_reference_present returns False when file is absent."""
+        from breakdown_helper import _reference_present  # type: ignore[import]
+        result = _reference_present(str(self.tmp_path), "design/reference.html")
+        self.assertFalse(result)
+
+    def test_reference_present_fn_present(self):
+        """_reference_present returns True when file exists."""
+        from breakdown_helper import _reference_present  # type: ignore[import]
+        (self.tmp_path / "design").mkdir()
+        (self.tmp_path / "design" / "reference.html").write_text("<html/>", encoding="utf-8")
+        result = _reference_present(str(self.tmp_path), "design/reference.html")
+        self.assertTrue(result)
+
+    def test_reference_present_fn_custom_path(self):
+        """_reference_present respects custom reference_path."""
+        from breakdown_helper import _reference_present  # type: ignore[import]
+        custom_dir = self.tmp_path / "assets"
+        custom_dir.mkdir()
+        (custom_dir / "mockup.html").write_text("<html/>", encoding="utf-8")
+        self.assertTrue(_reference_present(str(self.tmp_path), "assets/mockup.html"))
+        self.assertFalse(_reference_present(str(self.tmp_path), "assets/missing.html"))
+
+    # ------------------------------------------------------------------
+    # _validate_manifest_present shared function (unit test via library import)
+    # ------------------------------------------------------------------
+
+    def test_validate_manifest_present_no_reference(self):
+        """No reference → exit 0, stdout skip."""
+        from breakdown_helper import _validate_manifest_present  # type: ignore[import]
+        feature_dir = self.tmp_path / "specs" / "unit-001"
+        feature_dir.mkdir(parents=True)
+
+        code, out, err = _validate_manifest_present(
+            feature_dir=str(feature_dir),
+            workspace_root=str(self.tmp_path),
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("skip", out)
+        self.assertEqual(err, "")
+
+    def test_validate_manifest_present_reference_manifest_absent(self):
+        """Reference present, manifest absent → exit 2, findings block."""
+        from breakdown_helper import _validate_manifest_present  # type: ignore[import]
+        feature_dir = self.tmp_path / "specs" / "unit-002"
+        feature_dir.mkdir(parents=True)
+        _write_reference_html(self.tmp_path / "design")
+
+        code, out, err = _validate_manifest_present(
+            feature_dir=str(feature_dir),
+            workspace_root=str(self.tmp_path),
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("## Design manifest findings", out)
+        self.assertEqual(err, "")
+
+    def test_validate_manifest_present_valid_manifest(self):
+        """Reference present + valid manifest → exit 0."""
+        from breakdown_helper import _validate_manifest_present  # type: ignore[import]
+        feature_dir = self.tmp_path / "specs" / "unit-003"
+        feature_dir.mkdir(parents=True)
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_valid_manifest(feature_dir, html_path)
+
+        code, out, err = _validate_manifest_present(
+            feature_dir=str(feature_dir),
+            workspace_root=str(self.tmp_path),
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("ok", out)
+
+    def test_validate_manifest_present_invalid_manifest(self):
+        """Reference present + unclassified element → exit 2 naming element."""
+        from breakdown_helper import _validate_manifest_present  # type: ignore[import]
+        feature_dir = self.tmp_path / "specs" / "unit-004"
+        feature_dir.mkdir(parents=True)
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_invalid_manifest(feature_dir, html_path)
+
+        code, out, err = _validate_manifest_present(
+            feature_dir=str(feature_dir),
+            workspace_root=str(self.tmp_path),
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("## Design manifest findings", out)
+        self.assertIn("card-item", out)
 
 
 if __name__ == "__main__":
