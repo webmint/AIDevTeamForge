@@ -269,7 +269,18 @@ Inline tests stay the per-engineer default — each stack engineer writes the te
 
 When a `design/reference.html` DOES exist, this gate produces a per-element disposition manifest — the pre-code contract that classifies every reference element before any task file is written — and HALTS intake if any reference value cannot be resolved or any element is left unclassified. The gate runs at INTAKE (before Phase 3 writes task files), not at verify: a fidelity gap is escalated to the user BEFORE code is written, never after. The `design_helper` owns the manifest's structure, validation, and the gap-list computation; the orchestrator composes only the disposition values.
 
-**Detect the design reference.** Run a mechanical existence test from the workspace root (cwd) — `test -f design/reference.html` — and branch on its boolean result, not on eyeballing the filesystem. If the file is absent (`test` is non-zero), tell the user `"No design/reference.html for this feature; skipping the design-fidelity intake gate."` and proceed to Phase 3. If it is present (`test` is zero), continue. The PHASE 3.5 `verify-manifest-present` gate is the authoritative backstop — it re-derives this same existence check mechanically — so a wrongly-skipped PHASE 2.5 is caught downstream, never silently lost.
+**Detect the design reference.** Run a mechanical existence test from the workspace root (cwd) — `test -f design/reference.html` — and branch on its boolean result, not on eyeballing the filesystem. If it is present (`test` is zero), continue to Step 1.
+
+If the file is absent (`test` is non-zero), there is no enforceable reference to gate against, so this feature skips the intake gate either way — but first surface any declared non-file design source. Run the source check (substitute `NNN-<feature>` with the resolved feature dir name, the same substitution the Steps below use for the manifest path; the spec lives at `specs/NNN-<feature>/spec.md`, sibling to where `design-manifest.json` would go):
+
+```bash
+.devforge/lib/design_helper check-design-source \
+  --spec specs/NNN-<feature>/spec.md --workspace-root .
+```
+
+The verb's exit code is ALWAYS 0 (this is a non-blocking warning, never a halt) — branch on whether the verb produced output (a WARN), not on its exit code. The verb is SILENT in the common cases and prints a WARN (to stderr, exit 0) only when a non-file design source is declared without an enforceable reference. If the verb produced a WARN, the spec declared a non-file design source (`figma`/`screenshot`, or an `html` target that is not an existing file) with no enforceable `design/reference.html`: copy that output VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then proceed to Phase 3 — the WARN's own text explains the skip and the convert-to-`design/reference.html` remedy, so it replaces the plain "skipping" line in this case. If the verb produced no output, tell the user `"No design/reference.html for this feature; skipping the design-fidelity intake gate."` and proceed to Phase 3 (the common cases: the spec declared `none` or declared nothing; note an `html:` source pointing to an existing non-`design/reference.html` path also produces no output but is a misdeclaration this gate does not catch — the plan-40 apparatus enforces only `design/reference.html`).
+
+The PHASE 3.5 `verify-manifest-present` gate is the authoritative backstop for the reference-PRESENT case — it re-derives the `design/reference.html` existence check mechanically — so a wrongly-skipped PHASE 2.5 is caught downstream, never silently lost.
 
 **Step 1 — Resolve the reference into elements + a gap-list.** Run the helper, capturing its stdout JSON to a scratch file outside the work tree (the helper's next verb reads a file path, not a pipe):
 
