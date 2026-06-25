@@ -48,9 +48,11 @@ forge_check_constitution_drift() {
   # Check A — universal-section drift. Exit 2 == real drift (the consumer json is
   # guaranteed present by the guard above and the canonical path is present, so
   # exit 2 is never an input-missing case for this verb).
+  # `|| uni_exit=$?` keeps the failing substitution inside an OR-list so a caller's
+  # `set -e` does NOT abort here — exit 2 (drift) is the expected, handled case.
+  uni_exit=0
   uni_json="$("$helper" forge-internal:verify-universal-defaults \
-      --consumer-path "$target_dir" --canonical-path "$canonical" 2>/dev/null)"
-  uni_exit=$?
+      --consumer-path "$target_dir" --canonical-path "$canonical" 2>/dev/null)" || uni_exit=$?
   if [ "$uni_exit" -eq 2 ]; then
     local n_uni sections
     n_uni="$(printf '%s' "$uni_json" | jq -r '.findings | length' 2>/dev/null)"
@@ -66,9 +68,10 @@ forge_check_constitution_drift() {
   # Check D — forcing-function key drift. Exit 2 == drift; exit 3 == consumer json
   # absent (guard above should prevent it; treat as silent-skip if a race removes
   # it). Any other nonzero is unexpected → fail-soft note.
+  # Same set -e guard as Check A — exit 2 (drift) / 3 (no consumer json) are handled.
+  ff_exit=0
   ff_json="$("$helper" forge-internal:verify-forcing-function-keys \
-      --consumer-path "$target_dir" 2>/dev/null)"
-  ff_exit=$?
+      --consumer-path "$target_dir" 2>/dev/null)" || ff_exit=$?
   if [ "$ff_exit" -eq 2 ]; then
     local n_ff rules
     rules="$(printf '%s' "$ff_json" | jq -r '.missing_rules | join(", ")' 2>/dev/null)"
