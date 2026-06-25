@@ -9,6 +9,7 @@
   "spec_type_rationale": "new feature; pre-seeded by /discover handoff",
   "spec_type_seeded_by_upstream": true,
   "status": "Draft",
+  "design_source": "none",
   "current_branch": "main",
   "default_branch": "main",
   "branch_decision": "create",
@@ -17,27 +18,27 @@
     {
       "path": "constitution.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-18T18:23:09Z"
+      "read_timestamp": "2026-06-25T15:36:02Z"
     },
     {
       "path": ".claude/memory/MEMORY.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-18T18:23:09Z"
+      "read_timestamp": "2026-06-25T15:36:02Z"
     },
     {
       "path": "CLAUDE.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-18T18:23:09Z"
+      "read_timestamp": "2026-06-25T15:36:02Z"
     },
     {
       "path": "docs/architecture.md",
       "source_origin": "context",
-      "read_timestamp": "2026-05-18T18:23:10Z"
+      "read_timestamp": "2026-06-25T15:36:02Z"
     },
     {
       "path": "discover/2026-05-14-scheduled-export-jobs.md",
       "source_origin": "discover",
-      "read_timestamp": "2026-05-18T18:23:10Z"
+      "read_timestamp": "2026-06-25T15:36:02Z"
     }
   ],
   "phase1_finalized": true,
@@ -305,5 +306,12 @@
   "approval_summary": null,
   "plan_handoff_block": null,
   "open_question_resolutions": [],
-  "conflicts": []
+  "conflicts": [],
+  "source": {
+    "handoff_path": null,
+    "handoff_kind": null,
+    "research_completed_at": null,
+    "discover_completed_at": null,
+    "discover_recommended_summary": null
+  }
 }

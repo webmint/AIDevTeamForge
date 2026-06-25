@@ -48,7 +48,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 - `/research "topic"` — Investigate a bug or enhancement against the existing codebase → research handoff (required intake lane for `/specify`); WIP-commits its report + handoff as it writes them (folds into `/finalize`'s squash)
 - `/discover "feature idea"` — Greenfield-feature discovery → discover handoff (required intake lane for `/specify`); WIP-commits its report + handoff as it writes them (folds into `/finalize`'s squash)
-- `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md` (blocks until a research or discover handoff exists); WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash)
+- `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md` (blocks until a research or discover handoff exists); captures a per-feature `**Design source**:` declaration (`html` / `figma` / `screenshot` / `none`) in the spec frontmatter; WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash)
 - `/plan` — Technical plan from approved spec → `specs/NNN-name/plan.md`; WIP-commits the plan + handoff as it writes them (folds into `/finalize`'s squash)
 - `/grill` — **Optional, opt-in** design-time adversarial review of the completed `plan.md` → `specs/NNN-name/grill.md` (run for high-stakes plans before `/breakdown`; not a mandatory gate); WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash)
 - `/breakdown` — Atomic tasks with dependencies → `specs/NNN-name/tasks/`; WIP-commits the task files + handoff as it writes them (folds into `/finalize`'s squash)

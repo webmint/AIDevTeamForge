@@ -1299,5 +1299,498 @@ class TestEndToEndRoundTrip(unittest.TestCase):
                         "Gap token should be named in error; got: {0}".format(errors))
 
 
+# ---------------------------------------------------------------------------
+# Tests: _source.py — parse_design_source
+# ---------------------------------------------------------------------------
+
+from _design._source import parse_design_source, cmd_check_design_source  # noqa: E402
+
+
+class TestParseDesignSource(unittest.TestCase):
+    """Unit tests for parse_design_source."""
+
+    # --- scheme recognition ---
+
+    def test_html_scheme_valid(self):
+        ds = parse_design_source("html:design/reference.html")
+        self.assertEqual(ds.scheme, "html")
+        self.assertEqual(ds.target, "design/reference.html")
+        self.assertEqual(ds.raw, "html:design/reference.html")
+        self.assertTrue(ds.valid)
+
+    def test_figma_scheme_valid(self):
+        ds = parse_design_source("figma:https://figma.com/file/abc/Frame?node-id=1:2")
+        self.assertEqual(ds.scheme, "figma")
+        self.assertTrue(ds.valid)
+
+    def test_figma_target_preserves_full_url(self):
+        # The target must keep the full URL including https:// — split on FIRST colon only.
+        url = "https://figma.com/file/abc/Frame?node-id=1:2"
+        ds = parse_design_source("figma:" + url)
+        self.assertEqual(ds.target, url)
+
+    def test_screenshot_scheme_valid(self):
+        ds = parse_design_source("screenshot:design/mock.png")
+        self.assertEqual(ds.scheme, "screenshot")
+        self.assertEqual(ds.target, "design/mock.png")
+        self.assertTrue(ds.valid)
+
+    # --- "none" cases ---
+
+    def test_bare_none_lowercase(self):
+        ds = parse_design_source("none")
+        self.assertEqual(ds.scheme, "none")
+        self.assertEqual(ds.target, "")
+        self.assertTrue(ds.valid)
+
+    def test_bare_none_uppercase(self):
+        ds = parse_design_source("None")
+        self.assertEqual(ds.scheme, "none")
+        self.assertTrue(ds.valid)
+
+    def test_bare_none_allcaps(self):
+        ds = parse_design_source("NONE")
+        self.assertEqual(ds.scheme, "none")
+        self.assertTrue(ds.valid)
+
+    def test_bare_none_mixed_case(self):
+        ds = parse_design_source("NoNe")
+        self.assertEqual(ds.scheme, "none")
+        self.assertTrue(ds.valid)
+
+    # --- empty / whitespace ---
+
+    def test_empty_string_treated_as_none(self):
+        ds = parse_design_source("")
+        self.assertEqual(ds.scheme, "none")
+        self.assertEqual(ds.target, "")
+        self.assertTrue(ds.valid)
+
+    def test_whitespace_only_treated_as_none(self):
+        ds = parse_design_source("   ")
+        self.assertEqual(ds.scheme, "none")
+        self.assertTrue(ds.valid)
+
+    def test_none_with_surrounding_whitespace(self):
+        ds = parse_design_source("  none  ")
+        self.assertEqual(ds.scheme, "none")
+        self.assertTrue(ds.valid)
+
+    # --- invalid / malformed ---
+
+    def test_unknown_scheme_invalid(self):
+        ds = parse_design_source("foo:bar")
+        self.assertFalse(ds.valid)
+        self.assertEqual(ds.raw, "foo:bar")
+
+    def test_figma_empty_target_invalid(self):
+        ds = parse_design_source("figma:")
+        self.assertFalse(ds.valid)
+        self.assertEqual(ds.scheme, "figma")
+        self.assertEqual(ds.target, "")
+
+    def test_screenshot_empty_target_invalid(self):
+        ds = parse_design_source("screenshot:")
+        self.assertFalse(ds.valid)
+        self.assertEqual(ds.scheme, "screenshot")
+
+    def test_html_empty_target_invalid(self):
+        ds = parse_design_source("html:")
+        self.assertFalse(ds.valid)
+        self.assertEqual(ds.scheme, "html")
+
+    def test_content_no_colon_not_none_invalid(self):
+        # Has content but no colon and is not a "none" variant
+        ds = parse_design_source("something-else")
+        self.assertFalse(ds.valid)
+
+    def test_raw_always_preserved_on_invalid(self):
+        ds = parse_design_source("foo:bar")
+        self.assertEqual(ds.raw, "foo:bar")
+
+    def test_raw_preserved_on_valid(self):
+        ds = parse_design_source("html:design/reference.html")
+        self.assertEqual(ds.raw, "html:design/reference.html")
+
+    # Finding 1: target strip
+    def test_html_with_space_after_colon_target_stripped(self):
+        # "html: design/reference.html" — space after colon must be stripped.
+        ds = parse_design_source("html: design/reference.html")
+        self.assertEqual(ds.scheme, "html")
+        self.assertEqual(ds.target, "design/reference.html",
+                         "target should be stripped; got: {0!r}".format(ds.target))
+        self.assertTrue(ds.valid)
+
+    def test_figma_target_preserves_full_url_after_strip(self):
+        # strip() is idempotent on a URL with no surrounding whitespace
+        url = "https://figma.com/file/abc/Frame?node-id=1:2"
+        ds = parse_design_source("figma:" + url)
+        self.assertEqual(ds.target, url,
+                         "figma URL must be preserved verbatim after strip; got: {0!r}".format(ds.target))
+
+    def test_figma_url_with_multiple_colons(self):
+        # Multiple colons in figma URL — only first colon splits scheme/target.
+        # The node-id=1:2 part has a colon inside the target.
+        url = "https://figma.com/design/XYZ?node-id=0:1&t=abc"
+        ds = parse_design_source("figma:" + url)
+        self.assertEqual(ds.scheme, "figma")
+        self.assertEqual(ds.target, url)
+        self.assertTrue(ds.valid)
+
+    # --- "none:" / "none:<x>" must be INVALID (SYNC contract) ---
+
+    def test_none_with_empty_target_colon_is_invalid(self):
+        # "none:" — colon present, scheme="none", target="" → invalid
+        # SYNC contract: none is valid ONLY as a bare sentinel (no colon).
+        ds = parse_design_source("none:")
+        self.assertFalse(ds.valid,
+                         "none: must be invalid (bare sentinel only, no colon allowed)")
+        self.assertEqual(ds.raw, "none:")
+
+    def test_none_with_nonempty_target_is_invalid(self):
+        # "none:something" — colon present, scheme="none", target non-empty → invalid
+        ds = parse_design_source("none:something")
+        self.assertFalse(ds.valid,
+                         "none:something must be invalid (bare sentinel only)")
+        self.assertEqual(ds.raw, "none:something")
+
+    def test_none_with_target_raw_preserved(self):
+        # raw is always preserved regardless of validity
+        ds = parse_design_source("none:foo")
+        self.assertEqual(ds.raw, "none:foo")
+
+    def test_bare_none_still_valid_case_insensitive(self):
+        # Guard: bare "none" (no colon) stays valid across case variants
+        for value in ("none", "None", "NONE", "NoNe"):
+            ds = parse_design_source(value)
+            self.assertTrue(ds.valid,
+                            "Bare {0!r} must still be valid; got valid={1}".format(value, ds.valid))
+            self.assertEqual(ds.scheme, "none")
+
+
+# ---------------------------------------------------------------------------
+# Tests: _source.py — cmd_check_design_source
+# ---------------------------------------------------------------------------
+
+
+class TestCmdCheckDesignSource(unittest.TestCase):
+    """Integration tests for cmd_check_design_source using real temp files."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_spec(self, design_source_line=None, content=None):
+        # type: (str, str) -> str
+        """Write a spec.md to self._tmp and return its path.
+
+        If content is provided it is used verbatim.
+        Otherwise a minimal spec with (or without) a **Design source**: line
+        is written.
+        """
+        if content is not None:
+            text = content
+        else:
+            if design_source_line is not None:
+                text = (
+                    "# Test Feature\n\n"
+                    "**Status**: Draft\n"
+                    "**Design source**: {0}\n\n"
+                    "## Section\n\nSome content.\n"
+                ).format(design_source_line)
+            else:
+                text = (
+                    "# Test Feature\n\n"
+                    "**Status**: Draft\n\n"
+                    "## Section\n\nSome content.\n"
+                )
+        spec_path = os.path.join(self._tmp, "spec.md")
+        with open(spec_path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return spec_path
+
+    def _write_reference_html(self):
+        # type: () -> str
+        """Write a minimal design/reference.html and return its path."""
+        design_dir = os.path.join(self._tmp, "design")
+        os.makedirs(design_dir, exist_ok=True)
+        ref_path = os.path.join(design_dir, "reference.html")
+        with open(ref_path, "w", encoding="utf-8") as fh:
+            fh.write("<html><body><!-- reference --></body></html>")
+        return ref_path
+
+    def _make_args(self, spec, workspace_root=None):
+        class _NS:
+            pass
+        ns = _NS()
+        ns.spec = spec
+        ns.workspace_root = workspace_root if workspace_root is not None else self._tmp
+        return ns
+
+    # --- figma + no reference.html → WARN ---
+
+    def test_figma_no_reference_warns_stderr_exit_0(self):
+        spec = self._write_spec("figma:https://figma.com/file/abc/Frame?node-id=1:2")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0, "Expected exit 0; got {0}".format(code))
+        self.assertIn("check-design-source", err)
+        self.assertIn("figma", err)
+        self.assertIn("design/reference.html", err)
+        self.assertIn("absent", err)
+
+    # --- screenshot + no reference.html → WARN ---
+
+    def test_screenshot_no_reference_warns_stderr_exit_0(self):
+        spec = self._write_spec("screenshot:design/mock.png")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertIn("check-design-source", err)
+        self.assertIn("screenshot", err)
+        self.assertIn("absent", err)
+
+    # --- figma + reference.html present → silent ---
+
+    def test_figma_with_reference_present_silent(self):
+        self._write_reference_html()
+        spec = self._write_spec("figma:https://figma.com/file/abc")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "", "Expected no stderr; got: {0!r}".format(err))
+
+    # --- screenshot + reference.html present → silent ---
+
+    def test_screenshot_with_reference_present_silent(self):
+        self._write_reference_html()
+        spec = self._write_spec("screenshot:design/mock.png")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    # --- html: file present → silent ---
+
+    def test_html_with_file_present_silent(self):
+        self._write_reference_html()
+        spec = self._write_spec("html:design/reference.html")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    # --- html: file absent → WARN ---
+
+    def test_html_file_absent_warns(self):
+        spec = self._write_spec("html:design/reference.html")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertIn("check-design-source", err)
+        self.assertIn("absent", err)
+
+    # --- none → silent ---
+
+    def test_none_is_silent(self):
+        spec = self._write_spec("none")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    # --- no **Design source**: line → silent (back-compat) ---
+
+    def test_no_design_source_line_is_silent(self):
+        spec = self._write_spec(design_source_line=None)
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    # --- malformed value → WARN with malformed body ---
+
+    def test_malformed_unknown_scheme_warns(self):
+        spec = self._write_spec("foo:bar")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertIn("malformed", err)
+        self.assertIn("foo:bar", err)
+        # remedy should mention valid shapes
+        self.assertIn("html:", err)
+        self.assertIn("figma:", err)
+
+    # --- absent spec → silent (back-compat) ---
+
+    def test_absent_spec_file_is_silent(self):
+        args = self._make_args(spec=os.path.join(self._tmp, "nonexistent.md"))
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    # --- no spec arg → silent ---
+
+    def test_no_spec_arg_is_silent(self):
+        class _NS:
+            pass
+        ns = _NS()
+        ns.spec = None
+        ns.workspace_root = self._tmp
+        code, out, err = _capture_stdout(cmd_check_design_source, ns)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    # --- verify WARN body content for figma case ---
+
+    def test_figma_warn_contains_declared_value(self):
+        figma_url = "figma:https://figma.com/file/abc/Frame?node-id=1:2"
+        spec = self._write_spec(figma_url)
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertIn("declared:", err)
+        self.assertIn("figma:https://figma.com/file/abc/Frame?node-id=1:2", err)
+
+    def test_figma_warn_contains_remedy(self):
+        spec = self._write_spec("figma:https://figma.com/file/abc")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertIn("remedy:", err)
+        self.assertIn("design/reference.html", err)
+
+    # --- cli dispatch via main ---
+
+    def test_check_design_source_via_main_none_silent(self):
+        spec = self._write_spec("none")
+        code, out, err = _capture_stdout(
+            main, ["check-design-source", "--spec", spec, "--workspace-root", self._tmp]
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    def test_check_design_source_via_main_figma_warns(self):
+        spec = self._write_spec("figma:https://figma.com/file/abc")
+        code, out, err = _capture_stdout(
+            main, ["check-design-source", "--spec", spec, "--workspace-root", self._tmp]
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("check-design-source", err)
+
+    # --- Finding 1: html with space after colon, file present → silent ---
+
+    def test_html_space_after_colon_file_present_silent(self):
+        """Finding 1: 'html: design/reference.html' (space after colon) with the
+        real file present must produce silent exit 0 — NOT a false WARN caused by
+        looking for a path with a leading space."""
+        # Create the actual file at workspace_root/design/reference.html
+        design_dir = os.path.join(self._tmp, "design")
+        os.makedirs(design_dir, exist_ok=True)
+        ref_path = os.path.join(design_dir, "reference.html")
+        with open(ref_path, "w", encoding="utf-8") as fh:
+            fh.write("<html><body><!-- ref --></body></html>")
+        # Spec declares "html: design/reference.html" — note the space after colon
+        spec = self._write_spec("html: design/reference.html")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "",
+                         "Expected silent exit; got stderr: {0!r}".format(err))
+
+    # --- Finding 2: html with custom target → WARN names the actual target ---
+
+    def test_html_custom_target_absent_warn_names_actual_target(self):
+        """Finding 2: 'html:design/mockup.html' with the file absent must emit a
+        WARN whose absent-file line and remedy 'create' instruction name
+        'design/mockup.html', NOT the hardcoded 'design/reference.html'.
+
+        The remedy may still mention design/reference.html in an informational
+        clause explaining what plan-40 requires — that is correct and expected.
+        What must be absent is the hardcoded absent-file line
+        '  - design/reference.html: absent' and a create-instruction that names
+        reference.html when the user declared mockup.html.
+        """
+        spec = self._write_spec("html:design/mockup.html")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertIn("check-design-source", err)
+        self.assertIn("absent", err)
+        # The absent-file bullet must name the actual declared target
+        self.assertIn("design/mockup.html: absent", err,
+                      "WARN absent-file line must name the declared target; got: {0!r}".format(err))
+        # The old bug: the absent-file bullet hardcoded design/reference.html.
+        # That specific pattern must NOT appear.
+        self.assertNotIn("design/reference.html: absent", err,
+                         "WARN absent-file line must NOT hardcode design/reference.html; "
+                         "got: {0!r}".format(err))
+        # The remedy 'create' instruction must name the actual declared target
+        self.assertIn("create design/mockup.html", err,
+                      "Remedy must say 'create design/mockup.html'; got: {0!r}".format(err))
+
+    # --- spec with Design source line using \s* bleed edge case ---
+
+    # --- "none:" is malformed (SYNC contract) — must take the WARN path ---
+
+    def test_none_colon_bare_malformed_warns_stderr_exit_0(self):
+        """'none:' is malformed (colon present, but none is only valid as bare
+        sentinel).  cmd_check_design_source must emit a malformed WARN on stderr
+        and exit 0 (non-blocking), NOT silently pass like the valid bare 'none'."""
+        spec = self._write_spec("none:")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0, "Expected non-blocking exit 0; got {0}".format(code))
+        self.assertIn("malformed", err,
+                      "Expected malformed WARN in stderr; got: {0!r}".format(err))
+        self.assertIn("none:", err,
+                      "Expected raw value 'none:' in WARN message; got: {0!r}".format(err))
+
+    def test_none_colon_something_malformed_warns_stderr_exit_0(self):
+        """'none:something' is malformed — same WARN path as 'none:'."""
+        spec = self._write_spec("none:something")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertIn("malformed", err,
+                      "Expected malformed WARN; got: {0!r}".format(err))
+
+    def test_bare_none_remains_silent(self):
+        """Bare 'none' (no colon) must remain silent (regression guard)."""
+        spec = self._write_spec("none")
+        args = self._make_args(spec)
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "",
+                         "Bare none must be silent; got stderr: {0!r}".format(err))
+
+    def test_design_source_regex_does_not_bleed_across_blank_line(self):
+        # A malformed spec where **Design source**: is followed by a blank line
+        # then a value on the next non-empty line.  The regex must NOT capture
+        # the value from the next line ([ \t]* horizontal-only, not \s*).
+        content = (
+            "**Status**: Draft\n"
+            "**Design source**:\n"   # blank value on same line (after colon)
+            "\n"
+            "figma:https://figma.com/file/abc\n"
+        )
+        spec = self._write_spec(content=content)
+        args = self._make_args(spec)
+        # The **Design source**: line has an empty value → treated as "none" → silent
+        # (the regex captures the group after **: [ \t]* — if nothing follows on
+        #  the same line, the MULTILINE $ matches end-of-line and group(1) won't
+        #  contain the next line's figma URL)
+        # NOTE: if the regex has no content after [ \t]*, it WON'T match because
+        # (.+) requires at least one char — so the whole pattern won't match and
+        # we fall through to the "no Design source line" → silent path.
+        code, out, err = _capture_stdout(cmd_check_design_source, args)
+        self.assertEqual(code, 0)
+        # Must NOT emit a figma warn (the figma URL is on the next line, not captured)
+        if err:
+            self.assertNotIn("figma", err,
+                             "Regex bled across blank line into next-line figma URL; err={0!r}".format(err))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

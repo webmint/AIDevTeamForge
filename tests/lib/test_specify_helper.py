@@ -3588,6 +3588,7 @@ class TestPhase4Render(unittest.TestCase):
                 "# Spec: test-spec",
                 "**Date**: 2026-05-15",
                 "**Status**: Draft",
+                "**Design source**: none",
                 "**Author**: Claude + User",
                 "## 1. Overview",
                 "## 2. Current State",
