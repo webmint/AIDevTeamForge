@@ -49,10 +49,11 @@ By config: `ac-verifier` (when `AC_VERIFICATION != "off"`)
 ### Update System
 - `update.sh` — Manifest-driven update script with 4 strategies: overwrite (template-owned), three-way merge via `git merge-file` (agents + CLAUDE.md), smart merge (JSON/text), copy-if-missing
 - **Three-way merge**: stores baseline snapshots of substituted templates in `.claude/agents/.baseline/` and `.claude/.baseline/`. On update, computes diff (baseline → new template) and applies it to current file — preserves all project customizations while propagating template improvements
-- **Placeholder validation**: after substitution, checks for remaining `{{...}}` patterns; skips file if found (prevents destroying agents with broken config values)
+- **Placeholder substitution**: delegates to `configure_helper substitute-file` (the single source of truth shared with `/configure`'s renderer — knows the singular↔plural aliases and composed `PACKAGE_STACKS` table); the merge gates on the verb's exit code rather than a raw `{{...}}` grep, so a legitimate `{{UPPERCASE}}` identity passthrough no longer false-skips a file while genuinely unresolved placeholders still skip it (prevents destroying agents with broken config values)
 - `.devforge/project-config.json` — Machine-readable config written by `/configure`, stores all template variable values (including `TYPE_CHECK_COMMAND`, `LINT_COMMAND`, `COMMIT_ATTRIBUTION`, `MODEL_THINK`, `MODEL_DO`, `MODEL_VERIFY`) for `update.sh` placeholder substitution
 - `.claude/template-manifest.json` — Defines file ownership categories and update strategies; self-updates (template-owned)
-- One-time migration: extracts config from existing `CLAUDE.md` and agent files when `project-config.json` is missing
+- Config rebuild: when `.devforge/project-config.json` is missing, the update script rebuilds it from `.devforge/configure.yaml` via `configure_helper render-config` before substituting (replaces the retired `CLAUDE.md`-scraping migration)
+- Constitution-drift check: `update.sh` (before the equal-version bail) and `install.sh`'s brownfield "leaving as-is" branch source `scripts/constitution-drift-check.sh` to compare an already-constituted target's universal constitution sections + forcing-function config keys against the canonical defaults; WARN-only and fail-soft (never mutates `constitution.md`/`constitute.json`), telling the user to re-run `/constitute`; greenfield silent-skips
 
 ### Other
 - `README.md` — Full documentation with installation, workflow, pre-populated rules section

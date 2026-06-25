@@ -56,13 +56,13 @@ When the template is improved, you can push updates to projects that already use
 |----------|-------------|----------|
 | **Template-owned** | Overwritten with latest version | Commands (`.claude/commands/`), manifest, scripts |
 | **Three-way merge** | Template diff applied, all project customizations preserved | `CLAUDE.md`, Agents (`.claude/agents/`) — uses `git merge-file` with baselines to apply only what changed in the template |
-| **Project-owned** | Never touched | `constitution.md`, `.claude/project-config.json`, memory, specs, docs |
+| **Project-owned** | Never touched | `constitution.md`, `.devforge/project-config.json`, memory, specs, docs |
 | **Merge files** | Smart-merged (union of keys/lines) | `.mcp.json` (new servers added), `.gitignore` (new entries added) |
 | **Copy if missing** | Copied only if absent | New files added to the template that projects don't have yet |
 
 ### Project config
 
-`/configure` writes the project config with all template variable values (framework, language, architecture, model tiers, etc.). `update.sh` reads this file to apply placeholder substitution when updating agents and CLAUDE.md. For projects that predate this feature, the update script auto-extracts values from the existing `CLAUDE.md` and agent files as a one-time migration.
+`/configure` writes the project config with all template variable values (framework, language, architecture, model tiers, etc.). `update.sh` reads this file to apply placeholder substitution when updating agents and CLAUDE.md. For projects missing `.devforge/project-config.json`, the update script rebuilds it from `.devforge/configure.yaml` via `configure_helper render-config` before substituting.
 
 ### Three-way merge
 
@@ -72,7 +72,11 @@ Agents and CLAUDE.md use three-way merge (`git merge-file`) to apply only the te
 
 Each project stores its template version in `.claude/template-version`. The update script compares this with the template's current version and shows the relevant changelog entries before applying changes.
 
-Requires `jq` for JSON merging and `perl` for placeholder substitution (both pre-installed on macOS and most Linux distributions).
+### Constitution-drift warning
+
+`update.sh` (and `install.sh` when leaving an existing install as-is) checks whether an already-constituted project's universal constitution sections and forcing-function config keys have drifted from the template's canonical defaults — e.g. the framework added new law or a new detector but the project's `constitution.md` / `.devforge/constitute.json` still predate it. The check is WARN-only and fail-soft: it never edits your `constitution.md` or `constitute.json`, it just names the drifted sections and tells you to re-run `/constitute`. Projects that haven't run `/constitute` yet are silently skipped.
+
+Requires `jq` for JSON merging and `python3` for placeholder substitution (both pre-installed on macOS and most Linux distributions).
 
 ## Workflow
 
