@@ -1,6 +1,6 @@
 # 42 — Design-Manifest Trigger Forcing-Function Plan
 
-**Status:** **Phases 0–5 SHIPPED 2026-06-25 (working tree)** on `develop-2.0-init`; only **Phase 6 (testForge20 / consumer e2e) remains, user-driven (HARD GATE).** PREVENTIVE hardening of a latent structural weakness in the design-fidelity apparatus plan 40 shipped — NOT a fix for an observed skip. Phase 1 (`verify-manifest-present` verb + shared `_validate_manifest_present`/`_reference_present` predicates) + Phase 2 (`finalize-handoff` chokepoint fold) built behind python-engineer→python-reviewer (296 breakdown tests green); Phase 3 (`/breakdown` PHASE 3.5 gate + mechanical PHASE 2.5 detect + PHASE 4 summary line + PHASE 5 finalize-handler branch) + Phase 4 (`/implement` + `/review` loud-WARN tripwires) built behind instruction-author→instruction-reviewer + claude-code-guide (every `main.md` edit — they ship into `.claude/`); Phase 5 docs reconciled. **D4 resolved to Option B** (mechanical `test -f`, not a shared helper call — see D4).
+**Status:** **✅ DONE 2026-06-25** — Phases 0–5 SHIPPED + committed (`f0a9e95`) on `develop-2.0-init`; **Phase 6 (testForge20 / consumer e2e) DEFERRED by maintainer** (not blocking — build-verified via 296 breakdown tests + the dual review loops). PREVENTIVE hardening of a latent structural weakness in the design-fidelity apparatus plan 40 shipped — NOT a fix for an observed skip. Phase 1 (`verify-manifest-present` verb + shared `_validate_manifest_present`/`_reference_present` predicates) + Phase 2 (`finalize-handoff` chokepoint fold) built behind python-engineer→python-reviewer (296 breakdown tests green); Phase 3 (`/breakdown` PHASE 3.5 gate + mechanical PHASE 2.5 detect + PHASE 4 summary line + PHASE 5 finalize-handler branch) + Phase 4 (`/implement` + `/review` loud-WARN tripwires) built behind instruction-author→instruction-reviewer + claude-code-guide (every `main.md` edit — they ship into `.claude/`); Phase 5 docs reconciled. **D4 resolved to Option B** (mechanical `test -f`, not a shared helper call — see D4).
 
 ## Why this plan exists
 
@@ -111,7 +111,9 @@ Built via **instruction-author → instruction-reviewer + claude-code-guide** (b
 
 **Verify:** `grep -rni "three forcing-functions"` → 0 stale hits in `src/commands/breakdown/` (case-insensitive — the source preamble capitalizes "Three"); the design-fidelity "Where to find what" row names the new verb; `pre-empt-future-hallucination` pass — a fresh session reading PHASE 3.5 sees four gates, and reading PHASE 2.5 does not believe the detect step is the authoritative scope owner.
 
-### Phase 6 — testForge20 / consumer e2e (user-driven, HARD GATE)
+### Phase 6 — testForge20 / consumer e2e — DEFERRED by maintainer (2026-06-25, not blocking)
+Recipe retained below as the validation procedure if/when an opportunistic e2e is run.
+
 - **WI-1 gate:** on a UI feature with a `design/reference.html`, force PHASE 2.5 to be skipped (simulate the prose-skip — e.g. start `/breakdown` from a state with no manifest) → confirm the PHASE 3.5 gate HARD-halts naming the missing manifest, and `finalize-handoff` refuses to write `breakdown-handoff.json`. Then produce the manifest and confirm the gate passes.
 - **WI-1 non-regression:** a non-UI feature (no `reference.html`) passes the new gate trivially and `/breakdown` completes unchanged.
 - **WI-2 tripwires:** on a feature with a `reference.html` but a manually-deleted manifest, run `/implement` and `/review` → confirm each emits the loud WARN (naming the void guarantee + remedy) and CONTINUES, never halting.
