@@ -162,6 +162,7 @@ def _plan_seeds(
     cited_canonical_patterns=None,
     alternatives_considered=None,
     proposed_call_shape=None,
+    correctness_vetted=False,
 ):
     return hs.PlanSeeds(
         recommended_approach_id=recommended_approach_id,
@@ -172,6 +173,7 @@ def _plan_seeds(
         cited_canonical_patterns=cited_canonical_patterns if cited_canonical_patterns is not None else [],
         alternatives_considered=alternatives_considered if alternatives_considered is not None else [],
         proposed_call_shape=proposed_call_shape,
+        correctness_vetted=correctness_vetted,
     )
 
 
@@ -975,6 +977,136 @@ class TestVerbatimPrompt(unittest.TestCase):
         """schema_version='1.1' is the current version and must be accepted."""
         h = _handoff(schema_version="1.1")
         self.assertEqual(h.schema_version, "1.1")
+
+
+# ---------------------------------------------------------------------------
+# correctness_vetted provenance marker tests (Seam E fix).
+# ---------------------------------------------------------------------------
+
+
+class TestCorrectnessVetted(unittest.TestCase):
+    """Tests for PlanSeeds.correctness_vetted — the shape-only provenance marker."""
+
+    def test_defaults_to_false(self):
+        """PlanSeeds constructs with correctness_vetted=False when the kwarg is omitted."""
+        ps = _plan_seeds()
+        self.assertIs(ps.correctness_vetted, False)
+
+    def test_explicit_false_accepted(self):
+        """PlanSeeds accepts explicit correctness_vetted=False."""
+        ps = _plan_seeds(correctness_vetted=False)
+        self.assertIs(ps.correctness_vetted, False)
+
+    def test_explicit_true_accepted(self):
+        """PlanSeeds accepts correctness_vetted=True."""
+        ps = _plan_seeds(correctness_vetted=True)
+        self.assertIs(ps.correctness_vetted, True)
+
+    def test_non_bool_string_raises(self):
+        """PlanSeeds rejects a string value for correctness_vetted."""
+        with self.assertRaises(ValueError) as ctx:
+            _plan_seeds(correctness_vetted="true")
+        self.assertIn("correctness_vetted", str(ctx.exception))
+
+    def test_none_raises(self):
+        """PlanSeeds rejects None for correctness_vetted."""
+        with self.assertRaises(ValueError) as ctx:
+            _plan_seeds(correctness_vetted=None)
+        self.assertIn("correctness_vetted", str(ctx.exception))
+
+    def test_asdict_includes_correctness_vetted(self):
+        """dataclasses.asdict on a PlanSeeds includes correctness_vetted=True in the result dict."""
+        import dataclasses
+        ps = _plan_seeds(correctness_vetted=True)
+        d = dataclasses.asdict(ps)
+        self.assertIn("correctness_vetted", d)
+        self.assertIs(d["correctness_vetted"], True)
+
+    def test_asdict_default_emits_false(self):
+        """dataclasses.asdict on a default PlanSeeds emits correctness_vetted=False."""
+        import dataclasses
+        ps = _plan_seeds()
+        d = dataclasses.asdict(ps)
+        self.assertIn("correctness_vetted", d)
+        self.assertIs(d["correctness_vetted"], False)
+
+    def test_asdict_handoff_pop_pattern_preserves_correctness_vetted(self):
+        """_asdict_handoff's pop(_proposed_call_shape_parse_failed) leaves correctness_vetted intact.
+
+        The serializer (_asdict_handoff) explicitly pops _proposed_call_shape_parse_failed
+        before writing JSON. correctness_vetted must survive that pop.
+        """
+        import dataclasses
+        ps = _plan_seeds(correctness_vetted=False)
+        raw = dataclasses.asdict(ps)
+        # Internal flag must be in raw asdict output (asdict includes all fields).
+        self.assertIn("_proposed_call_shape_parse_failed", raw)
+        # After the _asdict_handoff pop (mirrored here):
+        raw.pop("_proposed_call_shape_parse_failed", None)
+        # correctness_vetted must survive the pop.
+        self.assertIn("correctness_vetted", raw)
+        # Internal flag must be gone.
+        self.assertNotIn("_proposed_call_shape_parse_failed", raw)
+
+    def test_back_compat_construction_without_field_uses_default(self):
+        """Old plan_seeds dict without correctness_vetted constructs PlanSeeds with default False.
+
+        This is the back-compat load path: _dict_to_dataclass skips absent fields
+        that have a default, causing the dataclass to use its declared default (False).
+        Simulated here by constructing PlanSeeds without the correctness_vetted kwarg,
+        which is exactly what _dict_to_dataclass does for an absent-but-defaulted field.
+        """
+        ps = hs.PlanSeeds(
+            recommended_approach_id="fix_cache",
+            recommended_approach_summary="Clear cache on write",
+            layer_destination="service",
+            layer_justification="Service-layer only",
+            complexity=hs.Complexity(changes="Low", risk="Low", verify_cost="Low"),
+            cited_canonical_patterns=[],
+            alternatives_considered=[],
+            proposed_call_shape=None,
+            # correctness_vetted intentionally omitted — simulates a pre-field record
+        )
+        self.assertIs(ps.correctness_vetted, False)
+
+    def test_round_trip_stability_current_producer(self):
+        """Current-producer PlanSeeds round-trips stably.
+
+        Produce → asdict (minus internal flag, mirroring _asdict_handoff) → reconstruct
+        → re-asdict (minus internal flag) → byte-identical dicts.
+
+        This proves the serializer path is stable. Old handoffs (absent field) parse
+        to the default — that is a distinct assertion in test_back_compat_construction_*.
+        """
+        import dataclasses
+        ps = _plan_seeds()  # correctness_vetted=False (current-producer default)
+
+        # First serialization (mimicking _asdict_handoff).
+        d1 = dataclasses.asdict(ps)
+        d1.pop("_proposed_call_shape_parse_failed", None)
+
+        # Re-construct from d1 (simulating _dict_to_dataclass for PlanSeeds).
+        ps2 = hs.PlanSeeds(
+            recommended_approach_id=d1["recommended_approach_id"],
+            recommended_approach_summary=d1["recommended_approach_summary"],
+            layer_destination=d1["layer_destination"],
+            layer_justification=d1["layer_justification"],
+            complexity=hs.Complexity(**d1["complexity"]),
+            cited_canonical_patterns=[
+                hs.CitedPattern(**p) for p in d1["cited_canonical_patterns"]
+            ],
+            alternatives_considered=[
+                hs.Alternative(**a) for a in d1["alternatives_considered"]
+            ],
+            proposed_call_shape=d1["proposed_call_shape"],
+            correctness_vetted=d1["correctness_vetted"],
+        )
+
+        # Second serialization.
+        d2 = dataclasses.asdict(ps2)
+        d2.pop("_proposed_call_shape_parse_failed", None)
+
+        self.assertEqual(d1, d2)
 
 
 if __name__ == "__main__":

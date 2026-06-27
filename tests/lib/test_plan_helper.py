@@ -22,6 +22,8 @@ Module-level unit tests import plan_helper directly via sys.path insert.
 Stdlib only.
 """
 
+import importlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -98,6 +100,7 @@ if str(_LIB_DIR / "_discover") not in sys.path:
     sys.path.insert(0, str(_LIB_DIR / "_discover"))
 
 from _specify._cmds_handoff import cmd_finalize_handoff as _specify_finalize_handoff  # noqa: E402
+from _specify._cmds_handoff import _dict_to_dataclass as _specify_dict_to_dataclass  # noqa: E402
 from _discover._cmds_handoff import cmd_finalize_handoff as _discover_finalize_handoff  # noqa: E402
 from _discover._state import _atomic_write_json, MEMO_FILE_NAME, REPORT_FILE_NAME  # noqa: E402
 
@@ -2193,6 +2196,193 @@ class TestPlanStatusPatternNoBleed(unittest.TestCase):
             "check-status-and-flip must NOT report 'already-approved' for a "
             "malformed spec; stdout={0!r}".format(result.stdout),
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests: correctness_vetted provenance caveat in render-plan-seeds (Seam E).
+# ---------------------------------------------------------------------------
+
+
+class CorrectnessVettedRenderTests(unittest.TestCase):
+    """Tests for the correctness_vetted caveat rendered by _render_research_plan_seeds.
+
+    Tests call the private render function directly (plan_helper is imported at
+    module level) to avoid the full subprocess overhead of render-plan-seeds.
+    """
+
+    def _ps_dict(self, **kwargs):
+        """Return a minimal plan_seeds dict, overridable via kwargs."""
+        base = {
+            "recommended_approach_id": "fix_cache",
+            "recommended_approach_summary": "Clear the cache on every catalog write",
+            "layer_destination": "service",
+            "layer_justification": "Service-layer only change",
+            "complexity": {"changes": "Low", "risk": "Low", "verify_cost": "Low"},
+            "cited_canonical_patterns": [],
+            "alternatives_considered": [],
+            "proposed_call_shape": None,
+        }
+        base.update(kwargs)
+        return base
+
+    def test_caveat_rendered_when_field_absent(self):
+        """Back-compat: plan_seeds dict without correctness_vetted key renders caveat.
+
+        Old handoffs lack the field. The consumer must default to False (shape-checked
+        only) and render the caveat.
+        """
+        ps = self._ps_dict()  # no correctness_vetted key
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds("research/2026-01-01-test.handoff.json", d)
+        self.assertIn("provenance", output)
+        self.assertIn("shape-checked", output)
+        self.assertIn("NOT correctness-vetted", output)
+
+    def test_caveat_rendered_when_explicit_false(self):
+        """Explicit correctness_vetted=False renders caveat."""
+        ps = self._ps_dict(correctness_vetted=False)
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds("research/2026-01-01-test.handoff.json", d)
+        self.assertIn("NOT correctness-vetted", output)
+        self.assertIn("shape-checked", output)
+
+    def test_no_caveat_when_true(self):
+        """correctness_vetted=True suppresses the caveat entirely."""
+        ps = self._ps_dict(correctness_vetted=True)
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds("research/2026-01-01-test.handoff.json", d)
+        self.assertNotIn("NOT correctness-vetted", output)
+        self.assertNotIn("shape-checked", output)
+        # The recommendation line itself must still be present.
+        self.assertIn("Recommended approach", output)
+        self.assertIn("Clear the cache", output)
+
+    def test_caveat_immediately_after_recommendation_before_layer(self):
+        """Caveat appears after the Recommended approach line and before the Layer line."""
+        ps = self._ps_dict()  # triggers caveat
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds("research/2026-01-01-test.handoff.json", d)
+        rec_pos = output.index("Recommended approach")
+        caveat_pos = output.index("NOT correctness-vetted")
+        layer_pos = output.index("**Layer**")
+        self.assertGreater(caveat_pos, rec_pos,
+                           "caveat must appear after the Recommended approach line")
+        self.assertLess(caveat_pos, layer_pos,
+                        "caveat must appear before the Layer line")
+
+
+class CorrectnessVettedBackCompatTests(unittest.TestCase):
+    """Back-compat and round-trip tests via the real _dict_to_dataclass deserializer.
+
+    These use the real research_helper finalize-handoff producer (subprocess) and
+    the real _dict_to_dataclass function to exercise the full load path.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _load_research_hs(self):
+        """Load the research handoff_schema module via importlib (unique name avoids collision)."""
+        _research_dir = REPO_ROOT / "src" / "devforge" / "lib" / "_research"
+        spec = importlib.util.spec_from_file_location(
+            "_research_hs_correctness_vetted_backcompat",
+            _research_dir / "handoff_schema.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_old_handoff_json_deserializes_correctness_vetted_defaults_false(self):
+        """An old research handoff.json (no correctness_vetted in plan_seeds) deserializes to False.
+
+        Produces a real handoff via the producer, strips correctness_vetted to simulate
+        a pre-field record, then deserializes via _dict_to_dataclass and asserts the
+        field defaults to False.
+
+        Proves back-compat: D7 requirement — old handoffs parse without error.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        research_emit = self.tmp / "research" / "2026-05-22-widget-stale-results.handoff.json"
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path", "research/2026-05-22-widget-stale-results.md",
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+
+        # Load produced JSON — the current producer MUST emit correctness_vetted=False.
+        data = json.loads(research_emit.read_text(encoding="utf-8"))
+        self.assertIn("correctness_vetted", data.get("plan_seeds", {}),
+                      "Current producer must emit correctness_vetted in plan_seeds")
+        self.assertFalse(data["plan_seeds"]["correctness_vetted"],
+                         "Current producer must emit correctness_vetted=False by default")
+
+        # Simulate old handoff by stripping the field.
+        data["plan_seeds"].pop("correctness_vetted")
+
+        # Deserialize via the real _dict_to_dataclass.
+        rhs = self._load_research_hs()
+        handoff = _specify_dict_to_dataclass(rhs.Handoff, data)
+        self.assertIs(handoff.plan_seeds.correctness_vetted, False,
+                      "Old handoff without correctness_vetted must default to False")
+
+    def test_current_producer_output_round_trips_stably(self):
+        """Current-producer handoff.json round-trips stably.
+
+        Produce → serialize → _dict_to_dataclass → re-serialize produces
+        byte-identical plan_seeds dict (JSON-comparable).
+        Proves the field emits and re-parses without drift.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        research_emit = self.tmp / "research" / "2026-05-22-widget-stable.handoff.json"
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path", "research/2026-05-22-widget-stable.md",
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+
+        # First serialization (from the producer).
+        data1 = json.loads(research_emit.read_text(encoding="utf-8"))
+        ps_dict1 = data1["plan_seeds"]
+
+        # Deserialize via the real _dict_to_dataclass, then re-serialize.
+        rhs = self._load_research_hs()
+        handoff = _specify_dict_to_dataclass(rhs.Handoff, data1)
+
+        import dataclasses
+        ps_dict2 = dataclasses.asdict(handoff.plan_seeds)
+        ps_dict2.pop("_proposed_call_shape_parse_failed", None)
+
+        # The re-serialized plan_seeds must match the first serialization.
+        self.assertEqual(ps_dict1, ps_dict2,
+                         "Round-trip must produce byte-identical plan_seeds dict")
 
 
 if __name__ == "__main__":
