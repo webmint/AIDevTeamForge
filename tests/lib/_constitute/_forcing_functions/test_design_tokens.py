@@ -104,6 +104,10 @@ from _constitute._forcing_functions._design_tokens._cmd import (  # noqa: E402
     _collect_match_refs,
     _glob_manifests,
     _load_manifest_match_refs_from_json,
+    _extract_reference_html_refs,
+    _load_manifest_deviate_reason_refs_from_json,
+    _collect_deviate_reason_refs,
+    _build_spacing_scope_refs,
 )
 
 
@@ -1500,6 +1504,760 @@ class TestDesignTokenProvenanceSchemaValidation(unittest.TestCase):
             len(errs) >= 1,
             "Expected a validation error for token_source_css: 42, got none — "
             "the design_token_provenance branch was not reached."
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestExtractReferenceHtmlRefs  (Step 3 — circular spacing fix)
+# ---------------------------------------------------------------------------
+
+class TestExtractReferenceHtmlRefs(unittest.TestCase):
+    """Unit tests for _extract_reference_html_refs (new helper in _cmd.py)."""
+
+    def setUp(self):
+        self._td = tempfile.mkdtemp()
+        self._root = Path(self._td)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._td, ignore_errors=True)
+
+    def _write_html(self, content, name="reference.html"):
+        p = self._root / name
+        p.write_text(content)
+        return str(p)
+
+    def test_simple_html_two_data_refs(self):
+        html = textwrap.dedent("""\
+            <!DOCTYPE html>
+            <html>
+              <body>
+                <div data-ref="cta">CTA</div>
+                <div data-ref="ctrl">CTRL</div>
+              </body>
+            </html>
+        """)
+        refs = _extract_reference_html_refs(self._write_html(html))
+        self.assertEqual(refs, {"cta", "ctrl"})
+
+    def test_no_data_ref_elements_returns_empty(self):
+        html = "<html><body><div class='foo'>no data-ref</div></body></html>"
+        refs = _extract_reference_html_refs(self._write_html(html))
+        self.assertEqual(refs, set())
+
+    def test_single_data_ref(self):
+        html = "<div data-ref='hero'></div>"
+        refs = _extract_reference_html_refs(self._write_html(html))
+        self.assertEqual(refs, {"hero"})
+
+    def test_nonexistent_file_returns_empty(self):
+        refs = _extract_reference_html_refs(str(self._root / "missing.html"))
+        self.assertEqual(refs, set())
+
+    def test_duplicate_data_ref_values_deduplicated(self):
+        html = textwrap.dedent("""\
+            <div data-ref="card"></div>
+            <div data-ref="card"></div>
+            <span data-ref="header"></span>
+        """)
+        refs = _extract_reference_html_refs(self._write_html(html))
+        self.assertEqual(refs, {"card", "header"})
+
+    def test_data_ref_with_double_quotes(self):
+        html = '<button data-ref="submit-btn">Go</button>'
+        refs = _extract_reference_html_refs(self._write_html(html))
+        self.assertEqual(refs, {"submit-btn"})
+
+    def test_data_ref_with_single_quotes(self):
+        html = "<button data-ref='cancel-btn'>Cancel</button>"
+        refs = _extract_reference_html_refs(self._write_html(html))
+        self.assertEqual(refs, {"cancel-btn"})
+
+    def test_empty_html_returns_empty(self):
+        refs = _extract_reference_html_refs(self._write_html(""))
+        self.assertEqual(refs, set())
+
+    def test_mixed_elements_only_data_ref_collected(self):
+        # Non-data-ref elements are not collected
+        html = textwrap.dedent("""\
+            <div class="wrapper" id="app">
+              <section data-ref="hero" class="hero-section"></section>
+              <footer class="footer" data-section="bottom"></footer>
+            </div>
+        """)
+        refs = _extract_reference_html_refs(self._write_html(html))
+        self.assertEqual(refs, {"hero"})
+
+
+# ---------------------------------------------------------------------------
+# TestLoadManifestDeviateReasonRefs  (Step 3 — circular spacing fix)
+# ---------------------------------------------------------------------------
+
+class TestLoadManifestDeviateReasonRefs(unittest.TestCase):
+    """Unit tests for _load_manifest_deviate_reason_refs_from_json."""
+
+    def setUp(self):
+        self._td = tempfile.mkdtemp()
+        self._root = Path(self._td)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._td, ignore_errors=True)
+
+    def _write_manifest(self, elements, name="m.json"):
+        p = self._root / name
+        p.write_text(json.dumps({"elements": elements}))
+        return str(p)
+
+    def test_deviate_with_reason_included(self):
+        p = self._write_manifest([
+            {"data_ref": "ctrl", "disposition": "DEVIATE",
+             "deviate_reason": "Brand overrides reference spacing here"},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertIn("ctrl", refs)
+
+    def test_deviate_without_reason_excluded(self):
+        # Bare DEVIATE (empty reason) is NOT an exemption
+        p = self._write_manifest([
+            {"data_ref": "ctrl", "disposition": "DEVIATE", "deviate_reason": ""},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertNotIn("ctrl", refs)
+
+    def test_deviate_no_reason_field_excluded(self):
+        # DEVIATE with no deviate_reason key at all → not exempt
+        p = self._write_manifest([
+            {"data_ref": "ctrl", "disposition": "DEVIATE"},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertNotIn("ctrl", refs)
+
+    def test_match_disposition_excluded(self):
+        p = self._write_manifest([
+            {"data_ref": "cta", "disposition": "MATCH"},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertNotIn("cta", refs)
+
+    def test_static_placeholder_excluded(self):
+        p = self._write_manifest([
+            {"data_ref": "hero", "disposition": "STATIC-PLACEHOLDER"},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertNotIn("hero", refs)
+
+    def test_mixed_elements_only_deviate_with_reason_collected(self):
+        p = self._write_manifest([
+            {"data_ref": "cta", "disposition": "MATCH"},
+            {"data_ref": "ctrl", "disposition": "DEVIATE",
+             "deviate_reason": "Intentional brand deviation"},
+            {"data_ref": "card", "disposition": "DEVIATE", "deviate_reason": ""},
+            {"data_ref": "nav", "disposition": "DEFER-EMPTY"},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertEqual(refs, {"ctrl"})
+
+    def test_whitespace_only_reason_excluded(self):
+        # A reason of just whitespace is not a valid reason (stripped = empty)
+        p = self._write_manifest([
+            {"data_ref": "ctrl", "disposition": "DEVIATE", "deviate_reason": "   "},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertNotIn("ctrl", refs)
+
+    def test_missing_file_returns_empty(self):
+        refs = _load_manifest_deviate_reason_refs_from_json(
+            str(self._root / "nonexistent.json")
+        )
+        self.assertEqual(refs, set())
+
+    def test_malformed_json_returns_empty(self):
+        p = self._root / "bad.json"
+        p.write_text("not json {{{")
+        refs = _load_manifest_deviate_reason_refs_from_json(str(p))
+        self.assertEqual(refs, set())
+
+    def test_deviate_case_insensitive(self):
+        # "deviate" lowercase should still match
+        p = self._write_manifest([
+            {"data_ref": "ctrl", "disposition": "deviate",
+             "deviate_reason": "some reason"},
+        ])
+        refs = _load_manifest_deviate_reason_refs_from_json(p)
+        self.assertIn("ctrl", refs)
+
+
+# ---------------------------------------------------------------------------
+# TestCollectDeviateReasonRefs  (Step 3 — circular spacing fix)
+# ---------------------------------------------------------------------------
+
+class TestCollectDeviateReasonRefs(unittest.TestCase):
+    """Unit tests for _collect_deviate_reason_refs (mirrors _collect_match_refs)."""
+
+    def setUp(self):
+        self._td = tempfile.mkdtemp()
+        self._root = Path(self._td)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._td, ignore_errors=True)
+
+    def _write_manifest(self, feature_slug, elements):
+        specs_dir = self._root / "specs" / feature_slug
+        specs_dir.mkdir(parents=True, exist_ok=True)
+        p = specs_dir / "design-manifest.json"
+        p.write_text(json.dumps({"elements": elements}))
+        return p
+
+    def test_no_manifests_returns_empty(self):
+        refs = _collect_deviate_reason_refs(self._root, None)
+        self.assertEqual(refs, set())
+
+    def test_glob_single_manifest_with_deviate(self):
+        self._write_manifest("001-feat", [
+            {"data_ref": "ctrl", "disposition": "DEVIATE",
+             "deviate_reason": "Brand override"},
+        ])
+        refs = _collect_deviate_reason_refs(self._root, None)
+        self.assertEqual(refs, {"ctrl"})
+
+    def test_glob_unions_across_manifests(self):
+        self._write_manifest("001-a", [
+            {"data_ref": "ctrl", "disposition": "DEVIATE",
+             "deviate_reason": "Brand override"},
+        ])
+        self._write_manifest("002-b", [
+            {"data_ref": "hero", "disposition": "DEVIATE",
+             "deviate_reason": "Product image variant"},
+        ])
+        refs = _collect_deviate_reason_refs(self._root, None)
+        self.assertEqual(refs, {"ctrl", "hero"})
+
+    def test_explicit_manifest_path(self):
+        self._write_manifest("001-feat", [
+            {"data_ref": "nav", "disposition": "DEVIATE",
+             "deviate_reason": "Nav uses product palette"},
+        ])
+        refs = _collect_deviate_reason_refs(
+            self._root, "specs/001-feat/design-manifest.json"
+        )
+        self.assertEqual(refs, {"nav"})
+
+    def test_explicit_manifest_missing_returns_empty(self):
+        refs = _collect_deviate_reason_refs(
+            self._root, "specs/nonexistent/design-manifest.json"
+        )
+        self.assertEqual(refs, set())
+
+
+# ---------------------------------------------------------------------------
+# TestBuildSpacingScope  (Step 3 — circular spacing fix)
+# ---------------------------------------------------------------------------
+
+class TestBuildSpacingScope(unittest.TestCase):
+    """Unit tests for _build_spacing_scope_refs."""
+
+    def setUp(self):
+        self._td = tempfile.mkdtemp()
+        self._root = Path(self._td)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._td, ignore_errors=True)
+
+    def _write_reference_html(self, *data_refs):
+        """Write a design/reference.html with the given data-ref values."""
+        design_dir = self._root / "design"
+        design_dir.mkdir(exist_ok=True)
+        parts = ["<!DOCTYPE html><html><body>"]
+        for ref in data_refs:
+            parts.append('<div data-ref="{ref}"></div>'.format(ref=ref))
+        parts.append("</body></html>")
+        (design_dir / "reference.html").write_text("".join(parts))
+
+    def _write_manifest(self, feature_slug, elements):
+        specs_dir = self._root / "specs" / feature_slug
+        specs_dir.mkdir(parents=True, exist_ok=True)
+        p = specs_dir / "design-manifest.json"
+        p.write_text(json.dumps({"elements": elements}))
+
+    def test_no_reference_html_returns_none(self):
+        # No design/reference.html → None (preserves old behavior)
+        result = _build_spacing_scope_refs(self._root, None)
+        self.assertIsNone(result)
+
+    def test_with_reference_html_returns_set(self):
+        self._write_reference_html("cta", "ctrl")
+        result = _build_spacing_scope_refs(self._root, None)
+        self.assertIsNotNone(result)
+        self.assertIn("cta", result)
+        self.assertIn("ctrl", result)
+
+    def test_deviate_with_reason_excluded_from_scope(self):
+        # ctrl is in reference.html and has DEVIATE+reason → NOT in scope (exempt)
+        self._write_reference_html("cta", "ctrl")
+        self._write_manifest("001-feat", [
+            {"data_ref": "cta", "disposition": "MATCH"},
+            {"data_ref": "ctrl", "disposition": "DEVIATE",
+             "deviate_reason": "Brand palette exception"},
+        ])
+        result = _build_spacing_scope_refs(self._root, None)
+        self.assertIn("cta", result)
+        self.assertNotIn("ctrl", result)
+
+    def test_deviate_without_reason_still_in_scope(self):
+        # ctrl DEVIATE with empty reason → NOT exempt → stays in scope
+        self._write_reference_html("cta", "ctrl")
+        self._write_manifest("001-feat", [
+            {"data_ref": "ctrl", "disposition": "DEVIATE", "deviate_reason": ""},
+        ])
+        result = _build_spacing_scope_refs(self._root, None)
+        self.assertIn("ctrl", result)
+
+    def test_match_in_both_scope_and_match_refs(self):
+        # MATCH elements are in reference.html → appear in spacing_scope_refs
+        self._write_reference_html("sidebar")
+        self._write_manifest("001-feat", [
+            {"data_ref": "sidebar", "disposition": "MATCH"},
+        ])
+        result = _build_spacing_scope_refs(self._root, None)
+        self.assertIn("sidebar", result)
+
+    def test_element_not_in_reference_not_in_scope(self):
+        # An element only in the manifest (not in reference.html) is not in scope
+        self._write_reference_html("cta")  # only cta in HTML
+        self._write_manifest("001-feat", [
+            {"data_ref": "cta", "disposition": "MATCH"},
+            # ctrl is in manifest but NOT in reference.html
+            {"data_ref": "ctrl", "disposition": "MATCH"},
+        ])
+        result = _build_spacing_scope_refs(self._root, None)
+        self.assertIn("cta", result)
+        self.assertNotIn("ctrl", result)
+
+    def test_empty_reference_html_returns_none(self):
+        # reference.html exists but has no data-ref elements.
+        # Post-fix: empty ref_html_refs → None, NOT set(), so the caller falls
+        # back to match_refs (same as absent reference.html).
+        self._write_reference_html()  # no data-refs
+        result = _build_spacing_scope_refs(self._root, None)
+        self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# TestCheck5SpacingCircularFix  (Step 3 — the actual circular scoping fix)
+# ---------------------------------------------------------------------------
+
+class TestCheck5SpacingCircularFix(unittest.TestCase):
+    """Tests that prove the circularity is broken.
+
+    Before the fix: DEVIATE-mistagged element's spacing literal was silently
+    skipped because the element was not in match_refs.
+
+    After the fix: spacing sub-check is anchored to spacing_scope_refs
+    (reference-html-anchored), so a mistagged element IS still caught.
+    """
+
+    def _check(
+        self,
+        source,
+        match_refs=None,
+        spacing_scale_available=True,
+        spacing_scope_refs=None,
+    ):
+        return _check5_match_token_binding(
+            source, "test.css", _RULE,
+            match_refs or set(),
+            spacing_scale_available,
+            spacing_scope_refs,
+        )
+
+    # -- The core circular-fix regression test --
+
+    def test_deviate_mistagged_spacing_caught_via_spacing_scope(self):
+        """THE KEY TEST: a DEVIATE-mistagged element's spacing literal is caught
+        when spacing_scope_refs is provided from reference.html."""
+        src = textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              margin: 11px;
+            }
+        """)
+        # Mistagged: ctrl is DEVIATE in manifest → not in match_refs
+        # But ctrl IS in reference.html → in spacing_scope_refs
+        match_refs = set()          # ctrl is NOT MATCH in manifest
+        spacing_scope_refs = {"ctrl"}  # ctrl IS in reference.html
+
+        findings = self._check(
+            src,
+            match_refs=match_refs,
+            spacing_scale_available=True,
+            spacing_scope_refs=spacing_scope_refs,
+        )
+        # Must catch the spacing literal even though ctrl is not MATCH
+        self.assertTrue(len(findings) >= 1, "Expected spacing finding for mistagged ctrl")
+        self.assertTrue(_has_finding_with(findings, "spacing") or
+                        _has_finding_with(findings, "ctrl"),
+                        "Finding should mention spacing or ctrl")
+
+    def test_old_behavior_deviate_mistagged_spacing_silently_missed(self):
+        """Confirms the OLD (broken) behavior: DEVIATE mistagged = silently missed.
+
+        This test documents the pre-fix behavior by passing spacing_scope_refs=None
+        (no reference.html scenario). With spacing_scope_refs=None the gate falls
+        back to match_refs for spacing — and since ctrl is DEVIATE (not MATCH),
+        the spacing literal is NOT caught. This is the circular scoping bug.
+        """
+        src = textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              margin: 11px;
+            }
+        """)
+        match_refs = set()   # ctrl not MATCH
+        # No spacing_scope_refs (no reference.html)
+        findings = self._check(
+            src,
+            match_refs=match_refs,
+            spacing_scale_available=True,
+            spacing_scope_refs=None,  # fallback to match_refs
+        )
+        # With spacing_scope_refs=None AND empty match_refs → spacing check is no-op
+        spacing_findings = [f for f in findings
+                            if "spacing" in f.summary.lower() or
+                            "margin" in f.summary.lower() or
+                            "11px" in f.summary]
+        self.assertEqual(spacing_findings, [],
+                         "Without spacing_scope_refs the spacing literal must NOT be caught "
+                         "(documents the pre-fix behavior)")
+
+    def test_match_spacing_still_caught_with_scope(self):
+        """A MATCH element's spacing literal is still caught when scope is provided."""
+        src = textwrap.dedent("""\
+            [data-ref="cta"] {
+              padding: 8px;
+            }
+        """)
+        match_refs = {"cta"}
+        spacing_scope_refs = {"cta", "ctrl"}  # both in reference.html
+        findings = self._check(
+            src,
+            match_refs=match_refs,
+            spacing_scale_available=True,
+            spacing_scope_refs=spacing_scope_refs,
+        )
+        self.assertTrue(len(findings) >= 1)
+
+    def test_deviate_with_reason_exempt_from_spacing(self):
+        """An element in reference.html that has DEVIATE+reason is exempt
+        (not in spacing_scope_refs → spacing literal not caught)."""
+        src = textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              margin: 11px;
+            }
+        """)
+        # ctrl has a legitimate DEVIATE reason → excluded from spacing_scope_refs
+        match_refs = set()
+        spacing_scope_refs = set()  # ctrl excluded from scope (deviate with reason)
+
+        findings = self._check(
+            src,
+            match_refs=match_refs,
+            spacing_scale_available=True,
+            spacing_scope_refs=spacing_scope_refs,
+        )
+        spacing_findings = [f for f in findings
+                            if "spacing" in f.summary.lower() or
+                            "margin" in f.summary.lower()]
+        self.assertEqual(spacing_findings, [],
+                         "DEVIATE-with-reason element must be exempt from spacing check")
+
+    def test_spacing_scope_none_falls_back_to_match_refs(self):
+        """When spacing_scope_refs=None (no reference.html), spacing uses match_refs."""
+        src = textwrap.dedent("""\
+            [data-ref="cta"] {
+              padding: 16px;
+            }
+        """)
+        match_refs = {"cta"}
+        # No reference.html → spacing_scope_refs=None → falls back to match_refs
+        findings = self._check(
+            src,
+            match_refs=match_refs,
+            spacing_scale_available=True,
+            spacing_scope_refs=None,
+        )
+        self.assertTrue(len(findings) >= 1, "MATCH element spacing still caught without scope")
+
+    def test_color_check_unaffected_by_spacing_scope_fix(self):
+        """Check 5 color sub-check still only fires for MATCH elements,
+        regardless of spacing_scope_refs."""
+        src = textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              background: #ff0000;
+            }
+        """)
+        # ctrl is in spacing_scope_refs but NOT match_refs
+        match_refs = set()
+        spacing_scope_refs = {"ctrl"}
+
+        findings = self._check(
+            src,
+            match_refs=match_refs,
+            spacing_scale_available=True,
+            spacing_scope_refs=spacing_scope_refs,
+        )
+        # Color check in Check 5 must NOT fire for non-MATCH elements
+        # (Check 1 would catch it separately, but Check 5 color is MATCH-only)
+        check5_color_findings = [
+            f for f in findings
+            if "match element" in f.summary.lower() and
+            ("#ff0000" in f.summary or "color" in f.summary.lower())
+        ]
+        self.assertEqual(check5_color_findings, [],
+                         "Check 5 color sub-check must stay MATCH-only (ctrl not in match_refs)")
+
+    def test_check5_skips_all_when_both_refs_empty_and_scope_provided(self):
+        """When spacing_scope_refs=set() (reference.html exists but no data-refs),
+        spacing check is a no-op for all elements."""
+        src = textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              margin: 8px;
+            }
+        """)
+        match_refs = set()
+        spacing_scope_refs = set()  # reference.html has no data-refs
+
+        findings = self._check(
+            src,
+            match_refs=match_refs,
+            spacing_scale_available=True,
+            spacing_scope_refs=spacing_scope_refs,
+        )
+        self.assertEqual(findings, [])
+
+
+# ---------------------------------------------------------------------------
+# TestCliCircularFix  (Step 3 — end-to-end through CLI)
+# ---------------------------------------------------------------------------
+
+class TestCliCircularFix(unittest.TestCase):
+    """End-to-end CLI tests for the circular spacing-scope fix.
+
+    These tests exercise the full path: reference.html → spacing_scope_refs
+    → verify-design-tokens exit code and findings.
+    """
+
+    def setUp(self):
+        self._td = tempfile.mkdtemp()
+        self._root = Path(self._td)
+        (self._root / ".devforge").mkdir()
+        (self._root / "design").mkdir()
+        (self._root / "specs" / "001-feat").mkdir(parents=True)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._td, ignore_errors=True)
+
+    def _write_reference_html(self, *data_refs):
+        parts = ["<!DOCTYPE html><html><body>"]
+        for ref in data_refs:
+            parts.append('<div data-ref="{ref}"></div>'.format(ref=ref))
+        parts.append("</body></html>")
+        (self._root / "design" / "reference.html").write_text("".join(parts))
+
+    def _write_token_css(self, content=""):
+        css = self._root / "design" / "styles.css"
+        css.write_text(content or textwrap.dedent("""\
+            :root {
+              --color-primary: #0000ff;
+              --spacing-sm: 8px;
+              --spacing-md: 16px;
+            }
+            /* Non-custom-property spacing declarations so extract_spacing_scale
+               returns a non-empty scale → spacing_scale_available = True.
+               extract_spacing_scale skips custom properties (--spacing-sm: 8px
+               is a custom property and is ignored by the scale extractor). */
+            .spacing-sm-anchor { margin: 8px; }
+            .spacing-md-anchor { padding: 16px; }
+        """))
+        return "design/styles.css"
+
+    def _write_config(self, token_source_css=None):
+        rule_block = {"enabled": True}
+        if token_source_css:
+            rule_block["token_source_css"] = token_source_css
+        config = {"forcing_functions": {"design_token_provenance": rule_block}}
+        config_path = self._root / ".devforge" / "constitute.json"
+        config_path.write_text(json.dumps(config))
+
+    def _write_manifest(self, elements):
+        p = self._root / "specs" / "001-feat" / "design-manifest.json"
+        p.write_text(json.dumps({"elements": elements}))
+
+    def _run(self):
+        argv = ["verify-design-tokens", "--root", str(self._root)]
+        return _run_cli(argv)
+
+    def test_deviate_mistagged_spacing_caught_via_reference_html(self):
+        """THE CORE FIX: ctrl is DEVIATE in manifest (mistag) but IS in reference.html.
+        Before fix: margin: 11px → silently passes.
+        After fix: margin: 11px → caught.
+        """
+        # 1. reference.html has both cta and ctrl
+        self._write_reference_html("cta", "ctrl")
+        # 2. token source (so spacing_scale_available = True)
+        token_css = self._write_token_css()
+        self._write_config(token_source_css=token_css)
+        # 3. manifest: cta is MATCH, ctrl is DEVIATE (mistag — no reason!)
+        self._write_manifest([
+            {"data_ref": "cta", "disposition": "MATCH"},
+            {"data_ref": "ctrl", "disposition": "DEVIATE", "deviate_reason": ""},
+        ])
+        # 4. CSS with hardcoded spacing on ctrl
+        (self._root / "component.css").write_text(textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              margin: 11px;
+            }
+        """))
+        code, out, err = self._run()
+        # The spacing literal MUST be caught (circular fix active)
+        self.assertEqual(code, 2, "Expected exit 2 — spacing literal on ctrl must be caught. "
+                         "stderr: " + err)
+        report = json.loads(out)
+        self.assertTrue(len(report["findings"]) >= 1,
+                        "Expected at least one finding for ctrl spacing")
+        summaries = [f["summary"] for f in report["findings"]]
+        spacing_findings = [s for s in summaries
+                            if "spacing" in s.lower() or "ctrl" in s.lower()]
+        self.assertTrue(len(spacing_findings) >= 1,
+                        "Expected a spacing finding for ctrl. Findings: " + str(summaries))
+
+    def test_no_reference_html_behavior_unchanged(self):
+        """Without design/reference.html the gate behaves exactly as before."""
+        # No reference.html (only the already-created "design" dir, no file inside)
+        token_css = self._write_token_css()
+        self._write_config(token_source_css=token_css)
+        # manifest: ctrl is DEVIATE (would be mistagged, but no reference.html)
+        self._write_manifest([
+            {"data_ref": "ctrl", "disposition": "DEVIATE", "deviate_reason": ""},
+        ])
+        # ctrl has a hardcoded spacing literal
+        (self._root / "component.css").write_text(textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              margin: 11px;
+            }
+        """))
+        code, out, err = self._run()
+        # Without reference.html → spacing_scope_refs=None → fallback to match_refs
+        # ctrl not in match_refs → spacing NOT caught by Check 5
+        # Check 1 would NOT catch margin (not a color) → exit 0
+        if code != 0:
+            report = json.loads(out)
+            check5_findings = [f for f in report["findings"]
+                                if "spacing" in f["summary"].lower()]
+            self.assertEqual(check5_findings, [],
+                             "Without reference.html, Check 5 spacing must not fire for "
+                             "DEVIATE elements (old behavior preserved)")
+
+    def test_deviate_with_reason_exempt_end_to_end(self):
+        """An intentional DEVIATE with a recorded reason is exempt from spacing check.
+
+        ctrl has a legitimate deviate_reason → excluded from spacing_scope_refs.
+        The CSS has ONLY ctrl (no other issues) → no findings → code=0.
+        emit_findings produces no JSON output on a clean run, so we assert on
+        the exit code, not on json.loads(out).
+        """
+        self._write_reference_html("cta", "ctrl")
+        token_css = self._write_token_css()
+        self._write_config(token_source_css=token_css)
+        # ctrl has a non-empty deviate_reason → exempt from spacing scope
+        self._write_manifest([
+            {"data_ref": "ctrl", "disposition": "DEVIATE",
+             "deviate_reason": "Brand exception: ctrl uses a product-specific margin"},
+        ])
+        # ctrl's spacing literal must NOT be caught (exempt).
+        # No other elements / issues in this project, so overall exit must be 0.
+        (self._root / "component.css").write_text(textwrap.dedent("""\
+            [data-ref="ctrl"] {
+              margin: 11px;
+            }
+        """))
+        code, out, err = self._run()
+        # With a legitimate deviate_reason, ctrl is excluded from spacing_scope_refs.
+        # No other violations present → clean run.
+        self.assertEqual(code, 0,
+                         "ctrl with legitimate deviate_reason must be exempt "
+                         "(expected exit 0, got {code}). stderr: {err}".format(
+                             code=code, err=err))
+        # Confirm no spacing ctrl finding in any output that might have appeared
+        self.assertNotIn("ctrl", err.lower() + out.lower()
+                         if "spacing" in (err.lower() + out.lower()) else "")
+
+    def test_match_element_spacing_still_caught_with_reference_html(self):
+        """A MATCH element's spacing literal is still caught when reference.html exists."""
+        self._write_reference_html("cta", "ctrl")
+        token_css = self._write_token_css()
+        self._write_config(token_source_css=token_css)
+        self._write_manifest([
+            {"data_ref": "cta", "disposition": "MATCH"},
+        ])
+        (self._root / "cta.css").write_text(textwrap.dedent("""\
+            [data-ref="cta"] {
+              padding: 24px;
+            }
+        """))
+        code, out, err = self._run()
+        self.assertEqual(code, 2, "MATCH element spacing literal must still be caught")
+        report = json.loads(out)
+        summaries = [f["summary"] for f in report["findings"]]
+        self.assertTrue(any("spacing" in s.lower() or "cta" in s for s in summaries),
+                        "Expected spacing finding for cta. Got: " + str(summaries))
+
+    def test_reference_html_no_data_refs_fallback_to_match_refs(self):
+        """Finding-1 regression: reference.html exists but has NO data-ref attributes.
+
+        Pre-fix: _build_spacing_scope_refs returned set() (empty) → scanner used
+        empty _spacing_refs → spacing check silently disabled for ALL elements,
+        including correctly-MATCH-dispositioned ones.
+
+        Post-fix: empty ref_html_refs → return None → scanner falls back to
+        match_refs → MATCH element spacing literal IS still caught (exit 2).
+        """
+        # reference.html exists but contains no data-ref attributes at all
+        design_dir = self._root / "design"
+        design_dir.mkdir(exist_ok=True)
+        (design_dir / "reference.html").write_text(textwrap.dedent("""\
+            <!DOCTYPE html>
+            <html>
+              <body>
+                <div class="wrapper">No data-ref elements here</div>
+              </body>
+            </html>
+        """))
+        token_css = self._write_token_css()
+        self._write_config(token_source_css=token_css)
+        # cta is MATCH in manifest
+        self._write_manifest([
+            {"data_ref": "cta", "disposition": "MATCH"},
+        ])
+        # cta has a hardcoded spacing literal — must be caught via match_refs fallback
+        (self._root / "cta.css").write_text(textwrap.dedent("""\
+            [data-ref="cta"] {
+              padding: 24px;
+            }
+        """))
+        code, out, err = self._run()
+        self.assertEqual(
+            code, 2,
+            "MATCH element spacing must be caught even when reference.html has no "
+            "data-refs (fallback to match_refs). stderr: " + err,
+        )
+        report = json.loads(out)
+        summaries = [f["summary"] for f in report["findings"]]
+        self.assertTrue(
+            any("spacing" in s.lower() or "cta" in s for s in summaries),
+            "Expected spacing finding for cta via match_refs fallback. Got: " +
+            str(summaries),
         )
 
 
