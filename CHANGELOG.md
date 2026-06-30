@@ -5,6 +5,14 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2026-06-30
+
+### Added
+- feat(breakdown): add a per-task **implementability** sub-question to the `/breakdown` Phase-2 mandatory architect consult (`47-BREAKDOWN-IMPLEMENTABILITY-SUBQUESTION-PLAN.md`, 2026-06-30). The consult validated task STRUCTURE (atomicity / dependency-ordering / contract-chain) but never asked whether the assigned engineer could implement a task without guessing a decision the plan never made — so an underspecified intent (a missing input the steps assume, an unstated choice between two valid implementations, a done-condition more than one diff could satisfy) was caught only downstream at the per-task review panel, `/verify`, or the human approval gate, after the breakdown was written. Adds a 4th always-asked sub-question on the consult that already runs every breakdown, by the right specialist (the architect), before any task file is written. Scope is intent-completeness, with an explicit anti-false-positive carve-out: a task fully determined by its contracts + the spec/plan/constitution/docs context the implementer also reads is NOT a finding (it is not a prose-style/verbosity judgment). Findings ride the existing revise-before-write loop; a plan-level gap (a decision `/plan` should have made) escalates to the human. NO new agent, helper, forcing-function, or provenance-schema change — pure prose to the already-emitted command (the three in-file 3-item enumerations of the sub-questions updated to 4-item). Why a 4th sub-question and not a separate prose-reviewer or a mechanical gate: clarity is a judgment call (a forcing-function would false-positive on terse-but-determined tasks), and a dedicated per-task pass is heavyweight for a problem the downstream panel + `/verify` already backstop. Built behind instruction-author → instruction-reviewer (2 findings applied) + claude-code-guide (convention-clean). testForge20 e2e is the remaining user-driven gate.
+
+### Changed
+- Template version: 2.0.3 → 2.0.4
+
 ## [2.0.3] - 2026-06-29
 
 ### Added
