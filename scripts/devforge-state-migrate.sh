@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# devforge-state-migrate.sh — plan 49 Phase 2 shared migration.
+#
+# Sourced by install.sh + update.sh (like scripts/constitution-drift-check.sh).
+# Converts already-tracked .devforge/ EPHEMERAL runtime-state files to gitignored
+# (git rm --cached) and deletes the dead `.claude/session-state.md` ignore line the
+# old union merge propagated (union_lines only ADDS; it cannot remove — the correct
+# `.devforge/session-state.md` line is added by each caller's gitignore step BEFORE
+# this runs). FAIL-SOFT, TRACKED-ONLY (the `ls-files --error-unmatch` guard),
+# INSTALL-REPO-ONLY (`git -C "$target_dir"` — the source/product repo has no
+# .devforge/, plan 25 D5 / plan 49 D8). IDEMPOTENT: a fresh install has none of
+# these tracked → a clean no-op. Never mutates VERSIONED files (memory.md,
+# spec-stamps.jsonl, the config/identity yaml/json) — they are not in the list.
+
+forge_migrate_devforge_state() {
+  target_dir="$1"
+  [ -n "$target_dir" ] || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  git -C "$target_dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
+
+  for _ep in \
+    .devforge/session-state.md \
+    .devforge/specify-state.json \
+    .devforge/research-state.json \
+    .devforge/research-report.json \
+    .devforge/discover-scope.json \
+    .devforge/discover-report.json \
+    .devforge/.preflight-stamp \
+    .devforge/cbm-last-indexed-sha \
+    .devforge/.generate-docs-trace.log \
+    .devforge/cbm-usage.log; do
+    if git -C "$target_dir" ls-files --error-unmatch "$_ep" >/dev/null 2>&1; then
+      git -C "$target_dir" rm --cached --quiet "$_ep" 2>/dev/null \
+        && echo "  ~ untracked (now ignored): $_ep" || true
+    fi
+  done
+
+  # tracked .lock files directly under .devforge/
+  git -C "$target_dir" ls-files '.devforge/*.lock' 2>/dev/null | while IFS= read -r _lk; do
+    [ -z "$_lk" ] && continue
+    git -C "$target_dir" rm --cached --quiet "$_lk" 2>/dev/null \
+      && echo "  ~ untracked (now ignored): $_lk" || true
+  done
+
+  # delete the dead `.claude/session-state.md` ignore line (union cannot remove it)
+  _gi="$target_dir/.gitignore"
+  if [ -f "$_gi" ] && grep -qxF ".claude/session-state.md" "$_gi"; then
+    if grep -vxF ".claude/session-state.md" "$_gi" > "$_gi.tmp" 2>/dev/null; then
+      mv "$_gi.tmp" "$_gi"
+      echo "  ~ removed dead ignore line: .claude/session-state.md"
+    else
+      rm -f "$_gi.tmp"
+    fi
+  fi
+}

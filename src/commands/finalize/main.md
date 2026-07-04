@@ -151,17 +151,19 @@ Carry the written-docs targets forward for the PHASE-4 results block (`Docs: upd
 
 ### Artifact safety-net commit (UNCONDITIONAL, before the squash)
 
-After the three docs outcomes above and BEFORE PHASE 3, make an UNCONDITIONAL `[WIP]` commit of the feature's whole `specs/<feature>/` directory, so any planning artifact still untracked at finalize time is git-safe and folds into the PHASE-3 squash. Substitute the resolved `<feature>` dir from PHASE 0:
+After the three docs outcomes above and BEFORE PHASE 3, make an UNCONDITIONAL `[WIP]` commit of the feature's whole `specs/<feature>/` directory PLUS the two VERSIONED `.devforge/` runtime files whose per-feature delta this cycle produced (`.devforge/memory.md` + `.devforge/spec-stamps.jsonl`), so any planning artifact still untracked at finalize time is git-safe and — together with those two runtime deltas — folds into the PHASE-3 squash. Substitute the resolved `<feature>` dir from PHASE 0:
 
 ```bash
-.devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/"]' --label "finalize: artifact safety-net"
+.devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/", ".devforge/memory.md", ".devforge/spec-stamps.jsonl"]' --label "finalize: artifact safety-net"
 ```
 
-`commit-artifacts` stages the whole `specs/<feature>/` directory (a directory path passed to `git add` unchanged — never `git add -A`) in the INSTALL repo only (the verb's own `resolve_workspace` guard handles the wrapper split — do NOT add a `git -C <source-root>` here) and makes a `[WIP] finalize: artifact safety-net` commit. The call runs UNCONDITIONALLY — every feature reaching `/finalize` has a `specs/<feature>/`, so there is no skip condition.
+`commit-artifacts` stages the whole `specs/<feature>/` directory and the two named `.devforge/` files (each path passed to `git add` unchanged — never `git add -A`) in the INSTALL repo only (the verb's own `resolve_workspace` guard handles the wrapper split — do NOT add a `git -C <source-root>` here) and makes a `[WIP] finalize: artifact safety-net` commit. The call runs UNCONDITIONALLY — every feature reaching `/finalize` has a `specs/<feature>/`, so there is no skip condition. (`memory.md` and `spec-stamps.jsonl` are VERSIONED, not gitignored, so `git add` stages them normally; the EPHEMERAL `.devforge/` runtime files are gitignored and are correctly NOT staged here — plan 49.)
 
 This call is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — proceed to PHASE 3 regardless); if SOME paths staged and others failed, the verb warns for the failing paths, commits what staged, and exits 0 (a partial success, not a failure); 'nothing to commit' exits 0 silently as a benign no-op.
 
 **This safety-net is DELIBERATELY redundant with the per-step artifact commits** each pipeline command (`/research` … `/verify`) now makes — those commit each artifact when it is written; this catches any straggler a fail-soft per-step commit skipped (or an artifact written by a path the per-step map missed). It is a belt-and-suspenders catch, NOT an oversight. Because the per-step commits already tracked most artifacts, this call is usually a benign `nothing to commit` no-op — that is expected.
+
+**Why the two `.devforge/` runtime files are staged here (plan 49 D3 — a scoped revisit of plan 33/37 D3).** Plan 33 / plan 37 D3 blanket-EXCLUDES `.devforge/` runtime state from the squash as global, not feature-scoped. Staging `memory.md` + `spec-stamps.jsonl` is a DELIBERATE, narrow, file-level revisit of that exclusion for exactly these two files: their per-feature delta is feature-caused (a feature's work is what appends the lesson entry and the spec stamp), so it belongs on the feature commit rather than stranded as uncommitted global state. This does NOT reopen the exclusion for `session-state.md` / `*-state.json` / the pointers — those stay EPHEMERAL and are gitignored (plan 49 D2). `commit-artifacts` stages whole-file, so it captures each file's current uncommitted content, which equals the feature delta when the prior cycle already committed its own (the steady-state case). A future reader must NOT read this as contradicting plan 33/37 D3 — it is a recorded, scoped narrowing.
 
 ## PHASE 3 — Squash (confirmation-gated)
 

@@ -21,6 +21,7 @@
 # ── Resolve the template repo path (where this script lives) ───────────────
 TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$TEMPLATE_DIR/scripts/constitution-drift-check.sh"
+. "$TEMPLATE_DIR/scripts/devforge-state-migrate.sh"
 
 # ── Parse arguments ────────────────────────────────────────────────────────
 TARGET_DIR=""
@@ -230,6 +231,26 @@ done
 
 mkdir -p "$TARGET_DIR/.devforge"
 cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
+
+# ── .gitignore: ensure .devforge/ runtime-state rules present ──────────────
+# install.sh does NOT run the manifest mergeFiles machinery (that lives only in
+# update.sh); apply the dedicated consumer gitignore template inline so a FRESH
+# install is clean from cycle 1 (plan 49 Phase 1 / OQ-5). union_lines semantics:
+# add each missing line, never remove a project's own. Install-repo-only.
+_gi_src="$TEMPLATE_DIR/src/files/devforge.gitignore"
+_gi_tgt="$TARGET_DIR/.gitignore"
+if [ -f "$_gi_src" ]; then
+  touch "$_gi_tgt"
+  while IFS= read -r _gi_line; do
+    [ -z "$_gi_line" ] && continue
+    grep -qxF "$_gi_line" "$_gi_tgt" 2>/dev/null || printf '%s\n' "$_gi_line" >> "$_gi_tgt"
+  done < "$_gi_src"
+  echo "  gitignore: .devforge/ runtime-state rules ensured"
+fi
+# Re-install onto an already-forge'd target may carry tracked ephemeral files +
+# the dead ignore line; migrate them (shared with update.sh, fail-soft no-op on
+# a genuinely fresh install where none are tracked). Runs AFTER the union above.
+forge_migrate_devforge_state "$TARGET_DIR"
 
 # ── Place constitution.md at project root (presence-guarded) ──────────────
 # Brownfield safety: if the target already has a constitution.md, leave it

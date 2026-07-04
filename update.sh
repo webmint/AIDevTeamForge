@@ -46,6 +46,7 @@ done
 
 TEMPLATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$TEMPLATE_DIR/scripts/constitution-drift-check.sh"
+. "$TEMPLATE_DIR/scripts/devforge-state-migrate.sh"
 
 if [ -z "$TARGET_DIR" ]; then
   echo "Usage: update.sh [--dry-run] [--force] <target-project-directory>"
@@ -454,19 +455,34 @@ COPY_IF_MISSING_ACTUAL="$(echo "$COPY_IF_MISSING_FILES" | while IFS= read -r f; 
   fi
 done)"
 
+# Resolve a mergeFile's template SOURCE path. If the manifest declares an
+# explicit templateSource (a repo-relative path — e.g. .gitignore is sourced
+# from a dedicated src/files/devforge.gitignore, NOT the forge repo's own root
+# .gitignore), use it; otherwise the source is the same-named file at the
+# template root (back-compat for .mcp.json, which has no templateSource).
+merge_src() {
+  local f="$1" src
+  src="$(jq -r --arg f "$f" '.mergeFiles.files[$f].templateSource // empty' "$MANIFEST")"
+  if [ -n "$src" ]; then
+    echo "$TEMPLATE_DIR/$src"
+  else
+    echo "$TEMPLATE_DIR/$f"
+  fi
+}
+
 # Filter merge files to only those that exist in both template and target
 MERGE_ACTUAL=""
 MERGE_ADD=""
 echo "$MERGE_FILES" | while IFS= read -r f; do true; done  # no-op to check
 MERGE_ACTUAL="$(echo "$MERGE_FILES" | while IFS= read -r f; do
   [ -z "$f" ] && continue
-  if [ -f "$TEMPLATE_DIR/$f" ] && [ -f "$TARGET_DIR/$f" ]; then
+  if [ -f "$(merge_src "$f")" ] && [ -f "$TARGET_DIR/$f" ]; then
     echo "$f"
   fi
 done)"
 MERGE_ADD="$(echo "$MERGE_FILES" | while IFS= read -r f; do
   [ -z "$f" ] && continue
-  if [ -f "$TEMPLATE_DIR/$f" ] && [ ! -f "$TARGET_DIR/$f" ]; then
+  if [ -f "$(merge_src "$f")" ] && [ ! -f "$TARGET_DIR/$f" ]; then
     echo "$f"
   fi
 done)"
@@ -845,11 +861,11 @@ echo "$MERGE_ACTUAL" | while IFS= read -r f; do
   case "$strategy" in
     union_keys)
       merge_key="$(jq -r --arg f "$f" '.mergeFiles.files[$f].mergeKey' "$MANIFEST")"
-      merge_json_union_keys "$TEMPLATE_DIR/$f" "$TARGET_DIR/$f" "$merge_key"
+      merge_json_union_keys "$(merge_src "$f")" "$TARGET_DIR/$f" "$merge_key"
       merged "Merged (union_keys on $merge_key): $f"
       ;;
     union_lines)
-      merge_union_lines "$TEMPLATE_DIR/$f" "$TARGET_DIR/$f"
+      merge_union_lines "$(merge_src "$f")" "$TARGET_DIR/$f"
       merged "Merged (union_lines): $f"
       ;;
     *)
@@ -862,9 +878,16 @@ done
 echo "$MERGE_ADD" | while IFS= read -r f; do
   [ -z "$f" ] && continue
   mkdir -p "$TARGET_DIR/$(dirname "$f")"
-  cp "$TEMPLATE_DIR/$f" "$TARGET_DIR/$f"
+  cp "$(merge_src "$f")" "$TARGET_DIR/$f"
   added "Added: $f"
 done
+
+# ── plan 49 Phase 2: migrate .devforge/ runtime state to EPHEMERAL ─────────
+# Untrack the now-gitignored ephemeral runtime files + drop the dead ignore line.
+# Shared with install.sh via scripts/devforge-state-migrate.sh. Runs AFTER the
+# union merge above, so the correct .devforge/session-state.md line is already
+# present before the dead .claude/session-state.md line is removed.
+forge_migrate_devforge_state "$TARGET_DIR"
 
 # ── Execute: copyIfMissing ─────────────────────────────────────────────────
 echo "$COPY_IF_MISSING_ACTUAL" | while IFS= read -r f; do

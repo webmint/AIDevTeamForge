@@ -5,6 +5,11 @@ All notable changes to this template will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- feat(gitignore,finalize): make a consumer install's git tree CLEAN after a full pipeline cycle (`49-DEVFORGE-RUNTIME-STATE-DISPOSITION-PLAN.md`, Phases 1–5, 2026-07-04). Previously every cycle left `.devforge/` runtime state dirty (the maintainer hand-committed it), because `.devforge/` mixed three storage classes under one dir with no per-file git disposition AND the one session-state ignore rule pointed at a DEAD path (`.claude/session-state.md`, pre-plan-22) that the `union_lines` merge propagated from the forge repo's own root `.gitignore` into every consumer. Adds a 3-class disposition (VERSIONED / EPHEMERAL / FEATURE-SCOPED): EPHEMERAL files (`session-state.md`, `*-state.json`, `*-report.json`, `discover-scope.json`, pointers, logs, `*.lock`) are gitignored via a NEW dedicated `src/files/devforge.gitignore` template (merged by a `manifest.json` `mergeFiles[".gitignore"].templateSource` + a new `update.sh` `merge_src()` source resolver + an `install.sh` inline union for fresh installs), plus a fail-soft / tracked-only / install-repo-only `git rm --cached` migration in `update.sh` that also deletes the dead line; VERSIONED `memory.md` + `spec-stamps.jsonl` deltas fold into the `/finalize` PHASE-2 safety-net commit so they ride the squash (a deliberate narrow file-level revisit of plan 33/37's blanket runtime-state exclusion, back-pointer inline). `src/devforge/storage-rules.md` documents the 3-class model + the scratch-vs-record trap (`.devforge/research-report.json` ≠ `research/<slug>/handoff.json`). Reuse-only (no new helper); install-repo-only / wrapper-safe by construction. The migration lives in a shared `scripts/devforge-state-migrate.sh` sourced by BOTH `install.sh` and `update.sh` (so a re-install onto an already-forge'd target also cleans up). 50 scratch tests green; `finalize/main.md` edit `instruction-reviewer`-clean. Phase 6 (consumer/testForge20 pipeline e2e) is the remaining user-driven gate.
+
 ## [2.0.4] - 2026-06-30
 
 ### Added
