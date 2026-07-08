@@ -878,5 +878,572 @@ class TestAuditIndependence(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Design Fidelity section (--design-section / design_section param)
+# ---------------------------------------------------------------------------
+
+_DESIGN_SECTION_MD = (
+    "**Coverage**: CLEAN\n\n"
+    "| Element | Check | Status |\n"
+    "|---|---|---|\n"
+    "| .card | overflow | PASS |\n"
+    "| .header | font-not-loaded | PASS |\n\n"
+    "**Advisory (non-gating)**: the VLM noted a minor color drift on hover.\n"
+)
+
+
+class TestRenderReportDesignSection(unittest.TestCase):
+    """render_report(design_section=...) embeds a distinct, un-partitioned section."""
+
+    def setUp(self):
+        self.partition = _build_realistic_partition()
+        self.base_kwargs = dict(
+            partition=self.partition,
+            feature="specs/001-auth",
+            date_str="2026-06-15",
+            finders=["code-reviewer", "architect", "security-reviewer", "qa-reviewer"],
+            refuters=["architect", "code-reviewer"],
+            source_root="/workspace",
+            framework="Python / FastAPI",
+            n_scope_files=5,
+            finders_skipped=["performance-analyst"],
+        )
+        self.no_flag_report = render_report(**self.base_kwargs)
+        self.with_section_report = render_report(
+            design_section=_DESIGN_SECTION_MD, **self.base_kwargs
+        )
+
+    # -- Back-compat: omitting design_section is byte-identical --------------
+
+    def test_no_design_section_byte_identical_to_baseline(self):
+        """render_report() with no design_section arg == explicit design_section=None."""
+        explicit_none = render_report(design_section=None, **self.base_kwargs)
+        self.assertEqual(self.no_flag_report, explicit_none)
+
+    def test_no_design_section_omits_heading(self):
+        self.assertNotIn("## Design Fidelity", self.no_flag_report)
+
+    # -- Section present, verbatim, positioned after Methodology -------------
+
+    def test_design_section_heading_present(self):
+        self.assertIn("## Design Fidelity", self.with_section_report)
+
+    def test_design_section_content_verbatim(self):
+        """The embedded block matches the source file content exactly (aside
+        from the enclosing blank-line/heading scaffolding added by the
+        renderer)."""
+        idx = self.with_section_report.index("## Design Fidelity")
+        body = self.with_section_report[idx:]
+        for line in _DESIGN_SECTION_MD.strip("\n").splitlines():
+            self.assertIn(line, body)
+
+    def test_design_section_after_methodology(self):
+        idx_methodology = self.with_section_report.index("## Methodology")
+        idx_design = self.with_section_report.index("## Design Fidelity")
+        self.assertGreater(
+            idx_design, idx_methodology,
+            "## Design Fidelity must be positioned after ## Methodology",
+        )
+
+    def test_design_section_is_last_section(self):
+        """No other '## ' heading follows Design Fidelity."""
+        idx_design = self.with_section_report.index("## Design Fidelity")
+        tail = self.with_section_report[idx_design + len("## Design Fidelity"):]
+        self.assertNotIn("\n## ", tail)
+
+    # -- Everything else is UNCHANGED by adding the section -------------------
+
+    def test_ensemble_sections_unchanged_with_design_section(self):
+        """Every line up to (and including) ## Methodology is identical whether
+        or not design_section is supplied — the addition is purely additive."""
+        idx_no_flag_end = self.no_flag_report.rindex("the verdict is `/verify`'s.")
+        idx_with_end = self.with_section_report.rindex("the verdict is `/verify`'s.")
+        no_flag_head = self.no_flag_report[: idx_no_flag_end + len("the verdict is `/verify`'s.")]
+        with_head = self.with_section_report[: idx_with_end + len("the verdict is `/verify`'s.")]
+        self.assertEqual(no_flag_head, with_head)
+
+    def test_summary_counts_unaffected_by_design_section(self):
+        self.assertIn("Confirmed: 2", self.with_section_report)
+        self.assertIn("Contested: 2", self.with_section_report)
+        self.assertIn("Dismissed: 1", self.with_section_report)
+        self.assertIn("Uncertain: 1", self.with_section_report)
+
+    def test_headline_severity_counts_unaffected_by_design_section(self):
+        self.assertIn("Critical: 2", self.with_section_report)
+        self.assertIn("High: 1", self.with_section_report)
+        self.assertIn("Info: 1", self.with_section_report)
+
+    # -- Empty / falsy design_section values are all treated as omitted ------
+
+    def test_empty_string_design_section_omits_heading(self):
+        report = render_report(design_section="", **self.base_kwargs)
+        self.assertNotIn("## Design Fidelity", report)
+
+    def test_whitespace_only_design_section_omits_heading(self):
+        report = render_report(design_section="   \n\n  ", **self.base_kwargs)
+        self.assertNotIn("## Design Fidelity", report)
+
+
+# ---------------------------------------------------------------------------
+# CLI round-trips: render-report --design-section
+# ---------------------------------------------------------------------------
+
+class TestCLIRenderReportDesignSection(unittest.TestCase):
+    """CLI --design-section flag: additive, fail-soft, never counted."""
+
+    def _run(self, argv):
+        old_out, old_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout = io.StringIO()
+            sys.stderr = io.StringIO()
+            try:
+                code = main(argv)
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 2
+            out = sys.stdout.getvalue()
+            err = sys.stderr.getvalue()
+        finally:
+            sys.stdout = old_out
+            sys.stderr = old_err
+        return code, out, err
+
+    def _write_partition(self, tmpdir, partition):
+        path = os.path.join(tmpdir, "partition.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(partition, fh)
+        return path
+
+    def _base_argv(self, partition_path, feature_dir):
+        return [
+            "render-report",
+            "--partition", partition_path,
+            "--feature", feature_dir,
+            "--date", "2026-06-15",
+            "--finders", "code-reviewer,architect",
+            "--refuters", "architect",
+            "--source-root", "/workspace",
+            "--framework", "Python",
+            "--scope-files", "3",
+        ]
+
+    def test_no_flag_byte_identical_to_pre_change_shape(self):
+        """A run without --design-section produces review.md with no
+        '## Design Fidelity' section — proving the flag is purely additive."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            code, out, _ = self._run(self._base_argv(partition_path, feature_dir))
+            self.assertEqual(code, 0)
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertNotIn("## Design Fidelity", content)
+
+    def test_with_design_section_flag_embeds_section(self):
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            design_path = os.path.join(tmpdir, "design-fidelity.md")
+            with open(design_path, "w", encoding="utf-8") as fh:
+                fh.write(_DESIGN_SECTION_MD)
+
+            argv = self._base_argv(partition_path, feature_dir) + [
+                "--design-section", design_path,
+            ]
+            code, out, err = self._run(argv)
+            self.assertEqual(code, 0)
+            self.assertEqual(err, "")
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn("## Design Fidelity", content)
+            self.assertIn("CLEAN", content)
+            self.assertIn("Advisory (non-gating)", content)
+
+            # Not counted in the JSON ack or in the report's own bucket counts.
+            ack = json.loads(out)
+            self.assertEqual(ack["confirmed"], 2)
+            self.assertEqual(ack["contested"], 2)
+            self.assertEqual(ack["dismissed"], 1)
+            self.assertEqual(ack["uncertain"], 1)
+            self.assertIn("Confirmed: 2", content)
+
+    def test_missing_design_section_path_is_fail_soft(self):
+        """A --design-section path that does not exist: no crash, exit 0,
+        stderr warning, review.md written without the section."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            missing_path = os.path.join(tmpdir, "does-not-exist.md")
+
+            argv = self._base_argv(partition_path, feature_dir) + [
+                "--design-section", missing_path,
+            ]
+            code, out, err = self._run(argv)
+            self.assertEqual(code, 0)
+            self.assertNotEqual(err, "")
+            self.assertIn("design-section", err.lower())
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertNotIn("## Design Fidelity", content)
+
+    def test_empty_design_section_file_is_fail_soft(self):
+        """An empty (or whitespace-only) --design-section file: no crash,
+        exit 0, stderr warning, section omitted."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            empty_path = os.path.join(tmpdir, "empty.md")
+            with open(empty_path, "w", encoding="utf-8") as fh:
+                fh.write("   \n\n  ")
+
+            argv = self._base_argv(partition_path, feature_dir) + [
+                "--design-section", empty_path,
+            ]
+            code, out, err = self._run(argv)
+            self.assertEqual(code, 0)
+            self.assertNotEqual(err, "")
+            self.assertIn("empty", err.lower())
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertNotIn("## Design Fidelity", content)
+
+
+# ---------------------------------------------------------------------------
+# Accessibility section (--a11y-section / a11y_section param)
+# ---------------------------------------------------------------------------
+
+_A11Y_SECTION_MD = (
+    "**Coverage**: CHECKED\n\n"
+    "| Check | Status |\n"
+    "|---|---|\n"
+    "| Color contrast (WCAG 2.1 AA) | PASS |\n"
+    "| Focus-visible ring | PASS |\n"
+    "| aria-label on icon buttons | PASS |\n\n"
+    "**Advisory**: No keyboard trap detected.\n"
+)
+
+
+class TestRenderReportA11ySection(unittest.TestCase):
+    """render_report(a11y_section=...) embeds a distinct, un-partitioned section."""
+
+    def setUp(self):
+        self.partition = _build_realistic_partition()
+        self.base_kwargs = dict(
+            partition=self.partition,
+            feature="specs/001-auth",
+            date_str="2026-06-15",
+            finders=["code-reviewer", "architect", "security-reviewer", "qa-reviewer"],
+            refuters=["architect", "code-reviewer"],
+            source_root="/workspace",
+            framework="Python / FastAPI",
+            n_scope_files=5,
+            finders_skipped=["performance-analyst"],
+        )
+        self.no_flag_report = render_report(**self.base_kwargs)
+        self.with_a11y_report = render_report(
+            a11y_section=_A11Y_SECTION_MD, **self.base_kwargs
+        )
+
+    # -- Back-compat: omitting a11y_section is byte-identical ----------------
+
+    def test_no_a11y_section_byte_identical_to_baseline(self):
+        """render_report() with no a11y_section arg == explicit a11y_section=None."""
+        explicit_none = render_report(a11y_section=None, **self.base_kwargs)
+        self.assertEqual(self.no_flag_report, explicit_none)
+
+    def test_no_a11y_section_omits_heading(self):
+        self.assertNotIn("## Accessibility", self.no_flag_report)
+
+    def test_no_a11y_section_also_omits_design_fidelity(self):
+        """Baseline: without either optional flag, no Design Fidelity or Accessibility."""
+        self.assertNotIn("## Design Fidelity", self.no_flag_report)
+
+    # -- Section present, verbatim, positioned after Methodology -------------
+
+    def test_a11y_section_heading_present(self):
+        self.assertIn("## Accessibility", self.with_a11y_report)
+
+    def test_a11y_section_content_verbatim(self):
+        """The embedded block matches the source content exactly."""
+        idx = self.with_a11y_report.index("## Accessibility")
+        body = self.with_a11y_report[idx:]
+        for line in _A11Y_SECTION_MD.strip("\n").splitlines():
+            self.assertIn(line, body)
+
+    def test_a11y_section_after_methodology(self):
+        idx_methodology = self.with_a11y_report.index("## Methodology")
+        idx_a11y = self.with_a11y_report.index("## Accessibility")
+        self.assertGreater(
+            idx_a11y, idx_methodology,
+            "## Accessibility must be positioned after ## Methodology",
+        )
+
+    def test_a11y_section_is_last_section_without_design(self):
+        """When only a11y_section is present, no other '## ' heading follows it."""
+        idx_a11y = self.with_a11y_report.index("## Accessibility")
+        tail = self.with_a11y_report[idx_a11y + len("## Accessibility"):]
+        self.assertNotIn("\n## ", tail)
+
+    # -- Summary totals unchanged by adding the a11y section -----------------
+
+    def test_summary_counts_unaffected_by_a11y_section(self):
+        self.assertIn("Confirmed: 2", self.with_a11y_report)
+        self.assertIn("Contested: 2", self.with_a11y_report)
+        self.assertIn("Dismissed: 1", self.with_a11y_report)
+        self.assertIn("Uncertain: 1", self.with_a11y_report)
+
+    def test_headline_severity_counts_unaffected_by_a11y_section(self):
+        self.assertIn("Critical: 2", self.with_a11y_report)
+        self.assertIn("High: 1", self.with_a11y_report)
+        self.assertIn("Info: 1", self.with_a11y_report)
+
+    def test_ensemble_sections_unchanged_with_a11y_section(self):
+        """Every line up to (and including) ## Methodology is identical whether
+        or not a11y_section is supplied — the addition is purely additive."""
+        idx_no_flag_end = self.no_flag_report.rindex("the verdict is `/verify`'s.")
+        idx_with_end = self.with_a11y_report.rindex("the verdict is `/verify`'s.")
+        no_flag_head = self.no_flag_report[: idx_no_flag_end + len("the verdict is `/verify`'s.")]
+        with_head = self.with_a11y_report[: idx_with_end + len("the verdict is `/verify`'s.")]
+        self.assertEqual(no_flag_head, with_head)
+
+    # -- Empty / falsy a11y_section values are all treated as omitted --------
+
+    def test_empty_string_a11y_section_omits_heading(self):
+        report = render_report(a11y_section="", **self.base_kwargs)
+        self.assertNotIn("## Accessibility", report)
+
+    def test_whitespace_only_a11y_section_omits_heading(self):
+        report = render_report(a11y_section="   \n\n  ", **self.base_kwargs)
+        self.assertNotIn("## Accessibility", report)
+
+
+class TestRenderReportBothOptionalSections(unittest.TestCase):
+    """When both --design-section and --a11y-section are given:
+    Design Fidelity appears first, then Accessibility (deterministic order)."""
+
+    def setUp(self):
+        self.partition = _build_realistic_partition()
+        self.base_kwargs = dict(
+            partition=self.partition,
+            feature="specs/001-auth",
+            date_str="2026-06-15",
+            finders=["code-reviewer"],
+            refuters=["architect"],
+            source_root="/workspace",
+            framework="React / TS",
+            n_scope_files=3,
+        )
+        self.both_report = render_report(
+            design_section=_DESIGN_SECTION_MD,
+            a11y_section=_A11Y_SECTION_MD,
+            **self.base_kwargs,
+        )
+
+    def test_both_sections_present(self):
+        self.assertIn("## Design Fidelity", self.both_report)
+        self.assertIn("## Accessibility", self.both_report)
+
+    def test_design_fidelity_before_accessibility(self):
+        """Design Fidelity appears before Accessibility (deterministic order)."""
+        idx_design = self.both_report.index("## Design Fidelity")
+        idx_a11y = self.both_report.index("## Accessibility")
+        self.assertLess(
+            idx_design, idx_a11y,
+            "## Design Fidelity must appear before ## Accessibility",
+        )
+
+    def test_both_sections_after_methodology(self):
+        idx_methodology = self.both_report.index("## Methodology")
+        idx_design = self.both_report.index("## Design Fidelity")
+        idx_a11y = self.both_report.index("## Accessibility")
+        self.assertGreater(idx_design, idx_methodology)
+        self.assertGreater(idx_a11y, idx_methodology)
+
+    def test_a11y_is_last_section(self):
+        """When both sections present, Accessibility is the very last section."""
+        idx_a11y = self.both_report.index("## Accessibility")
+        tail = self.both_report[idx_a11y + len("## Accessibility"):]
+        self.assertNotIn("\n## ", tail)
+
+    def test_design_content_verbatim(self):
+        idx = self.both_report.index("## Design Fidelity")
+        body = self.both_report[idx:]
+        for line in _DESIGN_SECTION_MD.strip("\n").splitlines():
+            self.assertIn(line, body)
+
+    def test_a11y_content_verbatim(self):
+        idx = self.both_report.index("## Accessibility")
+        body = self.both_report[idx:]
+        for line in _A11Y_SECTION_MD.strip("\n").splitlines():
+            self.assertIn(line, body)
+
+    def test_summary_counts_unaffected_by_both_sections(self):
+        self.assertIn("Confirmed: 2", self.both_report)
+        self.assertIn("Contested: 2", self.both_report)
+
+    def test_reversed_argument_order_same_result(self):
+        """Argument order doesn't affect section order — report is deterministic."""
+        report_other_order = render_report(
+            a11y_section=_A11Y_SECTION_MD,
+            design_section=_DESIGN_SECTION_MD,
+            **self.base_kwargs,
+        )
+        self.assertEqual(self.both_report, report_other_order)
+
+
+# ---------------------------------------------------------------------------
+# CLI round-trips: render-report --a11y-section
+# ---------------------------------------------------------------------------
+
+class TestCLIRenderReportA11ySection(unittest.TestCase):
+    """CLI --a11y-section flag: additive, fail-soft, never counted."""
+
+    def _run(self, argv):
+        old_out, old_err = sys.stdout, sys.stderr
+        try:
+            sys.stdout = io.StringIO()
+            sys.stderr = io.StringIO()
+            try:
+                code = main(argv)
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 2
+            out = sys.stdout.getvalue()
+            err = sys.stderr.getvalue()
+        finally:
+            sys.stdout = old_out
+            sys.stderr = old_err
+        return code, out, err
+
+    def _write_partition(self, tmpdir, partition):
+        path = os.path.join(tmpdir, "partition.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(partition, fh)
+        return path
+
+    def _base_argv(self, partition_path, feature_dir):
+        return [
+            "render-report",
+            "--partition", partition_path,
+            "--feature", feature_dir,
+            "--date", "2026-06-15",
+            "--finders", "code-reviewer,architect",
+            "--refuters", "architect",
+            "--source-root", "/workspace",
+            "--framework", "Python",
+            "--scope-files", "3",
+        ]
+
+    def test_no_flag_byte_identical_without_a11y_section(self):
+        """A run without --a11y-section produces no '## Accessibility' section."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            code, out, _ = self._run(self._base_argv(partition_path, feature_dir))
+            self.assertEqual(code, 0)
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertNotIn("## Accessibility", content)
+
+    def test_with_a11y_section_flag_embeds_section(self):
+        """--a11y-section flag embeds the file verbatim as ## Accessibility."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            a11y_path = os.path.join(tmpdir, "a11y-result.md")
+            with open(a11y_path, "w", encoding="utf-8") as fh:
+                fh.write(_A11Y_SECTION_MD)
+
+            argv = self._base_argv(partition_path, feature_dir) + [
+                "--a11y-section", a11y_path,
+            ]
+            code, out, err = self._run(argv)
+            self.assertEqual(code, 0)
+            self.assertEqual(err, "")
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn("## Accessibility", content)
+            self.assertIn("WCAG 2.1", content)
+            self.assertIn("Advisory", content)
+
+            # a11y content is NOT counted in the JSON ack.
+            ack = json.loads(out)
+            self.assertEqual(ack["confirmed"], 2)
+            self.assertEqual(ack["contested"], 2)
+            self.assertIn("Confirmed: 2", content)
+
+    def test_with_both_flags_design_before_a11y(self):
+        """When both --design-section and --a11y-section given: Design first, Accessibility second."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            design_path = os.path.join(tmpdir, "design.md")
+            a11y_path = os.path.join(tmpdir, "a11y.md")
+            with open(design_path, "w", encoding="utf-8") as fh:
+                fh.write(_DESIGN_SECTION_MD)
+            with open(a11y_path, "w", encoding="utf-8") as fh:
+                fh.write(_A11Y_SECTION_MD)
+
+            argv = self._base_argv(partition_path, feature_dir) + [
+                "--design-section", design_path,
+                "--a11y-section", a11y_path,
+            ]
+            code, out, err = self._run(argv)
+            self.assertEqual(code, 0)
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn("## Design Fidelity", content)
+            self.assertIn("## Accessibility", content)
+            # Order check
+            idx_design = content.index("## Design Fidelity")
+            idx_a11y = content.index("## Accessibility")
+            self.assertLess(idx_design, idx_a11y)
+
+    def test_missing_a11y_section_path_is_fail_soft(self):
+        """A missing --a11y-section path: no crash, exit 0, stderr warning, section omitted."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            missing_path = os.path.join(tmpdir, "does-not-exist.md")
+
+            argv = self._base_argv(partition_path, feature_dir) + [
+                "--a11y-section", missing_path,
+            ]
+            code, out, err = self._run(argv)
+            self.assertEqual(code, 0)
+            self.assertNotEqual(err, "")
+            self.assertIn("a11y-section", err.lower())
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertNotIn("## Accessibility", content)
+
+    def test_empty_a11y_section_file_is_fail_soft(self):
+        """An empty --a11y-section file: no crash, exit 0, stderr warning, section omitted."""
+        partition = _build_realistic_partition()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            partition_path = self._write_partition(tmpdir, partition)
+            feature_dir = os.path.join(tmpdir, "specs", "001-auth")
+            empty_path = os.path.join(tmpdir, "empty-a11y.md")
+            with open(empty_path, "w", encoding="utf-8") as fh:
+                fh.write("   \n\n  ")
+
+            argv = self._base_argv(partition_path, feature_dir) + [
+                "--a11y-section", empty_path,
+            ]
+            code, out, err = self._run(argv)
+            self.assertEqual(code, 0)
+            self.assertNotEqual(err, "")
+            self.assertIn("empty", err.lower())
+            with open(os.path.join(feature_dir, "review.md"), "r", encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertNotIn("## Accessibility", content)
+
+
 if __name__ == "__main__":
     unittest.main()

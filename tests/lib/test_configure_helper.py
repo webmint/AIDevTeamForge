@@ -7,11 +7,12 @@ rejection + fence-aware section extractor), reset subcommand, read-init
 read-manifests, read-configs.
 
 Step 2 coverage: _load / _dump / _state_transaction (write-on-exit, abort-
-on-exception, lock-file creation), five _validate_* helpers, all 29 setter
+on-exception, lock-file creation), five _validate_* helpers, all 30 setter
 subcommands (3 identity + 1 primary-language + 8 stack arrays incl.
 project_natures + 4 per-pkg arrays incl. test_commands + add-package-stack +
-set-package-stacks + 3 verbatim + 6 enums + 3 ac-runtime), round-trip
-integration (all-29-fields set + reload + compare; replace-not-append for
+set-package-stacks + 3 verbatim + 6 enums incl. regression_gate + 3 ac-runtime),
+FIELD_DEFAULTS (_load back-fills regression_gate=full on null/missing yaml field),
+round-trip integration (all-30-fields set + reload + compare; replace-not-append for
 string_arrays; accumulate for add-package-stack; replace-not-append for
 set-package-stacks), cross-process safety (5 concurrent add-package-stack via
 Popen — no lost writes; mixed scalar+ append concurrency — no corruption).
@@ -22,10 +23,10 @@ empty-list clears state, minimal required fields, validation errors
 non-list / missing key / record not dict / empty path / error index).
 
 Step 3 coverage: _write_json (atomic write, idempotency, no temp files left),
-_build_project_config (37-key output, WRAPPER_MODE_SECTION variants,
+_build_project_config (38-key output, WRAPPER_MODE_SECTION variants,
 COMMIT_ATTRIBUTION variants, field mapping, package_stacks pass-through),
 _read_agent_list (absent dir, empty dir, sorted alphabetically, non-md excluded),
-render-config subprocess (init.yaml missing, 37-key output, configure fields,
+render-config subprocess (init.yaml missing, 38-key output, configure fields,
 init fields, wrapper section, commit attribution, agent list, idempotency,
 overwrite semantics, package_stacks), verify subprocess (all-populated pass,
 null scalar fail, empty array fail, ac-runtime optional when not runtime-
@@ -34,7 +35,7 @@ malformed, round-trip drift), summary subprocess (unset shows label, populated
 values, long string truncation, package_stacks rows, stability, empty array,
 section headers).
 
-Step 4 coverage: _build_substitution_map (all 37 project-config keys present,
+Step 4 coverage: _build_substitution_map (all 38 project-config keys present,
 11 singular aliases derive from plural arrays, PROJECT_PATHS from
 packages_detected, PACKAGE_STACKS_SECTION empty → empty string, populated →
 5-column markdown table, UPPERCASE identity, STATE_MANAGEMENT + STYLING NOT
@@ -156,21 +157,29 @@ class _EnvIsolationMixin:
 
 class SchemaTests(unittest.TestCase):
 
-    def test_field_schema_has_29_fields(self):
-        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 29)
+    def test_field_schema_has_30_fields(self):
+        self.assertEqual(len(configure_helper.FIELD_SCHEMA), 30)
 
-    def test_default_state_has_29_keys(self):
+    def test_default_state_has_30_keys(self):
         state = configure_helper.default_state()
-        self.assertEqual(len(state), 29)
+        self.assertEqual(len(state), 30)
 
     def test_default_state_scalars_are_none(self):
+        # Fields listed in FIELD_DEFAULTS have non-None defaults and are
+        # excluded from this check (tested separately in SchemaTests).
+        non_none_defaults = set(configure_helper.FIELD_DEFAULTS.keys())
         state = configure_helper.default_state()
         for name, kind in configure_helper.FIELD_SCHEMA:
-            if kind == "scalar":
+            if kind == "scalar" and name not in non_none_defaults:
                 self.assertIsNone(
                     state[name],
                     "scalar {0} should default to None".format(name),
                 )
+
+    def test_default_state_regression_gate_is_full(self):
+        """regression_gate defaults to 'full' (non-None default via FIELD_DEFAULTS)."""
+        state = configure_helper.default_state()
+        self.assertEqual(state["regression_gate"], "full")
 
     def test_default_state_arrays_are_empty_list(self):
         state = configure_helper.default_state()
@@ -215,19 +224,21 @@ class SchemaTests(unittest.TestCase):
             "ac_runtime_url",
             "ac_runtime_api_base",
             "ac_runtime_cli_command",
+            "regression_gate",
         ]
         self.assertEqual(names, expected)
 
-    def test_enum_fields_has_3_entries(self):
+    def test_enum_fields_has_4_entries(self):
         # claude_tier_* deliberately omitted to allow custom model aliases
         # via Q11 Other branch.
-        self.assertEqual(len(configure_helper.ENUM_FIELDS), 3)
+        self.assertEqual(len(configure_helper.ENUM_FIELDS), 4)
 
     def test_enum_fields_correct_keys(self):
         expected_keys = {
             "workflow_enforcement",
             "ai_attribution",
             "ac_verification_mode",
+            "regression_gate",
         }
         self.assertEqual(set(configure_helper.ENUM_FIELDS.keys()), expected_keys)
 
@@ -243,6 +254,10 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(
             configure_helper.ENUM_FIELDS["ac_verification_mode"],
             {"code-only", "tests", "runtime-assisted", "off"},
+        )
+        self.assertEqual(
+            configure_helper.ENUM_FIELDS["regression_gate"],
+            {"off", "full"},
         )
 
 
@@ -486,7 +501,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
         self.assertIsNone(state["package_stacks"][0]["test_command"])
 
     def test_all_fields_set_round_trip(self):
-        """All 29 fields populated — comprehensive round-trip."""
+        """All 30 fields populated — comprehensive round-trip."""
         state = {
             "project_name": "module",
             "project_description": "A complex monorepo project",
@@ -528,6 +543,7 @@ class EmitParseRoundTripTests(unittest.TestCase):
             "ac_runtime_url": "http://localhost:3000",
             "ac_runtime_api_base": "http://localhost:4000",
             "ac_runtime_cli_command": "npm run start",
+            "regression_gate": "full",
         }
         text = configure_helper.emit_yaml(state)
         state2 = configure_helper.parse_yaml(text)
@@ -2731,6 +2747,102 @@ class SetAcVerificationModeTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertIn(b"ac_verification_mode", proc.stderr)
 
 
+class SetRegressionGateTests(_EnvIsolationMixin, unittest.TestCase):
+
+    def test_off_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-regression-gate", "off")
+        self.assertEqual(proc.returncode, 0)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["regression_gate"], "off")
+
+    def test_full_accepted(self):
+        proc = _run_configure(self.devforge_dir, "set-regression-gate", "full")
+        self.assertEqual(proc.returncode, 0)
+        state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
+        self.assertEqual(state["regression_gate"], "full")
+
+    def test_invalid_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-regression-gate", "maybe")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"regression_gate", proc.stderr)
+
+    def test_empty_rejected(self):
+        proc = _run_configure(self.devforge_dir, "set-regression-gate", "")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn(b"regression_gate", proc.stderr)
+
+    def test_default_is_full_before_any_set(self):
+        """regression_gate defaults to 'full' even before any setter is called."""
+        # No set-regression-gate call — default_state() supplies "full".
+        state = configure_helper.default_state()
+        self.assertEqual(state["regression_gate"], "full")
+
+    def test_default_is_full_via_load_on_missing_configure_yaml(self):
+        """_load() returns 'full' when configure.yaml is absent (fresh install)."""
+        # _EnvIsolationMixin gives us a fresh devforge_dir with no configure.yaml.
+        from _configure._state import _load
+        state = _load(self.devforge_dir)
+        self.assertEqual(state["regression_gate"], "full")
+
+    def test_default_applied_to_existing_yaml_missing_field(self):
+        """_load() back-fills 'full' when configure.yaml exists but regression_gate is null."""
+        from _configure._state import _load
+        # Write a yaml that has regression_gate: null (simulating an old install
+        # that predates the field, or a yaml where it was explicitly cleared).
+        minimal_yaml = "project_name: old-install\nregression_gate: null\n"
+        yaml_path = self.devforge_dir / configure_helper.OUTPUT_FILE_NAME
+        yaml_path.write_text(minimal_yaml, encoding="utf-8")
+        state = _load(self.devforge_dir)
+        # regression_gate was null in the yaml → back-filled to "full".
+        self.assertEqual(state["regression_gate"], "full")
+
+    def test_round_trip_via_real_producer(self):
+        """REGRESSION_GATE emitted in project-config.json after render-config."""
+        import json
+        # Use the module-level _run_init helper.
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+        _run_configure(self.devforge_dir, "reset")
+        _run_configure(self.devforge_dir, "set-regression-gate", "off")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+        config_path = self.devforge_dir / "project-config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertIn("REGRESSION_GATE", data)
+        self.assertEqual(data["REGRESSION_GATE"], "off")
+
+    def test_default_full_emitted_in_project_config_when_not_set(self):
+        """REGRESSION_GATE defaults to 'full' in project-config.json when field not set."""
+        import json
+        # Use the module-level _run_init helper.
+        _run_init(self.devforge_dir, "reset")
+        _run_init(self.devforge_dir, "set-workspace-mode", "standalone")
+        _run_init(self.devforge_dir, "set-project-root", ".")
+        _run_init(self.devforge_dir, "set-project-state", "brownfield")
+        _run_init(self.devforge_dir, "set-default-branch", "main")
+
+        # reset writes default_state() which has regression_gate="full".
+        _run_configure(self.devforge_dir, "reset")
+        proc = _run_configure(self.devforge_dir, "render-config")
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+
+        config_path = self.devforge_dir / "project-config.json"
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["REGRESSION_GATE"], "full")
+
+    def test_regression_gate_key_position_after_ac_runtime_cli_command(self):
+        """REGRESSION_GATE appears immediately after AC_RUNTIME_CLI_COMMAND in key order."""
+        keys = list(configure_helper._PROJECT_CONFIG_KEY_ORDER)
+        idx_ac = keys.index("AC_RUNTIME_CLI_COMMAND")
+        idx_rg = keys.index("REGRESSION_GATE")
+        self.assertEqual(idx_rg, idx_ac + 1)
+
+
 # ---------------------------------------------------------------------------
 # 17. Round-trip integration tests (~5)
 # ---------------------------------------------------------------------------
@@ -2738,8 +2850,8 @@ class SetAcVerificationModeTests(_EnvIsolationMixin, unittest.TestCase):
 
 class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
 
-    def test_all_29_fields_set_reload_match(self):
-        """Set all 29 fields via setters then reload and compare full state."""
+    def test_all_30_fields_set_reload_match(self):
+        """Set all 30 fields via setters then reload and compare full state."""
         # Identity scalars
         _run_configure(self.devforge_dir, "set-project-name", "full-roundtrip")
         _run_configure(self.devforge_dir, "set-project-description", "Full round-trip test")
@@ -2781,6 +2893,8 @@ class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
         _run_configure(self.devforge_dir, "set-ac-runtime-url", "http://localhost:3000")
         _run_configure(self.devforge_dir, "set-ac-runtime-api-base", "http://localhost:4000")
         _run_configure(self.devforge_dir, "set-ac-runtime-cli-command", "npm run start")
+        # Regression gate
+        _run_configure(self.devforge_dir, "set-regression-gate", "off")
 
         state = configure_helper.parse_yaml(self.output_file.read_text(encoding="utf-8"))
         self.assertEqual(state["project_name"], "full-roundtrip")
@@ -2791,6 +2905,7 @@ class RoundTripIntegrationTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(state["project_structure"], "apps/\npackages/")
         self.assertEqual(state["workflow_enforcement"], "Strict")
         self.assertEqual(state["ac_runtime_url"], "http://localhost:3000")
+        self.assertEqual(state["regression_gate"], "off")
 
     def test_scalar_setter_overwrite_prior(self):
         _run_configure(self.devforge_dir, "set-project-name", "first")
@@ -2970,11 +3085,11 @@ class BuildProjectConfigTests(unittest.TestCase):
         init_state.update(kwargs)
         return init_state
 
-    def test_all_37_keys_present(self):
+    def test_all_38_keys_present(self):
         cfg = self._make_cfg()
         init = self._make_init()
         result = configure_helper._build_project_config(cfg, init, "")
-        self.assertEqual(len(result), 37)
+        self.assertEqual(len(result), 38)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, result, "missing key {0}".format(k))
 
@@ -3126,13 +3241,13 @@ class RenderConfigTests(_EnvIsolationMixin, unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn(b"init.yaml", proc.stderr)
 
-    def test_renders_37_keys_with_defaults(self):
+    def test_renders_38_keys_with_defaults(self):
         self._write_init_yaml()
         _run_configure(self.devforge_dir, "reset")
         proc = _run_configure(self.devforge_dir, "render-config")
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
         data = json.loads(self._config_path().read_text(encoding="utf-8"))
-        self.assertEqual(len(data), 37)
+        self.assertEqual(len(data), 38)
         for k in configure_helper._PROJECT_CONFIG_KEY_ORDER:
             self.assertIn(k, data, "missing key {0}".format(k))
 
@@ -3272,7 +3387,7 @@ class VerifyTests(_EnvIsolationMixin, unittest.TestCase):
         _run_init(self.devforge_dir, "set-default-branch", "main")
 
     def _populate_all_configure_fields(self):
-        """Set all 29 configure.yaml fields to valid values."""
+        """Set all 30 configure.yaml fields to valid values."""
         _run_configure(self.devforge_dir, "reset")
         _run_configure(self.devforge_dir, "set-project-name", "test-project")
         _run_configure(self.devforge_dir, "set-project-description", "A test project")
@@ -3495,8 +3610,8 @@ class SubstitutionMapTests(unittest.TestCase):
         base.update(overrides)
         return base
 
-    def test_all_37_project_config_keys_present_in_map(self):
-        """All 37 keys from _PROJECT_CONFIG_KEY_ORDER appear as entries in the map."""
+    def test_all_38_project_config_keys_present_in_map(self):
+        """All 38 keys from _PROJECT_CONFIG_KEY_ORDER appear as entries in the map."""
         config = self._make_config()
         sub_map = configure_helper._build_substitution_map(config, [])
         for key in configure_helper._PROJECT_CONFIG_KEY_ORDER:

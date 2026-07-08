@@ -1,12 +1,10 @@
 # Feature review report format
 
-This is the skeleton that the `review_helper render-report` verb WILL produce
-and write to `specs/[feature]/review.md` once Phase 5 builds it. **Neither the
-`render-report` verb nor its render module (`src/devforge/lib/_review/_report.py`)
-exists yet** — Phase 5 registers the verb and creates the module; until then
-this file is **orientation only**, documenting the shape so the orchestrator
-knows what the report will contain. Once Phase 5 lands, the helper owns the
-actual render: do not hand-author the report; call `render-report`.
+This is the skeleton the `review_helper render-report` verb produces and writes
+to `specs/[feature]/review.md`. The helper owns the actual render
+(`src/devforge/lib/_review/_report.py`); this file is orientation only — it
+documents the shape so the orchestrator knows what the report will contain. Do
+not hand-author the report; call `render-report`.
 
 ## Findings only — NO verdict
 
@@ -145,4 +143,80 @@ Dismissed / Worth a Glance appendix; contested findings (a high-stakes `security
 `[CONSTITUTION-VIOLATION]` finding the refuter dismissed) are surfaced in the
 headline, flagged `[CONTESTED]`, never buried. This report is findings only —
 the verdict is `/verify`'s.
+```
+
+## Optional `## Design Fidelity` section
+
+The report carries an OPTIONAL `## Design Fidelity` section — present ONLY when
+`design-auditor` was dispatched for the runtime design-fidelity check (`/review`
+PHASE 2.5, which fires only when the feature has a `design/reference.html` and a
+valid `specs/[feature]/design-manifest.json` binding). `render-report
+--design-section` appends it AFTER `## Methodology` — as the last section when
+no `## Accessibility` section is also present, or immediately before
+`## Accessibility` when PHASE 2.5b also ran (see the `## Optional Accessibility
+section` block below for the ordering) — embedding the agent's fidelity output
+VERBATIM. It sits ENTIRELY OUTSIDE the
+refutation partition: it is never parsed into findings, never counted in any
+confirmed / dismissed / contested / uncertain bucket, and never included in any
+headline or `## Summary` total — a deterministic probe measurement is not a
+hypothesis to cross-examine. When PHASE 2.5 is skipped the `--design-section`
+flag is omitted and the section is absent; `review.md` then renders exactly as it
+would without the design-fidelity check.
+
+```markdown
+## Design Fidelity
+Coverage: NOT-COVERED / CLEAN / DEFECT — state which, and why.
+
+| Kind | Selector | Property/Axis | Expected | Actual | Severity |
+|------|----------|---------------|----------|--------|----------|
+| [overflow/clip/font_not_loaded/value_mismatch/geometry_mismatch] | [built testid or anchor selector] | [property/axis] | [expected] | [actual] | Critical/High/Medium/Info |
+
+### Advisory (non-gating)
+[holistic "looks wrong" notes from a visual pass over screenshots, or "none"]
+```
+
+## Optional `## Accessibility` section
+
+The report carries an OPTIONAL `## Accessibility` section — present ONLY when
+`design-auditor` was dispatched for the accessibility / responsive / native
+audit (`/review` PHASE 2.5b, which fires when the feature touches UI, as
+determined by the recall-biased `resolve-ui-scope` verb). It is ORTHOGONAL to
+the `## Design Fidelity` section: 2.5 fires on a design reference + binding,
+2.5b fires on any UI-touching feature, so a feature can carry one section, both,
+or neither. `render-report --a11y-section` appends it AFTER `## Methodology` and
+AFTER any `## Design Fidelity` section — so when both ran, Design Fidelity comes
+first, then Accessibility. It sits ENTIRELY OUTSIDE the refutation partition: it
+is never parsed into findings, never counted in any confirmed / dismissed /
+contested / uncertain bucket, and never included in any headline or `## Summary`
+total — a deterministic probe measurement is not a hypothesis to cross-examine.
+When PHASE 2.5b is skipped the `--a11y-section` flag is omitted and the section
+is absent; `review.md` then renders exactly as it would without the
+accessibility check.
+
+The agent writes ONLY the section body — a `Coverage:` line (present only on
+NOT-COVERED, when Chrome MCP is unavailable or the platform is non-web/non-mobile)
+followed by the `### Accessibility` / `### Responsive` / (mobile only) `### Native`
+tables it emits — using `###` or deeper so it nests under the `## Accessibility`
+heading `render-report` supplies. There is no `### Verdict` line (the verdict is
+`/verify`'s).
+
+```markdown
+## Accessibility
+Coverage: NOT-COVERED — [reason]   (this line present ONLY on NOT-COVERED)
+
+### Accessibility
+| Check | Element/Selector | Expected | Actual | Severity |
+|-------|------------------|----------|--------|----------|
+| [semantic HTML / ARIA / keyboard / contrast / alt-text / live-region] | [selector] | [expected] | [actual] | Critical/High/Medium/Info |
+
+### Responsive
+| Breakpoint | Issue | Detail | Severity |
+|------------|-------|--------|----------|
+| [320/768/1024/1440] | [overflow / touch-target / readability / scaling] | [detail] | Critical/High/Medium/Info |
+
+### Native
+(mobile targets only — omitted for web)
+| Convention | Element | Expected | Actual | Severity |
+|------------|---------|----------|--------|----------|
+| [HIG / Material / safe-area / nav-pattern / touch-target] | [element] | [expected] | [actual] | Critical/High/Medium/Info |
 ```

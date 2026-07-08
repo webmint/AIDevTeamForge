@@ -635,12 +635,12 @@ class TestLauncherSmoke(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 0)
 
     def test_registry_has_expected_verbs(self):
-        """Phase 1: 2; Phase 2: +4 = 6; Phase 4: +2 = 8; Phase 5: +5 = 13 total."""
+        """Phase 1: 2; Phase 2: +4 = 6; Phase 4: +2 = 8; Phase 5: +5 = 13; regression: +1 = 14."""
         from _verify._cli import _SUBCOMMAND_REGISTRY
-        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 13)
+        self.assertEqual(len(_SUBCOMMAND_REGISTRY), 14)
 
     def test_registry_verb_names(self):
-        """F5: all 13 verb names must be present — a count-only assertion misses swaps."""
+        """F5: all 14 verb names must be present — a count-only assertion misses swaps."""
         from _verify._cli import _SUBCOMMAND_REGISTRY
         verbs = {v for v, _, _ in _SUBCOMMAND_REGISTRY}
         expected = {
@@ -658,6 +658,8 @@ class TestLauncherSmoke(unittest.TestCase):
             "render-inline-summary",
             "flip-spec-status",
             "file-bugs",
+            # Regression gate (plan 51 Finding 1):
+            "regression-gate",
         }
         self.assertEqual(verbs, expected,
                          msg="Registry verb set mismatch — a verb was added, removed, or renamed")

@@ -550,6 +550,7 @@ class TestSubstituteFileInitYamlAbsent(_SubstituteFileFixture, unittest.TestCase
             "AC_RUNTIME_URL": None,
             "AC_RUNTIME_API_BASE": None,
             "AC_RUNTIME_CLI_COMMAND": None,
+            "REGRESSION_GATE": "full",
         }
         # Schema-drift guard: fails loudly if _PROJECT_CONFIG_KEY_ORDER grows
         # or shrinks so a maintainer knows to update this hand-authored dict.
