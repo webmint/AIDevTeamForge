@@ -10,6 +10,7 @@ JSON. Mirrors test_discover_helper / test_research_helper discipline.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -4683,12 +4684,23 @@ def _run_research(argv, cwd=None):
     )
 
 
-def _build_minimal_handoff(devforge: Path, handoff_out: Path) -> subprocess.CompletedProcess:
+def _build_minimal_handoff(
+    devforge: Path,
+    handoff_out: Path,
+    design_anchor_value: str = None,
+    design_anchor_selectors: str = None,
+) -> subprocess.CompletedProcess:
     """Build a minimal feature_addition handoff.json via real research_helper setters.
 
     Non-presentation-layer files → no data_flow_chain required.
     Produces a valid schema handoff.json at handoff_out.
     Returns the finalize-handoff subprocess result (caller asserts returncode).
+
+    design_anchor_value/design_anchor_selectors (plan 53 Phase 2 test support):
+    when both are given, calls the real set-design-anchor setter before
+    finalize-handoff so the emitted handoff.json carries a captured
+    spec_seeds.design_anchor. Omitted (default None) → no anchor captured,
+    matching every pre-existing call site's behavior unchanged.
     """
     df = str(devforge)
     _run_research(["--devforge-dir", df, "reset-memo"])
@@ -4824,6 +4836,14 @@ def _build_minimal_handoff(devforge: Path, handoff_out: Path) -> subprocess.Comp
         "--timing-dependent", "false",
         "--is-test-code", "false",
     ])
+
+    if design_anchor_value is not None and design_anchor_selectors is not None:
+        _run_research([
+            "--devforge-dir", df, "set-design-anchor",
+            "--value", design_anchor_value,
+            "--selectors", design_anchor_selectors,
+            "--state", "Clear",
+        ])
 
     # Finalize handoff.
     return _run_research([
@@ -5302,11 +5322,22 @@ def _run_discover(argv, cwd=None):
     )
 
 
-def _build_minimal_discover_handoff(devforge: Path, handoff_out: Path) -> subprocess.CompletedProcess:
+def _build_minimal_discover_handoff(
+    devforge: Path,
+    handoff_out: Path,
+    design_anchor_value: str = None,
+    design_anchor_selectors: str = None,
+) -> subprocess.CompletedProcess:
     """Build a minimal 'Worth pursuing' discover handoff.json via real discover_helper setters.
 
     Uses flat discover/<slug>.handoff.json naming (discover schema).
     Returns the finalize-handoff subprocess result (caller asserts returncode).
+
+    design_anchor_value/design_anchor_selectors (plan 53 Phase 2 test support):
+    when both are given, calls the real set-scope-design-anchor setter before
+    finalize-handoff so the emitted handoff.json carries a captured
+    spec_seeds.design_anchor. Omitted (default None) → no anchor captured,
+    matching every pre-existing call site's behavior unchanged.
     """
     df = str(devforge)
     # Reset state.
@@ -5401,6 +5432,14 @@ def _build_minimal_discover_handoff(devforge: Path, handoff_out: Path) -> subpro
     ])
     # set-next-step-text auto-composes from memo + report state.
     _run_discover(["--devforge-dir", df, "set-next-step-text"])
+
+    if design_anchor_value is not None and design_anchor_selectors is not None:
+        _run_discover([
+            "--devforge-dir", df, "set-scope-design-anchor",
+            "--value", design_anchor_value,
+            "--selectors", design_anchor_selectors,
+            "--state", "Clear",
+        ])
 
     # Finalize handoff.
     return _run_discover([
@@ -5604,6 +5643,493 @@ class TestImportHandoffDiscover(unittest.TestCase):
             self.assertIsNotNone(state["source"]["handoff_path"])
             self.assertIsNotNone(state["source"]["research_completed_at"])
             self.assertIs(state["spec_type_seeded_by_upstream"], True)
+
+
+# ---------------------------------------------------------------------------
+# Plan 53 Phase 2 — design_anchor carry (Task A), persistence + source_hash
+# (Task B), and the /specify backstop composition (Task C).
+# ---------------------------------------------------------------------------
+
+
+class TestDesignAnchorCarryAndPersist(unittest.TestCase):
+    """Carry design_anchor across the intake→specify hop, persist
+    specs/[feature]/design-anchor.json (with a source_hash provenance
+    signal), and the /specify backstop composition from design_source.
+    """
+
+    def _make_devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_import(self, devforge: Path, handoff_path: Path):
+        return _run([
+            "--devforge-dir", str(devforge),
+            "import-handoff",
+            "--handoff-path", str(handoff_path),
+        ])
+
+    def _prep_feature_state(
+        self, tmp_path: Path, feature_slug: str = "test-anchor-feature",
+    ) -> Path:
+        """Create a .devforge dir with spec_number + feature_slug assigned."""
+        devforge = self._make_devforge(str(tmp_path))
+        r1 = _run(["--devforge-dir", str(devforge), "assign-spec-number"])
+        self.assertEqual(r1.returncode, 0, r1.stderr)
+        r2 = _run([
+            "--devforge-dir", str(devforge), "assign-feature-name",
+            "--feature-name", feature_slug,
+        ])
+        self.assertEqual(r2.returncode, 0, r2.stderr)
+        return devforge
+
+    # ------------------------------------------------------------------
+    # Task A — carry via cmd_import_handoff (research branch).
+    # ------------------------------------------------------------------
+
+    def test_import_handoff_carries_captured_design_anchor_research(self):
+        """Real research handoff with a captured design_anchor → carried into specify state verbatim."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(
+                research_df, handoff_out,
+                design_anchor_value="html:design/reference.html",
+                design_anchor_selectors='[".fooBar"]',
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            self.assertEqual(
+                data["spec_seeds"]["design_anchor"],
+                {"kind": "html", "file": "design/reference.html", "selectors": [".fooBar"]},
+            )
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                state["design_anchor"],
+                {"kind": "html", "file": "design/reference.html", "selectors": [".fooBar"]},
+            )
+
+    def test_import_handoff_empty_design_anchor_research_yields_empty_in_state(self):
+        """Research handoff with NO captured anchor → empty anchor in state (not missing)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertIn("design_anchor", state)
+            self.assertEqual(state["design_anchor"], {"kind": "", "file": "", "selectors": []})
+
+    # ------------------------------------------------------------------
+    # Task A — carry via cmd_import_handoff (discover branch).
+    # ------------------------------------------------------------------
+
+    def test_import_handoff_carries_captured_design_anchor_discover(self):
+        """Real discover handoff with a captured design_anchor → carried into specify state verbatim."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            devforge_d = tmp_path / "discover_df"
+            devforge_d.mkdir()
+            discover_dir = tmp_path / "discover"
+            discover_dir.mkdir()
+            handoff_out = discover_dir / "2026-07-06-audit-log-persistence.handoff.json"
+
+            r = _build_minimal_discover_handoff(
+                devforge_d, handoff_out,
+                design_anchor_value="figma:https://figma.com/file/x?node-id=1:2",
+                design_anchor_selectors='["Frame 1", "Button/Primary"]',
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            self.assertEqual(
+                data["spec_seeds"]["design_anchor"],
+                {
+                    "kind": "figma",
+                    "file": "https://figma.com/file/x?node-id=1:2",
+                    "selectors": ["Frame 1", "Button/Primary"],
+                },
+            )
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                state["design_anchor"],
+                {
+                    "kind": "figma",
+                    "file": "https://figma.com/file/x?node-id=1:2",
+                    "selectors": ["Frame 1", "Button/Primary"],
+                },
+            )
+
+    def test_import_handoff_empty_design_anchor_discover_yields_empty_in_state(self):
+        """Discover handoff with NO captured anchor → empty anchor in state (not missing)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            devforge_d = tmp_path / "discover_df"
+            devforge_d.mkdir()
+            discover_dir = tmp_path / "discover"
+            discover_dir.mkdir()
+            handoff_out = discover_dir / "2026-07-06-audit-log-persistence.handoff.json"
+
+            r = _build_minimal_discover_handoff(devforge_d, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["design_anchor"], {"kind": "", "file": "", "selectors": []})
+
+    # ------------------------------------------------------------------
+    # Back-compat — an intake handoff JSON with NO design_anchor key at all
+    # (pre-plan-53 shape) still imports cleanly via the real loader.
+    # ------------------------------------------------------------------
+
+    def test_import_handoff_research_backcompat_missing_design_anchor_key(self):
+        """Real handoff.json with spec_seeds.design_anchor deleted entirely → still imports; empty anchor in state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            del data["spec_seeds"]["design_anchor"]
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["design_anchor"], {"kind": "", "file": "", "selectors": []})
+
+    # ------------------------------------------------------------------
+    # Task B — write-design-anchor persists design-anchor.json + source_hash.
+    # ------------------------------------------------------------------
+
+    def test_write_design_anchor_html_kind_computes_nonempty_source_hash(self):
+        """Carried html anchor + a real reference.html on disk → non-empty source_hash."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            design_dir = tmp_path / "design"
+            design_dir.mkdir()
+            ref_html = design_dir / "reference.html"
+            ref_html.write_text("<html><body class='fooBar'>Hi</body></html>", encoding="utf-8")
+
+            # Directly seed the carried anchor in state (the carry itself is
+            # covered by the Task A tests above).
+            state_path = devforge / "specify-state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["design_anchor"] = {
+                "kind": "html", "file": "design/reference.html", "selectors": [".fooBar"],
+            }
+            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("wrote:", r.stdout)
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+            self.assertTrue(anchor_path.exists())
+            persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["kind"], "html")
+            self.assertEqual(persisted["file"], "design/reference.html")
+            self.assertEqual(persisted["selectors"], [".fooBar"])
+            self.assertTrue(persisted["source_hash"])
+
+            expected_hash = hashlib.sha256(ref_html.read_bytes()).hexdigest()
+            self.assertEqual(persisted["source_hash"], expected_hash)
+
+    def test_write_design_anchor_figma_kind_empty_source_hash(self):
+        """Carried figma anchor → source_hash is '' (fail-soft, no crash)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            state_path = devforge / "specify-state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["design_anchor"] = {
+                "kind": "figma", "file": "https://figma.com/file/x", "selectors": [],
+            }
+            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+            persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["kind"], "figma")
+            self.assertEqual(persisted["source_hash"], "")
+
+    def test_write_design_anchor_html_kind_absent_file_empty_source_hash(self):
+        """Carried html anchor whose file does not exist on disk → source_hash '' (fail-soft, no crash)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            state_path = devforge / "specify-state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["design_anchor"] = {
+                "kind": "html", "file": "design/nonexistent.html", "selectors": [],
+            }
+            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+            persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["kind"], "html")
+            self.assertEqual(persisted["source_hash"], "")
+
+    def test_write_design_anchor_html_kind_unreadable_file_empty_source_hash(self):
+        """Carried html anchor whose file EXISTS but is unreadable (chmod 0o000) -> source_hash '' (fail-soft, no crash).
+
+        Exercises the `except OSError` branch in _compute_source_hash
+        (:109-110) -- distinct from the absent-file branch above, which never
+        reaches read_bytes() at all.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            design_dir = tmp_path / "design"
+            design_dir.mkdir()
+            ref_html = design_dir / "reference.html"
+            ref_html.write_text("<html><body>Hi</body></html>", encoding="utf-8")
+            os.chmod(str(ref_html), 0o000)
+
+            try:
+                state_path = devforge / "specify-state.json"
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                state["design_anchor"] = {
+                    "kind": "html", "file": "design/reference.html", "selectors": [],
+                }
+                state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+                r = _run(
+                    ["--devforge-dir", str(devforge), "write-design-anchor",
+                     "--workspace-root", str(tmp_path)],
+                    cwd=tmp_path,
+                )
+                self.assertEqual(r.returncode, 0, r.stderr)
+
+                anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+                persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+                self.assertEqual(persisted["kind"], "html")
+                self.assertEqual(persisted["source_hash"], "")
+            finally:
+                os.chmod(str(ref_html), 0o644)
+
+    def test_write_design_anchor_is_idempotent_on_rerun(self):
+        """Re-running write-design-anchor overwrites with byte-identical content (no crash, no append)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            design_dir = tmp_path / "design"
+            design_dir.mkdir()
+            (design_dir / "reference.html").write_text("<html></html>", encoding="utf-8")
+
+            state_path = devforge / "specify-state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["design_anchor"] = {
+                "kind": "html", "file": "design/reference.html", "selectors": [],
+            }
+            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+
+            r1 = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            first = anchor_path.read_text(encoding="utf-8")
+
+            r2 = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            second = anchor_path.read_text(encoding="utf-8")
+
+            self.assertEqual(first, second)
+
+    def test_write_design_anchor_requires_spec_number_and_feature_slug(self):
+        """No spec_number/feature_slug in state → exit 2, no file written."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(str(tmp_path))
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("spec_number and feature_slug", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Task C — backstop composition from design_source when no anchor was
+    # captured at intake.
+    # ------------------------------------------------------------------
+
+    def test_write_design_anchor_backstop_composes_from_design_source(self):
+        """Empty carried anchor + design_source='html:design/reference.html' → composed {kind, file, selectors:[]} persisted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            design_dir = tmp_path / "design"
+            design_dir.mkdir()
+            ref_html = design_dir / "reference.html"
+            ref_html.write_text("<html></html>", encoding="utf-8")
+
+            r_ds = _run([
+                "--devforge-dir", str(devforge), "set-design-source",
+                "--value", "html:design/reference.html",
+            ])
+            self.assertEqual(r_ds.returncode, 0, r_ds.stderr)
+
+            # Confirm the carried design_anchor is still the empty default
+            # (no import-handoff ran in this test) before the backstop fires.
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["design_anchor"], {"kind": "", "file": "", "selectors": []})
+
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+            persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["kind"], "html")
+            self.assertEqual(persisted["file"], "design/reference.html")
+            self.assertEqual(persisted["selectors"], [])
+            self.assertEqual(
+                persisted["source_hash"], hashlib.sha256(ref_html.read_bytes()).hexdigest()
+            )
+
+    def test_write_design_anchor_backstop_composes_screenshot_scheme(self):
+        """Empty carried anchor + design_source='screenshot:design/mock.png' → composed {kind:"screenshot", file, selectors:[]}, source_hash=='' (hash computed only for html)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            r_ds = _run([
+                "--devforge-dir", str(devforge), "set-design-source",
+                "--value", "screenshot:design/mock.png",
+            ])
+            self.assertEqual(r_ds.returncode, 0, r_ds.stderr)
+
+            # Confirm the carried design_anchor is still the empty default
+            # (no import-handoff ran in this test) before the backstop fires.
+            state = json.loads((devforge / "specify-state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["design_anchor"], {"kind": "", "file": "", "selectors": []})
+
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+            persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                persisted,
+                {"kind": "screenshot", "file": "design/mock.png", "selectors": [], "source_hash": ""},
+            )
+
+    def test_write_design_anchor_both_empty_persists_empty_anchor_no_error(self):
+        """No carried anchor AND design_source='none' (default) → empty anchor persisted, exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+            persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                persisted, {"kind": "", "file": "", "selectors": [], "source_hash": ""}
+            )
+
+    def test_write_design_anchor_carried_anchor_wins_over_design_source(self):
+        """Non-empty carried design_anchor takes priority over a differing design_source declaration."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._prep_feature_state(tmp_path)
+
+            r_ds = _run([
+                "--devforge-dir", str(devforge), "set-design-source",
+                "--value", "figma:https://figma.com/file/should-be-ignored",
+            ])
+            self.assertEqual(r_ds.returncode, 0, r_ds.stderr)
+
+            state_path = devforge / "specify-state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["design_anchor"] = {
+                "kind": "html", "file": "design/reference.html", "selectors": [".fooBar"],
+            }
+            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+            r = _run(
+                ["--devforge-dir", str(devforge), "write-design-anchor",
+                 "--workspace-root", str(tmp_path)],
+                cwd=tmp_path,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            anchor_path = tmp_path / "specs" / "001-test-anchor-feature" / "design-anchor.json"
+            persisted = json.loads(anchor_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["kind"], "html")
+            self.assertEqual(persisted["file"], "design/reference.html")
+            self.assertEqual(persisted["selectors"], [".fooBar"])
 
 
 class TestFindHandoffsCrossKind(unittest.TestCase):

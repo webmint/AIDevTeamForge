@@ -93,6 +93,16 @@ if [ -n "$ONLY_CMD" ]; then
   if [ -d "$TEMPLATE_DIR/src/devforge/lib/_shared" ]; then
     overwrt "OVERWRITE  .devforge/lib/_shared/ (shared deps refactored helpers import)"
   fi
+  # _design/ is a cross-cutting runtime dep of /breakdown (validate-binding),
+  # /review's design-auditor (compare + the JS collectors under _design/js/),
+  # and /implement's verify-design-tokens — ship it too, mirroring _shared/
+  # above (plan 53). NOTE: _implement/ and _artifact/ are similarly absent
+  # from this surgical block (pre-existing gap from plans 13/37, broader than
+  # plan 53) — not fixed here; the full (non --only) update path already
+  # carries them via the manifest glob.
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_design" ]; then
+    overwrt "OVERWRITE  .devforge/lib/_design/ (cross-cutting design-fidelity dep)"
+  fi
   for _l in "${cmd_u}_helper" "${cmd_u}_helper.py"; do
     if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_l" ]; then
       overwrt "OVERWRITE  .devforge/lib/$_l"
@@ -129,6 +139,31 @@ if [ -n "$ONLY_CMD" ]; then
     cp -R "$TEMPLATE_DIR/src/devforge/lib/_shared" "$TARGET_DIR/.devforge/lib/_shared"
     rm -rf "$TARGET_DIR/.devforge/lib/_shared/__pycache__"
     added "Overwrote: .devforge/lib/_shared/"
+  fi
+  # Ship _design/ always (plan 53): it is a cross-cutting runtime dependency of
+  # /breakdown (design_helper check-design-source + validate-binding),
+  # /review's design-auditor (design_helper compare, plus the JS collectors at
+  # .devforge/lib/_design/js/{built,intent}_reader.js run via evaluate_script —
+  # cp -R below carries js/ recursively), and /implement's verify-design-tokens
+  # forcing function (imports _design.extract_spacing_scale). A surgical --only
+  # delivery of any of those commands would otherwise miss it — mirror the
+  # _shared always-copy pattern above. (_implement/ and _artifact/ are
+  # similarly absent from this surgical block — pre-existing, out of plan-53
+  # scope; the full update path already carries them via the manifest glob.)
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_design" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_design"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_design" "$TARGET_DIR/.devforge/lib/_design"
+    rm -rf "$TARGET_DIR/.devforge/lib/_design/__pycache__"
+    added "Overwrote: .devforge/lib/_design/"
+  fi
+  for _dl in "design_helper" "design_helper.py"; do
+    if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_dl" ]; then
+      cp "$TEMPLATE_DIR/src/devforge/lib/$_dl" "$TARGET_DIR/.devforge/lib/$_dl"
+      added "Overwrote: .devforge/lib/$_dl"
+    fi
+  done
+  if [ -f "$TARGET_DIR/.devforge/lib/design_helper" ]; then
+    chmod +x "$TARGET_DIR/.devforge/lib/design_helper"
   fi
   for _l in "${cmd_u}_helper" "${cmd_u}_helper.py"; do
     if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_l" ]; then

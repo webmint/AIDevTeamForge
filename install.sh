@@ -175,6 +175,31 @@ if [ -n "$ONLY_CMD" ]; then
   if [ -f "$TARGET_DIR/.devforge/lib/artifact_helper" ]; then
     chmod +x "$TARGET_DIR/.devforge/lib/artifact_helper"
   fi
+  # Ship _design/ always (plan 53): it is a cross-cutting runtime dependency of
+  # /breakdown (design_helper check-design-source + validate-binding),
+  # /review's design-auditor (design_helper compare, plus the JS collectors at
+  # .devforge/lib/_design/js/{built,intent}_reader.js run via evaluate_script —
+  # cp -R below carries js/ recursively), and /implement's verify-design-tokens
+  # forcing function (imports _design.extract_spacing_scale). A surgical --only
+  # delivery of any of those commands would otherwise miss it — mirror the
+  # _shared/_implement/_artifact always-copy pattern.
+  if [ -d "$TEMPLATE_DIR/src/devforge/lib/_design" ]; then
+    rm -rf "$TARGET_DIR/.devforge/lib/_design"
+    cp -R "$TEMPLATE_DIR/src/devforge/lib/_design" "$TARGET_DIR/.devforge/lib/_design"
+    rm -rf "$TARGET_DIR/.devforge/lib/_design/__pycache__"
+    echo "  design helper: .devforge/lib/_design/"
+    helper_found=true
+  fi
+  for _design_launcher in "design_helper" "design_helper.py"; do
+    if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_design_launcher" ]; then
+      cp "$TEMPLATE_DIR/src/devforge/lib/$_design_launcher" "$TARGET_DIR/.devforge/lib/$_design_launcher"
+      echo "  design launcher: .devforge/lib/$_design_launcher"
+      helper_found=true
+    fi
+  done
+  if [ -f "$TARGET_DIR/.devforge/lib/design_helper" ]; then
+    chmod +x "$TARGET_DIR/.devforge/lib/design_helper"
+  fi
   for _launcher in "${cmd_u}_helper" "${cmd_u}_helper.py"; do
     if [ -f "$TEMPLATE_DIR/src/devforge/lib/$_launcher" ]; then
       cp "$TEMPLATE_DIR/src/devforge/lib/$_launcher" "$TARGET_DIR/.devforge/lib/$_launcher"

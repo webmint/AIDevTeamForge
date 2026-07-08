@@ -735,5 +735,57 @@ class TestTrustsBoundary(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# TestDesignAnchorDeliberatelyEmpty (plan 53 D5 regression -- python-reviewer
+# F1). design_anchor's single source of truth is the sibling
+# specs/[feature]/design-anchor.json (written by write-design-anchor); the
+# specify->plan handoff.json must NEVER carry a populated design_anchor, even
+# when state["design_anchor"] is non-empty, or the two would desync.
+# ---------------------------------------------------------------------------
+
+
+class TestDesignAnchorDeliberatelyEmpty(unittest.TestCase):
+    """finalize-handoff always emits an empty spec_seeds.design_anchor,
+    regardless of state["design_anchor"] (D5 park-once, read-in-place)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.devforge_dir = self.tmp / ".devforge"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_nonempty_state_design_anchor_yields_empty_handoff_design_anchor(self):
+        """state["design_anchor"] captured+non-empty -> handoff spec_seeds.design_anchor is still empty."""
+        state = _make_state(
+            design_anchor={
+                "kind": "html",
+                "file": "design/reference.html",
+                "selectors": [".fooBar"],
+            },
+        )
+        _write_state(self.devforge_dir, state)
+
+        emit_path = str(self.tmp / "out" / "handoff.json")
+        args = _make_args(self.devforge_dir, emit_path=emit_path)
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 0, "Expected exit 0 from finalize-handoff")
+
+        with open(emit_path, encoding="utf-8") as f:
+            raw = json.load(f)
+        handoff = _dict_to_dataclass(specify_handoff_schema.Handoff, raw)
+
+        self.assertEqual(
+            handoff.spec_seeds.design_anchor,
+            specify_handoff_schema.DesignAnchor(),
+            "spec_seeds.design_anchor must stay empty -- design-anchor.json is the "
+            "sole source of truth (D5); populating the handoff too would desync",
+        )
+        self.assertEqual(raw["spec_seeds"]["design_anchor"], {
+            "kind": "", "file": "", "selectors": [],
+        })
+
+
 if __name__ == "__main__":
     unittest.main()

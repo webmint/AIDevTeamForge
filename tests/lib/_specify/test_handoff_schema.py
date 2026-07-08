@@ -796,5 +796,83 @@ class TestModuleConstants(unittest.TestCase):
         self.assertEqual(hs.HANDOFF_KIND, "specify")
 
 
+# ---------------------------------------------------------------------------
+# Plan 53 Phase 1 — DesignAnchor + SpecSeeds.design_anchor.
+#
+# specify's SpecSeeds carried exactly 8 fields before this plan (overview,
+# acceptance_criteria, ac_subsection_na, constraints, affected_areas,
+# out_of_scope, open_questions, risks) and NO design field -- design_anchor
+# is net-new here, appended last with a default so the existing 8-field
+# round-trip stays green.
+# ---------------------------------------------------------------------------
+
+
+class TestDesignAnchor(unittest.TestCase):
+    def test_empty_default_is_well_formed(self):
+        da = hs.DesignAnchor()
+        self.assertEqual(da.kind, "")
+        self.assertEqual(da.file, "")
+        self.assertEqual(da.selectors, [])
+
+    def test_non_html_kind_is_shape_valid(self):
+        """D3: kind is an OPEN discriminator -- any string is shape-valid."""
+        da = hs.DesignAnchor(kind="figma", file="https://figma.com/x", selectors=[".a"])
+        self.assertEqual(da.kind, "figma")
+        da2 = hs.DesignAnchor(kind="some-future-tool", file="x", selectors=[])
+        self.assertEqual(da2.kind, "some-future-tool")
+
+    def test_reject_non_string_kind(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(kind=123)
+        self.assertIn("kind", str(ctx.exception))
+
+    def test_reject_non_string_file(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(file=123)
+        self.assertIn("file", str(ctx.exception))
+
+    def test_reject_selectors_not_a_list(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(selectors="not-a-list")
+        self.assertIn("selectors", str(ctx.exception))
+
+    def test_reject_selectors_non_string_element(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(selectors=[".a", 2])
+        self.assertIn("selectors", str(ctx.exception))
+
+    def test_spec_seeds_default_design_anchor_is_empty_and_existing_8_fields_unchanged(self):
+        """SpecSeeds constructed with exactly the pre-plan-53 8 fields (no
+        design_anchor kwarg) still constructs cleanly, and design_anchor
+        defaults to an empty DesignAnchor -- proves the 8-field shape is
+        undisturbed and back-compat deserialization holds.
+        """
+        ss = hs.SpecSeeds(
+            overview="Add structured audit log persistence to the EventService.",
+            acceptance_criteria=[_ac()],
+            ac_subsection_na={"ci_pipeline": "No CI changes required for this feature"},
+            constraints=[_constraint()],
+            affected_areas=[_affected_area()],
+            out_of_scope=[_out_of_scope_item()],
+            open_questions=[_open_question()],
+            risks=[_risk()],
+            # design_anchor intentionally omitted.
+        )
+        self.assertIsInstance(ss.design_anchor, hs.DesignAnchor)
+        self.assertEqual(ss.design_anchor.kind, "")
+        self.assertEqual(ss.design_anchor.file, "")
+        self.assertEqual(ss.design_anchor.selectors, [])
+
+    def test_spec_seeds_carries_captured_design_anchor(self):
+        anchor = hs.DesignAnchor(kind="html", file="design/reference.html", selectors=[".fooBar"])
+        ss = _spec_seeds(design_anchor=anchor)
+        self.assertIs(ss.design_anchor, anchor)
+
+    def test_spec_seeds_reject_design_anchor_wrong_type(self):
+        with self.assertRaises(ValueError) as ctx:
+            _spec_seeds(design_anchor={"kind": "html"})
+        self.assertIn("design_anchor", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

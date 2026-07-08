@@ -154,6 +154,28 @@ Convert the vague topic into a structured symptom memo across 6 dimensions. The 
 
 Per-dimension state enum: `Clear` / `Partial` / `Missing` (default `Missing`). Turn cap: 2 follow-ups per dimension before the helper auto-marks `Partial`.
 
+### Design-reference capture (supplementary — non-gating)
+
+Some enhancements target a UI surface with a design reference — an HTML export, a Figma node, or a screenshot — that expresses what the built UI should look like. Capture it here so that intent is recorded once at intake as a structured anchor rather than left in prose. Before the first dimension question, ask one supplementary free-text prompt: ``"Is there a design reference for this feature's UI — an HTML export, a Figma node, or a screenshot? If so, name the kind, the file path or URL, and which element selector(s) carry the intent (e.g. a class like `.fooBar`). If none, answer 'none'."`` — single-line question text, free-text answer. After the user replies:
+
+- If the user names a reference, compose `--value` as `<scheme>:<target>` (`scheme` = `html` / `figma` / `screenshot` matching the named kind; `target` = the file path or URL) and `--selectors` as a JSON array of the named intent selectors:
+
+  ```bash
+  .devforge/lib/research_helper set-design-anchor \
+      --value "html:design/reference.html" \
+      --selectors '[".fooBar", ".badge"]'
+  ```
+
+- If the user names none (no reference, or the feature has no UI), record the empty anchor:
+
+  ```bash
+  .devforge/lib/research_helper set-design-anchor \
+      --value "none" \
+      --selectors '[]'
+  ```
+
+The helper validates `--value` as a design-source `scheme:target`; a value whose scheme is not one of `html` / `figma` / `screenshot` / `none` is rejected with a non-zero exit and nothing is persisted, so pass a well-formed `scheme:target` or the bare word `none`. This capture is OPTIONAL and is NOT one of the six rubric dimensions above — it does not participate in the coverage check or `symptom-finalize`, so an unanswered design-reference question never blocks finalization. This call does NOT gate progression. Advance to the pre-rubric docs scan regardless of the user's answer.
+
 ### Pre-rubric docs scan (orchestrator-only)
 
 Before asking the first dimension question, read the project docs corpus to seed `affected_area` candidates:

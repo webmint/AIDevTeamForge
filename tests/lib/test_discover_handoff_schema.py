@@ -1152,5 +1152,74 @@ class TestVerbatimPrompt(unittest.TestCase):
         self.assertIn("schema_version", str(ctx.exception))
 
 
+# ---------------------------------------------------------------------------
+# Plan 53 Phase 1 — DesignAnchor + SpecSeeds.design_anchor.
+# ---------------------------------------------------------------------------
+
+
+class TestDesignAnchor(unittest.TestCase):
+    def test_empty_default_is_well_formed(self):
+        da = hs.DesignAnchor()
+        self.assertEqual(da.kind, "")
+        self.assertEqual(da.file, "")
+        self.assertEqual(da.selectors, [])
+
+    def test_non_html_kind_is_shape_valid(self):
+        """D3: kind is an OPEN discriminator -- any string is shape-valid."""
+        da = hs.DesignAnchor(kind="figma", file="https://figma.com/x", selectors=[".a"])
+        self.assertEqual(da.kind, "figma")
+        da2 = hs.DesignAnchor(kind="some-future-tool", file="x", selectors=[])
+        self.assertEqual(da2.kind, "some-future-tool")
+
+    def test_reject_non_string_kind(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(kind=123)
+        self.assertIn("kind", str(ctx.exception))
+
+    def test_reject_non_string_file(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(file=123)
+        self.assertIn("file", str(ctx.exception))
+
+    def test_reject_selectors_not_a_list(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(selectors="not-a-list")
+        self.assertIn("selectors", str(ctx.exception))
+
+    def test_reject_selectors_non_string_element(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.DesignAnchor(selectors=[".a", 2])
+        self.assertIn("selectors", str(ctx.exception))
+
+    def test_spec_seeds_default_design_anchor_is_empty(self):
+        """SpecSeeds constructed WITHOUT a design_anchor kwarg (the shape you
+        get reconstructing from an old handoff.json dict missing the key)
+        gets an empty DesignAnchor via the dataclass default_factory —
+        proves back-compat deserialization for handoff.json predating plan 53.
+        """
+        ss = hs.SpecSeeds(
+            spec_type_hint="greenfield_feature",
+            constraints=[_constraint()],
+            affected_areas=[_affected_area()],
+            risks=[_risk()],
+            open_questions=[_open_question()],
+            # design_anchor intentionally omitted.
+        )
+        self.assertIsInstance(ss.design_anchor, hs.DesignAnchor)
+        self.assertEqual(ss.design_anchor.kind, "")
+        self.assertEqual(ss.design_anchor.file, "")
+        self.assertEqual(ss.design_anchor.selectors, [])
+
+    def test_spec_seeds_carries_captured_design_anchor(self):
+        anchor = hs.DesignAnchor(kind="html", file="design/reference.html", selectors=[".fooBar"])
+        ss = _spec_seeds(design_anchor=anchor)
+        self.assertIs(ss.design_anchor, anchor)
+
+    def test_spec_seeds_reject_design_anchor_wrong_type(self):
+        with self.assertRaises(ValueError) as ctx:
+            _spec_seeds(design_anchor={"kind": "html"})
+        self.assertIn("design_anchor", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

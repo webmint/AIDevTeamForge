@@ -3221,12 +3221,19 @@ class FinalizeHandoffTests(_CwdIsolationBH):
 
 
 # ---------------------------------------------------------------------------
-# Tests: finalize-handoff — design-manifest chokepoint (plan 42 Phase 2)
+# Tests: finalize-handoff — design-manifest chokepoint (plan 42 Phase 2;
+# schema retargeted to the binding by plan 53 Phase 3/7c)
 # ---------------------------------------------------------------------------
 #
-# Real-fixture discipline: manifest JSON is produced via the real round-trip
-# (_make_valid_manifest / _make_invalid_manifest defined in the Phase 1 section
-# below) — NOT hand-authored JSON strings.
+# Real-fixture discipline: the binding JSON is produced via the REAL
+# _design._schema constructors (Binding / BindingPair) + the real
+# binding_to_json serializer (_make_valid_manifest / _make_invalid_manifest
+# defined in the Phase 1 section below) — NOT hand-authored JSON strings.
+# There is no mechanical DERIVATION of a binding from reference.html anymore
+# (resolve-reference / init-manifest are retired, plan 53 Phase 3) — a
+# binding's route + pairs are always human/LLM authored, so round-tripping
+# through the real schema constructors + serializer IS the producer
+# discipline at this layer.
 #
 # CWD CONTRACT: _run_bh sets cwd=self.tmp_path (via the helper), and
 # _validate_manifest_present calls Path.cwd() to locate design/reference.html.
@@ -4283,15 +4290,21 @@ class FinalizeHandoffAgentRosterTests(_CwdIsolationBH):
 
 
 # ---------------------------------------------------------------------------
-# Tests: verify-manifest-present (Phase 3.5 — design-manifest-presence gate)
+# Tests: verify-manifest-present (Phase 3.5 — design-manifest-presence gate;
+# schema retargeted from the disposition manifest to the BINDING by plan 53
+# Phase 3/7c)
 # ---------------------------------------------------------------------------
 #
 # Real-fixture discipline (per test-first rules):
-#   Manifest JSON fixtures are produced via the real library round-trip:
-#     resolve_reference(html_path) -> dict
-#     init_manifest_from_reference(result) -> ManifestContainer (all unclassified)
-#     Caller then mutates dispositions to produce valid/invalid states.
-#   NO hand-authored JSON strings are used as test inputs.
+#   The on-disk artifact is still design-manifest.json (plan 53 D4 —
+#   same FILENAME, new schema), but there is no longer a mechanical
+#   DERIVATION of its contents from reference.html: resolve-reference and
+#   init-manifest are retired (plan 53 Phase 3) because the binding's route
+#   + pairs are always human/LLM authored (no walkable data-ref element list
+#   exists to seed a skeleton from anymore).  So the real-fixture discipline
+#   here is: construct a real `Binding`/`BindingPair` via the real
+#   `_design._schema` constructors and round-trip through the real
+#   `binding_to_json` serializer — NOT a hand-authored JSON string.
 
 # Make the _design package importable for round-trip fixture production.
 _DESIGN_LIB_DIR = REPO_ROOT_P1 / "src" / "devforge" / "lib"
@@ -4299,10 +4312,9 @@ if str(_DESIGN_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_DESIGN_LIB_DIR))
 
 
-# Minimal reference.html used to seed real fixtures.  Contains two data-ref
-# elements whose classes are defined inline in the <style> block so
-# resolve_reference produces a ZERO-gap-list result (gap_list is empty →
-# valid after classification).  This keeps fixture setup simple.
+# Minimal reference.html used only to make design/reference.html PRESENT (so
+# the `_reference_present` gate treats the feature as design-scoped).  Its
+# structure is otherwise inert now — bindings are no longer derived from it.
 _REFERENCE_HTML_SIMPLE = """\
 <!DOCTYPE html>
 <html>
@@ -4337,70 +4349,88 @@ def _write_reference_html(design_dir):
     return html_path
 
 
-def _make_valid_manifest(feature_dir, html_path):
-    # type: (Path, Path) -> Path
-    """Produce a VALID manifest via the real round-trip:
+def _make_valid_manifest(feature_dir, html_path=None):
+    # type: (Path, Optional[Path]) -> Path
+    """Produce a VALID binding via the real _design._schema constructors.
 
-    1. resolve_reference(html_path) → raw result dict (gap_list should be [])
-    2. init_manifest_from_reference(result) → skeleton with all dispositions=""
-    3. Set every element's disposition to DISPOSITION_MATCH (all classified)
-    4. Serialize to feature_dir/design-manifest.json
+    Builds a real `Binding` (route + one container-floor `BindingPair`) and
+    serializes it via the real `binding_to_json`.  `html_path` is accepted
+    for call-site back-compat (most callers pass `_write_reference_html`'s
+    return value) but is unused — a binding's pairs are independent of the
+    reference HTML's structure (plan 53 Phase 3: no mechanical derivation).
 
-    Returns the manifest path.
+    Returns the binding path (feature_dir/design-manifest.json).
     """
-    from _design._reference import resolve_reference  # type: ignore[import]
-    from _design._manifest import init_manifest_from_reference  # type: ignore[import]
-    from _design._schema import DISPOSITION_MATCH, manifest_to_json  # type: ignore[import]
+    from _design._schema import Binding, BindingPair, binding_to_json  # type: ignore[import]
 
-    raw = resolve_reference(str(html_path))
-    container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
-    # Classify every element as MATCH to produce a valid manifest.
-    for elem in container.elements:
-        elem.disposition = DISPOSITION_MATCH
-    # gap_list must be empty for valid; our simple HTML has no gaps.
-    # (If for some reason there are gaps, clear them — fixture invariant.)
-    container.gap_list = []
+    binding = Binding(
+        route="/feature",
+        pairs=[BindingPair("[data-ref=card-item]", "card-item-testid")],
+    )
 
     manifest_path = feature_dir / "design-manifest.json"
-    manifest_path.write_text(manifest_to_json(container), encoding="utf-8")
+    manifest_path.write_text(binding_to_json(binding), encoding="utf-8")
     return manifest_path
 
 
-def _make_invalid_manifest(feature_dir, html_path):
-    # type: (Path, Path) -> Path
-    """Produce an INVALID manifest via the real round-trip.
+def _make_invalid_manifest(feature_dir, html_path=None):
+    # type: (Path, Optional[Path]) -> Path
+    """Produce an INVALID binding via the real _design._schema constructors.
 
-    Same as _make_valid_manifest but ONE element is left unclassified
-    (disposition="") so validate_manifest returns a non-empty error list.
+    Same as _make_valid_manifest but the pair's anchor_selector is left
+    empty, so validate_binding returns a non-empty error list.
+
+    Returns the binding path.
+    """
+    from _design._schema import Binding, BindingPair, binding_to_json  # type: ignore[import]
+
+    binding = Binding(
+        route="/feature",
+        pairs=[BindingPair("", "card-item-testid")],
+    )
+
+    manifest_path = feature_dir / "design-manifest.json"
+    manifest_path.write_text(binding_to_json(binding), encoding="utf-8")
+    return manifest_path
+
+
+def _make_retired_disposition_manifest(feature_dir, html_path=None):
+    # type: (Path, Optional[Path]) -> Path
+    """Produce a STALE plan-40 disposition-manifest file (FIX 1 fixture).
+
+    Shaped exactly as the retired `ManifestContainer.manifest_to_dict`
+    (git history commit 6cc933c, pre-plan-53 `_design._schema.py`) actually
+    emitted -- {"version": "1", "reference_html": ..., "elements": [...],
+    "gap_list": [...]}. Transcribed from the real retired producer's
+    serializer output (not hand-guessed) so the design-manifest-present
+    chokepoint test round-trips against an artifact a real upgraded
+    consumer install would actually have on disk.
 
     Returns the manifest path.
     """
-    from _design._reference import resolve_reference  # type: ignore[import]
-    from _design._manifest import init_manifest_from_reference  # type: ignore[import]
-    from _design._schema import DISPOSITION_MATCH, manifest_to_json  # type: ignore[import]
+    import json as _json
 
-    raw = resolve_reference(str(html_path))
-    container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
-    elements = container.elements
-    if not elements:
-        raise RuntimeError("Fixture HTML produced no elements — check _REFERENCE_HTML_SIMPLE")
-    # Classify all BUT the first element (leave it unclassified for the error case).
-    for elem in elements[1:]:
-        elem.disposition = DISPOSITION_MATCH
-    # First element stays disposition="" (unclassified).
-    container.gap_list = []
-
+    retired_dict = {
+        "version": "1",
+        "reference_html": "design/reference.html",
+        "elements": [
+            {"data_ref": "hero", "disposition": "MATCH"},
+        ],
+        "gap_list": [],
+    }
     manifest_path = feature_dir / "design-manifest.json"
-    manifest_path.write_text(manifest_to_json(container), encoding="utf-8")
+    manifest_path.write_text(_json.dumps(retired_dict, indent=2, sort_keys=True), encoding="utf-8")
     return manifest_path
 
 
 class VerifyManifestPresentTests(_CwdIsolationBH):
-    """Tests for verify-manifest-present verb (plan 42 Phase 1, WI-1).
+    """Tests for verify-manifest-present verb (plan 42 Phase 1, WI-1;
+    schema retargeted to the binding by plan 53 Phase 3/7c).
 
-    All manifest fixtures are round-tripped via:
-      resolve_reference -> init_manifest_from_reference -> manual disposition fill
-    NO hand-authored JSON strings used (per real-fixture discipline).
+    All binding fixtures are constructed via the real `_design._schema`
+    constructors (`Binding` / `BindingPair`) and round-tripped through the
+    real `binding_to_json` serializer.  NO hand-authored JSON strings used
+    (per real-fixture discipline).
     """
 
     # ------------------------------------------------------------------
@@ -4520,8 +4550,14 @@ class VerifyManifestPresentTests(_CwdIsolationBH):
         self.assertEqual(result.returncode, 2)
         self.assertIn("## Design manifest findings", result.stdout)
 
-    def test_reference_present_invalid_manifest_stdout_names_unclassified_element(self):
-        """Exit-2 stdout names the unclassified element from the real manifest."""
+    def test_reference_present_invalid_manifest_stdout_names_bad_pair(self):
+        """Exit-2 stdout names the offending pair from the real binding.
+
+        plan 53 Phase 3/7c: the invalid fixture's pair has an empty
+        anchor_selector (_make_invalid_manifest) -- the error must name the
+        pair index and the missing field, not the retired 'unclassified'
+        element concept.
+        """
         feature_dir = self.tmp_path / "specs" / "010-names-element"
         tasks_dir = feature_dir / "tasks"
         tasks_dir.mkdir(parents=True)
@@ -4531,10 +4567,45 @@ class VerifyManifestPresentTests(_CwdIsolationBH):
 
         result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
         self.assertEqual(result.returncode, 2)
-        # The first element left unclassified is 'card-item' (first data-ref in HTML).
-        self.assertIn("card-item", result.stdout)
-        # Message must indicate 'unclassified'.
-        self.assertIn("unclassified", result.stdout)
+        self.assertIn("pairs[0]", result.stdout)
+        self.assertIn("anchor_selector", result.stdout)
+
+    # ------------------------------------------------------------------
+    # reference present + RETIRED plan-40 disposition manifest → exit 2,
+    # DISTINGUISHABLE from the generic route/pairs message (FIX 1)
+    # ------------------------------------------------------------------
+
+    def test_retired_disposition_manifest_exits_2(self):
+        """A stale plan-40 disposition-manifest file still exits non-zero."""
+        feature_dir = self.tmp_path / "specs" / "008b-retired"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_retired_disposition_manifest(feature_dir, html_path)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+
+    def test_retired_disposition_manifest_message_distinguishable(self):
+        """FIX 1: the retired-schema message must be distinguishable from
+        the generic 'route must be non-empty' / 'pairs must contain at
+        least one pair' message a genuinely-empty binding produces."""
+        feature_dir = self.tmp_path / "specs" / "008c-retired-msg"
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_retired_disposition_manifest(feature_dir, html_path)
+
+        result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("retired", result.stdout)
+        self.assertIn("elements/gap_list", result.stdout)
+        self.assertNotIn("route: must be non-empty", result.stdout)
+        self.assertNotIn(
+            "pairs: must contain at least one pair", result.stdout
+        )
 
     # ------------------------------------------------------------------
     # reference present + VALID manifest → exit 0
@@ -4667,28 +4738,26 @@ class VerifyManifestPresentTests(_CwdIsolationBH):
     # ------------------------------------------------------------------
 
     def test_manifest_path_override_valid(self):
-        """--manifest-path pointing to a valid manifest → exit 0."""
+        """--manifest-path pointing to a valid binding → exit 0."""
         feature_dir = self.tmp_path / "specs" / "017-manifest-override"
         tasks_dir = feature_dir / "tasks"
         tasks_dir.mkdir(parents=True)
 
-        html_path = _write_reference_html(self.tmp_path / "design")
-        # Write manifest to a NON-DEFAULT location.
+        _write_reference_html(self.tmp_path / "design")
+        # Write binding to a NON-DEFAULT location.
         alt_manifest_dir = self.tmp_path / "alt-manifests"
         alt_manifest_dir.mkdir()
         alt_manifest_path = alt_manifest_dir / "my-manifest.json"
 
-        # Produce via real round-trip but write to alt path.
-        from _design._reference import resolve_reference  # type: ignore[import]
-        from _design._manifest import init_manifest_from_reference  # type: ignore[import]
-        from _design._schema import DISPOSITION_MATCH, manifest_to_json  # type: ignore[import]
+        # Produce via the real schema constructors + serializer, written to
+        # the alt path (plan 53 Phase 3/7c: no mechanical HTML derivation).
+        from _design._schema import Binding, BindingPair, binding_to_json  # type: ignore[import]
 
-        raw = resolve_reference(str(html_path))
-        container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
-        for elem in container.elements:
-            elem.disposition = DISPOSITION_MATCH
-        container.gap_list = []
-        alt_manifest_path.write_text(manifest_to_json(container), encoding="utf-8")
+        binding = Binding(
+            route="/feature",
+            pairs=[BindingPair("[data-ref=card-item]", "card-item-testid")],
+        )
+        alt_manifest_path.write_text(binding_to_json(binding), encoding="utf-8")
 
         result = _run_bh(
             self.tmp_path, "verify-manifest-present", str(tasks_dir),
@@ -4698,40 +4767,45 @@ class VerifyManifestPresentTests(_CwdIsolationBH):
         self.assertIn("design-manifest: ok", result.stdout)
 
     # ------------------------------------------------------------------
-    # Round-trip integrity: elements in the real reference → named in errors
+    # Round-trip integrity: every bad pair is individually named in errors
     # ------------------------------------------------------------------
 
-    def test_real_roundtrip_element_names_in_error(self):
-        """The REAL element name from the round-trip HTML appears in the error block.
+    def test_real_roundtrip_multiple_bad_pairs_all_named(self):
+        """Every offending pair from the real binding appears in the error block.
 
-        This test is the round-trip integrity check: the element data-ref
-        values in _REFERENCE_HTML_SIMPLE ('card-item', 'page-header') must
-        flow through resolve_reference -> init_manifest_from_reference and
-        appear verbatim in the validate_manifest error message when unclassified.
+        plan 53 Phase 3/7c: this is the round-trip integrity check for the
+        NEW binding schema — a binding with two pairs, each missing a
+        DIFFERENT required field, must surface BOTH pair indices in the
+        validate_binding error output (the multi-issue-surfacing spirit of
+        the retired 'every unclassified element is named' test, adapted to
+        route+pairs).
         """
         feature_dir = self.tmp_path / "specs" / "018-roundtrip"
         tasks_dir = feature_dir / "tasks"
         tasks_dir.mkdir(parents=True)
 
-        html_path = _write_reference_html(self.tmp_path / "design")
-        # Leave ALL elements unclassified (use raw skeleton from init_manifest).
-        from _design._reference import resolve_reference  # type: ignore[import]
-        from _design._manifest import init_manifest_from_reference  # type: ignore[import]
-        from _design._schema import manifest_to_json  # type: ignore[import]
+        _write_reference_html(self.tmp_path / "design")
 
-        raw = resolve_reference(str(html_path))
-        container = init_manifest_from_reference(raw, reference_html_path=str(html_path))
-        # All elements left unclassified — gap_list already empty.
-        container.gap_list = []
+        from _design._schema import Binding, BindingPair, binding_to_json  # type: ignore[import]
+
+        binding = Binding(
+            route="/feature",
+            pairs=[
+                BindingPair("", "card-item-testid"),      # missing anchor_selector
+                BindingPair("[data-ref=page-header]", ""),  # missing built_testid
+            ],
+        )
         (feature_dir / "design-manifest.json").write_text(
-            manifest_to_json(container), encoding="utf-8"
+            binding_to_json(binding), encoding="utf-8"
         )
 
         result = _run_bh(self.tmp_path, "verify-manifest-present", str(tasks_dir))
         self.assertEqual(result.returncode, 2)
-        # Both data-ref names must appear in the error block.
-        self.assertIn("card-item", result.stdout)
-        self.assertIn("page-header", result.stdout)
+        # Both pair indices + their missing fields must appear in the error block.
+        self.assertIn("pairs[0]", result.stdout)
+        self.assertIn("anchor_selector", result.stdout)
+        self.assertIn("pairs[1]", result.stdout)
+        self.assertIn("built_testid", result.stdout)
 
     # ------------------------------------------------------------------
     # _reference_present shared predicate (unit test via library import)
@@ -4809,7 +4883,7 @@ class VerifyManifestPresentTests(_CwdIsolationBH):
         self.assertIn("ok", out)
 
     def test_validate_manifest_present_invalid_manifest(self):
-        """Reference present + unclassified element → exit 2 naming element."""
+        """Reference present + invalid binding → exit 2 naming the bad pair."""
         from breakdown_helper import _validate_manifest_present  # type: ignore[import]
         feature_dir = self.tmp_path / "specs" / "unit-004"
         feature_dir.mkdir(parents=True)
@@ -4822,7 +4896,28 @@ class VerifyManifestPresentTests(_CwdIsolationBH):
         )
         self.assertEqual(code, 2)
         self.assertIn("## Design manifest findings", out)
-        self.assertIn("card-item", out)
+        self.assertIn("pairs[0]", out)
+        self.assertIn("anchor_selector", out)
+
+    def test_validate_manifest_present_retired_disposition_manifest(self):
+        """FIX 1: a stale plan-40 disposition-manifest file → exit 2 with the
+        DISTINGUISHABLE retired-schema message, not the generic
+        route/pairs message."""
+        from breakdown_helper import _validate_manifest_present  # type: ignore[import]
+        feature_dir = self.tmp_path / "specs" / "unit-005"
+        feature_dir.mkdir(parents=True)
+        html_path = _write_reference_html(self.tmp_path / "design")
+        _make_retired_disposition_manifest(feature_dir, html_path)
+
+        code, out, err = _validate_manifest_present(
+            feature_dir=str(feature_dir),
+            workspace_root=str(self.tmp_path),
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("retired", out)
+        self.assertIn("elements/gap_list", out)
+        self.assertNotIn("route: must be non-empty", out)
+        self.assertNotIn("pairs: must contain at least one pair", out)
 
 
 if __name__ == "__main__":

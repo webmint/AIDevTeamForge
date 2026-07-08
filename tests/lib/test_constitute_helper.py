@@ -3787,9 +3787,12 @@ class TestDesignFidelityUniversalSection(unittest.TestCase):
                       msg="Static provenance check description lost in re-render")
         self.assertIn("Runtime conformance check", rendered,
                       msg="Runtime conformance check description lost in re-render")
-        # The narrow carve-out (reference-present => 1:1) must survive.
-        self.assertIn("1:1", rendered,
-                      msg="1:1 matching obligation lost in re-render")
+        # The anchor-gated fidelity obligation must survive re-render.
+        self.assertIn("captured design intent", rendered,
+                      msg="Captured-design-intent fidelity obligation lost in re-render")
+        # The NOT-COVERED honesty clause must survive re-render.
+        self.assertIn("NOT-COVERED", rendered,
+                      msg="NOT-COVERED honesty clause lost in re-render")
 
     def test_verify_universal_defaults_detects_missing_38(self):
         """verify-universal-defaults exits 2 with MISSING §3.8 when §3.8 absent."""

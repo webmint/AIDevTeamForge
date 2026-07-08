@@ -1,81 +1,80 @@
-"""Tests for src/devforge/lib/_design/ — the design_helper Phase 2 subpackage.
+"""Tests for src/devforge/lib/_design/ — the design_helper subpackage.
 
-Real-fixture discipline:
-  All tests that exercise the reference parser or spacing extractor use real
-  fixture FILES written to a temp directory, then round-tripped through the
-  real producer functions.  No hand-authored value strings are used as the
-  "expected output" unless they are definitionally derived from the fixture we
-  wrote ourselves.
+Plan 53 Phase 3 reframes this subpackage's schema from the retired data-ref /
+disposition-manifest shape (plan 40 Phase 2: ElementRecord, DISPOSITION_*,
+ManifestContainer's element/gap-list shape, resolve-reference, init-manifest)
+to the anchor + binding split (plan 53 D4/D7): the BINDING is
+`{route, pairs: [{anchor_selector, built_testid}]}`, authored at /breakdown,
+validated by `validate-binding` against `specs/[feature]/design-manifest.json`
+(same on-disk filename as the retired manifest — plan 53 D4).
+
+Real-fixture discipline note: there is no longer a mechanical PRODUCER of a
+binding (resolve-reference / init-manifest are retired — a binding's route
+and pairs are always human/LLM authored, since there is no walkable element
+list to derive a skeleton from once data-ref HTML extraction is gone). So the
+binding-schema tests below construct `Binding`/`BindingPair` directly via the
+real dataclass constructors + round-trip through the real (de)serializers —
+that IS the producer at this layer (there is no separate parser to round-trip
+against, unlike resolve_reference's real-HTML-fixture discipline that applied
+to the now-retired manifest flow).
+
+extract_spacing_scale and check-design-source are UNCHANGED by plan 53 Phase 3
+(kept per the plan) — their tests are carried over unmodified except for the
+import path of the (relocated, still real) CSS-parsing utilities.
 
 Coverage plan
 -------------
 _schema.py
-  ElementRecord validation:
-    - valid MATCH element → no errors
-    - valid DEFER-EMPTY element → no errors
-    - valid STATIC-PLACEHOLDER element → no errors
-    - valid DEVIATE element with reason → no errors
-    - DEVIATE element with empty reason → error naming the element
-    - invalid disposition string → error
-    - unclassified element (disposition="") → error naming the element
-    - empty data_ref → error
-    - control char in data_ref → error
-    - control char in deviate_reason → error
+  BindingPair validation (validate_pair):
+    - valid pair → no errors
+    - empty anchor_selector → error naming anchor_selector
+    - whitespace-only anchor_selector → error
+    - empty built_testid → error naming built_testid
+    - control char in anchor_selector → error
+    - control char in built_testid → error
 
-  ManifestContainer / validate_manifest:
-    - fully-classified manifest, empty gap-list → empty errors list
-    - one unclassified element → error names the element
-    - two unclassified elements → two errors
-    - non-empty gap-list → error names each token
-    - empty reference_html → error
-    - DEVIATE element without reason → error
+  Binding validation (validate_binding):
+    - route + 1 pair (container floor only) → no errors
+    - route + 2 pairs (floor + opt-in precision pair) → no errors
+    - missing route → error naming route
+    - whitespace-only route → error
+    - zero pairs → error
+    - one pair missing anchor_selector → error naming pairs[0]
+    - one pair missing built_testid → error naming pairs[1] (2nd pair)
+    - empty binding (no route, no pairs) → BOTH route and pairs errors present
+      (honesty invariant #3 — never a silent clean pass on omission)
 
   Serialization round-trip:
-    - element_to_dict / element_from_dict → identical data
-    - manifest_to_dict / manifest_from_dict → identical data
-    - manifest_to_json / manifest_from_json → identical data
+    - pair_to_dict / pair_from_dict → identical data
+    - binding_to_dict / binding_from_dict → identical data (incl. version)
+    - binding_to_json / binding_from_json → identical data
+    - version field defaults to SCHEMA_VERSION on a fresh Binding
 
-_reference.py
-  resolve_reference (real fixture HTML + CSS):
-    - returns expected element list (data-ref keys, tags, classes)
-    - inline_style captured verbatim
-    - resolved_values contains rules from <style> block
-    - linked stylesheet resolved from disk → rules captured
-    - class with no CSS definition → appears in gap_list
-    - undefined CSS custom property in inline_style → appears in gap_list
-    - undefined CSS custom property referenced in <style> value → appears in gap_list
-    - defined class (present in <style>) → NOT in gap_list
-    - defined custom property → NOT in gap_list
-    - elements without data-ref are NOT in the returned elements list
-    - file not found → cmd_resolve_reference returns exit code 2
-
-  cmd_resolve_reference (CLI handler):
-    - happy path: emits valid JSON to stdout, exit 0
-    - missing --html-path argument: exit 2
-    - non-existent file: exit 2
+_css_parse.py (relocated from the retired _reference.py)
+  _parse_css_rules / _extract_rule_blocks:
+    - simple rule captured
+    - custom property definition captured
+    - custom property not treated as a regular rule property
+    - multiple rules
+    - empty CSS yields empty dicts
+    - F2: class defined only inside @media is collected
+    - F2: class defined only inside @supports is collected
+    - F2: _extract_rule_blocks recurses into @media directly
 
 _manifest.py
-  init_manifest_from_reference:
-    - produces manifest with all elements unclassified
-    - gap_list is copied from resolve-reference output
-    - reference_html path is copied
-    - element count matches reference output
-
-  cmd_init_manifest:
-    - happy path: emits valid skeleton manifest JSON, exit 0
-    - missing --reference-json: exit 2
+  cmd_validate_binding (CLI handler):
+    - valid binding (route + 1 pair) → exit 0, valid=true
+    - valid binding (route + 2 pairs) → exit 0
+    - missing route → exit 1, valid=false, error names 'route'
+    - zero pairs → exit 1, error mentions 'pairs'
+    - pair missing anchor_selector → exit 1, error names 'pairs[0]' + 'anchor_selector'
+    - pair missing built_testid → exit 1, error names 'built_testid'
+    - empty binding → exit 1, BOTH route and pairs errors present
+    - missing --binding-path: exit 2
     - non-existent file: exit 2
     - malformed JSON: exit 2
 
-  cmd_validate_manifest:
-    - fully-classified manifest + empty gap-list → exit 0, valid=true
-    - one unclassified element → exit 1, valid=false, error names element
-    - non-empty gap-list → exit 1, valid=false, error names token
-    - DEVIATE without reason → exit 1
-    - missing --manifest-path: exit 2
-    - non-existent file: exit 2
-
-  extract_spacing_scale / cmd_extract_spacing_scale:
+  extract_spacing_scale / cmd_extract_spacing_scale (V5, V6 — unchanged):
     - styles.css present with spacing rules → available=true, scale non-empty
     - scale contains px and rem values from the fixture
     - scale does NOT contain non-spacing properties (e.g. color)
@@ -84,16 +83,14 @@ _manifest.py
 
 _cli.py / main entry:
   - no subcommand → exit 2
-  - unknown subcommand → exits non-zero
-  - each verb is reachable via main([verb, ...])
+  - unknown subcommand → SystemExit (argparse rejects it)
+  - resolve-reference / init-manifest are NOT recognized subcommands (retired)
+  - validate-binding reachable via main([...])
+  - extract-spacing-scale reachable via main([...])
+  - check-design-source reachable via main([...])
 
-Phase-2 Verify cases (plan 40 Phase 2 verification criteria):
-  V1: fully-classified manifest + empty gap-list → exit 0
-  V2: one unclassified element → exit non-zero naming the element
-  V3: non-empty gap-list → exit non-zero naming the class/token
-  V4: resolve-reference on fixture returns expected element list + values
-  V5: spacing extraction returns scale when styles.css present
-  V6: spacing extraction returns available=false when styles.css absent
+_source.py — UNCHANGED (plan 53 Phase 3 does not touch this module):
+  parse_design_source + cmd_check_design_source — full suite carried over.
 """
 
 from __future__ import annotations
@@ -105,7 +102,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import List, Optional
 
 # ---------------------------------------------------------------------------
 # Path setup — make _design importable
@@ -118,34 +114,26 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from _design._schema import (  # noqa: E402
-    ElementRecord,
-    ManifestContainer,
-    DISPOSITION_MATCH,
-    DISPOSITION_DEFER_EMPTY,
-    DISPOSITION_STATIC_PLACEHOLDER,
-    DISPOSITION_DEVIATE,
-    DISPOSITION_UNCLASSIFIED,
-    VALID_DISPOSITIONS,
-    validate_element,
-    validate_manifest,
-    element_to_dict,
-    element_from_dict,
-    manifest_to_dict,
-    manifest_from_dict,
-    manifest_to_json,
-    manifest_from_json,
+    SCHEMA_VERSION,
+    BindingPair,
+    Binding,
+    validate_pair,
+    validate_binding,
+    pair_to_dict,
+    pair_from_dict,
+    binding_to_dict,
+    binding_from_dict,
+    binding_to_json,
+    binding_from_json,
+    RetiredManifestSchemaError,
+    BindingParseError,
 )
-from _design._reference import (  # noqa: E402
-    resolve_reference,
-    cmd_resolve_reference,
+from _design._css_parse import (  # noqa: E402
     _parse_css_rules,
-    _compute_gap_list,
     _extract_rule_blocks,
 )
 from _design._manifest import (  # noqa: E402
-    init_manifest_from_reference,
-    cmd_init_manifest,
-    cmd_validate_manifest,
+    cmd_validate_binding,
     extract_spacing_scale,
     cmd_extract_spacing_scale,
 )
@@ -155,62 +143,6 @@ from _design._cli import main  # noqa: E402
 # ---------------------------------------------------------------------------
 # Fixture builders
 # ---------------------------------------------------------------------------
-
-# Real reference.html fixture — written to a temp dir and round-tripped.
-# Contains:
-#   - a data-ref element with a class defined in the <style> block (no gap)
-#   - a data-ref element with a class NOT defined anywhere (gap)
-#   - a data-ref element with an inline style using var(--defined-token) (no gap)
-#   - a data-ref element with an inline style using var(--undefined-token) (gap)
-#   - a data-ref element with a linked-stylesheet class (gap because stylesheet
-#     is NOT provided in this fixture — tested separately)
-#   - a non-data-ref element (should NOT appear in elements list)
-#   - a <link rel="stylesheet"> pointing to a file that exists on disk
-#     (tested in a second fixture variant)
-
-REFERENCE_HTML_TEMPLATE = """\
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    .defined-class {{
-      border: 1px solid #333;
-      color: var(--defined-token);
-    }}
-    :root {{
-      --defined-token: #ffffff;
-    }}
-  </style>
-  {stylesheet_link}
-</head>
-<body>
-  <!-- defined class: should NOT be in gap_list -->
-  <div data-ref="sidebar" class="defined-class" id="sidebar-root">
-    Sidebar content
-  </div>
-
-  <!-- undefined class: SHOULD be in gap_list -->
-  <section data-ref="header" class="undefined-class-xyz">
-    Header
-  </section>
-
-  <!-- inline style with defined token: NOT in gap_list -->
-  <nav data-ref="nav-bar" style="color: var(--defined-token)">
-    Navigation
-  </nav>
-
-  <!-- inline style with undefined token: SHOULD be in gap_list -->
-  <article data-ref="main-content" style="margin: var(--undefined-token)">
-    Main
-  </article>
-
-  <!-- no data-ref: should NOT appear in elements list -->
-  <footer class="some-footer-class">
-    Footer
-  </footer>
-</body>
-</html>
-"""
 
 STYLES_CSS_CONTENT = """\
 :root {
@@ -238,37 +170,6 @@ STYLES_CSS_CONTENT = """\
 }
 """
 
-LINKED_CSS_CONTENT = """\
-.linked-class {
-  border: 2px solid blue;
-}
-"""
-
-
-def _write_fixture(tmp_dir, with_stylesheet=False, with_linked_css=False):
-    # type: (str, bool, bool) -> str
-    """Write reference.html (and optionally styles.css / linked.css) to tmp_dir.
-    Returns the path to the reference.html file.
-    """
-    link_tag = ""
-    if with_stylesheet:
-        link_tag = '<link rel="stylesheet" href="styles.css">'
-        css_path = os.path.join(tmp_dir, "styles.css")
-        with open(css_path, "w", encoding="utf-8") as fh:
-            fh.write(STYLES_CSS_CONTENT)
-
-    if with_linked_css:
-        link_tag = '<link rel="stylesheet" href="linked.css">'
-        linked_path = os.path.join(tmp_dir, "linked.css")
-        with open(linked_path, "w", encoding="utf-8") as fh:
-            fh.write(LINKED_CSS_CONTENT)
-
-    html = REFERENCE_HTML_TEMPLATE.format(stylesheet_link=link_tag)
-    html_path = os.path.join(tmp_dir, "reference.html")
-    with open(html_path, "w", encoding="utf-8") as fh:
-        fh.write(html)
-    return html_path
-
 
 def _write_styles_css(tmp_dir):
     # type: (str) -> str
@@ -295,6 +196,29 @@ def _capture_stdout(fn, *args, **kwargs):
     return code, stdout_text, stderr_text
 
 
+def _retired_disposition_manifest_dict():
+    # type: () -> dict
+    """A real plan-40 disposition-manifest dict, shaped exactly as the
+    retired `ManifestContainer.manifest_to_dict` (git history commit
+    6cc933c, `src/devforge/lib/_design/_schema.py` pre-plan-53) actually
+    emitted -- {"version": "1", "reference_html": ..., "elements": [...],
+    "gap_list": [...]}. This is NOT a hand-guessed shape: it is transcribed
+    from the real retired producer's serializer output so the FIX 1
+    regression test round-trips against the actual stale on-disk artifact
+    a consumer install would have, not an invented approximation.
+    """
+    return {
+        "version": "1",
+        "reference_html": "design/reference.html",
+        "elements": [
+            {"data_ref": "hero", "disposition": "MATCH"},
+            {"data_ref": "cta-button", "disposition": "DEVIATE",
+             "deviate_reason": "new copy per stakeholder review"},
+        ],
+        "gap_list": [],
+    }
+
+
 def _make_args(**kwargs):
     """Build a simple namespace object."""
     class _NS:
@@ -306,156 +230,130 @@ def _make_args(**kwargs):
 
 
 # ---------------------------------------------------------------------------
-# Tests: _schema.py — ElementRecord validation
+# Tests: _schema.py — BindingPair validation
 # ---------------------------------------------------------------------------
 
 
-class TestElementValidation(unittest.TestCase):
+class TestBindingPairValidation(unittest.TestCase):
 
-    def test_valid_match_element(self):
-        rec = ElementRecord("sidebar", DISPOSITION_MATCH)
-        self.assertEqual(validate_element(rec), [])
+    def test_valid_pair_no_errors(self):
+        pair = BindingPair("[data-ref=hero]", "hero-container")
+        self.assertEqual(validate_pair(pair, 0), [])
 
-    def test_valid_defer_empty_element(self):
-        rec = ElementRecord("main-slot", DISPOSITION_DEFER_EMPTY)
-        self.assertEqual(validate_element(rec), [])
+    def test_empty_anchor_selector_is_error(self):
+        pair = BindingPair("", "hero-container")
+        errors = validate_pair(pair, 0)
+        self.assertTrue(any("anchor_selector" in e for e in errors),
+                        "Expected anchor_selector error; got: {0}".format(errors))
+        self.assertTrue(any("pairs[0]" in e for e in errors),
+                        "Expected pair index in error; got: {0}".format(errors))
 
-    def test_valid_static_placeholder(self):
-        rec = ElementRecord("hero-image", DISPOSITION_STATIC_PLACEHOLDER)
-        self.assertEqual(validate_element(rec), [])
+    def test_whitespace_only_anchor_selector_is_error(self):
+        pair = BindingPair("   ", "hero-container")
+        errors = validate_pair(pair, 0)
+        self.assertTrue(any("anchor_selector" in e for e in errors))
 
-    def test_valid_deviate_element(self):
-        rec = ElementRecord("accent-bar", DISPOSITION_DEVIATE, "accent area is inert")
-        self.assertEqual(validate_element(rec), [])
+    def test_empty_built_testid_is_error(self):
+        pair = BindingPair("[data-ref=hero]", "")
+        errors = validate_pair(pair, 0)
+        self.assertTrue(any("built_testid" in e for e in errors),
+                        "Expected built_testid error; got: {0}".format(errors))
 
-    def test_deviate_empty_reason_is_error(self):
-        rec = ElementRecord("accent-bar", DISPOSITION_DEVIATE, "")
-        errors = validate_element(rec)
-        self.assertTrue(any("deviate_reason is empty" in e for e in errors),
-                        "Expected deviate_reason error; got: {0}".format(errors))
+    def test_whitespace_only_built_testid_is_error(self):
+        pair = BindingPair("[data-ref=hero]", "   ")
+        errors = validate_pair(pair, 0)
+        self.assertTrue(any("built_testid" in e for e in errors))
 
-    def test_invalid_disposition_string(self):
-        rec = ElementRecord("foo", "BOGUS")
-        errors = validate_element(rec)
-        self.assertTrue(any("invalid disposition" in e for e in errors),
-                        "Expected invalid disposition error; got: {0}".format(errors))
-
-    def test_unclassified_element_is_error(self):
-        rec = ElementRecord("sidebar", DISPOSITION_UNCLASSIFIED)
-        errors = validate_element(rec)
-        self.assertTrue(any("unclassified" in e for e in errors),
-                        "Expected unclassified error; got: {0}".format(errors))
-        # Error message must name the element
-        self.assertTrue(any("sidebar" in e for e in errors),
-                        "Expected element name in error; got: {0}".format(errors))
-
-    def test_empty_data_ref_is_error(self):
-        rec = ElementRecord("", DISPOSITION_MATCH)
-        errors = validate_element(rec)
-        self.assertTrue(any("data_ref" in e for e in errors),
-                        "Expected data_ref error; got: {0}".format(errors))
-
-    def test_whitespace_only_data_ref_is_error(self):
-        rec = ElementRecord("   ", DISPOSITION_MATCH)
-        errors = validate_element(rec)
-        self.assertTrue(any("data_ref" in e for e in errors),
-                        "Expected data_ref error; got: {0}".format(errors))
-
-    def test_control_char_in_data_ref(self):
-        rec = ElementRecord("side\nbar", DISPOSITION_MATCH)
-        errors = validate_element(rec)
+    def test_control_char_in_anchor_selector(self):
+        pair = BindingPair("hero\nselector", "hero-container")
+        errors = validate_pair(pair, 0)
         self.assertTrue(any("control" in e for e in errors),
                         "Expected control char error; got: {0}".format(errors))
 
-    def test_control_char_in_deviate_reason(self):
-        rec = ElementRecord("foo", DISPOSITION_DEVIATE, "reason\x01here")
-        errors = validate_element(rec)
+    def test_control_char_in_built_testid(self):
+        pair = BindingPair("[data-ref=hero]", "hero\x01container")
+        errors = validate_pair(pair, 0)
         self.assertTrue(any("control" in e for e in errors),
                         "Expected control char error; got: {0}".format(errors))
 
+    def test_pair_index_named_in_label(self):
+        pair = BindingPair("", "")
+        errors = validate_pair(pair, 3)
+        self.assertTrue(any("pairs[3]" in e for e in errors),
+                        "Expected pairs[3] in label; got: {0}".format(errors))
+
 
 # ---------------------------------------------------------------------------
-# Tests: _schema.py — ManifestContainer / validate_manifest
+# Tests: _schema.py — Binding validation
 # ---------------------------------------------------------------------------
 
 
-class TestManifestValidation(unittest.TestCase):
+class TestBindingValidation(unittest.TestCase):
 
-    def _make_manifest(self, dispositions, gap_list=None):
-        # type: (list, list) -> ManifestContainer
-        """Build a manifest from a list of (data_ref, disposition[, reason]) tuples."""
-        elements = []
-        for item in dispositions:
-            if len(item) == 3:
-                elements.append(ElementRecord(item[0], item[1], item[2]))
-            else:
-                elements.append(ElementRecord(item[0], item[1]))
-        return ManifestContainer(
-            reference_html="design/reference.html",
-            elements=elements,
-            gap_list=gap_list or [],
+    def test_route_plus_container_floor_pair_is_valid(self):
+        b = Binding(
+            route="/dashboard",
+            pairs=[BindingPair("[data-ref=container]", "dashboard-root")],
         )
+        self.assertEqual(validate_binding(b), [])
 
-    def test_fully_classified_empty_gap_list_is_valid(self):
-        m = self._make_manifest([
-            ("sidebar", DISPOSITION_MATCH),
-            ("header", DISPOSITION_DEFER_EMPTY),
-            ("accent", DISPOSITION_DEVIATE, "inert area"),
-        ])
-        errors = validate_manifest(m)
-        self.assertEqual(errors, [], "Expected no errors; got: {0}".format(errors))
-
-    def test_one_unclassified_element_is_error(self):
-        # V2: one unclassified element → non-zero naming the element
-        m = self._make_manifest([
-            ("sidebar", DISPOSITION_MATCH),
-            ("header", DISPOSITION_UNCLASSIFIED),
-        ])
-        errors = validate_manifest(m)
-        self.assertTrue(len(errors) >= 1)
-        self.assertTrue(any("header" in e for e in errors),
-                        "Expected 'header' named in error; got: {0}".format(errors))
-
-    def test_two_unclassified_elements_both_named(self):
-        m = self._make_manifest([
-            ("el-a", DISPOSITION_UNCLASSIFIED),
-            ("el-b", DISPOSITION_UNCLASSIFIED),
-        ])
-        errors = validate_manifest(m)
-        self.assertTrue(any("el-a" in e for e in errors))
-        self.assertTrue(any("el-b" in e for e in errors))
-
-    def test_nonempty_gap_list_is_error(self):
-        # V3: non-empty gap-list → non-zero naming the token
-        m = self._make_manifest(
-            [("sidebar", DISPOSITION_MATCH)],
-            gap_list=["undefined-class-xyz (no CSS definition found)"],
+    def test_route_plus_floor_and_opt_in_pair_is_valid(self):
+        b = Binding(
+            route="/dashboard",
+            pairs=[
+                BindingPair("[data-ref=container]", "dashboard-root"),
+                BindingPair(".title", "dashboard-title"),
+            ],
         )
-        errors = validate_manifest(m)
-        self.assertTrue(any("undefined-class-xyz" in e for e in errors),
-                        "Expected gap-list token in error; got: {0}".format(errors))
+        self.assertEqual(validate_binding(b), [])
 
-    def test_multiple_gap_list_tokens_all_named(self):
-        m = self._make_manifest(
-            [("sidebar", DISPOSITION_MATCH)],
-            gap_list=["token-a (no CSS definition found)", "--token-b (undefined)"],
+    def test_missing_route_is_error(self):
+        b = Binding(route="", pairs=[BindingPair(".a", "a-testid")])
+        errors = validate_binding(b)
+        self.assertTrue(any("route" in e for e in errors),
+                        "Expected route error; got: {0}".format(errors))
+
+    def test_whitespace_only_route_is_error(self):
+        b = Binding(route="   ", pairs=[BindingPair(".a", "a-testid")])
+        errors = validate_binding(b)
+        self.assertTrue(any("route" in e for e in errors))
+
+    def test_zero_pairs_is_error(self):
+        b = Binding(route="/dashboard", pairs=[])
+        errors = validate_binding(b)
+        self.assertTrue(any("pairs" in e for e in errors),
+                        "Expected pairs error; got: {0}".format(errors))
+
+    def test_pair_missing_anchor_selector_named(self):
+        b = Binding(
+            route="/dashboard",
+            pairs=[BindingPair("", "dashboard-root")],
         )
-        errors = validate_manifest(m)
-        self.assertTrue(any("token-a" in e for e in errors))
-        self.assertTrue(any("token-b" in e for e in errors))
+        errors = validate_binding(b)
+        self.assertTrue(any("pairs[0]" in e and "anchor_selector" in e for e in errors),
+                        "Expected pairs[0] anchor_selector error; got: {0}".format(errors))
 
-    def test_empty_reference_html_is_error(self):
-        m = self._make_manifest([("sidebar", DISPOSITION_MATCH)])
-        m.reference_html = ""
-        errors = validate_manifest(m)
-        self.assertTrue(any("reference_html" in e for e in errors))
+    def test_second_pair_missing_built_testid_named(self):
+        b = Binding(
+            route="/dashboard",
+            pairs=[
+                BindingPair("[data-ref=container]", "dashboard-root"),
+                BindingPair(".title", ""),
+            ],
+        )
+        errors = validate_binding(b)
+        self.assertTrue(any("pairs[1]" in e and "built_testid" in e for e in errors),
+                        "Expected pairs[1] built_testid error; got: {0}".format(errors))
 
-    def test_deviate_without_reason_propagates_from_element(self):
-        m = self._make_manifest([
-            ("accent", DISPOSITION_DEVIATE, ""),
-        ])
-        errors = validate_manifest(m)
-        self.assertTrue(any("deviate_reason is empty" in e for e in errors))
+    def test_empty_binding_fails_both_route_and_pairs(self):
+        # Honesty invariant #3: an empty binding must never validate clean.
+        b = Binding(route="", pairs=[])
+        errors = validate_binding(b)
+        self.assertTrue(any("route" in e for e in errors),
+                        "Expected route error on empty binding; got: {0}".format(errors))
+        self.assertTrue(any("pairs" in e for e in errors),
+                        "Expected pairs error on empty binding; got: {0}".format(errors))
+        self.assertGreaterEqual(len(errors), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -465,460 +363,406 @@ class TestManifestValidation(unittest.TestCase):
 
 class TestSerialization(unittest.TestCase):
 
-    def test_element_roundtrip(self):
-        orig = ElementRecord("sidebar", DISPOSITION_MATCH)
-        restored = element_from_dict(element_to_dict(orig))
-        self.assertEqual(restored.data_ref, "sidebar")
-        self.assertEqual(restored.disposition, DISPOSITION_MATCH)
-        self.assertEqual(restored.deviate_reason, "")
+    def test_pair_roundtrip_dict(self):
+        orig = BindingPair("[data-ref=hero]", "hero-container")
+        restored = pair_from_dict(pair_to_dict(orig))
+        self.assertEqual(restored.anchor_selector, "[data-ref=hero]")
+        self.assertEqual(restored.built_testid, "hero-container")
 
-    def test_element_roundtrip_deviate(self):
-        orig = ElementRecord("accent", DISPOSITION_DEVIATE, "inert area")
-        restored = element_from_dict(element_to_dict(orig))
-        self.assertEqual(restored.data_ref, "accent")
-        self.assertEqual(restored.disposition, DISPOSITION_DEVIATE)
-        self.assertEqual(restored.deviate_reason, "inert area")
-
-    def test_manifest_roundtrip_dict(self):
-        m = ManifestContainer(
-            reference_html="design/reference.html",
-            elements=[
-                ElementRecord("sidebar", DISPOSITION_MATCH),
-                ElementRecord("slot-a", DISPOSITION_DEFER_EMPTY),
+    def test_binding_roundtrip_dict(self):
+        b = Binding(
+            route="/dashboard",
+            pairs=[
+                BindingPair("[data-ref=container]", "dashboard-root"),
+                BindingPair(".title", "dashboard-title"),
             ],
-            gap_list=["missing-token (undefined)"],
         )
-        restored = manifest_from_dict(manifest_to_dict(m))
-        self.assertEqual(restored.reference_html, "design/reference.html")
-        self.assertEqual(len(restored.elements), 2)
-        self.assertEqual(restored.elements[0].data_ref, "sidebar")
-        self.assertEqual(restored.gap_list, ["missing-token (undefined)"])
+        restored = binding_from_dict(binding_to_dict(b))
+        self.assertEqual(restored.route, "/dashboard")
+        self.assertEqual(len(restored.pairs), 2)
+        self.assertEqual(restored.pairs[0].anchor_selector, "[data-ref=container]")
+        self.assertEqual(restored.pairs[1].built_testid, "dashboard-title")
 
-    def test_manifest_roundtrip_json(self):
-        m = ManifestContainer(
-            reference_html="design/reference.html",
-            elements=[ElementRecord("nav", DISPOSITION_STATIC_PLACEHOLDER)],
-            gap_list=[],
+    def test_binding_roundtrip_json(self):
+        b = Binding(
+            route="/catalog",
+            pairs=[BindingPair(".catalog-root", "catalog-container")],
         )
-        restored = manifest_from_json(manifest_to_json(m))
-        self.assertEqual(restored.elements[0].disposition, DISPOSITION_STATIC_PLACEHOLDER)
-        self.assertEqual(restored.gap_list, [])
+        restored = binding_from_json(binding_to_json(b))
+        self.assertEqual(restored.route, "/catalog")
+        self.assertEqual(restored.pairs[0].built_testid, "catalog-container")
+
+    def test_version_defaults_to_schema_version(self):
+        b = Binding(route="/x", pairs=[BindingPair(".a", "a")])
+        self.assertEqual(b.version, SCHEMA_VERSION)
+        d = binding_to_dict(b)
+        self.assertEqual(d["version"], SCHEMA_VERSION)
+
+    def test_binding_to_dict_shape(self):
+        b = Binding(route="/x", pairs=[BindingPair(".a", "a-id")])
+        d = binding_to_dict(b)
+        self.assertEqual(set(d.keys()), {"version", "route", "pairs"})
+        self.assertEqual(d["pairs"], [{"anchor_selector": ".a", "built_testid": "a-id"}])
+
+    def test_binding_from_dict_missing_pairs_key_defaults_empty(self):
+        restored = binding_from_dict({"route": "/x"})
+        self.assertEqual(restored.pairs, [])
+
+    def test_binding_from_dict_missing_route_key_defaults_empty_string(self):
+        restored = binding_from_dict({"pairs": []})
+        self.assertEqual(restored.route, "")
 
 
 # ---------------------------------------------------------------------------
-# Tests: _reference.py — resolve_reference with real fixtures
+# Tests: _schema.py — binding_from_dict retired-schema detection (FIX 1)
 # ---------------------------------------------------------------------------
 
 
-class TestResolveReference(unittest.TestCase):
+class TestBindingFromDictRetiredSchema(unittest.TestCase):
+    """A stale on-disk plan-40 disposition manifest must raise a
+    DISTINGUISHABLE error from binding_from_dict, not silently coerce to an
+    empty Binding that then fails validate_binding with the generic
+    route/pairs message."""
+
+    def test_real_old_format_dict_raises_retired_schema_error(self):
+        d = _retired_disposition_manifest_dict()
+        with self.assertRaises(RetiredManifestSchemaError) as ctx:
+            binding_from_dict(d)
+        msg = str(ctx.exception)
+        self.assertIn("retired", msg)
+        self.assertIn("elements/gap_list", msg)
+        self.assertIn("route+pairs", msg)
+
+    def test_elements_key_alone_triggers_retired_detection(self):
+        # version absent, but "elements" key alone is sufficient.
+        d = {"reference_html": "design/reference.html", "elements": []}
+        with self.assertRaises(RetiredManifestSchemaError):
+            binding_from_dict(d)
+
+    def test_gap_list_key_alone_triggers_retired_detection(self):
+        d = {"gap_list": ["some-unresolved-token"]}
+        with self.assertRaises(RetiredManifestSchemaError):
+            binding_from_dict(d)
+
+    def test_version_1_alone_triggers_retired_detection(self):
+        d = {"version": "1"}
+        with self.assertRaises(RetiredManifestSchemaError):
+            binding_from_dict(d)
+
+    def test_new_but_incomplete_binding_stays_on_generic_path(self):
+        """{"route": "", "pairs": []} is NOT retired-shaped -- it must
+        deserialize normally and fail validate_binding's EXISTING generic
+        route/pairs message, unchanged by FIX 1."""
+        d = {"route": "", "pairs": []}
+        restored = binding_from_dict(d)  # must NOT raise
+        errors = validate_binding(restored)
+        self.assertTrue(any("route" in e for e in errors))
+        self.assertTrue(any("pairs" in e for e in errors))
+        # And must NOT contain the retired-schema wording.
+        joined = " ".join(errors)
+        self.assertNotIn("retired", joined)
+
+    def test_valid_binding_dict_still_deserializes(self):
+        """A genuinely valid (current-schema) dict is unaffected by the
+        retired-shape check."""
+        d = {
+            "version": SCHEMA_VERSION,
+            "route": "/dashboard",
+            "pairs": [{"anchor_selector": ".root", "built_testid": "dashboard-root"}],
+        }
+        restored = binding_from_dict(d)
+        self.assertEqual(validate_binding(restored), [])
+
+
+# ---------------------------------------------------------------------------
+# Tests: _schema.py — binding_from_dict / pair_from_dict non-object-shape
+# guard (FIX F2)
+# ---------------------------------------------------------------------------
+
+
+class TestBindingFromDictNonObjectShape(unittest.TestCase):
+    """A binding (or a pairs entry within it) that is not a JSON object
+    where one is required must raise a distinguishable BindingParseError,
+    never an uncaught TypeError/AttributeError from a bare `.get()` call."""
+
+    def test_null_top_level_raises_binding_parse_error(self):
+        with self.assertRaises(BindingParseError) as ctx:
+            binding_from_json("null")
+        self.assertIn("JSON object", str(ctx.exception))
+
+    def test_list_top_level_raises_binding_parse_error(self):
+        with self.assertRaises(BindingParseError):
+            binding_from_json("[1, 2, 3]")
+
+    def test_string_top_level_raises_binding_parse_error(self):
+        with self.assertRaises(BindingParseError):
+            binding_from_json('"x"')
+
+    def test_number_top_level_raises_binding_parse_error(self):
+        with self.assertRaises(BindingParseError):
+            binding_from_dict(42)
+
+    def test_binding_parse_error_is_a_value_error(self):
+        # Existing (OSError, ValueError) / (RetiredManifestSchemaError,
+        # ValueError) catch sites depend on this.
+        self.assertTrue(issubclass(BindingParseError, ValueError))
+
+    def test_non_dict_pairs_entry_raises_binding_parse_error(self):
+        d = {"route": "/x", "pairs": ["x"]}
+        with self.assertRaises(BindingParseError) as ctx:
+            binding_from_dict(d)
+        self.assertIn("pairs entry", str(ctx.exception))
+
+    def test_non_list_pairs_value_raises_binding_parse_error(self):
+        d = {"route": "/x", "pairs": "not-a-list"}
+        with self.assertRaises(BindingParseError):
+            binding_from_dict(d)
+
+    def test_pair_from_dict_non_dict_raises_binding_parse_error(self):
+        with self.assertRaises(BindingParseError):
+            pair_from_dict("not-a-dict")
+
+    def test_null_top_level_checked_before_retired_shape_detection(self):
+        # A None payload would crash `_is_retired_manifest_shape`'s
+        # `"elements" in d` with a TypeError if the isinstance guard did not
+        # run FIRST -- assert the raised error is the non-object one, not a
+        # retired-schema false-positive or an uncaught TypeError.
+        with self.assertRaises(BindingParseError):
+            binding_from_dict(None)
+
+    def test_valid_binding_dict_unaffected(self):
+        """A genuinely valid dict still deserializes normally -- the new
+        guard must not reject well-formed input."""
+        d = {
+            "version": SCHEMA_VERSION,
+            "route": "/dashboard",
+            "pairs": [{"anchor_selector": ".root", "built_testid": "dashboard-root"}],
+        }
+        restored = binding_from_dict(d)
+        self.assertEqual(restored.route, "/dashboard")
+        self.assertEqual(len(restored.pairs), 1)
+
+
+# ---------------------------------------------------------------------------
+# Tests: _css_parse.py — retained CSS parsing utilities
+# ---------------------------------------------------------------------------
+
+
+class TestCSSParse(unittest.TestCase):
+    """Tests for _parse_css_rules / _extract_rule_blocks (relocated, plan 53 Phase 3)."""
+
+    def test_simple_rule_captured(self):
+        css = ".foo { color: red; margin: 4px; }"
+        rules, custom_props = _parse_css_rules(css)
+        self.assertIn("color", rules.get(".foo", {}))
+        self.assertIn("margin", rules.get(".foo", {}))
+
+    def test_custom_property_definition_captured(self):
+        css = ":root { --spacing-sm: 4px; --color-bg: #fff; }"
+        rules, custom_props = _parse_css_rules(css)
+        self.assertIn("--spacing-sm", custom_props)
+        self.assertEqual(custom_props["--spacing-sm"], "4px")
+
+    def test_custom_property_not_in_rules(self):
+        css = ":root { --spacing-sm: 4px; color: red; }"
+        rules, custom_props = _parse_css_rules(css)
+        root_decls = rules.get(":root", {})
+        self.assertNotIn("--spacing-sm", root_decls)
+
+    def test_multiple_rules(self):
+        css = ".a { margin: 1px; } .b { padding: 2px; }"
+        rules, custom_props = _parse_css_rules(css)
+        self.assertIn("margin", rules.get(".a", {}))
+        self.assertIn("padding", rules.get(".b", {}))
+
+    def test_empty_css_yields_empty_dicts(self):
+        rules, custom_props = _parse_css_rules("")
+        self.assertEqual(rules, {})
+        self.assertEqual(custom_props, {})
+
+    def test_F2_class_inside_at_media_is_collected(self):
+        css = """
+@media (max-width: 768px) {
+  .media-only-class {
+    margin: 8px;
+    padding: 4px;
+  }
+}
+"""
+        rules, custom_props = _parse_css_rules(css)
+        keys = list(rules.keys())
+        self.assertTrue(
+            any("media-only-class" in k for k in keys),
+            "F2: .media-only-class should be collected from @media block; "
+            "got keys: {0}".format(keys),
+        )
+
+    def test_F2_at_supports_class_collected(self):
+        css = """
+@supports (display: grid) {
+  .grid-class { display: grid; gap: 8px; }
+}
+"""
+        rules, custom_props = _parse_css_rules(css)
+        keys = list(rules.keys())
+        self.assertTrue(
+            any("grid-class" in k for k in keys),
+            "F2: .grid-class should be collected from @supports block; "
+            "got keys: {0}".format(keys),
+        )
+
+    def test_F2_extract_rule_blocks_recurses_at_media(self):
+        css = "@media screen { .inner { color: red; } } .outer { margin: 4px; }"
+        blocks = _extract_rule_blocks(css)
+        selectors = [b[0] for b in blocks]
+        self.assertTrue(any("inner" in s for s in selectors),
+                        "Expected .inner from @media body; got: {0}".format(selectors))
+        self.assertTrue(any("outer" in s for s in selectors),
+                        "Expected .outer at top level; got: {0}".format(selectors))
+
+
+# ---------------------------------------------------------------------------
+# Tests: _manifest.py — cmd_validate_binding CLI handler
+# ---------------------------------------------------------------------------
+
+
+class TestCmdValidateBinding(unittest.TestCase):
 
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
-        self._html_path = _write_fixture(self._tmp, with_stylesheet=False)
 
     def tearDown(self):
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def _result(self):
-        return resolve_reference(self._html_path)
+    def _write_binding_file(self, binding):
+        # type: (Binding) -> str
+        """Write a real binding (via the real serializer) to a temp file."""
+        path = os.path.join(self._tmp, "design-manifest.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(binding_to_json(binding))
+        return path
 
-    def test_returns_four_data_ref_elements(self):
-        # V4: resolve-reference returns expected element list
-        result = self._result()
-        data_refs = [e["data_ref"] for e in result["elements"]]
-        self.assertIn("sidebar", data_refs)
-        self.assertIn("header", data_refs)
-        self.assertIn("nav-bar", data_refs)
-        self.assertIn("main-content", data_refs)
-
-    def test_non_data_ref_element_excluded(self):
-        result = self._result()
-        data_refs = [e["data_ref"] for e in result["elements"]]
-        # The footer has no data-ref so it must NOT appear
-        self.assertNotIn("footer", data_refs)
-        # No empty data_ref entries
-        self.assertFalse(any(r == "" for r in data_refs))
-
-    def test_element_tag_captured(self):
-        result = self._result()
-        sidebar = next(e for e in result["elements"] if e["data_ref"] == "sidebar")
-        self.assertEqual(sidebar["tag"], "div")
-
-    def test_element_id_captured(self):
-        result = self._result()
-        sidebar = next(e for e in result["elements"] if e["data_ref"] == "sidebar")
-        self.assertEqual(sidebar["id"], "sidebar-root")
-
-    def test_element_classes_captured(self):
-        result = self._result()
-        sidebar = next(e for e in result["elements"] if e["data_ref"] == "sidebar")
-        self.assertIn("defined-class", sidebar["classes"])
-
-    def test_inline_style_captured(self):
-        result = self._result()
-        nav = next(e for e in result["elements"] if e["data_ref"] == "nav-bar")
-        self.assertIn("--defined-token", nav["inline_style"])
-
-    def test_style_block_rules_captured(self):
-        result = self._result()
-        # .defined-class should appear in resolved_values
-        keys = list(result["resolved_values"].keys())
-        self.assertTrue(
-            any("defined-class" in k for k in keys),
-            "Expected .defined-class rule in resolved_values; got keys: {0}".format(keys),
-        )
-
-    def test_custom_property_defined(self):
-        result = self._result()
-        self.assertIn("--defined-token", result["custom_properties"])
-
-    def test_undefined_class_in_gap_list(self):
-        result = self._result()
-        self.assertTrue(
-            any("undefined-class-xyz" in g for g in result["gap_list"]),
-            "Expected undefined-class-xyz in gap_list; got: {0}".format(result["gap_list"]),
-        )
-
-    def test_undefined_token_in_inline_style_in_gap_list(self):
-        result = self._result()
-        self.assertTrue(
-            any("--undefined-token" in g for g in result["gap_list"]),
-            "Expected --undefined-token in gap_list; got: {0}".format(result["gap_list"]),
-        )
-
-    def test_defined_class_not_in_gap_list(self):
-        result = self._result()
-        # Use a word-boundary check: the gap entry starts with the class name
-        # (e.g. "defined-class (no CSS definition found)") so we check for
-        # exactly "defined-class " or "defined-class (" as a prefix, NOT a
-        # substring match (which would also hit "undefined-class-xyz ...").
-        self.assertFalse(
-            any(g.startswith("defined-class ") for g in result["gap_list"]),
-            "defined-class should NOT be in gap_list; got: {0}".format(result["gap_list"]),
-        )
-
-    def test_defined_custom_property_not_in_gap_list(self):
-        result = self._result()
-        self.assertFalse(
-            any("--defined-token" in g and "undefined" in g for g in result["gap_list"]),
-            "--defined-token should NOT be in gap_list; got: {0}".format(result["gap_list"]),
-        )
-
-    def test_linked_stylesheet_resolved_when_present(self):
-        # Write a fixture with a linked CSS that IS on disk
-        html_path = _write_fixture(self._tmp, with_linked_css=True)
-        result = resolve_reference(html_path)
-        # .linked-class should be in resolved_values
-        keys = list(result["resolved_values"].keys())
-        self.assertTrue(
-            any("linked-class" in k for k in keys),
-            "Expected .linked-class from linked.css; got: {0}".format(keys),
-        )
-
-    def test_linked_stylesheet_not_on_disk_does_not_crash(self):
-        # Create HTML with a stylesheet href pointing to a non-existent file
-        html = """<!DOCTYPE html><html><head>
-        <link rel="stylesheet" href="nonexistent.css">
-        </head><body>
-        <div data-ref="el1" class="orphan-class">text</div>
-        </body></html>"""
-        html_path = os.path.join(self._tmp, "ref_nolink.html")
-        with open(html_path, "w") as fh:
-            fh.write(html)
-        result = resolve_reference(html_path)
-        # Should not crash; orphan-class has no definition → gap_list
-        self.assertTrue(
-            any("orphan-class" in g for g in result["gap_list"]),
-            "Expected orphan-class in gap_list; got: {0}".format(result["gap_list"]),
-        )
-
-    def test_file_not_found_raises(self):
-        with self.assertRaises(OSError):
-            resolve_reference("/tmp/nonexistent-reference-12345.html")
-
-    def test_reference_html_key_in_result(self):
-        result = self._result()
-        self.assertEqual(result["reference_html"], self._html_path)
-
-    def test_F1_var_in_non_data_ref_rule_does_not_create_gap(self):
-        """F1: a var(--x) in a rule whose selector does NOT match any data-ref
-        element must NOT create a gap entry — only rules that apply to data-ref
-        elements are scanned for undefined token references."""
-        html = """<!DOCTYPE html><html>
-<head>
-<style>
-  /* .data-ref-class IS used by a data-ref element */
-  .data-ref-class { color: red; }
-  /* .utility-class is NOT used by any data-ref element;
-     its var(--internal-token) must NOT appear in the gap-list */
-  .utility-class { margin: var(--internal-token); }
-  /* --internal-token is also NOT defined anywhere */
-</style>
-</head>
-<body>
-  <div data-ref="el1" class="data-ref-class">content</div>
-  <!-- .utility-class is NOT applied to any data-ref element -->
-  <span class="utility-class">non-ref span</span>
-</body>
-</html>"""
-        html_path = os.path.join(self._tmp, "ref_f1.html")
-        with open(html_path, "w", encoding="utf-8") as fh:
-            fh.write(html)
-        result = resolve_reference(html_path)
-        # --internal-token is only referenced in .utility-class, which is NOT
-        # applied to any data-ref element → must NOT appear in gap_list
-        self.assertFalse(
-            any("--internal-token" in g for g in result["gap_list"]),
-            "F1: --internal-token from non-data-ref rule should NOT be in gap_list; "
-            "got: {0}".format(result["gap_list"]),
-        )
-        # Sanity: the element itself is still found
-        self.assertEqual(len(result["elements"]), 1)
-        self.assertEqual(result["elements"][0]["data_ref"], "el1")
-
-
-class TestCmdResolveReference(unittest.TestCase):
-    """CLI handler tests for resolve-reference."""
-
-    def setUp(self):
-        self._tmp = tempfile.mkdtemp()
-        self._html_path = _write_fixture(self._tmp)
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self._tmp, ignore_errors=True)
-
-    def test_happy_path_exit_0_json_stdout(self):
-        args = _make_args(html_path=self._html_path)
-        code, out, err = _capture_stdout(cmd_resolve_reference, args)
-        self.assertEqual(code, 0)
+    def test_valid_binding_one_pair_exit_0(self):
+        b = Binding(route="/dashboard", pairs=[BindingPair(".root", "dashboard-root")])
+        path = self._write_binding_file(b)
+        args = _make_args(binding_path=path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 0, "Expected exit 0; stderr: {0}".format(err))
         data = json.loads(out)
-        self.assertIn("elements", data)
-        self.assertIn("gap_list", data)
+        self.assertTrue(data["valid"])
+        self.assertEqual(data["errors"], [])
 
-    def test_missing_html_path_arg_exit_2(self):
-        args = _make_args(html_path=None)
-        code, out, err = _capture_stdout(cmd_resolve_reference, args)
+    def test_valid_binding_two_pairs_exit_0(self):
+        b = Binding(
+            route="/dashboard",
+            pairs=[
+                BindingPair(".root", "dashboard-root"),
+                BindingPair(".title", "dashboard-title"),
+            ],
+        )
+        path = self._write_binding_file(b)
+        args = _make_args(binding_path=path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 0, "Expected exit 0; stderr: {0}".format(err))
+
+    def test_missing_route_exit_1_names_route(self):
+        b = Binding(route="", pairs=[BindingPair(".root", "dashboard-root")])
+        path = self._write_binding_file(b)
+        args = _make_args(binding_path=path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 1, "Expected exit 1; stderr: {0}".format(err))
+        data = json.loads(out)
+        self.assertFalse(data["valid"])
+        self.assertTrue(any("route" in e for e in data["errors"]))
+
+    def test_zero_pairs_exit_1(self):
+        b = Binding(route="/dashboard", pairs=[])
+        path = self._write_binding_file(b)
+        args = _make_args(binding_path=path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 1)
+        data = json.loads(out)
+        self.assertFalse(data["valid"])
+        self.assertTrue(any("pairs" in e for e in data["errors"]))
+
+    def test_pair_missing_anchor_selector_exit_1(self):
+        b = Binding(route="/dashboard", pairs=[BindingPair("", "dashboard-root")])
+        path = self._write_binding_file(b)
+        args = _make_args(binding_path=path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 1)
+        data = json.loads(out)
+        self.assertTrue(any("pairs[0]" in e and "anchor_selector" in e for e in data["errors"]))
+
+    def test_pair_missing_built_testid_exit_1(self):
+        b = Binding(route="/dashboard", pairs=[BindingPair(".root", "")])
+        path = self._write_binding_file(b)
+        args = _make_args(binding_path=path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 1)
+        data = json.loads(out)
+        self.assertTrue(any("built_testid" in e for e in data["errors"]))
+
+    def test_empty_binding_exit_1_both_errors(self):
+        b = Binding(route="", pairs=[])
+        path = self._write_binding_file(b)
+        args = _make_args(binding_path=path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 1)
+        data = json.loads(out)
+        self.assertTrue(any("route" in e for e in data["errors"]))
+        self.assertTrue(any("pairs" in e for e in data["errors"]))
+
+    def test_missing_binding_path_arg_exit_2(self):
+        args = _make_args(binding_path=None)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
         self.assertEqual(code, 2)
 
     def test_nonexistent_file_exit_2(self):
-        args = _make_args(html_path="/tmp/does-not-exist-99999.html")
-        code, out, err = _capture_stdout(cmd_resolve_reference, args)
-        self.assertEqual(code, 2)
-
-
-# ---------------------------------------------------------------------------
-# Tests: _manifest.py — init_manifest_from_reference
-# ---------------------------------------------------------------------------
-
-
-class TestInitManifest(unittest.TestCase):
-
-    def setUp(self):
-        self._tmp = tempfile.mkdtemp()
-        self._html_path = _write_fixture(self._tmp)
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self._tmp, ignore_errors=True)
-
-    def _ref_result(self):
-        return resolve_reference(self._html_path)
-
-    def test_elements_all_unclassified(self):
-        ref = self._ref_result()
-        m = init_manifest_from_reference(ref)
-        for elem in m.elements:
-            self.assertEqual(
-                elem.disposition,
-                DISPOSITION_UNCLASSIFIED,
-                "Expected unclassified; data_ref={0}".format(elem.data_ref),
-            )
-
-    def test_element_count_matches_reference(self):
-        ref = self._ref_result()
-        m = init_manifest_from_reference(ref)
-        self.assertEqual(len(m.elements), len(ref["elements"]))
-
-    def test_gap_list_copied(self):
-        ref = self._ref_result()
-        m = init_manifest_from_reference(ref)
-        self.assertEqual(m.gap_list, ref["gap_list"])
-
-    def test_reference_html_path_copied(self):
-        ref = self._ref_result()
-        m = init_manifest_from_reference(ref)
-        self.assertEqual(m.reference_html, self._html_path)
-
-    def test_data_refs_preserved(self):
-        ref = self._ref_result()
-        m = init_manifest_from_reference(ref)
-        manifest_data_refs = {e.data_ref for e in m.elements}
-        ref_data_refs = {e["data_ref"] for e in ref["elements"]}
-        self.assertEqual(manifest_data_refs, ref_data_refs)
-
-
-class TestCmdInitManifest(unittest.TestCase):
-    """CLI handler tests for init-manifest."""
-
-    def setUp(self):
-        self._tmp = tempfile.mkdtemp()
-        # Write resolve-reference output to a JSON file
-        html_path = _write_fixture(self._tmp)
-        ref_result = resolve_reference(html_path)
-        self._ref_json_path = os.path.join(self._tmp, "ref_result.json")
-        with open(self._ref_json_path, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(ref_result, indent=2))
-        self._ref_result = ref_result
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self._tmp, ignore_errors=True)
-
-    def test_happy_path_exit_0_json_stdout(self):
-        args = _make_args(reference_json=self._ref_json_path)
-        code, out, err = _capture_stdout(cmd_init_manifest, args)
-        self.assertEqual(code, 0)
-        data = json.loads(out)
-        self.assertIn("elements", data)
-        self.assertIn("gap_list", data)
-        # All elements must be unclassified
-        for elem in data["elements"]:
-            self.assertEqual(elem["disposition"], "")
-
-    def test_missing_reference_json_arg_exit_2(self):
-        args = _make_args(reference_json=None)
-        code, out, err = _capture_stdout(cmd_init_manifest, args)
-        self.assertEqual(code, 2)
-
-    def test_nonexistent_file_exit_2(self):
-        args = _make_args(reference_json="/tmp/no-such-file-99999.json")
-        code, out, err = _capture_stdout(cmd_init_manifest, args)
+        args = _make_args(binding_path="/tmp/no-such-binding-99999.json")
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
         self.assertEqual(code, 2)
 
     def test_malformed_json_exit_2(self):
         bad_path = os.path.join(self._tmp, "bad.json")
         with open(bad_path, "w") as fh:
             fh.write("{invalid json")
-        args = _make_args(reference_json=bad_path)
-        code, out, err = _capture_stdout(cmd_init_manifest, args)
+        args = _make_args(binding_path=bad_path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
         self.assertEqual(code, 2)
+
+    def test_retired_disposition_manifest_exit_2_distinguishable_message(self):
+        """FIX 1: a stale plan-40 disposition-manifest file must exit
+        non-zero with the DISTINGUISHABLE retired-schema message, not the
+        generic 'route must be non-empty' / 'pairs must contain at least
+        one pair' message."""
+        old_path = os.path.join(self._tmp, "design-manifest.json")
+        with open(old_path, "w", encoding="utf-8") as fh:
+            json.dump(_retired_disposition_manifest_dict(), fh)
+        args = _make_args(binding_path=old_path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertNotEqual(code, 0, "Expected non-zero exit; stdout: {0}".format(out))
+        self.assertIn("retired", err)
+        self.assertIn("elements/gap_list", err)
+        self.assertNotIn("route: must be non-empty", err)
+        self.assertNotIn("pairs: must contain at least one pair", err)
+
+    def test_null_top_level_binding_exit_2_not_traceback(self):
+        """FIX F2: a binding file whose JSON top level is `null` must exit 2
+        via cmd_validate_binding's (OSError, ValueError) catch, not crash
+        with an uncaught TypeError."""
+        null_path = os.path.join(self._tmp, "design-manifest.json")
+        with open(null_path, "w", encoding="utf-8") as fh:
+            fh.write("null")
+        args = _make_args(binding_path=null_path)
+        code, out, err = _capture_stdout(cmd_validate_binding, args)
+        self.assertEqual(code, 2)
+        self.assertNotIn("Traceback", err)
 
 
 # ---------------------------------------------------------------------------
-# Tests: _manifest.py — validate-manifest CLI (Phase-2 Verify cases V1-V3)
-# ---------------------------------------------------------------------------
-
-
-class TestCmdValidateManifest(unittest.TestCase):
-
-    def setUp(self):
-        self._tmp = tempfile.mkdtemp()
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self._tmp, ignore_errors=True)
-
-    def _write_manifest(self, dispositions, gap_list=None):
-        # type: (list, list) -> str
-        """Write a manifest JSON file and return its path."""
-        elements = []
-        for item in dispositions:
-            d = {
-                "data_ref": item[0],
-                "disposition": item[1],
-            }
-            if len(item) == 3:
-                d["deviate_reason"] = item[2]
-            elements.append(d)
-        manifest = {
-            "version": "1",
-            "reference_html": "design/reference.html",
-            "elements": elements,
-            "gap_list": gap_list or [],
-        }
-        path = os.path.join(self._tmp, "manifest.json")
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(manifest, indent=2))
-        return path
-
-    def test_V1_fully_classified_empty_gap_list_exit_0(self):
-        # V1: fully-classified manifest + empty gap-list → exit 0
-        path = self._write_manifest([
-            ("sidebar", "MATCH"),
-            ("header", "DEFER-EMPTY"),
-            ("slot", "STATIC-PLACEHOLDER"),
-            ("accent", "DEVIATE", "inert area"),
-        ])
-        args = _make_args(manifest_path=path)
-        code, out, err = _capture_stdout(cmd_validate_manifest, args)
-        self.assertEqual(code, 0, "Expected exit 0; stderr: {0}".format(err))
-        data = json.loads(out)
-        self.assertTrue(data["valid"])
-        self.assertEqual(data["errors"], [])
-
-    def test_V2_one_unclassified_element_exit_1_names_element(self):
-        # V2: one unclassified element → exit non-zero naming the element
-        path = self._write_manifest([
-            ("sidebar", "MATCH"),
-            ("header", ""),           # unclassified
-        ])
-        args = _make_args(manifest_path=path)
-        code, out, err = _capture_stdout(cmd_validate_manifest, args)
-        self.assertEqual(code, 1, "Expected exit 1; stderr: {0}".format(err))
-        data = json.loads(out)
-        self.assertFalse(data["valid"])
-        self.assertTrue(any("header" in e for e in data["errors"]),
-                        "Expected 'header' in errors; got: {0}".format(data["errors"]))
-
-    def test_V3_nonempty_gap_list_exit_1_names_token(self):
-        # V3: non-empty gap-list → exit non-zero naming the token
-        path = self._write_manifest(
-            [("sidebar", "MATCH")],
-            gap_list=["unknown-class (no CSS definition found)"],
-        )
-        args = _make_args(manifest_path=path)
-        code, out, err = _capture_stdout(cmd_validate_manifest, args)
-        self.assertEqual(code, 1)
-        data = json.loads(out)
-        self.assertFalse(data["valid"])
-        self.assertTrue(any("unknown-class" in e for e in data["errors"]),
-                        "Expected gap token in errors; got: {0}".format(data["errors"]))
-
-    def test_deviate_without_reason_fails(self):
-        path = self._write_manifest([("accent", "DEVIATE", "")])
-        args = _make_args(manifest_path=path)
-        code, out, err = _capture_stdout(cmd_validate_manifest, args)
-        self.assertEqual(code, 1)
-        data = json.loads(out)
-        self.assertFalse(data["valid"])
-
-    def test_missing_manifest_path_exit_2(self):
-        args = _make_args(manifest_path=None)
-        code, out, err = _capture_stdout(cmd_validate_manifest, args)
-        self.assertEqual(code, 2)
-
-    def test_nonexistent_manifest_file_exit_2(self):
-        args = _make_args(manifest_path="/tmp/no-manifest-99999.json")
-        code, out, err = _capture_stdout(cmd_validate_manifest, args)
-        self.assertEqual(code, 2)
-
-    def test_combined_unclassified_and_gap_errors(self):
-        path = self._write_manifest(
-            [("el-a", ""), ("el-b", "MATCH")],
-            gap_list=["stale-token (undefined)"],
-        )
-        args = _make_args(manifest_path=path)
-        code, out, err = _capture_stdout(cmd_validate_manifest, args)
-        self.assertEqual(code, 1)
-        data = json.loads(out)
-        self.assertTrue(any("el-a" in e for e in data["errors"]))
-        self.assertTrue(any("stale-token" in e for e in data["errors"]))
-
-
-# ---------------------------------------------------------------------------
-# Tests: _manifest.py — extract_spacing_scale (V5, V6)
+# Tests: _manifest.py — extract_spacing_scale (V5, V6 — unchanged by plan 53)
 # ---------------------------------------------------------------------------
 
 
@@ -932,7 +776,6 @@ class TestExtractSpacingScale(unittest.TestCase):
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_V5_present_css_returns_available_true_and_scale(self):
-        # V5: spacing extraction returns scale when styles.css present
         css_path = _write_styles_css(self._tmp)
         result = extract_spacing_scale(css_path)
         self.assertTrue(result["available"])
@@ -942,7 +785,6 @@ class TestExtractSpacingScale(unittest.TestCase):
     def test_V5_scale_contains_px_values(self):
         css_path = _write_styles_css(self._tmp)
         result = extract_spacing_scale(css_path)
-        # Fixture has 16px, 8px, 4px, 0, 2rem, 1rem
         scale = result["scale"]
         self.assertTrue(any("px" in v or v == "0" for v in scale),
                         "Expected px values in scale; got: {0}".format(scale))
@@ -955,17 +797,10 @@ class TestExtractSpacingScale(unittest.TestCase):
                         "Expected rem values in scale; got: {0}".format(scale))
 
     def test_V5_non_spacing_property_not_in_scale(self):
-        # border-radius: 4px appears in the fixture under .button — not a spacing prop
         css_path = _write_styles_css(self._tmp)
         result = extract_spacing_scale(css_path)
-        # The background-color and border-radius values should NOT pollute the scale
-        # (this is a content check — scale values must look like length values, and
-        #  we verify 4px ONLY from spacing props, not from border-radius which is
-        #  also 4px in the fixture — the value may legitimately appear from padding
-        #  so we just check that non-spacing properties don't corrupt the structure)
         self.assertIsInstance(result["scale"], list)
         for v in result["scale"]:
-            # Every value in the scale must be a parseable length or "0"
             import re
             self.assertTrue(
                 re.match(r"^\d*\.?\d+(px|rem|em|vh|vw|%|fr)$", v) or v == "0",
@@ -987,7 +822,6 @@ class TestExtractSpacingScale(unittest.TestCase):
         self.assertEqual(result["source"], css_path)
 
     def test_V6_absent_css_available_false(self):
-        # V6: spacing extraction returns available=false when styles.css absent (OQ-6)
         absent_path = os.path.join(self._tmp, "nonexistent-styles.css")
         result = extract_spacing_scale(absent_path)
         self.assertFalse(result["available"])
@@ -995,7 +829,6 @@ class TestExtractSpacingScale(unittest.TestCase):
         self.assertIsNone(result["source"])
 
     def test_V6_absent_css_exit_0(self):
-        # Absent CSS must exit 0, not error
         absent_path = os.path.join(self._tmp, "nonexistent-styles.css")
         args = _make_args(css_path=absent_path)
         code, out, err = _capture_stdout(cmd_extract_spacing_scale, args)
@@ -1017,6 +850,28 @@ class TestExtractSpacingScale(unittest.TestCase):
         code, out, err = _capture_stdout(cmd_extract_spacing_scale, args)
         self.assertEqual(code, 2)
 
+    def test_F2_spacing_scale_from_at_media_block(self):
+        """F2: spacing values defined inside @media blocks are collected."""
+        css = """
+@media (max-width: 768px) {
+  .responsive-container {
+    margin: 12px;
+    padding: 6px;
+  }
+}
+"""
+        css_path = os.path.join(self._tmp, "styles.css")
+        with open(css_path, "w", encoding="utf-8") as fh:
+            fh.write(css)
+        result = extract_spacing_scale(css_path)
+        self.assertTrue(result["available"])
+        self.assertIn("12px", result["scale"],
+                      "F2: 12px from @media block should appear in scale; "
+                      "got: {0}".format(result["scale"]))
+        self.assertIn("6px", result["scale"],
+                      "F2: 6px from @media block should appear in scale; "
+                      "got: {0}".format(result["scale"]))
+
 
 # ---------------------------------------------------------------------------
 # Tests: _cli.py — main dispatch
@@ -1027,7 +882,6 @@ class TestCLIDispatch(unittest.TestCase):
 
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
-        self._html_path = _write_fixture(self._tmp)
 
     def tearDown(self):
         import shutil
@@ -1037,41 +891,17 @@ class TestCLIDispatch(unittest.TestCase):
         code, out, err = _capture_stdout(main, [])
         self.assertEqual(code, 2)
 
-    def test_resolve_reference_via_main(self):
-        code, out, err = _capture_stdout(main, ["resolve-reference", "--html-path", self._html_path])
-        self.assertEqual(code, 0)
+    def test_validate_binding_via_main(self):
+        b = Binding(route="/x", pairs=[BindingPair(".a", "a-id")])
+        path = os.path.join(self._tmp, "design-manifest.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(binding_to_json(b))
+        code, out, err = _capture_stdout(
+            main, ["validate-binding", "--binding-path", path]
+        )
+        self.assertEqual(code, 0, err)
         data = json.loads(out)
-        self.assertIn("elements", data)
-
-    def test_init_manifest_via_main(self):
-        # First produce the resolve-reference JSON
-        ref_result = resolve_reference(self._html_path)
-        ref_json_path = os.path.join(self._tmp, "ref.json")
-        with open(ref_json_path, "w") as fh:
-            fh.write(json.dumps(ref_result))
-        code, out, err = _capture_stdout(main, ["init-manifest", "--reference-json", ref_json_path])
-        self.assertEqual(code, 0)
-        data = json.loads(out)
-        self.assertIn("elements", data)
-
-    def test_validate_manifest_via_main_clean(self):
-        # Build a fully-classified manifest with no gap-list
-        html = "<html><body><div data-ref='el1'></div></body></html>"
-        html_path = os.path.join(self._tmp, "simple.html")
-        with open(html_path, "w") as fh:
-            fh.write(html)
-        # Manually produce a manifest with no gap-list (no classes → no gaps)
-        manifest = {
-            "version": "1",
-            "reference_html": html_path,
-            "elements": [{"data_ref": "el1", "disposition": "MATCH"}],
-            "gap_list": [],
-        }
-        manifest_path = os.path.join(self._tmp, "m.json")
-        with open(manifest_path, "w") as fh:
-            fh.write(json.dumps(manifest))
-        code, out, err = _capture_stdout(main, ["validate-manifest", "--manifest-path", manifest_path])
-        self.assertEqual(code, 0)
+        self.assertTrue(data["valid"])
 
     def test_extract_spacing_scale_via_main_absent(self):
         code, out, err = _capture_stdout(
@@ -1082,225 +912,25 @@ class TestCLIDispatch(unittest.TestCase):
         data = json.loads(out)
         self.assertFalse(data["available"])
 
+    def test_resolve_reference_is_retired_not_a_subcommand(self):
+        """Plan 53 Phase 3: resolve-reference is retired; argparse must reject it."""
+        with self.assertRaises(SystemExit):
+            main(["resolve-reference", "--html-path", "whatever.html"])
 
-# ---------------------------------------------------------------------------
-# Tests: internal CSS parsing helpers
-# ---------------------------------------------------------------------------
+    def test_init_manifest_is_retired_not_a_subcommand(self):
+        """Plan 53 Phase 3: init-manifest is retired; argparse must reject it."""
+        with self.assertRaises(SystemExit):
+            main(["init-manifest", "--reference-json", "whatever.json"])
 
-
-class TestCSSParsing(unittest.TestCase):
-    """Tests for _parse_css_rules to verify the CSS parser handles edge cases."""
-
-    def test_simple_rule_captured(self):
-        css = ".foo { color: red; margin: 4px; }"
-        rules, custom_props = _parse_css_rules(css)
-        self.assertIn("color", rules.get(".foo", {}))
-        self.assertIn("margin", rules.get(".foo", {}))
-
-    def test_custom_property_definition_captured(self):
-        css = ":root { --spacing-sm: 4px; --color-bg: #fff; }"
-        rules, custom_props = _parse_css_rules(css)
-        self.assertIn("--spacing-sm", custom_props)
-        self.assertEqual(custom_props["--spacing-sm"], "4px")
-
-    def test_custom_property_not_in_rules(self):
-        css = ":root { --spacing-sm: 4px; color: red; }"
-        rules, custom_props = _parse_css_rules(css)
-        # --spacing-sm should NOT appear as a rule property
-        root_decls = rules.get(":root", {})
-        self.assertNotIn("--spacing-sm", root_decls)
-
-    def test_multiple_rules(self):
-        css = ".a { margin: 1px; } .b { padding: 2px; }"
-        rules, custom_props = _parse_css_rules(css)
-        self.assertIn("margin", rules.get(".a", {}))
-        self.assertIn("padding", rules.get(".b", {}))
-
-    def test_empty_css_yields_empty_dicts(self):
-        rules, custom_props = _parse_css_rules("")
-        self.assertEqual(rules, {})
-        self.assertEqual(custom_props, {})
-
-    def test_undefined_var_in_value_detected_via_gap_list(self):
-        # An element uses an undefined var; the gap computation should catch it
-        elements = [{"data_ref": "el", "classes": [], "inline_style": "color: var(--missing)"}]
-        css = ".foo { border: 1px solid red; }"
-        rules, custom_props = _parse_css_rules(css)
-        gap = _compute_gap_list(elements, rules, custom_props)
-        self.assertTrue(any("--missing" in g for g in gap))
-
-    def test_F2_class_inside_at_media_is_not_a_false_gap(self):
-        """F2: a class defined ONLY inside an @media block must be collected by
-        _parse_css_rules so that a data-ref element using it does NOT create a
-        false gap entry."""
-        css = """
-@media (max-width: 768px) {
-  .media-only-class {
-    margin: 8px;
-    padding: 4px;
-  }
-}
-"""
-        rules, custom_props = _parse_css_rules(css)
-        # .media-only-class must appear in the collected rules despite being inside @media
-        keys = list(rules.keys())
-        self.assertTrue(
-            any("media-only-class" in k for k in keys),
-            "F2: .media-only-class should be collected from @media block; "
-            "got keys: {0}".format(keys),
-        )
-        # Verify that a data-ref element using this class has NO gap entry
-        elements = [{"data_ref": "el-media", "classes": ["media-only-class"], "inline_style": ""}]
-        gap = _compute_gap_list(elements, rules, custom_props)
-        self.assertFalse(
-            any("media-only-class" in g for g in gap),
-            "F2: media-only-class should NOT be in gap_list; got: {0}".format(gap),
-        )
-
-    def test_F2_at_supports_class_collected(self):
-        """F2: @supports blocks are also recursed into."""
-        css = """
-@supports (display: grid) {
-  .grid-class { display: grid; gap: 8px; }
-}
-"""
-        rules, custom_props = _parse_css_rules(css)
-        keys = list(rules.keys())
-        self.assertTrue(
-            any("grid-class" in k for k in keys),
-            "F2: .grid-class should be collected from @supports block; "
-            "got keys: {0}".format(keys),
-        )
-
-    def test_F2_extract_rule_blocks_recurses_at_media(self):
-        """Direct test of _extract_rule_blocks to confirm @media recursion."""
-        css = "@media screen { .inner { color: red; } } .outer { margin: 4px; }"
-        blocks = _extract_rule_blocks(css)
-        selectors = [b[0] for b in blocks]
-        self.assertTrue(
-            any("inner" in s for s in selectors),
-            "Expected .inner from @media body; got: {0}".format(selectors),
-        )
-        self.assertTrue(
-            any("outer" in s for s in selectors),
-            "Expected .outer at top level; got: {0}".format(selectors),
-        )
-
-    def test_F2_spacing_scale_from_at_media_block(self):
-        """F2: spacing values defined inside @media blocks are collected by
-        extract_spacing_scale (because _parse_spacing_from_css uses _extract_rule_blocks)."""
-        import tempfile, os
-        tmp = tempfile.mkdtemp()
-        try:
-            css = """
-@media (max-width: 768px) {
-  .responsive-container {
-    margin: 12px;
-    padding: 6px;
-  }
-}
-"""
-            css_path = os.path.join(tmp, "styles.css")
-            with open(css_path, "w", encoding="utf-8") as fh:
-                fh.write(css)
-            from _design._manifest import extract_spacing_scale
-            result = extract_spacing_scale(css_path)
-            self.assertTrue(result["available"])
-            self.assertIn("12px", result["scale"],
-                          "F2: 12px from @media block should appear in scale; "
-                          "got: {0}".format(result["scale"]))
-            self.assertIn("6px", result["scale"],
-                          "F2: 6px from @media block should appear in scale; "
-                          "got: {0}".format(result["scale"]))
-        finally:
-            import shutil
-            shutil.rmtree(tmp, ignore_errors=True)
+    def test_validate_manifest_verb_name_is_retired(self):
+        """The OLD verb name 'validate-manifest' no longer exists — renamed
+        to 'validate-binding' (plan 53 Phase 3)."""
+        with self.assertRaises(SystemExit):
+            main(["validate-manifest", "--manifest-path", "whatever.json"])
 
 
 # ---------------------------------------------------------------------------
-# End-to-end round-trip test (the "real producer → real consumer" discipline)
-# ---------------------------------------------------------------------------
-
-
-class TestEndToEndRoundTrip(unittest.TestCase):
-    """Real producer round-trip: write fixture → resolve-reference → init-manifest
-    → fill dispositions → validate-manifest → exit 0."""
-
-    def setUp(self):
-        self._tmp = tempfile.mkdtemp()
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self._tmp, ignore_errors=True)
-
-    def test_full_pipeline_exit_0_after_classification(self):
-        # 1. Write a simple reference.html with no undefined classes/tokens
-        html = """<!DOCTYPE html><html>
-<head><style>.panel { margin: 8px; }</style></head>
-<body>
-  <div data-ref="panel-root" class="panel">Content</div>
-  <div data-ref="empty-slot" class="panel"><!-- empty --></div>
-</body>
-</html>"""
-        html_path = os.path.join(self._tmp, "reference.html")
-        with open(html_path, "w") as fh:
-            fh.write(html)
-
-        # 2. Produce resolve-reference output (real producer)
-        ref_result = resolve_reference(html_path)
-
-        # V4 check: elements are the two data-ref divs
-        data_refs = [e["data_ref"] for e in ref_result["elements"]]
-        self.assertIn("panel-root", data_refs)
-        self.assertIn("empty-slot", data_refs)
-
-        # gap_list must be empty (both elements use .panel which IS defined)
-        self.assertEqual(
-            ref_result["gap_list"], [],
-            "Expected empty gap_list; got: {0}".format(ref_result["gap_list"]),
-        )
-
-        # 3. Produce skeleton manifest (real producer: init_manifest_from_reference)
-        skeleton = init_manifest_from_reference(ref_result)
-        errors_before = validate_manifest(skeleton)
-        # Must fail (all unclassified)
-        self.assertTrue(len(errors_before) > 0, "Expected errors before classification")
-
-        # 4. Fill in dispositions
-        skeleton.elements[0].disposition = DISPOSITION_MATCH
-        skeleton.elements[1].disposition = DISPOSITION_DEFER_EMPTY
-
-        # 5. Validate — must pass now (V1)
-        errors_after = validate_manifest(skeleton)
-        self.assertEqual(
-            errors_after, [],
-            "Expected no errors after classification; got: {0}".format(errors_after),
-        )
-
-    def test_pipeline_with_gap_list_blocks_until_resolved(self):
-        # Fixture with an undefined class — gap_list must block validation
-        html = """<!DOCTYPE html><html><body>
-          <div data-ref="card" class="undefined-widget-class">Card</div>
-        </body></html>"""
-        html_path = os.path.join(self._tmp, "reference2.html")
-        with open(html_path, "w") as fh:
-            fh.write(html)
-
-        ref_result = resolve_reference(html_path)
-        self.assertTrue(len(ref_result["gap_list"]) > 0, "Expected non-empty gap_list")
-
-        # V3: even if we classify the element, the gap_list blocks validation
-        m = init_manifest_from_reference(ref_result)
-        m.elements[0].disposition = DISPOSITION_MATCH
-
-        errors = validate_manifest(m)
-        self.assertTrue(len(errors) > 0, "Gap-list should still block validation")
-        self.assertTrue(any("undefined-widget-class" in e for e in errors),
-                        "Gap token should be named in error; got: {0}".format(errors))
-
-
-# ---------------------------------------------------------------------------
-# Tests: _source.py — parse_design_source
+# Tests: _source.py — parse_design_source (UNCHANGED by plan 53 Phase 3)
 # ---------------------------------------------------------------------------
 
 from _design._source import parse_design_source, cmd_check_design_source  # noqa: E402
@@ -1308,8 +938,6 @@ from _design._source import parse_design_source, cmd_check_design_source  # noqa
 
 class TestParseDesignSource(unittest.TestCase):
     """Unit tests for parse_design_source."""
-
-    # --- scheme recognition ---
 
     def test_html_scheme_valid(self):
         ds = parse_design_source("html:design/reference.html")
@@ -1324,7 +952,6 @@ class TestParseDesignSource(unittest.TestCase):
         self.assertTrue(ds.valid)
 
     def test_figma_target_preserves_full_url(self):
-        # The target must keep the full URL including https:// — split on FIRST colon only.
         url = "https://figma.com/file/abc/Frame?node-id=1:2"
         ds = parse_design_source("figma:" + url)
         self.assertEqual(ds.target, url)
@@ -1334,8 +961,6 @@ class TestParseDesignSource(unittest.TestCase):
         self.assertEqual(ds.scheme, "screenshot")
         self.assertEqual(ds.target, "design/mock.png")
         self.assertTrue(ds.valid)
-
-    # --- "none" cases ---
 
     def test_bare_none_lowercase(self):
         ds = parse_design_source("none")
@@ -1358,8 +983,6 @@ class TestParseDesignSource(unittest.TestCase):
         self.assertEqual(ds.scheme, "none")
         self.assertTrue(ds.valid)
 
-    # --- empty / whitespace ---
-
     def test_empty_string_treated_as_none(self):
         ds = parse_design_source("")
         self.assertEqual(ds.scheme, "none")
@@ -1375,8 +998,6 @@ class TestParseDesignSource(unittest.TestCase):
         ds = parse_design_source("  none  ")
         self.assertEqual(ds.scheme, "none")
         self.assertTrue(ds.valid)
-
-    # --- invalid / malformed ---
 
     def test_unknown_scheme_invalid(self):
         ds = parse_design_source("foo:bar")
@@ -1400,7 +1021,6 @@ class TestParseDesignSource(unittest.TestCase):
         self.assertEqual(ds.scheme, "html")
 
     def test_content_no_colon_not_none_invalid(self):
-        # Has content but no colon and is not a "none" variant
         ds = parse_design_source("something-else")
         self.assertFalse(ds.valid)
 
@@ -1412,9 +1032,7 @@ class TestParseDesignSource(unittest.TestCase):
         ds = parse_design_source("html:design/reference.html")
         self.assertEqual(ds.raw, "html:design/reference.html")
 
-    # Finding 1: target strip
     def test_html_with_space_after_colon_target_stripped(self):
-        # "html: design/reference.html" — space after colon must be stripped.
         ds = parse_design_source("html: design/reference.html")
         self.assertEqual(ds.scheme, "html")
         self.assertEqual(ds.target, "design/reference.html",
@@ -1422,45 +1040,35 @@ class TestParseDesignSource(unittest.TestCase):
         self.assertTrue(ds.valid)
 
     def test_figma_target_preserves_full_url_after_strip(self):
-        # strip() is idempotent on a URL with no surrounding whitespace
         url = "https://figma.com/file/abc/Frame?node-id=1:2"
         ds = parse_design_source("figma:" + url)
         self.assertEqual(ds.target, url,
                          "figma URL must be preserved verbatim after strip; got: {0!r}".format(ds.target))
 
     def test_figma_url_with_multiple_colons(self):
-        # Multiple colons in figma URL — only first colon splits scheme/target.
-        # The node-id=1:2 part has a colon inside the target.
         url = "https://figma.com/design/XYZ?node-id=0:1&t=abc"
         ds = parse_design_source("figma:" + url)
         self.assertEqual(ds.scheme, "figma")
         self.assertEqual(ds.target, url)
         self.assertTrue(ds.valid)
 
-    # --- "none:" / "none:<x>" must be INVALID (SYNC contract) ---
-
     def test_none_with_empty_target_colon_is_invalid(self):
-        # "none:" — colon present, scheme="none", target="" → invalid
-        # SYNC contract: none is valid ONLY as a bare sentinel (no colon).
         ds = parse_design_source("none:")
         self.assertFalse(ds.valid,
                          "none: must be invalid (bare sentinel only, no colon allowed)")
         self.assertEqual(ds.raw, "none:")
 
     def test_none_with_nonempty_target_is_invalid(self):
-        # "none:something" — colon present, scheme="none", target non-empty → invalid
         ds = parse_design_source("none:something")
         self.assertFalse(ds.valid,
                          "none:something must be invalid (bare sentinel only)")
         self.assertEqual(ds.raw, "none:something")
 
     def test_none_with_target_raw_preserved(self):
-        # raw is always preserved regardless of validity
         ds = parse_design_source("none:foo")
         self.assertEqual(ds.raw, "none:foo")
 
     def test_bare_none_still_valid_case_insensitive(self):
-        # Guard: bare "none" (no colon) stays valid across case variants
         for value in ("none", "None", "NONE", "NoNe"):
             ds = parse_design_source(value)
             self.assertTrue(ds.valid,
@@ -1485,12 +1093,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
 
     def _write_spec(self, design_source_line=None, content=None):
         # type: (str, str) -> str
-        """Write a spec.md to self._tmp and return its path.
-
-        If content is provided it is used verbatim.
-        Otherwise a minimal spec with (or without) a **Design source**: line
-        is written.
-        """
         if content is not None:
             text = content
         else:
@@ -1514,7 +1116,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
 
     def _write_reference_html(self):
         # type: () -> str
-        """Write a minimal design/reference.html and return its path."""
         design_dir = os.path.join(self._tmp, "design")
         os.makedirs(design_dir, exist_ok=True)
         ref_path = os.path.join(design_dir, "reference.html")
@@ -1530,8 +1131,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         ns.workspace_root = workspace_root if workspace_root is not None else self._tmp
         return ns
 
-    # --- figma + no reference.html → WARN ---
-
     def test_figma_no_reference_warns_stderr_exit_0(self):
         spec = self._write_spec("figma:https://figma.com/file/abc/Frame?node-id=1:2")
         args = self._make_args(spec)
@@ -1542,8 +1141,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertIn("design/reference.html", err)
         self.assertIn("absent", err)
 
-    # --- screenshot + no reference.html → WARN ---
-
     def test_screenshot_no_reference_warns_stderr_exit_0(self):
         spec = self._write_spec("screenshot:design/mock.png")
         args = self._make_args(spec)
@@ -1553,8 +1150,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertIn("screenshot", err)
         self.assertIn("absent", err)
 
-    # --- figma + reference.html present → silent ---
-
     def test_figma_with_reference_present_silent(self):
         self._write_reference_html()
         spec = self._write_spec("figma:https://figma.com/file/abc")
@@ -1562,8 +1157,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         code, out, err = _capture_stdout(cmd_check_design_source, args)
         self.assertEqual(code, 0)
         self.assertEqual(err, "", "Expected no stderr; got: {0!r}".format(err))
-
-    # --- screenshot + reference.html present → silent ---
 
     def test_screenshot_with_reference_present_silent(self):
         self._write_reference_html()
@@ -1573,8 +1166,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
 
-    # --- html: file present → silent ---
-
     def test_html_with_file_present_silent(self):
         self._write_reference_html()
         spec = self._write_spec("html:design/reference.html")
@@ -1582,8 +1173,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         code, out, err = _capture_stdout(cmd_check_design_source, args)
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
-
-    # --- html: file absent → WARN ---
 
     def test_html_file_absent_warns(self):
         spec = self._write_spec("html:design/reference.html")
@@ -1593,16 +1182,12 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertIn("check-design-source", err)
         self.assertIn("absent", err)
 
-    # --- none → silent ---
-
     def test_none_is_silent(self):
         spec = self._write_spec("none")
         args = self._make_args(spec)
         code, out, err = _capture_stdout(cmd_check_design_source, args)
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
-
-    # --- no **Design source**: line → silent (back-compat) ---
 
     def test_no_design_source_line_is_silent(self):
         spec = self._write_spec(design_source_line=None)
@@ -1611,8 +1196,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
 
-    # --- malformed value → WARN with malformed body ---
-
     def test_malformed_unknown_scheme_warns(self):
         spec = self._write_spec("foo:bar")
         args = self._make_args(spec)
@@ -1620,19 +1203,14 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("malformed", err)
         self.assertIn("foo:bar", err)
-        # remedy should mention valid shapes
         self.assertIn("html:", err)
         self.assertIn("figma:", err)
-
-    # --- absent spec → silent (back-compat) ---
 
     def test_absent_spec_file_is_silent(self):
         args = self._make_args(spec=os.path.join(self._tmp, "nonexistent.md"))
         code, out, err = _capture_stdout(cmd_check_design_source, args)
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
-
-    # --- no spec arg → silent ---
 
     def test_no_spec_arg_is_silent(self):
         class _NS:
@@ -1643,8 +1221,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         code, out, err = _capture_stdout(cmd_check_design_source, ns)
         self.assertEqual(code, 0)
         self.assertEqual(err, "")
-
-    # --- verify WARN body content for figma case ---
 
     def test_figma_warn_contains_declared_value(self):
         figma_url = "figma:https://figma.com/file/abc/Frame?node-id=1:2"
@@ -1660,8 +1236,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         code, out, err = _capture_stdout(cmd_check_design_source, args)
         self.assertIn("remedy:", err)
         self.assertIn("design/reference.html", err)
-
-    # --- cli dispatch via main ---
 
     def test_check_design_source_via_main_none_silent(self):
         spec = self._write_spec("none")
@@ -1679,19 +1253,12 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("check-design-source", err)
 
-    # --- Finding 1: html with space after colon, file present → silent ---
-
     def test_html_space_after_colon_file_present_silent(self):
-        """Finding 1: 'html: design/reference.html' (space after colon) with the
-        real file present must produce silent exit 0 — NOT a false WARN caused by
-        looking for a path with a leading space."""
-        # Create the actual file at workspace_root/design/reference.html
         design_dir = os.path.join(self._tmp, "design")
         os.makedirs(design_dir, exist_ok=True)
         ref_path = os.path.join(design_dir, "reference.html")
         with open(ref_path, "w", encoding="utf-8") as fh:
             fh.write("<html><body><!-- ref --></body></html>")
-        # Spec declares "html: design/reference.html" — note the space after colon
         spec = self._write_spec("html: design/reference.html")
         args = self._make_args(spec)
         code, out, err = _capture_stdout(cmd_check_design_source, args)
@@ -1699,45 +1266,22 @@ class TestCmdCheckDesignSource(unittest.TestCase):
         self.assertEqual(err, "",
                          "Expected silent exit; got stderr: {0!r}".format(err))
 
-    # --- Finding 2: html with custom target → WARN names the actual target ---
-
     def test_html_custom_target_absent_warn_names_actual_target(self):
-        """Finding 2: 'html:design/mockup.html' with the file absent must emit a
-        WARN whose absent-file line and remedy 'create' instruction name
-        'design/mockup.html', NOT the hardcoded 'design/reference.html'.
-
-        The remedy may still mention design/reference.html in an informational
-        clause explaining what plan-40 requires — that is correct and expected.
-        What must be absent is the hardcoded absent-file line
-        '  - design/reference.html: absent' and a create-instruction that names
-        reference.html when the user declared mockup.html.
-        """
         spec = self._write_spec("html:design/mockup.html")
         args = self._make_args(spec)
         code, out, err = _capture_stdout(cmd_check_design_source, args)
         self.assertEqual(code, 0)
         self.assertIn("check-design-source", err)
         self.assertIn("absent", err)
-        # The absent-file bullet must name the actual declared target
         self.assertIn("design/mockup.html: absent", err,
                       "WARN absent-file line must name the declared target; got: {0!r}".format(err))
-        # The old bug: the absent-file bullet hardcoded design/reference.html.
-        # That specific pattern must NOT appear.
         self.assertNotIn("design/reference.html: absent", err,
                          "WARN absent-file line must NOT hardcode design/reference.html; "
                          "got: {0!r}".format(err))
-        # The remedy 'create' instruction must name the actual declared target
         self.assertIn("create design/mockup.html", err,
                       "Remedy must say 'create design/mockup.html'; got: {0!r}".format(err))
 
-    # --- spec with Design source line using \s* bleed edge case ---
-
-    # --- "none:" is malformed (SYNC contract) — must take the WARN path ---
-
     def test_none_colon_bare_malformed_warns_stderr_exit_0(self):
-        """'none:' is malformed (colon present, but none is only valid as bare
-        sentinel).  cmd_check_design_source must emit a malformed WARN on stderr
-        and exit 0 (non-blocking), NOT silently pass like the valid bare 'none'."""
         spec = self._write_spec("none:")
         args = self._make_args(spec)
         code, out, err = _capture_stdout(cmd_check_design_source, args)
@@ -1748,7 +1292,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
                       "Expected raw value 'none:' in WARN message; got: {0!r}".format(err))
 
     def test_none_colon_something_malformed_warns_stderr_exit_0(self):
-        """'none:something' is malformed — same WARN path as 'none:'."""
         spec = self._write_spec("none:something")
         args = self._make_args(spec)
         code, out, err = _capture_stdout(cmd_check_design_source, args)
@@ -1757,7 +1300,6 @@ class TestCmdCheckDesignSource(unittest.TestCase):
                       "Expected malformed WARN; got: {0!r}".format(err))
 
     def test_bare_none_remains_silent(self):
-        """Bare 'none' (no colon) must remain silent (regression guard)."""
         spec = self._write_spec("none")
         args = self._make_args(spec)
         code, out, err = _capture_stdout(cmd_check_design_source, args)
@@ -1766,27 +1308,16 @@ class TestCmdCheckDesignSource(unittest.TestCase):
                          "Bare none must be silent; got stderr: {0!r}".format(err))
 
     def test_design_source_regex_does_not_bleed_across_blank_line(self):
-        # A malformed spec where **Design source**: is followed by a blank line
-        # then a value on the next non-empty line.  The regex must NOT capture
-        # the value from the next line ([ \t]* horizontal-only, not \s*).
         content = (
             "**Status**: Draft\n"
-            "**Design source**:\n"   # blank value on same line (after colon)
+            "**Design source**:\n"
             "\n"
             "figma:https://figma.com/file/abc\n"
         )
         spec = self._write_spec(content=content)
         args = self._make_args(spec)
-        # The **Design source**: line has an empty value → treated as "none" → silent
-        # (the regex captures the group after **: [ \t]* — if nothing follows on
-        #  the same line, the MULTILINE $ matches end-of-line and group(1) won't
-        #  contain the next line's figma URL)
-        # NOTE: if the regex has no content after [ \t]*, it WON'T match because
-        # (.+) requires at least one char — so the whole pattern won't match and
-        # we fall through to the "no Design source line" → silent path.
         code, out, err = _capture_stdout(cmd_check_design_source, args)
         self.assertEqual(code, 0)
-        # Must NOT emit a figma warn (the figma URL is on the next line, not captured)
         if err:
             self.assertNotIn("figma", err,
                              "Regex bled across blank line into next-line figma URL; err={0!r}".format(err))
