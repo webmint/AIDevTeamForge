@@ -797,6 +797,179 @@ Remediation: Restructure.
 
 
 # ---------------------------------------------------------------------------
+# Plan 50 P1 — [DATA-LOSS] / [IRREVERSIBLE] tag lifting (high-stakes widening)
+# ---------------------------------------------------------------------------
+
+# Template for data-loss/irreversible tag tests.
+# Slots: {pattern_line}, {why_line}
+_DL_BLOCK_TEMPLATE = """\
+# Agent: architect
+# Status: complete
+# Finding count: 1
+
+## Finding 1
+Severity: High
+File: src/migrations/0042_drop_column.py
+Line: 12
+Pattern: {pattern_line}
+Category: system_design
+Confidence: Certain
+Evidence:
+```
+op.drop_column('orders', 'legacy_total')
+```
+Why it's wrong: {why_line}
+Remediation: Back up the column data before dropping it.
+"""
+
+
+class TestDataLossIrreversibleTagLifting(unittest.TestCase):
+    """[DATA-LOSS] / [IRREVERSIBLE] markers emitted by agents (inline in Pattern
+    or Why) must be lifted into the structured ParsedFinding.tags list -- exactly
+    the same lifting mechanism as [CONSTITUTION-VIOLATION] -- so that
+    _verify._is_high_stakes / apply_verdicts' dismissed-branch carve-out can
+    route an unconfirmed data-loss/irreversible-migration finding to contested
+    instead of silently burying it.
+    """
+
+    def _parse(self, pattern_line, why_line):
+        text = _DL_BLOCK_TEMPLATE.format(
+            pattern_line=pattern_line,
+            why_line=why_line,
+        )
+        result = parse_agent_tmp(text, agent_name="architect")
+        self.assertEqual(len(result["findings"]), 1)
+        return result["findings"][0]
+
+    # --- happy paths: [DATA-LOSS] ---------------------------------------------
+
+    def test_data_loss_marker_in_pattern_yields_tag(self):
+        f = self._parse(
+            pattern_line="Column dropped without backup — irrecoverable [DATA-LOSS]",
+            why_line="The migration drops a column with no prior backup step.",
+        )
+        self.assertIn("[DATA-LOSS]", f["tags"])
+
+    def test_data_loss_marker_in_why_yields_tag(self):
+        f = self._parse(
+            pattern_line="Column dropped without backup",
+            why_line="This is a [DATA-LOSS] risk — no backup precedes the drop.",
+        )
+        self.assertIn("[DATA-LOSS]", f["tags"])
+
+    # --- happy paths: [IRREVERSIBLE] ------------------------------------------
+
+    def test_irreversible_marker_in_pattern_yields_tag(self):
+        f = self._parse(
+            pattern_line="Migration has no down-revision — [IRREVERSIBLE]",
+            why_line="There is no rollback path defined for this migration.",
+        )
+        self.assertIn("[IRREVERSIBLE]", f["tags"])
+
+    def test_irreversible_marker_in_why_yields_tag(self):
+        f = self._parse(
+            pattern_line="Migration lacks a downgrade() implementation",
+            why_line="Once applied this migration is [IRREVERSIBLE] — no rollback exists.",
+        )
+        self.assertIn("[IRREVERSIBLE]", f["tags"])
+
+    # --- both markers present, idempotence ------------------------------------
+
+    def test_both_markers_present_both_lifted_once_each(self):
+        f = self._parse(
+            pattern_line="Column dropped, no rollback [DATA-LOSS] [IRREVERSIBLE]",
+            why_line="Data is lost and the operation is [DATA-LOSS] and [IRREVERSIBLE].",
+        )
+        self.assertEqual(f["tags"].count("[DATA-LOSS]"), 1)
+        self.assertEqual(f["tags"].count("[IRREVERSIBLE]"), 1)
+
+    def test_marker_in_both_pattern_and_why_idempotent(self):
+        f = self._parse(
+            pattern_line="Drop column [DATA-LOSS]",
+            why_line="Irrecoverable once applied [DATA-LOSS].",
+        )
+        self.assertEqual(
+            f["tags"].count("[DATA-LOSS]"), 1,
+            "tag must appear at most once even when marker is in both fields",
+        )
+
+    # --- no-marker / precision guards -----------------------------------------
+
+    def test_no_marker_yields_empty_tags(self):
+        f = self._parse(
+            pattern_line="Column dropped as part of cleanup",
+            why_line="The column is unused and safe to remove.",
+        )
+        self.assertEqual(f["tags"], [])
+
+    def test_prose_without_brackets_does_not_match(self):
+        f = self._parse(
+            pattern_line="This causes data loss without brackets",
+            why_line="The migration is irreversible in practice but not flagged.",
+        )
+        self.assertEqual(
+            f["tags"], [],
+            "prose 'data loss' / 'irreversible' without brackets must NOT produce a tag",
+        )
+
+    def test_case_variant_does_not_match(self):
+        """[data-loss] (lowercase) is NOT the exact marker → tags == []."""
+        f = self._parse(
+            pattern_line="Column dropped [data-loss] lowercase",
+            why_line="Some explanation.",
+        )
+        self.assertEqual(f["tags"], [])
+
+    def test_marker_in_evidence_only_does_not_produce_tag(self):
+        """Marker appearing only inside the Evidence fenced block is NOT lifted."""
+        text = """\
+# Agent: architect
+# Status: complete
+# Finding count: 1
+
+## Finding 1
+Severity: Medium
+File: src/migrations/0042_drop_column.py
+Line: 7
+Pattern: Some pattern without the marker
+Category: system_design
+Confidence: Likely
+Evidence:
+```
+# [DATA-LOSS] this comment exists in the source code
+op.drop_column('orders', 'legacy_total')
+```
+Why it's wrong: The code is structured oddly.
+Remediation: Restructure.
+"""
+        result = parse_agent_tmp(text, agent_name="architect")
+        self.assertEqual(len(result["findings"]), 1)
+        self.assertEqual(
+            result["findings"][0]["tags"],
+            [],
+            "marker inside Evidence (source code) must NOT produce the tag",
+        )
+
+    # --- co-existence with [CONSTITUTION-VIOLATION] ---------------------------
+
+    def test_constitution_and_data_loss_both_lifted(self):
+        f = self._parse(
+            pattern_line="Layer violation dropping shared state [CONSTITUTION-VIOLATION] [DATA-LOSS]",
+            why_line="Crosses a layer boundary and drops data irrecoverably.",
+        )
+        self.assertIn("[CONSTITUTION-VIOLATION]", f["tags"])
+        self.assertIn("[DATA-LOSS]", f["tags"])
+
+    # --- existing fixture stays clean -----------------------------------------
+
+    def test_existing_well_formed_fixture_tags_unchanged(self):
+        """Existing _WELL_FORMED_TMP findings (no marker) still have tags == []."""
+        result = parse_agent_tmp(_WELL_FORMED_TMP, agent_name="code-reviewer")
+        for f in result["findings"]:
+            self.assertEqual(f["tags"], [])
+
+
+# ---------------------------------------------------------------------------
 # Plan 46 — label-tolerance & backtick-strip tests
 # ---------------------------------------------------------------------------
 

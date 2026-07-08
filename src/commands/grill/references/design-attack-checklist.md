@@ -12,6 +12,10 @@ The available Category values are: `mislogic | system_design | best_practice |
 duplication | security | blind_spot`. Use only these. A **constitution violation**
 has no category of its own — tag it `blind_spot` and put a `[CONSTITUTION-VIOLATION]`
 marker in the `Pattern` line and `Why it's wrong` (matching `/audit` and `/review`).
+A **data-integrity / irreversible-migration** defect likewise has no category of its
+own — tag it `blind_spot` (or `system_design` when the defect is structural) and put
+a `[DATA-LOSS]` and/or `[IRREVERSIBLE]` marker in the `Pattern` line and `Why it's
+wrong` (same marker-not-category convention).
 
 
 Architectural failure modes  (Category: system_design)
@@ -93,6 +97,22 @@ Constitution violations  (tag [CONSTITUTION-VIOLATION]; Category: blind_spot)
   constitution violation is ALWAYS Critical, never downgraded regardless of
   confidence; mark it `[CONSTITUTION-VIOLATION]` in the `Pattern` and `Why it's
   wrong`.
+
+
+Data integrity / irreversible migration  (tag [DATA-LOSS] / [IRREVERSIBLE]; Category:
+blind_spot, or system_design when the defect is structural)
+- A plan decision that performs a DESTRUCTIVE or IRREVERSIBLE data / schema change
+  with no safety net — a migration that drops a column or table, a backfill that
+  overwrites existing rows in place, a one-way data transformation with no rollback
+  or backup, a delete-then-recreate that loses data if it fails partway. Quote the
+  plan section that declares the destructive or one-way operation (the migration
+  step, the data flow, the schema-change description) — a verbatim snippet from the
+  ONE artifact named in `File:`, the same single-anchor grounding every other vector
+  uses. Mark `[DATA-LOSS]` when data can be lost and `[IRREVERSIBLE]` when the
+  operation cannot be undone even if no data is strictly lost (a change may warrant
+  both) in the `Pattern` line and `Why it's wrong`. A destructive op provable from
+  the quoted plan text is `Certain`; a suspected-but-unprovable risk is `Likely` or
+  `Speculative`.
 
 
 Grounding rule (mandatory — same single-anchor discipline as /audit and /review)

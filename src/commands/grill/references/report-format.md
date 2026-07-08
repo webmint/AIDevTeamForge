@@ -31,11 +31,13 @@ what the cross-examination concluded:
 2. **High-stakes `[CONTESTED]` findings are surfaced IN the headline, flagged —
    never buried.** Two paths route a finding here. (a) A high-stakes finding the
    refuter could NOT confirm (a `security` finding, or any finding carrying the
-   `[CONSTITUTION-VIOLATION]` tag, that the refuter left uncertain) is too
-   high-stakes to drop to an appendix. (b) A `[CONSTITUTION-VIOLATION]` finding the
-   refuter explicitly DISMISSED also lands here, not in the Dismissed appendix —
-   the constitution carve-out: a dismissed constitution violation is too important
-   to bury, so the dismissal is surfaced for a human to adjudicate. Either path
+   `[CONSTITUTION-VIOLATION]`, `[DATA-LOSS]`, or `[IRREVERSIBLE]` tag, that the
+   refuter left uncertain) is too
+   high-stakes to drop to an appendix. (b) A `[CONSTITUTION-VIOLATION]`, `[DATA-LOSS]`,
+   or `[IRREVERSIBLE]` finding the refuter explicitly DISMISSED also lands here, not
+   in the Dismissed appendix — the high-stakes carve-out: a dismissed constitution
+   violation or data-loss / irreversible-migration risk is too important to bury, so
+   the dismissal is surfaced for a human to adjudicate. Either path
    appears in the headline tagged `[CONTESTED]`. A missed design-time security
    hole or a wrongly-dismissed constitution violation is more costly than a false
    alarm, so the tie goes to surfacing.
@@ -53,9 +55,11 @@ from which agent produced the finding.
 
 Finding tags: `[CROSS-AGENT]` (raised by ≥2 finders — rare for `/grill`, which
 dispatches a single `devils-advocate` finder), `[CONSTITUTION-VIOLATION]` (always
-Critical), and `[CONTESTED]` (a high-stakes `security` / `[CONSTITUTION-VIOLATION]`
-finding the refutation stage could NOT confirm, OR a `[CONSTITUTION-VIOLATION]`
-finding it DISMISSED; both are surfaced in the headline, never buried).
+Critical), `[DATA-LOSS]` / `[IRREVERSIBLE]` (a data-loss / irreversible-migration
+marker), and `[CONTESTED]` (a high-stakes `security` / `[CONSTITUTION-VIOLATION]` /
+`[DATA-LOSS]` / `[IRREVERSIBLE]` finding the refutation stage could NOT confirm, OR
+a `[CONSTITUTION-VIOLATION]` / `[DATA-LOSS]` / `[IRREVERSIBLE]` finding it DISMISSED;
+both are surfaced in the headline, never buried).
 
 ## Skeleton
 
@@ -158,8 +162,9 @@ reaches the report: a finding earns the headline only by surviving an adversary
 who default-dismisses anything not demonstrable as a real plan-level defect.
 Confirmed findings reach the headline; dismissed findings and low-stakes uncertain
 findings drop to the Dismissed / Worth a Glance appendix; high-stakes `[CONTESTED]`
-findings (a `security` / `[CONSTITUTION-VIOLATION]` finding the refuter could not
-confirm) are surfaced in the headline, flagged `[CONTESTED]`, never buried.
+findings (a `security` / `[CONSTITUTION-VIOLATION]` / `[DATA-LOSS]` /
+`[IRREVERSIBLE]` finding the refuter could not confirm) are surfaced in the
+headline, flagged `[CONTESTED]`, never buried.
 ```
 
 ## The re-entry seed (RE-ENTER-UPSTREAM or REVISE-PLAN)

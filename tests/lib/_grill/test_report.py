@@ -207,6 +207,18 @@ class TestRenderReportStructure(unittest.TestCase):
         result = render_report(**kwargs)
         self.assertTrue(result.endswith("\n"))
 
+    def test_methodology_names_all_four_contested_triggers(self):
+        # Plan 50 widened routing so [DATA-LOSS] / [IRREVERSIBLE] findings also
+        # surface as [CONTESTED] (mirroring _shared/_verify.py's D7 carve-out).
+        # The rendered Methodology paragraph must enumerate all four triggers
+        # so a real grill.md never contradicts its own routing behavior.
+        kwargs = _minimal_render_kwargs()
+        result = render_report(**kwargs)
+        self.assertIn("## Methodology", result)
+        self.assertIn("[CONSTITUTION-VIOLATION]", result)
+        self.assertIn("[DATA-LOSS]", result)
+        self.assertIn("[IRREVERSIBLE]", result)
+
 
 # ---------------------------------------------------------------------------
 # Tests: render_report -- findings routing

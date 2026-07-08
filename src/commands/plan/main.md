@@ -146,6 +146,8 @@ Exit 2 means the spec is malformed (neither Date nor Status frontmatter line). E
 - For greenfield projects: check the constitution's scaffolding guide for pattern references.
 - The spec already incorporates relevant documentation context from `docs/`. Do not re-read docs — use the spec's "Current State" and "Affected Areas" sections as your primary source.
 
+After the codebase read, do one design-intent read (separate from the code-pattern research above): if a `design-anchor.json` sibling of the resolved `spec.md` exists (i.e. `specs/[feature]/design-anchor.json`, the design INTENT `/specify` persisted for a UI feature), read it — a passive, read-only sibling read. Parse the flat JSON directly; do NOT call any helper verb (the anchor is read in place). It carries `{kind, file, selectors}`: the design-source `kind` (e.g. `html`), the source `file`, and the `selectors` that carry the intent. Note the `kind` and the intent-bearing `selectors` so the UI technical approach (Phase 1) is shaped to match the captured intent instead of re-guessing it. `/plan` does NOT author the built-side binding (the render `route` + selector pairs) — that is `/breakdown`'s job — and does NOT re-serialize the anchor into `plan-handoff.json`. Absent → silent no-op (a non-UI feature, or one whose intake captured no anchor).
+
 ### Step 2: Signal Scan
 
 Read the spec and check for these signals. **Only flag signals for things NOT already in the project's current stack.** If the spec references a library/technology that's already in the project's dependencies (check `CLAUDE.md`, `package.json`, `pubspec.yaml`, `requirements.txt`, etc.), that is NOT a signal — the team has already made that choice.
@@ -233,7 +235,7 @@ Save to `specs/[feature-name]/research.md`:
 
 If no deep research was needed (no signals), skip the research.md file.
 
-## PHASE 1.5: Findings from Spec (REQUIRED INTERMEDIATE OUTPUT — v2)
+## PHASE 1.5: Findings from Spec (REQUIRED INTERMEDIATE OUTPUT)
 
 Before writing any of the plan's tables (Layer Map, File Impact, Key Design Decisions, Risk Assessment), produce a structured intermediate output enumerating what the spec contains. This is a hard requirement.
 
@@ -263,7 +265,7 @@ This appends a resolution audit entry to specify-state; the spec re-render strik
 
 This intermediate output forces every spec section to be acknowledged before plan tables are written. Same purpose as /specify Phase 1.5: convert implicit recall into explicit enumeration. Skipping or compressing this step is a hard error.
 
-After this intermediate output is complete, proceed to Phase 1 (Technical Design). The "1.5" numbering is preserved verbatim from parity-validated `/plan` v2 — the section runs after Phase 0 and before Phase 1 despite the numeric ordering, because it gates both the Phase 1 technical artefacts (data model, contracts, architecture decisions — per the Prerequisite at the top of Phase 1) and the Phase 2 plan tables (Layer Map, File Impact, Key Design Decisions, Risk Assessment — per the preamble above).
+After this intermediate output is complete, proceed to Phase 1 (Technical Design). The "1.5" numbering is deliberate — the section runs after Phase 0 and before Phase 1 despite the numeric ordering, because it gates both the Phase 1 technical artefacts (data model, contracts, architecture decisions — per the Prerequisite at the top of Phase 1) and the Phase 2 plan tables (Layer Map, File Impact, Key Design Decisions, Risk Assessment — per the preamble above).
 
 ## PHASE 1: Technical Design
 
@@ -477,7 +479,7 @@ Before presenting the plan to the user, verify completeness:
 
 ## PHASE 3: User Approval
 
-**Mode-dependent execution path** (Patch 4 per PLAN-COMMAND-REDESIGN-PLAN.md — auto vs interactive paths, verbatim from parity-validated `/plan` v2):
+**Mode-dependent execution path** — auto vs interactive paths:
 
 - **If auto mode is active** (detect via `<system-reminder>` about auto mode, or explicit user instruction to operate autonomously): do not pause for clarifying questions during plan creation. Apply model's recommended defaults to any decision the spec left as `[default applied]` or that the plan surfaces fresh. Document each in a "Decision Points Resolved" subsection of the plan summary, marked `[default applied]`. The user reviews defaults at the approval gate below.
 - **If auto mode is NOT active** (interactive mode, default): if the plan surfaces decision points the spec didn't resolve (e.g., between filter patterns, single-target invocation methods, or override mechanisms), pause and ask the user via `AskUserQuestion` (or fallback to numbered markdown list) before writing. Do not silently apply defaults in interactive mode.
@@ -533,6 +535,19 @@ The block below shows the mandatory two-entry minimum — append `"specs/<NNN>-<
 ```
 
 The helper stages those paths in the install repo and makes a `[WIP] plan: <NNN>-<feature>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL — always run it, even if `finalize-handoff` above exited non-zero (`plan.md` still exists, and the helper benign-skips any `--paths` entry that was not written). It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifact is already written, so warn the user with the helper's stderr and continue to the `render-breakdown-handoff` block below; do NOT abort the approve flow); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
+
+**Surface the design-stakes hint (advisory, non-blocking).** `finalize-handoff` in the first step of this phase wrote `plan-handoff.json` alongside `<plan-path>` (its sibling in the same feature directory) and printed that file's absolute path on stdout — call it `<plan-handoff-path>`. Run the stakes-hint helper against that same path:
+
+```bash
+.devforge/lib/plan_helper stakes-hint <plan-handoff-path>
+```
+
+The helper reads that `plan-handoff.json` and prints a short "consider running `/grill`" hint to stdout WHEN the plan's structured signals indicate high stakes (wide file impact, a new data model, a real new dependency, security-relevant risks or decisions, or an unusually risk-laden plan of 4+ recorded risks); otherwise it prints nothing. It always exits 0. Handle its stdout:
+
+- **Non-empty stdout** → copy it VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
+- **Empty stdout** → emit nothing and proceed silently to the `render-breakdown-handoff` step below. Empty output is the normal case for an ordinary plan and is NOT an error.
+
+This hint is ADVISORY and NON-BLOCKING: it never blocks the approve flow, never gates `/breakdown`, and the user is free to ignore it. `/grill` remains opt-in — the user chooses whether to run it. Like the other PHASE 4 helper calls, this step is best-effort; because `stakes-hint` always exits 0, there is no non-zero exit to handle here.
 
 Then emit the deterministic handoff block via the helper:
 

@@ -953,6 +953,225 @@ class TestContestedTagging(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Plan 50 P1 -- [DATA-LOSS] / [IRREVERSIBLE] high-stakes widening
+#
+# End-to-end: the marker originates in a real agent tmp file's Pattern line,
+# is lifted into ParsedFinding.tags by parse_agent_tmp (_consume.py), and THEN
+# routed by apply_verdicts -- proving the full Pattern-line -> tags -> contested
+# chain, not just the _verify.py routing in isolation.
+# ---------------------------------------------------------------------------
+
+# Template mirrors _DL_BLOCK_TEMPLATE in test_consume.py (kept local + minimal
+# to avoid a cross-test-module import dependency).
+_DL_AGENT_TMP_TEMPLATE = """\
+# Agent: architect
+# Status: complete
+# Finding count: 1
+
+## Finding 1
+Severity: High
+File: src/migrations/0042_drop_column.py
+Line: 12
+Pattern: {pattern_line}
+Category: system_design
+Confidence: Certain
+Evidence:
+```
+op.drop_column('orders', 'legacy_total')
+```
+Why it's wrong: {why_line}
+Remediation: Back up the column data before dropping it.
+"""
+
+
+class TestDataLossHighStakesEndToEnd(unittest.TestCase):
+    """Round-trip: parse_agent_tmp (real Pattern-line marker) -> apply_verdicts.
+
+    Cases: confirmed / dismissed / uncertain x {[DATA-LOSS], [IRREVERSIBLE], neither}.
+    """
+
+    def _real_finding(self, pattern_line, why_line="The change is not reversible."):
+        """Build ONE finding via the real _consume parse path (not a hand-built dict)."""
+        from _shared._consume import parse_agent_tmp  # local import, mirrors test_consume.py usage
+        text = _DL_AGENT_TMP_TEMPLATE.format(pattern_line=pattern_line, why_line=why_line)
+        result = parse_agent_tmp(text, agent_name="architect")
+        self.assertEqual(len(result["findings"]), 1)
+        return result["findings"][0]
+
+    def _parse_and_apply(self, findings, verdict_spec_list, refuter="code-reviewer"):
+        text = _verdict_file(refuter=refuter, verdicts=verdict_spec_list)
+        cv = consume_verdicts(text)
+        return apply_verdicts(findings, cv["verdicts"])
+
+    # --- dismissed -------------------------------------------------------------
+
+    def test_dismissed_data_loss_routes_to_contested(self):
+        """A dismissed [DATA-LOSS] finding is never silently buried -> contested."""
+        f = self._real_finding("Column dropped without backup [DATA-LOSS]")
+        self.assertIn("[DATA-LOSS]", f["tags"])  # sanity: the lift happened
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "dismissed",
+              "evidence": "(no counter-quote — finding is not demonstrable)"}],
+        )
+        self.assertEqual(len(buckets["contested"]), 1)
+        self.assertEqual(buckets["dismissed"], [])
+        self.assertIn("[CONTESTED]", buckets["contested"][0]["tags"])
+
+    def test_dismissed_irreversible_routes_to_contested(self):
+        """A dismissed [IRREVERSIBLE] finding is never silently buried -> contested."""
+        f = self._real_finding("Migration has no downgrade() path [IRREVERSIBLE]")
+        self.assertIn("[IRREVERSIBLE]", f["tags"])
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "dismissed",
+              "evidence": "(no counter-quote — finding is not demonstrable)"}],
+        )
+        self.assertEqual(len(buckets["contested"]), 1)
+        self.assertEqual(buckets["dismissed"], [])
+        self.assertIn("[CONTESTED]", buckets["contested"][0]["tags"])
+
+    def test_dismissed_neither_tag_routes_to_dismissed_unchanged(self):
+        """Zero-regression: a dismissed finding with NEITHER tag still routes to dismissed."""
+        f = self._real_finding("Column dropped as part of routine cleanup",
+                                why_line="The column is unused and safe to remove.")
+        self.assertEqual(f["tags"], [])
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "dismissed",
+              "evidence": "(no counter-quote — finding is not demonstrable)"}],
+        )
+        self.assertEqual(len(buckets["dismissed"]), 1)
+        self.assertEqual(buckets["contested"], [])
+
+    # --- uncertain ---------------------------------------------------------
+
+    def test_uncertain_data_loss_routes_to_contested(self):
+        """An uncertain [DATA-LOSS] finding routes to contested (high-stakes)."""
+        f = self._real_finding("Column dropped, uncertain whether recoverable [DATA-LOSS]")
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "uncertain",
+              "evidence": "cannot determine backup status from code"}],
+        )
+        self.assertEqual(len(buckets["contested"]), 1)
+        self.assertEqual(buckets["uncertain"], [])
+
+    def test_uncertain_irreversible_routes_to_contested(self):
+        """An uncertain [IRREVERSIBLE] finding routes to contested (high-stakes)."""
+        f = self._real_finding("Uncertain rollback path exists [IRREVERSIBLE]")
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "uncertain",
+              "evidence": "cannot determine rollback status from code"}],
+        )
+        self.assertEqual(len(buckets["contested"]), 1)
+        self.assertEqual(buckets["uncertain"], [])
+
+    def test_uncertain_neither_tag_low_stakes_routes_to_uncertain_unchanged(self):
+        """Zero-regression: uncertain + neither tag + non-security category -> uncertain."""
+        f = self._real_finding("Column dropped, unclear if this is dead code",
+                                why_line="Unclear if the column is read elsewhere.")
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "uncertain",
+              "evidence": "cannot resolve from code"}],
+        )
+        self.assertEqual(len(buckets["uncertain"]), 1)
+        self.assertEqual(buckets["contested"], [])
+
+    # --- confirmed -----------------------------------------------------------
+
+    def test_confirmed_data_loss_headlines_normally(self):
+        """A confirmed [DATA-LOSS] finding renders in confirmed as normal (not contested)."""
+        f = self._real_finding("Column dropped without backup [DATA-LOSS]")
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "confirmed",
+              "evidence": "op.drop_column('orders', 'legacy_total')"}],
+        )
+        self.assertEqual(len(buckets["confirmed"]), 1)
+        self.assertEqual(buckets["contested"], [])
+        self.assertEqual(buckets["confirmed"][0]["verify_confidence"], "confirmed")
+
+    def test_confirmed_irreversible_headlines_normally(self):
+        """A confirmed [IRREVERSIBLE] finding renders in confirmed as normal (not contested)."""
+        f = self._real_finding("Migration has no downgrade() path [IRREVERSIBLE]")
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "confirmed",
+              "evidence": "op.drop_column('orders', 'legacy_total')"}],
+        )
+        self.assertEqual(len(buckets["confirmed"]), 1)
+        self.assertEqual(buckets["contested"], [])
+
+    def test_confirmed_neither_tag_headlines_normally(self):
+        """Zero-regression: confirmed + neither tag -> confirmed bucket as before."""
+        f = self._real_finding("Column dropped as part of routine cleanup",
+                                why_line="The column is unused and safe to remove.")
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": f["file"], "line": f["line"], "pattern": f["pattern"],
+              "agent": f["agent"], "verdict": "confirmed",
+              "evidence": "op.drop_column('orders', 'legacy_total')"}],
+        )
+        self.assertEqual(len(buckets["confirmed"]), 1)
+        self.assertEqual(buckets["contested"], [])
+
+    # --- no-verdict-match default ---------------------------------------------
+
+    def test_no_verdict_match_data_loss_defaults_to_contested(self):
+        """No matching verdict + [DATA-LOSS] -> the high-stakes no-verdict default (contested)."""
+        f = self._real_finding("Column dropped without backup [DATA-LOSS]")
+        buckets = apply_verdicts([f], [])
+        self.assertEqual(len(buckets["contested"]), 1)
+        self.assertIn("[CONTESTED]", buckets["contested"][0]["tags"])
+
+    def test_no_verdict_match_irreversible_defaults_to_contested(self):
+        """No matching verdict + [IRREVERSIBLE] -> the high-stakes no-verdict default (contested)."""
+        f = self._real_finding("Migration has no downgrade() path [IRREVERSIBLE]")
+        buckets = apply_verdicts([f], [])
+        self.assertEqual(len(buckets["contested"]), 1)
+        self.assertIn("[CONTESTED]", buckets["contested"][0]["tags"])
+
+    # --- security zero-regression (existing high-stakes category untouched) --
+
+    def test_security_category_still_high_stakes_without_new_tags(self):
+        """Zero-regression: category=='security' alone (no new tags) is still high-stakes."""
+        f = _finding(agent="security-reviewer", file="src/sec.py", line=42,
+                     pattern="SQL injection", category="security")
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": "src/sec.py", "line": 42, "pattern": "SQL injection",
+              "agent": "security-reviewer", "verdict": "uncertain",
+              "evidence": "cannot resolve"}],
+        )
+        self.assertEqual(len(buckets["contested"]), 1)
+
+    def test_constitution_tag_still_high_stakes_without_new_tags(self):
+        """Zero-regression: [CONSTITUTION-VIOLATION] alone still triggers the D7 carve-out."""
+        f = _finding(agent="qa-reviewer", file="src/h.py", line=9,
+                     pattern="P_carve", category="best_practice",
+                     tags=["[CONSTITUTION-VIOLATION]"])
+        buckets = self._parse_and_apply(
+            [f],
+            [{"file": "src/h.py", "line": 9, "pattern": "P_carve",
+              "agent": "qa-reviewer", "verdict": "dismissed",
+              "evidence": "(no counter-quote — finding is not demonstrable)"}],
+        )
+        self.assertEqual(len(buckets["contested"]), 1)
+        self.assertEqual(buckets["dismissed"], [])
+
+
+# ---------------------------------------------------------------------------
 # Tests: render_verify_brief
 # ---------------------------------------------------------------------------
 
