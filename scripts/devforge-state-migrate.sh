@@ -11,6 +11,11 @@
 # .devforge/, plan 25 D5 / plan 49 D8). IDEMPOTENT: a fresh install has none of
 # these tracked → a clean no-op. Never mutates VERSIONED files (memory.md,
 # spec-stamps.jsonl, the config/identity yaml/json) — they are not in the list.
+#
+# ALSO recursively untracks the plan-56 install-reproducible CODE dirs
+# (.devforge/lib, .devforge/bin, .devforge/templates — the node_modules model)
+# so the now-present gitignore rules take effect on existing installs.
+# .devforge/template/ (singular) is deliberately EXCLUDED — see plan 56 Phase 0.5.
 
 forge_migrate_devforge_state() {
   target_dir="$1"
@@ -40,6 +45,16 @@ forge_migrate_devforge_state() {
     [ -z "$_lk" ] && continue
     git -C "$target_dir" rm --cached --quiet "$_lk" 2>/dev/null \
       && echo "  ~ untracked (now ignored): $_lk" || true
+  done
+
+  # install-reproducible CODE dirs (plan 56) — recursively untrack so the now-present
+  # .gitignore rules take effect on existing installs. .devforge/template/ (singular) is
+  # EXCLUDED: it is update.sh's agent three-way-merge baseline + NEW/REMOVED enumeration source.
+  for _dir in .devforge/lib .devforge/bin .devforge/templates; do
+    if [ -n "$(git -C "$target_dir" ls-files "$_dir" 2>/dev/null | head -1)" ]; then
+      git -C "$target_dir" rm -r --cached --quiet "$_dir" 2>/dev/null \
+        && echo "  ~ untracked (now ignored): $_dir/" || true
+    fi
   done
 
   # delete the dead `.claude/session-state.md` ignore line (union cannot remove it)
