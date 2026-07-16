@@ -1,22 +1,30 @@
-"""Tests for src/devforge/lib/_grill/seed_schema.py.
+"""Tests for src/devforge/lib/_shared/seed_schema.py.
 
 Coverage:
 - Happy path: valid seed constructs for each target_stage value.
-- Required string fields empty → ValueError (one test per field).
-- source != "grill" → ValueError.
-- target_stage not in SEED_TARGET_STAGES → ValueError.
-- cycle_count as bool / 0 / negative → ValueError; >= 1 passes.
-- carried_findings non-list → ValueError; non-str element → ValueError;
+- Required string fields empty -> ValueError (one test per field).
+- source not in SEED_SOURCES -> ValueError; each SEED_SOURCES member accepted.
+- target_stage not in SEED_TARGET_STAGES -> ValueError.
+- cycle_count as bool / 0 / negative -> ValueError; >= 1 passes.
+- carried_findings non-list -> ValueError; non-str element -> ValueError;
   empty list passes; list with items passes.
-- provenance empty → ValueError.
+- provenance empty -> ValueError.
 - Module constants exported correctly.
 """
 
+import sys
 import unittest
+from pathlib import Path
 
-from src.devforge.lib._grill.seed_schema import (
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
+
+if str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
+
+from _shared.seed_schema import (  # noqa: E402
     SEED_SCHEMA_VERSION,
-    SEED_SOURCE,
+    SEED_SOURCES,
     SEED_TARGET_STAGES,
     ReEntrySeed,
 )
@@ -50,8 +58,11 @@ def _make_seed(**overrides):
 
 class TestModuleConstants(unittest.TestCase):
 
-    def test_seed_source_value(self):
-        self.assertEqual(SEED_SOURCE, "grill")
+    def test_seed_sources_value(self):
+        self.assertEqual(SEED_SOURCES, ("grill", "spec-check"))
+
+    def test_seed_sources_is_tuple(self):
+        self.assertIsInstance(SEED_SOURCES, tuple)
 
     def test_seed_target_stages_tuple(self):
         self.assertIsInstance(SEED_TARGET_STAGES, tuple)
@@ -63,7 +74,6 @@ class TestModuleConstants(unittest.TestCase):
         self.assertIsInstance(SEED_SCHEMA_VERSION, str)
         self.assertTrue(len(SEED_SCHEMA_VERSION) > 0)
 
-    # Phase 1: "plan" added as the 4th valid target stage.
     def test_plan_in_seed_target_stages(self):
         self.assertIn("plan", SEED_TARGET_STAGES)
 
@@ -93,7 +103,6 @@ class TestReEntrySeedHappyPath(unittest.TestCase):
         self.assertEqual(seed.target_stage, "research")
 
     def test_target_stage_plan(self):
-        """Phase 1: target_stage='plan' is the new 4th valid value."""
         seed = _make_seed(
             target_stage="plan",
             carried_findings=["prior finding from first grill pass"],
@@ -105,7 +114,7 @@ class TestReEntrySeedHappyPath(unittest.TestCase):
         self.assertEqual(seed.carried_findings, ["prior finding from first grill pass"])
 
     def test_target_stage_plan_all_ten_fields(self):
-        """Phase 1: full 10-field construction with target_stage='plan'."""
+        """Full 10-field construction with target_stage='plan'."""
         seed = ReEntrySeed(
             seed_version="1",
             source="grill",
@@ -143,7 +152,7 @@ class TestReEntrySeedHappyPath(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Required string fields empty → ValueError.
+# Required string fields empty -> ValueError.
 # ---------------------------------------------------------------------------
 
 class TestRequiredStringFieldsEmpty(unittest.TestCase):
@@ -198,16 +207,15 @@ class TestRequiredStringFieldsEmpty(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# source field validation.
+# source field validation (multi-source: SEED_SOURCES membership).
 # ---------------------------------------------------------------------------
 
 class TestSourceValidation(unittest.TestCase):
 
-    def test_source_not_grill(self):
+    def test_source_unknown_rejected(self):
         with self.assertRaises(ValueError) as ctx:
             _make_seed(source="audit")
         self.assertIn("source", str(ctx.exception))
-        self.assertIn("grill", str(ctx.exception))
 
     def test_source_empty_string(self):
         with self.assertRaises(ValueError) as ctx:
@@ -215,13 +223,23 @@ class TestSourceValidation(unittest.TestCase):
         self.assertIn("source", str(ctx.exception))
 
     def test_source_grill_uppercase_rejected(self):
-        # "GRILL" != "grill" — case-sensitive constant match.
+        # "GRILL" is not in SEED_SOURCES -- case-sensitive enum match.
         with self.assertRaises(ValueError):
             _make_seed(source="GRILL")
 
     def test_source_grill_accepted(self):
         seed = _make_seed(source="grill")
         self.assertEqual(seed.source, "grill")
+
+    def test_source_spec_check_accepted(self):
+        seed = _make_seed(source="spec-check")
+        self.assertEqual(seed.source, "spec-check")
+
+    def test_all_seed_sources_accepted(self):
+        for source in SEED_SOURCES:
+            with self.subTest(source=source):
+                seed = _make_seed(source=source)
+                self.assertEqual(seed.source, source)
 
 
 # ---------------------------------------------------------------------------
@@ -231,9 +249,6 @@ class TestSourceValidation(unittest.TestCase):
 class TestTargetStageValidation(unittest.TestCase):
 
     def test_invalid_target_stage(self):
-        # "bogus" is not in SEED_TARGET_STAGES and must raise ValueError.
-        # (Note: "plan" was previously invalid and used here; it is now a valid
-        # stage per Phase 1 — replaced with a genuinely invalid value.)
         with self.assertRaises(ValueError) as ctx:
             _make_seed(target_stage="bogus")
         self.assertIn("target_stage", str(ctx.exception))
@@ -372,12 +387,31 @@ class TestReEntrySeedRoundTrip(unittest.TestCase):
             provenance="specs/003-async-orders/grill.md",
         )
         self.assertEqual(seed.seed_version, "1")
-        self.assertEqual(seed.source, SEED_SOURCE)
+        self.assertEqual(seed.source, "grill")
         self.assertEqual(seed.target_stage, "discovery")
         self.assertEqual(seed.feature, "003-async-orders")
         self.assertEqual(seed.cycle_count, 2)
         self.assertEqual(len(seed.carried_findings), 2)
         self.assertEqual(seed.provenance, "specs/003-async-orders/grill.md")
+
+    def test_full_seed_round_trip_spec_check_source(self):
+        """spec-check source constructs and validates identically to grill."""
+        seed = ReEntrySeed(
+            seed_version="1",
+            source="spec-check",
+            target_stage="spec",
+            feature="007-catalog-filters",
+            prior_conclusion="Spec asserted AC-3 and AC-7 are simultaneously satisfiable.",
+            invalidating_evidence=(
+                "spec-check unsat core: {AC-3, AC-7} -- both cannot hold for the same input."
+            ),
+            must_satisfy="Resolve the conflict between AC-3 and AC-7.",
+            cycle_count=1,
+            carried_findings=[],
+            provenance="specs/007-catalog-filters/spec-check.md",
+        )
+        self.assertEqual(seed.source, "spec-check")
+        self.assertEqual(seed.target_stage, "spec")
 
 
 if __name__ == "__main__":

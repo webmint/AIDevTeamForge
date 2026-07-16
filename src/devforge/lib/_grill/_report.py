@@ -68,9 +68,8 @@ import tempfile
 from typing import Dict, List, Optional
 
 from _shared.findings_schema import CATEGORY_ENUM  # noqa: E402
-from _grill.seed_schema import (  # noqa: E402
+from _shared.seed_schema import (  # noqa: E402
     SEED_SCHEMA_VERSION,
-    SEED_SOURCE,
     SEED_TARGET_STAGES,
     ReEntrySeed,
 )
@@ -767,7 +766,7 @@ def build_seed(
     """
     return ReEntrySeed(
         seed_version=SEED_SCHEMA_VERSION,
-        source=SEED_SOURCE,
+        source="grill",
         target_stage=target_stage,
         feature=feature,
         prior_conclusion=prior_conclusion,

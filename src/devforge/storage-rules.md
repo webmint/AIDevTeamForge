@@ -177,6 +177,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 research     → displays report in console, optionally saves to research/YYYY-MM-DD-[topic-slug].md
 discover     → displays report in console, optionally saves to discover/YYYY-MM-DD-[topic-slug].md
 specify      → creates specs/NNN-name/spec.md
+spec-check   → creates specs/NNN-name/spec-check.md (SMT AC-consistency report) + specs/NNN-name/spec-check-seed.json ONLY on a MATCHING REVISE-SPEC pick (user picks "Revise spec" AND the recommendation was REVISE-SPEC; a cross-pick / Consistent / Dismiss writes no seed — the plan-39 verdict-gate) (backward re-entry seed → /specify); opt-in, between /specify and /plan
 plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
 breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ... + specs/NNN-name/breakdown-handoff.json (machine contract for /implement; task .md files stay human-readable)
 implement    → updates individual task file status + completion notes

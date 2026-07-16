@@ -1,15 +1,17 @@
-"""seed_schema -- re-entry seed schema for the /grill backward handoff.
+"""seed_schema -- re-entry seed schema for backward pipeline handoffs.
 
-Provides the ``ReEntrySeed`` frozen dataclass, ``SEED_SOURCE``,
-``SEED_TARGET_STAGES``, and ``SEED_SCHEMA_VERSION`` constants for the
-/grill → upstream (spec/discovery/research/plan) backward handoff artefact.
+Provides the ``ReEntrySeed`` frozen dataclass, ``SEED_SOURCES``,
+``SEED_TARGET_STAGES``, and ``SEED_SCHEMA_VERSION`` constants for backward
+re-entry handoff artefacts (e.g. /grill -> upstream spec/discovery/research/
+plan, /spec-check -> spec).
 
-What this is: when a grill attack proves a plan defect is rooted UPSTREAM
-(the design faithfully implements a flawed spec/discovery/research conclusion),
-/grill emits a ReEntrySeed; /research, /discover, /specify, or /plan consume
-it on re-entry so the re-run is DIRECTED -- it does not re-derive the same
-flaw.  When ``target_stage="plan"`` the seed represents a same-stage revision
-request (the plan itself is the re-entry point, not a prior upstream stage).
+What this is: when a downstream command proves a defect is rooted UPSTREAM
+(the design/implementation faithfully reflects a flawed earlier-stage
+conclusion), it emits a ReEntrySeed; the upstream command (/research,
+/discover, /specify, or /plan) consumes it on re-entry so the re-run is
+DIRECTED -- it does not re-derive the same flaw. When ``target_stage="plan"``
+the seed represents a same-stage revision request (the plan itself is the
+re-entry point, not a prior upstream stage).
 The seed also carries the bounded-compounding-loop state (cycle_count,
 carried_findings) so upstream commands can detect and cap re-entry loops.
 
@@ -21,7 +23,7 @@ Design notes:
 
 - Schema-level validation runs in __post_init__ and is mechanical:
     * Required string fields are non-empty after .strip().
-    * source must equal the module constant SEED_SOURCE ("grill").
+    * source must be one of SEED_SOURCES ("grill", "spec-check").
     * target_stage must be one of SEED_TARGET_STAGES.
     * cycle_count: strict int (no bool), must be >= 1.
     * carried_findings: list of str; may be empty.
@@ -47,7 +49,7 @@ SEED_SCHEMA_VERSION = "1"
 # Provenance and allowed enum values.
 # ---------------------------------------------------------------------------
 
-SEED_SOURCE = "grill"
+SEED_SOURCES = ("grill", "spec-check")
 
 SEED_TARGET_STAGES = ("spec", "discovery", "research", "plan")
 
@@ -80,30 +82,31 @@ def _require_in_enum(value, allowed, field_name):
 
 
 # ---------------------------------------------------------------------------
-# ReEntrySeed -- the /grill backward handoff record.
+# ReEntrySeed -- the backward re-entry handoff record.
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ReEntrySeed:
-    """Re-entry seed emitted by /grill when a plan defect is rooted upstream.
+    """Re-entry seed emitted when a defect is proven rooted upstream.
 
     seed_version is a non-empty string; callers should pass SEED_SCHEMA_VERSION
       ("1"); any non-empty string is accepted at the schema level.
-    source must equal SEED_SOURCE ("grill") -- any other value is rejected.
+    source must be one of SEED_SOURCES ("grill", "spec-check") -- any other
+      value is rejected.
     target_stage must be one of SEED_TARGET_STAGES ("spec", "discovery",
       "research", "plan") -- the re-entry target stage.
     feature is the feature slug/id; non-empty.
     prior_conclusion is what the upstream stage concluded (now invalidated);
       non-empty.
-    invalidating_evidence is the grounded grill finding (quote/ref) that
+    invalidating_evidence is the grounded finding (quote/ref) that
       invalidates the prior_conclusion; non-empty.
     must_satisfy is what the re-run must additionally satisfy; non-empty.
     cycle_count is the bounded-compounding-loop counter; strict int (no bool),
       must be >= 1.
     carried_findings is prior findings carried forward (monotonic compounding);
       must be a list of str, may be empty.
-    provenance is a pointer to the source grill.md / plan path; non-empty.
+    provenance is a pointer to the source report / plan path; non-empty.
     """
 
     seed_version: str
@@ -121,14 +124,9 @@ class ReEntrySeed:
         # type: () -> None
         _require_nonempty(self.seed_version, "ReEntrySeed.seed_version")
 
-        # source must be a non-empty string and must equal SEED_SOURCE.
+        # source must be a non-empty string and must be one of SEED_SOURCES.
         _require_nonempty(self.source, "ReEntrySeed.source")
-        if self.source != SEED_SOURCE:
-            raise ValueError(
-                "ReEntrySeed.source must be {0!r}, got {1!r}".format(
-                    SEED_SOURCE, self.source
-                )
-            )
+        _require_in_enum(self.source, SEED_SOURCES, "ReEntrySeed.source")
 
         _require_in_enum(self.target_stage, SEED_TARGET_STAGES, "ReEntrySeed.target_stage")
         _require_nonempty(self.feature, "ReEntrySeed.feature")

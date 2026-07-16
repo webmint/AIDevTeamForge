@@ -72,9 +72,8 @@ from _grill._report import (  # noqa: E402
     write_grill_report,
     write_seed,
 )
-from _grill.seed_schema import (  # noqa: E402
+from _shared.seed_schema import (  # noqa: E402
     SEED_SCHEMA_VERSION,
-    SEED_SOURCE,
     SEED_TARGET_STAGES,
     ReEntrySeed,
 )
@@ -620,7 +619,7 @@ class TestBuildSeed(unittest.TestCase):
 
     def test_source_is_grill(self):
         seed = build_seed(**_valid_seed_kwargs())
-        self.assertEqual(seed.source, SEED_SOURCE)
+        self.assertEqual(seed.source, "grill")
 
     def test_seed_version_is_schema_version(self):
         seed = build_seed(**_valid_seed_kwargs())
@@ -777,7 +776,7 @@ class TestWriteSeed(unittest.TestCase):
             self.assertIsInstance(data, dict)
             self.assertIn("target_stage", data)
             self.assertIn("source", data)
-            self.assertEqual(data["source"], SEED_SOURCE)
+            self.assertEqual(data["source"], "grill")
 
     def test_no_temp_files_left_behind(self):
         with tempfile.TemporaryDirectory() as tmpdir:

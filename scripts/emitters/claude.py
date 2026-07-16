@@ -46,7 +46,7 @@ from lib.command_source import (  # noqa: E402
 # add it here. Full generalized iteration (loop all src/commands/ entries)
 # stays commented below until every command has passed its CLI-agnostic +
 # audit passes — premature promotion would ship broken skills.
-_PROMOTED = ("init-forge", "generate-docs", "configure", "constitute", "research", "discover", "specify", "plan", "breakdown", "implement", "pr-review", "audit", "review", "verify", "grill", "summarize", "finalize", "fix", "report-bug")
+_PROMOTED = ("init-forge", "generate-docs", "configure", "constitute", "research", "discover", "specify", "spec-check", "plan", "breakdown", "implement", "pr-review", "audit", "review", "verify", "grill", "summarize", "finalize", "fix", "report-bug")
 
 
 def emit(src: Path, target: Path, only: "str | None" = None) -> None:
