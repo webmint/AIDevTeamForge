@@ -8,19 +8,19 @@
 
 ## Problem
 
-The framework emits 19 project slash commands into a consumer's `.claude/commands/` (the
+The framework emits 20 project slash commands into a consumer's `.claude/commands/` (the
 `_PROMOTED` tuple, `scripts/emitters/claude.py:49`): `init-forge, generate-docs, configure,
-constitute, research, discover, specify, plan, breakdown, implement, pr-review, audit, review,
-verify, grill, summarize, finalize, fix, report-bug`.
+constitute, research, discover, specify, spec-check, plan, breakdown, implement, pr-review, audit,
+review, verify, grill, summarize, finalize, fix, report-bug`.
 
 **Reported bug:** the model offered *"want me to fix this then verify?"*, the user agreed, and the
 model invoked a **non-forge `verify`** (a bundled/plugin skill), not the forge `/verify` pipeline.
 
 ### Root-cause diagnosis (auto-invocation, caused by the disable flag — NOT the name)
 
-The hijack is **auto-invocation**, and its root cause is that every one of the 19 forge commands sets
+The hijack is **auto-invocation**, and its root cause is that every one of the 20 forge commands sets
 `disable-model-invocation: true` in its frontmatter (verified: `grep -n disable-model-invocation
-src/commands/*/main.md` → present in all 19; exact line varies 4–6 with frontmatter length). That flag
+src/commands/*/main.md` → present in all 20; exact line varies 4–6 with frontmatter length). That flag
 does two things:
 
 1. It **stops the model from invoking** the forge command, and
@@ -112,9 +112,9 @@ Path A's authoritative grounding (verified via `claude-code-guide` against `docs
 
 | Fact | Location | Note |
 |---|---|---|
-| The 19 emitted command names | `scripts/emitters/claude.py:49` (`_PROMOTED` tuple) | `init-forge, generate-docs, configure, constitute, research, discover, specify, plan, breakdown, implement, pr-review, audit, review, verify, grill, summarize, finalize, fix, report-bug` |
+| The 20 emitted command names | `scripts/emitters/claude.py:49` (`_PROMOTED` tuple) | `init-forge, generate-docs, configure, constitute, research, discover, specify, spec-check, plan, breakdown, implement, pr-review, audit, review, verify, grill, summarize, finalize, fix, report-bug` |
 | Command sources are folder-layout | `src/commands/<name>/main.md` (+ `references/`) | The command name derives from `<name>`; `main.md` frontmatter carries `name` + `description` + `disable-model-invocation: true` |
-| Every command sets the disable flag | all 19 `src/commands/*/main.md` (exact line varies 4–6) | `disable-model-invocation: true` — present in all 19 (verified via `grep -n`) |
+| Every command sets the disable flag | all 20 `src/commands/*/main.md` (exact line varies 4–6) | `disable-model-invocation: true` — present in all 20 (verified via `grep -n`) |
 | Install writes settings | `install.sh:334` | `cp … src/settings.template.json → .claude/settings.json` — flat copy. **Path B does NOT touch `settings.json` or bundled skills** — the old plan's whole settings mechanism is dropped. |
 | Consumer command catalog | consumer `src/CLAUDE.md` "## Workflow" + "### Command Details" | The always-on model-facing awareness source — load-bearing PRECISELY BECAUSE command descriptions are NOT in model context today (see the context-cost OQ) |
 
@@ -132,7 +132,7 @@ for the stale-file cleanup.)
 - **D2 (PROPOSED — needs Phase-0 sign-off):** the prefix FORM is chosen at Phase 0 via OQ-1
   (`claude-code-guide`), not picked here. Candidates: dot (`forge.verify`), colon-via-nested-dir
   (`.claude/commands/forge/verify` → `/forge:verify`), dash (`forge-verify`).
-- **D3 (PROPOSED — needs Phase-0 sign-off):** scope of the disable-flag removal — all 19 commands, or
+- **D3 (PROPOSED — needs Phase-0 sign-off):** scope of the disable-flag removal — all 20 commands, or
   only the model-spontaneous-intent commands (see OQ-3). Prefer a single uniform rule (zero-escape-hatch
   discipline) unless a hard reason to split emerges.
 - **D4 (PROPOSED — needs Phase-0 sign-off):** reconcile with plan `26-REINTRODUCE-FIX-PLAN.md` D2
@@ -154,7 +154,7 @@ for the stale-file cleanup.)
   no special resolution)? The agent must confirm how each form is discovered, typed, and shadowed, and
   whether a nested-directory command changes the emitter's output path. **No prefix is committed until
   this is answered.**
-- **OQ-2 — CONTEXT COST (the central tradeoff):** making 19 commands model-invocable puts their
+- **OQ-2 — CONTEXT COST (the central tradeoff):** making 20 commands model-invocable puts their
   `description` back into always-on model context — the exact thing `disable-model-invocation` was
   chosen to avoid. Plan `08-CLAUDE-MD-COMMAND-TRIM-PLAN.md` trimmed the consumer `src/CLAUDE.md`
   command catalog, and the catalog is load-bearing PRECISELY BECAUSE descriptions were NOT in context
@@ -163,11 +163,12 @@ for the stale-file cleanup.)
   offsetting** the cost — but the **net context delta must be MEASURED, not assumed.** This is the
   decision's main open question: is the added description weight worth the reachability fix, and how
   much of the `src/CLAUDE.md` catalog can be trimmed to compensate?
-- **OQ-3 — scope of the disable-flag removal:** do ALL 19 commands drop `disable-model-invocation`, or
+- **OQ-3 — scope of the disable-flag removal:** do ALL 20 commands drop `disable-model-invocation`, or
   only the ones tied to model-spontaneous intents (`verify` / `review` / `plan` / `fix` / `audit` /
-  `research`), leaving the one-time setup commands (`init-forge` / `generate-docs` / `configure` /
-  `constitute`) human-only? Prefer a single uniform rule (zero-escape-hatch) unless there is a hard
-  reason to split.
+  `research`), leaving two other categories human-only — the one-time **setup** commands (`init-forge`
+  / `generate-docs` / `configure` / `constitute`) and the **opt-in adversarial** checks (`grill` /
+  `spec-check`, which are deliberately user-invoked gates, never something the model should auto-start)?
+  Prefer a single uniform rule (zero-escape-hatch) unless there is a hard reason to split.
 - **OQ-4 — human-gated pipeline (why the "keep it human-only" objection is weak):** forge deliberately
   made commands human-invoked so the pipeline is human-driven. **Counter-point:** forge's hard approval
   gates live INSIDE each command body (spec approval before `/plan`, plan approval before `/breakdown`,
@@ -311,7 +312,7 @@ behavior is untouched, since Path B disables no skill).
 
 The reported bug: the model, on user agreement to "verify", invoked a **non-forge** `verify` skill
 (bundled/plugin), not the forge `/verify`. Root cause is **auto-invocation**, and it is caused by the
-`disable-model-invocation: true` flag on all 19 forge commands — the flag makes the forge commands
+`disable-model-invocation: true` flag on all 20 forge commands — the flag makes the forge commands
 unreachable by the model AND drops their descriptions from context, so the model falls to a
 same-intent bundled/superpowers skill. Renaming alone does not fix it; the flag is the cause.
 
@@ -320,7 +321,7 @@ Chosen fix = **Path B** (idiomatic per spec-kit + BMAD, neither of which disable
 command** so the unique name is what the model calls (zero collision). The old `skillOverrides` /
 `disableBundledSkills` approach (Path A) is **rejected and recorded** so it is not re-proposed.
 
-The crux is **OQ-2 (context cost)** — model-invocable puts 19 descriptions back into always-on context
+The crux is **OQ-2 (context cost)** — model-invocable puts 20 descriptions back into always-on context
 (the thing the disable flag avoided); the `src/CLAUDE.md` catalog may shrink to offset, but the **net
 delta must be measured**. Also open: **OQ-1** (prefix FORM, via `claude-code-guide`) and **OQ-5** (plan
 26 D2 — `/fix` is model-proposed/user-invoked; Path B would let the model invoke it — reconcile, don't
@@ -332,7 +333,7 @@ silently override). Everything is drafted; **nothing built**; Phase 0 ratificati
 2. Route **OQ-1** (prefix FORM: dot vs colon-via-nested-dir vs dash) to `claude-code-guide` with the
    spec-kit + BMAD precedents in the brief; record the answer verbatim.
 3. Resolve **OQ-2** (context cost) — decide whether to measure the net `src/CLAUDE.md`-catalog delta
-   before committing, and **OQ-3** (all 19 vs intent-only scope), and **OQ-5** (plan 26 D2).
+   before committing, and **OQ-3** (all 20 vs intent-only scope), and **OQ-5** (plan 26 D2).
 4. Get maintainer sign-off on D2/D3/D4 at Phase 0. **No build until Phase 0 closes.**
 5. Build phase by phase. **Every** command `main.md`/frontmatter edit and **every** `src/CLAUDE.md`
    edit routes through the **instruction-author → instruction-reviewer + claude-code-guide** iterative
