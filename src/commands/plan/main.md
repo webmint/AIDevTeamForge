@@ -18,7 +18,7 @@ Usage: `/plan [spec-file]` (e.g. `/plan specs/008-prevent-duplicate-config-optio
 - `specs/NNN-<feature>/data-model.md` — when the feature involves new or changed entities (conditional).
 - `specs/NNN-<feature>/contracts.md` — when the feature involves new or changed API contracts (conditional).
 
-On approve, Phase 4 `[WIP]`-commits `plan.md` + `plan-handoff.json` (plus whichever of `research.md` / `data-model.md` / `contracts.md` this run actually wrote) into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
+On approve, Phase 4 `[WIP]`-commits `spec.md` (whose `**Status**:` Phase 0b flipped) + `plan.md` + `plan-handoff.json` (plus whichever of `research.md` / `data-model.md` / `contracts.md` this run actually wrote) into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the plan artifacts — and the spec's Phase-0b status flip — are git-safe the moment they exist on disk; the commit folds into `/finalize`'s squash.
 
 ## Context in the Workflow
 
@@ -524,13 +524,13 @@ The helper parses the rendered `plan.md` and atomic-writes `specs/NNN-<feature>/
 
 The `plan-handoff.json` is the **producer side** of the plan→breakdown handoff, consumed by `breakdown_helper read-plan-handoff` in `/breakdown` Phase 0. There is no auto-dispatch and no auto-consume: the manual text block below remains how the user launches `/breakdown`.
 
-**WIP-commit the plan artifacts.** With `plan.md` written in Phase 2 and `plan-handoff.json` written above, `[WIP]`-commit the plan artifacts so the work is git-safe immediately. Compose `--paths` from `plan.md` + `plan-handoff.json` plus whichever optional supporting docs THIS run wrote — include `research.md` (if Phase 0 generated it), `data-model.md` (if Phase 1.1 drafted it), and `contracts.md` (if Phase 1.2 drafted it); omit the ones this run did not write. Use the feature directory name (`NNN-<feature>`) for the label.
+**WIP-commit the plan artifacts.** With `plan.md` written in Phase 2 and `plan-handoff.json` written above, `[WIP]`-commit the plan artifacts so the work is git-safe immediately. Compose `--paths` from `spec.md` + `plan.md` + `plan-handoff.json` plus whichever optional supporting docs THIS run wrote — include `research.md` (if Phase 0 generated it), `data-model.md` (if Phase 1.1 drafted it), and `contracts.md` (if Phase 1.2 drafted it); omit the ones this run did not write. Use the feature directory name (`NNN-<feature>`) for the label. `spec.md` is a mandatory entry — not because `/plan` produced it, but because Phase 0b may have mutated its `**Status**:` line on disk (flipped Draft→Approved, or inserted a missing Status line as Approved), so that mutation must ride the same git-safe commit as the plan artifacts; when Phase 0b changed nothing (already Approved, Complete, or a non-standard status) staging the unmodified file is a benign "nothing to commit" no-op.
 
-The block below shows the mandatory two-entry minimum — append `"specs/<NNN>-<feature>/research.md"`, `"specs/<NNN>-<feature>/data-model.md"`, and/or `"specs/<NNN>-<feature>/contracts.md"` to the `--paths` array for whichever of those THIS run wrote (omit the ones it did not). The array is composed at runtime, not copied verbatim.
+The block below shows the mandatory three-entry minimum — append `"specs/<NNN>-<feature>/research.md"`, `"specs/<NNN>-<feature>/data-model.md"`, and/or `"specs/<NNN>-<feature>/contracts.md"` to the `--paths` array for whichever of those THIS run wrote (omit the ones it did not). The array is composed at runtime, not copied verbatim.
 
 ```bash
 .devforge/lib/artifact_helper commit-artifacts \
-    --paths '["specs/<NNN>-<feature>/plan.md", "specs/<NNN>-<feature>/plan-handoff.json"]' \
+    --paths '["specs/<NNN>-<feature>/spec.md", "specs/<NNN>-<feature>/plan.md", "specs/<NNN>-<feature>/plan-handoff.json"]' \
     --label "plan: <NNN>-<feature>"
 ```
 
