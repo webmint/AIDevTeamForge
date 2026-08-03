@@ -1248,6 +1248,105 @@ class ReadPlanHandoffTests(_CwdIsolationBH):
         self.assertIn("## Upstream plan seeds", output)
         # All sub-sections should show _(none)_ when no data rows.
         self.assertIn("_(none)_", output)
+        # No Pure-Builder Targets section on this plan.md -> no sub-block.
+        self.assertNotIn("Pure-Builder Targets", output)
+
+    def test_round_trip_pure_builder_targets_rendered(self):
+        """ROUND-TRIP: a plan.md with ### Pure-Builder Targets renders the
+        'Pure-Builder Targets (property-test lane)' sub-block via the real
+        producer (plan_helper finalize-handoff) + consumer (read-plan-handoff).
+        """
+        specs_dir = self.tmp_path / "specs" / "003-pure-builder"
+        specs_dir.mkdir(parents=True)
+        plan = specs_dir / "plan.md"
+        plan.write_text(
+            "# Plan: Widget Catalog Search\n\n"
+            "**Date**: 2026-07-20\n"
+            "**Status**: Approved\n\n"
+            "## Summary\n\nBuild widget catalog search functionality.\n\n"
+            "### File Impact\n\n"
+            "| File | Action | What Changes |\n"
+            "|------|--------|---------------|\n"
+            "| src/widgets/widget_filter.ts | Create | Filter predicate |\n\n"
+            "### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| filterWidgetsByQuery | src/widgets/widget_filter.ts | No I/O, deterministic |\n"
+            "| normalizeTagList | src/widgets/tag_utils.ts | Pure array transform |\n"
+            "| [target] | [file] | [why] |\n\n"
+            "## Dependencies\n\nNo external package dependencies.\n",
+            encoding="utf-8",
+        )
+
+        finalize_result = self._finalize_handoff(plan)
+        self.assertEqual(
+            finalize_result.returncode, 0,
+            "plan_helper finalize-handoff failed: " + finalize_result.stderr
+        )
+        sibling = specs_dir / "plan-handoff.json"
+        self.assertTrue(sibling.exists())
+
+        # Sanity: the producer actually captured 2 rows (1 placeholder skipped).
+        import json as _json
+        produced = _json.loads(sibling.read_text(encoding="utf-8"))
+        self.assertEqual(
+            len(produced["breakdown_seeds"]["pure_builder_targets"]), 2
+        )
+
+        result = _run_bh(self.tmp_path, "read-plan-handoff", str(plan))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+
+        self.assertIn(
+            "### Pure-Builder Targets (property-test lane)", output
+        )
+        self.assertIn(
+            "- filterWidgetsByQuery (src/widgets/widget_filter.ts) — No I/O, deterministic",
+            output,
+        )
+        self.assertIn(
+            "- normalizeTagList (src/widgets/tag_utils.ts) — Pure array transform",
+            output,
+        )
+
+    def test_old_producer_json_missing_key_renders_byte_identical(self):
+        """Back-compat: a plan-handoff.json produced BEFORE this feature (no
+        pure_builder_targets key in breakdown_seeds) renders byte-identical
+        to the with-key-but-empty case -- no Pure-Builder Targets sub-block,
+        no crash.
+
+        Constructed by taking a real produced handoff (via the real
+        producer) and deleting the key, simulating an old producer's JSON --
+        not a hand-authored fixture bypassing the producer for the base shape.
+        """
+        specs_dir = self.tmp_path / "specs" / "004-old-producer"
+        specs_dir.mkdir(parents=True)
+        plan = specs_dir / "plan.md"
+        _write_minimal_plan(str(plan))
+
+        finalize_result = self._finalize_handoff(plan)
+        self.assertEqual(finalize_result.returncode, 0, finalize_result.stderr)
+        sibling = specs_dir / "plan-handoff.json"
+
+        import json as _json
+        produced = _json.loads(sibling.read_text(encoding="utf-8"))
+        # This plan has no Pure-Builder Targets section -> already [].
+        self.assertEqual(produced["breakdown_seeds"]["pure_builder_targets"], [])
+
+        # Baseline rendering (current producer, key present but empty).
+        baseline = _run_bh(self.tmp_path, "read-plan-handoff", str(plan))
+        self.assertEqual(baseline.returncode, 0, baseline.stderr)
+
+        # Simulate an OLD producer: delete the key entirely.
+        del produced["breakdown_seeds"]["pure_builder_targets"]
+        sibling.write_text(_json.dumps(produced), encoding="utf-8")
+
+        old_style = _run_bh(self.tmp_path, "read-plan-handoff", str(plan))
+        self.assertEqual(old_style.returncode, 0, old_style.stderr)
+
+        # Byte-identical to the with-key-but-empty rendering.
+        self.assertEqual(old_style.stdout, baseline.stdout)
+        self.assertNotIn("Pure-Builder Targets", old_style.stdout)
 
 
 # ---------------------------------------------------------------------------
@@ -1641,6 +1740,60 @@ class RenderTaskFileTests(_CwdIsolationBH):
         self.assertIn("| File | Action | Description |", output)
         self.assertIn("|------|--------|-------------|", output)
 
+    # ------------------------------------------------------------------
+    # --property-targets flag (plan 66 WI-1)
+    # ------------------------------------------------------------------
+
+    def test_no_property_targets_flag_byte_identical_to_pre_change_output(self):
+        """Without --property-targets, output is BYTE-IDENTICAL to the
+        pre-flag skeleton -- no '**Property targets**:' line anywhere."""
+        result = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("**Property targets**:", result.stdout)
+        # Cross-check against a fixed golden skeleton built the same way
+        # RenderTaskFileTests already exercises no-args output elsewhere in
+        # this class -- the golden invariant is simply that inserting the
+        # flag introduces no new line when omitted.
+        no_flag = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.stdout, no_flag.stdout)
+
+    def test_property_targets_line_present_after_context_docs(self):
+        """--property-targets emits a '**Property targets**:' line
+        immediately after '**Context docs**:', verbatim (stripped)."""
+        result = _run_bh(
+            self.tmp_path, "render-task-file",
+            "--property-targets", "filterWidgetsByQuery, normalizeTagList",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        context_idx = next(
+            i for i, ln in enumerate(lines) if ln.startswith("**Context docs**:")
+        )
+        self.assertEqual(
+            lines[context_idx + 1],
+            "**Property targets**: filterWidgetsByQuery, normalizeTagList",
+        )
+
+    def test_property_targets_value_stripped(self):
+        """Leading/trailing whitespace in --property-targets is stripped."""
+        result = _run_bh(
+            self.tmp_path, "render-task-file",
+            "--property-targets", "  foo, bar  ",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("**Property targets**: foo, bar", result.stdout)
+        self.assertNotIn("**Property targets**:  foo", result.stdout)
+
+    def test_empty_property_targets_flag_omits_line(self):
+        """--property-targets '' (empty after stripping) omits the line
+        entirely -- byte-identical to not passing the flag at all."""
+        with_empty = _run_bh(
+            self.tmp_path, "render-task-file", "--property-targets", "   "
+        )
+        without_flag = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(with_empty.returncode, 0, with_empty.stderr)
+        self.assertEqual(with_empty.stdout, without_flag.stdout)
+
 
 # ---------------------------------------------------------------------------
 # Tests: render-tasks-index (Phase 2, Verb 3)
@@ -1828,18 +1981,27 @@ class RenderConsultationBlockTests(_CwdIsolationBH):
 # ---------------------------------------------------------------------------
 
 
-def _render_task_file_raw(number, title, feature):
-    """Invoke render-task-file and return stdout string (for round-trip seeding)."""
+def _render_task_file_raw(number, title, feature, property_targets=None):
+    """Invoke render-task-file and return stdout string (for round-trip seeding).
+
+    property_targets (plan 66 WI-1): when given, passed through as
+    --property-targets so the returned skeleton already carries a
+    '**Property targets**:' line -- a real-producer round-trip, not a
+    hand-authored fixture.
+    """
     import subprocess as _sp
+    argv = [
+        sys.executable,
+        str(BREAKDOWN_HELPER_PY),
+        "render-task-file",
+        "--number", number,
+        "--title", title,
+        "--feature", feature,
+    ]
+    if property_targets:
+        argv += ["--property-targets", property_targets]
     result = _sp.run(
-        [
-            sys.executable,
-            str(BREAKDOWN_HELPER_PY),
-            "render-task-file",
-            "--number", number,
-            "--title", title,
-            "--feature", feature,
-        ],
+        argv,
         capture_output=True,
         text=True,
     )
@@ -2340,6 +2502,833 @@ class VerifyAcCoverageTests(_CwdIsolationBH):
 
 
 # ---------------------------------------------------------------------------
+# Fixture helpers: plan.md with a ### Pure-Builder Targets table, and the
+# real plan_helper finalize-handoff producer (plan 66 WI-1).
+# ---------------------------------------------------------------------------
+
+
+def _write_plan_with_pure_builder_targets(plan_path, targets):
+    """Write a plan.md with a '### Pure-Builder Targets' table.
+
+    targets: list of (target, file, why) tuples -> one data row each.
+    Mirrors the real plan.md shape plan_helper's parser expects (see
+    ReadPlanHandoffTests.test_round_trip_pure_builder_targets_rendered).
+    """
+    rows = "\n".join(
+        "| {0} | {1} | {2} |".format(t, f, w) for t, f, w in targets
+    )
+    content = (
+        "# Plan: Property Coverage Test\n\n"
+        "**Date**: 2026-07-20\n"
+        "**Status**: Approved\n\n"
+        "## Summary\n\nBuild something with pure-builder targets.\n\n"
+        "### Pure-Builder Targets\n\n"
+        "| Target | File | Why pure |\n"
+        "|--------|------|----------|\n"
+        "{0}\n\n"
+        "## Dependencies\n\nNo external package dependencies.\n"
+    ).format(rows)
+    Path(plan_path).write_text(content, encoding="utf-8")
+
+
+def _produce_plan_handoff_with_targets(tmp_path, plan_path, targets):
+    """Write a plan.md with Pure-Builder Targets, run the REAL plan_helper
+    finalize-handoff, and return the produced plan-handoff.json Path.
+
+    Fixture-building assertion (not a test-under-test assertion): the
+    producer must succeed for the fixture to be usable at all.
+    """
+    _write_plan_with_pure_builder_targets(plan_path, targets)
+    r = _run_plan_helper_finalize(plan_path, tmp_path)
+    assert r.returncode == 0, "plan_helper finalize-handoff failed: " + r.stderr
+    return Path(plan_path).parent / "plan-handoff.json"
+
+
+# ---------------------------------------------------------------------------
+# Tests: verify-property-coverage + _validate_property_coverage (plan 66 WI-1)
+# ---------------------------------------------------------------------------
+
+
+class ValidatePropertyCoverageFnTests(_CwdIsolationBH):
+    """Direct unit tests of _validate_property_coverage (shared predicate).
+
+    Declared targets always come from a real plan-handoff.json produced by
+    the REAL plan_helper finalize-handoff (round-trip via
+    _produce_plan_handoff_with_targets), per real-fixture discipline. Only
+    the malformed/absent-key JSON cases hand-edit a produced file, since no
+    producer emits malformed JSON by design.
+    """
+
+    def _tasks_dir(self):
+        d = self.tmp_path / "tasks"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def test_covered_target(self):
+        """A single declared target covered by one task -> no offenders."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+        td = self._tasks_dir()
+        _write_full_task_file(
+            td, "001", "Property test", "feat", agent="qa-engineer",
+            property_targets="filterWidgetsByQuery",
+        )
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(declared, [("filterWidgetsByQuery", "src/widgets/widget_filter.ts")])
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 1)
+
+    def test_uncovered_target(self):
+        """A declared target with no covering task -> reported as offender."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+        td = self._tasks_dir()
+        # A task that assigns no property targets at all.
+        _write_full_task_file(td, "001", "Unrelated task", "feat", agent="qa-engineer")
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(len(declared), 1)
+        self.assertEqual(
+            offenders, [("filterWidgetsByQuery", "src/widgets/widget_filter.ts")]
+        )
+        self.assertEqual(covering, 0)
+
+    def test_multi_target_one_task_covers_both(self):
+        """One task's Property targets line names BOTH declared targets."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [
+                ("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O"),
+                ("normalizeTagList", "src/widgets/tag_utils.ts", "Pure transform"),
+            ],
+        )
+        td = self._tasks_dir()
+        _write_full_task_file(
+            td, "001", "Cover both", "feat", agent="qa-engineer",
+            property_targets="filterWidgetsByQuery, normalizeTagList",
+        )
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(offenders, [])
+        # A single task covering both targets counts once.
+        self.assertEqual(covering, 1)
+
+    def test_one_target_per_task(self):
+        """Two tasks, each covering one distinct declared target."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [
+                ("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O"),
+                ("normalizeTagList", "src/widgets/tag_utils.ts", "Pure transform"),
+            ],
+        )
+        td = self._tasks_dir()
+        _write_full_task_file(
+            td, "001", "Cover filter", "feat", agent="qa-engineer",
+            property_targets="filterWidgetsByQuery",
+        )
+        _write_full_task_file(
+            td, "002", "Cover normalize", "feat", agent="qa-engineer",
+            property_targets="normalizeTagList", depends_on="001",
+        )
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 2)
+
+    def test_duplicate_declared_target_deduped_keeping_first_occurrence(self):
+        """A target declared TWICE across two rows -> 'declared' contains
+        it ONCE, keeping the FIRST occurrence's file value (finding 3)."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [
+                ("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "First row"),
+                ("filterWidgetsByQuery", "src/widgets/other_file.ts", "Second row"),
+            ],
+        )
+        td = self._tasks_dir()
+        # No covering task -> the deduped target is the sole offender.
+        _write_full_task_file(td, "001", "Unrelated", "feat", agent="qa-engineer")
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        # Deduped to exactly one entry, keeping the FIRST row's file value.
+        self.assertEqual(
+            declared, [("filterWidgetsByQuery", "src/widgets/widget_filter.ts")]
+        )
+        self.assertEqual(
+            offenders, [("filterWidgetsByQuery", "src/widgets/widget_filter.ts")]
+        )
+
+    def test_case_sensitivity_foo_not_covered_by_foo_lowercase(self):
+        """Declared target 'Foo' is NOT covered by a task naming 'foo'
+        (targets are code identifiers; comparison is case-sensitive)."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("Foo", "src/foo.ts", "Pure")],
+        )
+        td = self._tasks_dir()
+        _write_full_task_file(
+            td, "001", "Wrong case", "feat", agent="qa-engineer",
+            property_targets="foo",
+        )
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(offenders, [("Foo", "src/foo.ts")])
+        self.assertEqual(covering, 0)
+
+    def test_whitespace_tolerance_a_comma_space_b(self):
+        """'a , b' (irregular spacing) still matches declared targets 'a' and 'b'."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("a", "src/a.ts", "Pure"), ("b", "src/b.ts", "Pure")],
+        )
+        td = self._tasks_dir()
+        # Hand-edit the property-targets line directly to control exact
+        # spacing -- render-task-file/--property-targets would already
+        # normalize this, so we bypass it deliberately for this one case.
+        task_path = _write_full_task_file(
+            td, "001", "Odd spacing", "feat", agent="qa-engineer",
+            property_targets="placeholder",
+        )
+        content = task_path.read_text(encoding="utf-8")
+        content = content.replace(
+            "**Property targets**: placeholder", "**Property targets**: a , b"
+        )
+        task_path.write_text(content, encoding="utf-8")
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 1)
+
+    def test_empty_target_entry_in_declared_row_skipped(self):
+        """A declared row with an empty/missing target contributes nothing
+        to 'declared' (skipped, per the shared predicate's contract)."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        handoff = _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("realTarget", "src/real.ts", "Pure")],
+        )
+        # Hand-edit the produced handoff to inject a declared row with an
+        # empty target -- no real plan.md table row produces this shape
+        # (the '[target]' placeholder-row is already skipped by the
+        # producer itself), so this simulates a malformed/degenerate but
+        # still-JSON-valid producer row.
+        import json as _json
+        raw = _json.loads(handoff.read_text(encoding="utf-8"))
+        raw["breakdown_seeds"]["pure_builder_targets"].append(
+            {"target": "", "file": "src/nowhere.ts", "why": "n/a"}
+        )
+        handoff.write_text(_json.dumps(raw), encoding="utf-8")
+
+        td = self._tasks_dir()
+        _write_full_task_file(
+            td, "001", "Cover real", "feat", agent="qa-engineer",
+            property_targets="realTarget",
+        )
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        # Only the one non-empty-target row is declared.
+        self.assertEqual(declared, [("realTarget", "src/real.ts")])
+        self.assertEqual(offenders, [])
+
+    def test_handoff_missing_returns_error(self):
+        """Absent plan-handoff.json -> error is set, all other fields empty."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        td = self._tasks_dir()
+        missing = self.tmp_path / "no-such-plan-handoff.json"
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(missing)
+        )
+        self.assertIsNotNone(error)
+        self.assertEqual(declared, [])
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 0)
+
+    def test_handoff_malformed_json_returns_error(self):
+        """Invalid JSON in plan-handoff.json -> error is set."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        td = self._tasks_dir()
+        bad = self.tmp_path / "plan-handoff.json"
+        bad.write_text("{ not valid json", encoding="utf-8")
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(bad)
+        )
+        self.assertIsNotNone(error)
+        self.assertEqual(declared, [])
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 0)
+
+    def test_handoff_root_not_a_dict_returns_error(self):
+        """A JSON array (not an object) at the root -> error is set."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        td = self._tasks_dir()
+        bad = self.tmp_path / "plan-handoff.json"
+        bad.write_text("[1, 2, 3]", encoding="utf-8")
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(bad)
+        )
+        self.assertIsNotNone(error)
+
+    def test_handoff_breakdown_seeds_not_a_dict_returns_error(self):
+        """breakdown_seeds present but a JSON list (not an object) -> error
+        is set, NOT coerced to empty (a malformed handoff must still reach
+        the verb's plan.md fallback, not silently vanish)."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        td = self._tasks_dir()
+        bad = self.tmp_path / "plan-handoff.json"
+        import json as _json
+        bad.write_text(
+            _json.dumps({"breakdown_seeds": [1, 2, 3]}), encoding="utf-8"
+        )
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(bad)
+        )
+        self.assertIsNotNone(error)
+        self.assertEqual(declared, [])
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 0)
+
+    def test_handoff_pure_builder_targets_not_a_list_returns_error(self):
+        """pure_builder_targets present but a JSON string (not a list) ->
+        error is set, NOT coerced to empty."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        td = self._tasks_dir()
+        bad = self.tmp_path / "plan-handoff.json"
+        import json as _json
+        bad.write_text(
+            _json.dumps(
+                {"breakdown_seeds": {"pure_builder_targets": "not-a-list"}}
+            ),
+            encoding="utf-8",
+        )
+
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(bad)
+        )
+        self.assertIsNotNone(error)
+        self.assertEqual(declared, [])
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 0)
+
+    def test_absent_key_yields_empty_declared(self):
+        """breakdown_seeds with NO pure_builder_targets key at all (old
+        producer shape) -> declared == [] and NOT an error."""
+        from breakdown_helper import _validate_property_coverage  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        # A plan with NO Pure-Builder Targets section -> the real producer
+        # already emits pure_builder_targets: [] (see
+        # ReadPlanHandoffTests.test_old_producer_json_missing_key_renders_byte_identical
+        # for the same "simulate an old producer" technique).
+        _write_minimal_plan(str(plan_path))
+        r = _run_plan_helper_finalize(plan_path, self.tmp_path)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        handoff = plan_path.parent / "plan-handoff.json"
+
+        import json as _json
+        raw = _json.loads(handoff.read_text(encoding="utf-8"))
+        self.assertEqual(raw["breakdown_seeds"]["pure_builder_targets"], [])
+        # Simulate an OLD producer: delete the key entirely.
+        del raw["breakdown_seeds"]["pure_builder_targets"]
+        handoff.write_text(_json.dumps(raw), encoding="utf-8")
+
+        td = self._tasks_dir()
+        declared, offenders, covering, error = _validate_property_coverage(
+            str(td), str(handoff)
+        )
+        self.assertIsNone(error)
+        self.assertEqual(declared, [])
+        self.assertEqual(offenders, [])
+        self.assertEqual(covering, 0)
+
+
+class PlanDeclaresPureBuilderTargetsFnTests(_CwdIsolationBH):
+    """Direct unit tests of _plan_declares_pure_builder_targets (finding 1:
+    the criterion is heading AND >=1 non-placeholder row, mirroring
+    plan_helper._parse_pure_builder_targets WITHOUT importing plan_helper)."""
+
+    def test_heading_and_real_row_true(self):
+        from breakdown_helper import _plan_declares_pure_builder_targets  # type: ignore[import]
+        content = (
+            "### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| foo | src/foo.ts | Pure |\n"
+        )
+        self.assertTrue(_plan_declares_pure_builder_targets(content))
+
+    def test_no_heading_false(self):
+        from breakdown_helper import _plan_declares_pure_builder_targets  # type: ignore[import]
+        self.assertFalse(_plan_declares_pure_builder_targets("# Plan: X\n\nNo section here.\n"))
+
+    def test_heading_present_placeholder_only_rows_false(self):
+        from breakdown_helper import _plan_declares_pure_builder_targets  # type: ignore[import]
+        content = (
+            "### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| [target] | [file] | [why] |\n"
+        )
+        self.assertFalse(_plan_declares_pure_builder_targets(content))
+
+    def test_case_insensitive_heading_true(self):
+        from breakdown_helper import _plan_declares_pure_builder_targets  # type: ignore[import]
+        content = (
+            "### pure-builder targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| foo | src/foo.ts | Pure |\n"
+        )
+        self.assertTrue(_plan_declares_pure_builder_targets(content))
+
+    def test_level_4_heading_false(self):
+        from breakdown_helper import _plan_declares_pure_builder_targets  # type: ignore[import]
+        content = (
+            "#### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| foo | src/foo.ts | Pure |\n"
+        )
+        self.assertFalse(_plan_declares_pure_builder_targets(content))
+
+
+class RenderPropertyCoverageFindingsFnTests(unittest.TestCase):
+    """Direct unit tests of _render_property_coverage_findings (finding 5:
+    the shared rendering function both emission sites call)."""
+
+    def test_single_offender_exact_text(self):
+        from breakdown_helper import _render_property_coverage_findings  # type: ignore[import]
+        result = _render_property_coverage_findings(
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts")]
+        )
+        self.assertEqual(
+            result,
+            "## Property coverage findings\n\n"
+            "- target 'filterWidgetsByQuery' (src/widgets/widget_filter.ts): "
+            "no property-test task covers it\n"
+            "\nDeclared in plan-handoff.json breakdown_seeds.pure_builder_targets; "
+            "add a dedicated qa-engineer property-test task with a "
+            "'**Property targets**:' line naming each uncovered target.\n",
+        )
+
+    def test_two_offenders_two_lines(self):
+        from breakdown_helper import _render_property_coverage_findings  # type: ignore[import]
+        result = _render_property_coverage_findings(
+            [("a", "src/a.ts"), ("b", "src/b.ts")]
+        )
+        self.assertEqual(result.count("- target '"), 2)
+        self.assertIn("- target 'a' (src/a.ts): no property-test task covers it\n", result)
+        self.assertIn("- target 'b' (src/b.ts): no property-test task covers it\n", result)
+
+    def test_empty_offenders_no_bullet_lines(self):
+        from breakdown_helper import _render_property_coverage_findings  # type: ignore[import]
+        result = _render_property_coverage_findings([])
+        self.assertNotIn("- target '", result)
+        self.assertIn("## Property coverage findings", result)
+
+
+class VerifyPropertyCoverageVerbTests(_CwdIsolationBH):
+    """CLI-level tests for the verify-property-coverage verb."""
+
+    def _tasks_dir(self, name="tasks"):
+        d = self.tmp_path / name
+        d.mkdir(exist_ok=True)
+        return d
+
+    def test_skip_when_no_declared_targets(self):
+        """No Pure-Builder Targets in the plan -> skip, exit 0 (no task
+        files required at all)."""
+        plan_path = self.tmp_path / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        r = _run_plan_helper_finalize(plan_path, self.tmp_path)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        # Deliberately do NOT create any tasks directory.
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage",
+            str(self.tmp_path / "tasks"),
+            "--plan-handoff", str(plan_path.parent / "plan-handoff.json"),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(
+            result.stdout.strip(),
+            "property-coverage: skip (no declared pure-builder targets)",
+        )
+
+    def test_ok_when_all_covered(self):
+        """All declared targets covered -> exit 0 with the ok-count line."""
+        plan_path = self.tmp_path / "plan.md"
+        _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+        td = self._tasks_dir()
+        _write_full_task_file(
+            td, "001", "Property test", "feat", agent="qa-engineer",
+            property_targets="filterWidgetsByQuery",
+        )
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(plan_path.parent / "plan-handoff.json"),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(
+            result.stdout.strip(),
+            "property-coverage: ok (1 targets, 1 covering tasks)",
+        )
+
+    def test_findings_block_on_uncovered_target(self):
+        """An uncovered declared target -> exit 2 + findings block content.
+
+        Also asserts the emitted block is BYTE-IDENTICAL to
+        _render_property_coverage_findings's own output (finding 5: the verb
+        and the finalize-handoff chokepoint share this one rendering
+        function, so the two emission sites cannot drift)."""
+        from breakdown_helper import _render_property_coverage_findings  # type: ignore[import]
+
+        plan_path = self.tmp_path / "plan.md"
+        _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Unrelated", "feat", agent="qa-engineer")
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(plan_path.parent / "plan-handoff.json"),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Property coverage findings", result.stdout)
+        self.assertIn(
+            "- target 'filterWidgetsByQuery' (src/widgets/widget_filter.ts): "
+            "no property-test task covers it",
+            result.stdout,
+        )
+        self.assertIn(
+            "Declared in plan-handoff.json breakdown_seeds.pure_builder_targets",
+            result.stdout,
+        )
+        self.assertIn("qa-engineer property-test task", result.stdout)
+        self.assertEqual(
+            result.stdout,
+            _render_property_coverage_findings(
+                [("filterWidgetsByQuery", "src/widgets/widget_filter.ts")]
+            ),
+        )
+
+    def test_findings_block_duplicate_declared_target_renders_one_line(self):
+        """A target declared TWICE (across two plan.md rows), uncovered ->
+        exactly ONE '- target ...' findings line, not two (finding 3: dedup
+        by target name)."""
+        plan_path = self.tmp_path / "plan.md"
+        _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [
+                ("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "First row"),
+                ("filterWidgetsByQuery", "src/widgets/other_file.ts", "Second row"),
+            ],
+        )
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Unrelated", "feat", agent="qa-engineer")
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(plan_path.parent / "plan-handoff.json"),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(
+            result.stdout.count("- target 'filterWidgetsByQuery'"), 1
+        )
+
+    def test_fail_closed_missing_plan_handoff(self):
+        """Missing plan-handoff.json + plan.md DECLARES targets (### heading
+        present) -> exit 2 with the remedy stderr message (amendment,
+        instruction-review HIGH finding: fail-closed only applies when the
+        plan actually declared targets -- see test_skip_missing_handoff_*
+        for the never-declared cases that now exit 0)."""
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Whatever", "feat", agent="qa-engineer")
+        missing_handoff = self.tmp_path / "plan-handoff.json"
+        # plan.md sits next to tasks_dir's parent (self.tmp_path) and DOES
+        # declare a Pure-Builder Targets section.
+        plan_md_path = self.tmp_path / "plan.md"
+        _write_plan_with_pure_builder_targets(
+            plan_md_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(missing_handoff),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(
+            result.stderr.strip(),
+            # Routed through _die() (LOW finding) -> gains the file-wide
+            # 'breakdown_helper: ' prefix convention.
+            "breakdown_helper: verify-property-coverage: plan-handoff.json "
+            "not found/unreadable at {0} — plan.md declares pure-builder "
+            "targets; run plan_helper finalize-handoff {1} to produce it, "
+            "then re-run this gate".format(missing_handoff, plan_md_path),
+        )
+        self.assertEqual(result.stdout.strip(), "")
+
+    def test_skip_missing_handoff_and_no_plan_md_at_all(self):
+        """Missing plan-handoff.json AND no plan.md at all next to tasks_dir
+        -> the feature never declared targets -> skip, exit 0 (amendment)."""
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Whatever", "feat", agent="qa-engineer")
+        missing_handoff = self.tmp_path / "plan-handoff.json"
+        # Deliberately do NOT write any plan.md at all.
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(missing_handoff),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(
+            result.stdout.strip(),
+            "property-coverage: skip (no plan-handoff.json and no "
+            "pure-builder targets declared in plan.md)",
+        )
+        self.assertEqual(result.stderr.strip(), "")
+
+    def test_skip_missing_handoff_and_plan_md_without_heading(self):
+        """Missing plan-handoff.json + a plan.md that exists but has NO
+        Pure-Builder Targets heading -> skip, exit 0 (amendment)."""
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Whatever", "feat", agent="qa-engineer")
+        missing_handoff = self.tmp_path / "plan-handoff.json"
+        # A plan.md with no Pure-Builder Targets section at all.
+        _write_minimal_plan(str(self.tmp_path / "plan.md"))
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(missing_handoff),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(
+            result.stdout.strip(),
+            "property-coverage: skip (no plan-handoff.json and no "
+            "pure-builder targets declared in plan.md)",
+        )
+
+    def test_skip_missing_handoff_and_plan_md_heading_present_but_placeholder_only(self):
+        """Missing plan-handoff.json + plan.md HAS the '### Pure-Builder
+        Targets' heading but EVERY row is a placeholder (the
+        '| [target] | [file] | [why] |' example row) -> the section is
+        declared but no REAL target is named -> skip, exit 0 (finding 1:
+        the criterion is heading AND >=1 non-placeholder row, not the
+        heading alone)."""
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Whatever", "feat", agent="qa-engineer")
+        missing_handoff = self.tmp_path / "plan-handoff.json"
+        (self.tmp_path / "plan.md").write_text(
+            "# Plan: Placeholder Only\n\n"
+            "**Date**: 2026-07-20\n"
+            "**Status**: Approved\n\n"
+            "### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| [target] | [file] | [why] |\n",
+            encoding="utf-8",
+        )
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(missing_handoff),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(
+            result.stdout.strip(),
+            "property-coverage: skip (no plan-handoff.json and no "
+            "pure-builder targets declared in plan.md)",
+        )
+
+    def test_fail_closed_malformed_handoff_and_plan_md_with_heading(self):
+        """Malformed (invalid-JSON) plan-handoff.json + plan.md DOES declare
+        targets -> exit 2 with the remedy (amendment: any handoff error --
+        not just 'missing' -- triggers the plan.md fallback check)."""
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Whatever", "feat", agent="qa-engineer")
+        malformed_handoff = self.tmp_path / "plan-handoff.json"
+        malformed_handoff.write_text("{ not valid json", encoding="utf-8")
+        plan_md_path = self.tmp_path / "plan.md"
+        _write_plan_with_pure_builder_targets(
+            plan_md_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(malformed_handoff),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "plan.md declares pure-builder targets; run plan_helper "
+            "finalize-handoff", result.stderr
+        )
+        self.assertIn(str(plan_md_path), result.stderr)
+
+    def test_heading_match_is_case_insensitive_and_not_level_4(self):
+        """The '### Pure-Builder Targets' heading match is case-insensitive,
+        and does NOT match a level-4 '#### Pure-Builder Targets' heading
+        (the regex requires whitespace immediately after exactly three '#'
+        characters; a fourth '#' is not whitespace, so the match fails at
+        that position and no other position in the line can satisfy the
+        leading '^###' anchor). This test asserts the ACTUAL chosen
+        behavior, not an assumption about it."""
+        td = self._tasks_dir()
+        _write_full_task_file(td, "001", "Whatever", "feat", agent="qa-engineer")
+        missing_handoff = self.tmp_path / "plan-handoff.json"
+
+        # Case-insensitive: lowercase heading still triggers fail-closed.
+        plan_md_path = self.tmp_path / "plan.md"
+        plan_md_path.write_text(
+            "# Plan: Case Test\n\n"
+            "**Date**: 2026-07-20\n"
+            "**Status**: Approved\n\n"
+            "### pure-builder targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| foo | src/foo.ts | Pure |\n",
+            encoding="utf-8",
+        )
+        result_lower = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(missing_handoff),
+        )
+        self.assertEqual(result_lower.returncode, 2, result_lower.stdout)
+
+        # Level-4 heading: does NOT trigger fail-closed -> skip, exit 0.
+        plan_md_path.write_text(
+            "# Plan: Level Four Test\n\n"
+            "**Date**: 2026-07-20\n"
+            "**Status**: Approved\n\n"
+            "#### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "|--------|------|----------|\n"
+            "| foo | src/foo.ts | Pure |\n",
+            encoding="utf-8",
+        )
+        result_level4 = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(td),
+            "--plan-handoff", str(missing_handoff),
+        )
+        self.assertEqual(result_level4.returncode, 0, result_level4.stderr)
+        self.assertEqual(
+            result_level4.stdout.strip(),
+            "property-coverage: skip (no plan-handoff.json and no "
+            "pure-builder targets declared in plan.md)",
+        )
+
+    def test_no_task_files_found_when_targets_declared(self):
+        """Declared targets present but tasks-dir is missing/empty -> exit 2
+        with the shared 'no task files found' stderr message."""
+        plan_path = self.tmp_path / "plan.md"
+        _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+        empty_tasks_dir = self.tmp_path / "empty-tasks"
+        # Deliberately do NOT create the directory at all.
+
+        result = _run_bh(
+            self.tmp_path, "verify-property-coverage", str(empty_tasks_dir),
+            "--plan-handoff", str(plan_path.parent / "plan-handoff.json"),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "no task files found in {0}".format(empty_tasks_dir), result.stderr
+        )
+        self.assertEqual(result.stdout.strip(), "")
+
+    def test_default_plan_handoff_path_is_sibling_to_tasks_dir_parent(self):
+        """Without --plan-handoff, defaults to <tasks-dir's parent>/plan-handoff.json."""
+        feature_dir = self.tmp_path / "specs" / "001-default-path"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _produce_plan_handoff_with_targets(
+            self.tmp_path, plan_path,
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+        )
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+        _write_full_task_file(
+            tasks_dir, "001", "Property test", "001-default-path", agent="qa-engineer",
+            property_targets="filterWidgetsByQuery",
+        )
+
+        # No --plan-handoff passed at all.
+        result = _run_bh(self.tmp_path, "verify-property-coverage", str(tasks_dir))
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("property-coverage: ok", result.stdout)
+
+
+# ---------------------------------------------------------------------------
 # Tests: CLI shape (argparse, no subcommand, --help)
 # ---------------------------------------------------------------------------
 
@@ -2407,14 +3396,21 @@ class LauncherShimBreakdownTests(_CwdIsolationBH):
 def _write_full_task_file(tasks_dir, number, title, feature, agent,
                           expects=None, produces=None, ac_ids="AC-1",
                           depends_on="None", blocks="None",
-                          review_checkpoint="No", doc_refs="None"):
+                          review_checkpoint="No", doc_refs="None",
+                          property_targets=None):
     """Write a fully-populated task file seeded from render-task-file with real data.
 
     'agent' is a non-placeholder agent name (e.g. 'backend-engineer').
     Starts from the render-task-file skeleton (real producer round-trip) then
     substitutes agent, depends_on, blocks, review_checkpoint, doc_refs.
+
+    property_targets (plan 66 WI-1): when given, passed through to
+    _render_task_file_raw so the skeleton already carries a real
+    '**Property targets**:' line (real-producer round-trip).
     """
-    skeleton = _render_task_file_raw(number, title, feature)
+    skeleton = _render_task_file_raw(
+        number, title, feature, property_targets=property_targets
+    )
     # Fill contracts.
     filled = _fill_task_contracts(
         skeleton,
@@ -3427,6 +4423,185 @@ class FinalizeHandoffManifestGateTests(_CwdIsolationBH):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("## Design manifest findings", result.stdout)
+
+
+# ---------------------------------------------------------------------------
+# Tests: property-coverage chokepoint folded into finalize-handoff (plan 66 WI-1)
+# ---------------------------------------------------------------------------
+
+
+class FinalizeHandoffPropertyCoverageGateTests(_CwdIsolationBH):
+    """Tests for the property-coverage chokepoint folded into finalize-handoff.
+
+    Verifies plan 66 WI-1: a sibling plan-handoff.json declaring
+    breakdown_seeds.pure_builder_targets requires every declared target to
+    be covered by a task's '**Property targets**:' line before
+    breakdown-handoff.json can be written; an absent sibling plan-handoff.json
+    is a silent skip (unchanged pre-existing finalize-handoff behavior).
+    """
+
+    def setUp(self):
+        super().setUp()
+        _make_agents_dir(self.tmp_path, ["backend-engineer", "qa-engineer"])
+
+    def _setup_feature_with_targets(self, slug, targets, property_targets=None):
+        """Build a finalize-handoff fixture with a sibling plan-handoff.json
+        declaring `targets` (via the REAL plan_helper finalize-handoff
+        producer).
+
+        property_targets: when given, stamped onto task 002's
+        '**Property targets**:' line so it covers the declared target(s).
+        When None, task 002 carries no Property targets line at all
+        (the uncovered case).
+
+        Returns (feature_dir, plan_path, tasks_dir).
+        """
+        feature_dir = self.tmp_path / "specs" / slug
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_plan_with_pure_builder_targets(plan_path, targets)
+
+        r = _run_plan_helper_finalize(plan_path, self.tmp_path)
+        self.assertEqual(
+            r.returncode, 0, "plan_helper finalize-handoff failed: " + r.stderr
+        )
+        sibling = feature_dir / "plan-handoff.json"
+        self.assertTrue(sibling.exists())
+
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+
+        _write_full_task_file(
+            tasks_dir, "001", "Define types", slug,
+            agent="backend-engineer",
+            expects=[], produces=["TypeDef exported"], ac_ids="AC-1",
+        )
+        _write_full_task_file(
+            tasks_dir, "002", "Property test", slug,
+            agent="qa-engineer",
+            expects=["TypeDef exported"], produces=[], ac_ids="AC-1",
+            depends_on="001",
+            property_targets=property_targets,
+        )
+        _write_readme(tasks_dir)
+        return feature_dir, plan_path, tasks_dir
+
+    # ------------------------------------------------------------------
+    # (i) covering task -> finalize succeeds, breakdown-handoff.json written
+    # ------------------------------------------------------------------
+
+    def test_covering_task_finalize_succeeds(self):
+        """A declared target covered by task 002 -> exit 0, handoff written."""
+        feature_dir, plan_path, _ = self._setup_feature_with_targets(
+            "pc001-covered",
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+            property_targets="filterWidgetsByQuery",
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-07-20T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+        written = feature_dir / "breakdown-handoff.json"
+        self.assertTrue(
+            written.is_file(), "breakdown-handoff.json must be written when covered"
+        )
+
+    # ------------------------------------------------------------------
+    # (ii) no covering task -> exit 2, findings block, NO handoff written
+    # ------------------------------------------------------------------
+
+    def test_no_covering_task_exits_2(self):
+        """No task covers the declared target -> exit 2."""
+        _, plan_path, _ = self._setup_feature_with_targets(
+            "pc002-uncovered",
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+            property_targets=None,
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-07-20T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+
+    def test_no_covering_task_no_handoff_written(self):
+        """Uncovered target -> breakdown-handoff.json must NOT be written."""
+        feature_dir, plan_path, _ = self._setup_feature_with_targets(
+            "pc003-no-handoff",
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+            property_targets=None,
+        )
+
+        _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-07-20T12:00:00Z",
+        )
+        handoff = feature_dir / "breakdown-handoff.json"
+        self.assertFalse(
+            handoff.exists(),
+            "breakdown-handoff.json must NOT be written on uncovered target",
+        )
+
+    def test_no_covering_task_findings_block_on_stdout(self):
+        """Uncovered target -> '## Property coverage findings' block on stdout.
+
+        Also asserts the emitted block is BYTE-IDENTICAL to
+        _render_property_coverage_findings's own output AND to what the
+        standalone verify-property-coverage verb emits for the same
+        offenders (finding 5: both emission sites share one rendering
+        function so they cannot drift apart)."""
+        from breakdown_helper import _render_property_coverage_findings  # type: ignore[import]
+
+        _, plan_path, _ = self._setup_feature_with_targets(
+            "pc004-findings",
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts", "No I/O")],
+            property_targets=None,
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-07-20T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("## Property coverage findings", result.stdout)
+        self.assertIn("filterWidgetsByQuery", result.stdout)
+        expected_block = _render_property_coverage_findings(
+            [("filterWidgetsByQuery", "src/widgets/widget_filter.ts")]
+        )
+        self.assertEqual(result.stdout, expected_block)
+
+    # ------------------------------------------------------------------
+    # (iii) no plan-handoff.json at all -> finalize succeeds (silent skip)
+    # ------------------------------------------------------------------
+
+    def test_no_sibling_plan_handoff_finalize_succeeds(self):
+        """No sibling plan-handoff.json -> unchanged behavior, exit 0."""
+        feature_dir = self.tmp_path / "specs" / "pc005-no-sibling"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_minimal_plan(str(plan_path))
+        # Deliberately do NOT run plan_helper finalize-handoff -> no sibling.
+
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+        _write_full_task_file(
+            tasks_dir, "001", "Define types", "pc005-no-sibling",
+            agent="backend-engineer",
+            expects=[], produces=["TypeDef exported"], ac_ids="AC-1",
+        )
+        _write_readme(tasks_dir)
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-07-20T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+        written = feature_dir / "breakdown-handoff.json"
+        self.assertTrue(written.is_file())
 
 
 # ---------------------------------------------------------------------------

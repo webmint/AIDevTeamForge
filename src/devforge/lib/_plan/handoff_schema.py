@@ -32,7 +32,7 @@ Design notes:
 Stdlib only. No third-party dependencies.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 # ---------------------------------------------------------------------------
@@ -233,6 +233,32 @@ class ConsultRow:
             )
 
 
+@dataclass
+class PureBuilderRow:
+    """One row from the ### Pure-Builder Targets table.
+
+    Columns: Target | File | Why pure.
+    The section is optional -- architect-named targets suitable for a
+    property-test lane (no I/O, deterministic). why is a plain string and
+    may be empty.
+    """
+
+    target: str
+    file: str
+    why: str
+
+    def __post_init__(self):
+        # type: () -> None
+        _require_nonempty(self.target, "PureBuilderRow.target")
+        _require_nonempty(self.file, "PureBuilderRow.file")
+        if not isinstance(self.why, str):
+            raise ValueError(
+                "PureBuilderRow.why must be a string, got {0}".format(
+                    type(self.why).__name__
+                )
+            )
+
+
 # ---------------------------------------------------------------------------
 # BreakdownSeeds -- all structured content /breakdown needs from /plan.
 # ---------------------------------------------------------------------------
@@ -244,7 +270,10 @@ class BreakdownSeeds:
 
     All list fields are empty when the corresponding section is absent or
     contains only placeholder rows. dependencies is a list of non-blank
-    non-heading lines from the ## Dependencies section.
+    non-heading lines from the ## Dependencies section. pure_builder_targets
+    is populated from the optional ### Pure-Builder Targets section (absent
+    for most features); it is appended last with a default so existing
+    positional constructions keep working unchanged.
     """
 
     layer_map: List[LayerRow]
@@ -254,6 +283,7 @@ class BreakdownSeeds:
     risks: List[RiskRow]
     specialist_consultation: List[ConsultRow]
     dependencies: List[str]
+    pure_builder_targets: List[PureBuilderRow] = field(default_factory=list)
 
     def __post_init__(self):
         # type: () -> None
@@ -265,6 +295,7 @@ class BreakdownSeeds:
             "risks",
             "specialist_consultation",
             "dependencies",
+            "pure_builder_targets",
         ):
             val = getattr(self, fname)
             if not isinstance(val, list):

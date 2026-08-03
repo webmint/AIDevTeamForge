@@ -83,6 +83,34 @@ Subcommands:
       covered (or when spec has zero ACs). Exit 2 with stderr when
       tasks-dir or spec unreadable/empty.
 
+  verify-property-coverage <tasks-dir> [--plan-handoff <path>]
+      Verify that every pure-builder target declared in the sibling
+      plan-handoff.json (breakdown_seeds.pure_builder_targets, plan 66 WI-1)
+      is covered by at least one task's '**Property targets**:' line.
+      --plan-handoff defaults to <tasks-dir's parent>/plan-handoff.json.
+      On a missing/unreadable/malformed handoff, falls back to sibling
+      plan.md via _plan_declares_pure_builder_targets (the SAME criterion
+      the producer uses: heading present AND >=1 non-placeholder row, not
+      just the heading alone): no real target declared (heading absent,
+      plan.md itself absent, or heading present but every row is a
+      placeholder) => the feature never declared targets => skip, exit 0
+      (matches /breakdown PHASE 0a.5's tolerance for a missing
+      plan-handoff.json); a REAL target declared => fails closed, exit 2,
+      since a declared-but-unverifiable target must not silently evaporate.
+      Exit 0: no declared targets (skip — no task files required; covers
+              both an empty pure_builder_targets list AND a missing/
+              malformed handoff with no real pure-builder target declared
+              in plan.md), or all declared targets covered. Prints
+              "property-coverage: skip (no declared pure-builder targets)",
+              "property-coverage: skip (no plan-handoff.json and no
+              pure-builder targets declared in plan.md)", or
+              "property-coverage: ok (N targets, M covering tasks)".
+      Exit 2: a missing/malformed handoff paired with at least one real
+              pure-builder target declared in plan.md (remedy printed), no
+              task files found (when targets ARE declared), or at least one
+              uncovered target.
+              Prints a "## Property coverage findings" block on offenders.
+
   finalize-handoff <plan-path> [--completed-at ISO] [--agents-dir <path>]
       PRODUCER: parse tasks/*.md (+ tasks/README.md) into a schema-validated
       Breakdown record and write <plan-dir>/breakdown-handoff.json (sibling
@@ -94,11 +122,16 @@ Subcommands:
       After per-task parsing, validates all resolved agent names against the
       installed roster in --agents-dir (default .claude/agents). Fails closed
       when the roster is empty/absent; exits 2 naming offenders when any
-      assigned agent is not installed.
+      assigned agent is not installed. Also chokepoints property coverage
+      (plan 66 WI-1): when a sibling plan-handoff.json declares
+      breakdown_seeds.pure_builder_targets, every declared target must be
+      covered by a task's '**Property targets**:' line; a missing/malformed
+      sibling handoff is silently skipped here (see verify-property-coverage
+      for the strict fail-closed arm).
       Exit 0 + prints written path on success.
       Exit 2: plan.md/tasks missing or empty, placeholder **Agent**: detected
               (names the offending file), roster absent or agent not installed,
-              or schema validation failure.
+              schema validation failure, or an uncovered pure-builder target.
       Exit 1: I/O write failure.
       Idempotent: re-running overwrites the previous breakdown-handoff.json.
 
@@ -510,6 +543,12 @@ def _render_plan_handoff_block(d: Dict[str, Any]) -> str:
 
     Surfaces breakdown_seeds: Layer Map, File Impact, Key Design Decisions,
     Dependencies, Risks. Empty sub-sections render as '_(none)_'.
+
+    When breakdown_seeds.pure_builder_targets is present and non-empty, a
+    trailing "Pure-Builder Targets (property-test lane)" sub-block is
+    appended. Absent or empty (old producer JSON, or no architect-named
+    targets) renders nothing extra -- byte-identical to the pre-change
+    output (back-compat: `.get("pure_builder_targets") or []`).
     """
     seeds = d.get("breakdown_seeds") or {}
 
@@ -596,6 +635,26 @@ def _render_plan_handoff_block(d: Dict[str, Any]) -> str:
     else:
         risk_block = "_(none)_"
 
+    # --- Pure-Builder Targets (optional; back-compat via `or []`) ---
+    pure_builder_targets = seeds.get("pure_builder_targets") or []
+    pbt_lines = []
+    for row in pure_builder_targets:
+        if isinstance(row, dict):
+            pbt_lines.append(
+                "- {0} ({1}) — {2}".format(
+                    row.get("target", "?"),
+                    row.get("file", "?"),
+                    row.get("why", ""),
+                )
+            )
+    pbt_section = ""
+    if pbt_lines:
+        pbt_section = (
+            "\n"
+            "### Pure-Builder Targets (property-test lane)\n"
+            "{0}\n"
+        ).format("\n".join(pbt_lines))
+
     return (
         "## Upstream plan seeds\n"
         "\n"
@@ -613,12 +672,14 @@ def _render_plan_handoff_block(d: Dict[str, Any]) -> str:
         "\n"
         "### Risks\n"
         "{risk_block}\n"
+        "{pbt_section}"
     ).format(
         lm_block=lm_block,
         fi_block=fi_block,
         dec_block=dec_block,
         dep_block=dep_block,
         risk_block=risk_block,
+        pbt_section=pbt_section,
     )
 
 
@@ -894,10 +955,19 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
 
     All sections and the four fixed Done-When lines are helper-owned.
     The LLM fills in placeholders. Exit 0 always (pure emitter).
+
+    --property-targets (plan 66 WI-1): when passed and non-empty (after
+    stripping), a '**Property targets**:' line is emitted immediately after
+    the '**Context docs**:' line, carrying the value verbatim (stripped).
+    When absent (or empty after stripping), output is BYTE-IDENTICAL to the
+    pre-flag skeleton -- no line is emitted, no back-compat branch needed
+    since this is a pure additive emitter flag.
     """
     number = getattr(args, "number", None) or "[NNN]"
     title = getattr(args, "title", None) or "[Title]"
     feature = getattr(args, "feature", None) or "[feature directory name]"
+    property_targets_raw = getattr(args, "property_targets", None)
+    property_targets = property_targets_raw.strip() if property_targets_raw else ""
 
     lines: List[str] = []
 
@@ -914,6 +984,8 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
     lines.append("**Spec criteria**: AC-[numbers]")
     lines.append("**Review checkpoint**: Yes/No")
     lines.append("**Context docs**: [doc file paths] or None")
+    if property_targets:
+        lines.append("**Property targets**: {0}".format(property_targets))
     lines.append("")
 
     # Files table.
@@ -1797,6 +1869,345 @@ def cmd_verify_manifest_present(args):
 
 
 # ---------------------------------------------------------------------------
+# Property-coverage validation (plan 66 WI-1 — shared predicate +
+# verify-property-coverage).  Sibling in shape to _validate_agent_roster /
+# cmd_verify_agent_roster: a shared predicate consumed by both the standalone
+# verb AND the finalize-handoff chokepoint.
+# ---------------------------------------------------------------------------
+
+# Property targets frontmatter line, mirroring _AGENT_LINE_RE / _CONTEXT_DOCS_RE
+# in shape: horizontal-whitespace-only after the colon so a blank value never
+# bleeds into the next line, MULTILINE so it matches anywhere in the task file.
+_PROPERTY_TARGETS_LINE_RE = re.compile(
+    r"^\*\*Property targets\*\*:[^\S\n]*(.+)$", re.MULTILINE
+)
+
+# Pure-Builder Targets section heading in plan.md -- IDENTICAL pattern to
+# plan_helper's own producer-side heading matcher (same literal regex, same
+# flags), so _plan_declares_pure_builder_targets's section boundary can
+# never disagree with what the producer parsed.  Used ONLY via
+# _plan_declares_pure_builder_targets, itself used ONLY by
+# cmd_verify_property_coverage's fail-open/fail-closed fallback (amendment,
+# instruction-review HIGH finding) -- NOT by _validate_property_coverage,
+# which is unchanged.
+_PURE_BUILDER_HEADING_RE = re.compile(
+    r"^###\s+Pure-Builder Targets\b", re.MULTILINE | re.IGNORECASE
+)
+
+
+def _validate_property_coverage(tasks_dir, plan_handoff_path):
+    # type: (str, str) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]], int, Optional[str]]
+    """Validate that every declared pure-builder target is covered by a task.
+
+    Parameters
+    ----------
+    tasks_dir : str
+        Path to the tasks/ directory (passed to _glob_task_files).
+    plan_handoff_path : str
+        Path to the sibling plan-handoff.json to read
+        breakdown_seeds.pure_builder_targets from.
+
+    Returns
+    -------
+    (declared, offenders, covering_task_count, error)
+
+    declared:
+        List of (target, file) tuples parsed from
+        breakdown_seeds.pure_builder_targets.  Entries with an empty or
+        missing 'target' value are skipped (they name nothing to cover).
+        A target name is a comma-separated-format identifier and must not
+        itself contain a comma (there is no escaping). A target name
+        repeated across multiple rows is DEDUPED, keeping only the first
+        occurrence's file value -- a twice-declared target renders as ONE
+        offender, not two. Empty when the handoff has no key, an empty
+        list, or the handoff cannot be read (co-varies with error being set
+        in the latter case).
+
+    offenders:
+        Subset of declared whose target is not named by any task's
+        '**Property targets**:' line.  Empty when declared is empty.
+
+    covering_task_count:
+        Number of task files whose '**Property targets**:' line names at
+        least one declared target (each qualifying task file counted once,
+        regardless of how many declared targets it names).
+
+    error:
+        None on success (including the "no declared targets" case — that is
+        NOT an error).  A short string when plan_handoff_path is missing,
+        unreadable, not valid JSON, or its root is not a JSON object.  The
+        caller decides severity: the standalone verb fails closed on a
+        non-None error; the finalize-handoff chokepoint treats it as a
+        silent skip (an absent/malformed sibling handoff is not a NEW
+        violation this predicate should invent — see the chokepoint's own
+        comment for the asymmetry rationale).
+    """
+    handoff_path = Path(plan_handoff_path)
+    if not handoff_path.is_file():
+        return (
+            [],
+            [],
+            0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify property coverage".format(plan_handoff_path),
+        )
+
+    try:
+        raw_text = handoff_path.read_text(encoding="utf-8")
+        d = json.loads(raw_text)
+    except (OSError, IOError, json.JSONDecodeError):
+        return (
+            [],
+            [],
+            0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify property coverage".format(plan_handoff_path),
+        )
+
+    if not isinstance(d, dict):
+        return (
+            [],
+            [],
+            0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify property coverage".format(plan_handoff_path),
+        )
+
+    # A present-but-wrong-shape breakdown_seeds / pure_builder_targets is a
+    # MALFORMED handoff and must route through the error path (where the verb's
+    # plan.md heading fallback decides skip vs fail-closed) — coercing it to
+    # empty would silently skip a feature whose plan.md declares targets.
+    # Absent/None is the legitimate no-targets case.
+    seeds = d.get("breakdown_seeds")
+    if seeds is None:
+        seeds = {}
+    elif not isinstance(seeds, dict):
+        return (
+            [],
+            [],
+            0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify property coverage".format(plan_handoff_path),
+        )
+    raw_targets = seeds.get("pure_builder_targets")
+    if raw_targets is None:
+        raw_targets = []
+    elif not isinstance(raw_targets, list):
+        return (
+            [],
+            [],
+            0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify property coverage".format(plan_handoff_path),
+        )
+
+    declared: "List[Tuple[str, str]]" = []
+    seen_targets: "set" = set()
+    for row in raw_targets:
+        if not isinstance(row, dict):
+            continue
+        target = (row.get("target") or "").strip()
+        if not target:
+            continue
+        if target in seen_targets:
+            # Dedup by target name, keeping the first occurrence's file
+            # value -- a twice-declared target must render as ONE finding.
+            continue
+        seen_targets.add(target)
+        file_val = row.get("file", "") or ""
+        declared.append((target, file_val))
+
+    if not declared:
+        return [], [], 0, None
+
+    declared_names = {target for target, _file in declared}
+
+    task_files = _glob_task_files(tasks_dir)
+    covered: "set" = set()
+    covering_task_count = 0
+    for fpath in task_files:
+        content = _read_file(fpath)
+        if content is None:
+            continue
+        m = _PROPERTY_TARGETS_LINE_RE.search(content)
+        if not m:
+            continue
+        entries = [e.strip() for e in m.group(1).split(",")]
+        entries = [e for e in entries if e]
+        if not entries:
+            continue
+        matched_this_task = False
+        for entry in entries:
+            if entry in declared_names:
+                covered.add(entry)
+                matched_this_task = True
+        if matched_this_task:
+            covering_task_count += 1
+
+    offenders = [(target, file_val) for target, file_val in declared if target not in covered]
+    return declared, offenders, covering_task_count, None
+
+
+def _plan_declares_pure_builder_targets(plan_md_content):
+    # type: (str) -> bool
+    """Return True iff plan.md declares at least one real pure-builder target.
+
+    Mirrors plan_helper._parse_pure_builder_targets's OWN criterion --
+    section exists (via the same '### Pure-Builder Targets' heading pattern,
+    _PURE_BUILDER_HEADING_RE) AND at least one row whose first cell is
+    non-empty and non-placeholder -- using breakdown_helper's OWN existing
+    primitives (_extract_plan_section, _parse_table_rows, _is_placeholder_cell).
+    Does NOT import plan_helper (breakdown_helper owns its own copies of
+    these shared parsing primitives; the two modules deliberately do not
+    depend on each other).
+
+    A heading with ONLY placeholder rows (e.g. the '| [target] | [file] |
+    [why] |' example row render-task-file-style fixtures seed) returns
+    False -- the plan.md declared the SECTION but not an actual target, the
+    same as if the section were absent entirely.
+    """
+    section = _extract_plan_section(plan_md_content, _PURE_BUILDER_HEADING_RE)
+    if not section:
+        return False
+    for cells in _parse_table_rows(section):
+        if cells and not _is_placeholder_cell(cells[0]):
+            return True
+    return False
+
+
+def _render_property_coverage_findings(offenders):
+    # type: (List[Tuple[str, str]]) -> str
+    """Render the '## Property coverage findings' block for a list of
+    (target, file) offenders.
+
+    Shared by cmd_verify_property_coverage and the finalize-handoff
+    chokepoint (mirrors the _validate_manifest_present shared-rendering
+    precedent) so the two emission sites cannot drift apart.
+    """
+    parts = ["## Property coverage findings\n\n"]
+    for target, file_val in offenders:
+        parts.append(
+            "- target '{t}' ({f}): no property-test task covers it\n".format(
+                t=target, f=file_val
+            )
+        )
+    parts.append(
+        "\nDeclared in plan-handoff.json breakdown_seeds.pure_builder_targets; "
+        "add a dedicated qa-engineer property-test task with a "
+        "'**Property targets**:' line naming each uncovered target.\n"
+    )
+    return "".join(parts)
+
+
+def cmd_verify_property_coverage(args):
+    # type: (argparse.Namespace) -> int
+    """Verify every declared pure-builder target is covered by a task.
+
+    Usage: verify-property-coverage <tasks-dir> [--plan-handoff <path>]
+
+    --plan-handoff defaults to Path(tasks_dir).parent / 'plan-handoff.json'.
+
+    Never-declared-vs-declared-but-unverifiable asymmetry (amendment,
+    instruction-review HIGH finding): a missing/unreadable/malformed
+    plan-handoff.json is NOT automatically a hard failure. /breakdown PHASE
+    0a.5 tolerates a missing plan-handoff.json as a normal degraded path
+    ("decomposing from plan.md directly") -- a legacy/handoff-less feature
+    that never declared any pure-builder targets must not dead-end at this
+    gate. So on ANY handoff error, this verb falls back to sibling plan.md
+    via _plan_declares_pure_builder_targets -- the SAME criterion the
+    producer (plan_helper._parse_pure_builder_targets) uses: the
+    '### Pure-Builder Targets' heading must be present AND at least one row
+    must carry a real (non-placeholder) target, not just the heading alone:
+      - the plan declares NO real target (heading absent, plan.md itself
+        absent/unreadable, OR the heading is present but every row is a
+        placeholder) => the feature never declared targets in the first
+        place; this is the SAME "nothing to verify" case as an empty
+        pure_builder_targets list => skip, exit 0.
+      - the plan DOES declare at least one real target, but there is no
+        verifiable handoff to prove coverage against. Silently skipping here
+        would let a declared-but-unverified target evaporate -- exactly the
+        silent-evaporation failure mode this gate exists to prevent => fail
+        closed, exit 2, with a remedy pointing at plan_helper finalize-handoff.
+
+    Exit codes:
+      0 — no declared targets (skip; covers both an empty
+          pure_builder_targets list AND a missing/malformed handoff paired
+          with no real pure-builder target declared in plan.md), or all
+          declared targets covered.
+      2 — a missing/malformed handoff paired with at least one real
+          pure-builder target declared in plan.md (fail-closed, remedy
+          printed); no task files found while targets ARE declared; or at
+          least one uncovered target.
+    """
+    tasks_dir_raw = args.tasks_dir
+    plan_handoff_raw = getattr(args, "plan_handoff", None)
+
+    tasks_path = Path(tasks_dir_raw)
+    if not tasks_path.is_absolute():
+        tasks_path = Path.cwd() / tasks_path
+
+    if plan_handoff_raw:
+        plan_handoff_path = Path(plan_handoff_raw)
+        if not plan_handoff_path.is_absolute():
+            plan_handoff_path = Path.cwd() / plan_handoff_path
+    else:
+        plan_handoff_path = tasks_path.parent / "plan-handoff.json"
+
+    declared, offenders, covering_task_count, error = _validate_property_coverage(
+        str(tasks_path), str(plan_handoff_path)
+    )
+
+    if error is not None:
+        # Check whether plan.md actually declares a REAL pure-builder target
+        # (not just the heading) before failing closed -- see the docstring
+        # asymmetry note above.
+        plan_md_path = tasks_path.parent / "plan.md"
+        plan_md_content = _read_file(str(plan_md_path))
+        declared_in_plan = (
+            plan_md_content is not None
+            and _plan_declares_pure_builder_targets(plan_md_content)
+        )
+        if not declared_in_plan:
+            sys.stdout.write(
+                "property-coverage: skip (no plan-handoff.json and no "
+                "pure-builder targets declared in plan.md)\n"
+            )
+            return 0
+        return _die(
+            "verify-property-coverage: plan-handoff.json not found/unreadable "
+            "at {0} — plan.md declares pure-builder targets; run plan_helper "
+            "finalize-handoff {1} to produce it, then re-run this gate".format(
+                plan_handoff_path, plan_md_path
+            )
+        )
+
+    if not declared:
+        sys.stdout.write(
+            "property-coverage: skip (no declared pure-builder targets)\n"
+        )
+        return 0
+
+    # Declared targets present — task files are now required.
+    task_files = _glob_task_files(str(tasks_path))
+    if not task_files:
+        sys.stderr.write(
+            "breakdown_helper: no task files found in {0}\n".format(tasks_dir_raw)
+        )
+        return 2
+
+    if not offenders:
+        sys.stdout.write(
+            "property-coverage: ok ({n} targets, {m} covering tasks)\n".format(
+                n=len(declared), m=covering_task_count
+            )
+        )
+        return 0
+
+    sys.stdout.write(_render_property_coverage_findings(offenders))
+    return 2
+
+
+# ---------------------------------------------------------------------------
 # Phase 4 — task-file parsing helpers (for finalize-handoff).
 # ---------------------------------------------------------------------------
 
@@ -2056,9 +2467,15 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
 
     Exit 0: prints written path on stdout.
     Exit 2: plan.md missing, tasks_dir missing/empty, placeholder agent detected,
-            schema validation failure, unknown assigned agent (roster check), or
+            schema validation failure, unknown assigned agent (roster check),
             design-manifest violation (design/reference.html present but
-            design-manifest.json absent/invalid — plan 42 WI-1 chokepoint).
+            design-manifest.json absent/invalid — plan 42 WI-1 chokepoint), or
+            an uncovered pure-builder target when the sibling plan-handoff.json
+            declares one (plan 66 WI-1 chokepoint). The plan-66 chokepoint is
+            SKIPPED SILENTLY when the sibling plan-handoff.json is itself
+            absent or unreadable/malformed — see the inline comment at the
+            call site for the asymmetry vs. the strict fail-closed standalone
+            verify-property-coverage verb.
     Exit 1: I/O write failure.
     """
     # Ensure lib dir on path for schema imports.
@@ -2255,6 +2672,30 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
         if _manifest_err:
             sys.stderr.write(_manifest_err)
         return 2
+
+    # Property-coverage validation (plan 66 WI-1 chokepoint): when the sibling
+    # plan-handoff.json declares breakdown_seeds.pure_builder_targets, every
+    # declared target must be covered by at least one task's
+    # '**Property targets**:' line before the handoff is written.
+    #
+    # ASYMMETRY vs. the standalone verify-property-coverage verb: THIS
+    # chokepoint SKIPS SILENTLY when the sibling plan-handoff.json is absent,
+    # unreadable, or malformed — finalize-handoff already tolerates an absent
+    # plan-handoff for provenance purposes (see _resolve_sibling_plan_handoff
+    # above, which sets upstream_handoff_path=None in that case); an
+    # absent/malformed sibling handoff is not a NEW violation for this
+    # chokepoint to invent. verify-property-coverage is the strict,
+    # explicitly-invoked fail-closed arm of this same predicate.
+    _plan_handoff_candidate = plan_dir / "plan-handoff.json"
+    if _plan_handoff_candidate.is_file():
+        _pc_declared, _pc_offenders, _pc_covering, _pc_error = _validate_property_coverage(
+            str(tasks_dir), str(_plan_handoff_candidate)
+        )
+        if _pc_error is None and _pc_declared and _pc_offenders:
+            sys.stdout.write(_render_property_coverage_findings(_pc_offenders))
+            return 2
+        # _pc_error not None (unreadable/malformed sibling), or no declared
+        # targets, or no offenders -> fall through silently (see comment above).
 
     # Parse README.md for dependency_graph and additions.
     readme_path = tasks_dir / "README.md"
@@ -2515,6 +2956,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--number", default=None, help="Task number (e.g. 001).")
     sp.add_argument("--title", default=None, help="Task title.")
     sp.add_argument("--feature", default=None, help="Feature directory name.")
+    sp.add_argument(
+        "--property-targets",
+        dest="property_targets",
+        default=None,
+        help=(
+            "Comma-separated pure-builder target names (plan 66 WI-1). "
+            "Target names must not themselves contain a comma (no escaping). "
+            "When given and non-empty, emits a '**Property targets**:' line "
+            "after '**Context docs**:'. Omit to leave the skeleton unchanged."
+        ),
+    )
     sp.set_defaults(func=cmd_render_task_file)
 
     # render-tasks-index
@@ -2628,6 +3080,30 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("tasks_dir", help="Directory containing task *.md files.")
     sp.add_argument("spec_path", help="Path to spec.md.")
     sp.set_defaults(func=cmd_verify_ac_coverage)
+
+    # verify-property-coverage
+    sp = sub.add_parser(
+        "verify-property-coverage",
+        help=(
+            "Verify every pure-builder target declared in the sibling "
+            "plan-handoff.json (breakdown_seeds.pure_builder_targets) is "
+            "covered by a task's '**Property targets**:' line. "
+            "Exit 0 when no targets are declared or all are covered; "
+            "exit 2 on a missing/malformed handoff, no task files found "
+            "(when targets are declared), or an uncovered target."
+        ),
+    )
+    sp.add_argument("tasks_dir", help="Directory containing task *.md files.")
+    sp.add_argument(
+        "--plan-handoff",
+        dest="plan_handoff",
+        default=None,
+        help=(
+            "Path to plan-handoff.json (default: "
+            "<tasks-dir's parent>/plan-handoff.json)."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_property_coverage)
 
     # finalize-handoff
     sp = sub.add_parser(

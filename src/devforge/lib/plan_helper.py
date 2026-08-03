@@ -1648,6 +1648,40 @@ def _parse_risk_rows(plan_content: str) -> List[Any]:
     return result
 
 
+def _parse_pure_builder_targets(plan_content: str) -> List[Any]:
+    """Parse ### Pure-Builder Targets table rows into PureBuilderRow records.
+
+    Columns: Target | File | Why pure.
+    Uses _extract_plan_section to locate the section boundary.
+    Skips placeholder rows. Returns empty list when section absent (the
+    section is optional -- absent for most features).
+    """
+    from _plan.handoff_schema import PureBuilderRow
+
+    pat = re.compile(r"^###\s+Pure-Builder Targets\b", re.MULTILINE | re.IGNORECASE)
+    section = _extract_plan_section(plan_content, pat)
+    if not section:
+        return []
+
+    rows = _parse_table_rows(section)
+    result = []
+    for cells in rows:
+        if not cells:
+            continue
+        target = cells[0] if len(cells) > 0 else ""
+        file_ = cells[1] if len(cells) > 1 else ""
+        why = cells[2] if len(cells) > 2 else ""
+        if _is_placeholder_cell(target):
+            continue
+        try:
+            result.append(
+                PureBuilderRow(target=target, file=file_, why=why)
+            )
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
 # Accepted verdict values for specialist consultation rows.
 _CONSULT_VERDICT_VALUES = frozenset({"accepted", "modified", "rejected", "no-response"})
 
@@ -1801,7 +1835,8 @@ def cmd_finalize_handoff(args: argparse.Namespace) -> int:
 
     Sections parsed (in order):
       Layer Map, Key Design Decisions, File Impact, Documentation Impact,
-      Risk Assessment, Specialist Consultation, Dependencies.
+      Risk Assessment, Specialist Consultation, Dependencies,
+      Pure-Builder Targets (optional).
     Placeholder rows are skipped transparently.
 
     Provenance:
@@ -1864,6 +1899,7 @@ def cmd_finalize_handoff(args: argparse.Namespace) -> int:
     risks = _parse_risk_rows(plan_content)
     specialist_consultation = _parse_specialist_consultation(plan_content)
     dependencies = _parse_dependencies(plan_content)
+    pure_builder_targets = _parse_pure_builder_targets(plan_content)
 
     try:
         breakdown_seeds = BreakdownSeeds(
@@ -1874,6 +1910,7 @@ def cmd_finalize_handoff(args: argparse.Namespace) -> int:
             risks=risks,
             specialist_consultation=specialist_consultation,
             dependencies=dependencies,
+            pure_builder_targets=pure_builder_targets,
         )
     except (TypeError, ValueError) as err:
         return _die(

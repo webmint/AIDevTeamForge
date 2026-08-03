@@ -127,6 +127,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 **Spec criteria**: AC-[numbers]
 **Review checkpoint**: Yes/No
 **Context docs**: [doc file paths] or None
+**Property targets**: [comma-separated pure-builder target names]
 
 ## Files
 
@@ -170,6 +171,8 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
 **Notes**: [deviations or observations]
 ```
+
+The `**Property targets**:` line is OPTIONAL — `render-task-file` emits it only when passed `--property-targets`, so it appears solely on the dedicated property-test tasks `/breakdown` creates for `/plan`-declared pure-builder targets. Its comma-separated target names are exact-match-consumed by `breakdown_helper verify-property-coverage` (the Phase 3.5 property-coverage gate). Ordinary tasks omit the line entirely.
 
 ## File Lifecycle
 

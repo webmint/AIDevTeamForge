@@ -76,6 +76,14 @@ Typing filters the rendered widget list by name and tag; clearing restores the f
 | docs/widgets/architecture.md | Update | Add filter predicate injection pattern |
 | [path] | Update | [brief description] |
 
+### Pure-Builder Targets
+
+| Target | File | Why pure |
+|--------|------|----------|
+| filterWidgetsByQuery | src/widgets/widget_filter.ts | No I/O, deterministic substring match over an in-memory list |
+| normalizeTagList | src/widgets/tag_utils.ts | Pure array transform, no side effects |
+| [target] | [file] | [no I/O, deterministic, ...] |
+
 ## Risk Assessment
 
 | Risk | Likelihood | Impact | Mitigation |

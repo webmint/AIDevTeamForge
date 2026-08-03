@@ -118,6 +118,11 @@ function process(input) {
 
 *Backed by* `constitute_helper verify-cross-layer-imports` when `forcing_functions.cross_layer_imports.enabled = true` in `.devforge/constitute.json` — import edges that cross declared layer boundaries (per the user-supplied DAG + per-layer dir mapping in the rule config) surface as exit-2 findings when `constitute_helper verify-cross-layer-imports` is run directly or via the optional `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` hook.
 
+**Narrowing (restricting shared-code behavior):**
+- When restricting existing behavior of shared code (a shared service, utility, or layer used by multiple callers), prefer a caller-scoped opt-in — a parameter, option, or wrapper the affected caller passes — over a layer-wide policy change inside the shared code.
+- A layer-wide restriction inside shared code changes behavior for every caller, including callers nobody checked. A broadened rule inside a shared service MUST name every current caller it affects, in the plan.
+- This is the tie-breaker against KISS's "fewest touch points" instinct: the smallest API diff is not the narrowest semantic blast radius. When the two conflict for a behavior-restricting change, blast radius wins.
+
 ### 3.7 Check Before You Build [universal]
 
 **Before writing anything generic or reusable, search first.** The codebase may already have:

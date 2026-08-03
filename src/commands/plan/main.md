@@ -346,6 +346,8 @@ The architect inherits the parent session's Read tool surface and will fetch the
 4. Any constitution rules at risk under this approach? Return as one-line flags for the Constitution Compliance section.
 5. What is the MINIMAL change that satisfies the in-scope ACs? Return as a one-line statement of the smallest design that meets the §5 acceptance criteria — the baseline the Key Design Decisions must not exceed without justification.
 6. For each Key Design Decision, is the concern it addresses in scope per the spec's §6 Out of Scope? Return one line per decision, in one of two conditional forms — in-scope: `decision → in-scope: <AC/constraint cited>` (the OOS half is omitted); OOS-reaching: `decision → OOS: <§6 entry> → escalate` (the in-scope half is omitted). A decision whose concern §6 excludes must NOT be silently solved — the architect escalates it to the user per its Rule 6 (termination), triggered by its Rule 9 OOS-respect check, and the orchestrator surfaces the escalation to the user rather than transcribing the decision.
+7. Does any Key Design Decision RESTRICT existing behavior of shared code (a shared service, utility, or layer with multiple callers)? Per the constitution's Narrowing rule (Design Principles section), return one line per such decision: is the restriction caller-scoped (an opt-in the affected caller passes) or layer-wide? For a layer-wide one, return the list of every current caller it affects (for the decision's row) and the reason a caller-scoped opt-in genuinely can't cover it. A decision that restricts no shared code returns nothing here.
+8. Which of the feature's planned functions/modules (from the Layer Map / File Impact under design) are PURE BUILDERS — deterministic, no I/O, no external service or repository access: filter/query/mapper/formatter construction logic? Return one table row per target, verbatim-ready for the plan's `### Pure-Builder Targets` subsection: `target (function/module name) | file | why pure` (the "why pure" cell states the properties that make it property-testable — deterministic, no I/O). Only NAMED targets enter the property-test lane downstream — there is no inference; a feature with no pure builders returns nothing here and the subsection is omitted.
 
 **Return shape:** architect MUST author table rows verbatim-ready for Phase 2 transcription (no orchestrator paraphrasing) and the architect's standard output already carries a `### Specialists Consulted` block (per its Output Format); the orchestrator transcribes those entries — plus any specialists it consulted directly — into the plan's **Specialist Consultation** table (one row each, with Verdict + Cites).
 
@@ -374,6 +376,7 @@ Save to `specs/[feature-name]/plan.md`. The Layer Map below shows a Domain/Data/
 - Key Design Decisions: [rows N-M]
 - Risk Assessment seeds: [rows N-M]
 - Constitution Compliance flags: [list | none]
+- Pure-Builder Targets: [rows N-M | none]
 
 [Specialist Consultation table — emit via `plan_helper render-consultation-block` per the instruction below this template, then fill rows]
 
@@ -411,6 +414,8 @@ Save to `specs/[feature-name]/plan.md`. The Layer Map below shows a Domain/Data/
 |----------|----------------|-----|----------------------|
 | [decision] | [approach] | [rationale] | [alternatives] |
 
+[A decision that restricts shared-code behavior must record the caller-scoped vs layer-wide choice per the constitution's Narrowing rule (Design Principles section); a layer-wide restriction must name every current caller it affects in its Why column.]
+
 ### Established-Convention Departures
 
 [Include this subsection ONLY if ≥1 Key Design Decision is flagged "DEPARTURE" in its Why column (per architect Rule 3). Omit the entire subsection — heading and table — when there are no departures (e.g. greenfield or first-touch concerns).]
@@ -418,6 +423,16 @@ Save to `specs/[feature-name]/plan.md`. The Layer Map below shows a Domain/Data/
 | Departure | Established Pattern Left | Why Necessary |
 |-----------|--------------------------|---------------|
 | [new pattern chosen] | [what the codebase already does for this concern] | [why the established pattern genuinely doesn't work here] |
+
+### Pure-Builder Targets
+
+[Include this subsection ONLY if Phase 1.3's sub-question 8 returned ≥1 pure-builder target. Omit the entire subsection — heading and table — when none were returned (a feature with no deterministic, I/O-free construction logic).]
+
+| Target | File | Why pure |
+|--------|------|----------|
+| [function/module name] | [file path] | [deterministic, no I/O — e.g. builds a filter/query from inputs] |
+
+[Each row here becomes a mechanical property-test obligation at `/breakdown` — a dedicated property-test task must cover every listed target, and a decomposition gate at `/breakdown` fails otherwise. List only functions that are genuinely deterministic and I/O-free.]
 
 ### File Impact
 
@@ -476,6 +491,7 @@ Before presenting the plan to the user, verify completeness:
 4. Check the reverse: does the plan's File Impact list files NOT in the spec's Affected Areas? If yes, note them as additions discovered during planning (add to the plan's File Impact table with a note).
 5. **Surface departures.** If any Key Design Decision is flagged `DEPARTURE` in its Why column (per architect Rule 3), fill the `### Established-Convention Departures` subsection — one row per departure — and include the departures line in the Phase 3 approval summary. If there are no departures, omit both the subsection and the summary line entirely; do not emit an empty section or a "none" line (greenfield stays silent).
 6. **Out-of-scope-respect trace.** For each Key Design Decision, read its `Why` rationale and confirm it traces to an in-scope AC or constraint — and that it does NOT reference a term the spec marked Out of Scope in §6, nor an unverified hypothesis carried in from the user's prompt or upstream handoff. Flag any decision whose rationale reaches into §6 OOS: a decision solving an excluded concern is an over-solve. On a flag, do not silently keep the decision — re-enter Phase 1.3, have the architect either re-scope the decision to the in-scope baseline (its Phase 1.3 sub-question 5 minimal change) or escalate the §6 concern to the user per its Rule 6 (termination), triggered by its Rule 9 OOS-respect check. This is the read-side backstop for the §6-respect the architect's sub-question 6 asks at Phase 1.3 (defense in depth — sub-question 6 prevents an OOS-reaching decision; this step catches one that slipped through). **v1 is an LLM-prose step** the orchestrator performs by reading each decision's rationale against the spec's §6 entries (the same §6 lines `render-findings-from-spec` enumerated at Phase 1.5). The mechanized form — a `plan_helper` token-overlap scan of decision rationales against the §6 OOS terms (the same token-overlap technique `/specify`'s `verify-scope-coherence` already uses to warn when a §5 AC / §4 affected-area mandates a concern the §6 Out-of-Scope excludes — structurally identical: §6 OOS as the source term-set, a second text body as the scan target) — is **DEFERRED** to a later pass, built only after empirical miss-rate justifies it; it is NOT part of v1.
+7. **Narrowing-restriction trace.** For each Key Design Decision that restricts existing shared-code behavior, confirm its Why column records the caller-scoped vs layer-wide classification (per the constitution's Narrowing rule, Design Principles section) and, for a layer-wide restriction, the full list of current callers affected plus why a caller-scoped opt-in can't cover it. If the classification or caller list is missing, re-enter Phase 1.3 and re-invoke the architect (its sub-question 7) rather than filling it in yourself. This is the read-side backstop for sub-question 7, mirroring step 6's shape; the mechanical detector for narrowing is deliberately deferred (there is no helper verb for it — do not invent one).
 
 ## PHASE 3: User Approval
 
@@ -495,6 +511,7 @@ Present a summary. The block below is LLM-authored (not helper-driven — plan s
 **Files affected**: [count] ([N] new, [M] modified)
 **Key decisions**: [list the most important ones]
 **Departures from convention**: [include this line ONLY if ≥1 departure flagged: "[N] flagged — review §Established-Convention Departures before approving"; omit the entire line when none]
+**Pure-builder targets**: [include this line ONLY if ≥1 target named: "[N] named — each requires a dedicated property-test task at /breakdown (hard gate)"; omit the entire line when none]
 **Risks**: [high-risk items if any]
 **Supporting docs**: [list what was generated]"
 
@@ -517,7 +534,7 @@ On `approve`, first write the structured plan→breakdown handoff via the helper
 .devforge/lib/plan_helper finalize-handoff <plan-path>
 ```
 
-The helper parses the rendered `plan.md` and atomic-writes `specs/NNN-<feature>/plan-handoff.json` (a structured handoff carrying the breakdown seeds — layer map, file impact, decisions, risks, specialist consultation, dependencies — plus provenance to the sibling `/specify` handoff). Handle the exit code:
+The helper parses the rendered `plan.md` and atomic-writes `specs/NNN-<feature>/plan-handoff.json` (a structured handoff carrying the breakdown seeds — layer map, file impact, documentation impact, decisions, risks, specialist consultation, dependencies, pure-builder targets — plus provenance to the sibling `/specify` handoff). Handle the exit code:
 
 - Exit 0 → the helper wrote `specs/NNN-<feature>/plan-handoff.json` and printed its path on stdout. Surface the written path to the user in one line, e.g. `"Structured plan handoff written: <path> (consumed by /breakdown Phase 0 via breakdown_helper read-plan-handoff)."`
 - Non-zero exit (Exit 2 → `plan.md` not found or rendered content failed schema validation; Exit 1 → I/O error writing `plan-handoff.json`, e.g. permissions or disk-full) → the helper could not write or validate the handoff. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT abort — continue to the `render-breakdown-handoff` text block below. The structured handoff is best-effort; the manual text block is the guaranteed human bridge.

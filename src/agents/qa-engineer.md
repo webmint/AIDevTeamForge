@@ -35,6 +35,10 @@ Writing tests from a spec:
 3. Follow existing test patterns and file layout in the codebase.
 4. Run the tests — verify they pass (or fail-first if pre-implementation).
 
+Property-based tests:
+
+When a task carries a `**Property targets**:` line, write property-based tests for each named target using the library the task names (fast-check for TypeScript/JavaScript, hypothesis for Python): run ≥100 iterations; make the arbitraries include special characters, unicode, and empty/boundary values; pin a fixed seed and surface the failing counterexample on failure. If the task says the stack has no property-testing library, write the adversarial-input example tests it specifies instead and record in your Completion Notes the honest-skip note it dictates.
+
 Filling coverage gaps:
 
 5. Run the coverage tool and identify uncovered code paths.

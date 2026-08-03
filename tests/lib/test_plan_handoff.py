@@ -52,6 +52,7 @@ from _plan.handoff_schema import (  # noqa: E402
     Handoff,
     LayerRow,
     Provenance,
+    PureBuilderRow,
     RiskRow,
     SCHEMA_VERSION,
     HANDOFF_KIND,
@@ -351,6 +352,36 @@ class ConsultRowTests(unittest.TestCase):
             )
 
 
+class PureBuilderRowTests(unittest.TestCase):
+    def test_valid_row(self):
+        r = PureBuilderRow(
+            target="filterWidgetsByQuery",
+            file="src/widgets/widget_filter.ts",
+            why="No I/O, deterministic",
+        )
+        self.assertEqual(r.target, "filterWidgetsByQuery")
+
+    def test_empty_target_raises(self):
+        with self.assertRaises(ValueError):
+            PureBuilderRow(target="", file="f.ts", why="Pure")
+
+    def test_empty_file_raises(self):
+        with self.assertRaises(ValueError):
+            PureBuilderRow(target="fn", file="", why="Pure")
+
+    def test_why_may_be_empty_string(self):
+        r = PureBuilderRow(target="fn", file="f.ts", why="")
+        self.assertEqual(r.why, "")
+
+    def test_non_string_why_raises(self):
+        with self.assertRaises(ValueError):
+            PureBuilderRow(target="fn", file="f.ts", why=123)  # type: ignore[arg-type]
+
+    def test_non_string_target_raises(self):
+        with self.assertRaises(ValueError):
+            PureBuilderRow(target=123, file="f.ts", why="Pure")  # type: ignore[arg-type]
+
+
 class ProvenanceTests(unittest.TestCase):
     def test_both_none_valid(self):
         p = Provenance(upstream_handoff_path=None, upstream_handoff_kind=None)
@@ -454,6 +485,49 @@ class HandoffSchemaTests(unittest.TestCase):
                 risks=[],
                 specialist_consultation=[],
                 dependencies=[],
+            )
+
+    def test_breakdown_seeds_constructible_without_pure_builder_targets(self):
+        """Back-compat: the old 7-positional-arg construction still works,
+        with pure_builder_targets defaulting to an empty list."""
+        seeds = BreakdownSeeds(
+            layer_map=[],
+            key_design_decisions=[],
+            file_impact=[],
+            doc_impact=[],
+            risks=[],
+            specialist_consultation=[],
+            dependencies=[],
+        )
+        self.assertEqual(seeds.pure_builder_targets, [])
+
+    def test_breakdown_seeds_with_pure_builder_targets(self):
+        """pure_builder_targets accepts a list of PureBuilderRow."""
+        row = PureBuilderRow(target="fn", file="f.ts", why="Pure")
+        seeds = BreakdownSeeds(
+            layer_map=[],
+            key_design_decisions=[],
+            file_impact=[],
+            doc_impact=[],
+            risks=[],
+            specialist_consultation=[],
+            dependencies=[],
+            pure_builder_targets=[row],
+        )
+        self.assertEqual(len(seeds.pure_builder_targets), 1)
+        self.assertEqual(seeds.pure_builder_targets[0].target, "fn")
+
+    def test_breakdown_seeds_pure_builder_targets_non_list_raises(self):
+        with self.assertRaises(ValueError):
+            BreakdownSeeds(
+                layer_map=[],
+                key_design_decisions=[],
+                file_impact=[],
+                doc_impact=[],
+                risks=[],
+                specialist_consultation=[],
+                dependencies=[],
+                pure_builder_targets="not a list",  # type: ignore[arg-type]
             )
 
 
@@ -633,6 +707,22 @@ class FinalizeHandoffHappyPathTests(unittest.TestCase):
         self.assertEqual(
             h.breakdown_seeds.specialist_consultation[0].verdict, "accepted"
         )
+
+    def test_finalize_handoff_pure_builder_targets_parsed(self):
+        """Fixture plan has 2 real Pure-Builder Targets rows (1 placeholder skipped)."""
+        plan_dir = self.tmp / "specs" / "009-widget-catalog-search"
+        plan_path = self._write_fixture_plan(plan_dir)
+        _run("finalize-handoff", str(plan_path), cwd=self.tmp)
+
+        h = _load_handoff(plan_dir / "plan-handoff.json")
+        # Fixture has 2 real rows + 1 [target] placeholder row.
+        self.assertEqual(len(h.breakdown_seeds.pure_builder_targets), 2)
+        targets = [r.target for r in h.breakdown_seeds.pure_builder_targets]
+        self.assertIn("filterWidgetsByQuery", targets)
+        self.assertIn("normalizeTagList", targets)
+        for row in h.breakdown_seeds.pure_builder_targets:
+            self.assertTrue(row.target.strip(), "target must be non-empty")
+            self.assertTrue(row.file.strip(), "file must be non-empty")
 
     def test_finalize_handoff_dependencies_parsed(self):
         """Fixture plan has 2 non-blank dependency lines."""
@@ -833,6 +923,9 @@ class FinalizeHandoffErrorTests(unittest.TestCase):
         self.assertEqual(h.breakdown_seeds.layer_map, [])
         self.assertEqual(h.breakdown_seeds.file_impact, [])
         self.assertEqual(h.breakdown_seeds.risks, [])
+        # Pure-Builder Targets section is absent from this plan.md ->
+        # pure_builder_targets must be empty (real producer, no section).
+        self.assertEqual(h.breakdown_seeds.pure_builder_targets, [])
 
     def test_plan_with_only_placeholder_rows_empty_seeds(self):
         """A plan.md with only placeholder rows -> all seeds empty -> exit 0."""
@@ -988,6 +1081,76 @@ class ParseFileImpactRowsTests(unittest.TestCase):
         rows = plan_helper._parse_file_impact_rows(content)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].file, "src/a.py")
+
+
+class ParsePureBuilderTargetsTests(unittest.TestCase):
+    def test_parses_real_rows(self):
+        content = (
+            "### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "| --- | --- | --- |\n"
+            "| filterWidgetsByQuery | src/widgets/widget_filter.ts | No I/O |\n"
+            "| normalizeTagList | src/widgets/tag_utils.ts | Pure transform |\n"
+            "| [target] | [file] | [why] |\n"
+        )
+        rows = plan_helper._parse_pure_builder_targets(content)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].target, "filterWidgetsByQuery")
+        self.assertEqual(rows[1].file, "src/widgets/tag_utils.ts")
+
+    def test_why_column_optional_defaults_empty(self):
+        """A row with only Target + File columns (no Why) still parses."""
+        content = (
+            "### Pure-Builder Targets\n\n"
+            "| Target | File |\n"
+            "| --- | --- |\n"
+            "| fn | f.ts |\n"
+        )
+        rows = plan_helper._parse_pure_builder_targets(content)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].why, "")
+
+    def test_section_absent_returns_empty(self):
+        rows = plan_helper._parse_pure_builder_targets("## Summary\n\nNothing.\n")
+        self.assertEqual(rows, [])
+
+    def test_placeholder_row_skipped(self):
+        content = (
+            "### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "| --- | --- | --- |\n"
+            "| fn | f.ts | Pure |\n"
+            "| [target] | [file] | [why] |\n"
+        )
+        rows = plan_helper._parse_pure_builder_targets(content)
+        self.assertEqual(len(rows), 1)
+
+    def test_boundary_stops_before_risk_assessment(self):
+        """Pure-Builder Targets rows do not bleed into Risk Assessment."""
+        content = (
+            "### Pure-Builder Targets\n\n"
+            "| Target | File | Why pure |\n"
+            "| --- | --- | --- |\n"
+            "| fn | f.ts | Pure |\n\n"
+            "## Risk Assessment\n\n"
+            "| Risk | Likelihood | Impact | Mitigation |\n"
+            "| --- | --- | --- | --- |\n"
+            "| Something | Low | Low | Mitigation |\n"
+        )
+        rows = plan_helper._parse_pure_builder_targets(content)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].target, "fn")
+
+    def test_case_insensitive_heading(self):
+        """Heading matching is case-insensitive, matching sibling parsers."""
+        content = (
+            "### pure-builder targets\n\n"
+            "| Target | File | Why pure |\n"
+            "| --- | --- | --- |\n"
+            "| fn | f.ts | Pure |\n"
+        )
+        rows = plan_helper._parse_pure_builder_targets(content)
+        self.assertEqual(len(rows), 1)
 
 
 class ParseDocImpactRowsTests(unittest.TestCase):

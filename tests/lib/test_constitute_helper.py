@@ -3201,11 +3201,12 @@ class TestParseUniversalBlocks(unittest.TestCase):
 
     NOTE on §3.6 rule count: the brief's example shows 4 sub-rules and the
     inline sanity check uses `== 4`.  The actual constitution has 5 SOLID
-    sub-principles (Single Responsibility + OCP + LSP + ISP + DIP) plus DRY
-    and KISS = 7 total.  The implementation is faithful to the real file.
-    Tests check for presence of the 4 labels named in the brief and assert
-    ``>= 4`` (not ``== 4``) to avoid brittleness when the constitution is
-    extended.
+    sub-principles (Single Responsibility + OCP + LSP + ISP + DIP) plus DRY,
+    KISS, and Narrowing = 8 total.  The implementation is faithful to the
+    real file.  Tests check for presence of the 4 SOLID labels named in the
+    brief plus Narrowing, and assert a ``>= 8`` floor (not an exact count)
+    to avoid brittleness when the constitution is extended
+    (see test_section_36_rule_count_and_labels_present).
     """
 
     _CONSTITUTION_PATH = _REPO_ROOT / "src" / "constitution.md"
@@ -3260,24 +3261,53 @@ class TestParseUniversalBlocks(unittest.TestCase):
                     msg="{0}[{1}] tag_or_label is empty".format(sect_key, i),
                 )
 
-    def test_section_36_solid_sub_rules_present(self):
-        """§3.6 rules contain at least 4 entries including the 4 SOLID OCP/LSP/ISP/DIP sub-rules.
+    def test_section_36_rule_count_and_labels_present(self):
+        """§3.6 rules contain >= 8 entries incl. the 4 SOLID sub-rules + Narrowing.
 
         The brief example shows 4 labels (Open/Closed, LSP, ISP, Dependency
         Inversion).  The real constitution also includes Single Responsibility,
-        DRY, and KISS, giving >= 4 total (currently 7).  We assert >= 4 and
-        check all 4 named labels are present.
+        DRY, KISS, and Narrowing, giving 8 total today.  We assert ``>= 8``
+        (floor, not exact count) so a future legitimate §3.6 block addition
+        doesn't break a parser-correctness test; the specific regressions this
+        guards (Narrowing failing to parse, SOLID labels lost) are covered by
+        the explicit label-presence checks below.
         """
         d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
         self.assertIn("§3.6", d)
         rules = d["§3.6"]["rules"]
-        self.assertGreaterEqual(len(rules), 4)
+        self.assertGreaterEqual(len(rules), 8)
         labels = {r["tag_or_label"] for r in rules}
         # The four SOLID sub-rules explicitly named in the brief spec.
         for expected_label in ("Open/Closed", "Liskov Substitution",
                                "Interface Segregation", "Dependency Inversion"):
             self.assertIn(expected_label, labels,
                           msg="Missing SOLID sub-rule: {0!r}".format(expected_label))
+        self.assertIn("Narrowing", labels,
+                      msg="Missing Narrowing rule (new §3.6 bold-header block)")
+
+    def test_section_36_narrowing_rule_body_and_kiss_backed_by_intact(self):
+        """§3.6 Narrowing rule parses with the right tag/body; KISS body unmoved.
+
+        Regression guard: the Narrowing block was appended AFTER the
+        Backed-by/verify-cross-layer-imports paragraph (which belongs to the
+        KISS block).  Confirms the insertion did not shift that paragraph
+        out of the KISS rule's parsed body into Narrowing's.
+        """
+        d = constitute_helper._parse_universal_blocks(self._CONSTITUTION_PATH)
+        rules = d["§3.6"]["rules"]
+        by_label = {r["tag_or_label"]: r["body"] for r in rules}
+
+        self.assertIn("Narrowing", by_label)
+        narrowing_body = by_label["Narrowing"]
+        self.assertIn("caller-scoped opt-in", narrowing_body)
+        self.assertIn("every current caller", narrowing_body)
+
+        self.assertIn("KISS", by_label)
+        kiss_body = by_label["KISS"]
+        self.assertIn("*Backed by*", kiss_body)
+        self.assertIn("verify-cross-layer-imports", kiss_body)
+        # The Backed-by paragraph must not have leaked into Narrowing's body.
+        self.assertNotIn("verify-cross-layer-imports", narrowing_body)
 
     def test_section_43_prefer_bullets_split(self):
         """§4.3 rules contain >= 1 PREFER bullet entry with non-empty body."""
