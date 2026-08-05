@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ._probe_tier import _probe_scratch_dir
+
 
 # ---------------------------------------------------------------------------
 # Error helpers.
@@ -150,29 +152,37 @@ def _validate_file_line(value: str, field_name: str) -> str:
 _PROBE_SCRIPT_INLINES_TOKEN_RE = re.compile(r"^[^:]+:\d+$")
 
 
-def _validate_script_within_research_dir(script_path, research_date, topic_slug):
-    # type: (str, str, str) -> None
-    """Validate script_path exists on disk AND lives under research/<date>-<slug>/.
+def _validate_script_within_probe_scratch_dir(script_path):
+    # type: (str) -> None
+    """Validate script_path exists on disk AND is a direct child of the
+    tier-1.5 probe-script scratch dir (plan 68 D8:
+    ``${TMPDIR:-/tmp}/forge-research``, see ``_probe_tier._probe_scratch_dir``).
 
-    Accepts both absolute and relative paths. The check inspects the path's
-    directory parts: the immediate parent must be named '<date>-<slug>' and
-    that parent's parent must be named 'research'.
+    Accepts both absolute and relative script_path values -- comparison
+    resolves both sides so a relative script_path is judged against the
+    same scratch dir regardless of the caller's cwd. Direct-child-only:
+    a script one level deeper (a subdir of the scratch dir) is rejected,
+    matching the structural invariant the retired research/<date>-<slug>/
+    check enforced (F2 -- see the module's test file for the round-trip
+    proof of the "subdir rejected" case).
+
+    Superseded plan-68 note: this used to validate containment under
+    research/<date>-<slug>/ (an on-disk, per-run, dated directory) and took
+    research_date/topic_slug to build that expected name. The scratch dir
+    is a single fixed literal instead, so those two arguments are no longer
+    needed -- see plan 68 D8 + _cmds_dataflow.py::cmd_record_probe_script's
+    call site for the parameter-count history.
 
     Raises ValueError with a caller-ready message on any violation.
     """
-    expected_dir = "{0}-{1}".format(research_date, topic_slug)
+    scratch_dir = _probe_scratch_dir().resolve()
     p = Path(script_path)
-    # Check structural containment via path parts.
-    # p.parent.name == expected_dir  AND  p.parent.parent.name == "research"
-    structurally_valid = (
-        p.parent.name == expected_dir
-        and p.parent.parent.name == "research"
-    )
-    if not structurally_valid:
+    resolved_parent = p.resolve().parent
+    if resolved_parent != scratch_dir:
         raise ValueError(
-            "record-probe-script: script-path must exist and live under "
-            "research/{0}-{1}/ dir; got {2}".format(
-                research_date, topic_slug, script_path
+            "record-probe-script: script-path must exist and be a direct "
+            "child of the probe scratch dir {0}; got {1}".format(
+                scratch_dir, script_path
             )
         )
     if not p.is_file():

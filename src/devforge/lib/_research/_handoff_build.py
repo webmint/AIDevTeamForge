@@ -407,11 +407,23 @@ def _build_handoff_from_state(memo, report, research_md_path, devforge_dir=None)
     topic_slug = memo["topic_slug"]
     date = report["date"]
 
-    # research_path
-    if research_md_path:
-        research_path = research_md_path
-    else:
-        research_path = "research/{0}-{1}.md".format(date, topic_slug)
+    # research_path -- REQUIRED. Plan 68 D2/D7: the caller
+    # (cmd_finalize_handoff) always computes a concrete sibling-of-target
+    # default (or honors an explicit --research-md-path override) before
+    # calling this function; there is no in-function fallback anymore. The
+    # retired research/<date>-<slug>.md default is intentionally gone --
+    # no code path here may reintroduce it. A falsy value reaching this
+    # point is a caller-contract bug (e.g. a future direct caller of this
+    # function skipping the derivation step), not a state worth silently
+    # defaulting, so it raises the same way the other required-field
+    # guards above do.
+    if not research_md_path:
+        raise ValueError(
+            "_build_handoff_from_state: research_md_path is required "
+            "(caller must supply a concrete value -- the "
+            "research/<date>-<slug>.md default was retired by plan 68)"
+        )
+    research_path = research_md_path
 
     # intent block
     dims = memo.get("dimensions") or {}

@@ -66,7 +66,10 @@ from _research._topic_conflicts import (  # noqa: E402,F401
     detect_direct_conflicts,
     detect_mode_from_symptom,
 )
-from _research._probe_tier import _classify_probe_tier  # noqa: E402,F401
+from _research._probe_tier import (  # noqa: E402,F401
+    _classify_probe_tier,
+    _probe_scratch_dir,
+)
 
 
 if __name__ == "__main__":

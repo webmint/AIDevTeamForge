@@ -98,7 +98,7 @@ Copy the block below into a new `/specify` session manually. No automation — u
 ~~~
 /specify "Export should be faster on large datasets — under 30 seconds OR async with progress"
 
-Research reference: research/2026-05-11-export-performance.md
+Research reference: (path assigned when this research is saved to its feature directory)
 Key facts:
 - Mode: Enhancement
 - Symptom: Export should be faster on large datasets

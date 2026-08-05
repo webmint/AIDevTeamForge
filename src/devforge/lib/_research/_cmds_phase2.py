@@ -7,7 +7,6 @@ import json
 
 from ._constants import COMPLEXITY_ENUM, VERDICT_ENUM, VERDICT_PROCEEDING
 from ._state import _load_memo, _state_transaction
-from ._topic_conflicts import derive_topic_slug
 from ._validators import (
     _die,
     _validate_enum,
@@ -104,6 +103,22 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
     Renders the copy-pasteable /specify prompt + key facts block. Only
     emits when verdict ∈ VERDICT_PROCEEDING[mode]. Otherwise sets
     next_step_text = None and exits 0 (no error).
+
+    Plan 68 D1/D2 "Research reference" line — mechanism choice: every
+    other dynamic value in this block (mode, symptom, desired approach,
+    …) is read from already-persisted state, not an accompanying CLI arg,
+    but the eventual research-report.md path cannot follow that pattern:
+    this verb runs at Phase 3, and the feature dir it will live under is
+    not allocated until Phase 4's save+slug confirmation (D1's fixed
+    ordering) -- so there is no state field to read it from either.
+    --research-path is therefore an optional CLI arg, consistent with how
+    a genuinely orchestrator-known-only value is supplied elsewhere in
+    this helper (e.g. record-probe-script's --script-path): pass it when
+    the caller already knows the final path, omit it otherwise. When
+    omitted, the line renders a path-free placeholder rather than the
+    retired research/<date>-<slug>.md literal -- this text is echoed to
+    the user before the save prompt (Phase 3's "Render" step), so it must
+    never show a location that turns out to be wrong.
     """
     try:
         memo = _load_memo(args.devforge_dir)
@@ -129,18 +144,20 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
             approach_name = rec_approach.get("name") or "(approach name)"
             addressed = rec_approach.get("hypotheses_addressed") or []
             not_covered = rec_approach.get("hypotheses_not_covered") or []
-            slug = memo.get("topic_slug") or derive_topic_slug(symptom or report.get("topic") or "")
-            date = report.get("date") or "YYYY-MM-DD"
 
             refined = (symptom + " — " + desired).strip(" —")
             refined_short = refined if refined else "topic"
+            research_reference = getattr(args, "research_path", None) or (
+                "(path assigned when this research is saved to its feature "
+                "directory)"
+            )
             text = (
                 "## Next step\n\n"
                 "Copy the block below into a new `/specify` session manually. "
                 "No automation — user controls when (or if) `/specify` runs.\n\n"
                 "~~~\n"
                 "/specify \"{refined}\"\n\n"
-                "Research reference: research/{date}-{slug}.md\n"
+                "Research reference: {research_reference}\n"
                 "Key facts:\n"
                 "- Mode: {mode}\n"
                 "- Symptom: {sym}\n"
@@ -152,8 +169,7 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
                 "~~~\n"
             ).format(
                 refined=refined_short,
-                date=date,
-                slug=slug,
+                research_reference=research_reference,
                 mode="Bug" if mode == "bug" else "Enhancement",
                 sym=symptom or "(unset)",
                 des=desired or "(unset)",

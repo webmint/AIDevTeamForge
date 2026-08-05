@@ -37,6 +37,32 @@ _FRAMEWORK_EXTENSION_MAP = {
 _SCHEMA_VALID_FRAMEWORKS = frozenset({"vitest", "jest", "pytest", "go-test", "cargo-test", "rspec"})
 
 
+def _probe_scratch_dir():
+    # type: () -> Path
+    """Return the fixed scratch dir for tier-1.5 probe scripts (plan 68 D8).
+
+    ``${TMPDIR:-/tmp}/forge-research`` -- mirrors ``/audit``'s ``$WORKDIR``
+    pattern (a fixed literal re-derived by the orchestrator in every Bash
+    block, not a per-run ``mktemp -d``). This is the Python-side computation
+    of that same bash expansion: ``${TMPDIR:-/tmp}`` substitutes the
+    fallback both when TMPDIR is unset AND when it is set-but-empty, so
+    ``os.environ.get("TMPDIR") or "/tmp"`` is used rather than
+    ``os.environ.get("TMPDIR", "/tmp")`` (the latter would return an empty
+    string, not the fallback, when TMPDIR is set to ``""``).
+
+    Deliberately flat (no per-run date/slug subdir) to match the mirrored
+    ``/audit`` pattern -- one research run's scratch at a time, cleared by
+    the orchestrator at the start of Phase 4 the same way ``/audit`` clears
+    its own WORKDIR at the start of a run.
+
+    Not created here and not the FINAL artifact location -- the orchestrator
+    copies the scratch script into ``specs/NNN-slug/probe-script.<ext>`` at
+    finalize when the run saves (plan 68 D1/D8); a dead-end run leaves it in
+    scratch only.
+    """
+    return Path(os.environ.get("TMPDIR") or "/tmp") / "forge-research"
+
+
 def _chrome_mcp_available():
     # type: () -> bool
     """Detect Chrome MCP availability via env var (test-mockable).
@@ -170,7 +196,13 @@ def _classify_probe_tier(
             is_first_test_for_file = True  # Conservative: assume new test file.
 
     if tier == "1.5":
-        script_path = "research/{0}-{1}/probe-script.mjs".format(research_date, topic_slug)
+        # Plan 68 D8: mid-run default lives in scratch, not the (retired)
+        # research/<date>-<slug>/ layout. research_date is no longer part
+        # of this default (the scratch dir is flat, not per-run) but stays
+        # a required keyword arg -- _cmds_render_verify.py's mid-run
+        # probe-availability check calls this classifier too and is out of
+        # this change's scope; changing the signature would break it.
+        script_path = str(_probe_scratch_dir() / "probe-script.mjs")
         test_framework = None
         is_first_test_for_file = False
 

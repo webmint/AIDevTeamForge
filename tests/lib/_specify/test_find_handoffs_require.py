@@ -287,7 +287,10 @@ def _build_discover_handoff(devforge: Path, handoff_out: Path) -> None:
         "--action", "Proceed with PostgreSQL table approach",
         "--next", "Run /specify audit-log-persistence",
     ])
-    _run_discover(["--devforge-dir", df, "set-next-step-text"])
+    _run_discover([
+        "--devforge-dir", df, "set-next-step-text",
+        "--feature-dir", "specs/001-audit-log-persistence",
+    ])
 
     r = _run_discover([
         "--devforge-dir", df,

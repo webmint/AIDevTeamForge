@@ -1586,25 +1586,75 @@ class TestSetNextStepText(unittest.TestCase):
             devforge = Path(tmp) / ".devforge"
             self._setup_memo(devforge)
             self._setup_report(devforge, verdict="Worth pursuing")
-            r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-next-step-text",
+                "--feature-dir", "specs/001-test-feature",
+            ])
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
             text = report["next_step_text"]
             self.assertIsNotNone(text)
             self.assertIn("/specify", text)
             self.assertIn("Discovery reference:", text)
+            # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 3 item 3: the composed
+            # line uses --feature-dir + the D2 "discovery-report.md" stem --
+            # never the retired discover/<date>-<slug>.md literal.
+            self.assertIn(
+                "Discovery reference: specs/001-test-feature/discovery-report.md",
+                text,
+            )
+            self.assertNotIn("discover/", text)
             self.assertIn("Functional scope:", text)
             self.assertIn("Users:", text)
             self.assertIn("Success criteria:", text)
             self.assertIn("Recommended option:", text)
             self.assertIn("Option A", text)
 
-    def test_verdict_reconsider_sets_none(self):
+    def test_missing_feature_dir_renders_placeholder(self):
+        """--feature-dir is OPTIONAL (python-reviewer finding 1, plan 68
+        Phase 3): this verb runs at Phase 3, before D1's Phase 4
+        allocation, so there is no legal value to require here. Omitting
+        it renders a path-free placeholder line instead of erroring and
+        instead of the retired discover/<date>-<slug>.md literal --
+        matches the research lane's identical mechanism.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_memo(devforge)
+            self._setup_report(devforge, verdict="Worth pursuing")
+            r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            report = _read_report(devforge)
+            text = report["next_step_text"]
+            self.assertIn(
+                "Discovery reference: (path assigned when this discovery "
+                "is saved to its feature directory)",
+                text,
+            )
+            self.assertNotIn("discover/", text)
+
+    def test_feature_dir_omitted_on_reconsider_still_clears_text(self):
+        """--feature-dir being optional doesn't change the Reconsider path
+        (next_step_text still clears to None regardless).
+        """
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_memo(devforge)
             self._setup_report(devforge, verdict="Reconsider")
             r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            report = _read_report(devforge)
+            self.assertIsNone(report["next_step_text"])
+
+    def test_verdict_reconsider_sets_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_memo(devforge)
+            self._setup_report(devforge, verdict="Reconsider")
+            r = _run([
+                "--devforge-dir", str(devforge), "set-next-step-text",
+                "--feature-dir", "specs/001-test-feature",
+            ])
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
             self.assertIsNone(report["next_step_text"])
@@ -1618,7 +1668,10 @@ class TestSetNextStepText(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "set-verdict", "--value", "Worth pursuing",
             ])
-            r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-next-step-text",
+                "--feature-dir", "specs/001-test-feature",
+            ])
             self.assertEqual(r.returncode, 2)
             self.assertIn("missing required input", r.stderr)
             self.assertIn("memo.functional_scope.value", r.stderr)
@@ -1639,7 +1692,10 @@ class TestSetNextStepText(unittest.TestCase):
             )
             self.assertEqual(r.returncode, 0, r.stderr)
             self._setup_report(devforge, verdict="Worth pursuing")
-            r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-next-step-text",
+                "--feature-dir", "specs/001-test-feature",
+            ])
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
             text = report["next_step_text"]
@@ -1669,6 +1725,7 @@ class TestSetNextStepText(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "set-next-step-text",
                 "--topic", distilled,
+                "--feature-dir", "specs/001-test-feature",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
@@ -1688,6 +1745,7 @@ class TestSetNextStepText(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "set-next-step-text",
                 "--topic", "   ",
+                "--feature-dir", "specs/001-test-feature",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
@@ -1712,7 +1770,10 @@ class TestSetNextStepText(unittest.TestCase):
                 "Clear",
             )
             self._setup_report(devforge, verdict="Worth pursuing")
-            r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-next-step-text",
+                "--feature-dir", "specs/001-test-feature",
+            ])
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
             text = report["next_step_text"]
@@ -1733,10 +1794,41 @@ class TestSetNextStepText(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "set-next-step-text",
                 "--topic", "First sentence.\\n\\nSecond sentence.",
+                "--feature-dir", "specs/001-test-feature",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
             self.assertNotIn("\\n", report["next_step_text"])
+
+
+# ---------------------------------------------------------------------------
+# finalize-handoff CLI-level XOR coverage (python-reviewer finding 2, plan
+# 68 Phase 3): the manual in-function check is the SOLE enforcement layer
+# (the argparse mutually_exclusive_group was dropped for uniformity with
+# the research lane), so this is the only place the real production CLI
+# path -- an actual `discover_helper finalize-handoff` subprocess
+# invocation, not a directly-constructed Namespace -- exercises it.
+# ---------------------------------------------------------------------------
+
+
+class TestFinalizeHandoffCliXor(unittest.TestCase):
+    def test_neither_flag_exits_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            r = _run(["--devforge-dir", str(devforge), "finalize-handoff"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("provide exactly one", r.stderr)
+
+    def test_both_flags_exits_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            r = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+                "--feature-dir", "specs/001-x",
+                "--emit-handoff-json", str(Path(tmp) / "out.handoff.json"),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("mutually exclusive", r.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1829,7 +1921,10 @@ def _build_full_report(devforge_dir):
         "--action", "Proceed",
         "--next", "Run /specify",
     ])
-    _run(["--devforge-dir", str(devforge_dir), "set-next-step-text"])
+    _run([
+        "--devforge-dir", str(devforge_dir), "set-next-step-text",
+        "--feature-dir", "specs/001-test-feature",
+    ])
 
 
 class TestRender(unittest.TestCase):

@@ -243,12 +243,34 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
 
     If verdict == 'Reconsider': sets next_step_text = None. Exit 0.
     If any required input is missing: exit 2.
+
+    Plan 68 D1/D2 "Discovery reference" line -- mechanism choice (unified
+    with the research lane's identical problem, see
+    _research/_cmds_phase2.py::cmd_set_next_step_text): every other
+    dynamic value in this block (functional scope, users, recommended
+    option, ...) is read from already-persisted state, but the eventual
+    discovery-report.md path cannot follow that pattern -- this verb runs
+    at Phase 3, and the feature dir it will live under is not allocated
+    until Phase 4's save+slug confirmation (D1's fixed ordering), so
+    there is no state field to read it from either. --feature-dir is
+    therefore an OPTIONAL CLI arg: pass it when the caller already knows
+    the final feature dir, omit it otherwise. When omitted, the line
+    renders a path-free placeholder rather than the retired
+    discover/<date>-<slug>.md literal -- this text is echoed to the user
+    before the save prompt (Phase 3's "Render" step), so it must never
+    show a location that turns out to be wrong. (A REQUIRED --feature-dir
+    was tried first and reverted -- see 68-INTAKE-OWNS-FEATURE-DIR-
+    PLAN.md Phase 3 python-reviewer finding 1: it would have bricked
+    every /discover run, since there is no legal value to pass at this
+    call site under D1's ordering.)
     """
     try:
         memo = _load_memo(args.devforge_dir)
         report = _load_report(args.devforge_dir)
     except (OSError, json.JSONDecodeError) as err:
         return _die("set-next-step-text: {0}".format(err))
+
+    feature_dir = getattr(args, "feature_dir", None)
 
     verdict = report.get("verdict")
 
@@ -305,15 +327,19 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
     success_criteria_clean = _clean_inline_escapes(success_criteria_val)
     recommended_name_clean = _clean_inline_escapes(recommended_name or "")
 
-    date = report.get("date") or memo.get("date") or "unknown-date"
-    topic_slug = report.get("topic_slug") or memo.get("topic_slug") or "topic"
     gaps = memo.get("gaps") or []
     gaps_count = len(gaps)
+
+    discovery_reference = (
+        "{0}/discovery-report.md".format(feature_dir.rstrip("/"))
+        if feature_dir
+        else "(path assigned when this discovery is saved to its feature directory)"
+    )
 
     lines = [
         '/specify "{0}"'.format(distilled),
         "",
-        "Discovery reference: discover/{0}-{1}.md".format(date, topic_slug),
+        "Discovery reference: {0}".format(discovery_reference),
         "Key facts:",
         "- Functional scope: {0}".format(functional_scope_clean),
         "- Users: {0}".format(users_clean),

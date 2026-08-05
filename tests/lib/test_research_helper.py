@@ -983,6 +983,71 @@ class TestPhase2Setters(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    def _build_feasible_state_for_next_step(self, devforge):
+        """Shared setup: minimal state that reaches VERDICT_PROCEEDING."""
+        _run([
+            "--devforge-dir", str(devforge), "set-symptom",
+            "--value", "should add WebSocket", "--state", "Clear",
+        ])
+        _run([
+            "--devforge-dir", str(devforge), "set-desired",
+            "--value", "real-time push", "--state", "Clear",
+        ])
+        _run(["--devforge-dir", str(devforge), "detect-mode"])
+        _run([
+            "--devforge-dir", str(devforge), "set-approach",
+            "--name", "Option A", "--description", "use SSE",
+            "--addresses-hypotheses", '["H1"]', "--does-not-cover", '[]',
+            "--pros", '["simple"]', "--cons", '["less interactive"]',
+            "--complexity", "Low",
+        ])
+        _run([
+            "--devforge-dir", str(devforge), "set-recommended-approach",
+            "--name", "Option A", "--rationale", "fits stack",
+            "--hypotheses-addressed", '["H1"]',
+            "--hypotheses-not-covered", '[]',
+        ])
+        _run(["--devforge-dir", str(devforge), "set-verdict", "--value", "Feasible"])
+
+    def test_set_next_step_text_research_reference_placeholder_when_omitted(self):
+        """Plan 68: omitting --research-path renders a path-free placeholder,
+        never the retired research/<date>-<slug>.md literal (the feature dir
+        isn't allocated yet when this verb runs at Phase 3)."""
+        tmp, devforge = self._fresh()
+        try:
+            self._build_feasible_state_for_next_step(devforge)
+            r = _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertIn("Research reference:", rep["next_step_text"])
+            self.assertNotIn("research/", rep["next_step_text"])
+            self.assertIn(
+                "path assigned when this research is saved",
+                rep["next_step_text"],
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_set_next_step_text_research_reference_uses_explicit_path(self):
+        """--research-path <value> -> the 'Research reference' line cites the
+        caller-supplied value verbatim (e.g. an already-allocated feature dir's
+        research-report.md)."""
+        tmp, devforge = self._fresh()
+        try:
+            self._build_feasible_state_for_next_step(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-next-step-text",
+                "--research-path", "specs/001-cart-fix/research-report.md",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertIn(
+                "Research reference: specs/001-cart-fix/research-report.md",
+                rep["next_step_text"],
+            )
+        finally:
+            tmp.cleanup()
+
 
 # ---------------------------------------------------------------------------
 # verify + render — full pipeline.
@@ -7203,7 +7268,9 @@ class TestFinalizeHandoff(unittest.TestCase):
             self.assertIn("schema_version", data)
 
     def test_finalize_handoff_research_md_path_defaults(self):
-        """Omit --research-md-path → derived as research/<date>-<slug>.md."""
+        """Omit --research-md-path → derived as a sibling research-report.md
+        next to the --emit-handoff-json target (plan 68 D2/D7 -- the old
+        research/<date>-<slug>.md default is retired)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_minimal_bug_state_for_handoff(devforge)
@@ -7211,8 +7278,10 @@ class TestFinalizeHandoff(unittest.TestCase):
             r = _run_finalize(devforge, out)
             self.assertEqual(r.returncode, 0, r.stderr)
             data = json.loads(out.read_text())
-            # date=2026-05-19, slug=config-not-applied
-            self.assertEqual(data["research_path"], "research/2026-05-19-config-not-applied.md")
+            self.assertEqual(
+                data["research_path"], str(out.parent / "research-report.md")
+            )
+            self.assertNotIn("research/", data["research_path"])
 
     def test_finalize_handoff_research_md_path_explicit(self):
         """When --research-md-path is set, it's used verbatim."""
@@ -7224,6 +7293,98 @@ class TestFinalizeHandoff(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             data = json.loads(out.read_text())
             self.assertEqual(data["research_path"], "research/custom-path.md")
+
+    # ------------------------------------------------------------------
+    # Plan 68 Phase 2 -- --feature-dir anchor + mutual exclusivity.
+    # ------------------------------------------------------------------
+
+    def test_finalize_handoff_feature_dir_derives_both_defaults(self):
+        """--feature-dir alone -> handoff written to <dir>/research-handoff.json
+        and research_path defaults to <dir>/research-report.md (D2 sibling
+        names, both under the feature dir -- no --emit-handoff-json needed)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            feature_dir = Path(tmp) / "specs" / "001-cart-fix"
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            expected_handoff = feature_dir / "research-handoff.json"
+            self.assertTrue(expected_handoff.is_file())
+            data = json.loads(expected_handoff.read_text())
+            self.assertEqual(
+                data["research_path"], str(feature_dir / "research-report.md")
+            )
+
+    def test_finalize_handoff_feature_dir_research_md_path_still_overridable(self):
+        """--feature-dir + --research-md-path -> the explicit override wins
+        over the feature-dir-derived research_path default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            feature_dir = Path(tmp) / "specs" / "001-cart-fix"
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+                "--research-md-path", "specs/001-cart-fix/custom-report.md",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads((feature_dir / "research-handoff.json").read_text())
+            self.assertEqual(data["research_path"], "specs/001-cart-fix/custom-report.md")
+
+    def test_finalize_handoff_feature_dir_works_for_existing_dir(self):
+        """--feature-dir pointed at a pre-existing directory (D6 attach-mode
+        shape -- the helper stays dumb, no attach detection here) succeeds
+        identically to a fresh dir."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            feature_dir = Path(tmp) / "specs" / "001-cart-fix"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / "spec.md").write_text("# pre-existing\n")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue((feature_dir / "research-handoff.json").is_file())
+            # Pre-existing sibling untouched.
+            self.assertTrue((feature_dir / "spec.md").is_file())
+
+    def test_finalize_handoff_rejects_neither_anchor(self):
+        """Neither --feature-dir nor --emit-handoff-json -> exit 2, no write."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("provide exactly one of --feature-dir or --emit-handoff-json", r.stderr)
+
+    def test_finalize_handoff_rejects_both_anchors(self):
+        """--feature-dir AND --emit-handoff-json together -> exit 2, no write."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            feature_dir = Path(tmp) / "specs" / "001-cart-fix"
+            out = Path(tmp) / "handoff.json"
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+                "--emit-handoff-json", str(out),
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("mutually exclusive", r.stderr)
+            self.assertFalse(out.exists())
+            self.assertFalse(feature_dir.exists())
 
     def test_finalize_handoff_probe_defaults_to_tier_3(self):
         """Output probe.tier == '3', actor == 'user'."""
@@ -7871,7 +8032,8 @@ class TestProbeTierClassifier(unittest.TestCase):
             self.assertTrue(probe["is_first_test_for_file"])
 
     def test_probe_tier_1_5_when_data_shape_only_and_test_infra_absent(self):
-        """data_shape_only=True + test_infra.status=absent → tier='1.5', script_path populated, test_framework=None."""
+        """data_shape_only=True + test_infra.status=absent → tier='1.5', script_path
+        populated (plan 68 D8 scratch default), test_framework=None."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_minimal_bug_state_for_handoff(devforge)
@@ -7895,8 +8057,11 @@ class TestProbeTierClassifier(unittest.TestCase):
             self.assertEqual(probe["actor"], "llm")
             self.assertIsNone(probe["test_framework"])
             self.assertIsNone(probe["test_path"])
-            self.assertIn("probe-script.mjs", probe["script_path"])
-            self.assertIn("config-not-applied", probe["script_path"])
+            self.assertEqual(
+                probe["script_path"],
+                str(research_helper._probe_scratch_dir() / "probe-script.mjs"),
+            )
+            self.assertNotIn("config-not-applied", probe["script_path"])
 
     def test_probe_tier_2_when_auth_required_and_chrome_mcp(self):
         """feasibility.auth_required=True + env DEVFORGE_CHROME_MCP_AVAILABLE=1 → tier='2', actor='llm'."""
@@ -8119,7 +8284,17 @@ class TestProbeTierClassifier(unittest.TestCase):
 
 
 class TestRecordProbeScript(unittest.TestCase):
-    """Step 5 — record-probe-script subcommand tests."""
+    """Step 5 — record-probe-script subcommand tests.
+
+    Plan 68 D8: valid script_path values are now direct children of the
+    real tier-1.5 probe scratch dir (research_helper._probe_scratch_dir(),
+    ``${TMPDIR:-/tmp}/forge-research``) instead of a per-test-isolated
+    research/<date>-<slug>/ dir under the test's own tempfile.
+    TemporaryDirectory(). The scratch dir is a fixed literal shared across
+    the whole test run (mirroring /audit's WORKDIR pattern), so every test
+    that writes into it uses a filename unique to that test and cleans up
+    via addCleanup rather than relying on the tempdir's own teardown.
+    """
 
     # ------------------------------------------------------------------
     # Fixture helpers
@@ -8132,11 +8307,18 @@ class TestRecordProbeScript(unittest.TestCase):
         _run(["--devforge-dir", str(devforge), "set-topic", "--value", "probe-test-bug"])
         _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
 
-    def _make_script_file(self, research_dir, filename="probe-script.mjs"):
-        """Create the research/<date>-<slug>/ directory and a script file in it."""
-        research_dir.mkdir(parents=True, exist_ok=True)
-        script = research_dir / filename
+    def _make_scratch_script(self, filename):
+        """Create filename as a direct child of the real probe scratch dir.
+
+        filename must be unique per test (see class docstring) -- this
+        registers cleanup so the shared scratch dir doesn't accumulate
+        files across the suite.
+        """
+        scratch = research_helper._probe_scratch_dir()
+        scratch.mkdir(parents=True, exist_ok=True)
+        script = scratch / filename
         script.write_text("// probe script\nconsole.log('hello');\n")
+        self.addCleanup(script.unlink, missing_ok=True)
         return script
 
     # ------------------------------------------------------------------
@@ -8144,16 +8326,16 @@ class TestRecordProbeScript(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_record_probe_script_round_trip(self):
-        """Script exists under research/<date>-<slug>/, runtime=node on PATH, valid inlines-from
-        → exit 0, probe_scripts populated with correct fields."""
+        """Script is a direct child of the probe scratch dir, runtime=node on
+        PATH, valid inlines-from → exit 0, probe_scripts populated with
+        correct fields."""
         import shutil as _shutil
         if _shutil.which("node") is None:
             self.skipTest("node not on PATH — skipping round-trip test")
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir)
+            script = self._make_scratch_script("round-trip-test.mjs")
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8176,18 +8358,19 @@ class TestRecordProbeScript(unittest.TestCase):
             self.assertRegex(entry["recorded_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
     # ------------------------------------------------------------------
-    # Test 2: script outside research dir
+    # Test 2: script outside the probe scratch dir
     # ------------------------------------------------------------------
 
-    def test_record_probe_script_rejects_script_outside_research_dir(self):
-        """Script at /tmp path → exit 2, stderr cites 'script-path must exist'."""
+    def test_record_probe_script_rejects_script_outside_scratch_dir(self):
+        """Script at an arbitrary /tmp path (not the probe scratch dir) →
+        exit 2, stderr cites 'script-path must exist'."""
         import shutil as _shutil
         if _shutil.which("node") is None:
             self.skipTest("node not on PATH")
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            # Create a script OUTSIDE the research dir.
+            # Create a script OUTSIDE the probe scratch dir.
             outside_script = Path(tmp) / "probe-script.mjs"
             outside_script.write_text("// outside\n")
             r = _run([
@@ -8201,12 +8384,49 @@ class TestRecordProbeScript(unittest.TestCase):
             self.assertIn("script-path must exist", r.stderr)
 
     # ------------------------------------------------------------------
-    # Test 3: missing script file (correct dir prefix, file absent)
+    # Test 2b: symlink escape rejected (resolve-both-sides symlink safety)
+    # ------------------------------------------------------------------
+
+    def test_record_probe_script_rejects_symlink_escape(self):
+        """A symlink that is itself a direct child of the scratch dir, but
+        whose real target lives OUTSIDE it, is rejected -- pins the
+        _validate_script_within_probe_scratch_dir "resolves both sides"
+        symlink-safety claim (Path.resolve() dereferences the symlink to
+        its real target before the scratch-dir comparison, so the on-disk
+        placement of the symlink itself cannot fake containment)."""
+        import shutil as _shutil
+        if _shutil.which("node") is None:
+            self.skipTest("node not on PATH")
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._setup_state_for_probe_script(devforge)
+            # Real file lives OUTSIDE the scratch dir.
+            real_target = Path(tmp) / "real-outside-target.mjs"
+            real_target.write_text("// outside target\n")
+            # The symlink itself is a direct child of the scratch dir.
+            scratch = research_helper._probe_scratch_dir()
+            scratch.mkdir(parents=True, exist_ok=True)
+            symlink_path = scratch / "symlink-escape-test.mjs"
+            symlink_path.symlink_to(real_target)
+            self.addCleanup(symlink_path.unlink, missing_ok=True)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-probe-script",
+                "--script-path", str(symlink_path),
+                "--runtime", "node",
+                "--inlines-from", '["src/foo.ts:1"]',
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("script-path must exist", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Test 3: missing script file (correct dir, file absent)
     # ------------------------------------------------------------------
 
     def test_record_probe_script_rejects_missing_script_file(self):
-        """script-path under correct dir but file does not exist → exit 2, stderr
-        cites 'file does not exist' (distinct from the structural-rejection message)."""
+        """script-path is a direct child of the scratch dir but the file does
+        not exist → exit 2, stderr cites 'file does not exist' (distinct
+        from the structural-rejection message)."""
         import shutil as _shutil
         if _shutil.which("node") is None:
             self.skipTest("node not on PATH")
@@ -8214,9 +8434,9 @@ class TestRecordProbeScript(unittest.TestCase):
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
             # Build the path prefix but don't create the file.
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            research_dir.mkdir(parents=True, exist_ok=True)
-            nonexistent = research_dir / "probe-script.mjs"
+            scratch = research_helper._probe_scratch_dir()
+            scratch.mkdir(parents=True, exist_ok=True)
+            nonexistent = scratch / "missing-script-test.mjs"
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8240,8 +8460,7 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir)
+            script = self._make_scratch_script("runtime-not-on-path-test.mjs")
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8264,8 +8483,7 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir)
+            script = self._make_scratch_script("inlines-json-test.mjs")
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8288,8 +8506,7 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir)
+            script = self._make_scratch_script("inlines-empty-test.mjs")
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8312,8 +8529,7 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir)
+            script = self._make_scratch_script("inlines-nonpath-test.mjs")
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8338,8 +8554,7 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir)
+            script = self._make_scratch_script("idempotent-test.mjs")
             argv = [
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8370,9 +8585,8 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script_a = self._make_script_file(research_dir, "probe-script-a.mjs")
-            script_b = self._make_script_file(research_dir, "probe-script-b.mjs")
+            script_a = self._make_scratch_script("distinct-a-test.mjs")
+            script_b = self._make_scratch_script("distinct-b-test.mjs")
             _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8418,12 +8632,8 @@ class TestRecordProbeScript(unittest.TestCase):
             ])
             # Ensure test_infra is absent so tier=1.5 is chosen.
             _write_init_yaml_with_test_infra(devforge, status="absent")
-            # Create the probe script file in the research dir.
-            # _build_minimal_bug_state_for_handoff uses date=2026-05-19, slug=config-not-applied.
-            research_dir = Path(tmp) / "research" / "2026-05-19-config-not-applied"
-            research_dir.mkdir(parents=True, exist_ok=True)
-            custom_script = research_dir / "my-custom-probe.mjs"
-            custom_script.write_text("// custom probe\n")
+            # Create the probe script file in the real probe scratch dir.
+            custom_script = self._make_scratch_script("my-custom-probe-test.mjs")
             _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8446,7 +8656,9 @@ class TestRecordProbeScript(unittest.TestCase):
 
     def test_finalize_handoff_defaults_script_path_when_no_recorded(self):
         """tier=1.5 feasibility + NO record-probe-script → finalize-handoff output
-        probe.script_path uses deterministic default 'research/<date>-<slug>/probe-script.mjs'."""
+        probe.script_path uses the deterministic scratch default (plan 68 D8:
+        ${TMPDIR:-/tmp}/forge-research/probe-script.mjs) -- flat, no
+        date/slug embedded, unlike the retired research/<date>-<slug>/ layout."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_minimal_bug_state_for_handoff(devforge)
@@ -8468,8 +8680,11 @@ class TestRecordProbeScript(unittest.TestCase):
             data = json.loads(out.read_text())
             probe = data["probe"]
             self.assertEqual(probe["tier"], "1.5")
-            self.assertIn("probe-script.mjs", probe["script_path"])
-            self.assertIn("config-not-applied", probe["script_path"])
+            self.assertEqual(
+                probe["script_path"],
+                str(research_helper._probe_scratch_dir() / "probe-script.mjs"),
+            )
+            self.assertNotIn("config-not-applied", probe["script_path"])
 
     # ------------------------------------------------------------------
     # Test 12: accepts python runtime (skips gracefully if python absent)
@@ -8483,8 +8698,7 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir, "probe-script.py")
+            script = self._make_scratch_script("python-runtime-test.py")
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8503,22 +8717,24 @@ class TestRecordProbeScript(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_record_probe_script_rejects_subdir_path(self):
-        """script-path file exists but lives in research/<date>-<slug>/subdir/
-        (not a direct child of the date-slug dir) → exit 2, stderr 'script-path must'.
-        Locks the 'direct child only' structural invariant."""
+        """script-path file exists but lives in a subdir of the probe scratch
+        dir (not a direct child) → exit 2, stderr 'script-path must'. Locks
+        the 'direct child only' structural invariant."""
         import shutil as _shutil
         if _shutil.which("node") is None:
             self.skipTest("node not on PATH")
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            # Create file inside a *subdir* of the date-slug dir.
-            subdir = (
-                Path(tmp) / "research" / "2026-05-19-probe-test-bug" / "subdir"
-            )
+            # Create file inside a *subdir* of the scratch dir.
+            subdir = research_helper._probe_scratch_dir() / "subdir-test"
             subdir.mkdir(parents=True, exist_ok=True)
             script = subdir / "probe.mjs"
             script.write_text("// nested probe\n")
+            # addCleanup runs LIFO -- register rmdir first so unlink (which
+            # must run first, to empty the dir) fires last-in-first-out.
+            self.addCleanup(subdir.rmdir)
+            self.addCleanup(script.unlink, missing_ok=True)
             r = _run([
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -8545,8 +8761,7 @@ class TestRecordProbeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             self._setup_state_for_probe_script(devforge)
-            research_dir = Path(tmp) / "research" / "2026-05-19-probe-test-bug"
-            script = self._make_script_file(research_dir)
+            script = self._make_scratch_script("strict-match-test.mjs")
             base_argv = [
                 "--devforge-dir", str(devforge),
                 "record-probe-script",
@@ -9163,7 +9378,10 @@ def _build_minimal_discover_handoff_for_check_outcome(tmp_root):
         "--action", "Proceed with PostgreSQL table approach",
         "--next", "Run /specify audit-log-persistence",
     ])
-    _run_discover(["--devforge-dir", df, "set-next-step-text"])
+    _run_discover([
+        "--devforge-dir", df, "set-next-step-text",
+        "--feature-dir", "specs/001-audit-log-persistence",
+    ])
 
     discover_dir = tmp_path / "discover"
     discover_dir.mkdir(exist_ok=True)

@@ -118,7 +118,7 @@ def cmd_set_topic(args: argparse.Namespace) -> int:
 
     Topic comes from the user's original /research argument. Auto-deriving
     slug at this layer means the orchestrator only owns one input string;
-    helper renders both topic text and filename slug.
+    the helper derives both the topic text and memo.topic_slug from it.
     """
     try:
         value = _validate_scalar(args.value, "topic")

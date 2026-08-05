@@ -491,17 +491,38 @@ def _build_handoff_from_state(memo, report, report_md_path=None):
     """Orchestrate memo + report -> Handoff dataclass construction.
 
     Raises ValueError from schema validators on any field failure.
-    report_md_path is the path to the parallel .md artefact; when None,
-    the helper computes the canonical name from report.date + memo.topic_slug.
-    """
-    topic_slug = (memo.get("topic_slug") or "unknown").strip()
-    date = (report.get("date") or datetime.date.today().isoformat()).strip()
 
-    # report_path: path to the parallel markdown artefact.
-    if report_md_path:
-        report_path = report_md_path
-    else:
-        report_path = "discover/{0}-{1}.md".format(date, topic_slug)
+    report_md_path is the path to the parallel report markdown artefact
+    (embedded verbatim as Handoff.report_path) and is REQUIRED -- 68-INTAKE-
+    OWNS-FEATURE-DIR-PLAN.md Phase 3 / D3 removed the old internal fallback
+    that derived it from report.date + memo.topic_slug under the retired
+    top-level discover/<date>-<slug>.md layout, so this function can no
+    longer silently emit an old-layout path.
+
+    Unlike a bare required positional (whose absence raises an unhelpful
+    TypeError), a falsy report_md_path -- omitted OR explicitly None/empty
+    -- raises ValueError with a caller-contract message, matching the
+    research lane's identical guard (see
+    _research/_handoff_build.py::_build_handoff_from_state,
+    "research_md_path"). cmd_finalize_handoff (the sole production caller)
+    always computes and passes a concrete report_md_path -- see its
+    --feature-dir / --emit-handoff-json handling; a falsy value reaching
+    this point is a caller-contract bug (e.g. a future direct caller
+    skipping the derivation step), not a state worth silently defaulting.
+    Callers that do not care about the exact report_path value (most of
+    tests/lib/test_discover_handoff_build.py) must still supply a
+    placeholder string explicitly.
+    """
+    # report_path: path to the parallel markdown artefact -- caller-supplied,
+    # see the docstring above for why there is no longer an internal
+    # derivation from report.date + memo.topic_slug.
+    if not report_md_path:
+        raise ValueError(
+            "_build_handoff_from_state: report_md_path is required "
+            "(caller must supply a concrete value -- the "
+            "discover/<date>-<slug>.md default was retired by plan 68)"
+        )
+    report_path = report_md_path
 
     # intent
     intent = _build_intent(memo)

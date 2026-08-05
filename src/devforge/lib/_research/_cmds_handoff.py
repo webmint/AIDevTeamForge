@@ -74,7 +74,43 @@ def cmd_set_probe_feasibility(args):
 
 def cmd_finalize_handoff(args):
     # type: (argparse.Namespace) -> int
-    """Read research state → build Handoff → validate → write handoff.json."""
+    """Read research state → build Handoff → validate → write research-handoff.json.
+
+    Plan 68 D1/D2/D7 anchor resolution: exactly one of --feature-dir /
+    --emit-handoff-json selects where the handoff.json is written.
+      --feature-dir <dir>       -> target = <dir>/research-handoff.json
+      --emit-handoff-json <p>   -> target = <p>  (legacy/explicit override,
+                                    e.g. a non-feature-dir location)
+    Either way, research_path (the handoff's `research_path` field) then
+    defaults to a sibling `research-report.md` next to wherever target
+    landed -- unless --research-md-path overrides it. This is the same
+    formula in both branches (D2's flat-sibling-file naming, generalized to
+    whichever directory anchored the run), so no code path here can emit
+    the retired `research/<date>-<slug>.md` default.
+    """
+    feature_dir = getattr(args, "feature_dir", None)
+    emit_arg = getattr(args, "emit_handoff_json", None)
+    if feature_dir and emit_arg:
+        return _die(
+            "finalize-handoff: --feature-dir and --emit-handoff-json are "
+            "mutually exclusive; provide exactly one",
+            code=2,
+        )
+    if not feature_dir and not emit_arg:
+        return _die(
+            "finalize-handoff: provide exactly one of --feature-dir or "
+            "--emit-handoff-json",
+            code=2,
+        )
+    if feature_dir:
+        raw_target = Path(feature_dir) / "research-handoff.json"
+    else:
+        raw_target = Path(emit_arg)
+
+    research_md_path = args.research_md_path or str(
+        raw_target.parent / "research-report.md"
+    )
+
     try:
         memo = _load_memo(args.devforge_dir)
         report = _load_report(args.devforge_dir)
@@ -128,14 +164,14 @@ def cmd_finalize_handoff(args):
 
     try:
         handoff = _build_handoff_from_state(
-            memo, report, args.research_md_path, devforge_dir=args.devforge_dir
+            memo, report, research_md_path, devforge_dir=args.devforge_dir
         )
     except ValueError as err:
         return _die(
             "finalize-handoff: schema validation failed: {0}".format(err), code=2
         )
 
-    target = Path(args.emit_handoff_json).resolve()
+    target = raw_target.resolve()
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_json(_asdict_handoff(handoff), target)

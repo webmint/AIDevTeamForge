@@ -107,7 +107,7 @@ Copy the block below into a new `/specify` session manually. No automation — u
 ~~~
 /specify "Items not sorted in admin products list (sort fails) — alphabetical sort by name A->Z"
 
-Research reference: research/2026-05-11-items-not-sorted.md
+Research reference: (path assigned when this research is saved to its feature directory)
 Key facts:
 - Mode: Bug
 - Symptom: Items not sorted in admin products list (sort fails)

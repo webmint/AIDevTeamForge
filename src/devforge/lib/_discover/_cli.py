@@ -520,6 +520,19 @@ def _register_subcommands(subparsers) -> None:
             "success_criteria."
         ),
     )
+    sp.add_argument(
+        "--feature-dir",
+        default=None,
+        dest="feature_dir",
+        help=(
+            "specs/NNN-slug feature dir (plan 68 D1/D2), when already known. "
+            "Embeds a 'Discovery reference: <feature-dir>/discovery-report.md' "
+            "line. OPTIONAL -- this verb runs at Phase 3, before D1's Phase 4 "
+            "allocation, so the feature dir is usually not known yet at this "
+            "call site. When omitted, the line renders a path-free placeholder "
+            "instead of the retired discover/<date>-<slug>.md literal."
+        ),
+    )
     sp.set_defaults(func=cmd_set_next_step_text)
 
     sp = subparsers.add_parser(
@@ -585,14 +598,29 @@ def _register_subcommands(subparsers) -> None:
     # Step 3 -- finalize-handoff.
     sp = subparsers.add_parser(
         "finalize-handoff",
-        help="Emit handoff.json from discover state (terminal phase).",
+        help="Emit discover-handoff.json from discover state (terminal phase).",
+    )
+    sp.add_argument(
+        "--feature-dir",
+        default=None,
+        dest="feature_dir",
+        help=(
+            "specs/NNN-slug feature dir (plan 68 D1/D2/D7). Derives the "
+            "default handoff output path (<feature-dir>/"
+            "discover-handoff.json) and the default report_path "
+            "(<feature-dir>/discovery-report.md). Mutually exclusive with "
+            "--emit-handoff-json -- exactly one of the two is required."
+        ),
     )
     sp.add_argument(
         "--emit-handoff-json",
         default=None,
         dest="emit_handoff_json",
         help=(
-            "Override output path. Default: discover/<report.date>-<memo.topic_slug>.handoff.json"
+            "Explicit handoff.json target path. Mutually exclusive with "
+            "--feature-dir -- exactly one of the two is required. When used "
+            "without --feature-dir, report_path still defaults to a sibling "
+            "discovery-report.md next to this path."
         ),
     )
     sp.set_defaults(func=cmd_finalize_handoff)

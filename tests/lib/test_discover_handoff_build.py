@@ -142,6 +142,18 @@ def _make_report(
 
 
 # ---------------------------------------------------------------------------
+# 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 3: report_md_path is now a
+# REQUIRED third argument to _build_handoff_from_state (no internal
+# "discover/<date>-<slug>.md" fallback). This constant is a placeholder
+# value for the many tests below that exercise unrelated fields and do not
+# care about the exact report_path -- see TestBuildHandoffReportPath for
+# the tests that DO pin report_path's exact behavior.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_REPORT_MD_PATH = "specs/001-test-feature/discovery-report.md"
+
+
+# ---------------------------------------------------------------------------
 # Tests.
 # ---------------------------------------------------------------------------
 
@@ -170,45 +182,45 @@ class TestBuildHandoffWorthPursuingFull(unittest.TestCase):
         )
 
     def test_handoff_builds_successfully(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertIsInstance(handoff, hs.Handoff)
         self.assertEqual(handoff.handoff_kind, "discover")
         self.assertEqual(handoff.schema_version, "1.1")
 
     def test_intent_populated(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertEqual(handoff.intent.topic_slug, "audit-log-persistence")
         self.assertIn("audit", handoff.intent.feature_concept.lower())
 
     def test_three_design_options_auto_letter_ids(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         ids = [opt.id for opt in handoff.plan_seeds.design_options]
         self.assertEqual(ids, ["A", "B", "C"])
 
     def test_recommended_option_id_resolved(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertEqual(handoff.plan_seeds.recommended_option_id, "A")
 
     def test_constitution_constraint_lifted(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         kinds = {c.kind for c in handoff.spec_seeds.constraints}
         self.assertIn("constitution_anchor", kinds)
 
     def test_open_questions_lifted(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         texts = [q.question for q in handoff.spec_seeds.open_questions]
         self.assertTrue(any("PostgreSQL version" in t for t in texts))
 
     def test_two_risks_from_derisk_plan(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertEqual(len(handoff.spec_seeds.risks), 2)
 
     def test_discovery_block_verdict(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertEqual(handoff.discovery_block.verdict, "Worth pursuing")
 
     def test_outcome_is_none(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertIsNone(handoff.outcome)
 
 
@@ -228,26 +240,26 @@ class TestBuildHandoffReconsiderMinimal(unittest.TestCase):
         )
 
     def test_handoff_builds_successfully(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertIsInstance(handoff, hs.Handoff)
 
     def test_design_options_empty(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertEqual(handoff.plan_seeds.design_options, [])
 
     def test_recommended_option_id_is_none(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertIsNone(handoff.plan_seeds.recommended_option_id)
 
     def test_complexity_derived_from_strained_high(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         # effort=High -> changes=High; fit=Strained -> risk=High; derisk_count=1 -> verify_cost=Low
         self.assertEqual(handoff.plan_seeds.complexity.changes, "High")
         self.assertEqual(handoff.plan_seeds.complexity.risk, "High")
         self.assertEqual(handoff.plan_seeds.complexity.verify_cost, "Low")
 
     def test_verdict_is_reconsider(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertEqual(handoff.discovery_block.verdict, "Reconsider")
 
 
@@ -268,7 +280,7 @@ class TestBuildHandoffOverrideRecorded(unittest.TestCase):
 
     def test_handoff_builds_with_override(self):
         # D-mirror: Misfit + Worth pursuing + override_recorded=True must not raise
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertIsInstance(handoff, hs.Handoff)
         self.assertTrue(handoff.discovery_block.override_recorded)
         self.assertEqual(handoff.discovery_block.verdict, "Worth pursuing")
@@ -302,20 +314,20 @@ class TestBuildInternalPriorArtFlagsPropagate(unittest.TestCase):
         )
 
     def test_internal_cited_pattern_has_is_internal_true(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         patterns = handoff.plan_seeds.cited_canonical_patterns
         internal_patterns = [p for p in patterns if p.is_internal]
         self.assertEqual(len(internal_patterns), 1)
         self.assertEqual(internal_patterns[0].source, "internal:src/db/base_repository.py")
 
     def test_external_cited_pattern_has_is_internal_false(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         patterns = handoff.plan_seeds.cited_canonical_patterns
         external_patterns = [p for p in patterns if not p.is_internal]
         self.assertEqual(len(external_patterns), 1)
 
     def test_internal_prior_art_creates_affected_area_with_candidate_flag(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         areas = handoff.spec_seeds.affected_areas
         internal_areas = [a for a in areas if a.is_internal_extension_candidate]
         self.assertTrue(len(internal_areas) >= 1)
@@ -323,7 +335,7 @@ class TestBuildInternalPriorArtFlagsPropagate(unittest.TestCase):
         self.assertTrue(any("base_repository" in name for name in area_names))
 
     def test_rationale_cites_internal_path(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         rationale = handoff.plan_seeds.recommended_option_rationale
         # G-mirror: rationale must contain the full "internal:" source string.
         self.assertIn("internal:src/db/base_repository.py", rationale)
@@ -345,11 +357,11 @@ class TestBuildRecommendedOptionIdResolvesFromName(unittest.TestCase):
         )
 
     def test_recommended_id_is_b(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         self.assertEqual(handoff.plan_seeds.recommended_option_id, "B")
 
     def test_ids_assigned_in_order(self):
-        handoff = _build_handoff_from_state(self.memo, self.report)
+        handoff = _build_handoff_from_state(self.memo, self.report, _DEFAULT_REPORT_MD_PATH)
         ids = [opt.id for opt in handoff.plan_seeds.design_options]
         self.assertEqual(ids, ["A", "B", "C"])
 
@@ -360,7 +372,7 @@ class TestBuildAsdictStripsInternalUnderscoreFields(unittest.TestCase):
     def test_asdict_strips_underscore_fields(self):
         memo = _make_memo()
         report = _make_report()
-        handoff = _build_handoff_from_state(memo, report)
+        handoff = _build_handoff_from_state(memo, report, _DEFAULT_REPORT_MD_PATH)
         result = _asdict_handoff(handoff)
         plan_seeds = result["plan_seeds"]
         self.assertNotIn("_effort_estimate", plan_seeds)
@@ -370,7 +382,7 @@ class TestBuildAsdictStripsInternalUnderscoreFields(unittest.TestCase):
     def test_asdict_retains_public_fields(self):
         memo = _make_memo()
         report = _make_report()
-        handoff = _build_handoff_from_state(memo, report)
+        handoff = _build_handoff_from_state(memo, report, _DEFAULT_REPORT_MD_PATH)
         result = _asdict_handoff(handoff)
         plan_seeds = result["plan_seeds"]
         self.assertIn("design_options", plan_seeds)
@@ -509,6 +521,55 @@ class TestBuildOpenQuestionsLiftsUncertaintiesAndGaps(unittest.TestCase):
         report = _make_report(open_uncertainties=[])
         questions = _build_open_questions(memo, report)
         self.assertEqual(questions, [])
+
+
+# ---------------------------------------------------------------------------
+# 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 3: report_md_path is a required
+# arg, embedded verbatim as Handoff.report_path -- no internal derivation,
+# no "discover/<date>-<slug>.md" fallback.
+# ---------------------------------------------------------------------------
+
+
+class TestBuildHandoffReportPath(unittest.TestCase):
+    def test_report_md_path_embedded_verbatim(self):
+        memo = _make_memo()
+        report = _make_report()
+        handoff = _build_handoff_from_state(
+            memo, report, "specs/007-widget-catalog/discovery-report.md"
+        )
+        self.assertEqual(
+            handoff.report_path, "specs/007-widget-catalog/discovery-report.md"
+        )
+
+    def test_report_md_path_missing_raises_value_error_omitted(self):
+        # No internal default -- omitting the third arg raises a
+        # caller-contract ValueError, not a silent fall-back to the retired
+        # discover/<date>-<slug>.md shape (and not a bare TypeError --
+        # matches the research lane's identical guard, see
+        # _research/_handoff_build.py::_build_handoff_from_state).
+        memo = _make_memo()
+        report = _make_report()
+        with self.assertRaises(ValueError) as ctx:
+            _build_handoff_from_state(memo, report)
+        self.assertIn("report_md_path is required", str(ctx.exception))
+
+    def test_report_md_path_missing_raises_value_error_explicit_none(self):
+        # Same guard fires for an explicitly-passed falsy value, not just
+        # omission -- the check is on the value, not on argument presence.
+        memo = _make_memo()
+        report = _make_report()
+        with self.assertRaises(ValueError):
+            _build_handoff_from_state(memo, report, None)
+        with self.assertRaises(ValueError):
+            _build_handoff_from_state(memo, report, "")
+
+    def test_report_path_never_contains_old_layout_prefix(self):
+        memo = _make_memo(date="2026-05-20", topic_slug="my-feature")
+        report = _make_report(date="2026-05-20", topic_slug="my-feature")
+        handoff = _build_handoff_from_state(
+            memo, report, "specs/003-my-feature/discovery-report.md"
+        )
+        self.assertFalse(handoff.report_path.startswith("discover/"))
 
 
 if __name__ == "__main__":

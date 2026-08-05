@@ -27,7 +27,7 @@ from ._validators import (
     _validate_inlines_from_tokens,
     _validate_runtime_on_path,
     _validate_scalar,
-    _validate_script_within_research_dir,
+    _validate_script_within_probe_scratch_dir,
     _validate_string_array_json,
 )
 
@@ -602,14 +602,23 @@ def cmd_record_probe_script(args: argparse.Namespace) -> int:
     """Append {script_path, runtime, inlines_from, recorded_at} to probe_scripts.
 
     Validates:
-      - script_path exists on disk AND lives under research/<date>-<slug>/
+      - script_path exists on disk AND is a direct child of the tier-1.5
+        probe scratch dir (plan 68 D8 -- see
+        _validators._validate_script_within_probe_scratch_dir)
       - runtime resolves via shutil.which
       - inlines_from is a non-empty JSON array of path:line tokens
     Idempotent: same script_path is a no-op (exit 0 + stderr notice).
+
+    report.date + memo.topic_slug are still required to be set first (the
+    guards below) even though the scratch-dir path check itself no longer
+    depends on their values -- date/topic_slug ordering is a real
+    /research workflow invariant (finalize-handoff needs both), independent
+    of where the probe script happens to live on disk.
     """
     devforge_dir = args.devforge_dir
 
-    # Load report to read date + topic_slug for path validation.
+    # Load report to confirm date is set (workflow-ordering guard --
+    # unrelated to path validation since plan 68 D8; see docstring).
     try:
         report_snapshot = _load_report(devforge_dir)
     except (OSError, json.JSONDecodeError) as err:
@@ -636,9 +645,10 @@ def cmd_record_probe_script(args: argparse.Namespace) -> int:
 
     script_path = args.script_path
 
-    # Validate script_path is within the research dir and exists on disk.
+    # Validate script_path is a direct child of the probe scratch dir and
+    # exists on disk.
     try:
-        _validate_script_within_research_dir(script_path, research_date, topic_slug)
+        _validate_script_within_probe_scratch_dir(script_path)
     except ValueError as err:
         return _die(str(err), code=2)
 

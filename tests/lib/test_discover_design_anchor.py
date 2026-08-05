@@ -273,7 +273,10 @@ def _build_minimal_worth_pursuing_state(devforge):
         "--devforge-dir", str(devforge), "set-recommendation",
         "--action", "Build the badge component", "--next", "Run /specify badge-widget",
     ])
-    _run(["--devforge-dir", str(devforge), "set-next-step-text"])
+    _run([
+        "--devforge-dir", str(devforge), "set-next-step-text",
+        "--feature-dir", "specs/001-badge-widget",
+    ])
 
 
 class TestFinalizeHandoffCarriesDesignAnchor(unittest.TestCase):

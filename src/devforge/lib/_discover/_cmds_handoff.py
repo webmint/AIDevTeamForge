@@ -2,6 +2,15 @@
 
 finalize-handoff (Step 3 -- memo+report -> handoff.json),
 append-outcome (Step 5 -- record post-discovery outcome).
+
+68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 3: finalize-handoff's output
+location is now driven by --feature-dir (the normal path -- derives both
+the handoff.json target and the sibling report_path) or --emit-handoff-json
+(an explicit-path override, kept for direct/test callers and for a caller
+that genuinely wants the handoff.json somewhere other than a feature dir).
+Exactly one of the two must be supplied; there is no default -- D3 removed
+the old discover/<date>-<slug>.handoff.json layout entirely. See
+cmd_finalize_handoff's docstring for the full contract.
 """
 
 from __future__ import annotations
@@ -24,9 +33,80 @@ from ._validators import _die, _validate_enum
 # ---------------------------------------------------------------------------
 
 
+def _sibling_report_path(emit_path, filename="discovery-report.md"):
+    # type: (str, str) -> str
+    """Compute filename's sibling path in emit_path's directory.
+
+    Matches the research lane's derivation (see
+    _research/_cmds_handoff.py::cmd_finalize_handoff, "research_md_path"):
+    a plain Path(...).parent / filename join, str()-cast for storage. This
+    preserves a relative emit_path (e.g. "specs/001-x/discover-handoff.json"
+    -> "specs/001-x/discovery-report.md", never an OS-absolute path, so
+    report_path stays root-relative regardless of which flag produced
+    emit_path -- --feature-dir or --emit-handoff-json (D2 sibling
+    invariant, D9(d) root-relative provenance).
+
+    A prior version built this with PurePosixPath + manual string
+    formatting ("{parent}/{filename}"), which broke for a root-anchored
+    emit_path ("/discover-handoff.json" -> parent "/" -> the format string
+    produced the double slash "//discovery-report.md"). The plain Path `/`
+    join has no such edge case: Path("/") / "discovery-report.md" ->
+    "/discovery-report.md", and Path(".") / "discovery-report.md" ->
+    "discovery-report.md" (pathlib normalizes both correctly).
+    """
+    return str(Path(emit_path).parent / filename)
+
+
 def cmd_finalize_handoff(args):
     # type: (argparse.Namespace) -> int
-    """Read discover state -> build Handoff -> validate -> write handoff.json."""
+    """Read discover state -> build Handoff -> validate -> write handoff.json.
+
+    Output location (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 3 / D2 / D3 /
+    D7): exactly one of --feature-dir or --emit-handoff-json is required --
+    there is no default, because D3 retired the old top-level
+    discover/<date>-<slug>.handoff.json layout entirely.
+
+    --feature-dir <dir> is the normal path: it derives BOTH the handoff
+    output path ("<dir>/discover-handoff.json") AND the embedded
+    Handoff.report_path ("<dir>/discovery-report.md") -- the D2 flat
+    sibling-file names inside the feature dir. Note the deliberate stem
+    asymmetry (report_ "discovery-", handoff "discover-") -- do not
+    normalize it, see the plan's naming note.
+
+    --emit-handoff-json <path> is an explicit-path override (kept for
+    direct/test callers and any caller that genuinely wants the handoff.json
+    written somewhere other than a feature dir). Handoff.report_path is
+    still derived, as the sibling "discovery-report.md" in whichever
+    directory --emit-handoff-json points at -- the D2 sibling invariant
+    holds regardless of which flag supplied the target directory.
+
+    Supplying both flags, or neither, is a caller error and exits 2 -- this
+    is deliberately NOT resolved by precedence (e.g. "--feature-dir wins").
+    Silently picking a winner would let a caller-side bug (a stale
+    --emit-handoff-json left over from a script that also started passing
+    --feature-dir) go unnoticed; failing loudly on the ambiguous case is
+    the zero-escape-hatch-consistent choice.
+    """
+    feature_dir = (getattr(args, "feature_dir", None) or "").strip()
+    emit_override = (getattr(args, "emit_handoff_json", None) or "").strip()
+    if feature_dir and emit_override:
+        return _die(
+            "finalize-handoff: --feature-dir and --emit-handoff-json are "
+            "mutually exclusive; provide exactly one",
+            code=2,
+        )
+    if not feature_dir and not emit_override:
+        return _die(
+            "finalize-handoff: provide exactly one of --feature-dir or "
+            "--emit-handoff-json",
+            code=2,
+        )
+    if feature_dir:
+        emit_path = "{0}/discover-handoff.json".format(feature_dir.rstrip("/"))
+    else:
+        emit_path = emit_override
+    report_md_path = _sibling_report_path(emit_path)
+
     devforge_dir = args.devforge_dir
     try:
         memo = _load_memo(devforge_dir)
@@ -76,18 +156,11 @@ def cmd_finalize_handoff(args):
         )
 
     try:
-        handoff = _build_handoff_from_state(memo, report)
+        handoff = _build_handoff_from_state(memo, report, report_md_path)
     except ValueError as err:
         return _die(
             "finalize-handoff: schema validation failed: {0}".format(err), code=2
         )
-
-    # Determine target path.
-    emit_path = getattr(args, "emit_handoff_json", None)
-    if not emit_path:
-        date = report.get("date", "")
-        slug = memo.get("topic_slug", "unknown")
-        emit_path = "discover/{0}-{1}.handoff.json".format(date, slug)
 
     target = Path(emit_path).resolve()
     try:

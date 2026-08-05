@@ -260,10 +260,42 @@ def _register_subcommands(subparsers) -> None:
 
     sp = subparsers.add_parser(
         "finalize-handoff",
-        help="Emit handoff.json from research state (terminal phase).",
+        help="Emit research-handoff.json from research state (terminal phase).",
     )
-    sp.add_argument("--emit-handoff-json", required=True, dest="emit_handoff_json")
-    sp.add_argument("--research-md-path", default=None, dest="research_md_path")
+    sp.add_argument(
+        "--feature-dir",
+        default=None,
+        dest="feature_dir",
+        help=(
+            "specs/NNN-slug feature dir (plan 68 D1/D2/D7). Derives the "
+            "default --emit-handoff-json target (<feature-dir>/"
+            "research-handoff.json) and the default research_path "
+            "(<feature-dir>/research-report.md). Mutually exclusive with "
+            "--emit-handoff-json -- exactly one of the two is required."
+        ),
+    )
+    sp.add_argument(
+        "--emit-handoff-json",
+        default=None,
+        dest="emit_handoff_json",
+        help=(
+            "Explicit handoff.json target path. Mutually exclusive with "
+            "--feature-dir -- exactly one of the two is required. When "
+            "used without --feature-dir, research_path still defaults to "
+            "a sibling research-report.md next to this path (unless "
+            "--research-md-path overrides it)."
+        ),
+    )
+    sp.add_argument(
+        "--research-md-path",
+        default=None,
+        dest="research_md_path",
+        help=(
+            "Override research_path in the handoff (default: a sibling "
+            "research-report.md next to the resolved --feature-dir / "
+            "--emit-handoff-json target)."
+        ),
+    )
     sp.set_defaults(func=cmd_finalize_handoff)
 
     sp = subparsers.add_parser(
@@ -543,6 +575,17 @@ def _register_subcommands(subparsers) -> None:
     sp = subparsers.add_parser(
         "set-next-step-text",
         help="Compose next-step text from memo + report; only when verdict proceeds.",
+    )
+    sp.add_argument(
+        "--research-path",
+        default=None,
+        dest="research_path",
+        help=(
+            "Feature-dir-relative research-report.md path to cite in the "
+            "'Research reference' line (plan 68 -- known only when the "
+            "caller has already allocated the feature dir). Omit to render "
+            "a path-free placeholder instead."
+        ),
     )
     sp.set_defaults(func=cmd_set_next_step_text)
 

@@ -1,9 +1,9 @@
 """Topic slug derivation + mode detection + direct-conflict detection.
 
-derive_topic_slug builds the YYYY-MM-DD-<slug>.md filename component
-from a topic string. detect_mode_from_symptom uses bug/enhancement
-token overlap. detect_direct_conflicts scans memo dimensions against
-antagonist regex pairs. _compute_coverage returns per-dim state + counts.
+derive_topic_slug builds memo.topic_slug from a topic string.
+detect_mode_from_symptom uses bug/enhancement token overlap.
+detect_direct_conflicts scans memo dimensions against antagonist regex
+pairs. _compute_coverage returns per-dim state + counts.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from ._state import _empty_dimension
 
 
 # ---------------------------------------------------------------------------
-# Topic slug derivation (used for filename + state record).
+# Topic slug derivation (used for memo.topic_slug).
 # ---------------------------------------------------------------------------
 
 
@@ -26,8 +26,11 @@ _SLUG_NON_ALNUM = re.compile(r"[^a-z0-9]+")
 def derive_topic_slug(topic: str, max_words: int = 4) -> str:
     """Lowercase + kebab-case + truncate to N words.
 
-    Empty input or no-alnum-chars → "topic" as fallback. Used for
-    research/YYYY-MM-DD-<slug>.md filename + memo.topic_slug field.
+    Empty input or no-alnum-chars → "topic" as fallback. Used solely for
+    memo.topic_slug (set-topic / detect-mode call sites in
+    _cmds_basic.py / _cmds_phase0.py) -- which also feeds the proposed
+    specs/NNN-slug feature-dir slug the save prompt displays at intake
+    finalize (plan 68 D1).
     """
     lowered = topic.lower().strip()
     cleaned = _SLUG_NON_ALNUM.sub("-", lowered).strip("-")

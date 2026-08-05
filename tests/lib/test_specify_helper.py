@@ -5431,7 +5431,10 @@ def _build_minimal_discover_handoff(
         "--next", "Run /specify audit-log-persistence",
     ])
     # set-next-step-text auto-composes from memo + report state.
-    _run_discover(["--devforge-dir", df, "set-next-step-text"])
+    _run_discover([
+        "--devforge-dir", df, "set-next-step-text",
+        "--feature-dir", "specs/001-audit-log-persistence",
+    ])
 
     if design_anchor_value is not None and design_anchor_selectors is not None:
         _run_discover([

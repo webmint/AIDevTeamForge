@@ -25,7 +25,11 @@ sys.path.insert(0, str(_LIB / "_discover"))
 sys.path.insert(0, str(_LIB))
 
 from _discover import handoff_schema as hs  # noqa: E402
-from _discover._cmds_handoff import cmd_finalize_handoff, cmd_append_outcome  # noqa: E402
+from _discover._cmds_handoff import (  # noqa: E402
+    cmd_finalize_handoff,
+    cmd_append_outcome,
+    _sibling_report_path,
+)
 from _discover._state import _atomic_write_json, MEMO_FILE_NAME, REPORT_FILE_NAME  # noqa: E402
 
 
@@ -143,12 +147,42 @@ def _make_args(**kwargs):
     return ns
 
 
-def _finalize_args(devforge_dir, emit_path=None):
-    return _make_args(devforge_dir=str(devforge_dir), emit_handoff_json=emit_path)
+def _finalize_args(devforge_dir, emit_path=None, feature_dir=None):
+    return _make_args(
+        devforge_dir=str(devforge_dir),
+        emit_handoff_json=emit_path,
+        feature_dir=feature_dir,
+    )
 
 
 def _load_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# _sibling_report_path unit tests (python-reviewer finding 3).
+# ---------------------------------------------------------------------------
+
+
+class TestSiblingReportPath(unittest.TestCase):
+    def test_relative_dir(self):
+        self.assertEqual(
+            _sibling_report_path("specs/001-x/discover-handoff.json"),
+            "specs/001-x/discovery-report.md",
+        )
+
+    def test_bare_filename_no_dir_component(self):
+        self.assertEqual(
+            _sibling_report_path("discover-handoff.json"),
+            "discovery-report.md",
+        )
+
+    def test_root_anchored_path_no_double_slash(self):
+        # Regression: a prior PurePosixPath + manual "{parent}/{filename}"
+        # format produced "//discovery-report.md" here (parent == "/").
+        result = _sibling_report_path("/discover-handoff.json")
+        self.assertEqual(result, "/discovery-report.md")
+        self.assertNotIn("//", result)
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +260,12 @@ class TestFinalizeHandoffRoundTrip(unittest.TestCase):
         self.assertNotIn("_derisk_count", plan_seeds)
 
 
-class TestFinalizeHandoffDefaultTargetPath(unittest.TestCase):
-    """Default target: discover/<date>-<slug>.handoff.json under CWD."""
+class TestFinalizeHandoffFeatureDirDerivedPaths(unittest.TestCase):
+    """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 3 item 1: --feature-dir derives
+    BOTH the handoff output path (<dir>/discover-handoff.json) AND the
+    embedded report_path (<dir>/discovery-report.md). No old-layout
+    discover/<date>-<slug>... path is ever produced.
+    """
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -236,11 +274,15 @@ class TestFinalizeHandoffDefaultTargetPath(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_default_path_created(self):
+    def test_feature_dir_derives_handoff_and_report_paths(self):
         import os
         devforge = self.tmp / ".devforge"
-        _write_state(devforge, _make_memo(date="2026-05-20", topic_slug="my-feature"), _make_report(date="2026-05-20", topic_slug="my-feature"))
-        args = _finalize_args(devforge, emit_path=None)
+        _write_state(
+            devforge,
+            _make_memo(date="2026-05-20", topic_slug="my-feature"),
+            _make_report(date="2026-05-20", topic_slug="my-feature"),
+        )
+        args = _finalize_args(devforge, feature_dir="specs/001-my-feature")
         orig_cwd = os.getcwd()
         try:
             os.chdir(str(self.tmp))
@@ -248,12 +290,37 @@ class TestFinalizeHandoffDefaultTargetPath(unittest.TestCase):
         finally:
             os.chdir(orig_cwd)
         self.assertEqual(rc, 0)
-        expected = self.tmp / "discover" / "2026-05-20-my-feature.handoff.json"
-        self.assertTrue(expected.is_file(), "default path file not found: {0}".format(expected))
+        expected = self.tmp / "specs" / "001-my-feature" / "discover-handoff.json"
+        self.assertTrue(expected.is_file(), "expected path not found: {0}".format(expected))
+
+        data = _load_json(expected)
+        self.assertEqual(
+            data["report_path"], "specs/001-my-feature/discovery-report.md"
+        )
+
+    def test_feature_dir_trailing_slash_normalized(self):
+        import os
+        devforge = self.tmp / ".devforge"
+        _write_state(devforge, _make_memo(), _make_report())
+        args = _finalize_args(devforge, feature_dir="specs/002-trailing/")
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(str(self.tmp))
+            rc = cmd_finalize_handoff(args)
+        finally:
+            os.chdir(orig_cwd)
+        self.assertEqual(rc, 0)
+        expected = self.tmp / "specs" / "002-trailing" / "discover-handoff.json"
+        self.assertTrue(expected.is_file())
+        data = _load_json(expected)
+        self.assertEqual(
+            data["report_path"], "specs/002-trailing/discovery-report.md"
+        )
+        self.assertNotIn("//", data["report_path"])
 
 
 class TestFinalizeHandoffCustomEmitPath(unittest.TestCase):
-    """--emit-handoff-json overrides default path."""
+    """--emit-handoff-json overrides the feature-dir-derived path."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -270,6 +337,57 @@ class TestFinalizeHandoffCustomEmitPath(unittest.TestCase):
         rc = cmd_finalize_handoff(args)
         self.assertEqual(rc, 0)
         self.assertTrue(custom.is_file())
+
+    def test_custom_path_derives_sibling_report_path(self):
+        """report_path is the sibling discovery-report.md in the SAME dir as
+        --emit-handoff-json, even though no --feature-dir was supplied --
+        the D2 sibling invariant holds regardless of which flag produced
+        the target directory.
+        """
+        devforge = self.tmp / ".devforge"
+        custom = self.tmp / "custom" / "output.handoff.json"
+        _write_state(devforge, _make_memo(), _make_report())
+        args = _finalize_args(devforge, str(custom))
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 0)
+        data = _load_json(custom)
+        expected_report_path = str(custom.parent / "discovery-report.md")
+        self.assertEqual(data["report_path"], expected_report_path)
+
+
+class TestFinalizeHandoffRequiresExactlyOneTarget(unittest.TestCase):
+    """Neither --feature-dir nor --emit-handoff-json, or both, is a caller
+    error -- exit 2, no file written, no old-layout default silently used.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_neither_supplied_exits_2(self):
+        devforge = self.tmp / ".devforge"
+        _write_state(devforge, _make_memo(), _make_report())
+        args = _finalize_args(devforge, emit_path=None, feature_dir=None)
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 2)
+        # Only the pre-existing .devforge/ state dir should be present --
+        # validation fails before any handoff/report path is even computed.
+        self.assertEqual(sorted(p.name for p in self.tmp.iterdir()), [".devforge"])
+
+    def test_both_supplied_exits_2(self):
+        devforge = self.tmp / ".devforge"
+        custom = self.tmp / "custom.handoff.json"
+        _write_state(devforge, _make_memo(), _make_report())
+        args = _finalize_args(
+            devforge, emit_path=str(custom), feature_dir="specs/001-x"
+        )
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 2)
+        self.assertFalse(custom.is_file())
+        self.assertFalse((self.tmp / "specs").exists())
 
 
 class TestFinalizeHandoffRejectsMissingTopicSlug(unittest.TestCase):
