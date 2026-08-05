@@ -155,6 +155,26 @@ def _alternative(id="alt_a", summary="Alternative A", rejected_reason="Too compl
     return hs.Alternative(id=id, summary=summary, rejected_reason=rejected_reason)
 
 
+def _fix_path_helper(qn="config.load", file_line="src/config.py:42"):
+    return hs.FixPathHelper(qn=qn, file_line=file_line)
+
+
+def _inbound_caller(helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15"):
+    return hs.InboundCaller(helper_qn=helper_qn, caller_qn=caller_qn, file_line=file_line)
+
+
+def _caller_enumeration(
+    fix_path_helpers=None,
+    inbound_callers=None,
+    no_shared_callers_justification=None,
+):
+    return hs.CallerEnumeration(
+        fix_path_helpers=fix_path_helpers if fix_path_helpers is not None else [],
+        inbound_callers=inbound_callers if inbound_callers is not None else [],
+        no_shared_callers_justification=no_shared_callers_justification,
+    )
+
+
 def _plan_seeds(
     recommended_approach_id="fix_literal",
     recommended_approach_summary="Fix the bug by updating the affected logic",
@@ -165,6 +185,7 @@ def _plan_seeds(
     alternatives_considered=None,
     proposed_call_shape=None,
     correctness_vetted=False,
+    caller_enumeration=None,
 ):
     return hs.PlanSeeds(
         recommended_approach_id=recommended_approach_id,
@@ -176,6 +197,7 @@ def _plan_seeds(
         alternatives_considered=alternatives_considered if alternatives_considered is not None else [],
         proposed_call_shape=proposed_call_shape,
         correctness_vetted=correctness_vetted,
+        caller_enumeration=caller_enumeration if caller_enumeration is not None else _caller_enumeration(),
     )
 
 
@@ -1178,6 +1200,160 @@ class TestDesignAnchor(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             _spec_seeds(design_anchor={"kind": "html"})
         self.assertIn("design_anchor", str(ctx.exception))
+
+
+# ---------------------------------------------------------------------------
+# CallerEnumeration tests (plan 67 D6 — research handoff carry).
+# ---------------------------------------------------------------------------
+
+
+class TestFixPathHelper(unittest.TestCase):
+    def test_valid_construction(self):
+        h = _fix_path_helper(qn="config.load", file_line="src/config.py:42")
+        self.assertEqual(h.qn, "config.load")
+        self.assertEqual(h.file_line, "src/config.py:42")
+
+    def test_reject_empty_qn(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.FixPathHelper(qn="", file_line="src/config.py:42")
+        self.assertIn("FixPathHelper.qn", str(ctx.exception))
+
+    def test_reject_empty_file_line(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.FixPathHelper(qn="config.load", file_line="")
+        self.assertIn("FixPathHelper.file_line", str(ctx.exception))
+
+
+class TestInboundCaller(unittest.TestCase):
+    def test_valid_construction(self):
+        c = _inbound_caller(
+            helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+        )
+        self.assertEqual(c.helper_qn, "config.load")
+        self.assertEqual(c.caller_qn, "main.startup")
+        self.assertEqual(c.file_line, "src/main.py:15")
+
+    def test_reject_empty_helper_qn(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.InboundCaller(helper_qn="", caller_qn="main.startup", file_line="src/main.py:15")
+        self.assertIn("InboundCaller.helper_qn", str(ctx.exception))
+
+    def test_reject_empty_caller_qn(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.InboundCaller(helper_qn="config.load", caller_qn="", file_line="src/main.py:15")
+        self.assertIn("InboundCaller.caller_qn", str(ctx.exception))
+
+    def test_reject_empty_file_line(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.InboundCaller(helper_qn="config.load", caller_qn="main.startup", file_line="")
+        self.assertIn("InboundCaller.file_line", str(ctx.exception))
+
+
+class TestCallerEnumeration(unittest.TestCase):
+    def test_default_is_empty(self):
+        """Default construction -- both lists empty, justification None (back-compat shape)."""
+        ce = hs.CallerEnumeration()
+        self.assertEqual(ce.fix_path_helpers, [])
+        self.assertEqual(ce.inbound_callers, [])
+        self.assertIsNone(ce.no_shared_callers_justification)
+
+    def test_populated_with_helpers_and_callers(self):
+        h = _fix_path_helper()
+        c = _inbound_caller()
+        ce = hs.CallerEnumeration(fix_path_helpers=[h], inbound_callers=[c])
+        self.assertEqual(ce.fix_path_helpers, [h])
+        self.assertEqual(ce.inbound_callers, [c])
+
+    def test_justification_only(self):
+        ce = hs.CallerEnumeration(
+            no_shared_callers_justification="purely additive in a new module",
+        )
+        self.assertEqual(ce.fix_path_helpers, [])
+        self.assertEqual(
+            ce.no_shared_callers_justification, "purely additive in a new module",
+        )
+
+    def test_reject_non_list_fix_path_helpers(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.CallerEnumeration(fix_path_helpers="not-a-list")
+        self.assertIn("fix_path_helpers", str(ctx.exception))
+
+    def test_reject_non_list_inbound_callers(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.CallerEnumeration(inbound_callers="not-a-list")
+        self.assertIn("inbound_callers", str(ctx.exception))
+
+    def test_reject_wrong_element_type_fix_path_helpers(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.CallerEnumeration(fix_path_helpers=[{"qn": "x", "file_line": "y:1"}])
+        self.assertIn("FixPathHelper", str(ctx.exception))
+
+    def test_reject_wrong_element_type_inbound_callers(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.CallerEnumeration(inbound_callers=[{"helper_qn": "x"}])
+        self.assertIn("InboundCaller", str(ctx.exception))
+
+    def test_reject_empty_string_justification(self):
+        """A blank justification is rejected -- Optional means None-or-non-empty, not None-or-blank."""
+        with self.assertRaises(ValueError) as ctx:
+            hs.CallerEnumeration(no_shared_callers_justification="   ")
+        self.assertIn("no_shared_callers_justification", str(ctx.exception))
+
+
+class TestPlanSeedsCallerEnumeration(unittest.TestCase):
+    """Tests for PlanSeeds.caller_enumeration -- the field wiring on the aggregate."""
+
+    def test_defaults_to_empty_caller_enumeration(self):
+        """Omitting caller_enumeration -> PlanSeeds gets an empty CallerEnumeration.
+
+        Back-compat: old handoffs (or a state where neither Phase 2.4c path
+        fired) must construct cleanly with the empty default.
+        """
+        ps = hs.PlanSeeds(
+            recommended_approach_id="fix_literal",
+            recommended_approach_summary="Fix the bug",
+            layer_destination="ui",
+            layer_justification="scoped",
+            complexity=_complexity(),
+        )
+        self.assertIsInstance(ps.caller_enumeration, hs.CallerEnumeration)
+        self.assertEqual(ps.caller_enumeration.fix_path_helpers, [])
+        self.assertEqual(ps.caller_enumeration.inbound_callers, [])
+        self.assertIsNone(ps.caller_enumeration.no_shared_callers_justification)
+
+    def test_carries_populated_caller_enumeration(self):
+        ce = _caller_enumeration(
+            fix_path_helpers=[_fix_path_helper()],
+            inbound_callers=[_inbound_caller()],
+        )
+        ps = _plan_seeds(caller_enumeration=ce)
+        self.assertIs(ps.caller_enumeration, ce)
+        self.assertEqual(len(ps.caller_enumeration.fix_path_helpers), 1)
+        self.assertEqual(len(ps.caller_enumeration.inbound_callers), 1)
+
+    def test_reject_wrong_type(self):
+        with self.assertRaises(ValueError) as ctx:
+            _plan_seeds(caller_enumeration={"fix_path_helpers": []})
+        self.assertIn("caller_enumeration", str(ctx.exception))
+
+    def test_asdict_includes_caller_enumeration(self):
+        import dataclasses
+        ce = _caller_enumeration(fix_path_helpers=[_fix_path_helper()])
+        ps = _plan_seeds(caller_enumeration=ce)
+        d = dataclasses.asdict(ps)
+        self.assertIn("caller_enumeration", d)
+        self.assertEqual(len(d["caller_enumeration"]["fix_path_helpers"]), 1)
+        self.assertEqual(d["caller_enumeration"]["fix_path_helpers"][0]["qn"], "config.load")
+
+    def test_asdict_default_emits_empty_caller_enumeration(self):
+        import dataclasses
+        ps = _plan_seeds()  # default caller_enumeration
+        d = dataclasses.asdict(ps)
+        self.assertEqual(d["caller_enumeration"], {
+            "fix_path_helpers": [],
+            "inbound_callers": [],
+            "no_shared_callers_justification": None,
+        })
 
 
 if __name__ == "__main__":

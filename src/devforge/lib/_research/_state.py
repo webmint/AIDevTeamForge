@@ -118,6 +118,14 @@ def default_report_state() -> dict:
         # Phase 2.4c — helper-API surface enumeration fields.
         "fix_path_helpers": [],
         "inbound_callers": [],
+        # Plan 67 D1/D2 — the check-8 escape. None until
+        # record-no-shared-callers-justification fires; last-write-wins on
+        # re-call (mirrors data_flow_chain's scalar last-write-wins
+        # convention). Mutually exclusive with a non-empty fix_path_helpers
+        # (the setter rejects recording this when helpers are already
+        # present; check 8 in cmd_verify flags the contradiction if both
+        # are set via direct state mutation).
+        "no_shared_callers_justification": None,
         "dead_siblings": [],
         "consumer_chain": [],
         "value_semantics": [],

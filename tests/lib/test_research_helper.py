@@ -1357,6 +1357,14 @@ class TestVerifyHappyPath(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_enhancement_state(devforge)
+            # Check 8 (plan 67) is mode-independent — _build_enhancement_state
+            # leaves fix_path_helpers empty, so the escape must be recorded
+            # for an otherwise-complete enhancement state to pass verify.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Export perf change is additive in a new job runner module.",
+            ])
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
 
@@ -1436,6 +1444,13 @@ class TestVerifyFailures(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_enhancement_state(devforge)
+            # Check 8 (plan 67) is mode-independent — record the escape so
+            # this test's overall-clean assertion isolates check 5's skip.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Export perf change is additive in a new job runner module.",
+            ])
             # enhancement mode + Speculative confidence → no check.
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -1928,8 +1943,128 @@ class TestPhase24cSetters(unittest.TestCase):
             tmp.cleanup()
 
 
+class TestRecordNoSharedCallersJustification(unittest.TestCase):
+    """record-no-shared-callers-justification — plan 67's check-8 escape."""
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_round_trip(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Purely additive helper in a new module; no existing callers.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(
+                rep["no_shared_callers_justification"],
+                "Purely additive helper in a new module; no existing callers.",
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_empty_justification(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "   ",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("no_shared_callers_justification", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_last_write_wins(self):
+        tmp, devforge = self._fresh()
+        try:
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "First reason.",
+            ])
+            r2 = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Second, corrected reason.",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["no_shared_callers_justification"], "Second, corrected reason.")
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_when_fix_path_helpers_already_recorded(self):
+        tmp, devforge = self._fresh()
+        try:
+            # Seed a finding + a fix_path_helper (anchor gate requires the finding).
+            _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "shared helper",
+                "--file-line", "src/lib/helper.ts:10",
+                "--relevance", "existing shared helper",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "record-fix-path-helper",
+                "--helper-qn", "SharedHelper.doThing",
+                "--file-line", "src/lib/helper.ts:10",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "No shared callers.",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("fix-path helper", r.stderr)
+            rep = self._read_report(devforge)
+            self.assertIsNone(rep["no_shared_callers_justification"])
+        finally:
+            tmp.cleanup()
+
+    def test_fix_path_helper_rejects_when_justification_already_recorded(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "No shared callers.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "shared helper",
+                "--file-line", "src/lib/helper.ts:10",
+                "--relevance", "existing shared helper",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge), "record-fix-path-helper",
+                "--helper-qn", "SharedHelper.doThing",
+                "--file-line", "src/lib/helper.ts:10",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("no-shared-callers justification is already recorded", r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["fix_path_helpers"], [])
+            self.assertEqual(rep["no_shared_callers_justification"], "No shared callers.")
+        finally:
+            tmp.cleanup()
+
+
 class TestVerifyCheck8(unittest.TestCase):
-    """Check 8: bug mode requires fix_path_helpers non-empty."""
+    """Check 8: fix_path_helpers non-empty OR a no-shared-callers
+    justification recorded. Mode-independent (plan 67 D1/D2)."""
 
     def _build_base_state(self, devforge):
         _build_bug_state(devforge)
@@ -1980,13 +2115,118 @@ class TestVerifyCheck8(unittest.TestCase):
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
 
-    def test_check8_not_triggered_for_enhancement_mode(self):
+    def test_check8_fires_for_enhancement_mode_empty_no_justification(self):
+        """Plan 67 headline regression: enhancement mode no longer skips check 8.
+
+        Previously (mode-gated check 8) this exact state passed verify —
+        that was the bug this plan fixes. Flipped deliberately, not an
+        accidental behavior change.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_enhancement_state(devforge)
-            # fix_path_helpers empty + enhancement mode → check 8 should not fire.
+            # fix_path_helpers empty + no justification → check 8 now fires
+            # regardless of mode.
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("fix_path_helpers", r.stderr)
+            self.assertIn("no-shared-callers", r.stderr)
+
+    def test_check8_passes_for_enhancement_mode_with_justification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Export perf change is additive in a new job runner module.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check8_passes_for_bug_mode_with_justification_and_empty_helpers(self):
+        """Bug mode + empty helpers + justification recorded → clean.
+
+        NEW behavior — mode no longer determines whether the justification
+        escape is honored; bug mode gets the same escape enhancement mode
+        does.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_base_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["fix_path_helpers"] = []
+            data["inbound_callers"] = []
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Bug fix is local; no other callers touch this path.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check8_fires_when_mode_unset(self):
+        """Fresh state (mode None) + empty helpers + no justification → violation.
+
+        Check 8 reads only fix_path_helpers / no_shared_callers_justification
+        now — it no longer reads mode at all, so an unset mode still triggers it.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("fix_path_helpers", r.stderr)
+            self.assertIn("no-shared-callers", r.stderr)
+
+    def test_check8_contradiction_when_both_helpers_and_justification_set(self):
+        """fix_path_helpers non-empty AND justification present → contradiction.
+
+        Both setters refuse this combination going forward regardless of call
+        order (TestRecordNoSharedCallersJustification::
+        test_rejects_when_fix_path_helpers_already_recorded and
+        TestPhase24cSetters covering the reverse order); this exercises
+        verify's own cross-guard against a direct-JSON-mutation bypass of
+        both setter guards.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_base_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["no_shared_callers_justification"] = "No shared callers (bypassed setter guard)."
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("no_shared_callers_justification", r.stderr)
+            self.assertIn("both are set", r.stderr)
+
+    def test_check8_fires_for_whitespace_only_justification_via_direct_json(self):
+        """A whitespace-only justification (direct JSON write) does not satisfy check 8.
+
+        record-no-shared-callers-justification rejects empty/whitespace input
+        at set time (TestRecordNoSharedCallersJustification::
+        test_rejects_empty_justification); this exercises verify's own
+        .strip() defense against a direct-JSON-mutation bypass of that gate.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_base_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["fix_path_helpers"] = []
+            data["inbound_callers"] = []
+            data["no_shared_callers_justification"] = "   "
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("fix_path_helpers", r.stderr)
+            self.assertIn("no-shared-callers", r.stderr)
 
 
 class TestVerifyCheck9(unittest.TestCase):
@@ -4274,6 +4514,13 @@ class TestVerifyCheck13(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_enhancement_state(devforge)
+            # Check 8 (plan 67) is mode-independent — record the escape so
+            # this test's overall-clean assertion isolates check 13's skip.
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Export perf change is additive in a new job runner module.",
+            ])
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("check 13", r.stderr)
@@ -7279,6 +7526,142 @@ class TestFinalizeHandoff(unittest.TestCase):
             r = _run_finalize(devforge, Path(tmp) / "handoff.json")
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("report.date not set", r.stderr)
+
+    # -------------------------------------------------------------------
+    # Plan 67 D6 — caller-enumeration handoff carry.
+    # -------------------------------------------------------------------
+
+    def test_finalize_handoff_carries_caller_enumeration_verbatim(self):
+        """fix_path_helpers + inbound_callers recorded at /research ride the
+        handoff verbatim -- plan 67 D6 (the plan-66 seam).
+
+        _build_minimal_bug_state_for_handoff records two fix_path_helpers
+        (config.load, env_loader.init) and one inbound_callers row (for
+        config.load only). Asserts the exact rows, not just presence, and
+        that env_loader.init (with zero recorded callers) is not fabricated
+        an entry.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            ce = data["plan_seeds"]["caller_enumeration"]
+            self.assertEqual(
+                ce["fix_path_helpers"],
+                [
+                    {"qn": "config.load", "file_line": "services/api/config.py:42"},
+                    {"qn": "env_loader.init", "file_line": "services/core/env_loader.py:10"},
+                ],
+            )
+            self.assertEqual(
+                ce["inbound_callers"],
+                [
+                    {
+                        "helper_qn": "config.load",
+                        "caller_qn": "main.startup",
+                        "file_line": "services/api/main.py:15",
+                    },
+                ],
+            )
+            self.assertIsNone(ce["no_shared_callers_justification"])
+
+    def test_finalize_handoff_carries_no_shared_callers_justification(self):
+        """The check-8 escape path (record-no-shared-callers-justification
+        instead of any fix-path helper) carries the justification text and
+        an empty fix_path_helpers/inbound_callers list.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_enhancement_state_no_callers(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-no-shared-callers-justification",
+                "--justification",
+                "purely additive new endpoint module; no existing helper touched",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            ce = data["plan_seeds"]["caller_enumeration"]
+            self.assertEqual(ce["fix_path_helpers"], [])
+            self.assertEqual(ce["inbound_callers"], [])
+            self.assertEqual(
+                ce["no_shared_callers_justification"],
+                "purely additive new endpoint module; no existing helper touched",
+            )
+
+    def test_finalize_handoff_caller_enumeration_empty_when_neither_recorded(self):
+        """Neither Phase 2.4c path recorded -> caller_enumeration is the empty
+        shape (all fields empty/None), never fabricated. This is the
+        pre-plan-67-shaped state (a report where the LLM recorded neither
+        helpers nor the escape).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_enhancement_state_no_callers(devforge)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            ce = data["plan_seeds"]["caller_enumeration"]
+            self.assertEqual(ce, {
+                "fix_path_helpers": [],
+                "inbound_callers": [],
+                "no_shared_callers_justification": None,
+            })
+
+
+def _build_minimal_enhancement_state_no_callers(devforge):
+    """Populate minimal valid enhancement-mode state for finalize-handoff,
+    recording neither fix_path_helpers nor the no-shared-callers escape.
+
+    Shared by the caller-enumeration carry tests above (mirrors
+    test_finalize_handoff_feature_addition_mode's setup).
+    """
+    _run(["--devforge-dir", str(devforge), "reset-memo"])
+    _run(["--devforge-dir", str(devforge), "reset-report"])
+    _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "enhancement"])
+    _run(["--devforge-dir", str(devforge), "set-topic", "--value", "add-export"])
+    _run([
+        "--devforge-dir", str(devforge), "set-verbatim-prompt",
+        "--value", "Add an export endpoint to the API so users can download their data as CSV.",
+    ])
+    _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-05-19"])
+    _run([
+        "--devforge-dir", str(devforge), "set-approach",
+        "--name", "Option A",
+        "--description", "add export endpoint",
+        "--addresses-hypotheses", "[]",
+        "--does-not-cover", "[]",
+        "--pros", "[]",
+        "--cons", "[]",
+        "--complexity", "Low",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-recommended-approach",
+        "--name", "Option A",
+        "--rationale", "minimal implementation",
+        "--hypotheses-addressed", "[]",
+        "--hypotheses-not-covered", "[]",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-complexity",
+        "--codebase-changes", "Low", "--codebase-notes", "1 endpoint",
+        "--risk", "Low", "--risk-notes", "no existing deps",
+        "--verify-cost", "Low", "--verify-notes", "unit test",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "set-probe-feasibility",
+        "--data-shape-only", "false",
+        "--auth-required", "false",
+        "--network-dependent", "false",
+        "--timing-dependent", "false",
+        "--is-test-code", "false",
+    ])
 
 
 _INIT_HELPER_PY = _LIB_DIR / "init_helper.py"

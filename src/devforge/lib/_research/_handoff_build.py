@@ -323,6 +323,50 @@ def _build_alternatives(approaches, recommended_name):
     return result
 
 
+def _build_caller_enumeration(report):
+    # type: (dict) -> handoff_schema.CallerEnumeration
+    """Map report.fix_path_helpers / inbound_callers / no_shared_callers_justification
+    to CallerEnumeration VERBATIM (plan 67 D6) -- no re-derivation, no lossy
+    grouping (contrast _build_affected_areas above).
+
+    Rows missing a required sub-field are dropped rather than fabricated —
+    the setters (record-fix-path-helper / record-inbound-caller) already
+    enforce non-empty qn/file_line at write time, so this is a defensive
+    floor, not the primary validation path. Empty report fields (neither
+    Phase 2.4c path fired) -> empty lists / None, never invented.
+    """
+    fix_path_helpers = []
+    for h in report.get("fix_path_helpers") or []:
+        qn = (h.get("qn") or "").strip()
+        file_line = (h.get("file_line") or "").strip()
+        if not qn or not file_line:
+            continue
+        fix_path_helpers.append(
+            handoff_schema.FixPathHelper(qn=qn, file_line=file_line)
+        )
+
+    inbound_callers = []
+    for c in report.get("inbound_callers") or []:
+        helper_qn = (c.get("helper_qn") or "").strip()
+        caller_qn = (c.get("caller_qn") or "").strip()
+        file_line = (c.get("file_line") or "").strip()
+        if not helper_qn or not caller_qn or not file_line:
+            continue
+        inbound_callers.append(
+            handoff_schema.InboundCaller(
+                helper_qn=helper_qn, caller_qn=caller_qn, file_line=file_line,
+            )
+        )
+
+    justification = (report.get("no_shared_callers_justification") or "").strip() or None
+
+    return handoff_schema.CallerEnumeration(
+        fix_path_helpers=fix_path_helpers,
+        inbound_callers=inbound_callers,
+        no_shared_callers_justification=justification,
+    )
+
+
 def _find_unstable_production_site(vps_rows):
     # type: (List[handoff_schema.ValueProductionSite]) -> Optional[str]
     """Return the file_line of the first unstable production site, or None."""
@@ -476,6 +520,7 @@ def _build_handoff_from_state(memo, report, research_md_path, devforge_dir=None)
             report.get("approaches") or [], rec_name
         ),
         proposed_call_shape=rec.get("proposed_call_shape"),
+        caller_enumeration=_build_caller_enumeration(report),
     )
 
     # probe block — Step 4 smart classifier (replaces Step 3 tier=3 stub).

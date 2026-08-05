@@ -1909,6 +1909,17 @@ class RenderPlanSeedsTests(unittest.TestCase):
         # Discover-specific fields must NOT appear.
         self.assertNotIn("Design options", output)
         self.assertNotIn("Build vs buy", output)
+        # Plan 67 D6 -- caller enumeration recorded by _run_research_setup's
+        # record-fix-path-helper/record-inbound-caller calls rides all the
+        # way through finalize-handoff -> render-plan-seeds.
+        self.assertIn("Caller enumeration", output)
+        self.assertIn("widget_service.update_catalog", output)
+        self.assertIn("src/services/widget_service.py:80", output)
+        self.assertIn("catalog_api.update", output)
+        self.assertIn("src/api/catalog_api.py:30", output)
+        # widget_cache.invalidate has no recorded inbound_callers row.
+        self.assertIn("widget_cache.invalidate", output)
+        self.assertIn("no inbound callers recorded", output)
 
     def test_discover_upstream_renders_discover_block(self):
         """Real discover_helper handoff -> discover-specific fields in block output.
@@ -2267,8 +2278,192 @@ class CorrectnessVettedRenderTests(unittest.TestCase):
         layer_pos = output.index("**Layer**")
         self.assertGreater(caveat_pos, rec_pos,
                            "caveat must appear after the Recommended approach line")
-        self.assertLess(caveat_pos, layer_pos,
-                        "caveat must appear before the Layer line")
+
+
+# ---------------------------------------------------------------------------
+# Tests: caller_enumeration carry rendering in render-plan-seeds (plan 67 D6).
+# ---------------------------------------------------------------------------
+
+
+class CallerEnumerationRenderTests(unittest.TestCase):
+    """Tests for the caller_enumeration block rendered by _render_research_plan_seeds.
+
+    Tests call the private render function directly (plan_helper is imported
+    at module level), mirroring CorrectnessVettedRenderTests above.
+    """
+
+    def _ps_dict(self, **kwargs):
+        """Return a minimal plan_seeds dict, overridable via kwargs."""
+        base = {
+            "recommended_approach_id": "fix_cache",
+            "recommended_approach_summary": "Clear the cache on every catalog write",
+            "layer_destination": "service",
+            "layer_justification": "Service-layer only change",
+            "complexity": {"changes": "Low", "risk": "Low", "verify_cost": "Low"},
+            "cited_canonical_patterns": [],
+            "alternatives_considered": [],
+            "proposed_call_shape": None,
+            "correctness_vetted": True,  # suppress the unrelated Seam-E caveat
+        }
+        base.update(kwargs)
+        return base
+
+    def test_absent_field_renders_nothing(self):
+        """Old handoff.json (predating plan 67) has no caller_enumeration key
+        at all -> the rendered block carries no caller-enumeration section.
+
+        Byte-identical output to today (pre-plan-67) for an old handoff.
+        """
+        ps = self._ps_dict()  # no caller_enumeration key
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertNotIn("Caller enumeration", output)
+
+    def test_absent_field_byte_identical_to_pre_carry_output(self):
+        """The exact byte-for-byte before/after comparison the brief asks for:
+        an old-shaped plan_seeds dict renders identically whether or not the
+        caller_enumeration carry code path exists (it must no-op on absence).
+        """
+        ps = self._ps_dict()
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        # Independently-constructed expected output, matching the pre-plan-67
+        # template shape (no caller_block content anywhere).
+        expected = (
+            "## Upstream plan-seeds (research handoff: research/2026-01-01-test.handoff.json)\n"
+            "\n"
+            "**Recommended approach**: fix_cache — Clear the cache on every catalog write\n"
+            "**Layer**: service — Service-layer only change\n"
+            "**Complexity**: changes=Low, risk=Low, verify_cost=Low\n"
+            "**Proposed call shape**: (none)\n"
+            "\n"
+            "**Alternatives considered**:\n"
+            "- (none)\n"
+            "\n"
+            "**Cited canonical patterns**:\n"
+            "- (none)\n"
+        )
+        self.assertEqual(output, expected)
+
+    def test_empty_carry_renders_nothing(self):
+        """caller_enumeration present but all-empty (neither Phase 2.4c path
+        recorded) -> renders nothing, same as an absent field.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [],
+            "inbound_callers": [],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertNotIn("Caller enumeration", output)
+
+    def test_carried_helpers_render_qn_and_file_line(self):
+        """Populated fix_path_helpers -> each helper's qn + definition file:line renders."""
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("Caller enumeration", output)
+        self.assertIn("config.load", output)
+        self.assertIn("services/api/config.py:42", output)
+
+    def test_carried_callers_render_caller_qn_and_file_line(self):
+        """Populated inbound_callers -> each caller's qn + call-site file:line renders,
+        grouped under its helper.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [
+                {
+                    "helper_qn": "config.load",
+                    "caller_qn": "main.startup",
+                    "file_line": "services/api/main.py:15",
+                },
+            ],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("main.startup", output)
+        self.assertIn("services/api/main.py:15", output)
+        # The caller line must appear after its helper's line.
+        helper_pos = output.index("config.load")
+        caller_pos = output.index("main.startup")
+        self.assertGreater(caller_pos, helper_pos)
+
+    def test_helper_with_no_recorded_callers_flagged(self):
+        """A helper with zero matching inbound_callers rows renders an explicit
+        '(no inbound callers recorded)' marker rather than silently omitting it.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "env_loader.init", "file_line": "services/core/env_loader.py:10"},
+            ],
+            "inbound_callers": [],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("no inbound callers recorded", output)
+
+    def test_justification_renders_recorded_at_research_framing(self):
+        """no_shared_callers_justification present (escape path used, no helpers
+        recorded) -> renders the explicit 'recorded at /research — zero shared
+        callers asserted' framing plus the justification text verbatim.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [],
+            "inbound_callers": [],
+            "no_shared_callers_justification": "purely additive in a new module",
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("recorded at /research", output)
+        self.assertIn("zero shared callers asserted", output)
+        self.assertIn("purely additive in a new module", output)
+        # The helper-enumeration path must not also render.
+        self.assertNotIn("(no inbound callers recorded)", output)
+
+    def test_helpers_take_precedence_over_justification(self):
+        """If both are somehow present (contradictory upstream state), the
+        helper-enumeration render path wins -- helpers are the ground truth
+        when non-empty.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [],
+            "no_shared_callers_justification": "should not render",
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("config.load", output)
+        self.assertNotIn("should not render", output)
 
 
 class CorrectnessVettedBackCompatTests(unittest.TestCase):

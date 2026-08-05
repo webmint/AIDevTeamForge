@@ -117,8 +117,12 @@ def cmd_set_recommended_approach(args: argparse.Namespace) -> int:
                 pass
             bug_mode = (report.get("mode") == "bug" or memo_mode == "bug")
 
-            # Only gate bug-mode reports — enhancement mode rarely populates fix_path_helpers
-            # and the layer-locality framing isn't a Gap-4 failure class for enhancements.
+            # Only gate bug-mode reports — the layer-locality framing isn't a
+            # Gap-4 failure class for enhancements. (Enhancement runs CAN now
+            # populate fix_path_helpers — one of check 8's two satisfying paths,
+            # the other being the no-shared-callers justification — since plan 67
+            # made check 8 mode-independent, but this gate stays bug-only per
+            # plan 67 D5.)
             # SUPPRESSION: when check 8b would fire (presentation-layer symptom + all helpers
             # same package), check 13 / this setter gate are structurally unreachable —
             # supplying --single-layer-justification cannot satisfy verify because 8b vetoes

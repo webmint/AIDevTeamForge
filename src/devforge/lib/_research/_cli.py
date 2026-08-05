@@ -66,6 +66,7 @@ from ._cmds_dataflow import (
     cmd_record_fix_path_helper,
     cmd_record_inbound_caller,
     cmd_record_literal_archaeology,
+    cmd_record_no_shared_callers_justification,
     cmd_record_probe_script,
     cmd_record_value_production_site,
     cmd_set_value_semantics,
@@ -580,6 +581,24 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_record_fix_path_helper)
+
+    sp = subparsers.add_parser(
+        "record-no-shared-callers-justification",
+        help=(
+            "Record the check-8 escape: an explicit prose justification asserting "
+            "the change touches no existing shared symbol with other callers."
+        ),
+    )
+    sp.add_argument(
+        "--justification",
+        required=True,
+        help=(
+            "Prose explaining why the touched change has zero shared callers to "
+            "enumerate (e.g. purely additive in a new module). Rejected when "
+            "fix_path_helpers is already non-empty (contradictory)."
+        ),
+    )
+    sp.set_defaults(func=cmd_record_no_shared_callers_justification)
 
     sp = subparsers.add_parser(
         "record-inbound-caller",

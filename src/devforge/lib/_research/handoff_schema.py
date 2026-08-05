@@ -718,6 +718,96 @@ class Complexity:
         _require_in_enum(self.verify_cost, _VALID_COMPLEXITY, "Complexity.verify_cost")
 
 
+# ---------------------------------------------------------------------------
+# Caller enumeration — plan 67 D6 (research handoff carry).
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FixPathHelper:
+    """One helper touched by the fix — qn + its definition file:line.
+
+    Copies a research_helper record-fix-path-helper row verbatim. file_line
+    is the helper's DEFINITION location, not a call-site.
+    """
+
+    qn: str
+    file_line: str
+
+    def __post_init__(self):
+        _require_nonempty(self.qn, "FixPathHelper.qn")
+        _require_nonempty(self.file_line, "FixPathHelper.file_line")
+
+
+@dataclass
+class InboundCaller:
+    """One inbound caller of a fix_path_helper — caller qn + call-site file:line.
+
+    Copies a research_helper record-inbound-caller row verbatim.
+    """
+
+    helper_qn: str
+    caller_qn: str
+    file_line: str
+
+    def __post_init__(self):
+        _require_nonempty(self.helper_qn, "InboundCaller.helper_qn")
+        _require_nonempty(self.caller_qn, "InboundCaller.caller_qn")
+        _require_nonempty(self.file_line, "InboundCaller.file_line")
+
+
+@dataclass
+class CallerEnumeration:
+    """Phase 2.4c caller-enumeration carry (plan 67 D6 — the plan-66 seam).
+
+    fix_path_helpers / inbound_callers copy research_helper's
+    record-fix-path-helper / record-inbound-caller rows VERBATIM — no
+    re-derivation, no lossy grouping. (Contrast SpecSeeds.affected_areas,
+    built by _build_affected_areas, which groups fix_path_helpers by
+    package and drops the helper qn + caller rows — that shape serves a
+    different consumer and is untouched by this carry.)
+
+    no_shared_callers_justification carries the check-8 escape text
+    (research_helper record-no-shared-callers-justification) when the LLM
+    asserted the touched symbol has zero other callers instead of
+    recording helpers. Mutually exclusive with a non-empty
+    fix_path_helpers by construction on the producer side (the research
+    helper's setters reject the contradictory combination), but this
+    schema does not re-enforce that invariant — it is a straight carrier.
+
+    All three fields default empty/None so a handoff.json predating plan
+    67 (or a report where Phase 2.4c never ran — e.g. non-bug mode before
+    the check-8 mode-decouple) deserializes cleanly (back-compat).
+    """
+
+    fix_path_helpers: List[FixPathHelper] = field(default_factory=list)
+    inbound_callers: List[InboundCaller] = field(default_factory=list)
+    no_shared_callers_justification: Optional[str] = None
+
+    def __post_init__(self):
+        if not isinstance(self.fix_path_helpers, list):
+            raise ValueError("CallerEnumeration.fix_path_helpers must be a list")
+        for h in self.fix_path_helpers:
+            if not isinstance(h, FixPathHelper):
+                raise ValueError(
+                    "CallerEnumeration.fix_path_helpers elements must be FixPathHelper, "
+                    f"got {type(h).__name__}"
+                )
+        if not isinstance(self.inbound_callers, list):
+            raise ValueError("CallerEnumeration.inbound_callers must be a list")
+        for c in self.inbound_callers:
+            if not isinstance(c, InboundCaller):
+                raise ValueError(
+                    "CallerEnumeration.inbound_callers elements must be InboundCaller, "
+                    f"got {type(c).__name__}"
+                )
+        if self.no_shared_callers_justification is not None:
+            _require_nonempty(
+                self.no_shared_callers_justification,
+                "CallerEnumeration.no_shared_callers_justification",
+            )
+
+
 @dataclass
 class PlanSeeds:
     """Plan-seeds block — recommended approach + layer + complexity + V3 call shape.
@@ -741,6 +831,11 @@ class PlanSeeds:
     # A future correctness-vetting step would set this True.
     correctness_vetted: bool = False
 
+    # Phase 2.4c caller-enumeration carry (plan 67 D6). Appended last with a
+    # default so existing positional constructions keep working unchanged —
+    # same convention as design_anchor on SpecSeeds.
+    caller_enumeration: CallerEnumeration = field(default_factory=CallerEnumeration)
+
     # Internal flag set by parser when proposed_call_shape fails first-gate regex.
     # Exposed for tests to assert fail-soft behavior.
     _proposed_call_shape_parse_failed: bool = field(default=False, init=False, repr=False, compare=False)
@@ -760,6 +855,12 @@ class PlanSeeds:
             raise ValueError("PlanSeeds.cited_canonical_patterns must be a list")
         if not isinstance(self.alternatives_considered, list):
             raise ValueError("PlanSeeds.alternatives_considered must be a list")
+        if not isinstance(self.caller_enumeration, CallerEnumeration):
+            raise ValueError(
+                "PlanSeeds.caller_enumeration must be a CallerEnumeration, got {0}".format(
+                    type(self.caller_enumeration).__name__
+                )
+            )
         if not isinstance(self.correctness_vetted, bool):
             raise ValueError(
                 "PlanSeeds.correctness_vetted must be a bool, got {0}".format(

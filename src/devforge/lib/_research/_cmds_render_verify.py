@@ -102,7 +102,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
       6. Verify-step 3 sub-fields populated when any hypothesis has
          runtime_probe_needed=true.
       7. Summary, complexity, ≥1 approach present.
-      8. fix_path_helpers non-empty for bug mode.
+      8. fix_path_helpers non-empty, OR an explicit no-shared-callers
+         justification recorded via record-no-shared-callers-justification.
+         Mode-independent (plan 67 D1/D2) — fires on EVERY /research run
+         regardless of mode, not gated on mode=="bug". Also flags the
+         contradictory state where both fix_path_helpers and the
+         justification are set (a recorded helper implies a shared caller
+         was found, which contradicts a zero-shared-callers claim) —
+         catches direct state mutation bypassing the setter's own guard.
       8b. Bug mode + symptom is presentation-layer + all fix_path_helpers
           defined in same package → cross-layer trace required. Package
           derived from fix_path_helpers[].file_line (helper definition),
@@ -128,7 +135,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
      14. Anchor gate mirror (verify-time): every fix_path_helpers[].file_line
          must anchor to a finding (exact match OR same path within ±5 lines).
          Catches direct state mutation bypassing record-fix-path-helper setter.
-         Gated on bug mode (consistent with checks 8 / 13).
+         Gated on bug mode (consistent with check 13; check 8 is mode-independent).
      15. Data-flow chain required for bug mode + presentation-layer primary
          symptom: data_flow_chain must be non-null. Fires only when mode==bug
          AND the first primary finding's path is presentation-layer. Forces
@@ -258,19 +265,50 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if not approaches:
         violations.append("approaches: empty")
 
-    # Check 8: bug mode requires fix_path_helpers non-empty.
+    # Check 8: fix_path_helpers non-empty, OR an explicit no-shared-callers
+    # justification recorded. Mode-independent (plan 67 D1/D2) — fires on
+    # EVERY /research run regardless of mode; previously gated on
+    # mode=="bug" only, which let an enhancement-mode (or ambiguous,
+    # human-answered-"enhancement") run skip caller enumeration on a change
+    # that touches a shared helper with other callers.
     fix_path_helpers = report.get("fix_path_helpers") or []
-    if (report.get("mode") == "bug" or memo.get("mode") == "bug") and not fix_path_helpers:
+    no_shared_callers_justification = (
+        report.get("no_shared_callers_justification") or ""
+    ).strip()
+    if not fix_path_helpers and not no_shared_callers_justification:
         violations.append(
-            "fix_path_helpers: empty (Phase 2.4c requires at least one helper enumerated for bug mode)"
+            "fix_path_helpers: empty and no no-shared-callers justification recorded "
+            "(Phase 2.4c requires enumerating at least one fix-path helper, or "
+            "record-no-shared-callers-justification with an explicit reason)"
+        )
+
+    # Check 8 cross-guard: both set is contradictory state. Both setters
+    # (record-fix-path-helper and record-no-shared-callers-justification)
+    # reject this combination regardless of call order, so this is a
+    # backstop for state the setters did not produce — e.g. direct state
+    # mutation, or a report file written before this guard existed.
+    if fix_path_helpers and no_shared_callers_justification:
+        violations.append(
+            "fix_path_helpers + no_shared_callers_justification: both are set, "
+            "and these are mutually exclusive claims about the same change (a "
+            "recorded fix-path helper means a shared caller was found; the "
+            "justification asserts none exist). Possible cause: direct state "
+            "mutation, or a report predating this guard — both setters reject "
+            "this combination going forward. Recovery: run reset-report and "
+            "re-record via exactly one path — record-fix-path-helper (+ "
+            "record-inbound-caller) if shared callers exist, or "
+            "record-no-shared-callers-justification if they do not."
         )
 
     # Check 8b: when bug mode + symptom is in a presentation-layer file, at
     # least one fix_path_helper must be defined in a DIFFERENT package
     # (cross-layer rule). Package derived from fix_path_helpers[].file_line
     # (the helper's definition location), NOT from inbound_callers call-sites.
-    # Fires only when check 8 already passed (list non-empty) and mode==bug,
-    # so the two checks compose without redundancy.
+    # Fires only when fix_path_helpers is non-empty and mode==bug — a
+    # narrower condition than check 8's pass (which, since plan 67, can
+    # also pass via the no-shared-callers justification escape with the
+    # list empty; 8b never fires in that case, since it needs the list
+    # non-empty to derive a helper package).
     if fix_path_helpers and (report.get("mode") == "bug" or memo.get("mode") == "bug"):
         findings_for_8b = report.get("findings") or []
         # Identify the primary symptom path: first finding with framing==primary
@@ -451,7 +489,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     # Check 14: anchor gate mirror — every fix_path_helpers[].file_line must
     # anchor to a finding (exact match OR same path within ±5 lines). Catches
     # state mutations that bypassed the record-fix-path-helper setter.
-    # Gated on bug mode (consistent with checks 8 / 13).
+    # Gated on bug mode (consistent with check 13; check 8 is mode-independent).
     bug_mode_14 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
     if bug_mode_14 and fix_path_helpers:
         all_findings_14 = report.get("findings") or []

@@ -1182,6 +1182,49 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
     else:
         patterns_block = "- (none)"
 
+    # Caller enumeration (plan 67 D6 -- the plan-66 seam): Phase 2.4c's
+    # fix_path_helpers + inbound_callers, carried verbatim from /research so
+    # /plan does not re-derive callers via fresh CBM calls. Absent field (a
+    # handoff.json predating plan 67) or an empty carry (neither Phase 2.4c
+    # path recorded) renders NOTHING -- byte-identical to pre-plan-67 output.
+    caller_enum = ps.get("caller_enumeration") or {}
+    fix_helpers = caller_enum.get("fix_path_helpers") or []
+    inbound_callers = caller_enum.get("inbound_callers") or []
+    no_shared_callers_justification = caller_enum.get("no_shared_callers_justification")
+
+    if fix_helpers:
+        helper_lines = []
+        for h in fix_helpers:
+            if not isinstance(h, dict):
+                continue
+            qn = h.get("qn", "?")
+            file_line = h.get("file_line", "?")
+            helper_lines.append("- {0} ({1})".format(qn, file_line))
+            callers_for_helper = [
+                c for c in inbound_callers
+                if isinstance(c, dict) and c.get("helper_qn") == qn
+            ]
+            if callers_for_helper:
+                for c in callers_for_helper:
+                    helper_lines.append(
+                        "  - caller: {0} ({1})".format(
+                            c.get("caller_qn", "?"), c.get("file_line", "?")
+                        )
+                    )
+            else:
+                helper_lines.append("  - (no inbound callers recorded)")
+        caller_block = (
+            "\n**Caller enumeration** (recorded at /research):\n"
+            + "\n".join(helper_lines) + "\n"
+        )
+    elif no_shared_callers_justification:
+        caller_block = (
+            "\n**Caller enumeration**: recorded at /research — zero shared "
+            "callers asserted: {0}\n".format(no_shared_callers_justification)
+        )
+    else:
+        caller_block = ""
+
     return (
         "## Upstream plan-seeds (research handoff: {upstream_path})\n"
         "\n"
@@ -1196,6 +1239,7 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
         "\n"
         "**Cited canonical patterns**:\n"
         "{patterns_block}\n"
+        "{caller_block}"
     ).format(
         upstream_path=upstream_path,
         rec_id=rec_id,
@@ -1207,6 +1251,7 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
         call_shape=call_shape,
         alts_block=alts_block,
         patterns_block=patterns_block,
+        caller_block=caller_block,
     )
 
 

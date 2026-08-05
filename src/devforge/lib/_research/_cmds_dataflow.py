@@ -4,7 +4,8 @@ record-fix-path-helper (anchor + sticky-reject), record-inbound-caller,
 record-dead-sibling, record-consumer-chain, set-value-semantics
 (invariant guards), record-value-production-site, record-data-flow-chain
 (intermediate→Finding cross-check), record-literal-archaeology (Patch 8),
-record-probe-script (Step 5).
+record-probe-script (Step 5), record-no-shared-callers-justification
+(plan 67 — the check-8 escape).
 """
 
 from __future__ import annotations
@@ -47,6 +48,13 @@ def cmd_record_fix_path_helper(args: argparse.Namespace) -> int:
     with that combo even if a matching finding is added post-hoc — closes the
     adversarial generator path where the LLM unblocks rejection by recording a
     fabricated finding.
+
+    Plan 67 — symmetric contradiction guard: rejected when
+    no_shared_callers_justification is already recorded (non-empty). That
+    justification asserts the change touches zero shared callers; recording
+    a fix-path helper here contradicts it regardless of call order (the
+    sibling guard in record-no-shared-callers-justification only catches
+    the reverse ordering).
     """
     try:
         helper_qn = _validate_scalar(args.helper_qn, "fix_path_helper.helper_qn")
@@ -67,6 +75,21 @@ def cmd_record_fix_path_helper(args: argparse.Namespace) -> int:
     reject_code = 0
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
+            # Plan 67 symmetric guard: a recorded no-shared-callers justification
+            # contradicts recording a fix-path helper, regardless of call order.
+            existing_justification = (
+                report.get("no_shared_callers_justification") or ""
+            ).strip()
+            if existing_justification:
+                return _die(
+                    "record-fix-path-helper: a no-shared-callers justification is "
+                    "already recorded ({0!r}); recording a fix-path helper contradicts "
+                    "it — if the justification was premature, run reset-report and "
+                    "re-record, or reconsider whether this helper is a false "
+                    "positive.".format(existing_justification),
+                    code=2,
+                )
+
             rejection_log = report.get("helper_rejection_log") or []
             # Sticky-reject: if this (qn, file_line) was previously rejected,
             # refuse even if findings now contain a collision (closes the
@@ -125,6 +148,55 @@ def cmd_record_fix_path_helper(args: argparse.Namespace) -> int:
     if reject_code == 2:
         sys.stderr.write(reject_message)
         return 2
+    return 0
+
+
+def cmd_record_no_shared_callers_justification(args: argparse.Namespace) -> int:
+    """Persist an explicit no-shared-callers justification (check 8 escape).
+
+    Plan 67 D1/D2 — check 8 (Phase 2.4c caller-enumeration gate) fires
+    mode-independently whenever fix_path_helpers is empty. This setter is
+    the auditable escape: it asserts the change touches no existing shared
+    symbol with other callers (e.g. purely additive in a new module), so
+    the empty-fix_path_helpers violation does not fire. Mirrors the
+    --single-layer-justification escape in spirit (auditable prose instead
+    of a silent skip) but ships as its own verb — there is no natural host
+    verb at the Phase 2.4c-skip moment.
+
+    Last-write-wins on re-call: this is a single scalar field, not an
+    append-only list — mirrors record-data-flow-chain's last-write-wins
+    convention (also a single-record field), not record-fix-path-helper's
+    append+dedupe-on-qn convention (which applies to a list field).
+
+    Guard: rejected (exit 2) when fix_path_helpers is already non-empty —
+    a recorded helper means at least one shared-caller enumeration is
+    already in flight, which contradicts a "zero shared callers" claim.
+    The gate is already satisfied via the recorded helper(s); no
+    justification is needed or accepted.
+    """
+    try:
+        justification = _validate_scalar(
+            args.justification, "no_shared_callers_justification"
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            fix_path_helpers = report.get("fix_path_helpers") or []
+            if fix_path_helpers:
+                return _die(
+                    "record-no-shared-callers-justification: justification asserts "
+                    "zero shared callers but {0} fix-path helper(s) are recorded — "
+                    "contradictory; remove nothing, the gate is already satisfied "
+                    "via the recorded helper(s) + their inbound_callers rows".format(
+                        len(fix_path_helpers)
+                    ),
+                    code=2,
+                )
+            report["no_shared_callers_justification"] = justification
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("record-no-shared-callers-justification: {0}".format(err))
     return 0
 
 

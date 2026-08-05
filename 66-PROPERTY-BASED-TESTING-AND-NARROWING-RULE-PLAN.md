@@ -82,6 +82,7 @@ Every `main.md` / agent / constitution edit routes through **instruction-author 
 ## Dependencies + related
 
 - Plan 62 (SMT requirements consistency) — sibling, NOT a dependency anymore: its IR is scratch-only and `/spec-check` is opt-in (see Verified state). Becomes a dependency only for the deferred stub-generation follow-on.
+- Plan 67 (caller-enumeration gate mode-decouple) — SIBLING from the same MIG-2957 comparison; owns the /research-side mechanical enumeration gate + the research-handoff caller carry that gives WI-2's "name every current caller" rule its typed upstream source; see 67's "Division of labor vs plan 66".
 - Plan 41 (agent-executor reachability) — orphan-discipline precedent; also shipped the qa-engineer dedicated row WI-1 reuses.
 - Plans 38/42 (roster + manifest PHASE 3.5 gates) — the exact verb + chokepoint shape `verify-property-coverage` copies.
 - Plan 02 (`/plan` redesign) — the architect-consult + `finalize-handoff` machinery Phase 2 extends.
