@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # /discover — Greenfield Feature Discovery
 
-`/discover` is repeatable per greenfield feature. It clarifies a vague feature idea into a structured scoping memo across 8 dimensions, runs an orchestrator-direct investigation that surveys prior art via web + Context7 AND reconciles user-belief against codebase reality via the CBM graph + `docs/` corpus, composes a discovery report with 2-3 design options + Build-vs-Buy + Derisk plan, and saves the rendered report to `discover/YYYY-MM-DD-<topic-slug>.md`. State + render shape are owned by `.devforge/lib/discover_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any investigation fires.
+`/discover` is repeatable per greenfield feature. It clarifies a vague feature idea into a structured scoping memo across 8 dimensions, runs an orchestrator-direct investigation that surveys prior art via web + Context7 AND reconciles user-belief against codebase reality via the CBM graph + `docs/` corpus, composes a discovery report with 2-3 design options + Build-vs-Buy + Derisk plan, and — once the user confirms the save — allocates the feature directory `specs/NNN-<feature-name>/` and writes the rendered report plus its specify-bound handoff inside it. `/discover` reads source code without modifying it, but a saved run is NOT inert on the repository: it creates that directory, creates a `spec/NNN-<feature-name>` git branch when the session is on the default branch, and `[WIP]`-commits what it wrote. State + render shape are owned by `.devforge/lib/discover_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any investigation fires.
 
 Usage: `/discover "<topic>"` (e.g. `/discover "audit log persistence layer"` or `/discover "auth in a TypeScript backend framework"`).
 
@@ -15,10 +15,11 @@ Usage: `/discover "<topic>"` (e.g. `/discover "audit log persistence layer"` or 
 
 - `.devforge/discover-scope.json` — ScopingMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/discover-report.json` — DiscoveryReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
-- `<install_root>/discover/YYYY-MM-DD-<topic-slug>.md` — rendered report. Helper's `render` writes to stdout; orchestrator saves it via the Phase 4 save prompt. Filename slug is auto-derived by the helper from the topic.
-- `<install_root>/discover/YYYY-MM-DD-<topic-slug>.handoff.json` — the specify-bound handoff, written by Phase 4.0's `finalize-handoff` (sibling to the rendered report).
+- `<install_root>/specs/NNN-<feature-name>/` — the feature directory, allocated by Phase 4's `allocate-feature-dir` only after the user confirms the save and the feature name. A run the user does not save leaves nothing here. A `spec/NNN-<feature-name>` git branch is created alongside it when the session is on the default branch.
+- `<install_root>/specs/NNN-<feature-name>/discovery-report.md` — rendered report. Helper's `render` writes to stdout; the orchestrator writes those bytes into the feature directory in Phase 4's save flow.
+- `<install_root>/specs/NNN-<feature-name>/discover-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff` (sibling to the rendered report). The report stem is `discovery-` and the handoff stem is `discover-`; that asymmetry is deliberate — never normalize one to match the other.
 
-On save, Phase 4 `[WIP]`-commits the rendered report + its `.handoff.json` into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
+On save, Phase 4 `[WIP]`-commits the rendered report + its handoff into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
 
 ## Phase 0 — Pre-flight gate
 
@@ -71,7 +72,7 @@ Reset chain (runs in the turn determined by the branch above):
 .devforge/lib/discover_helper set-date --value $(date -u +%Y-%m-%d)
 ```
 
-`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/discover` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence feature description; the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4.0's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
+`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/discover` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence feature description; the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
 
 Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/discover-scope.json` + `.devforge/discover-report.json` are overwritten with fresh defaults. `/discover` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
 
@@ -145,11 +146,13 @@ Before beginning the investigation, check for a `/grill` re-entry seed. Glob `sp
 - `must_satisfy` — what this re-run must now additionally satisfy; address it explicitly.
 - `carried_findings` — prior findings to carry forward; stay monotonic (never re-surface a finding a prior pass already disproved).
 
-State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 normally, with the seed's directive constraining the investigation.
+State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 with the seed's directive constraining the investigation, and with Phase 4 in attach mode per the next paragraph.
+
+**Attach mode — the feature directory already exists.** Hold the matched seed file's PARENT DIRECTORY in working memory as this run's feature directory (a seed at `specs/004-audit-log-store/grill-seed.json` means the feature directory is `specs/004-audit-log-store`). Because that directory was allocated by the earlier run of this feature, Phase 4's save flow SKIPS allocation and SKIPS branch creation, and overwrites the discovery report + handoff in place; the superseded versions stay recoverable from the earlier `[WIP]` commit. The parent directory is a path fact about where the seed was found — it is NOT the seed's `feature` field, which is the name you state in user-facing text.
 
 This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/*/grill-seed.json` file matches `target_stage == "discovery"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1.
+When no `specs/*/grill-seed.json` file matches `target_stage == "discovery"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
 
 ## Phase 1 — Scoping dialogue (rubric Q&A)
 
@@ -537,6 +540,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
    .devforge/lib/discover_helper set-next-step-text
    ```
 
+   Call it here WITHOUT `--feature-dir`. The feature directory does not exist yet — Phase 4's save flow allocates it only after the user confirms the save — so on the proceeding verdicts the helper renders the reference line as `Discovery reference: (path assigned when this discovery is saved to its feature directory)`. That placeholder is intentional: the Phase 3 render is a preview the user sees before the directory is named, so it must not show a location that could turn out to be wrong. Keep the `--topic` value you passed here in working memory — Phase 4's save flow re-runs this exact call with `--feature-dir` added once the directory exists.
+
 ### Verify
 
 ```bash
@@ -565,50 +570,123 @@ Helper walks the locked schema and emits the full discovery report markdown to s
 
 Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). This is the user's first look at the rendered report.
 
-The LLM does NOT edit the rendered report via Write or Edit at any point. The helper's `render` is the only writer; any post-render fix is applied by re-calling the relevant setter + `render` + `verify` in a new turn.
+This render is a PREVIEW — no file is written from it. On the proceeding verdicts its `Discovery reference:` line still carries the placeholder described above. Phase 4's save flow re-renders after the feature directory exists, and those later bytes are the ones written to disk.
+
+The LLM does NOT edit the rendered report via Write or Edit at any point. The helper's `render` is the only composer of that markdown; any post-render fix is applied by re-calling the relevant setter + `render` + `verify` in a new turn.
 
 ## Phase 4 — Save + recommend
 
-### Phase 4.0 — Finalize handoff artefact
-
-After Phase 3 `verify` exits 0 AND BEFORE the "Save this discovery report?" prompt:
-
-```bash
-.devforge/lib/discover_helper finalize-handoff
-```
-
-Helper writes `discover/<report.date>-<memo.topic_slug>.handoff.json` (sibling to the eventual rendered report). On exit 0: surface the path to the user in your next user-facing message as a fenced code block, then proceed to the save prompt. On non-zero exit: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) and end the turn; the user must address the cited verify violation (likely a missing setter call from Phase 3) and re-invoke `/discover`.
+Phase 4 is the only phase that writes outside `.devforge/` scratch. Nothing below the save prompt runs until the user confirms the save, and a run the user declines to save leaves the repository untouched — no directory, no branch, no report, no handoff, no commit.
 
 ### Ask to save
 
-After echoing the rendered report, ask via AskUserQuestion `"Save this discovery report to a file?"` with options `["save", "skip"]`.
+After echoing the rendered report, propose the feature name, then ask ONE question. There is no separate feature-name question: the save prompt carries the proposal, and AskUserQuestion's own free-text row is the override path.
 
-End the turn. The user's reply opens the next turn.
+**Compose the proposed feature name.** Start from `memo.topic_slug` (auto-derived by `set-topic` at Phase 0.3; visible in the `read-memo` output read at the start of Phase 3) and normalize it to a 2-4 word lowercase kebab-case slug — first character a letter, 2 to 4 alphanumeric segments joined by `-` (e.g. a topic slug of `auth-in-a-typescript-backend-framework` becomes `typescript-auth-backend`). `allocate-feature-dir` rejects any value outside that shape, so a `topic_slug` with 5+ segments MUST be shortened here rather than passed through. This confirmed slug becomes the directory name after `NNN-`; the rest of Phase 4 calls it `<feature-name>`.
+
+Then ask via AskUserQuestion `"Save this discovery as feature '<feature-name>'?"` with options `["Save as <feature-name>", "Don't save"]`. Single-line question text. Do NOT add an explicit "Other" option — AskUserQuestion always offers a free-text row of its own. Name `Save as <feature-name>` as the recommended choice in the prose above the question.
+
+End the turn. The user's reply opens the next turn. Read the reply as:
+
+- `Save as <feature-name>` → save under the proposed slug; run the `### On save` flow.
+- `Don't save` → run the `### On don't-save` branch.
+- **Free text** → treat it as "save, and this text is the feature name", UNLESS the text clearly declines (`"no"`, `"skip"`, `"not now"`, or equivalent), which is a `Don't save`. Normalize the text to the same 2-4 word lowercase kebab-case shape and use it as `<feature-name>`. If it cannot be normalized (no alphanumeric content to work with), ask this same question once more with a corrected proposal and the same two options, then end the turn.
+
+This prompt is also re-entered from `### On save` step 1 when `allocate-feature-dir` rejects the slug; the reply branches above apply unchanged on that second pass.
+
+**Attach-mode variant.** When Phase 0.6 recorded an existing feature directory, its name is already fixed and cannot be renamed by this run. Ask instead: `"Save this discovery into the existing feature '<dirname>'?"` with options `["Save to <dirname>", "Don't save"]`, where `<dirname>` is the basename of that directory. A free-text reply that does not clearly decline still means save; the existing directory is NEVER renamed and the free text is NOT used as a slug.
 
 ### On save
 
-Compute the filename from helper state: `discover/<report.date>-<memo.topic_slug>.md` under `<install_root>`. Create the `discover/` directory if it does not exist. If the target path already exists, append `-2`, `-3`, ... until a free name is found.
+Six steps, in this order. Steps 1 and 2 are the only skippable ones, and only in attach mode.
 
-Write the rendered text captured in Phase 3 (the same bytes printed there) to the chosen path. Use the helper-rendered bytes verbatim — do not re-format or re-shape.
+**1 — Resolve the feature directory.**
 
-After the report is written, `[WIP]`-commit it together with the `.handoff.json` Phase 4.0 wrote so the work is git-safe immediately. Compose `--paths` from the saved report path (the same bytes-on-disk path above, including any `-2`/`-3` suffix if the name collided) and the sibling handoff path `discover/<date>-<topic-slug>.handoff.json`, and use the topic slug for the label:
+In attach mode (Phase 0.6 recorded an existing feature directory), that directory IS `specs/NNN-<feature-name>` for the rest of this flow: skip this step's helper call, skip step 2 entirely, and go to step 3.
+
+Otherwise allocate a fresh directory:
+
+```bash
+.devforge/lib/discover_helper allocate-feature-dir --slug "<feature-name>"
+```
+
+Exit 0 → stdout is a JSON object; read `path`, `dirname` (`NNN-<feature-name>`), and `formatted_number` (the zero-padded `NNN`) from it and hold all three for the remaining steps. Every path argument below takes the repo-relative form `specs/<dirname>` — the JSON's `path` is absolute and is for user-facing messages only.
+
+Exit 2 → copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then branch on which error the helper cited. Nothing has been written to the repository in either branch:
+
+- **`invalid slug ...`** — the helper rejected `<feature-name>` against the 2-4 word lowercase kebab-case shape. Do NOT end the run. Compose a corrected name that satisfies that shape and return to `### Ask to save`, re-asking that question with the corrected proposal; end the turn there. Sending the user back to re-invoke `/discover` instead would be destructive: Phase 0.3 resets the memo and report unconditionally on every invocation, so the eight rubric answers and the whole Phase 2 investigation would be thrown away over a name the user can fix in one turn.
+- **Any other error** (`feature dir already exists ...`, `cannot create ...`) — a filesystem condition this run cannot compose its way out of. End the turn; the user resolves the cited condition and re-invokes `/discover`.
+
+A seedless run ALWAYS allocates a new directory, even when an earlier `/discover` already covered the same topic — this command does no topic matching against existing features. Say so in the closing message so the user can delete the duplicate if that was not the intent.
+
+**2 — Create the feature branch.** (skipped in attach mode)
+
+Read the current branch with `git branch --show-current`. Resolve the repository's default branch in this order, stopping at the first that succeeds:
+
+1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null` — parse the branch name off the end of the output (`refs/remotes/origin/main` → `main`).
+2. `git show-ref --verify --quiet refs/heads/main` → `main`.
+3. `git show-ref --verify --quiet refs/heads/master` → `master`.
+
+If the current-branch command fails (for example the install root is not a git repository) or none of the three resolves a default branch, SKIP this step: tell the user no branch was created and name which of the two reasons applied — adding that they can create one with `git checkout -b spec/<dirname>` when the repository does exist — then continue to step 3. Do not ask the user and do not stop the save — the artefacts, not the branch, are what this phase exists to produce.
+
+With both branch names in hand:
+
+```bash
+.devforge/lib/discover_helper render-branch-command \
+    --slug "<feature-name>" \
+    --number "<formatted_number from step 1>" \
+    --current-branch "<current branch>" \
+    --default-branch "<default branch>"
+```
+
+Stdout is exactly one line. When it is a `git checkout -b spec/NNN-<feature-name>` command, execute that line as written and tell the user `"Created and switched to branch spec/NNN-<feature-name>"`. When it is a `# already on non-default branch ...` informational comment, no checkout is emitted — continue to step 3 unchanged.
+
+**3 — Re-render the report against the real feature directory.**
+
+Re-run the EXACT `set-next-step-text` call Phase 3's setter 9 made — same `--topic` value, or no `--topic` at all when the verdict is `Reconsider` — with `--feature-dir` added, then re-render:
+
+```bash
+.devforge/lib/discover_helper set-next-step-text \
+    --topic "<the same distilled topic passed in Phase 3>" \
+    --feature-dir specs/NNN-<feature-name>
+
+.devforge/lib/discover_helper render
+```
+
+The helper now renders `Discovery reference: specs/NNN-<feature-name>/discovery-report.md` in place of the Phase 3 placeholder. That reference line is the ONLY difference between these bytes and the ones echoed in Phase 3.
+
+**4 — Write the report.**
+
+Write step 3's `render` stdout byte-verbatim to `specs/NNN-<feature-name>/discovery-report.md`. The verbatim invariant binds THIS render, not the Phase 3 preview: use the bytes the helper just printed, and do not re-format, re-shape, or hand-merge them with the earlier echo. In attach mode this overwrites the previous run's report in place, which is intended — the superseded version stays recoverable from the earlier `[WIP]` commit.
+
+**5 — Write the handoff.**
+
+```bash
+.devforge/lib/discover_helper finalize-handoff --feature-dir specs/NNN-<feature-name>
+```
+
+The helper writes `specs/NNN-<feature-name>/discover-handoff.json` and records the sibling report at `specs/NNN-<feature-name>/discovery-report.md`. The report stem (`discovery-`) and the handoff stem (`discover-`) differ on purpose — pass `--feature-dir` and let the helper own both names. On exit 0 stdout is a `wrote: <path>` line; surface that path to the user. On non-zero exit: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), tell the user the report is saved but the handoff is missing so `/specify` will block until it exists, and end the turn — the fix is to correct the cited violation with the relevant Phase 3 setter and re-run this one command with the same `--feature-dir`, NOT to re-run `/discover` (which would allocate a second directory).
+
+**6 — Commit both artefacts.**
 
 ```bash
 .devforge/lib/artifact_helper commit-artifacts \
-    --paths '["discover/<saved-md-filename>.md", "discover/<date>-<topic-slug>.handoff.json"]' \
+    --paths '["specs/NNN-<feature-name>/discovery-report.md", "specs/NNN-<feature-name>/discover-handoff.json"]' \
     --label "discover: <topic-slug>"
 ```
 
-The helper stages those paths in the install repo and makes a `[WIP] discover: <topic-slug>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL — always run it once the report is written. It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already saved, so warn the user with the helper's stderr and continue; do NOT abort the command or re-run the save); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
+The label keeps using the run's `topic_slug`, not the confirmed feature slug — it is a commit-message label, not a path, and the two differ whenever the user renamed the feature at the save prompt. The helper stages those paths in the install repo and makes a `[WIP] discover: <topic-slug>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL — always run it once steps 4 and 5 have written both files. It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artefacts are already saved, so warn the user with the helper's stderr and continue; do NOT abort the command or re-run the save); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
 
-### On skip
+### On don't-save
 
-The rendered report stays in the assistant message only. No file is written. `.devforge/discover-scope.json` and `.devforge/discover-report.json` remain on disk until the next `/discover` invocation overwrites them. No `[WIP]` commit fires on skip — re-run `/discover` and save to produce both `.md` and `.handoff.json`.
+Nothing is written outside `.devforge/` scratch: no feature directory is allocated, no branch is created, neither the report nor the handoff is written, and no `[WIP]` commit fires. The rendered report stays in the assistant message only. `.devforge/discover-scope.json` and `.devforge/discover-report.json` remain on disk until the next `/discover` invocation overwrites them — re-run `/discover` and save to produce the feature directory with both artefacts in it.
 
 ### Closing message
 
-If a save happened AND the verdict is in the proceeding-set (`Worth pursuing` / `Promising with caveats`), the rendered report already contains a `## Next Step` section with a copy-pasteable handoff block. Tell the user: `"/discover is done. Open <path> to review. The 'Next Step' section at the bottom is a copy-pasteable block for your next session — copy it manually when you're ready."`
+If a save happened AND the verdict is in the proceeding-set (`Worth pursuing` / `Promising with caveats`), the written report already contains a `## Next Step` section with a copy-pasteable handoff block. Tell the user: `"/discover is done. Open specs/NNN-<feature-name>/discovery-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for your next session — copy it manually when you're ready."`
 
-If a save happened AND the verdict is `Reconsider`, the report omits the Next-Step section. Tell the user: `"/discover is done. Open <path> to review. The verdict was 'Reconsider' — address the cited concerns or refine scope before continuing."`
+If a save happened AND the verdict is `Reconsider`, the report omits the Next-Step section. Tell the user: `"/discover is done. Open specs/NNN-<feature-name>/discovery-report.md to review. The verdict was 'Reconsider' — address the cited concerns or refine scope before continuing."`
 
-If the user chose `skip`, tell the user: `"/discover is done. The report is in the prior message; .devforge/discover-scope.json and .devforge/discover-report.json hold the state but will be overwritten on the next /discover invocation."`
+On either saving branch, also state which directory was used and how — a fresh allocation: `"Allocated a new feature directory specs/NNN-<feature-name>/ for this discovery; delete it if you meant to add to an existing feature."`; attach mode: `"Overwrote the discovery artefacts in the existing feature directory specs/NNN-<feature-name>/."` When step 2 created a branch, name that branch too.
+
+If the user chose `Don't save`, tell the user: `"/discover is done. The report is in the prior message; nothing was written under specs/ and no branch was created. .devforge/discover-scope.json and .devforge/discover-report.json hold the state but will be overwritten on the next /discover invocation."`

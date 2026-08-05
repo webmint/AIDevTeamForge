@@ -6,7 +6,9 @@ disable-model-invocation: true
 
 # /research — Codebase Research
 
-`/research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and saves the rendered report to `research/YYYY-MM-DD-<topic-slug>.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any investigation fires.
+`/research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and — once the user confirms the save — allocates the feature directory `specs/NNN-<feature-slug>/` and saves the rendered report there as `research-report.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any investigation fires.
+
+`/research` reads source code and never writes it. The confirmed save is nonetheless a repository mutation: it creates the feature directory, may create the `spec/NNN-<feature-slug>` branch, and `[WIP]`-commits the artifacts it wrote. A run the user declines to save leaves nothing behind in the repository outside `.devforge/` scratch (a tier-1.5 probe script, if any, persists separately in system scratch — see Step 4.7).
 
 Usage: `/research "<topic>"` (e.g. `/research "items not sorted in admin products view"` or `/research "make export faster on large datasets"`).
 
@@ -14,10 +16,13 @@ Usage: `/research "<topic>"` (e.g. `/research "items not sorted in admin product
 
 - `.devforge/research-state.json` — SymptomMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/research-report.json` — ResearchReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
-- `<install_root>/research/YYYY-MM-DD-<topic-slug>.md` — rendered report. Helper's `render` writes to stdout; orchestrator saves it via the Phase 4 save prompt. Filename slug is auto-derived by the helper from the topic.
-- `<install_root>/research/YYYY-MM-DD-<topic-slug>/handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff` on save (nested alongside the flat `.md` file).
+- `<install_root>/specs/NNN-<feature-slug>/` — the feature directory, allocated by Phase 4's `allocate-feature-dir` after the user confirms the save and the feature name (a `/grill` re-entry run reuses the seed's existing directory instead — see Phase 0.6). Nothing under `specs/` is created before that confirmation.
+- `<install_root>/specs/NNN-<feature-slug>/research-report.md` — rendered report. Helper's `render` writes to stdout; Phase 4 saves those bytes into the allocated directory.
+- `<install_root>/specs/NNN-<feature-slug>/research-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff --feature-dir` on save (sibling to the report).
+- `<install_root>/specs/NNN-<feature-slug>/probe-script.<ext>` — CONDITIONAL: present only when Phase 2.6 recorded a tier-1.5 probe script; Phase 4 copies it out of scratch on save.
+- Branch `spec/NNN-<feature-slug>` — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/grill` re-entry run, no checkout is emitted and the current branch is kept.
 
-On save, Phase 4 `[WIP]`-commits the rendered report + its `handoff.json` into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
+On save, Phase 4 `[WIP]`-commits the artifacts it wrote into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
 
 ## Phase 0 — Pre-flight gate
 
@@ -127,11 +132,13 @@ Before beginning the investigation, check for a `/grill` re-entry seed. Glob `sp
 - `must_satisfy` — what this re-run must now additionally satisfy; address it explicitly.
 - `carried_findings` — prior findings to carry forward; stay monotonic (never re-surface a finding a prior pass already disproved).
 
-State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 normally, with the seed's directive constraining the investigation.
+**Attach mode (binds Phase 4).** The matched seed file's PARENT DIRECTORY is this feature's already-allocated feature directory — a `/grill` seed exists only for a feature that already has one. Record that directory path (e.g. `specs/NNN-slug`) in working memory now: on save, Phase 4 reuses it instead of allocating a new one, skips branch creation, and overwrites the artifacts in place. This is the one value you take from the seed's location rather than from its contents — the `feature` field above is still what you NAME in your messages; the parent directory is where you WRITE.
+
+State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 normally, with the seed's directive constraining the investigation and Phase 4 saving in attach mode.
 
 This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/*/grill-seed.json` file matches `target_stage == "research"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1.
+When no `specs/*/grill-seed.json` file matches `target_stage == "research"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
 
 ## Phase 1 — Symptom clarification (rubric Q&A)
 
@@ -786,7 +793,13 @@ If any hypothesis carries `runtime_probe_needed=yes`, set the verify step (all t
 
 If ALL conditions hold → tier will resolve to 1.5 in Phase 4 `finalize-handoff`; proceed with steps 1-4 below. Otherwise SKIP this entire sub-step.
 
-1. Create a script file at `research/<report.date>-<memo.topic_slug>/probe-script.<ext>` (directly under that directory — no subdirs). Extension matches the chosen runtime:
+1. Create the scratch directory, then create a script file directly inside it (no subdirs — the helper rejects a deeper path):
+
+   ```bash
+   mkdir -p "${TMPDIR:-/tmp}/forge-research"
+   ```
+
+   The script path is `${TMPDIR:-/tmp}/forge-research/probe-script.<ext>`. The helper does NOT create this directory — run the `mkdir -p` above before the first write. The script lives in scratch for the rest of the run; Phase 4 copies it into the feature directory on save. Extension matches the chosen runtime:
    - `node` / `deno` / `bun` → `.mjs`
    - `python` → `.py`
    - `ruby` → `.rb`
@@ -796,14 +809,14 @@ If ALL conditions hold → tier will resolve to 1.5 in Phase 4 `finalize-handoff
 
    ```bash
    .devforge/lib/research_helper record-probe-script \
-       --script-path "research/<report.date>-<memo.topic_slug>/probe-script.<ext>" \
+       --script-path "${TMPDIR:-/tmp}/forge-research/probe-script.<ext>" \
        --runtime <node|python|ruby|deno|bun> \
        --inlines-from '["<path>:<line>", "<path>:<line>", ...]'
    ```
 
-Validators (all rejected with exit 2 + stderr message prefixed `record-probe-script: ...`): `--script-path` file must exist on disk AND live DIRECTLY under `research/<report.date>-<memo.topic_slug>/` (no subdirs); `--runtime` must resolve via `shutil.which`; `--inlines-from` must be a non-empty JSON array of `<path>:<line>` tokens (each `<line>` must be digits-only). Strict-match idempotency: re-recording the same `--script-path` with a different `--runtime` or different `--inlines-from` is rejected exit 2 — to revise an entry, run `reset-report` and re-record from scratch, or choose a different `--script-path`. Exact re-record of the same triple is a no-op (exit 0 + stderr "already recorded" notice).
+Validators (all rejected with exit 2 + stderr message prefixed `record-probe-script: ...`): `--script-path` file must exist on disk AND be a DIRECT child of the scratch directory `${TMPDIR:-/tmp}/forge-research` (no subdirs); `--runtime` must resolve via `shutil.which`; `--inlines-from` must be a non-empty JSON array of `<path>:<line>` tokens (each `<line>` must be digits-only). Strict-match idempotency: re-recording the same `--script-path` with a different `--runtime` or different `--inlines-from` is rejected exit 2 — to revise an entry, run `reset-report` and re-record from scratch, or choose a different `--script-path`. Exact re-record of the same triple is a no-op (exit 0 + stderr "already recorded" notice).
 
-Skip-clause consequences. If you skip this sub-step but tier later resolves to 1.5 in Phase 4 `finalize-handoff`, the handoff.json will fall back to the deterministic default `research/<date>-<slug>/probe-script.mjs` — but no file exists at that path, leaving a dangling reference. If you record a probe script but tier resolves to ≠ 1.5, the recorded entry is silently ignored — `finalize-handoff` only reads `probe_scripts` when it classifies tier 1.5, so the entry stays in `research-report.json` unused and the written script file lingers on disk. Skip only when the trigger conditions above clearly don't hold; recording speculatively wastes work and leaves an unreferenced file behind.
+Skip-clause consequences. If you skip this sub-step but tier later resolves to 1.5 in Phase 4 `finalize-handoff`, the handoff.json will fall back to the deterministic default `${TMPDIR:-/tmp}/forge-research/probe-script.mjs` — but no file exists at that path, leaving a dangling reference. If you record a probe script but tier resolves to ≠ 1.5, the recorded entry is silently ignored — `finalize-handoff` only reads `probe_scripts` when it classifies tier 1.5, so the entry stays in `research-report.json` unused and the written script file lingers in the scratch directory. Skip only when the trigger conditions above clearly don't hold; recording speculatively wastes work and leaves an unreferenced file behind.
 
 Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string), retry up to 3 times. On the 4th failure, copy stderr VERBATIM to the user and end the turn; user must re-run `/research` from scratch — prior partial state will be overwritten.
 
@@ -924,6 +937,8 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
    .devforge/lib/research_helper set-next-step-text
    ```
 
+   Call it WITHOUT `--research-path` here. The feature directory does not exist yet — Phase 4 allocates it only after the user confirms the save — so the Next-Step block's `Research reference:` line renders the placeholder `(path assigned when this research is saved to its feature directory)`. That placeholder is the correct text for the Phase-3 preview; Phase 4 re-runs this setter with the real path before anything is written to disk.
+
 ### Verify
 
 ```bash
@@ -958,59 +973,138 @@ Helper walks the locked schema and emits the full research report markdown to st
 
 Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). This is the user's first look at the rendered report.
 
-The LLM does NOT edit the rendered report via Write or Edit at any point. The helper's `render` is the only writer; any post-render fix is applied by re-calling the relevant setter + `render` + `verify` in a new turn.
+This render is a PREVIEW, not the saved file. Nothing is written to disk in Phase 3, and the Next-Step block still carries the path placeholder described in setter 7. On save, Phase 4 re-runs `set-next-step-text` with the allocated path and re-runs `render`; the bytes written to the feature directory come from THAT second render.
+
+The LLM does NOT edit the rendered report via Write or Edit at any point — Phase 4 writes the helper's rendered bytes verbatim and never reshapes them. The helper's `render` is the only composer of this markdown; any post-render fix is applied by re-calling the relevant setter + `render` + `verify` in a new turn.
 
 ## Phase 4 — Save + recommend
 
-### Ask to save
+Phase 4 runs in one fixed order: confirm the save + the feature name → resolve the feature directory (allocate, or attach) → create the branch → write the report → copy the probe script → write the handoff → commit. Nothing outside `.devforge/` scratch is created before the user's confirmation in Step 4.1, and no step below runs on the don't-save arm.
 
-After echoing the rendered report, ask via AskUserQuestion `"Save this research to a file?"` with options `["save", "skip"]`.
+### Step 4.1 — Ask to save (one question, feature name included)
 
-End the turn. The user's reply opens the next turn.
+Compose the proposed feature slug from `memo.topic_slug` (already in state — `read-memo` prints it). The slug becomes the permanent feature-directory name and the branch name, so it must be 2-4 lowercase kebab-case words whose first character is a letter. `set-topic` derives `topic_slug` by lowercasing the topic, replacing each non-alphanumeric run with `-`, and keeping the first 4 words — that value can come out as a single word or with a leading digit, neither of which is a valid feature slug. When it does, adjust it before displaying: add a distinguishing word from the topic to reach two words, and reword or drop a leading numeric segment.
 
-### On save
+After echoing the rendered report, ask ONE question via AskUserQuestion — single-line question text `"Save this research as feature '<proposed-slug>'?"` — with exactly two options: `"Save as <proposed-slug> (Recommended)"` and `"Don't save"`. Do NOT add an "Other" option of your own; the tool appends its own free-text row, and that row is the rename path.
 
-Compute the filename from helper state: `research/<report.date>-<memo.topic_slug>.md` under `<install_root>`. Create the `research/` directory if it does not exist. If the target path already exists, append `-2`, `-3`, ... until a free name is found.
+End the turn. The user's reply opens the next turn. Read the reply as follows:
 
-Write the rendered text captured in Phase 3 (the same bytes printed there) to the chosen path. Use the helper-rendered bytes verbatim — do not re-format or re-shape.
+- `Save as <proposed-slug> (Recommended)` → save under the proposed slug; go to Step 4.2.
+- `Don't save` → go to Step 4.7.
+- Free text (the tool's own row) → treat it as SAVE, using the typed text as the feature name — UNLESS the text clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. Normalize the typed text by the same rule as the proposed slug: lowercase it, replace each non-alphanumeric run with `-`, keep the first 4 words, and require 2-4 words with a letter as the first character. Use the normalized slug for the rest of Phase 4.
+- Free text that yields no valid slug under that rule (fewer than two usable words, or nothing that can start with a letter) → do not guess a name. Ask Step 4.1's question again, naming what was wrong with the typed text; the user can also pick either literal option to move on.
 
-### Emit handoff.json (mandatory on save)
+**Attach-mode variant.** When Phase 0.6 recorded an attach directory, this run has no slug to propose — the feature is already named. Skip the slug composition above and ask instead: single-line question text `"Save this research into the existing feature '<dirname>'?"` with exactly two options, `"Save to <dirname> (Recommended)"` and `"Don't save"`. The directory is never renamed, so free text is NOT read as a slug here: treat any free-text reply as SAVE into `<dirname>` unless it clearly declines (e.g. "no", "skip", "cancel", "don't save"), in which case go to Step 4.7. On save, go to Step 4.2's attach arm.
 
-After the rendered `.md` is written:
+### Step 4.2 — Resolve the feature directory
 
-1. Compute the handoff.json path: `research/<report.date>-<memo.topic_slug>/handoff.json` — nested inside a per-research subdirectory that sits alongside the flat `.md` file.
-2. If the handoff path already exists (same-date, same-slug re-run), overwrite it — the prior artefact is stale for the same research session.
-3. Create the per-research directory if it does not exist.
-4. Invoke:
+**Attach mode.** If Phase 0.6 recorded a grill-re-entry feature directory, that directory IS this run's feature directory: skip allocation, skip Step 4.3 entirely, and let Steps 4.4-4.6 overwrite the artifacts in place (the superseded versions stay recoverable from the per-step git commits). An attached directory keeps its existing `NNN-slug` name — Step 4.1's attach-mode variant neither proposes nor reads a slug — so that name is the `<dirname>` Steps 4.4-4.6 use. Go to Step 4.4.
 
-   ```bash
-   .devforge/lib/research_helper finalize-handoff \
-       --emit-handoff-json <computed path>
-   ```
-
-5. If the helper exits non-zero, tell the user `"Research .md saved at <abs md path> but handoff.json failed: <stderr>. Re-run finalize-handoff manually after fixing the missing state."` and end the turn.
-6. If the helper exits 0, capture the stdout `wrote: <abs path>` for the closing message.
-
-### WIP-commit the artifacts (mandatory on save)
-
-After the rendered `.md` AND `handoff.json` are both written, `[WIP]`-commit them so the work is git-safe immediately. Compose `--paths` from the two paths you just wrote — the saved `.md` path (the same bytes-on-disk path from "On save", including any `-2`/`-3` suffix if the name collided) and the `handoff.json` path from the step above — and use the topic slug for the label:
+**Fresh allocation.** Otherwise allocate a new feature directory with the confirmed slug:
 
 ```bash
+.devforge/lib/research_helper allocate-feature-dir --slug "<confirmed-slug>"
+```
+
+Stdout is a JSON object. Take `dirname` (the `NNN-slug` directory name) and `formatted_number` (the zero-padded `NNN`) from it; the feature-directory path used by every step below is `specs/<dirname>`. The helper creates the directory and fails loudly rather than reusing an existing one.
+
+On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then: on a rejected slug, return to Step 4.1 and ask again with a corrected proposal; on any other error, report it and end the turn — nothing has been written yet, so the run stops cleanly and the user can re-run `/research`.
+
+**A seedless re-run always allocates a NEW directory.** No topic matching is performed: running `/research` again on a topic that already has a feature directory produces another one under the next `NNN`, with no reference to the earlier run. That is intended — the closing message names the directory that was created so the user can delete it if it is an unwanted duplicate.
+
+### Step 4.3 — Create the feature branch (fresh allocation only)
+
+Skip this entire step in attach mode — the feature already has its branch.
+
+Detect the current branch:
+
+```bash
+git branch --show-current
+```
+
+If that command fails because the directory is not a git repository, skip the rest of this step: tell the user `"Skipped branch creation: not a git repository."` and continue at Step 4.4.
+
+Detect the repository's default branch, in this order; stop at the first that succeeds:
+
+1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null` — parse the branch name from the output.
+2. `git show-ref --verify --quiet refs/heads/main`.
+3. `git show-ref --verify --quiet refs/heads/master`.
+4. None of the above resolved → skip the rest of this step: tell the user `"Skipped branch creation: could not resolve the default branch (no origin/HEAD, main, or master). Create a branch manually if you want one."` and continue at Step 4.4.
+
+Branch creation is best-effort and never stops the save. Ask no question here and end no turn on either skip path — this phase's product is the artifacts, and Steps 4.4-4.6 write them on whatever branch the session is already on.
+
+Then ask the helper what to do:
+
+```bash
+.devforge/lib/research_helper render-branch-command \
+    --slug "<confirmed-slug>" \
+    --number "<formatted_number from Step 4.2>" \
+    --current-branch "<current branch>" \
+    --default-branch "<default branch>"
+```
+
+Stdout is a single line. When the run is on the default branch it is a checkout command of the form `git checkout -b spec/NNN-<slug>` — execute that line and tell the user `"Created and switched to branch spec/NNN-<slug>"`. On any other branch it is a `# already on non-default branch ...` informational comment — emit no checkout, keep the current branch, and continue.
+
+### Step 4.4 — Re-render with the real path, then write the report
+
+The Phase-3 render was a preview whose `Research reference:` line carries a placeholder. Now that the directory exists, re-render with the real path:
+
+```bash
+.devforge/lib/research_helper set-next-step-text \
+    --research-path "specs/<dirname>/research-report.md"
+
+.devforge/lib/research_helper render
+```
+
+Write THAT `render` stdout, byte-verbatim, to `specs/<dirname>/research-report.md`. Do not re-format, re-shape, or hand-edit it — the only difference between the preview the user already saw and the saved file is the helper-rendered reference line. In attach mode this overwrites the previous `research-report.md`, which is the intent.
+
+On a verdict outside the proceeding-set, `set-next-step-text` is a no-op that ignores `--research-path`, and the rendered report carries no Next-Step section (see Phase 3 setter 7). Run both calls anyway — the re-render is what gets written either way.
+
+### Step 4.5 — Copy the probe script (conditional)
+
+Run this step ONLY when Phase 2.6 recorded a tier-1.5 probe script. Copy it out of scratch into the feature directory, keeping the same extension:
+
+```bash
+cp "${TMPDIR:-/tmp}/forge-research/probe-script.<ext>" "specs/<dirname>/probe-script.<ext>"
+```
+
+When no probe script was recorded, skip this step and leave the probe-script path out of Step 4.6's commit.
+
+### Step 4.6 — Write the handoff, then commit
+
+```bash
+.devforge/lib/research_helper finalize-handoff \
+    --feature-dir "specs/<dirname>"
+```
+
+The helper writes `specs/<dirname>/research-handoff.json` and records the sibling `research-report.md` as the handoff's research path. In attach mode it overwrites the existing handoff.
+
+If the helper exits non-zero, tell the user `"Research report saved at specs/<dirname>/research-report.md but research-handoff.json failed: <stderr>. Re-run finalize-handoff manually after fixing the missing state."` and end the turn. If it exits 0, capture the stdout `wrote: <abs path>` for the closing message.
+
+Then `[WIP]`-commit everything this run wrote, so the work is git-safe immediately. `--paths` carries the report and the handoff, plus `specs/<dirname>/probe-script.<ext>` when Step 4.5 copied one; the label uses the topic slug:
+
+```bash
+# Two paths normally; add the third element ONLY when Step 4.5 copied a probe script:
+#   '["specs/<dirname>/research-report.md", "specs/<dirname>/research-handoff.json", "specs/<dirname>/probe-script.<ext>"]'
 .devforge/lib/artifact_helper commit-artifacts \
-    --paths '["research/<saved-md-filename>.md", "research/<date>-<topic-slug>/handoff.json"]' \
+    --paths '["specs/<dirname>/research-report.md", "specs/<dirname>/research-handoff.json"]' \
     --label "research: <topic-slug>"
 ```
 
-The helper stages those paths in the install repo and makes a `[WIP] research: <topic-slug>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL — always run it once both files are written. It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already saved, so warn the user with the helper's stderr and continue to the closing message; do NOT abort the command or re-run the save); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
+The helper stages those paths in the install repo and makes a `[WIP] research: <topic-slug>` commit; it is install-repo-only (never the source repo in wrapper mode). This call is UNCONDITIONAL on the save arm — always run it once the report and handoff are written. It is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — the artifacts are already saved, so warn the user with the helper's stderr and continue to the closing message; do NOT abort the command or re-run the save); "nothing to commit" (paths already staged or absent) exits 0 silently as a benign no-op.
 
-### On skip
+### Step 4.7 — On "Don't save"
 
-The rendered report stays in the assistant message only. No file is written. `.devforge/research-state.json` and `.devforge/research-report.json` remain on disk until the next `/research` invocation overwrites them. No handoff.json fires on skip — re-run `/research` and save to produce both `.md` and handoff.json.
+Nothing is written outside `.devforge/` scratch: no feature directory, no branch, no report, no handoff, no commit. Do not run `finalize-handoff` on this arm — it has not run yet at this point in the flow, and running it would leave an orphaned handoff for a feature that does not exist.
+
+The rendered report stays in the assistant message only. `.devforge/research-state.json` and `.devforge/research-report.json` remain on disk until the next `/research` invocation overwrites them, and a tier-1.5 probe script written during the run stays in `${TMPDIR:-/tmp}/forge-research/`.
 
 ### Closing message
 
-If a save happened AND the verdict is in the proceeding-set, the rendered report already contains a `## Next Step` section with a copy-pasteable `/specify "..."` block. Tell the user: `"/research is done. Open <path> to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new /specify session — copy it manually when you're ready. Handoff schema artefact at <handoff path> — a future /specify Phase 0.4 will auto-discover and import it via `specify_helper import-handoff` (Step 6 of RESEARCH-HANDOFF-PLAN)."`
+If a save happened AND the verdict is in the proceeding-set, the saved report contains a `## Next Step` section with a copy-pasteable `/specify "..."` block. Tell the user: `"/research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new /specify session — copy it manually when you're ready. The intake handoff /specify requires is its sibling, specs/<dirname>/research-handoff.json; delete the directory if you meant to add to an existing feature."`
 
-If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/research is done. Open <path> to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix. Handoff artefact at <handoff path> records the research state for downstream tooling."`
+If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix. The handoff at specs/<dirname>/research-handoff.json records the research state for downstream tooling; delete the directory if you meant to add to an existing feature."`
 
-If the user chose `skip`, tell the user: `"/research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /research invocation. No handoff.json was written — re-run /research and save to produce both .md and handoff.json."`
+In attach mode, make two substitutions in whichever template applies: replace `"Created feature directory specs/<dirname>/"` with `"Updated feature directory specs/<dirname>/ in place (grill re-entry)"`, and drop the trailing `"; delete the directory if you meant to add to an existing feature."` clause. Attach mode creates no directory and no branch, so there is nothing to delete.
+
+If the user declined to save, tell the user: `"/research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /research invocation. No feature directory, branch, report, or handoff was written — re-run /research and save to produce them."`
