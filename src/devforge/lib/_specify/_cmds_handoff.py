@@ -42,9 +42,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ._schema import SPEC_NUMBER_DIR_RE, SPEC_NUMBER_WIDTH, SPECS_ROOT_DEFAULT
+from ._schema import SPEC_NUMBER_WIDTH
 from ._state import _atomic_write_json, _load_state, _state_path, _state_transaction
 from ._validators import _die
+from _shared.feature_alloc import next_spec_number  # type: ignore[import]
 
 # ---------------------------------------------------------------------------
 # handoff_schema imports — both research and discover schemas.
@@ -206,25 +207,11 @@ def _extract_slug_from_research_path(research_path: str) -> str:
     return base or "unknown"
 
 
-def _next_spec_number(devforge_dir: Path) -> int:
-    """Compute the next NNN spec number by scanning the specs/ directory.
-
-    Looks for subdirectories matching NNN-* pattern under repo root / specs/.
-    Returns 1 if none exist.
-    """
-    # Repo root is the parent of the .devforge dir.
-    repo_root = Path(devforge_dir).parent
-    specs_root = repo_root / SPECS_ROOT_DEFAULT
-    if not specs_root.exists() or not specs_root.is_dir():
-        return 1
-    existing: List[int] = []
-    for entry in specs_root.iterdir():
-        if entry.is_dir():
-            m = SPEC_NUMBER_DIR_RE.match(entry.name)
-            if m:
-                existing.append(int(m.group(1)))
-    return (max(existing) + 1) if existing else 1
-
+# next_spec_number moved to _shared/feature_alloc.py (plan 68 Phase 1) --
+# imported at the top of this module.  Call sites below unchanged in
+# behavior: devforge_dir is already resolved to an absolute path by the
+# caller (see cmd_import_handoff), so the shared function's internal
+# `.resolve()` is a no-op here.
 
 
 def _normalize_ws(s: str) -> str:
@@ -469,7 +456,7 @@ def _import_handoff_research(
 
     # Compute future spec_path.
     devforge_dir = Path(args.devforge_dir).resolve()
-    nnn = _next_spec_number(devforge_dir)
+    nnn = next_spec_number(devforge_dir)
     slug = _extract_slug_from_research_path(handoff.research_path)
     nnn_str = str(nnn).zfill(SPEC_NUMBER_WIDTH)
     future_spec_path = "specs/{0}-{1}/spec.md".format(nnn_str, slug)
@@ -642,7 +629,7 @@ def _import_handoff_discover(
 
     # Compute future spec_path using intent.topic_slug (discover has no research_path).
     devforge_dir = Path(args.devforge_dir).resolve()
-    nnn = _next_spec_number(devforge_dir)
+    nnn = next_spec_number(devforge_dir)
     slug = handoff.intent.topic_slug
     nnn_str = str(nnn).zfill(SPEC_NUMBER_WIDTH)
     future_spec_path = "specs/{0}-{1}/spec.md".format(nnn_str, slug)

@@ -114,12 +114,20 @@ AUTO_MODE_REMINDER_SUBSTRINGS: Tuple[str, ...] = (
     "auto mode is active", "auto mode still active",
 )
 
-FEATURE_NAME_RE: "re.Pattern[str]" = re.compile(
-    r"^[a-z][a-z0-9]*(?:-[a-z0-9]+){1,3}$"
+# Feature-slug validation regex + NNN spec-number allocation constants now
+# live in _shared/feature_alloc.py (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md
+# Phase 1) so /research and /discover can allocate specs/NNN-slug/
+# themselves at intake finalize without duplicating the regex/width/dir
+# pattern. Re-exported here under the original names so every existing
+# `from ._schema import FEATURE_NAME_RE` (etc.) import keeps resolving
+# unchanged -- this is a re-export, not a redefinition; edit the shared
+# module, not this one.
+from _shared.feature_alloc import (  # type: ignore[import]  # noqa: E402
+    FEATURE_NAME_RE,
+    SPEC_NUMBER_DIR_RE,
+    SPEC_NUMBER_WIDTH,
+    SPECS_ROOT_DEFAULT,
 )
-SPECS_ROOT_DEFAULT = "specs"
-SPEC_NUMBER_WIDTH = 3
-SPEC_NUMBER_DIR_RE = re.compile(r"^(\d{3})-")
 
 SUBSECTION_HEADING_BY_KEY: Dict[str, Tuple[str, str]] = {
     "tooling_artifact_presence": ("5.1", "Tooling / artifact presence and absence"),

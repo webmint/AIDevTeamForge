@@ -34,6 +34,7 @@ from ._validators import (
     _validate_nfr_quantifier,
     _validate_scalar,
 )
+from _shared.feature_alloc import decide_branch_action  # type: ignore[import]
 
 
 def _parse_finding_refs(raw: Optional[List[str]]) -> List[str]:
@@ -144,7 +145,17 @@ def cmd_set_date(args: argparse.Namespace) -> int:
 
 
 def cmd_create_branch(args: argparse.Namespace) -> int:
-    """Decide branch creation based on current vs default."""
+    """Decide branch creation based on current vs default.
+
+    Delegates the actual decision to the shared _shared/feature_alloc.py
+    decide_branch_action (plan 68 Phase 1) -- this handler's job is only
+    state I/O + preserving the exact historical stdout/state contract:
+    both of decide_branch_action's "keep-spec" and "keep-other" arms map
+    to state["branch_decision"] = "keep" here (this call site is only ever
+    reached via /specify's Phase 0.2 default-branch-or-other-non-default
+    path -- see decide_branch_action's docstring for why the two "keep"
+    arms render identical text either way).
+    """
     current = (args.current_branch or "").strip()
     default = (args.default_branch or "").strip()
     if not current or not default:
@@ -156,27 +167,25 @@ def cmd_create_branch(args: argparse.Namespace) -> int:
         with _state_transaction(args.devforge_dir) as state:
             state["current_branch"] = current
             state["default_branch"] = default
-            if current != default:
-                state["branch_decision"] = "keep"
-                state["branch_created"] = False
-                sys.stdout.write(
-                    "# already on non-default branch {0!r}; "
-                    "no checkout emitted\n".format(current)
-                )
-                return 0
             number = state.get("spec_number")
             slug = state.get("feature_slug")
-            if not number or not slug:
+            decision, line, error = decide_branch_action(
+                current, default, number, slug,
+            )
+            if decision == "create" and error is not None:
                 return _die(
                     "create-branch: spec_number + feature_slug required "
                     "before checkout (run assign-spec-number + "
                     "assign-feature-name first)",
                     code=2,
                 )
-            branch = "spec/{0}-{1}".format(number, slug)
-            state["branch_decision"] = "create"
-            state["branch_created"] = True
-            sys.stdout.write("git checkout -b {0}\n".format(branch))
+            if decision == "create":
+                state["branch_decision"] = "create"
+                state["branch_created"] = True
+            else:
+                state["branch_decision"] = "keep"
+                state["branch_created"] = False
+            sys.stdout.write(line + "\n")
     except (OSError, json.JSONDecodeError) as err:
         return _die("create-branch: {0}".format(err))
     return 0

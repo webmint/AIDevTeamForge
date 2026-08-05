@@ -2432,5 +2432,171 @@ class TestDiscoverRenderIntakeEcho(unittest.TestCase):
             self.assertIn("maybe also add DOCX export", out)
 
 
+# ---------------------------------------------------------------------------
+# Plan 68 Phase 1 — allocate-feature-dir + render-branch-command.
+# Stateless CLI verbs over the shared _shared/feature_alloc.py substrate.
+# ---------------------------------------------------------------------------
+
+
+class TestAllocateFeatureDirCli(unittest.TestCase):
+    def test_fresh_repo_allocates_001_json_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "allocate-feature-dir", "--slug", "greenfield-idea",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertEqual(payload["number"], 1)
+            self.assertEqual(payload["formatted_number"], "001")
+            self.assertEqual(payload["slug"], "greenfield-idea")
+            self.assertEqual(payload["dirname"], "001-greenfield-idea")
+            self.assertTrue(payload["created"])
+            self.assertTrue(Path(payload["path"]).is_dir())
+
+    def test_second_allocation_increments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            _run([
+                "--devforge-dir", str(devforge),
+                "allocate-feature-dir", "--slug", "first-feature-here",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "allocate-feature-dir", "--slug", "second-feature-here",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertEqual(payload["formatted_number"], "002")
+
+    def test_invalid_slug_exits_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "allocate-feature-dir", "--slug", "onlyoneword",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("invalid slug", r.stderr)
+            self.assertFalse((Path(tmp) / "specs").exists())
+
+    def test_stateless_no_state_files_written(self):
+        """allocate-feature-dir must not read or write discover state --
+        pins the STATELESS claim Phase 2/3 rely on."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            self.assertFalse((devforge / "discover-scope.json").exists())
+            self.assertFalse((devforge / "discover-report.json").exists())
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "allocate-feature-dir", "--slug", "stateless-check-feature",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse((devforge / "discover-scope.json").exists())
+            self.assertFalse((devforge / "discover-report.json").exists())
+
+    def test_stateless_pre_existing_state_left_byte_unchanged(self):
+        """When discover state files already exist, allocate-feature-dir
+        must not mutate them -- pins STATELESS even in the non-empty case."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            memo_path = devforge / "discover-scope.json"
+            report_path = devforge / "discover-report.json"
+            memo_before = '{"sentinel": "pre-existing-memo"}'
+            report_before = '{"sentinel": "pre-existing-report"}'
+            memo_path.write_text(memo_before)
+            report_path.write_text(report_before)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "allocate-feature-dir", "--slug", "stateless-check-feature-two",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(memo_path.read_text(), memo_before)
+            self.assertEqual(report_path.read_text(), report_before)
+
+
+class TestRenderBranchCommandCli(unittest.TestCase):
+    def test_default_branch_emits_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge), "render-branch-command",
+                "--slug", "greenfield-idea", "--number", "001",
+                "--current-branch", "main", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "git checkout -b spec/001-greenfield-idea")
+
+    def test_non_default_branch_emits_informational_comment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge), "render-branch-command",
+                "--slug", "greenfield-idea", "--number", "001",
+                "--current-branch", "feature/scratch", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("already on non-default branch", r.stdout)
+            self.assertIn("no checkout emitted", r.stdout)
+
+    def test_already_on_spec_branch_emits_informational_comment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            r = _run([
+                "--devforge-dir", str(devforge), "render-branch-command",
+                "--slug", "greenfield-idea", "--number", "001",
+                "--current-branch", "spec/000-other-feature", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("already on non-default branch", r.stdout)
+
+    def test_stateless_no_state_files_written(self):
+        """render-branch-command must not read or write discover state --
+        pins the STATELESS claim Phase 2/3 rely on."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            self.assertFalse((devforge / "discover-scope.json").exists())
+            self.assertFalse((devforge / "discover-report.json").exists())
+            r = _run([
+                "--devforge-dir", str(devforge), "render-branch-command",
+                "--slug", "greenfield-idea", "--number", "001",
+                "--current-branch", "main", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertFalse((devforge / "discover-scope.json").exists())
+            self.assertFalse((devforge / "discover-report.json").exists())
+
+    def test_stateless_pre_existing_state_left_byte_unchanged(self):
+        """When discover state files already exist, render-branch-command
+        must not mutate them -- pins STATELESS even in the non-empty case."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            devforge.mkdir()
+            memo_path = devforge / "discover-scope.json"
+            report_path = devforge / "discover-report.json"
+            memo_before = '{"sentinel": "pre-existing-memo"}'
+            report_before = '{"sentinel": "pre-existing-report"}'
+            memo_path.write_text(memo_before)
+            report_path.write_text(report_before)
+            r = _run([
+                "--devforge-dir", str(devforge), "render-branch-command",
+                "--slug", "greenfield-idea", "--number", "001",
+                "--current-branch", "feature/scratch", "--default-branch", "main",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(memo_path.read_text(), memo_before)
+            self.assertEqual(report_path.read_text(), report_before)
+
+
 if __name__ == "__main__":
     unittest.main()

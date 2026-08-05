@@ -97,6 +97,10 @@ from ._cmds_handoff import (  # noqa: E402
     cmd_append_outcome,
     cmd_finalize_handoff,
 )
+from ._cmds_feature_alloc import (  # noqa: E402
+    cmd_allocate_feature_dir,
+    cmd_render_branch_command,
+)
 from ._cmds_design_anchor import cmd_set_scope_design_anchor  # noqa: E402
 from ._cmds_intake import (  # noqa: E402
     INTAKE_KIND_ENUM,
@@ -647,6 +651,43 @@ def _register_subcommands(subparsers) -> None:
         ),
     )
     sp.set_defaults(func=cmd_append_outcome)
+
+    # Plan 68 Phase 1 -- feature-dir allocation substrate (stateless verbs;
+    # see _cmds_feature_alloc.py).
+    sp = subparsers.add_parser(
+        "allocate-feature-dir",
+        help="Allocate a fresh specs/NNN-<slug>/ directory; print result as JSON.",
+    )
+    sp.add_argument("--slug", required=True, help="2-4 word lowercase kebab-case feature slug.")
+    sp.set_defaults(func=cmd_allocate_feature_dir)
+
+    sp = subparsers.add_parser(
+        "render-branch-command",
+        help="Print the branch-decision line (checkout command or informational comment).",
+    )
+    sp.add_argument(
+        "--slug", required=True,
+        help=(
+            "Feature slug for the branch name. Consumed only by the "
+            "'create' arm (current branch == default branch) -- CLI-required "
+            "regardless, because plan 68 D1's finalize ordering guarantees "
+            "allocation always precedes this call, so the caller always has "
+            "it on hand."
+        ),
+    )
+    sp.add_argument(
+        "--number", required=True,
+        help=(
+            "Zero-padded NNN spec number (e.g. '004'). Consumed only by the "
+            "'create' arm (current branch == default branch) -- CLI-required "
+            "regardless, because plan 68 D1's finalize ordering guarantees "
+            "allocation always precedes this call, so the caller always has "
+            "it on hand."
+        ),
+    )
+    sp.add_argument("--current-branch", required=True, dest="current_branch")
+    sp.add_argument("--default-branch", required=True, dest="default_branch")
+    sp.set_defaults(func=cmd_render_branch_command)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
