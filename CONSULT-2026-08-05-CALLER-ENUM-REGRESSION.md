@@ -62,3 +62,12 @@ The v1-era run on the same task did a broad, exhaustive `city/state` sweep acros
 - Harness: `src/commands/research/main.md` Phase 2.4c (~L427/L455/L515/L517); `src/devforge/lib/_research/_cmds_render_verify.py` (checks 8/8b/9); `src/devforge/lib/_research/_topic_conflicts.py` (`detect_mode_from_symptom`, token lists — note "remove"/"delete" are in NEITHER list); `_constants.py` (`MODE_ENUM`).
 - Plans: `66-...md`, `67-CALLER-ENUMERATION-GATE-MODE-DECOUPLE-PLAN.md`.
 - Evidence run: `~/Projects/doosan/testframeworks/forge/` (branch `eval/forge-run1`).
+
+---
+
+## Resolution (2026-08-06)
+
+- **Plan 67 had already SHIPPED when this brief was checked against HEAD** (`e22317c`, release 2.0.7, same day) — asks 1/2/3(a) were answered/moot on arrival: checks 8 AND 9 are mode-independent at HEAD; the shipped shape (unconditional gate + auditable justification escape) IS Option D, without needing the "touches a pre-existing shared symbol" trigger.
+- **Empirical confirmation:** a live CBM-graph trace on the subject repo returned all three `buildSearchQueryFilters` callers (incl. the accounts `SearchOrganizationsV2UseCase` this run missed) and connected it upward to `DealerToAccountNumberModal.vue` (Surface B) via `AccountsBLoC.fetchPassportAccountsWithV2` at depth ≤ 6. The graph had the full answer; the run never queried it.
+- **Correction:** §"What the v2 run actually produced" item 1 says the mode was "auto-classified" Enhancement — overstated. `detect_mode_from_symptom` returns `None` for this prompt (no bug token, no enhancement token → ask-user), so the mode came from a user pick or LLM prose, not the mechanical classifier.
+- **Residuals → `69-CALLER-ENUM-RESIDUAL-HARDENING-PLAN.md`** (Phases 1–4 SHIPPED 2026-08-06): declared-total check-9 floor; trace-to-surface + in/out scope classification (check 19 — closes the "surfacing ≠ catching" gap: enumerating the accounts use case is no longer enough, it must be classified against its surface); the 2.3b surface-count framing axis (ask 3(b)); the Narrowing-rule symmetry conditioning (ask 3(c)); and the checks-8b/13/14/18 sufficiency-of-context mode-widen. Ask 4 (CBM cost): bounded — one depth-1 trace per touched shared helper + one upward trace per caller; the justification escape covers zero-shared-caller changes.
