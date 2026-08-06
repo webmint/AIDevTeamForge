@@ -46,6 +46,7 @@ if str(_LIB_DIR / "_specify") not in sys.path:
 from _plan.handoff_schema import (  # noqa: E402
     BreakdownSeeds,
     ConsultRow,
+    DeadCodeRow,
     DecisionRow,
     DocImpactRow,
     FileImpactRow,
@@ -382,6 +383,48 @@ class PureBuilderRowTests(unittest.TestCase):
             PureBuilderRow(target=123, file="f.ts", why="Pure")  # type: ignore[arg-type]
 
 
+class DeadCodeRowTests(unittest.TestCase):
+    def test_valid_row(self):
+        r = DeadCodeRow(
+            file="src/widgets/widget_filter.ts",
+            anchor_token=": 'primaryShipToCity'",
+            kind="arm",
+            why_dead="Superseded by the generic query-param filter",
+        )
+        self.assertEqual(r.file, "src/widgets/widget_filter.ts")
+        self.assertEqual(r.kind, "arm")
+
+    def test_empty_file_raises(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="", anchor_token="x", kind="arm", why_dead="Dead")
+
+    def test_empty_anchor_token_raises(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="", kind="arm", why_dead="Dead")
+
+    def test_empty_why_dead_raises(self):
+        """Unlike PureBuilderRow.why, why_dead is required non-empty."""
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="x", kind="arm", why_dead="")
+
+    def test_invalid_kind_raises(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="x", kind="bogus", why_dead="Dead")
+
+    def test_all_enum_kinds_accepted(self):
+        for kind in ("arm", "function", "param", "import", "branch"):
+            r = DeadCodeRow(file="f.ts", anchor_token="x", kind=kind, why_dead="Dead")
+            self.assertEqual(r.kind, kind)
+
+    def test_non_string_file_raises(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file=123, anchor_token="x", kind="arm", why_dead="Dead")  # type: ignore[arg-type]
+
+    def test_non_string_why_dead_raises(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="x", kind="arm", why_dead=123)  # type: ignore[arg-type]
+
+
 class ProvenanceTests(unittest.TestCase):
     def test_both_none_valid(self):
         p = Provenance(upstream_handoff_path=None, upstream_handoff_kind=None)
@@ -529,6 +572,83 @@ class HandoffSchemaTests(unittest.TestCase):
                 dependencies=[],
                 pure_builder_targets="not a list",  # type: ignore[arg-type]
             )
+
+    def test_breakdown_seeds_constructible_without_dead_code_rows(self):
+        """Back-compat: construction without dead_code_rows still works,
+        with dead_code_rows defaulting to an empty list (plan 71 D6)."""
+        seeds = BreakdownSeeds(
+            layer_map=[],
+            key_design_decisions=[],
+            file_impact=[],
+            doc_impact=[],
+            risks=[],
+            specialist_consultation=[],
+            dependencies=[],
+        )
+        self.assertEqual(seeds.dead_code_rows, [])
+
+    def test_breakdown_seeds_with_dead_code_rows(self):
+        """dead_code_rows accepts a list of DeadCodeRow."""
+        row = DeadCodeRow(
+            file="src/widgets/widget_filter.ts",
+            anchor_token=": 'primaryShipToCity'",
+            kind="arm",
+            why_dead="Superseded by the generic filter",
+        )
+        seeds = BreakdownSeeds(
+            layer_map=[],
+            key_design_decisions=[],
+            file_impact=[],
+            doc_impact=[],
+            risks=[],
+            specialist_consultation=[],
+            dependencies=[],
+            dead_code_rows=[row],
+        )
+        self.assertEqual(len(seeds.dead_code_rows), 1)
+        self.assertEqual(seeds.dead_code_rows[0].kind, "arm")
+
+    def test_breakdown_seeds_dead_code_rows_non_list_raises(self):
+        with self.assertRaises(ValueError):
+            BreakdownSeeds(
+                layer_map=[],
+                key_design_decisions=[],
+                file_impact=[],
+                doc_impact=[],
+                risks=[],
+                specialist_consultation=[],
+                dependencies=[],
+                dead_code_rows="not a list",  # type: ignore[arg-type]
+            )
+
+    def test_dict_to_dataclass_old_plan_handoff_json_without_dead_code_rows(self):
+        """Old-JSON back-compat (plan 71 D6): a plan-handoff.json dict built
+        BEFORE dead_code_rows existed (no such key in breakdown_seeds)
+        reconstructs via _dict_to_dataclass with dead_code_rows == []."""
+        old_dict = {
+            "schema_version": SCHEMA_VERSION,
+            "handoff_kind": HANDOFF_KIND,
+            "plan_path": "specs/009/plan.md",
+            "plan_completed_at": "2026-05-22T10:00:00Z",
+            "provenance": {
+                "upstream_handoff_path": None,
+                "upstream_handoff_kind": None,
+                "spec_path": None,
+            },
+            "breakdown_seeds": {
+                "layer_map": [],
+                "key_design_decisions": [],
+                "file_impact": [],
+                "doc_impact": [],
+                "risks": [],
+                "specialist_consultation": [],
+                "dependencies": [],
+                "pure_builder_targets": [],
+                # dead_code_rows key intentionally absent (pre-plan-71 shape).
+            },
+        }
+        h = _dict_to_dataclass(Handoff, old_dict)
+        self.assertEqual(h.breakdown_seeds.dead_code_rows, [])
 
 
 # ---------------------------------------------------------------------------
@@ -723,6 +843,24 @@ class FinalizeHandoffHappyPathTests(unittest.TestCase):
         for row in h.breakdown_seeds.pure_builder_targets:
             self.assertTrue(row.target.strip(), "target must be non-empty")
             self.assertTrue(row.file.strip(), "file must be non-empty")
+
+    def test_finalize_handoff_dead_code_rows_parsed(self):
+        """Fixture plan has 2 real Change-Induced Dead Code rows (1 placeholder skipped)."""
+        plan_dir = self.tmp / "specs" / "009-widget-catalog-search"
+        plan_path = self._write_fixture_plan(plan_dir)
+        _run("finalize-handoff", str(plan_path), cwd=self.tmp)
+
+        h = _load_handoff(plan_dir / "plan-handoff.json")
+        # Fixture has 2 real rows + 1 [file] placeholder row.
+        self.assertEqual(len(h.breakdown_seeds.dead_code_rows), 2)
+        anchors = [r.anchor_token for r in h.breakdown_seeds.dead_code_rows]
+        self.assertIn(": 'primaryShipToCity'", anchors)
+        self.assertIn("applyLegacyTagFilter", anchors)
+        for row in h.breakdown_seeds.dead_code_rows:
+            self.assertTrue(row.file.strip(), "file must be non-empty")
+            self.assertTrue(row.anchor_token.strip(), "anchor_token must be non-empty")
+            self.assertIn(row.kind, ("arm", "function", "param", "import", "branch"))
+            self.assertTrue(row.why_dead.strip(), "why_dead must be non-empty")
 
     def test_finalize_handoff_dependencies_parsed(self):
         """Fixture plan has 2 non-blank dependency lines."""
@@ -1150,6 +1288,93 @@ class ParsePureBuilderTargetsTests(unittest.TestCase):
             "| fn | f.ts | Pure |\n"
         )
         rows = plan_helper._parse_pure_builder_targets(content)
+        self.assertEqual(len(rows), 1)
+
+
+class ParseDeadCodeRowsTests(unittest.TestCase):
+    def test_parses_real_rows(self):
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| src/widgets/widget_filter.ts | : 'primaryShipToCity' | arm | Superseded |\n"
+            "| src/widgets/legacy_filter.ts | applyLegacyTagFilter | function | Replaced |\n"
+            "| [file] | [anchor] | [kind] | [why] |\n"
+        )
+        rows = plan_helper._parse_dead_code_rows(content)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].file, "src/widgets/widget_filter.ts")
+        self.assertEqual(rows[0].kind, "arm")
+        self.assertEqual(rows[1].anchor_token, "applyLegacyTagFilter")
+        self.assertEqual(rows[1].kind, "function")
+
+    def test_section_absent_returns_empty(self):
+        rows = plan_helper._parse_dead_code_rows("## Summary\n\nNothing.\n")
+        self.assertEqual(rows, [])
+
+    def test_placeholder_row_skipped(self):
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| f.ts | tok | arm | Dead |\n"
+            "| [file] | [anchor] | [kind] | [why] |\n"
+        )
+        rows = plan_helper._parse_dead_code_rows(content)
+        self.assertEqual(len(rows), 1)
+
+    def test_invalid_kind_row_skipped(self):
+        """A row whose Kind is not in DEAD_CODE_KIND_ENUM fails DeadCodeRow
+        construction and is silently skipped (mirrors sibling parsers'
+        try/except-around-construction malformed-row handling)."""
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| f.ts | tok | arm | Dead |\n"
+            "| f2.ts | tok2 | bogus-kind | Dead too |\n"
+        )
+        rows = plan_helper._parse_dead_code_rows(content)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].file, "f.ts")
+
+    def test_empty_why_dead_row_skipped(self):
+        """A row with an empty Why dead column fails DeadCodeRow
+        construction (why_dead is required non-empty) and is skipped."""
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind |\n"
+            "| --- | --- | --- |\n"
+            "| f.ts | tok | arm |\n"
+        )
+        rows = plan_helper._parse_dead_code_rows(content)
+        self.assertEqual(rows, [])
+
+    def test_boundary_stops_before_risk_assessment(self):
+        """Change-Induced Dead Code rows do not bleed into Risk Assessment."""
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| f.ts | tok | arm | Dead |\n\n"
+            "## Risk Assessment\n\n"
+            "| Risk | Likelihood | Impact | Mitigation |\n"
+            "| --- | --- | --- | --- |\n"
+            "| Something | Low | Low | Mitigation |\n"
+        )
+        rows = plan_helper._parse_dead_code_rows(content)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].file, "f.ts")
+
+    def test_case_insensitive_heading(self):
+        """Heading matching is case-insensitive, matching sibling parsers."""
+        content = (
+            "### change-induced dead code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| f.ts | tok | arm | Dead |\n"
+        )
+        rows = plan_helper._parse_dead_code_rows(content)
         self.assertEqual(len(rows), 1)
 
 

@@ -26,11 +26,13 @@ if str(_LIB_DIR) not in sys.path:
 
 from _breakdown.handoff_schema import (  # noqa: E402
     Breakdown,
+    DeadCodeRow,
     Provenance,
     TaskRow,
     SCHEMA_VERSION,
     HANDOFF_KIND,
     REVIEW_CHECKPOINT_ENUM,
+    DEAD_CODE_KIND_ENUM,
 )
 
 
@@ -368,6 +370,70 @@ class TestProvenanceRejectEmptySpecPath(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# DeadCodeRow tests (plan 71 D8(b) passthrough carrier).
+#
+# Self-contained duplicate of _plan.handoff_schema.DeadCodeRow -- same shape,
+# same validation. Mirrors DeadCodeRowTests in tests/lib/test_plan_handoff.py.
+# ---------------------------------------------------------------------------
+
+
+class TestDeadCodeRowValid(unittest.TestCase):
+    def test_valid_row(self):
+        r = DeadCodeRow(
+            file="src/widgets/widget_filter.ts",
+            anchor_token=": 'primaryShipToCity'",
+            kind="arm",
+            why_dead="Superseded by the generic query-param filter",
+        )
+        self.assertEqual(r.file, "src/widgets/widget_filter.ts")
+        self.assertEqual(r.kind, "arm")
+
+    def test_all_enum_kinds_accepted(self):
+        for kind in DEAD_CODE_KIND_ENUM:
+            r = DeadCodeRow(file="f.ts", anchor_token="x", kind=kind, why_dead="Dead")
+            self.assertEqual(r.kind, kind)
+
+
+class TestDeadCodeRowRejectEmptyFile(unittest.TestCase):
+    def test_empty_string(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="", anchor_token="x", kind="arm", why_dead="Dead")
+
+    def test_non_string(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file=123, anchor_token="x", kind="arm", why_dead="Dead")  # type: ignore[arg-type]
+
+
+class TestDeadCodeRowRejectEmptyAnchorToken(unittest.TestCase):
+    def test_empty_string(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="", kind="arm", why_dead="Dead")
+
+
+class TestDeadCodeRowRejectInvalidKind(unittest.TestCase):
+    def test_not_in_enum(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="x", kind="bogus", why_dead="Dead")
+
+    def test_empty_string(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="x", kind="", why_dead="Dead")
+
+
+class TestDeadCodeRowRejectEmptyWhyDead(unittest.TestCase):
+    """Unlike the pure-builder row's optional 'why', why_dead is required
+    non-empty -- a claim of change-induced deadness must be justified."""
+
+    def test_empty_string(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="x", kind="arm", why_dead="")
+
+    def test_non_string(self):
+        with self.assertRaises(ValueError):
+            DeadCodeRow(file="f.ts", anchor_token="x", kind="arm", why_dead=123)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
 # Breakdown top-level tests
 # ---------------------------------------------------------------------------
 
@@ -412,6 +478,23 @@ class TestBreakdownValid(unittest.TestCase):
         )
         bd = _minimal_breakdown(provenance=prov)
         self.assertEqual(bd.provenance.upstream_handoff_kind, "plan")
+
+    def test_dead_code_rows_defaults_empty(self):
+        """Back-compat (plan 71 D6): construction without dead_code_rows
+        still works, defaulting to an empty list."""
+        bd = _minimal_breakdown()
+        self.assertEqual(bd.dead_code_rows, [])
+
+    def test_with_dead_code_rows(self):
+        row = DeadCodeRow(
+            file="src/widgets/widget_filter.ts",
+            anchor_token=": 'primaryShipToCity'",
+            kind="arm",
+            why_dead="Superseded by the generic filter",
+        )
+        bd = _minimal_breakdown(dead_code_rows=[row])
+        self.assertEqual(len(bd.dead_code_rows), 1)
+        self.assertEqual(bd.dead_code_rows[0].kind, "arm")
 
 
 class TestBreakdownRejectWrongSchemaVersion(unittest.TestCase):
@@ -522,6 +605,16 @@ class TestBreakdownRejectNonStringDependencyGraph(unittest.TestCase):
             _minimal_breakdown(dependency_graph=0)
 
 
+class TestBreakdownRejectNonListDeadCodeRows(unittest.TestCase):
+    def test_none_rejected(self):
+        with self.assertRaises(ValueError):
+            _minimal_breakdown(dead_code_rows=None)
+
+    def test_string_rejected(self):
+        with self.assertRaises(ValueError):
+            _minimal_breakdown(dead_code_rows="not a list")
+
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -548,6 +641,7 @@ class TestConstants(unittest.TestCase):
 # `plan_helper finalize-handoff` to produce plan-handoff.json, then asserts
 # the rendered block matches the seeded content.
 
+import json
 import os
 import re
 import subprocess
@@ -1794,6 +1888,80 @@ class RenderTaskFileTests(_CwdIsolationBH):
         self.assertEqual(with_empty.returncode, 0, with_empty.stderr)
         self.assertEqual(with_empty.stdout, without_flag.stdout)
 
+    # ------------------------------------------------------------------
+    # --dead-code-removal flag (plan 71 D7/D8(b)) -- mirrors
+    # --property-targets' mechanics exactly.
+    # ------------------------------------------------------------------
+
+    def test_no_dead_code_removal_flag_byte_identical_to_pre_change_output(self):
+        """Without --dead-code-removal, output is BYTE-IDENTICAL to the
+        pre-flag skeleton -- no '**Dead code removal**:' line anywhere."""
+        result = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("**Dead code removal**:", result.stdout)
+        no_flag = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(result.stdout, no_flag.stdout)
+
+    def test_dead_code_removal_line_present_after_context_docs(self):
+        """--dead-code-removal (with no --property-targets) emits a
+        '**Dead code removal**:' line immediately after '**Context docs**:',
+        verbatim (stripped)."""
+        result = _run_bh(
+            self.tmp_path, "render-task-file",
+            "--dead-code-removal", "primaryShipTo* arms removed",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        context_idx = next(
+            i for i, ln in enumerate(lines) if ln.startswith("**Context docs**:")
+        )
+        self.assertEqual(
+            lines[context_idx + 1],
+            "**Dead code removal**: primaryShipTo* arms removed",
+        )
+
+    def test_dead_code_removal_line_present_after_property_targets(self):
+        """When BOTH flags are given, '**Dead code removal**:' follows
+        '**Property targets**:', which itself follows '**Context docs**:'."""
+        result = _run_bh(
+            self.tmp_path, "render-task-file",
+            "--property-targets", "filterWidgetsByQuery",
+            "--dead-code-removal", "primaryShipTo* arms removed",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        context_idx = next(
+            i for i, ln in enumerate(lines) if ln.startswith("**Context docs**:")
+        )
+        self.assertEqual(
+            lines[context_idx + 1],
+            "**Property targets**: filterWidgetsByQuery",
+        )
+        self.assertEqual(
+            lines[context_idx + 2],
+            "**Dead code removal**: primaryShipTo* arms removed",
+        )
+
+    def test_dead_code_removal_value_stripped(self):
+        """Leading/trailing whitespace in --dead-code-removal is stripped."""
+        result = _run_bh(
+            self.tmp_path, "render-task-file",
+            "--dead-code-removal", "  removed the dead arm  ",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("**Dead code removal**: removed the dead arm", result.stdout)
+        self.assertNotIn("**Dead code removal**:  removed", result.stdout)
+
+    def test_empty_dead_code_removal_flag_omits_line(self):
+        """--dead-code-removal '' (empty after stripping) omits the line
+        entirely -- byte-identical to not passing the flag at all."""
+        with_empty = _run_bh(
+            self.tmp_path, "render-task-file", "--dead-code-removal", "   "
+        )
+        without_flag = _run_bh(self.tmp_path, "render-task-file")
+        self.assertEqual(with_empty.returncode, 0, with_empty.stderr)
+        self.assertEqual(with_empty.stdout, without_flag.stdout)
+
 
 # ---------------------------------------------------------------------------
 # Tests: render-tasks-index (Phase 2, Verb 3)
@@ -2542,6 +2710,36 @@ def _produce_plan_handoff_with_targets(tmp_path, plan_path, targets):
     r = _run_plan_helper_finalize(plan_path, tmp_path)
     assert r.returncode == 0, "plan_helper finalize-handoff failed: " + r.stderr
     return Path(plan_path).parent / "plan-handoff.json"
+
+
+# ---------------------------------------------------------------------------
+# Fixture helper: plan.md with a ### Change-Induced Dead Code table, and the
+# real plan_helper finalize-handoff producer (plan 71 D8(b) passthrough).
+# ---------------------------------------------------------------------------
+
+
+def _write_plan_with_dead_code_rows(plan_path, rows):
+    """Write a plan.md with a '### Change-Induced Dead Code' table.
+
+    rows: list of (file, anchor_token, kind, why_dead) tuples -> one data
+    row each. Mirrors the real plan.md shape plan_helper's parser expects
+    (see plan_helper._parse_dead_code_rows).
+    """
+    table_rows = "\n".join(
+        "| {0} | {1} | {2} | {3} |".format(f, a, k, w) for f, a, k, w in rows
+    )
+    content = (
+        "# Plan: Dead Code Passthrough Test\n\n"
+        "**Date**: 2026-08-06\n"
+        "**Status**: Approved\n\n"
+        "## Summary\n\nBuild something that kills a dead branch.\n\n"
+        "### Change-Induced Dead Code\n\n"
+        "| File | Anchor token | Kind | Why dead |\n"
+        "|------|--------------|------|----------|\n"
+        "{0}\n\n"
+        "## Dependencies\n\nNo external package dependencies.\n"
+    ).format(table_rows)
+    Path(plan_path).write_text(content, encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -4602,6 +4800,262 @@ class FinalizeHandoffPropertyCoverageGateTests(_CwdIsolationBH):
 
         written = feature_dir / "breakdown-handoff.json"
         self.assertTrue(written.is_file())
+
+
+class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
+    """Tests for the dead_code_rows passthrough folded into finalize-handoff.
+
+    Verifies plan 71 D8(b) PLUS the review-hardening SILENT-vs-LOUD
+    asymmetry (mirrors _validate_property_coverage's own asymmetry):
+
+      - SILENT (no warning, no chokepoint): sibling plan-handoff.json
+        absent, or present but breakdown_seeds/dead_code_rows key absent
+        (pre-plan-71 handoff, or nothing declared) -> [] with no stderr.
+      - LOUD but non-fatal WARN: sibling present but unreadable/malformed/
+        wrong-shape, or individual row dicts malformed -> stderr WARN,
+        extraction still returns (a possibly partial) rows list, and
+        finalize-handoff still succeeds UNLESS the chokepoint below fires.
+      - CHOKEPOINT (fails closed, exit 2): plan.md's own
+        '### Change-Induced Dead Code' section declares at least one real
+        row, but the passthrough produced NONE (for any reason above) --
+        the MUST-lane kill-list may never ship as an empty carrier.
+    """
+
+    def setUp(self):
+        super().setUp()
+        _make_agents_dir(self.tmp_path, ["backend-engineer"])
+
+    def _setup_feature(self, slug, produce_sibling, rows=None):
+        """Build a finalize-handoff fixture.
+
+        produce_sibling=False: no sibling plan-handoff.json produced at all
+          (plan.md is written but plan_helper finalize-handoff is never run).
+        produce_sibling=True, rows=None: sibling IS produced from a minimal
+          plan.md with NO '### Change-Induced Dead Code' section at all.
+        produce_sibling=True, rows=[...]: sibling IS produced from a plan.md
+          with a '### Change-Induced Dead Code' table carrying the given
+          (file, anchor_token, kind, why_dead) rows.
+
+        Returns (feature_dir, plan_path, tasks_dir).
+        """
+        feature_dir = self.tmp_path / "specs" / slug
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        if produce_sibling:
+            if rows:
+                _write_plan_with_dead_code_rows(plan_path, rows)
+            else:
+                _write_minimal_plan(str(plan_path))
+            r = _run_plan_helper_finalize(plan_path, self.tmp_path)
+            self.assertEqual(
+                r.returncode, 0, "plan_helper finalize-handoff failed: " + r.stderr
+            )
+            self.assertTrue((feature_dir / "plan-handoff.json").exists())
+        else:
+            _write_minimal_plan(str(plan_path))
+
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+        _write_full_task_file(
+            tasks_dir, "001", "Define types", slug,
+            agent="backend-engineer",
+            expects=[], produces=["TypeDef exported"], ac_ids="AC-1",
+        )
+        _write_readme(tasks_dir)
+        return feature_dir, plan_path, tasks_dir
+
+    def test_declared_rows_copied_verbatim(self):
+        """A sibling plan-handoff.json declaring dead_code_rows -> those
+        exact rows appear in breakdown-handoff.json's dead_code_rows."""
+        feature_dir, plan_path, _ = self._setup_feature(
+            "dc001-declared",
+            produce_sibling=True,
+            rows=[
+                (
+                    "src/widgets/widget_filter.ts",
+                    ": 'primaryShipToCity'",
+                    "arm",
+                    "Superseded by the generic query-param filter",
+                ),
+                (
+                    "src/widgets/legacy_filter.ts",
+                    "applyLegacyTagFilter",
+                    "function",
+                    "Fully replaced",
+                ),
+            ],
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-08-06T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+        written = json.loads(
+            (feature_dir / "breakdown-handoff.json").read_text(encoding="utf-8")
+        )
+        rows = written["dead_code_rows"]
+        self.assertEqual(len(rows), 2)
+        anchors = [r["anchor_token"] for r in rows]
+        self.assertIn(": 'primaryShipToCity'", anchors)
+        self.assertIn("applyLegacyTagFilter", anchors)
+        kinds = {r["anchor_token"]: r["kind"] for r in rows}
+        self.assertEqual(kinds[": 'primaryShipToCity'"], "arm")
+        self.assertEqual(kinds["applyLegacyTagFilter"], "function")
+
+    def test_no_dead_code_section_in_plan_empty_passthrough(self):
+        """A sibling plan-handoff.json with NO Change-Induced Dead Code
+        section declared -> dead_code_rows == [] in breakdown-handoff.json."""
+        feature_dir, plan_path, _ = self._setup_feature(
+            "dc002-none-declared", produce_sibling=True, rows=None
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-08-06T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+        written = json.loads(
+            (feature_dir / "breakdown-handoff.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(written["dead_code_rows"], [])
+
+    def test_no_sibling_plan_handoff_empty_passthrough_finalize_succeeds(self):
+        """No sibling plan-handoff.json at all -> dead_code_rows == [],
+        finalize-handoff still succeeds (fail-soft carrier, not a gate)."""
+        feature_dir, plan_path, _ = self._setup_feature(
+            "dc003-no-sibling", produce_sibling=False
+        )
+        self.assertFalse((feature_dir / "plan-handoff.json").exists())
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-08-06T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+        written = json.loads(
+            (feature_dir / "breakdown-handoff.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(written["dead_code_rows"], [])
+
+    def test_malformed_sibling_plan_handoff_warns_and_finalize_succeeds(self):
+        """A sibling plan-handoff.json that is not valid JSON -> dead_code_rows
+        == [] AND a stderr WARN is emitted (case 2 of the new asymmetry), but
+        finalize-handoff still succeeds because plan.md itself declares NO
+        real dead-code rows -- the chokepoint has nothing to enforce."""
+        feature_dir, plan_path, _ = self._setup_feature(
+            "dc004-malformed-sibling", produce_sibling=False
+        )
+        (feature_dir / "plan-handoff.json").write_text(
+            "{not valid json", encoding="utf-8"
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-08-06T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("WARN", result.stderr)
+        self.assertIn("dead_code_rows", result.stderr)
+
+        written = json.loads(
+            (feature_dir / "breakdown-handoff.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(written["dead_code_rows"], [])
+
+    def test_declared_but_unsubstantiated_fails_closed(self):
+        """plan.md declares a real '### Change-Induced Dead Code' row, but
+        NO sibling plan-handoff.json exists -> the passthrough produces []
+        and the declared-but-unsubstantiated CHOKEPOINT fails closed
+        (exit 2), naming plan_helper finalize-handoff as the remedy."""
+        feature_dir = self.tmp_path / "specs" / "dc005-unsubstantiated"
+        feature_dir.mkdir(parents=True)
+        plan_path = feature_dir / "plan.md"
+        _write_plan_with_dead_code_rows(
+            plan_path,
+            [
+                (
+                    "src/widgets/widget_filter.ts",
+                    ": 'primaryShipToCity'",
+                    "arm",
+                    "Superseded by the generic query-param filter",
+                ),
+            ],
+        )
+        # Deliberately do NOT run plan_helper finalize-handoff -> no sibling.
+        self.assertFalse((feature_dir / "plan-handoff.json").exists())
+
+        tasks_dir = feature_dir / "tasks"
+        tasks_dir.mkdir()
+        _write_full_task_file(
+            tasks_dir, "001", "Define types", "dc005-unsubstantiated",
+            agent="backend-engineer",
+            expects=[], produces=["TypeDef exported"], ac_ids="AC-1",
+        )
+        _write_readme(tasks_dir)
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-08-06T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("Change-Induced Dead Code", result.stderr)
+        self.assertIn("plan_helper finalize-handoff", result.stderr)
+        self.assertFalse(
+            (feature_dir / "breakdown-handoff.json").exists(),
+            "breakdown-handoff.json must NOT be written on the "
+            "declared-but-unsubstantiated chokepoint",
+        )
+
+    def test_mixed_valid_and_invalid_rows_keeps_valid_warns_and_does_not_fail_closed(self):
+        """A hand-written sibling plan-handoff.json whose dead_code_rows
+        carries one VALID row + one INVALID row (bad kind) -> finalize-handoff
+        keeps exactly the valid row in breakdown-handoff.json, emits the
+        malformed-row stderr WARN, and (since extraction is non-empty) the
+        chokepoint does NOT fire -- exit 0."""
+        feature_dir, plan_path, _ = self._setup_feature(
+            "dc006-mixed-rows", produce_sibling=False
+        )
+        (feature_dir / "plan-handoff.json").write_text(
+            json.dumps({
+                "breakdown_seeds": {
+                    "dead_code_rows": [
+                        {
+                            "file": "src/widgets/widget_filter.ts",
+                            "anchor_token": ": 'primaryShipToCity'",
+                            "kind": "arm",
+                            "why_dead": "Superseded by the generic filter",
+                        },
+                        {
+                            "file": "src/widgets/other.ts",
+                            "anchor_token": "someToken",
+                            "kind": "bogus",
+                            "why_dead": "Also dead",
+                        },
+                    ]
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        result = _run_bh(
+            self.tmp_path, "finalize-handoff",
+            str(plan_path), "--completed-at", "2026-08-06T12:00:00Z",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("WARN", result.stderr)
+        self.assertIn("1 of 2", result.stderr)
+
+        written = json.loads(
+            (feature_dir / "breakdown-handoff.json").read_text(encoding="utf-8")
+        )
+        rows = written["dead_code_rows"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["anchor_token"], ": 'primaryShipToCity'")
+        self.assertEqual(rows[0]["kind"], "arm")
 
 
 # ---------------------------------------------------------------------------

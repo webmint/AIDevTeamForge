@@ -962,12 +962,24 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
     When absent (or empty after stripping), output is BYTE-IDENTICAL to the
     pre-flag skeleton -- no line is emitted, no back-compat branch needed
     since this is a pure additive emitter flag.
+
+    --dead-code-removal (plan 71 D7/D8(b)): mirrors --property-targets'
+    mechanics exactly. When passed and non-empty (after stripping), a
+    '**Dead code removal**:' line is emitted immediately after the
+    '**Property targets**:' line when present, else immediately after
+    '**Context docs**:' -- so the D7 owning-task fold-in is visible on the
+    task file. When absent (or empty after stripping), output is
+    BYTE-IDENTICAL to the pre-flag skeleton -- no line is emitted.
     """
     number = getattr(args, "number", None) or "[NNN]"
     title = getattr(args, "title", None) or "[Title]"
     feature = getattr(args, "feature", None) or "[feature directory name]"
     property_targets_raw = getattr(args, "property_targets", None)
     property_targets = property_targets_raw.strip() if property_targets_raw else ""
+    dead_code_removal_raw = getattr(args, "dead_code_removal", None)
+    dead_code_removal = (
+        dead_code_removal_raw.strip() if dead_code_removal_raw else ""
+    )
 
     lines: List[str] = []
 
@@ -986,6 +998,8 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
     lines.append("**Context docs**: [doc file paths] or None")
     if property_targets:
         lines.append("**Property targets**: {0}".format(property_targets))
+    if dead_code_removal:
+        lines.append("**Dead code removal**: {0}".format(dead_code_removal))
     lines.append("")
 
     # Files table.
@@ -1894,6 +1908,18 @@ _PURE_BUILDER_HEADING_RE = re.compile(
     r"^###\s+Pure-Builder Targets\b", re.MULTILINE | re.IGNORECASE
 )
 
+# Change-Induced Dead Code section heading in plan.md -- IDENTICAL pattern to
+# plan_helper._parse_dead_code_rows's own producer-side heading matcher (same
+# literal regex, same flags), so _plan_declares_dead_code_rows's section
+# boundary can never disagree with what the producer parsed. Used ONLY via
+# _plan_declares_dead_code_rows, itself used ONLY by the
+# cmd_finalize_handoff_breakdown declared-but-unsubstantiated chokepoint
+# (plan 71 review hardening, mirrors the plan-66 property-coverage
+# fail-closed-fallback shape).
+_DEAD_CODE_HEADING_RE = re.compile(
+    r"^###\s+Change-Induced Dead Code\b", re.MULTILINE | re.IGNORECASE
+)
+
 
 def _validate_property_coverage(tasks_dir, plan_handoff_path):
     # type: (str, str) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]], int, Optional[str]]
@@ -2067,6 +2093,32 @@ def _plan_declares_pure_builder_targets(plan_md_content):
     same as if the section were absent entirely.
     """
     section = _extract_plan_section(plan_md_content, _PURE_BUILDER_HEADING_RE)
+    if not section:
+        return False
+    for cells in _parse_table_rows(section):
+        if cells and not _is_placeholder_cell(cells[0]):
+            return True
+    return False
+
+
+def _plan_declares_dead_code_rows(plan_md_content):
+    # type: (str) -> bool
+    """Return True iff plan.md declares at least one real dead-code row.
+
+    Mirrors plan_helper._parse_dead_code_rows's OWN criterion -- section
+    exists (via the same '### Change-Induced Dead Code' heading pattern,
+    _DEAD_CODE_HEADING_RE) AND at least one row whose first cell (File) is
+    non-empty and non-placeholder -- using breakdown_helper's OWN existing
+    primitives (_extract_plan_section, _parse_table_rows, _is_placeholder_cell).
+    Does NOT import plan_helper (breakdown_helper owns its own copies of
+    these shared parsing primitives; the two modules deliberately do not
+    depend on each other). Mirrors _plan_declares_pure_builder_targets.
+
+    A heading with ONLY placeholder rows returns False -- the plan.md
+    declared the SECTION but not an actual dead-code row, the same as if
+    the section were absent entirely.
+    """
+    section = _extract_plan_section(plan_md_content, _DEAD_CODE_HEADING_RE)
     if not section:
         return False
     for cells in _parse_table_rows(section):
@@ -2368,6 +2420,110 @@ def _extract_readme_additions(readme_content: str) -> "List[str]":
 # ---------------------------------------------------------------------------
 
 
+def _extract_dead_code_rows(plan_handoff_path: Path) -> "Tuple[List[Any], Optional[str]]":
+    """Read breakdown_seeds.dead_code_rows from a sibling plan-handoff.json.
+
+    Pure passthrough (plan 71 D8(b) carrier). Mirrors
+    _validate_property_coverage's SILENT-vs-LOUD asymmetry (NOT its
+    tolerant-of-everything predecessor): extraction itself never blocks --
+    it always returns a (possibly partial) rows list -- but it now
+    distinguishes two failure classes via the returned warning:
+
+    Returns (rows, warning).
+
+    warning is None in the SILENT cases: plan_handoff_path is absent, OR
+    the sibling is a well-formed JSON object whose 'breakdown_seeds' is
+    absent/None, OR 'breakdown_seeds' is present but carries no
+    'dead_code_rows' key (None). These are the legitimate "nothing
+    declared, or a pre-plan-71 handoff" cases and must not warn -- an
+    empty dead_code_rows list on disk is treated the same way.
+
+    warning is a short non-empty diagnostic string in the LOUD cases: the
+    sibling exists but is unreadable/not valid JSON/root not a JSON
+    object, 'breakdown_seeds' is present but not a JSON object,
+    'dead_code_rows' is present but not a JSON array, or at least one row
+    dict failed DeadCodeRow construction (a PARTIAL loss -- the other rows
+    still parse and are returned). The caller (cmd_finalize_handoff_breakdown)
+    writes this to stderr as a non-fatal WARN naming what was lost
+    (plan-42 D7 tripwire pattern) -- extraction still never blocks on its
+    own; only the sibling declared-but-unsubstantiated CHOKEPOINT at the
+    call site can fail closed, and only when plan.md independently
+    declares real change-induced-dead-code rows that this extraction
+    produced none of (a plan.md-declared MUST-lane kill-list may never
+    ship as an empty breakdown-handoff.json carrier -- the plans-38/42
+    silent-void class this hardening closes).
+    """
+    from _breakdown.handoff_schema import DeadCodeRow
+
+    if not plan_handoff_path.is_file():
+        return [], None
+    try:
+        raw_text = plan_handoff_path.read_text(encoding="utf-8")
+        d = json.loads(raw_text)
+    except (OSError, IOError, json.JSONDecodeError) as err:
+        return [], (
+            "sibling plan-handoff.json at {0} is unreadable/not valid "
+            "JSON ({1}) -- breakdown_seeds.dead_code_rows could not be "
+            "extracted".format(plan_handoff_path, err)
+        )
+    if not isinstance(d, dict):
+        return [], (
+            "sibling plan-handoff.json at {0}: root is not a JSON object "
+            "-- breakdown_seeds.dead_code_rows could not be "
+            "extracted".format(plan_handoff_path)
+        )
+
+    seeds = d.get("breakdown_seeds")
+    if seeds is None:
+        return [], None
+    if not isinstance(seeds, dict):
+        return [], (
+            "sibling plan-handoff.json at {0}: 'breakdown_seeds' is "
+            "present but not a JSON object -- dead_code_rows could not "
+            "be extracted".format(plan_handoff_path)
+        )
+
+    raw_rows = seeds.get("dead_code_rows")
+    if raw_rows is None:
+        return [], None
+    if not isinstance(raw_rows, list):
+        return [], (
+            "sibling plan-handoff.json at {0}: "
+            "breakdown_seeds.dead_code_rows is present but not a JSON "
+            "array -- dead_code_rows could not be extracted".format(
+                plan_handoff_path
+            )
+        )
+
+    result: "List[Any]" = []
+    malformed = 0
+    for raw in raw_rows:
+        if not isinstance(raw, dict):
+            malformed += 1
+            continue
+        try:
+            result.append(
+                DeadCodeRow(
+                    file=raw.get("file", ""),
+                    anchor_token=raw.get("anchor_token", ""),
+                    kind=raw.get("kind", ""),
+                    why_dead=raw.get("why_dead", ""),
+                )
+            )
+        except (TypeError, ValueError):
+            malformed += 1
+            continue
+
+    if malformed:
+        return result, (
+            "sibling plan-handoff.json at {0}: {1} of {2} "
+            "breakdown_seeds.dead_code_rows entries were malformed and "
+            "skipped".format(plan_handoff_path, malformed, len(raw_rows))
+        )
+
+    return result, None
+
+
 def _resolve_sibling_plan_handoff(plan_dir: Path) -> Optional[str]:
     """Return path to the sibling plan-handoff.json if it is valid, else None.
 
@@ -2462,6 +2618,23 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
       upstream_handoff_path:  sibling plan-handoff.json if present + kind=='plan'.
       upstream_handoff_kind:  'plan' if upstream set, else None. (co-vary)
 
+    dead_code_rows (plan 71 D8(b) passthrough):
+      Copied verbatim from the sibling plan-handoff.json's
+      breakdown_seeds.dead_code_rows (see _extract_dead_code_rows) so
+      /verify can read the declared change-induced-dead-code kill-list
+      directly from breakdown-handoff.json. Empty when /plan declared none
+      (the section is absent, or the sibling handoff has no
+      dead_code_rows key -- SILENT, no warning). A sibling that is
+      unreadable/malformed/wrong-shape, or that carries individual
+      malformed row entries, WARNS on stderr but still does not block by
+      itself. It IS gated, however: when plan.md's own
+      '### Change-Induced Dead Code' section declares at least one real
+      row but the passthrough produced none (for ANY reason -- absent,
+      unreadable, or malformed sibling), finalize-handoff FAILS CLOSED
+      (exit 2) rather than silently shipping an empty carrier for a
+      declared MUST-lane kill-list -- see the declared-but-unsubstantiated
+      chokepoint below.
+
     Output: <plan-dir>/breakdown-handoff.json (atomic write, sibling to plan.md).
     Idempotent: re-running overwrites the previous breakdown-handoff.json.
 
@@ -2469,13 +2642,21 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
     Exit 2: plan.md missing, tasks_dir missing/empty, placeholder agent detected,
             schema validation failure, unknown assigned agent (roster check),
             design-manifest violation (design/reference.html present but
-            design-manifest.json absent/invalid — plan 42 WI-1 chokepoint), or
+            design-manifest.json absent/invalid — plan 42 WI-1 chokepoint),
             an uncovered pure-builder target when the sibling plan-handoff.json
-            declares one (plan 66 WI-1 chokepoint). The plan-66 chokepoint is
-            SKIPPED SILENTLY when the sibling plan-handoff.json is itself
-            absent or unreadable/malformed — see the inline comment at the
-            call site for the asymmetry vs. the strict fail-closed standalone
-            verify-property-coverage verb.
+            declares one (plan 66 WI-1 chokepoint), or plan.md declaring
+            change-induced dead code that the sibling plan-handoff.json
+            carries none of (plan 71 declared-but-unsubstantiated
+            chokepoint). The plan-66 chokepoint is SKIPPED SILENTLY when the
+            sibling plan-handoff.json is itself absent or
+            unreadable/malformed — see the inline comment at the call site
+            for the asymmetry vs. the strict fail-closed standalone
+            verify-property-coverage verb. The plan-71 chokepoint does NOT
+            share that asymmetry — it fails closed on ANY reason the
+            passthrough produced zero rows (absent, unreadable, or
+            malformed sibling) whenever plan.md itself declares real rows;
+            see _extract_dead_code_rows + the inline comment at the call
+            site.
     Exit 1: I/O write failure.
     """
     # Ensure lib dir on path for schema imports.
@@ -2697,6 +2878,47 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
         # _pc_error not None (unreadable/malformed sibling), or no declared
         # targets, or no offenders -> fall through silently (see comment above).
 
+    # Dead-code-rows passthrough (plan 71 D8(b) carrier): copy
+    # breakdown_seeds.dead_code_rows from the sibling plan-handoff.json (when
+    # present) into breakdown-handoff.json verbatim, so /verify can read the
+    # declared kill-list directly from breakdown-handoff.json without a new
+    # cross-stage read of plan-handoff.json. Extraction itself never blocks
+    # -- a loud, unreadable/malformed/wrong-shape sibling (or malformed
+    # individual rows) only WARNS on stderr (see _extract_dead_code_rows
+    # docstring for the SILENT-vs-LOUD asymmetry).
+    dead_code_rows, dead_code_warning = _extract_dead_code_rows(_plan_handoff_candidate)
+    if dead_code_warning:
+        sys.stderr.write(
+            "breakdown_helper: finalize-handoff: WARN: {0}\n".format(
+                dead_code_warning
+            )
+        )
+
+    # Declared-but-unsubstantiated CHOKEPOINT (plan 71 review hardening,
+    # mirrors the plan-42 D7 tripwire + the plan-66 property-coverage
+    # declared-but-handoff-less fail-closed shape): if plan.md's own
+    # '### Change-Induced Dead Code' section declares at least one real row
+    # (_plan_declares_dead_code_rows, the SAME criterion the producer uses)
+    # but the passthrough above produced NONE, the MUST-lane kill-list
+    # would silently ship as an empty breakdown-handoff.json carrier and a
+    # future /verify would pass vacuously (the plans-38/42 silent-void
+    # class). Unlike the pure-builder-targets chokepoint above, this one
+    # does NOT tolerate an absent/malformed sibling -- a declared row in
+    # plan.md that produced zero carried rows for ANY reason (no sibling,
+    # unreadable sibling, or a sibling missing the key) is unsubstantiated
+    # and fails closed with a remedy.
+    if not dead_code_rows:
+        plan_content_for_dead_code_check = _read_file(str(plan_path)) or ""
+        if _plan_declares_dead_code_rows(plan_content_for_dead_code_check):
+            return _die(
+                "finalize-handoff: plan.md declares change-induced dead code "
+                "in '### Change-Induced Dead Code', but the sibling "
+                "plan-handoff.json carries none (breakdown_seeds.dead_code_rows "
+                "is empty or the sibling is missing/unreadable) -- regenerate "
+                "it with 'plan_helper finalize-handoff {0}' before re-running "
+                "this command".format(plan_path)
+            )
+
     # Parse README.md for dependency_graph and additions.
     readme_path = tasks_dir / "README.md"
     readme_content = _read_file(str(readme_path)) or ""
@@ -2745,6 +2967,7 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
             tasks=task_rows,
             additions=additions,
             dependency_graph=dependency_graph,
+            dead_code_rows=dead_code_rows,
         )
     except (TypeError, ValueError) as err:
         return _die(
@@ -2965,6 +3188,18 @@ def build_parser() -> argparse.ArgumentParser:
             "Target names must not themselves contain a comma (no escaping). "
             "When given and non-empty, emits a '**Property targets**:' line "
             "after '**Context docs**:'. Omit to leave the skeleton unchanged."
+        ),
+    )
+    sp.add_argument(
+        "--dead-code-removal",
+        dest="dead_code_removal",
+        default=None,
+        help=(
+            "Free-text summary of change-induced dead code folded into this "
+            "owning task (plan 71 D7/D8(b)). When given and non-empty, emits "
+            "a '**Dead code removal**:' line after '**Property targets**:' "
+            "(or after '**Context docs**:' when no property targets). "
+            "Omit to leave the skeleton unchanged."
         ),
     )
     sp.set_defaults(func=cmd_render_task_file)

@@ -84,6 +84,14 @@ Typing filters the rendered widget list by name and tag; clearing restores the f
 | normalizeTagList | src/widgets/tag_utils.ts | Pure array transform, no side effects |
 | [target] | [file] | [no I/O, deterministic, ...] |
 
+### Change-Induced Dead Code
+
+| File | Anchor token | Kind | Why dead |
+|------|--------------|------|----------|
+| src/widgets/widget_filter.ts | : 'primaryShipToCity' | arm | Superseded by the generic query-param filter; this branch can never be reached after the parametrization |
+| src/widgets/legacy_filter.ts | applyLegacyTagFilter | function | Legacy tag-matching function fully replaced by filterWidgetsByQuery |
+| [file] | [anchor] | [kind] | [why] |
+
 ## Risk Assessment
 
 | Risk | Likelihood | Impact | Mitigation |

@@ -37,7 +37,7 @@ Design notes:
 Stdlib only. No third-party dependencies.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 # ---------------------------------------------------------------------------
@@ -54,6 +54,12 @@ HANDOFF_KIND = "breakdown"
 _VALID_UPSTREAM_HANDOFF_KIND = ("plan",)
 
 REVIEW_CHECKPOINT_ENUM = (True, False)  # type: tuple
+
+# ---------------------------------------------------------------------------
+# Allowed values for DeadCodeRow.kind (plan 71 D8(b) passthrough).
+# ---------------------------------------------------------------------------
+
+DEAD_CODE_KIND_ENUM = ("arm", "function", "param", "import", "branch")
 
 # ---------------------------------------------------------------------------
 # Validation helpers.
@@ -221,6 +227,49 @@ class Provenance:
 
 
 # ---------------------------------------------------------------------------
+# DeadCodeRow -- passthrough carrier for plan-declared change-induced dead
+# code (plan 71 D8(b)).
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DeadCodeRow:
+    """One dead-code row carried from the sibling plan-handoff.json.
+
+    Self-contained duplicate of _plan.handoff_schema.DeadCodeRow (same
+    shape, same validation) -- this schema module stays independently
+    importable without a cross-dependency on _plan.handoff_schema (see the
+    design notes above). Columns mirror the plan.md ### Change-Induced Dead
+    Code table: File | Anchor token | Kind | Why dead.
+
+    kind classifies what the anchor names -- "arm" is a switch/match/case
+    arm; "branch" is an if/else (or ternary) conditional branch; the two
+    are distinct kinds even though both are conditional-dispatch shapes.
+
+    Populated only when /plan declared change-induced dead code (plan 71
+    D3); breakdown_helper finalize-handoff reads
+    breakdown_seeds.dead_code_rows from the sibling plan-handoff.json and
+    copies each row here verbatim (a pure passthrough -- this schema layer
+    re-validates, but invents nothing). The /verify removal-confirmation
+    check (plan 71 D8(b), Phase 4) reads this passthrough directly from
+    breakdown-handoff.json, which /verify already reads for other purposes,
+    rather than /verify reading plan-handoff.json directly.
+    """
+
+    file: str
+    anchor_token: str
+    kind: str
+    why_dead: str
+
+    def __post_init__(self):
+        # type: () -> None
+        _require_nonempty(self.file, "DeadCodeRow.file")
+        _require_nonempty(self.anchor_token, "DeadCodeRow.anchor_token")
+        _require_in_enum(self.kind, DEAD_CODE_KIND_ENUM, "DeadCodeRow.kind")
+        _require_nonempty(self.why_dead, "DeadCodeRow.why_dead")
+
+
+# ---------------------------------------------------------------------------
 # Top-level Breakdown record.
 # ---------------------------------------------------------------------------
 
@@ -237,6 +286,13 @@ class Breakdown:
     in BreakdownSeeds).
     additions is a list of free-form note strings (may be empty).
     dependency_graph is a string rendering of the dependency graph (may be "").
+    dead_code_rows is the plan 71 D8(b) passthrough carrier: a list of
+    DeadCodeRow records copied verbatim from the sibling plan-handoff.json's
+    breakdown_seeds.dead_code_rows (empty when /plan declared none, or when
+    the sibling plan-handoff.json is absent/unreadable at breakdown-handoff
+    build time). Appended LAST with a default so existing positional
+    constructions keep working unchanged (list-ness validated only, same as
+    tasks/additions -- element types are not deep-validated here).
     """
 
     schema_version: str
@@ -247,6 +303,7 @@ class Breakdown:
     tasks: List[TaskRow]
     additions: List[str]
     dependency_graph: str
+    dead_code_rows: List[DeadCodeRow] = field(default_factory=list)
 
     def __post_init__(self):
         # type: () -> None
@@ -287,4 +344,9 @@ class Breakdown:
             raise ValueError(
                 "Breakdown.dependency_graph must be a string, "
                 "got {0}".format(type(self.dependency_graph).__name__)
+            )
+
+        if not isinstance(self.dead_code_rows, list):
+            raise ValueError(
+                "Breakdown.dead_code_rows must be a list"
             )

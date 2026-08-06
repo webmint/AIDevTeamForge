@@ -51,6 +51,9 @@ _VALID_UPSTREAM_HANDOFF_KIND = ("specify",)
 # Allowed verdict values in ConsultRow.verdict.
 VERDICT_ENUM = ("accepted", "modified", "rejected", "no-response")
 
+# Allowed values for DeadCodeRow.kind.
+DEAD_CODE_KIND_ENUM = ("arm", "function", "param", "import", "branch")
+
 
 # ---------------------------------------------------------------------------
 # Validation helpers.
@@ -259,6 +262,37 @@ class PureBuilderRow:
             )
 
 
+@dataclass
+class DeadCodeRow:
+    """One row from the ### Change-Induced Dead Code table.
+
+    Columns: File | Anchor token | Kind | Why dead.
+    The section is optional -- populated when the architect's Phase 1.3
+    consequence prediction (plan 71 D3) names code a Key Design Decision
+    renders unreachable. file is a repo-relative path. anchor_token is a
+    literal string whose ABSENCE in the post-change file is the /verify
+    removal-confirmation pass condition (plan 71 OQ-1) -- e.g. the literal
+    "'primaryShipToCity'" for a dead switch/match arm. kind classifies what
+    the anchor names -- "arm" is a switch/match/case arm; "branch" is an
+    if/else (or ternary) conditional branch; the two are distinct kinds
+    even though both are conditional-dispatch shapes. why_dead is required
+    non-empty prose (unlike PureBuilderRow.why, which may be empty) -- a
+    claim of change-induced deadness must be justified.
+    """
+
+    file: str
+    anchor_token: str
+    kind: str
+    why_dead: str
+
+    def __post_init__(self):
+        # type: () -> None
+        _require_nonempty(self.file, "DeadCodeRow.file")
+        _require_nonempty(self.anchor_token, "DeadCodeRow.anchor_token")
+        _require_in_enum(self.kind, DEAD_CODE_KIND_ENUM, "DeadCodeRow.kind")
+        _require_nonempty(self.why_dead, "DeadCodeRow.why_dead")
+
+
 # ---------------------------------------------------------------------------
 # BreakdownSeeds -- all structured content /breakdown needs from /plan.
 # ---------------------------------------------------------------------------
@@ -273,7 +307,10 @@ class BreakdownSeeds:
     non-heading lines from the ## Dependencies section. pure_builder_targets
     is populated from the optional ### Pure-Builder Targets section (absent
     for most features); it is appended last with a default so existing
-    positional constructions keep working unchanged.
+    positional constructions keep working unchanged. dead_code_rows is
+    populated from the optional ### Change-Induced Dead Code section (plan
+    71 D3/D6; absent for most features) and is appended LAST, after
+    pure_builder_targets, for the same back-compat reason.
     """
 
     layer_map: List[LayerRow]
@@ -284,6 +321,7 @@ class BreakdownSeeds:
     specialist_consultation: List[ConsultRow]
     dependencies: List[str]
     pure_builder_targets: List[PureBuilderRow] = field(default_factory=list)
+    dead_code_rows: List[DeadCodeRow] = field(default_factory=list)
 
     def __post_init__(self):
         # type: () -> None
@@ -296,6 +334,7 @@ class BreakdownSeeds:
             "specialist_consultation",
             "dependencies",
             "pure_builder_targets",
+            "dead_code_rows",
         ):
             val = getattr(self, fname)
             if not isinstance(val, list):
