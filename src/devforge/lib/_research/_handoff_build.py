@@ -334,6 +334,13 @@ def _build_caller_enumeration(report):
     enforce non-empty qn/file_line at write time, so this is a defensive
     floor, not the primary validation path. Empty report fields (neither
     Phase 2.4c path fired) -> empty lists / None, never invented.
+
+    Plan 69 D5/WI-E: an inbound_callers row's surface/scope/justification
+    (added by a classify-caller-scope call, Step 2b) are carried verbatim
+    when present. A row recorded but never classified has no surface/scope/
+    justification keys in report state at all -- absent-key defaults to ""
+    here, matching InboundCaller's own "" defaults (not fabricated; simply
+    the unclassified-legacy-row state).
     """
     fix_path_helpers = []
     for h in report.get("fix_path_helpers") or []:
@@ -352,9 +359,16 @@ def _build_caller_enumeration(report):
         file_line = (c.get("file_line") or "").strip()
         if not helper_qn or not caller_qn or not file_line:
             continue
+        # Plan 69 D5/WI-E: classify-caller-scope augments the row with
+        # these three keys post-hoc; a row never classified simply lacks
+        # them -- absent -> "" (unclassified), not fabricated.
+        surface = (c.get("surface") or "").strip()
+        scope = (c.get("scope") or "").strip()
+        justification = (c.get("justification") or "").strip()
         inbound_callers.append(
             handoff_schema.InboundCaller(
                 helper_qn=helper_qn, caller_qn=caller_qn, file_line=file_line,
+                surface=surface, scope=scope, justification=justification,
             )
         )
 

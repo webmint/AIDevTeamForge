@@ -1187,6 +1187,10 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
     # /plan does not re-derive callers via fresh CBM calls. Absent field (a
     # handoff.json predating plan 67) or an empty carry (neither Phase 2.4c
     # path recorded) renders NOTHING -- byte-identical to pre-plan-67 output.
+    # Plan 69 D5/WI-E widens each inbound_callers row with an optional
+    # per-caller surface/scope/justification classification (Step 2b) --
+    # rendered as a suffix on classified rows below; an unclassified row
+    # (scope absent/empty, the pre-plan-69 shape) renders unchanged.
     caller_enum = ps.get("caller_enumeration") or {}
     fix_helpers = caller_enum.get("fix_path_helpers") or []
     inbound_callers = caller_enum.get("inbound_callers") or []
@@ -1206,11 +1210,28 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
             ]
             if callers_for_helper:
                 for c in callers_for_helper:
-                    helper_lines.append(
-                        "  - caller: {0} ({1})".format(
-                            c.get("caller_qn", "?"), c.get("file_line", "?")
+                    caller_qn = c.get("caller_qn", "?")
+                    file_line = c.get("file_line", "?")
+                    # Plan 69 D5/WI-E: a caller classified via
+                    # classify-caller-scope carries surface/scope/
+                    # justification -- render them as a compact suffix.
+                    # An unclassified row (scope absent/empty, the
+                    # pre-plan-69 shape) renders EXACTLY as before
+                    # (byte-identical legacy rendering).
+                    scope = (c.get("scope") or "").strip()
+                    if scope:
+                        surface = c.get("surface") or "?"
+                        justification = c.get("justification") or "?"
+                        helper_lines.append(
+                            "  - caller: {0} ({1}) — surface: {2}, "
+                            "scope: {3} — {4}".format(
+                                caller_qn, file_line, surface, scope, justification
+                            )
                         )
-                    )
+                    else:
+                        helper_lines.append(
+                            "  - caller: {0} ({1})".format(caller_qn, file_line)
+                        )
             else:
                 helper_lines.append("  - (no inbound callers recorded)")
         caller_block = (

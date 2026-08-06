@@ -8442,6 +8442,13 @@ class TestFinalizeHandoff(unittest.TestCase):
         config.load only). Asserts the exact rows, not just presence, and
         that env_loader.init (with zero recorded callers) is not fabricated
         an entry.
+
+        Plan 69 D5/WI-E: an unclassified inbound_callers row now also
+        carries the current producer's explicit "" surface/scope/
+        justification defaults (never classified via classify-caller-scope
+        in this fixture) -- an additive shape change over the pre-plan-69
+        3-key row; see test_finalize_handoff_carries_caller_classification_verbatim
+        below for the classified-row shape.
         """
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
@@ -8465,6 +8472,9 @@ class TestFinalizeHandoff(unittest.TestCase):
                         "helper_qn": "config.load",
                         "caller_qn": "main.startup",
                         "file_line": "services/api/main.py:15",
+                        "surface": "",
+                        "scope": "",
+                        "justification": "",
                     },
                 ],
             )

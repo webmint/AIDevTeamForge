@@ -2559,6 +2559,175 @@ class CallerEnumerationRenderTests(unittest.TestCase):
         self.assertIn("config.load", output)
         self.assertNotIn("should not render", output)
 
+    # -- plan 69 D5/WI-E: per-caller surface/scope/justification suffix --
+
+    def test_classified_caller_renders_surface_scope_justification_suffix(self):
+        """A caller row carrying scope="in" (classify-caller-scope) renders the
+        compact suffix -- surface, scope, and justification all appear on the
+        same line as the caller.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [
+                {
+                    "helper_qn": "config.load",
+                    "caller_qn": "AccountsBLoC.fetchPassportAccountsWithV2",
+                    "file_line": "src/bloc/accounts_bloc.ts:80",
+                    "surface": "DealerToAccountNumberModal.vue",
+                    "scope": "in",
+                    "justification": "Drives the same Customer search flow.",
+                },
+            ],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        caller_line = next(
+            line for line in output.splitlines()
+            if "AccountsBLoC.fetchPassportAccountsWithV2" in line
+        )
+        self.assertIn("src/bloc/accounts_bloc.ts:80", caller_line)
+        self.assertIn("surface: DealerToAccountNumberModal.vue", caller_line)
+        self.assertIn("scope: in", caller_line)
+        self.assertIn("Drives the same Customer search flow.", caller_line)
+
+    def test_classified_caller_scope_out_renders_suffix(self):
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [
+                {
+                    "helper_qn": "config.load",
+                    "caller_qn": "background.reindex",
+                    "file_line": "src/jobs/reindex.py:20",
+                    "surface": "none",
+                    "scope": "out",
+                    "justification": "Background job; not reachable from any UI surface.",
+                },
+            ],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        caller_line = next(
+            line for line in output.splitlines()
+            if "background.reindex" in line
+        )
+        self.assertIn("surface: none", caller_line)
+        self.assertIn("scope: out", caller_line)
+        self.assertIn("Background job; not reachable from any UI surface.", caller_line)
+
+    def test_classified_row_with_empty_surface_and_justification_renders_placeholders(self):
+        """A schema-legal partial classification -- scope="in" with empty
+        surface/justification -- is unreachable via the real producer
+        (classify-caller-scope enforces non-empty --surface/--justification
+        at the setter boundary; see
+        TestInboundCaller.test_valid_construction_with_scope_in_and_empty_surface_justification
+        in test_research_handoff_schema.py for the schema-side construction
+        this exercises) but is schema-legal, so the render function must not
+        crash on it. Locks the "?" fallback: `c.get("surface") or "?"` /
+        `c.get("justification") or "?"` render literal "?" placeholders --
+        this is the exact CURRENT output, not a byte-identical-to-legacy
+        claim (the row is still classified: scope="in" renders, unlike the
+        unclassified-legacy-line tests above).
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [
+                {
+                    "helper_qn": "config.load",
+                    "caller_qn": "main.startup",
+                    "file_line": "services/api/main.py:15",
+                    "surface": "",
+                    "scope": "in",
+                    "justification": "",
+                },
+            ],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        caller_line = next(
+            line for line in output.splitlines()
+            if "main.startup" in line
+        )
+        self.assertEqual(
+            caller_line,
+            "  - caller: main.startup (services/api/main.py:15) — "
+            "surface: ?, scope: in — ?",
+        )
+
+    def test_unclassified_caller_renders_legacy_line_byte_identical(self):
+        """A caller row with no scope key (the pre-plan-69 shape, or a row
+        recorded but never classified) renders EXACTLY the legacy
+        'caller: X (file:line)' line -- no suffix, byte-identical to the
+        pre-plan-69 output for the same inputs.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [
+                {
+                    "helper_qn": "config.load",
+                    "caller_qn": "main.startup",
+                    "file_line": "services/api/main.py:15",
+                },
+            ],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn(
+            "  - caller: main.startup (services/api/main.py:15)\n", output,
+        )
+        self.assertNotIn("surface:", output)
+        self.assertNotIn("scope:", output)
+
+    def test_unclassified_caller_with_empty_scope_string_renders_legacy_line(self):
+        """A row that explicitly carries scope="" (the InboundCaller default,
+        e.g. via _build_caller_enumeration's absent-key floor) also renders
+        the legacy line -- empty scope means unclassified, not a third
+        rendered state.
+        """
+        ps = self._ps_dict(caller_enumeration={
+            "fix_path_helpers": [
+                {"qn": "config.load", "file_line": "services/api/config.py:42"},
+            ],
+            "inbound_callers": [
+                {
+                    "helper_qn": "config.load",
+                    "caller_qn": "main.startup",
+                    "file_line": "services/api/main.py:15",
+                    "surface": "",
+                    "scope": "",
+                    "justification": "",
+                },
+            ],
+            "no_shared_callers_justification": None,
+        })
+        d = {"plan_seeds": ps}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn(
+            "  - caller: main.startup (services/api/main.py:15)\n", output,
+        )
+        self.assertNotIn("surface:", output)
+
 
 class CorrectnessVettedBackCompatTests(unittest.TestCase):
     """Back-compat and round-trip tests via the real _dict_to_dataclass deserializer.
@@ -2670,6 +2839,163 @@ class CorrectnessVettedBackCompatTests(unittest.TestCase):
         ps_dict2.pop("_proposed_call_shape_parse_failed", None)
 
         # The re-serialized plan_seeds must match the first serialization.
+        self.assertEqual(ps_dict1, ps_dict2,
+                         "Round-trip must produce byte-identical plan_seeds dict")
+
+
+class CallerClassificationBackCompatTests(unittest.TestCase):
+    """Plan 69 D5/WI-E: per-caller surface/scope/justification handoff carry.
+
+    Same honest back-compat pattern as CorrectnessVettedBackCompatTests
+    (plan 67 Phase 3 precedent) -- an old-JSON->defaults test plus a
+    current-producer-stable round-trip test, NOT a byte-identity claim
+    about new-producer output (the new fields are additive content, so
+    new-producer output legitimately differs from pre-plan-69 output).
+
+    Uses the real research_helper classify-caller-scope + finalize-handoff
+    producers (subprocess) and the real _dict_to_dataclass deserializer.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _load_research_hs(self):
+        """Load the research handoff_schema module via importlib (unique name avoids collision)."""
+        _research_dir = REPO_ROOT / "src" / "devforge" / "lib" / "_research"
+        spec = importlib.util.spec_from_file_location(
+            "_research_hs_caller_classification_backcompat",
+            _research_dir / "handoff_schema.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _classify_recorded_caller(self, devforge):
+        """Classify the (helper, caller) pair _run_research_setup already
+        recorded via record-fix-path-helper + record-inbound-caller."""
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "classify-caller-scope",
+                "--helper-qn", "widget_service.update_catalog",
+                "--caller-qn", "catalog_api.update",
+                "--surface", "Catalog admin page",
+                "--scope", "in",
+                "--justification", "Reachable from the catalog admin write path.",
+            ],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def _emit_handoff(self, devforge, stem):
+        research_emit = self.tmp / "research" / "{0}.handoff.json".format(stem)
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path", "research/{0}.md".format(stem),
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+        return research_emit
+
+    def test_current_producer_carries_classification_through_finalize_handoff(self):
+        """classify-caller-scope's surface/scope/justification ride finalize-handoff
+        into plan_seeds.caller_enumeration.inbound_callers verbatim.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+        self._classify_recorded_caller(devforge)
+
+        research_emit = self._emit_handoff(devforge, "2026-05-22-widget-classified")
+        data = json.loads(research_emit.read_text(encoding="utf-8"))
+        rows = data["plan_seeds"]["caller_enumeration"]["inbound_callers"]
+        row = next(r for r in rows if r["caller_qn"] == "catalog_api.update")
+        self.assertEqual(row["surface"], "Catalog admin page")
+        self.assertEqual(row["scope"], "in")
+        self.assertEqual(row["justification"], "Reachable from the catalog admin write path.")
+
+    def test_current_producer_defaults_unclassified_row_to_empty_strings(self):
+        """A row recorded (record-inbound-caller) but never classified
+        (classify-caller-scope skipped) emits surface/scope/justification
+        as "" -- the current producer's default, not an absent key.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+        # Deliberately skip classify-caller-scope.
+
+        research_emit = self._emit_handoff(devforge, "2026-05-22-widget-unclassified")
+        data = json.loads(research_emit.read_text(encoding="utf-8"))
+        rows = data["plan_seeds"]["caller_enumeration"]["inbound_callers"]
+        row = next(r for r in rows if r["caller_qn"] == "catalog_api.update")
+        self.assertEqual(row["surface"], "")
+        self.assertEqual(row["scope"], "")
+        self.assertEqual(row["justification"], "")
+
+    def test_old_handoff_json_without_classification_fields_deserializes_to_empty_defaults(self):
+        """An old research handoff.json (inbound_callers rows predating plan 69,
+        no surface/scope/justification keys at all) deserializes cleanly --
+        the fields default to "" (InboundCaller's own defaults), not a
+        construction error.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+        self._classify_recorded_caller(devforge)
+
+        research_emit = self._emit_handoff(devforge, "2026-05-22-widget-old-shape")
+        data = json.loads(research_emit.read_text(encoding="utf-8"))
+
+        # Simulate a pre-plan-69 handoff by stripping the three keys from
+        # every inbound_callers row.
+        for row in data["plan_seeds"]["caller_enumeration"]["inbound_callers"]:
+            row.pop("surface", None)
+            row.pop("scope", None)
+            row.pop("justification", None)
+
+        rhs = self._load_research_hs()
+        handoff = _specify_dict_to_dataclass(rhs.Handoff, data)
+        rows = handoff.plan_seeds.caller_enumeration.inbound_callers
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(row.surface, "")
+            self.assertEqual(row.scope, "")
+            self.assertEqual(row.justification, "")
+
+    def test_current_producer_output_round_trips_stably_with_classification(self):
+        """Current-producer handoff.json (with a classified caller row)
+        round-trips stably: produce -> serialize -> _dict_to_dataclass ->
+        re-serialize produces a byte-identical plan_seeds dict.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+        self._classify_recorded_caller(devforge)
+
+        research_emit = self._emit_handoff(devforge, "2026-05-22-widget-stable-classified")
+        data1 = json.loads(research_emit.read_text(encoding="utf-8"))
+        ps_dict1 = data1["plan_seeds"]
+
+        rhs = self._load_research_hs()
+        handoff = _specify_dict_to_dataclass(rhs.Handoff, data1)
+
+        import dataclasses
+        ps_dict2 = dataclasses.asdict(handoff.plan_seeds)
+        ps_dict2.pop("_proposed_call_shape_parse_failed", None)
+
         self.assertEqual(ps_dict1, ps_dict2,
                          "Round-trip must produce byte-identical plan_seeds dict")
 

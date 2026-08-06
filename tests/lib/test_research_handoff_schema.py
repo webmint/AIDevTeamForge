@@ -159,8 +159,12 @@ def _fix_path_helper(qn="config.load", file_line="src/config.py:42"):
     return hs.FixPathHelper(qn=qn, file_line=file_line)
 
 
-def _inbound_caller(helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15"):
-    return hs.InboundCaller(helper_qn=helper_qn, caller_qn=caller_qn, file_line=file_line)
+def _inbound_caller(helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+                     surface="", scope="", justification=""):
+    return hs.InboundCaller(
+        helper_qn=helper_qn, caller_qn=caller_qn, file_line=file_line,
+        surface=surface, scope=scope, justification=justification,
+    )
 
 
 def _caller_enumeration(
@@ -1247,6 +1251,110 @@ class TestInboundCaller(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             hs.InboundCaller(helper_qn="config.load", caller_qn="main.startup", file_line="")
         self.assertIn("InboundCaller.file_line", str(ctx.exception))
+
+    # -- plan 69 D5/WI-E: surface/scope/justification classification fields --
+
+    def test_defaults_classification_fields_to_empty_string(self):
+        """Absent surface/scope/justification -> "" (back-compat: a row
+        recorded via record-inbound-caller but never classified, or a
+        handoff.json predating plan 69, is the unclassified-legacy-row
+        state, not a construction error)."""
+        c = hs.InboundCaller(
+            helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+        )
+        self.assertEqual(c.surface, "")
+        self.assertEqual(c.scope, "")
+        self.assertEqual(c.justification, "")
+
+    def test_valid_construction_with_classification_scope_in(self):
+        c = hs.InboundCaller(
+            helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+            surface="Admin dashboard", scope="in",
+            justification="Reachable from the admin dashboard button.",
+        )
+        self.assertEqual(c.surface, "Admin dashboard")
+        self.assertEqual(c.scope, "in")
+        self.assertEqual(c.justification, "Reachable from the admin dashboard button.")
+
+    def test_valid_construction_with_classification_scope_out(self):
+        c = hs.InboundCaller(
+            helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+            surface="none", scope="out",
+            justification="Background job; not reachable from any UI surface.",
+        )
+        self.assertEqual(c.surface, "none")
+        self.assertEqual(c.scope, "out")
+
+    def test_valid_construction_with_scope_in_and_empty_surface_justification(self):
+        """A schema-legal partial classification -- scope="in" with surface
+        and justification left empty -- constructs cleanly.
+
+        Unreachable via the real producer (classify-caller-scope enforces
+        non-empty --surface / --justification at the setter boundary), but
+        the schema itself does not re-enforce that pairing: per InboundCaller's
+        docstring, "surface / justification are not non-empty-enforced here
+        -- classify-caller-scope already enforces non-empty at the setter
+        boundary, so this schema stays a straight verbatim carrier rather
+        than re-running a check the producer already ran." This test locks
+        that documented trade-off in place -- see
+        CallerEnumerationRenderTests.test_classified_row_with_empty_surface_and_justification_renders_placeholders
+        in test_plan_helper.py for the corresponding render-side fallback
+        this partial state exercises.
+        """
+        c = hs.InboundCaller(
+            helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+            scope="in", surface="", justification="",
+        )
+        self.assertEqual(c.scope, "in")
+        self.assertEqual(c.surface, "")
+        self.assertEqual(c.justification, "")
+
+    def test_reject_invalid_scope_value(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.InboundCaller(
+                helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+                scope="sideways",
+            )
+        self.assertIn("InboundCaller.scope", str(ctx.exception))
+
+    def test_reject_non_string_surface(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.InboundCaller(
+                helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+                surface=42,
+            )
+        self.assertIn("InboundCaller.surface", str(ctx.exception))
+
+    def test_reject_non_string_justification(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.InboundCaller(
+                helper_qn="config.load", caller_qn="main.startup", file_line="src/main.py:15",
+                justification=42,
+            )
+        self.assertIn("InboundCaller.justification", str(ctx.exception))
+
+    def test_asdict_includes_classification_fields(self):
+        import dataclasses
+        c = _inbound_caller(
+            surface="Admin dashboard", scope="in", justification="reachable",
+        )
+        d = dataclasses.asdict(c)
+        self.assertEqual(d["surface"], "Admin dashboard")
+        self.assertEqual(d["scope"], "in")
+        self.assertEqual(d["justification"], "reachable")
+
+    def test_asdict_default_emits_empty_classification_fields(self):
+        """Default construction (no classification supplied) -> asdict shows
+        the explicit "" unclassified state for all three fields -- proves
+        the current producer's default shape, the honest half of the
+        back-compat pair (contrast test_defaults_classification_fields_to_empty_string,
+        which proves an old-shaped construction still parses)."""
+        import dataclasses
+        c = _inbound_caller()
+        d = dataclasses.asdict(c)
+        self.assertEqual(d["surface"], "")
+        self.assertEqual(d["scope"], "")
+        self.assertEqual(d["justification"], "")
 
 
 class TestCallerEnumeration(unittest.TestCase):

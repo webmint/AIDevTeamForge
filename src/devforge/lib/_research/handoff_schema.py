@@ -26,8 +26,14 @@ Design notes:
 - V3 fields: `LiteralArchaeology`, `proposed_call_shape`.
   literal_archaeology required when bug mode + literal-replacement
   recommended approach. proposed_call_shape required when bug mode +
-  single-layer or literal-replacement approach. Argument-duplication
-  detection with optional-chaining support; fail-soft on nested calls.
+  single-layer or literal-replacement approach -- that REQUIREDNESS rule
+  is bug-mode-gated and unchanged. The value's PRESENCE is not: plan 69
+  D6/WI-F widened `research_helper set-recommended-approach`'s storage of
+  proposed_call_shape (and the mirroring verify check 18) to
+  mode-independent, so an enhancement-mode handoff MAY legitimately carry
+  a populated proposed_call_shape even though bug mode is the only mode
+  that requires one. Argument-duplication detection with
+  optional-chaining support; fail-soft on nested calls.
 
 - Type-hint convention: explicit `typing.Optional` / `List` / `Dict`
   (no PEP 604 `X | None`, no PEP 585 `list[str]`). Targets Python 3.8+.
@@ -77,6 +83,11 @@ _VALID_TEST_FRAMEWORK = frozenset({"vitest", "jest", "pytest", "go-test", "cargo
 _VALID_HYPOTHESIS_CONFIRMED = frozenset({"primary", "runner_up", "none", "inconclusive"})
 _VALID_EVIDENCE_SOURCE = frozenset({"test-result", "llm-ui-session-log", "user-observation"})
 _VALID_CONFIDENCE_GRADE = frozenset({"HIGH", "MEDIUM", "LOW"})
+# Plan 69 D5/WI-E — InboundCaller.scope. "" means unclassified (a row
+# recorded via record-inbound-caller but never augmented by
+# classify-caller-scope, or a handoff.json predating plan 69) -- not a
+# third scope value alongside "in"/"out".
+_VALID_CALLER_SCOPE = frozenset({"", "in", "out"})
 
 # V3 Patch 8 literal-replacement detector regex.
 # Matches: "Replace X with Y" / "change X to Y" / "X -> Y" patterns.
@@ -744,16 +755,44 @@ class InboundCaller:
     """One inbound caller of a fix_path_helper — caller qn + call-site file:line.
 
     Copies a research_helper record-inbound-caller row verbatim.
+
+    surface / scope / justification carry the optional per-caller
+    classification a research_helper classify-caller-scope call augments
+    the row with (plan 69 D5/WI-E, Step 2b — trace the caller UP to its
+    user-facing entry point, then classify it in/out of scope for the
+    change). All three default to "" so:
+      - a handoff.json predating plan 69 deserializes cleanly (back-compat,
+        same convention as CallerEnumeration's other fields), and
+      - a row recorded via record-inbound-caller but never classified
+        carries an explicit "unclassified" empty state rather than a
+        fabricated value.
+    Only scope is enum-validated (against _VALID_CALLER_SCOPE, "" meaning
+    unclassified). surface / justification are not non-empty-enforced
+    here -- classify-caller-scope already enforces non-empty at the
+    setter boundary, so this schema stays a straight verbatim carrier
+    rather than re-running a check the producer already ran.
     """
 
     helper_qn: str
     caller_qn: str
     file_line: str
+    surface: str = ""
+    scope: str = ""
+    justification: str = ""
 
     def __post_init__(self):
         _require_nonempty(self.helper_qn, "InboundCaller.helper_qn")
         _require_nonempty(self.caller_qn, "InboundCaller.caller_qn")
         _require_nonempty(self.file_line, "InboundCaller.file_line")
+        if not isinstance(self.surface, str):
+            raise ValueError(
+                f"InboundCaller.surface must be a string, got {type(self.surface).__name__}"
+            )
+        if not isinstance(self.justification, str):
+            raise ValueError(
+                f"InboundCaller.justification must be a string, got {type(self.justification).__name__}"
+            )
+        _require_in_enum(self.scope, _VALID_CALLER_SCOPE, "InboundCaller.scope")
 
 
 @dataclass
@@ -917,6 +956,11 @@ class PlanSeeds:
                     )
 
         # V3: proposed_call_shape required when bug + (single-layer OR literal-replacement).
+        # This requiredness rule is bug-mode-gated -- unchanged by plan 69. It does
+        # NOT mean the field is bug-mode-exclusive: plan 69 D6/WI-F widened the
+        # producer-side storage (+ verify check 18) to mode-independent, so a
+        # non-bug mode may legitimately carry a populated value here too; this
+        # check simply never REQUIRES one outside bug mode.
         if mode == "bug" and (is_single_layer or is_literal_replacement):
             if self.proposed_call_shape is None:
                 raise ValueError(
