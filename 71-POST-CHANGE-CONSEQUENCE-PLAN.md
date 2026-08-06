@@ -1,0 +1,78 @@
+# 71 — Post-Change Consequence Analysis (change-induced dead code + follow-on cleanups)
+
+**Status:** DRAFT — awaiting Phase 0 maintainer ratification. Sequencing: execute AFTER plan 69 (both edit `plan/main.md`'s architect sub-question list + `architect.md` Rule 9 territory; 69 is earlier in the queue — see repo-root CLAUDE.md ordering 68 → 64 → 69 → this).
+**Branch:** `develop-2.0-init`
+**Origin:** `RESEARCH-2026-08-05-SUFFICIENCY-AND-CONSEQUENCE.md` **idea 2** (idea 1 landed as plan 69 WI-F — do NOT rebuild it here). Evidence: the forge benchmark run (`testframeworks/forge`, `eval/forge-run1`) parametrized `buildSearchQueryFilters` and left the now-unreachable `primaryShipToCity`/`primaryShipToState` arms in place — "guard-and-leave". The research doc's "new plan 68" numbering is stale (68/70 taken); this file is that plan.
+
+## Context for next session
+
+The pipeline has NO stage that evaluates the CONSEQUENCES of a recommended change: (a) what existing code the change renders unreachable, (b) whether the change is a simplification that enables related cleanups. Verified gaps (2026-08-05 research doc, re-confirmed against HEAD 2026-08-06):
+
+- `dead_siblings` (`research/main.md` Phase 2.4c) detects only PRE-EXISTING dead code ("0 inbound callers AND 0 textual call sites" at investigation time) — nothing models "dead-by-this-change".
+- Constitution §3.5 "No dead code" (`src/constitution.md`, grep `No dead code`) is a rule enforced by no phase against change-induced deadness.
+- `/plan`'s architect consult (plan/main.md PHASE 1.3 sub-question list, currently 1–8) asks minimal-scope/OOS/Narrowing/pure-builder questions — nothing about what a Key Design Decision kills or enables.
+
+**Two distinct obligations, deliberately different strengths:**
+- **MUST — change-induced dead code.** Code a decision renders unreachable is deleted as PART of the change (constitution §3.5 makes this in-scope by rule, NOT scope creep). Predicted at `/plan`, carried as typed rows, tasked at `/breakdown`, mechanically confirmed removed at `/verify`.
+- **MAY — follow-on cleanups.** Consolidations/simplifications the change ENABLES (collapse a now-trivial ternary, delete a now-single-use option) are SURFACED as recommendations, never silently applied — the architect's Rule 9 minimal-scope + spec §6 OOS discipline stays sovereign; a MAY item routes to the user, not into the task list.
+
+**Structural template to mirror (do not invent a new shape):** plan 66's Pure-Builder Targets lane — architect NAMES targets at `/plan` sub-question 8 → conditional plan-template table → typed rows in `_plan/handoff_schema.py` (`PureBuilderRow` / `BreakdownSeeds.pure_builder_targets`, default-empty back-compat) → `plan_helper finalize-handoff` parses → `/breakdown read-plan-handoff` renders → PHASE 3 task-emission rule → a `breakdown_helper` PHASE 3.5 gate + `finalize-handoff` chokepoint. This plan's MUST lane is the same pipeline with "dead-code row" in place of "pure-builder row" and the confirmation gate at `/verify` instead of `/breakdown`.
+
+## Decisions (ratify at Phase 0)
+
+- **D1 — home: predict at `/plan`, confirm at `/verify`.** Per the research doc. `/research` is NOT extended (its recommended-approach machinery already pushes concreteness via `proposed_call_shape`; consequence analysis needs the FULL decision set, which exists only at `/plan`).
+- **D2 — MUST/MAY split with the scope-discipline reconciliation stated above.** The MUST lane's constitutional basis (§3.5) is what keeps deletion in-scope; the MAY lane is advisory-only BY DESIGN (same honesty discipline as plan 62 D14 — a future session must not "strengthen" MAY into a gate). MAY items render in the plan as a distinct conditional section the user reads at the `/plan` approval gate; accepted ones become their own spec/ticket, NOT silent tasks.
+- **D3 — architect owns the prediction.** New `/plan` PHASE 1.3 sub-question (next free number after plan 69's edits land — verify at execution; 9 if 69 added none): for each Key Design Decision, (a) name every code path the decision renders unreachable (file + symbol/branch anchor + why-dead, from a CBM outbound/inbound trace, not memory), (b) classify the decision simplifies/extends/neutral, and if simplifies, list enabled follow-on cleanups tagged MAY. Empty answers are explicit ("renders nothing unreachable") — silence is not an answer.
+- **D4 — verify confirms REMOVAL of the declared kill-list, not full reachability delta (honest v1 bound).** A new `_verify` check takes the carried dead-code rows and mechanically confirms each named symbol/branch anchor is GONE from the assembled diff's post-state (grep/CBM absence check). What it catches: declared-but-not-removed (the guard-and-leave failure). What it structurally CANNOT catch: deadness the architect never declared — that stays LLM judgment, backstopped advisorily per D5. Bake the bound into every user-facing string.
+- **D5 — undeclared-deadness advisory backstop, split by visibility (reviewer-caught conflict, redesigned).** The original single `/review`-checklist idea contradicts that checklist's own scope rule (`emergent-issue-checklist.md:6-7`: cross-task-only — "a finding you can state from a single task's diff is out of scope"), while D7's atomicity puts the common guard-and-leave INSIDE one task's diff — the checklist would structurally exclude the exact benchmark failure. Split instead: *(i) single-task case* — one checklist line in `src/agents/code-reviewer.md` (the `/implement` PHASE-6 panel reads the whole task diff, where a dominating-condition-above-now-dead-branch IS visible; same placement precedent as plan 05's §7 structural-integration item); *(ii) cross-task case* — the emergent-issue-checklist item, reframed to the D7 escalation exception it can legitimately reach (kill-list split across tasks, one task guards while another's deletion was dropped). Both finder-advisory; no new agent, no new gate. The mechanical D4 check remains the only gate, and it covers only DECLARED rows — (i)+(ii) are the honest advisory net for undeclared deadness.
+- **D6 — carrier: `DeadCodeRow` + `BreakdownSeeds.dead_code_rows` (default-empty), mirroring `PureBuilderRow` byte-for-byte in pattern** — same back-compat proof obligation (old-JSON default + current-producer-stable; no byte-identity claim on new-producer output).
+- **D7 — `/breakdown` folds removal into the OWNING task, not a dedicated deletion task.** The dead arm dies in the same task that adds the dominating change (atomic — a separate deletion task can be dropped/reordered and re-creates the orphan window). Exception: cross-file kill-lists too big for one task escalate at the decomposition architect consult. (Contrast: plan 66's property lane uses a DEDICATED qa-engineer task — different rationale there, coverage; here atomicity wins.)
+- **D8 — carry mechanism to `/verify` (the MUST lane's data path — reviewer-caught hole, must be ratified, not improvised at Phase 4).** Phase 1's `dead_code_rows` lives in `plan-handoff.json` (`/plan → /breakdown`, ONE hop); the confirmation check runs at `/verify`, TWO hops later — and `_verify/` today reads NO `/plan`-stage artifact (verified: zero `plan-handoff` references in `_verify/`). The pure-builder precedent never faced this (its gate runs AT `/breakdown`). Two options: *(a)* `/verify` reads `specs/[feature]/plan-handoff.json` directly — a NEW cross-stage read precedent; *(b) recommended:* `/breakdown` bridges via its EXISTING read paths — a `**Dead code removal**:` task-file field (mirroring the documented `**Property targets**:` field) on the owning task PLUS a `dead_code_rows` passthrough in `_breakdown/handoff_schema.py` → `breakdown-handoff.json`, which `/verify` already reads directly (`verify/main.md:231` hygiene `--scope-baseline` precedent). (b) keeps each hop consuming its immediate upstream (the pipeline's standing "consumer obeys producer" shape). Scope consequence: Phase 1 grows the `_breakdown` schema passthrough; Phase 3 grows the task-field emission rule.
+
+## Open questions
+
+- **OQ-1:** `DeadCodeRow` anchor shape — what does `/verify` grep for? Candidate: `{file, symbol_or_branch_token, kind: arm|function|param|import, why_dead}` where `symbol_or_branch_token` is a literal string whose ABSENCE in the post-change file is the pass condition (e.g. `: 'primaryShipToCity'`). Executor pins with python-reviewer; a token that can legitimately survive elsewhere in the file needs a line-scoped or CBM-symbol-scoped variant.
+- **OQ-2:** verdict tier for declared-row-not-removed — the plan-22-D7 analogy does NOT settle this (reviewer-verified): `_verdict.py`'s REJECTED tier (`constitution_confirmed`) is keyed specifically to `/review`-sourced `[CONSTITUTION-VIOLATION]` findings, and its own design comments deliberately keep MECHANICAL checks (`mechanical_status`/`regression`) at NEEDS-WORK tier only. Real choice: *(a) recommended* — follow the mechanical-check precedent: NEEDS-WORK-tier blocker (blocks APPROVED, never REJECTED; consistent tiering, no new `_verdict.py` code path); *(b)* — a new REJECTED-tier path parallel to `constitution_confirmed` (stronger, but a distinct `_verdict.py` design + tests that Phase 4 must then scope explicitly). Either way it IS a blocker — the choice is tier, not advisory-vs-blocking. No conflict with plan 34 (hygiene regex scan stays advisory; this is a typed carried contract).
+- **OQ-3:** MAY-item routing surface — plan section only (recommendation), or also a persisted `follow-ups` artifact? Lean plan-section-only v1 (YAGNI; a persisted backlog is a new storage class, plan 49 territory).
+- **OQ-4:** cost — one CBM trace per Key Design Decision at `/plan`. Bound like plan 67/69 (per-decision, not per-file); confirm acceptable at Phase 0.
+- **OQ-5:** e2e — synthetic "simplification" ticket exercising the dead-branch path (the benchmark's remove-filters task is the natural fixture: correct outcome = `primaryShipTo*` arms deleted, verify green; guard-and-leave = verify blocker).
+
+## Phases
+
+### Phase 0 — Ratify
+Maintainer confirms D1–D8 + OQ answers. No code before ratification.
+**Verify:** user reply recording picks.
+
+### Phase 1 — Carrier (python-engineer → python-reviewer)
+`DeadCodeRow` + `BreakdownSeeds.dead_code_rows` in `_plan/handoff_schema.py`; `plan_helper finalize-handoff` parses the plan-template table (mirror `_parse_pure_builder_targets`); PLUS the D8(b) passthrough — `dead_code_rows` in `_breakdown/handoff_schema.py` → `breakdown-handoff.json`; back-compat tests per D6 on BOTH schemas.
+**Verify:** schema/parse tests green; old `plan-handoff.json` + old `breakdown-handoff.json` without the field parse; plan-66 pure-builder tests untouched-green.
+
+### Phase 2 — `/plan` + architect prediction (instruction-author → instruction-reviewer + claude-code-guide)
+`plan/main.md`: new sub-question per D3 + conditional `### Change-Induced Dead Code` (MUST) + `### Follow-On Cleanups (advisory)` (MAY) template sections + Phase-4 handoff wiring note; `architect.md` Rule 9 gains the consequence forcing step (trace-then-declare, empty-is-explicit). Both ship into `.claude/` → claude-code-guide mandatory.
+**Verify:** instruction-reviewer clean; sub-question number verified against the file as-landed (post-69); `grep -rn "dead_code_rows" src/` hits schema + plan_helper + plan/main.md only.
+
+### Phase 3 — `/breakdown` consumption (instruction-author → instruction-reviewer + claude-code-guide)
+`breakdown/main.md`: `read-plan-handoff` rendering of the rows + the D7 owning-task folding rule + the escalation exception at the decomposition architect consult + the D8(b) `**Dead code removal**:` task-field emission rule on the owning task.
+**Verify:** instruction-reviewer clean; no dedicated-deletion-task wording anywhere (D7); the task-field name matches what Phase 4's verb parses.
+
+### Phase 4 — `/verify` confirmation check (python-engineer → python-reviewer, then instruction loop for main.md)
+New `_verify` verb (e.g. `check-dead-code-removal`) reading the D8(b) carry (`breakdown-handoff.json` rows and/or the task field — pin ONE authoritative source at ratification) + the assembled diff post-state; wired into `verify/main.md`'s mechanical-checks phase; verdict integration per the OQ-2 ratified tier.
+**Verify:** verb tests green (removed-passes, guard-and-leave-blocks, no-rows-vacuous, token-absent-file-absent edge); `_verify` suite green; plan-34 regression stance intact (hygiene still advisory).
+
+### Phase 5 — Advisory backstops (instruction-author → instruction-reviewer; claude-code-guide — both files ship into `.claude/`)
+Per split D5: (i) one checklist line in `src/agents/code-reviewer.md` (single-task guard-and-leave, `/implement` panel); (ii) one item in `review/references/emergent-issue-checklist.md` reframed to the cross-task escalation case.
+**Verify:** instruction-reviewer clean; the emergent-checklist item's wording survives the checklist's cross-task-only scope rule (states a two-task shape).
+
+### Phase 6 — Docs reconcile
+`CHANGELOG.md`; repo-root `CLAUDE.md` active-work entry; `src/devforge/storage-rules.md` documents the new `**Dead code removal**:` task field + the handoff passthrough (same home/pattern as the `**Property targets**:` field docs at `:150`/`:195`); `RESEARCH-2026-08-05-SUFFICIENCY-AND-CONSEQUENCE.md` resolution header updated (idea 2 → this plan, built); cross-ref sweep (grep `dead_code_rows`, `DeadCodeRow`, `check-dead-code-removal`, `guard-and-leave`, `Dead code removal` across `src/` + `tests/`).
+**Verify:** sweep = 0 dangling; full suite green.
+
+### Phase 7 — e2e (user-driven, HARD GATE, deferred)
+Per OQ-5: the benchmark remove-filters ticket end-to-end — plan declares the `primaryShipTo*` arms dead, breakdown folds removal into the owning task, verify's removal check green on the clean fix and BLOCKING on a deliberately guard-and-leave variant.
+
+## When resuming work
+
+1. Read this plan in full + `RESEARCH-2026-08-05-SUFFICIENCY-AND-CONSEQUENCE.md` (idea 2 sections) + plan 69 as-landed (sub-question numbering + WI-F outcome feed D3/Phase 2).
+2. Confirm plans 68/64/69 landed; tree clean.
+3. Re-verify anchors: `PureBuilderRow` in `_plan/handoff_schema.py`, `_parse_pure_builder_targets` in `plan_helper`, sub-question count in `plan/main.md` PHASE 1.3, `dead_siblings` in `research/main.md`, §3.5 no-dead-code in `src/constitution.md`.
+4. Start at Phase 0 ratification — do not skip to code.
