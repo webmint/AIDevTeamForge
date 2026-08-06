@@ -154,6 +154,12 @@ from typing import Dict, List, Optional
 # Skip-dirs: matched against every SEGMENT of the normalised path so that
 # both top-level "specs/foo.md" and wrapper-prefixed "subdir/specs/foo.md"
 # are caught.  The check is case-insensitive to handle macOS/Windows paths.
+#
+# "research" / "discover" are legacy top-level dirs: plan 68 relocated
+# /research and /discover artifacts into specs/NNN-slug/ (already listed
+# above) for all NEW work.  Kept here only so a grandfathered install's
+# pre-plan-68 research/ and discover/ dirs stay skipped by the hygiene scan
+# (D3 clean cut — old dirs persist on disk, nothing migrates).
 _SKIP_PATH_SEGMENTS = frozenset([
     "specs", "docs", "design", "audits",
     "research", "discover", "bugs", ".devforge",

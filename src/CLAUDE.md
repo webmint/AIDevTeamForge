@@ -42,15 +42,15 @@ This file provides guidance to Claude Code when working with code in this reposi
                                                                                               spec-tier)               high-stakes)
 ```
 
-`/research` (bug/enhancement against existing code) OR `/discover` (greenfield) is a **required precondition** for `/specify` — `/specify` blocks until a research or discover handoff exists. Use `/research` when investigating existing code, `/discover` when surveying a greenfield idea; the two cover complementary intake lanes, and either one satisfies the `/specify` gate.
+`/research` (bug/enhancement against existing code) OR `/discover` (greenfield) is a **required precondition** for `/specify` — `/specify` blocks until a pending research or discover handoff exists in a feature directory. Use `/research` when investigating existing code, `/discover` when surveying a greenfield idea; the two cover complementary intake lanes, and either one satisfies the `/specify` gate.
 
 `[/spec-check]` is **optional, opt-in** — a spec-tier consistency check run between `/specify` and `/plan` that formalizes the acceptance criteria and proves whether they contradict each other (bracketed in the chain because it is opt-in, not a mandatory gate); run it for high-stakes specs before planning. It is a consistency prover, not a mind-reader — it checks whether the ACs contradict EACH OTHER, not whether they are what you meant.
 
 `/fix` is **not a linear step** — it is a proposal-only remediation loop OFF `/review` and `/verify` (and off an in-window conversational defect), run inside the post-`/implement`/pre-`/summarize` window; the model OFFERS it, the user invokes it. It never appears in the arrow chain above.
 
-- `/research "topic"` — Investigate a bug or enhancement against the existing codebase → research handoff (required intake lane for `/specify`); WIP-commits its report + handoff as it writes them (folds into `/finalize`'s squash)
-- `/discover "feature idea"` — Greenfield-feature discovery → discover handoff (required intake lane for `/specify`); WIP-commits its report + handoff as it writes them (folds into `/finalize`'s squash)
-- `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md` (blocks until a research or discover handoff exists); captures a per-feature `**Design source**:` declaration (`html` / `figma` / `screenshot` / `none`) in the spec frontmatter and persists a structured design anchor (`specs/NNN-name/design-anchor.json` — the design source plus which selectors carry the design intent) captured at intake; WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash)
+- `/research "topic"` — Investigate a bug or enhancement against the existing codebase (required intake lane for `/specify`); on a confirmed save allocates `specs/NNN-name/` + the `spec/NNN-name` branch and writes `research-report.md` + `research-handoff.json` there, WIP-committing them as it writes (folds into `/finalize`'s squash)
+- `/discover "feature idea"` — Greenfield-feature discovery (required intake lane for `/specify`); on a confirmed save allocates `specs/NNN-name/` + the `spec/NNN-name` branch and writes `discovery-report.md` + `discover-handoff.json` there, WIP-committing them as it writes (folds into `/finalize`'s squash)
+- `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md`, written into the feature directory intake already allocated (blocks until a pending research or discover handoff exists); captures a per-feature `**Design source**:` declaration (`html` / `figma` / `screenshot` / `none`) in the spec frontmatter and persists a structured design anchor (`specs/NNN-name/design-anchor.json` — the design source plus which selectors carry the design intent) captured at intake; WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash)
 - `/spec-check` — **Optional, opt-in** spec-tier SMT consistency check of the acceptance criteria → `specs/NNN-name/spec-check.md` (run between `/specify` and `/plan`; a consistency prover, not a mind-reader — checks whether the ACs contradict each other, not whether they are what you meant); WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash)
 - `/plan` — Technical plan from approved spec → `specs/NNN-name/plan.md`; WIP-commits the plan + handoff (and the spec's Draft→Approved status flip) as it writes them (folds into `/finalize`'s squash)
 - `/grill` — **Optional, opt-in** design-time adversarial review of the completed `plan.md` → `specs/NNN-name/grill.md` (run for high-stakes plans before `/breakdown`; not a mandatory gate); WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash)
@@ -61,7 +61,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 - `/fix` — **Proposal-only remediation loop** (NOT a linear step) OFFERED off `/review` findings / `/verify` NEEDS WORK / an in-window conversational defect → gated fix via `/implement`'s back half → `[WIP] fix:` commit; `/report-bug` is the file-and-defer alternative
 - `/finalize` — Surgical `docs/` updates via tech-writer + an unconditional `specs/<feature>/` safety-net commit + squash WIP commits into a clean feature commit
 
-`/research` and `/discover` are read-only and produce no spec themselves, but their handoffs are a required precondition for `/specify` — so they belong to the spec pipeline above, not to the standalone group below.
+`/research` and `/discover` are read-only on source code and produce no spec themselves — but a confirmed save is a repository mutation: it creates the feature directory, creates the `spec/NNN-name` branch when the session is on the default branch, and WIP-commits the artifacts. Their handoffs are a required precondition for `/specify`, so they belong to the spec pipeline above, not to the standalone group below.
 
 Standalone (no pipeline connection — runs outside the spec pipeline):
 - `/audit` — Adversarial whole-codebase quality + system-design + best-practices review
@@ -70,13 +70,13 @@ Standalone (no pipeline connection — runs outside the spec pipeline):
 ### Command Details
 
 #### `/research "<topic>"` (required intake lane for `/specify`)
-Investigate a bug or enhancement against the existing codebase and produce a structured research report grounded in the codebase-memory-mcp graph + `docs/`. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Read-only — does not modify code; the run writes a research `handoff.json` that `/specify` auto-discovers and requires (see `/specify` Phase 0.4 — a research OR discover handoff is a mandatory precondition), plus a copy-pasteable `/specify` block (manual, no auto-dispatch). WIP-commits its report + handoff as it writes them (folds into `/finalize`'s squash). Proportionate: scales down to a fast pass for a trivial bug.
+Investigate a bug or enhancement against the existing codebase and produce a structured research report grounded in the codebase-memory-mcp graph + `docs/`. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Read-only on source code — it never modifies code — but the save is not inert: once the user confirms saving AND the feature name, the run allocates the feature directory `specs/NNN-<feature-name>/`, creates the `spec/NNN-<feature-name>` branch when the session is on the default branch, and writes `research-report.md` + `research-handoff.json` (plus `probe-script.<ext>` when a tier-1.5 probe ran) inside it, then WIP-commits them (folds into `/finalize`'s squash). A run the user declines to save leaves nothing under `specs/`. `/specify` auto-discovers that handoff and requires it (see `/specify` Phase 0.4 — a research OR discover handoff is a mandatory precondition); the run also prints a copy-pasteable `/specify` block (manual, no auto-dispatch). Proportionate: scales down to a fast pass for a trivial bug.
 
 #### `/discover "<feature idea>"` (required intake lane for `/specify`, greenfield)
-Pre-`/specify` discovery for a greenfield feature — surveys internal prior art then the web, and produces a fit-checked discovery report with design options (typically 2-3) and a build-vs-buy verdict. Same 4-command setup-chain hard gate. Read-only — does not modify code; the run writes a discover `handoff.json` that `/specify` auto-discovers and requires (the greenfield counterpart to `/research`'s handoff; either one satisfies the `/specify` Phase 0.4 gate), plus a copy-pasteable `/specify` block (manual, no auto-dispatch). WIP-commits its report + handoff as it writes them (folds into `/finalize`'s squash).
+Pre-`/specify` discovery for a greenfield feature — surveys internal prior art then the web, and produces a fit-checked discovery report with design options (typically 2-3) and a build-vs-buy verdict. Same 4-command setup-chain hard gate. Read-only on source code — it never modifies code — but the save is not inert: once the user confirms saving AND the feature name, the run allocates the feature directory `specs/NNN-<feature-name>/`, creates the `spec/NNN-<feature-name>` branch when the session is on the default branch, and writes `discovery-report.md` + `discover-handoff.json` inside it, then WIP-commits them (folds into `/finalize`'s squash). The report stem is `discovery-` and the handoff stem is `discover-` — that asymmetry is deliberate; never normalize one to match the other. A run the user declines to save leaves nothing under `specs/` and no orphaned handoff. `/specify` auto-discovers that handoff and requires it (the greenfield counterpart to `/research`'s handoff; either one satisfies the `/specify` Phase 0.4 gate); the run also prints a copy-pasteable `/specify` block (manual, no auto-dispatch).
 
 #### `/specify "feature description"`
-Authors a structured 9-section feature spec at `specs/NNN-<feature-name>/spec.md` with EARS-validated acceptance criteria. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). **Requires approval before proceeding**; on approve, writes a specify→plan `handoff.json` + a manual-next-step `/plan` block (no auto-dispatch). WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash). Auto-creates a `spec/NNN-short-desc` branch when on the default branch.
+Authors a structured 9-section feature spec at `specs/NNN-<feature-name>/spec.md` with EARS-validated acceptance criteria. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Its Phase 0.4 gate RESOLVES the feature directory `/research` or `/discover` already allocated at intake — it globs `specs/*/research-handoff.json` and `specs/*/discover-handoff.json` for a PENDING directory (its `spec.md` is absent, or a sibling `*-seed.json` targets the spec stage for a `/grill` or `/spec-check` re-entry revision) and writes `spec.md` into it, allocating no number of its own. **Requires approval before proceeding**; on approve, writes a specify→plan `handoff.json` + a manual-next-step `/plan` block (no auto-dispatch). WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash). Branch creation is a FALLBACK only — intake creates `spec/NNN-<feature-name>`, so `/specify` creates it only when the session is still on the default branch at spec time (intake skipped the checkout, or the user switched back since).
 
 #### `/spec-check [feature-or-spec]`
 **Optional, opt-in** spec-tier consistency check of the acceptance criteria — the spec-level mirror of `/grill`, positioned between `/specify` and `/plan` so a self-contradictory spec is caught before `/plan` builds on it. Formalizes each acceptance criterion into a constraint IR via the read-only `spec-formalizer` agent (a fixed 2-pass quorum keeps the formalization — and so the verdict — reproducible), runs the Z3 SMT solver over the constraints, and recommends a 3-way disposition — CONSISTENT / REVISE-SPEC / DISMISS. The human checks the TRANSLATION (does the IR faithfully capture each AC?) and owns the final verdict — the tool recommends, it never decides. Writes `specs/[feature]/spec-check.md`; when the user's pick matches a REVISE-SPEC recommendation, the orchestrator emits a backward re-entry seed (`specs/[feature]/spec-check-seed.json`, `target_stage="spec"`) that `/specify` consumes on re-run. WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash). Scope boundary: it is a consistency prover, not a mind-reader — it checks whether the ACs contradict EACH OTHER, not whether they are what you MEANT (a single coherent-but-wrong AC passes). It is STRONG on numeric / state / enum invariants but catches a permission clash ONLY when a permitting case is asserted reachable (not "permission logic" in general). The Z3 proof is deterministic over a human-checked, quorum-stable formalization — not a bare "deterministic proof of your spec".
@@ -230,17 +230,16 @@ Authors of template files — constitution, agent files, docs, this CLAUDE.md �
 ## Artifact Storage
 
 ```
-research/
-  YYYY-MM-DD-topic-slug.md        # Research reports (/research) — bug/enhancement against existing code
-
-discover/
-  YYYY-MM-DD-topic-slug.md        # Discovery reports (/discover) — greenfield feature, pre-/specify
-
 specs/
-  001-feature-name/            # Numbered feature directories
+  001-feature-name/            # Numbered feature directories (allocated by /research or /discover)
+    research-report.md         # /research report — bug/enhancement lane
+    research-handoff.json      # /research → /specify handoff
+    probe-script.<ext>         # /research tier-1.5 probe (optional)
+    discovery-report.md        # /discover report — greenfield lane
+    discover-handoff.json      # /discover → /specify handoff
     spec.md                    # /specify output
     plan.md                    # /plan output
-    research.md                # /plan research (optional)
+    research.md                # /plan research notes (optional) — NOT research-report.md
     data-model.md              # /plan data model (optional)
     contracts.md               # /plan API contracts (optional)
     tasks/                     # /breakdown output
@@ -262,7 +261,7 @@ docs/
 
 - Feature dirs: `NNN-kebab-name`, sequential numbering (001, 002, ...)
 - Task files: `NNN-short-title.md`, sequential within feature
-- Everything for a feature lives in one directory
+- Everything for a feature lives in one directory — including the intake report + handoff, since `/research` and `/discover` create the directory (and the `spec/NNN-name` branch) at their confirmed save and `/specify` resolves it rather than allocating one
 - docs/ is generated by `/generate-docs` (Plan F): bottom-up tiers (concerns → packages → project), incremental skip via `source_stamp` frontmatter
 - docs/ files are LLM context source first, dev-greppable second (LLM-first density format; see `.devforge/storage-rules.md`)
 - Structural queries (exports, types, callers, deps, dead code) are NOT in docs/ — query the codebase-memory-mcp graph live via MCP tools (`search_graph`, `trace_path`, `get_code_snippet`, `search_code`, `query_graph`)

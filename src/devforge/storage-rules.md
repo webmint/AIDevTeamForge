@@ -8,21 +8,20 @@ These rules define how all development artifacts are organized. All commands MUS
 bugs/
   NNN-short-description.md           # Bug reports (report-bug or verify triage)
 
-research/
-  YYYY-MM-DD-[topic-slug].md          # Research reports (research) — bug/enhancement against existing code
-
-discover/
-  YYYY-MM-DD-[topic-slug].md          # Discovery reports (discover) — greenfield feature, pre-/specify
-
 audits/
   YYYY-MM-DD-audit.md                  # Adversarial codebase audits (audit) — periodic, dated, not auto-committed
   .gitignore                           # Auto-created on first audit run (excludes .tmp-* files)
 
 specs/
-  NNN-feature-name/                # One numbered directory per feature
+  NNN-feature-name/                # One numbered directory per feature (allocated by research or discover)
+    research-report.md             # Research report (research) — bug/enhancement lane
+    research-handoff.json          # research→specify structured handoff (research)
+    probe-script.<ext>             # Tier-1.5 runtime probe (research) — optional
+    discovery-report.md            # Discovery report (discover) — greenfield lane
+    discover-handoff.json          # discover→specify structured handoff (discover)
     spec.md                        # Feature specification (specify)
     plan.md                        # Technical implementation plan (plan)
-    research.md                    # Research findings (plan) — optional
+    research.md                    # Research findings (plan) — optional, NOT research-report.md
     data-model.md                  # Entity definitions (plan) — optional
     contracts.md                   # API contracts (plan) — optional
     handoff.json                   # specify→plan structured handoff (specify)
@@ -43,6 +42,23 @@ docs/
     <concern>/                     # One subdir per src/ subfolder concern
       index.md                     # Concern: Purpose + Structure (annotated tree) + Hazards
 ```
+
+**Intake owns the feature directory.** `/research` and `/discover` allocate
+`specs/NNN-feature-name/` — and the matching `spec/NNN-feature-name` branch —
+at the end of a run, once the user confirms the save and the feature name, and
+write their report + handoff inside it. `/specify` then RESOLVES that existing
+directory and writes `spec.md` beside those artifacts; it allocates no number
+of its own. A run the user declines to save leaves nothing under `specs/`.
+Top-level `research/` and `discover/` directories are legacy — installs that
+ran intake before this layout keep theirs as inert history, and nothing new is
+written there.
+
+**The `discovery-` / `discover-` stem asymmetry is deliberate.** `/discover`
+writes its report as `discovery-report.md` and its handoff as
+`discover-handoff.json`. Both literals are load-bearing — `specify_helper
+find-handoffs` globs `specs/*/discover-handoff.json`, and the handoff records
+the sibling report in its `report_path` field — so renaming either file to make
+the two stems match breaks discovery. Do not normalize them.
 
 NOTE: legacy layout (`docs/features/`, `docs/api/`, `docs/guides/`) is dropped.
 Structural information (exports, types, deps, public-surface, call chains) is
@@ -85,13 +101,15 @@ consolidation, not a replacement.
 
 - **VERSIONED** — carry history or setup identity; stay tracked. Only `memory.md` + `spec-stamps.jsonl` have a per-feature delta, and that delta rides the `/finalize` squash (a scoped, deliberate narrowing of the plan 33/37 D3 runtime-state exclusion — see `src/commands/finalize/main.md` PHASE 2).
 - **EPHEMERAL** — per-cycle working state, single-slot scratch, pointers, logs, locks. Gitignored via the dedicated `src/files/devforge.gitignore` template (merged into a consumer's `.gitignore` by `install.sh` + `update.sh`); already-tracked ones are untracked by `update.sh`'s one-time `git rm --cached` migration.
-- **FEATURE-SCOPED** — the persistent per-feature records, committed per-step (plan 37) and folded into `/finalize`'s squash: `specs/<feature>/*`, and the DATED `research/<date>-<slug>/*` + `discover/<date>-<slug>.*` reports below.
+- **FEATURE-SCOPED** — the persistent per-feature records, committed per-step (plan 37) and folded into `/finalize`'s squash: everything under `specs/<feature>/`, from the `/research` / `/discover` intake artifacts that open the directory through to `summary.md` (plan 68). Legacy top-level `research/<date>-<slug>/*` + `discover/<date>-<slug>.*` reports exist only in installs whose intake predates that layout; they are never written to again and nothing migrates them.
 - **CODE (install-reproducible)** — the forge's own helper code the installer copies into every consumer: `.devforge/lib/` (Python helper subpackages + `*_helper` launchers), `.devforge/bin/`, `.devforge/templates/`. Gitignored + untracked (the node_modules model) via the same `src/files/devforge.gitignore` template + `scripts/devforge-state-migrate.sh` `git rm --cached` migration as the EPHEMERAL class; regenerated by `install.sh` / `update.sh` `cp -R` on every run, so it is never git-tracked. This is what stops the consumer's CBM graph from indexing forge-internal code (plan 56).
   - **Fresh-clone onboarding.** A clone that does NOT re-run forge install/update lacks these helpers, so forge commands fail on helper invocation until an install/update run restores them — exactly like `npm install` restoring `node_modules`. This is an accepted onboarding step, not a bug; no missing-helpers guard is built (plan 56 OQ-1).
   - **`.devforge/template/` (SINGULAR) is NOT in the CODE class — it stays fully tracked.** It is `update.sh`'s agent three-way-merge baseline + NEW/REMOVED agent enumeration source, so untracking it would risk blind agent overwrite + skipped pruning on the next `update.sh`. Do NOT untrack it. (Note `templates/` plural IS in the CODE class; `template/` singular is NOT — they differ by one character.)
   - **Rollout.** The untrack migration is carried by a FULL `install.sh` or `update.sh` run (both source `scripts/devforge-state-migrate.sh`); a surgical `install.sh --only <cmd>` patch exits before the migration and does NOT carry it — consistent with plan 49's OQ-3 pull-based rollout (no separate back-fill command). This matches the pre-existing plan-49 migration behavior; it is not a plan-56 regression.
 
-**Scratch ≠ record — do not conflate.** `.devforge/research-report.json` (EPHEMERAL single-slot scratch, gitignored) is a DIFFERENT file from `research/<date>-<slug>/handoff.json` (FEATURE-SCOPED persistent record, committed). Same for `.devforge/discover-report.json` vs `discover/<date>-<slug>.handoff.json`. The `.devforge/` copy is overwritten each run; the dated copy is the durable artifact.
+**Scratch ≠ record — do not conflate.** `.devforge/research-report.json` (EPHEMERAL single-slot scratch, gitignored) is a DIFFERENT file from `specs/NNN-slug/research-handoff.json` (FEATURE-SCOPED persistent record, committed). Same for `.devforge/discover-report.json` vs `specs/NNN-slug/discover-handoff.json`. The `.devforge/` copy is overwritten by the next run of that command; the copy inside the feature directory is the durable artifact.
+
+The trap is sharpest for the two files that share a NAME: `specs/NNN-slug/research-report.md` is the durable RECORD `/research` saves, while `.devforge/research-report.json` is the EPHEMERAL run state its setters mutate during the run. Same words, different class — read the class off the location, never off the name.
 
 ## Naming Rules
 
@@ -111,6 +129,8 @@ consolidation, not a replacement.
 1. List all directories in `specs/`
 2. Extract the highest NNN prefix
 3. Next feature = highest + 1 (or 001 if empty)
+
+This scan runs at intake: `/research` and `/discover` call `allocate-feature-dir` once the user confirms the save. `/specify` reads the number off the directory it resolved and allocates none.
 
 ## Task File Format
 
@@ -177,9 +197,9 @@ The `**Property targets**:` line is OPTIONAL — `render-task-file` emits it onl
 ## File Lifecycle
 
 ```
-research     → displays report in console, optionally saves to research/YYYY-MM-DD-[topic-slug].md
-discover     → displays report in console, optionally saves to discover/YYYY-MM-DD-[topic-slug].md
-specify      → creates specs/NNN-name/spec.md
+research     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/NNN-name branch and writes research-report.md + research-handoff.json there (+ probe-script.<ext> when a tier-1.5 probe ran); a declined save leaves nothing in the repo
+discover     → displays report in console; on a confirmed save allocates specs/NNN-name/ + the spec/NNN-name branch and writes discovery-report.md + discover-handoff.json there; a declined save leaves nothing in the repo
+specify      → creates specs/NNN-name/spec.md inside the feature directory intake already allocated
 spec-check   → creates specs/NNN-name/spec-check.md (SMT AC-consistency report) + specs/NNN-name/spec-check-seed.json ONLY on a MATCHING REVISE-SPEC pick (user picks "Revise spec" AND the recommendation was REVISE-SPEC; a cross-pick / Consistent / Dismiss writes no seed — the plan-39 verdict-gate) (backward re-entry seed → /specify); opt-in, between /specify and /plan
 plan         → creates specs/NNN-name/plan.md (+ research.md, data-model.md, contracts.md if needed)
 breakdown    → creates specs/NNN-name/tasks/001-xxx.md, 002-xxx.md, ... + specs/NNN-name/breakdown-handoff.json (machine contract for /implement; task .md files stay human-readable)

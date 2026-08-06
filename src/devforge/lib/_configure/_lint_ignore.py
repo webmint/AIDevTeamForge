@@ -53,6 +53,12 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 # Pre-emptive entries (specs/, bugs/, research/, discover/, audits/) are listed
 # even though they do not exist at install time — they will be created later by
 # workflow commands.
+#
+# "research" / "discover" are legacy top-level dirs: plan 68 (intake owns the
+# feature dir) relocated /research and /discover artifacts into specs/NNN-slug/
+# (already listed below) for all NEW work. These two entries are kept only so
+# a grandfathered install's pre-plan-68 research/ and discover/ dirs stay
+# lint-ignored (D3 clean cut — old dirs persist on disk, nothing migrates).
 FRAMEWORK_FOLDERS: List[str] = [
     ".claude",
     ".devforge",

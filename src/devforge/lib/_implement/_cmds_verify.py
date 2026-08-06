@@ -162,6 +162,15 @@ _CONFIG_FILENAME = "project-config.json"
 # Forge artifacts that must NOT appear inside source_root in wrapper mode.
 # If the agent wrote any of these into the source repo, that's a pollution failure.
 # Check: path-relative entries checked as os.path.exists(source_root / entry).
+#
+# "research" is a legacy top-level dir: plan 68 relocated /research (and
+# /discover) artifacts into specs/NNN-slug/ (already listed above) for all
+# NEW work. Kept here only so a grandfathered install's pre-plan-68
+# research/ dir is still guarded against wrapper-mode pollution (D3 clean
+# cut — old dirs persist on disk, nothing migrates). The pre-existing
+# asymmetry below (research present, discover never had an entry here) is
+# mooted by the clean cut rather than fixed — discover/ artifacts now live
+# under specs/ like everything else, so no new entry is needed.
 ISOLATION_ARTIFACTS = (
     ".claude",
     "specs",

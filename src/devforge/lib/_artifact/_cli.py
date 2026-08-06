@@ -43,10 +43,12 @@ Exit codes
 Design notes
 ------------
 - D2 (plan 37): targets workspace.install_root ALWAYS.  In wrapper mode
-  specs/, research/, discover/ live in the install/wrapper root.  The
-  source (product) repo gets code commits only (wip-commit's job) and
-  must stay traceless (plan 25 D5).  Pointing this verb at source_root
-  is a hard invariant violation — do NOT do it.
+  specs/ (which, per plan 68, now also holds the intake artifacts research/
+  and discover/ used to hold — those two top-level dirs are legacy, kept
+  on disk only for grandfathered installs, D3 clean cut) lives in the
+  install/wrapper root.  The source (product) repo gets code commits only
+  (wip-commit's job) and must stay traceless (plan 25 D5).  Pointing this
+  verb at source_root is a hard invariant violation — do NOT do it.
 - Fail-soft (D1 plan 37): a commit failure warns on stderr and returns
   exit 1, but NEVER raises an exception that would crash the calling
   command.  The artifact is already written; the commit is a safety net.

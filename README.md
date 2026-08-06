@@ -29,7 +29,7 @@ It self-registers on PATH; restart Claude Code afterward. **Context7** and **Chr
 /path/to/AIDevTeamForge/install.sh /path/to/your-project
 ```
 
-Copies `.claude/`, `.devforge/`, `specs/`, `bugs/`, `research/`, `discover/`, and `.mcp.json` into the project. Then open the project in Claude Code and run the one-time setup chain.
+Copies `.claude/`, `.devforge/`, `docs/`, `CLAUDE.md`, `constitution.md`, and `.mcp.json` into the project. Artifact directories (`specs/`, `bugs/`, `audits/`) are created by the commands that write them. Then open the project in Claude Code and run the one-time setup chain.
 
 To push template improvements to an already-installed project without clobbering your customizations:
 
@@ -61,9 +61,9 @@ Each arrow is a user-approved gate. `[/spec-check]` is optional (opt-in, proves 
 
 ### Per-feature pipeline
 
-- **`/research "topic"`** — Investigate a bug or enhancement against existing code → research handoff. Intake lane for `/specify`.
-- **`/discover "idea"`** — Survey a greenfield feature (internal prior art + web) → discovery handoff. The other intake lane for `/specify`.
-- **`/specify "feature"`** — Author a 9-section spec with EARS acceptance criteria → `specs/NNN-name/spec.md`. Blocks until a research/discover handoff exists.
+- **`/research "topic"`** — Investigate a bug or enhancement against existing code → research handoff. Intake lane for `/specify`. On save it allocates the feature dir `specs/NNN-name/` and the `spec/NNN-name` branch, and writes its report + handoff there.
+- **`/discover "idea"`** — Survey a greenfield feature (internal prior art + web) → discovery handoff. The other intake lane for `/specify`. Allocates the feature dir + branch on save, same as `/research`.
+- **`/specify "feature"`** — Author a 9-section spec with EARS acceptance criteria → `specs/NNN-name/spec.md`, written into the feature dir intake allocated. Blocks until a pending research/discover handoff exists.
 - **`/spec-check`** *(optional)* — SMT consistency prover for the spec's acceptance criteria: formalizes each AC and proves (via Z3) whether they contradict each other → `spec-check.md`. Recommends CONSISTENT / REVISE-SPEC / DISMISS; you check the translation and own the verdict. A consistency prover, not a mind-reader. Needs `z3-solver` (opt-in pip dep, not installed by default).
 - **`/plan`** — Technical plan from the approved spec: architecture, data model, API contracts, research → `plan.md`.
 - **`/grill`** *(optional)* — Design-time adversarial review of `plan.md` before decomposition. Recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; you own the verdict.
@@ -84,8 +84,9 @@ Each arrow is a user-approved gate. `[/spec-check]` is optional (opt-in, proves 
 ## Artifact layout
 
 ```
-research/  YYYY-MM-DD-slug.md          discover/  YYYY-MM-DD-slug.md
 specs/NNN-feature/                     bugs/NNN-slug.md
+  research-report.md research-handoff.json     (/research lane)
+  discovery-report.md discover-handoff.json    (/discover lane)
   spec.md plan.md tasks/ review.md verification.md summary.md
 audits/  YYYY-MM-DD-audit.md
 ```
