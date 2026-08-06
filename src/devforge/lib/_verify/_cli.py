@@ -487,6 +487,157 @@ def cmd_check_hygiene(args):
 
 
 # ---------------------------------------------------------------------------
+# plan 71 Phase 4 handler: check-dead-code-removal
+# ---------------------------------------------------------------------------
+
+
+def cmd_check_dead_code_removal(args):
+    # type: (argparse.Namespace) -> int
+    """Confirm plan-declared change-induced dead-code rows were removed.
+
+    Reads:
+      --breakdown-handoff <path> — path to ``breakdown-handoff.json``; its
+                                    top-level ``dead_code_rows`` array (the
+                                    plan 71 D8(b) passthrough carrier) is the
+                                    declared kill-list.  Pass "none" (literal
+                                    string) to explicitly skip.  A handoff
+                                    with NO ``dead_code_rows`` key is treated
+                                    as legitimately absent (nothing was
+                                    declared) — same shape as
+                                    check-hygiene's --scope-baseline "none"
+                                    case.  A handoff that could not be
+                                    READ or PARSED (missing/unreadable file,
+                                    malformed JSON, not a JSON object) or
+                                    whose ``dead_code_rows`` key is
+                                    PRESENT-but-wrong-type is a DIFFERENT
+                                    case — this is a MUST-lane blocking gate
+                                    (plan 71 D4), not an advisory check like
+                                    check-hygiene, so a read/parse failure is
+                                    NOT silently conflated with "nothing
+                                    declared": it is reported via a non-fatal
+                                    stderr WARN and the ``handoff_read_error``
+                                    result field (see below).
+      --source-root <dir>        — absolute path to the source tree.  Each
+                                    row's ``file`` is resolved from here.
+                                    Default: CWD.
+
+    Emits JSON to stdout (see check_dead_code_removal's docstring for the
+    base shape) plus one CLI-layer field:
+      {
+        "status":            "vacuous" | "clean" | "violation",
+        "violation":          bool,
+        "rows":               [...],
+        "pass_count":         int,
+        "violation_count":    int,
+        "total_count":        int,
+        "note":               str,
+        "handoff_read_error": bool   # True only when --breakdown-handoff
+                                      # could not be read/parsed, or its
+                                      # dead_code_rows key was present but
+                                      # not a JSON array.  False for the
+                                      # legit "nothing declared" case, and
+                                      # for "clean"/"violation" results.
+      }
+
+    Honest bound: this confirms removal of the DECLARED kill-list only —
+    undeclared change-induced dead code is not detected by this check
+    (plan 71 D4).
+
+    Returns:
+      0 — always (a read/parse failure is non-fatal — reported as a
+          vacuous result with handoff_read_error=true and a stderr WARN,
+          not a process error)
+      2 — argument error (--breakdown-handoff missing)
+    """
+    from ._dead_code import check_dead_code_removal
+
+    handoff_path = getattr(args, "breakdown_handoff", None) or ""
+    source_root = getattr(args, "source_root", None) or os.getcwd()
+    source_root = os.path.realpath(source_root)
+
+    if not handoff_path:
+        sys.stderr.write(
+            "verify_helper check-dead-code-removal: --breakdown-handoff is required\n"
+        )
+        return 2
+
+    # Load dead_code_rows from breakdown-handoff.json, unless "none".
+    #
+    # Unlike check-hygiene's --scope-baseline (an ADVISORY check, where
+    # unreadable-is-absent is a fine default), this is a MUST-lane BLOCKING
+    # gate (plan 71 D4) — silently treating "could not read the declared
+    # kill-list" the same as "nothing was declared" would let a tampered or
+    # corrupted handoff sail through as a clean vacuous result. So the two
+    # cases are distinguished explicitly:
+    #   - key absent (handoff read fine, no dead_code_rows key)  -> legit,
+    #     no warning, handoff_read_error=False.
+    #   - file missing/unreadable, JSON malformed, JSON not an object, or
+    #     dead_code_rows present-but-wrong-type -> read/parse FAILURE,
+    #     stderr WARN + handoff_read_error=True, still non-fatal (exit 0,
+    #     status stays "vacuous" — the check genuinely could not run).
+    dead_code_rows = None  # type: ignore[assignment]
+    handoff_read_error = False
+
+    if handoff_path.lower() != "none":
+        handoff = None
+        read_failed = False
+        try:
+            with open(handoff_path, encoding="utf-8") as fh:
+                handoff = json.load(fh)
+        except OSError:
+            read_failed = True
+        except ValueError:
+            read_failed = True
+
+        if read_failed:
+            handoff_read_error = True
+            sys.stderr.write(
+                "verify_helper check-dead-code-removal: WARN: could not "
+                "read/parse --breakdown-handoff ({0}) — dead-code "
+                "confirmation could not run\n".format(handoff_path)
+            )
+        elif not isinstance(handoff, dict):
+            # Parsed, but the top level isn't a JSON object (e.g. a bare
+            # array or scalar) — dead_code_rows cannot be looked up.
+            handoff_read_error = True
+            sys.stderr.write(
+                "verify_helper check-dead-code-removal: WARN: "
+                "--breakdown-handoff ({0}) is not a JSON object — "
+                "dead-code confirmation could not run\n".format(handoff_path)
+            )
+        else:
+            raw_rows = handoff.get("dead_code_rows")
+            if raw_rows is None:
+                pass  # legit: key absent, nothing declared — not an error.
+            elif isinstance(raw_rows, list):
+                dead_code_rows = raw_rows
+            else:
+                # Key present but wrong type — malformed carrier, not a
+                # legitimate "nothing declared" case.
+                handoff_read_error = True
+                sys.stderr.write(
+                    "verify_helper check-dead-code-removal: WARN: "
+                    "--breakdown-handoff ({0}) dead_code_rows is present "
+                    "but not a JSON array — dead-code confirmation could "
+                    "not run\n".format(handoff_path)
+                )
+
+    result = check_dead_code_removal(
+        dead_code_rows=dead_code_rows,
+        source_root=source_root,
+    )
+    if handoff_read_error:
+        result["note"] = (
+            "--breakdown-handoff could not be read or parsed (or was "
+            "malformed) — dead-code confirmation could not run; this is "
+            "NOT the same as no dead-code rows being declared."
+        )
+    result["handoff_read_error"] = handoff_read_error
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Phase 5 handlers
 # ---------------------------------------------------------------------------
 
@@ -580,6 +731,19 @@ def cmd_compute_verdict(args):
     # 15-subcommand callers that omit --regression are byte-identical).
     regression = _load_json(regression_path, "--regression", allow_missing=True)
 
+    # Dead-code removal check result (plan 71 D4/OQ-2(a); optional —
+    # allow_missing=True so existing callers that omit --dead-code are
+    # byte-identical, mirroring --regression above).
+    dead_code_path = getattr(args, "dead_code", None) or ""
+    dead_code = _load_json(dead_code_path, "--dead-code", allow_missing=True)
+    if dead_code == "ERROR":
+        # allow_missing=True never returns the sentinel for a missing/unreadable
+        # path (both degrade to None); "ERROR" here can only come from the
+        # malformed-JSON branch, which _load_json always treats as fatal
+        # regardless of allow_missing. Without this check, the string "ERROR"
+        # would reach compute_verdict and crash on dead_code.get(...).
+        return 2
+
     result = compute_verdict(
         ac_results=ac_results,
         mechanical_status=mech_status,
@@ -587,6 +751,7 @@ def cmd_compute_verdict(args):
         hygiene=hygiene,
         ac_verification_mode=ac_mode,
         regression=regression,
+        dead_code=dead_code,
     )
 
     sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
@@ -955,6 +1120,16 @@ _SUBCOMMAND_REGISTRY = [
         cmd_check_hygiene,
     ),
     (
+        "check-dead-code-removal",
+        (
+            "Confirm each plan-declared change-induced dead-code row's "
+            "anchor_token is gone from the post-change source tree; "
+            "confirms removal of the DECLARED kill-list only (plan 71 "
+            "D4/D8(b))."
+        ),
+        cmd_check_dead_code_removal,
+    ),
+    (
         "compute-verdict",
         (
             "Compute the deterministic APPROVED / NEEDS WORK / REJECTED verdict "
@@ -1203,6 +1378,34 @@ def _register_subcommands(subparsers) -> None:
                 ),
             )
 
+        elif verb == "check-dead-code-removal":
+            sp.add_argument(
+                "--breakdown-handoff",
+                required=True,
+                dest="breakdown_handoff",
+                metavar="PATH|none",
+                help=(
+                    "Path to breakdown-handoff.json; its top-level "
+                    "dead_code_rows array (plan 71 D8(b) passthrough) is "
+                    "the declared kill-list. Pass \"none\" (literal) to "
+                    "explicitly skip. A handoff with no dead_code_rows key "
+                    "is legitimately absent (silent). A handoff that can't "
+                    "be read/parsed, or whose dead_code_rows is present but "
+                    "not a list, is a read-error (non-fatal exit 0, but "
+                    "flagged via handoff_read_error + a stderr WARN)."
+                ),
+            )
+            sp.add_argument(
+                "--source-root",
+                default=None,
+                dest="source_root",
+                metavar="DIR",
+                help=(
+                    "Absolute path to the source tree. Each row's file is "
+                    "resolved from here. Default: CWD."
+                ),
+            )
+
         elif verb == "compute-verdict":
             sp.add_argument(
                 "--ac-results",
@@ -1260,6 +1463,18 @@ def _register_subcommands(subparsers) -> None:
                     "Path to JSON file from regression-gate. "
                     "When regression=true in that file, adds a NEEDS WORK blocker. "
                     "Omit when the regression gate was not run or returned off/inconclusive."
+                ),
+            )
+            sp.add_argument(
+                "--dead-code",
+                default=None,
+                dest="dead_code",
+                metavar="PATH",
+                help=(
+                    "Path to JSON file from check-dead-code-removal (plan 71 "
+                    "D4/OQ-2(a)). When violation=true in that file, adds a "
+                    "NEEDS WORK blocker. Omit when no plan-declared dead-code "
+                    "rows exist for this feature."
                 ),
             )
 

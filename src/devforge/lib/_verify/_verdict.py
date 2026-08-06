@@ -3,7 +3,7 @@
 Public surface
 --------------
   compute_verdict(ac_results, mechanical_status, review_findings,
-                  hygiene, ac_verification_mode) -> dict
+                  hygiene, ac_verification_mode, regression, dead_code) -> dict
 
       Deterministic APPROVED / NEEDS WORK / REJECTED decision.
 
@@ -25,6 +25,12 @@ Public surface
           Output of check_hygiene: keys ``scope_creep``, ``leftover_artifacts``.
       ac_verification_mode : str
           One of: ``"code-only"``, ``"tests"``, ``"runtime-assisted"``, ``"off"``.
+      regression : dict or None
+          Output of run_regression_gate.  See the ``regression`` parameter
+          docs on ``compute_verdict`` below.
+      dead_code : dict or None
+          Output of check_dead_code_removal (plan 71 D4/OQ-2(a)).  See the
+          ``dead_code`` parameter docs on ``compute_verdict`` below.
 
       Returns
       -------
@@ -35,7 +41,8 @@ Public surface
             Each blocker dict: {type, detail}  where type is one of:
               "constitution_confirmed", "constitution_contested",
               "ac_failure", "mechanical_failed",
-              "critical_high_finding", "medium_finding"
+              "critical_high_finding", "medium_finding",
+              "regression", "dead_code_unremoved"
 
 Verdict rule (deterministic — document every branch here)
 ----------------------------------------------------------
@@ -55,6 +62,14 @@ Step 1 — gather facts:
     gate reads only post-refutation confirmed findings, never dismissed/uncertain/
     contested).  A CONTESTED Medium does not gate the verdict.
   - mechanical_failed: mechanical_status not in {"pass", "", None}.
+  - regression_detected: regression dict has "regression": true.
+  - dead_code_violation: dead_code dict has "violation": true (plan 71
+    D4/OQ-2(a)) — a plan-declared change-induced dead-code row's
+    anchor_token is still present in the post-change file (guard-and-leave).
+    Mirrors the regression blocker's tiering exactly: NEEDS WORK only, never
+    REJECTED.  This check confirms removal of the DECLARED kill-list only —
+    it does not detect deadness the architect never declared (honest bound,
+    see ``_dead_code.py``).
 
 Advisory (never blocks verdict):
   - hygiene_flags: scope_creep non-empty OR leftover_artifacts non-empty.
@@ -87,6 +102,11 @@ Step 3 — verdict (priority order):
     - medium_confirmed (any confirmed post-refutation Medium-severity
       non-constitution finding — D3; threshold: any-confirmed-Medium → NEEDS WORK)
       Medium NEVER escalates to REJECTED — it is only a NEEDS-WORK blocker.
+    - regression_detected (test suite green at merge-base, red at HEAD).
+      NEVER escalates to REJECTED — implementation-level, not spec-level.
+    - dead_code_violation (a declared dead-code row's anchor_token was not
+      removed — plan 71 OQ-2(a)).  NEVER escalates to REJECTED — mirrors
+      the mechanical-check precedent (regression / mechanical_status).
   APPROVED   otherwise (no blockers)
 
   NOTE: hygiene_flags (scope_creep / leftover_artifacts) are ADVISORY and
@@ -181,6 +201,7 @@ def compute_verdict(
     hygiene,           # type: Dict
     ac_verification_mode,  # type: str
     regression=None,   # type: Optional[Dict]
+    dead_code=None,    # type: Optional[Dict]
 ):
     # type: (...) -> Dict
     """Compute the APPROVED / NEEDS WORK / REJECTED verdict.
@@ -208,6 +229,19 @@ def compute_verdict(
         NEEDS WORK blocker only (implementation regression, not a
         spec-level failure; REJECTED is reserved for constitution
         violations and catastrophic AC failure rates).
+    dead_code : dict or None
+        Output of check_dead_code_removal (plan 71 D4/OQ-2(a)).  When the
+        dict contains ``"violation": true``, a "dead_code_unremoved"
+        blocker is added that forces NEEDS WORK.  When None, absent, or
+        ``"violation": false`` (which covers both the "clean" and the
+        "vacuous" — no declared rows — statuses), the verdict is unaffected.
+        IMPORTANT: dead_code NEVER triggers REJECTED — mirrors the
+        regression precedent exactly (a mechanical check stays at
+        NEEDS-WORK tier, per OQ-2(a): "follow the mechanical-check
+        precedent").  This blocker also does NOT prove the feature is free
+        of change-induced dead code — it confirms only that the rows the
+        architect DECLARED at ``/plan`` were removed; undeclared deadness
+        is out of scope for this gate (see ``_dead_code.py``).
 
     Returns
     -------
@@ -407,6 +441,49 @@ def compute_verdict(
             "at HEAD — implementation regression detected. "
             "This is a NEEDS WORK blocker (not REJECTED; regression is "
             "implementation-level, not spec-level)."
+        )
+
+    # Dead-code removal check (plan 71 D4/OQ-2(a)) — NEEDS WORK only, NEVER
+    # REJECTED.  Triggered when check_dead_code_removal returns
+    # "violation": true — a plan-declared change-induced dead-code row's
+    # anchor_token is still present in the post-change file (guard-and-leave:
+    # the dominating change shipped but the now-unreachable code was left in
+    # place).  "vacuous" (no rows declared) and "clean" (all rows confirmed
+    # removed) both report violation=False here and do not gate.
+    #
+    # Deliberate asymmetry from the REJECTED conditions, mirroring the
+    # regression blocker above: this is a mechanical-check precedent
+    # (regression / mechanical_status), not a spec-level failure.  It is
+    # also NOT full reachability analysis — it confirms removal of the
+    # DECLARED kill-list only; undeclared deadness is out of scope
+    # (honest bound, see _dead_code.py).
+    dead_code_violation = bool((dead_code or {}).get("violation", False))
+    if dead_code_violation:
+        violation_rows = [
+            r for r in (dead_code or {}).get("rows", [])
+            if r.get("status") == "violation"
+        ]
+        row_summary = ", ".join(
+            "{0} ({1})".format(
+                r.get("file", "?"), r.get("anchor_token", "?")
+            )
+            for r in violation_rows[:3]
+        )
+        if len(violation_rows) > 3:
+            row_summary += " (+ {0} more)".format(len(violation_rows) - 3)
+        blockers.append({
+            "type": "dead_code_unremoved",
+            "detail": (
+                "{0} declared dead-code row(s) not removed (guard-and-leave): "
+                "{1}".format(len(violation_rows), row_summary)
+            ),
+        })
+        reasons.append(
+            "Dead code removal: {0} declared change-induced dead-code row(s) "
+            "still contain their anchor_token — guard-and-leave detected. "
+            "This is a NEEDS WORK blocker (not REJECTED; confirms only the "
+            "DECLARED kill-list — undeclared deadness is not checked, "
+            "honest bound per plan 71 D4).".format(len(violation_rows))
         )
 
     # Hygiene flags — ADVISORY only, never added to blockers
