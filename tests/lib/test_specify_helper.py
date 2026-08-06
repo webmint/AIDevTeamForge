@@ -334,6 +334,43 @@ class TestSourceOriginForPath(unittest.TestCase):
             "prior_spec",
         )
 
+    # -----------------------------------------------------------------
+    # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4 — filename-aware dispatch.
+    # Both directions asserted per the plan's explicit test requirement:
+    # the two new intake report basenames tag research/discover even
+    # though they live under the same "specs/" prefix as prior_spec files,
+    # and every OTHER specs/ file still tags prior_spec.
+    # -----------------------------------------------------------------
+
+    def test_specs_research_report_basename_tags_research(self):
+        self.assertEqual(
+            specify_helper.source_origin_for_path(
+                "specs/001-auth-token-refresh/research-report.md"
+            ),
+            "research",
+        )
+
+    def test_specs_discovery_report_basename_tags_discover(self):
+        self.assertEqual(
+            specify_helper.source_origin_for_path(
+                "specs/001-audit-log-persistence/discovery-report.md"
+            ),
+            "discover",
+        )
+
+    def test_specs_spec_md_still_tags_prior_spec_alongside_intake_files(self):
+        """A prior_spec file coexists in the SAME feature dir as the intake
+        reports — filename-aware dispatch must not over-broadly tag the
+        whole dir; only the two known intake basenames flip to research/
+        discover, spec.md (and everything else under specs/) stays
+        prior_spec."""
+        self.assertEqual(
+            specify_helper.source_origin_for_path(
+                "specs/001-auth-token-refresh/spec.md"
+            ),
+            "prior_spec",
+        )
+
     def test_context_constitution(self):
         self.assertEqual(
             specify_helper.source_origin_for_path("constitution.md"),
@@ -2122,6 +2159,33 @@ class TestVerifyMandatoryReads(unittest.TestCase):
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_greenfield_discovery_report_slot_matches_new_specs_layout(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: the greenfield slot
+        moved from "discover/*.md" to "specs/*/discovery-report.md"
+        (_schema.py) — a real intake-layout read-path must satisfy it via
+        Path.match, not just via an --n-a-reason bypass."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = self._setup(Path(td), "greenfield_feature")
+            for slot, _ in (
+                specify_helper.MANDATORY_READS_BY_TYPE["greenfield_feature"]
+            ):
+                if slot == "specs/*/discovery-report.md":
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--read-path",
+                        "specs/001-scheduled-export-jobs/discovery-report.md",
+                    ])
+                else:
+                    _run([
+                        "--devforge-dir", str(dev), "record-mandatory-read",
+                        "--slot-pattern", slot,
+                        "--n-a-reason", "n/a",
+                    ])
+            r = _run([
+                "--devforge-dir", str(dev), "verify-mandatory-reads",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
 
 class TestPhase3Finalize(unittest.TestCase):
     def test_passes_and_stamps(self):
@@ -2185,6 +2249,17 @@ class TestMandatoryReadsTable(unittest.TestCase):
         )
         self.assertIn("constitution.md#scaffolding-guide", slots)
         self.assertIn(".claude/memory/MEMORY.md", slots)
+
+    def test_greenfield_discover_slot_moved_under_specs(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: the discover-
+        reference-md slot's pattern literal moved from "discover/*.md" to
+        "specs/*/discovery-report.md"; the old top-level literal must not
+        survive as a slot key."""
+        slots = dict(
+            specify_helper.MANDATORY_READS_BY_TYPE["greenfield_feature"]
+        )
+        self.assertIn("specs/*/discovery-report.md", slots)
+        self.assertNotIn("discover/*.md", slots)
 
 
 # ---------------------------------------------------------------------------
@@ -2283,6 +2358,85 @@ class TestPhase4AssignSpecNumber(unittest.TestCase):
                 "--specs-root", str(specs),
             ])
             self.assertEqual(r.stdout.strip(), "011")
+
+
+class TestSetSpecNumber(unittest.TestCase):
+    """python-reviewer finding 1(b): the explicit-value spec_number setter
+    (D5 cold-path seeding; mirrors assign-feature-name's contract)."""
+
+    def test_happy_path_persists_value_verbatim(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-spec-number",
+                "--value", "007",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["spec_number"], "007")
+
+    def test_accepts_wider_than_3_digits(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-spec-number",
+                "--value", "1042",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["spec_number"], "1042")
+
+    def test_rejects_non_digit_value(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-spec-number",
+                "--value", "abc",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("set-spec-number", r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertIsNone(state["spec_number"])
+
+    def test_rejects_fewer_than_3_digits(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-spec-number",
+                "--value", "7",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_rejects_empty_value(self):
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-spec-number",
+                "--value", "",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_no_scan_ignores_existing_specs_dirs(self):
+        """Unlike assign-spec-number, set-spec-number performs NO scan --
+        pre-existing specs/ dirs must not influence the persisted value."""
+        with tempfile.TemporaryDirectory() as td:
+            specs = Path(td) / "specs"
+            (specs / "001-old-spec").mkdir(parents=True)
+            (specs / "010-bigger").mkdir()
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            r = _run([
+                "--devforge-dir", str(dev), "set-spec-number",
+                "--value", "003",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(state["spec_number"], "003")
 
 
 class TestPhase4AssignFeatureName(unittest.TestCase):
@@ -4300,8 +4454,15 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
         "--read-path", ".claude/memory/MEMORY.md",
     ])
     _run([
+        # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: the greenfield slot
+        # for MANDATORY_READS_BY_TYPE moved from "discover/*.md" to
+        # "specs/*/discovery-report.md" (_schema.py); this literal must
+        # match the new pattern for verify-mandatory-reads to still pass.
+        # Not rendered into spec.md (record-input-read/record-finding above
+        # cover that; unaffected), so this change does not touch the
+        # committed specify-sample-greenfield.md golden fixture.
         "--devforge-dir", str(dev), "record-mandatory-read",
-        "--read-path", "discover/2026-05-14-scheduled-export-jobs.md",
+        "--read-path", "specs/001-scheduled-export-jobs/discovery-report.md",
     ])
     _run(["--devforge-dir", str(dev), "phase3-finalize"])
 
@@ -4911,9 +5072,14 @@ class TestImportHandoff(unittest.TestCase):
 
             # spec_type must be seeded.
             self.assertIsNotNone(state.get("spec_type"))
-            # source fields populated (resolve both paths to handle /private/var symlink on macOS).
+            # source.handoff_path is install-root-relative (D9(d),
+            # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4) — repo_root here
+            # is tmp (devforge_dir.parent), and handoff_out sits directly at
+            # tmp/handoff.json, so the relative form is just "handoff.json".
+            self.assertEqual(state["source"]["handoff_path"], "handoff.json")
+            self.assertFalse(state["source"]["handoff_path"].startswith("/"))
             self.assertEqual(
-                Path(state["source"]["handoff_path"]).resolve(),
+                (Path(tmp) / state["source"]["handoff_path"]).resolve(),
                 handoff_out.resolve(),
             )
             self.assertIsNotNone(state["source"]["research_completed_at"])
@@ -5038,9 +5204,10 @@ class TestImportHandoff(unittest.TestCase):
             )
             # Pre-seeded spec_type still same value (re-seeded from same handoff).
             self.assertEqual(state2["spec_type"], spec_type_1)
-            # source still set (resolve both for /private/var macOS symlink).
+            # source.handoff_path still set, install-root-relative (D9(d)).
+            self.assertEqual(state2["source"]["handoff_path"], "handoff.json")
             self.assertEqual(
-                Path(state2["source"]["handoff_path"]).resolve(),
+                (Path(tmp) / state2["source"]["handoff_path"]).resolve(),
                 handoff_out.resolve(),
             )
 
@@ -5078,14 +5245,20 @@ class TestImportHandoff(unittest.TestCase):
             )
             self.assertEqual(state["overview"], "User-composed overview text")
 
-    def test_import_handoff_computes_spec_path_first_slot(self):
-        """Empty specs/ dir → spec_path NNN=001."""
+    def test_import_handoff_future_spec_path_is_handoff_containing_dir(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D5: spec_path is simply the
+        handoff's own containing dir + spec.md — NOT a freshly-scanned NNN.
+        The handoff here sits at specs/001-auth-token-refresh/handoff.json
+        (mimicking the real /research intake layout), so downstream_links
+        .spec_path must be exactly "specs/001-auth-token-refresh/spec.md"
+        regardless of what else is under specs/.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._make_devforge(tmp)
-            # No specs/ dir exists → NNN = 001.
             research_df = Path(tmp) / "research_df"
             research_df.mkdir()
-            handoff_out = Path(tmp) / "handoff.json"
+            feature_dir = Path(tmp) / "specs" / "001-auth-token-refresh"
+            handoff_out = feature_dir / "handoff.json"
 
             r = _build_minimal_handoff(research_df, handoff_out)
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -5093,25 +5266,25 @@ class TestImportHandoff(unittest.TestCase):
             r2 = self._run_import(devforge, handoff_out)
             self.assertEqual(r2.returncode, 0, r2.stderr)
 
-            # Reload handoff.json — downstream_links.spec_path must start with 001.
             handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
             spec_path = handoff_data["downstream_links"]["spec_path"]
-            self.assertTrue(
-                spec_path.startswith("specs/001-"),
-                "Expected spec_path to start with 'specs/001-', got: " + spec_path,
-            )
+            self.assertEqual(spec_path, "specs/001-auth-token-refresh/spec.md")
 
-    def test_import_handoff_computes_spec_path_next_slot(self):
-        """Existing specs/001-foo/ + specs/002-bar/ → spec_path NNN=003."""
+    def test_import_handoff_future_spec_path_ignores_existing_specs_dirs(self):
+        """Pre-existing specs/001-foo/ + specs/002-bar/ dirs must NOT shift
+        the computed spec_path — no NEW NNN is allocated at import time
+        (next_spec_number is never called on this path)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._make_devforge(tmp)
-            # Create 2 existing spec dirs.
+            # Two unrelated existing spec dirs — under the OLD behavior these
+            # would have bumped the scanned NNN to 003.
             (Path(tmp) / "specs" / "001-foo").mkdir(parents=True)
             (Path(tmp) / "specs" / "002-bar").mkdir(parents=True)
 
             research_df = Path(tmp) / "research_df"
             research_df.mkdir()
-            handoff_out = Path(tmp) / "handoff.json"
+            feature_dir = Path(tmp) / "specs" / "099-auth-token-refresh"
+            handoff_out = feature_dir / "handoff.json"
 
             r = _build_minimal_handoff(research_df, handoff_out)
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -5121,9 +5294,10 @@ class TestImportHandoff(unittest.TestCase):
 
             handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
             spec_path = handoff_data["downstream_links"]["spec_path"]
-            self.assertTrue(
-                spec_path.startswith("specs/003-"),
-                "Expected spec_path to start with 'specs/003-', got: " + spec_path,
+            self.assertEqual(
+                spec_path, "specs/099-auth-token-refresh/spec.md",
+                "spec_path must come from the handoff's own dir, not a"
+                " fresh NNN scan over sibling specs/ dirs",
             )
 
     def test_import_handoff_constraint_shapes_preserved(self):
@@ -5191,29 +5365,200 @@ class TestImportHandoff(unittest.TestCase):
             )
             self.assertIs(state.get("spec_type_seeded_by_upstream"), True)
 
+    def test_import_handoff_then_finalize_handoff_carries_root_relative_provenance(self):
+        """End-to-end plan-68 D9(d) round trip: a real /research handoff at
+        specs/NNN-slug/research-handoff.json -> import-handoff -> (assign
+        spec_number/feature_name, mirroring /specify Phase 4's fallback
+        guard) -> finalize-handoff -> the WRITTEN specify->plan handoff.json
+        carries an install-root-relative provenance.upstream_handoff_path
+        (no leading '/'), and it resolves back to the real handoff file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_df"
+            research_df.mkdir()
+
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            handoff_out = feature_dir / "research-handoff.json"
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            r3 = _run([
+                "--devforge-dir", str(devforge), "assign-spec-number",
+                "--specs-root", str(tmp_path / "specs"),
+            ])
+            self.assertEqual(r3.returncode, 0, r3.stderr)
+            r4 = _run([
+                "--devforge-dir", str(devforge), "assign-feature-name",
+                "--feature-name", "auth-token-refresh",
+            ])
+            self.assertEqual(r4.returncode, 0, r4.stderr)
+            # import-handoff seeds spec_type but not spec_type_rationale;
+            # finalize-handoff's Classification requires both non-empty.
+            state_before = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            r4b = _run([
+                "--devforge-dir", str(devforge), "classify-spec-type",
+                "--spec-type", state_before["spec_type"],
+                "--rationale", "seeded from /research handoff",
+                "--seeded-by-upstream",
+            ])
+            self.assertEqual(r4b.returncode, 0, r4b.stderr)
+            r4c = _run([
+                "--devforge-dir", str(devforge), "set-overview",
+                "--content", "Refresh the auth token before it expires.",
+            ])
+            self.assertEqual(r4c.returncode, 0, r4c.stderr)
+
+            out_handoff = tmp_path / "plan-handoff.json"
+            r5 = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+                "--emit-handoff-json", str(out_handoff),
+            ])
+            self.assertEqual(r5.returncode, 0, r5.stderr)
+
+            written = json.loads(out_handoff.read_text(encoding="utf-8"))
+            upstream_path = written["provenance"]["upstream_handoff_path"]
+            self.assertEqual(
+                upstream_path,
+                "specs/001-auth-token-refresh/research-handoff.json",
+            )
+            self.assertFalse(upstream_path.startswith("/"))
+            # Resolves correctly against the install root (repo_root == tmp,
+            # the parent of the .devforge dir passed to every verb here).
+            self.assertEqual(
+                (tmp_path / upstream_path).resolve(), handoff_out.resolve(),
+            )
+
+    def test_import_handoff_seeds_spec_number_and_slug_research(self):
+        """python-reviewer finding 1(a): a research handoff at
+        specs/NNN-slug/research-handoff.json seeds state["spec_number"] +
+        state["feature_slug"] from the handoff's own containing dir name --
+        without this, a later fresh assign-spec-number scan would send
+        spec.md to a DIFFERENT dir than the one the intake artifacts live
+        in."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            research_df = tmp_path / "research_df"
+            research_df.mkdir()
+            feature_dir = tmp_path / "specs" / "003-auth-token-refresh"
+            handoff_out = feature_dir / "research-handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["spec_number"], "003")
+            self.assertEqual(state["feature_slug"], "auth-token-refresh")
+
+    def test_import_handoff_non_nnn_parent_leaves_spec_number_slug_unseeded(self):
+        """python-reviewer finding 1(a): a handoff whose containing dir does
+        NOT match NNN-slug (e.g. a pre-migration handoff imported from an
+        arbitrary path) leaves spec_number/feature_slug unseeded -- no
+        error. The D5 fallback guard (assign-spec-number / set-spec-number)
+        covers this case downstream."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge"
+            research_df.mkdir()
+            # handoff.json directly at tmp/ -- its parent dir name is
+            # whatever tmp's own basename is, never "NNN-slug" shaped.
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(state["spec_number"])
+            self.assertIsNone(state["feature_slug"])
+
+    def test_import_handoff_outside_repo_root_stores_absolute_handoff_path(self):
+        """python-reviewer finding 3: _root_relative's outside-root
+        fallback -- a --handoff-path pointing at a file in a SIBLING tmp
+        dir outside the repo root (devforge_dir.parent) stores the
+        absolute string verbatim in state["source"]["handoff_path"], no
+        exception."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo_root = tmp_path / "repo"
+            repo_root.mkdir()
+            devforge = repo_root / ".devforge"
+            devforge.mkdir()
+
+            # The handoff lives in a SIBLING dir, outside repo_root.
+            outside_dir = tmp_path / "outside"
+            outside_dir.mkdir()
+            research_df = tmp_path / "research_df"
+            research_df.mkdir()
+            handoff_out = outside_dir / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = _run([
+                "--devforge-dir", str(devforge),
+                "import-handoff",
+                "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                Path(state["source"]["handoff_path"]).resolve(),
+                handoff_out.resolve(),
+            )
+            self.assertTrue(
+                Path(state["source"]["handoff_path"]).is_absolute(),
+                "outside-root handoff_path must fall back to the absolute"
+                " string, not raise or produce a nonsense relative path",
+            )
+            # The outside-root dir isn't NNN-slug shaped either, so
+            # spec_number/feature_slug stay unseeded (finding 1(a)'s
+            # no-match arm exercised simultaneously by this fixture).
+            self.assertIsNone(state["spec_number"])
+            self.assertIsNone(state["feature_slug"])
+
 
 class TestFindHandoffs(unittest.TestCase):
-    """Tests for specify_helper find-handoffs subcommand."""
+    """Tests for specify_helper find-handoffs subcommand.
+
+    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: fixtures now anchor at
+    specs/NNN-slug/research-handoff.json (the new intake layout) instead of
+    the retired top-level research/<date>-<slug>/handoff.json. Deeper
+    coverage of the D5 predicate + --since deprecation lives in the
+    dedicated tests/lib/_specify/test_find_handoffs_require.py; this class
+    keeps the specify_helper.py-adjacent smoke coverage for the same verb.
+    """
 
     def _make_devforge(self, tmp: str) -> Path:
         d = Path(tmp) / ".devforge"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def _run_find(self, devforge: Path, since: str):
-        return _run([
-            "--devforge-dir", str(devforge),
-            "find-handoffs",
-            "--since", since,
-        ])
+    def _run_find(self, devforge: Path):
+        return _run(["--devforge-dir", str(devforge), "find-handoffs"])
 
-    def _build_handoff_at(self, tmp: Path, research_df: Path, filename: str) -> Path:
-        """Build a handoff.json at tmp/research/<filename> via real setters."""
-        research_dir = tmp / "research"
-        research_dir.mkdir(exist_ok=True)
-        sub_dir = research_dir / filename
-        sub_dir.mkdir(exist_ok=True)
-        handoff_out = sub_dir / "handoff.json"
+    def _build_handoff_at(self, tmp: Path, research_df: Path, feature_dirname: str) -> Path:
+        """Build a research-handoff.json at tmp/specs/<feature_dirname>/ via real setters."""
+        feature_dir = tmp / "specs" / feature_dirname
+        handoff_out = feature_dir / "research-handoff.json"
         r = _build_minimal_handoff(research_df, handoff_out)
         if r.returncode != 0:
             raise RuntimeError("finalize-handoff failed: " + r.stderr)
@@ -5221,49 +5566,40 @@ class TestFindHandoffs(unittest.TestCase):
 
     # ------------------------------------------------------------------
 
-    def test_find_handoffs_globs_recent_only(self):
-        """2 handoffs: 1hr old + 8 days old; --since '7 days' → only 1hr in output."""
+    def test_find_handoffs_surfaces_pending_feature(self):
+        """A pending feature dir (handoff present, spec.md absent) surfaces."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             devforge = self._make_devforge(tmp)
 
-            # Build 2 handoffs using separate devforge dirs.
             df_a = tmp_path / "df_a"
             df_a.mkdir()
-            df_b = tmp_path / "df_b"
-            df_b.mkdir()
+            self._build_handoff_at(tmp_path, df_a, "001-auth-token-refresh")
 
-            h_recent = self._build_handoff_at(tmp_path, df_a, "2026-05-19-auth-token-refresh")
-            h_old = self._build_handoff_at(tmp_path, df_b, "2026-05-11-old-feature")
-
-            import time
-            # Set mtime: recent = 1hr ago, old = 8 days ago.
-            now = time.time()
-            os.utime(str(h_recent), (now - 3600, now - 3600))
-            os.utime(str(h_old), (now - 8 * 86400, now - 8 * 86400))
-
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
-            # Recent handoff should appear; old should not.
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
             self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
-            self.assertIn("auth-token-refresh", lines[0])
+            self.assertIn("kind=research", lines[0])
 
     def test_find_handoffs_zero_hits(self):
         """No handoffs → exit 0, empty stdout."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._make_devforge(tmp)
-            # No research/ dir → zero hits.
-            r = self._run_find(devforge, "7 days")
+            # No specs/ dir → zero hits.
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(r.stdout.strip(), "")
 
     def test_find_handoffs_invalid_since_rejected(self):
-        """--since 'foo' → exit 2."""
+        """--since 'foo' → exit 2 (format still validated when supplied)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._make_devforge(tmp)
-            r = self._run_find(devforge, "foo")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "find-handoffs", "--since", "foo",
+            ])
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("--since", r.stderr)
 
@@ -5271,27 +5607,26 @@ class TestFindHandoffs(unittest.TestCase):
         """One valid + one corrupt → only valid in output, exit 0.
 
         The valid handoff is built via real research_helper setters; its
-        research_path contains the topic slug 'auth-token-refresh'. The corrupt
-        handoff is raw JSON that will fail schema parsing. Only 1 line in output.
+        research_path contains the topic slug 'auth-token-refresh'. The
+        corrupt handoff is raw JSON that will fail schema parsing. Only 1
+        line in output.
         """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             devforge = self._make_devforge(tmp)
-            research_dir = tmp_path / "research"
-            research_dir.mkdir()
 
             # Build one valid handoff.
             df_a = tmp_path / "df_a"
             df_a.mkdir()
-            h_valid = self._build_handoff_at(tmp_path, df_a, "2026-05-19-valid-feature")
+            self._build_handoff_at(tmp_path, df_a, "001-valid-feature")
 
-            # Create a corrupt handoff in the same research/ directory.
-            corrupt_dir = research_dir / "2026-05-19-corrupt"
-            corrupt_dir.mkdir()
-            corrupt = corrupt_dir / "handoff.json"
+            # Create a corrupt handoff in a sibling feature dir.
+            corrupt_dir = tmp_path / "specs" / "002-corrupt"
+            corrupt_dir.mkdir(parents=True)
+            corrupt = corrupt_dir / "research-handoff.json"
             corrupt.write_text("{ not json }", encoding="utf-8")
 
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
@@ -5299,6 +5634,21 @@ class TestFindHandoffs(unittest.TestCase):
             self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
             # The valid handoff's output line contains the mode and summary fields.
             self.assertIn("feature_addition", lines[0])
+
+    def test_find_handoffs_excludes_feature_with_spec_md(self):
+        """D5: a feature dir whose spec.md already exists is not pending."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+
+            df_a = tmp_path / "df_a"
+            df_a.mkdir()
+            handoff_out = self._build_handoff_at(tmp_path, df_a, "001-auth-token-refresh")
+            (handoff_out.parent / "spec.md").write_text("# spec\n", encoding="utf-8")
+
+            r = self._run_find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
 
 
 # ---------------------------------------------------------------------------
@@ -5646,6 +5996,32 @@ class TestImportHandoffDiscover(unittest.TestCase):
             self.assertIsNotNone(state["source"]["handoff_path"])
             self.assertIsNotNone(state["source"]["research_completed_at"])
             self.assertIs(state["spec_type_seeded_by_upstream"], True)
+
+    def test_import_handoff_seeds_spec_number_and_slug_discover(self):
+        """python-reviewer finding 1(a), discover lane: a discover handoff
+        at specs/NNN-slug/discover-handoff.json seeds state["spec_number"]
+        + state["feature_slug"] from the handoff's own containing dir
+        name -- identical rationale to the research-lane test in
+        TestImportHandoff."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            devforge_d = tmp_path / "discover_df"
+            devforge_d.mkdir()
+            feature_dir = tmp_path / "specs" / "004-audit-log-persistence"
+            handoff_out = feature_dir / "discover-handoff.json"
+
+            r = _build_minimal_discover_handoff(devforge_d, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["spec_number"], "004")
+            self.assertEqual(state["feature_slug"], "audit-log-persistence")
 
 
 # ---------------------------------------------------------------------------
@@ -6136,37 +6512,31 @@ class TestDesignAnchorCarryAndPersist(unittest.TestCase):
 
 
 class TestFindHandoffsCrossKind(unittest.TestCase):
-    """Tests for specify_helper find-handoffs with both research and discover handoffs."""
+    """Tests for specify_helper find-handoffs with both research and discover
+    handoffs pending in specs/ at once (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md
+    Phase 4 — a single glob pass over both lanes, D5 predicate)."""
 
     def _make_devforge(self, tmp: str) -> Path:
         d = Path(tmp) / ".devforge"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def _run_find(self, devforge: Path, since: str):
-        return _run([
-            "--devforge-dir", str(devforge),
-            "find-handoffs",
-            "--since", since,
-        ])
+    def _run_find(self, devforge: Path):
+        return _run(["--devforge-dir", str(devforge), "find-handoffs"])
 
-    def _build_research_handoff_at(self, tmp: Path, research_df: Path, dirname: str) -> Path:
-        """Build a research handoff.json at tmp/research/<dirname>/handoff.json."""
-        research_dir = tmp / "research"
-        research_dir.mkdir(exist_ok=True)
-        sub_dir = research_dir / dirname
-        sub_dir.mkdir(exist_ok=True)
-        handoff_out = sub_dir / "handoff.json"
+    def _build_research_handoff_at(self, tmp: Path, research_df: Path, feature_dirname: str) -> Path:
+        """Build a research-handoff.json at tmp/specs/<feature_dirname>/."""
+        feature_dir = tmp / "specs" / feature_dirname
+        handoff_out = feature_dir / "research-handoff.json"
         r = _build_minimal_handoff(research_df, handoff_out)
         if r.returncode != 0:
             raise RuntimeError("finalize-handoff (research) failed: " + r.stderr)
         return handoff_out
 
-    def _build_discover_handoff_at(self, tmp: Path, discover_df: Path, filename: str) -> Path:
-        """Build a discover handoff.json at tmp/discover/<filename>."""
-        discover_dir = tmp / "discover"
-        discover_dir.mkdir(exist_ok=True)
-        handoff_out = discover_dir / filename
+    def _build_discover_handoff_at(self, tmp: Path, discover_df: Path, feature_dirname: str) -> Path:
+        """Build a discover-handoff.json at tmp/specs/<feature_dirname>/."""
+        feature_dir = tmp / "specs" / feature_dirname
+        handoff_out = feature_dir / "discover-handoff.json"
         r = _build_minimal_discover_handoff(discover_df, handoff_out)
         if r.returncode != 0:
             raise RuntimeError("finalize-handoff (discover) failed: " + r.stderr)
@@ -6175,7 +6545,7 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_find_handoffs_globs_both_research_and_discover(self):
-        """One research + one discover handoff -> both appear in output."""
+        """One research + one discover feature dir -> both appear in one pass."""
         import time
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -6187,17 +6557,17 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             df_d.mkdir()
 
             h_research = self._build_research_handoff_at(
-                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+                tmp_path, df_r, "001-auth-token-refresh"
             )
             h_discover = self._build_discover_handoff_at(
-                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+                tmp_path, df_d, "002-audit-log-persistence"
             )
 
             now = time.time()
             os.utime(str(h_research), (now - 3600, now - 3600))
             os.utime(str(h_discover), (now - 7200, now - 7200))
 
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
@@ -6216,17 +6586,17 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             df_d.mkdir()
 
             h_research = self._build_research_handoff_at(
-                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+                tmp_path, df_r, "001-auth-token-refresh"
             )
             h_discover = self._build_discover_handoff_at(
-                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+                tmp_path, df_d, "002-audit-log-persistence"
             )
 
             now = time.time()
             os.utime(str(h_research), (now - 3600, now - 3600))
             os.utime(str(h_discover), (now - 7200, now - 7200))
 
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
             kinds = set()
@@ -6248,12 +6618,12 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             df_r.mkdir()
 
             h_research = self._build_research_handoff_at(
-                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+                tmp_path, df_r, "001-auth-token-refresh"
             )
             now = time.time()
             os.utime(str(h_research), (now - 3600, now - 3600))
 
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
@@ -6271,12 +6641,12 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             df_d.mkdir()
 
             h_discover = self._build_discover_handoff_at(
-                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+                tmp_path, df_d, "001-audit-log-persistence"
             )
             now = time.time()
             os.utime(str(h_discover), (now - 3600, now - 3600))
 
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
@@ -6296,10 +6666,10 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             df_d.mkdir()
 
             h_research = self._build_research_handoff_at(
-                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+                tmp_path, df_r, "001-auth-token-refresh"
             )
             h_discover = self._build_discover_handoff_at(
-                tmp_path, df_d, "2026-05-20-audit-log-persistence.handoff.json"
+                tmp_path, df_d, "002-audit-log-persistence"
             )
 
             now = time.time()
@@ -6307,7 +6677,7 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             os.utime(str(h_research), (now - 3600, now - 3600))
             os.utime(str(h_discover), (now - 7200, now - 7200))
 
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
@@ -6318,7 +6688,7 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
             self.assertIn("kind=discover", lines[1])
 
     def test_find_handoffs_skips_invalid_discover_silently(self):
-        """Invalid discover .handoff.json file skipped silently; valid research appears."""
+        """Invalid discover-handoff.json skipped silently; valid research appears."""
         import time
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -6328,26 +6698,49 @@ class TestFindHandoffsCrossKind(unittest.TestCase):
 
             # One valid research handoff.
             h_research = self._build_research_handoff_at(
-                tmp_path, df_r, "2026-05-20-auth-token-refresh"
+                tmp_path, df_r, "001-auth-token-refresh"
             )
 
-            # One corrupt discover handoff.
-            discover_dir = tmp_path / "discover"
-            discover_dir.mkdir(exist_ok=True)
-            corrupt = discover_dir / "2026-05-20-corrupt.handoff.json"
+            # One corrupt discover handoff in a sibling feature dir.
+            corrupt_dir = tmp_path / "specs" / "002-corrupt"
+            corrupt_dir.mkdir(parents=True)
+            corrupt = corrupt_dir / "discover-handoff.json"
             corrupt.write_text("{ not json }", encoding="utf-8")
 
             now = time.time()
             os.utime(str(h_research), (now - 3600, now - 3600))
             os.utime(str(corrupt), (now - 1800, now - 1800))
 
-            r = self._run_find(devforge, "7 days")
+            r = self._run_find(devforge)
             self.assertEqual(r.returncode, 0, r.stderr)
 
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
             # Only the valid research handoff should appear.
             self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
             self.assertIn("kind=research", lines[0])
+
+    def test_find_handoffs_same_feature_dir_surfaces_both_lanes(self):
+        """A single feature dir carrying BOTH research-handoff.json and
+        discover-handoff.json (an unusual but not-forbidden state) surfaces
+        both hits — cmd_find_handoffs checks each lane independently per
+        feature dir, it does not treat them as mutually exclusive."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+
+            self._build_research_handoff_at(tmp_path, df_r, "001-hybrid-feature")
+            self._build_discover_handoff_at(tmp_path, df_d, "001-hybrid-feature")
+
+            r = self._run_find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 2, "Expected 2 hits, got: " + r.stdout)
+            kinds = {("research" if "kind=research" in l else "discover") for l in lines}
+            self.assertEqual(kinds, {"research", "discover"})
 
 
 # ---------------------------------------------------------------------------

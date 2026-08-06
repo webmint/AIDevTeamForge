@@ -100,7 +100,26 @@ FEATURE_NAME_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+){1,3}$")
 
 SPECS_ROOT_DEFAULT = "specs"
 SPEC_NUMBER_WIDTH = 3
-SPEC_NUMBER_DIR_RE = re.compile(r"^(\d{3})-")
+# Gained a second capture group (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4
+# python-reviewer finding 1): a feature-dir basename like "003-foo-bar" can
+# now be split into (number, slug) in one match -- used by
+# _specify/_cmds_handoff.py's import-handoff to seed state["spec_number"] /
+# state["feature_slug"] from the RESOLVED intake dir the handoff already
+# sits in, instead of leaving them for a fresh NNN scan.
+#
+# Deliberately kept at EXACTLY 3 digits (not widened to \d{3,}) -- a
+# widened digit count would flip next_spec_number's existing "4+-digit
+# dirs are not recognized as spec dirs" contract (pinned by
+# tests/lib/_shared/test_feature_alloc.py::test_non_nnn_dirs_ignored,
+# which asserts a "9999-too-many-digits" dir is ignored), silently
+# growing that scanner's matching surface as an unintended side effect of
+# this unrelated change. Every existing group(1)-only consumer
+# (next_spec_number / allocate_feature_dir /
+# _cmds_phase4_setters._existing_spec_numbers) is therefore
+# match/non-match-identical to before this edit; only the added
+# group(2) + the `$` end-anchor (harmless -- real dir basenames never
+# have trailing content past the slug) are new.
+SPEC_NUMBER_DIR_RE = re.compile(r"^(\d{3})-(.+)$")
 
 # The branch-name prefix every spec branch carries (spec/NNN-slug).
 _SPEC_BRANCH_PREFIX = "spec/"

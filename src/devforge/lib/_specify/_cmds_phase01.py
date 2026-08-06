@@ -27,7 +27,11 @@ from ._state import (
     _state_transaction,
     default_state,
 )
-from ._topic import source_origin_for_path
+from ._topic import (
+    DISCOVERY_REPORT_BASENAME,
+    RESEARCH_REPORT_BASENAME,
+    source_origin_for_path,
+)
 from ._validators import _die, _utc_timestamp, _validate_enum, _validate_scalar
 
 
@@ -267,10 +271,27 @@ def cmd_verify_findings(args: argparse.Namespace) -> int:
 
 
 def _group_for_path(path: str) -> str:
-    """Map a recorded input path to its render-group key."""
+    """Map a recorded input path to its render-group key.
+
+    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: specs/NNN-slug/research-
+    report.md and .../discovery-report.md must still land in the
+    "research/" / "discover/" render groups (matching
+    source_origin_for_path's filename-aware dispatch in _topic.py), not
+    fall through to the generic "specs/" prefix group shared with
+    prior_spec files -- else a research/discover finding would silently
+    render under the wrong heading. _RENDER_SECTION_ORDER itself needs no
+    change: its group KEYS ("research/", "discover/", "specs/", ...) are
+    unchanged -- only which paths map to them changed.
+    """
     p = path.strip()
     if p.startswith("./"):
         p = p[2:]
+    if p.startswith("specs/"):
+        basename = p.rsplit("/", 1)[-1]
+        if basename == RESEARCH_REPORT_BASENAME:
+            return "research/"
+        if basename == DISCOVERY_REPORT_BASENAME:
+            return "discover/"
     for prefix in ("research/", "discover/", "docs/", "specs/"):
         if p.startswith(prefix):
             return prefix

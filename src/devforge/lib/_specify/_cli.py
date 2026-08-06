@@ -54,6 +54,7 @@ from ._cmds_phase4_setters import (
     cmd_set_desired_behavior,
     cmd_set_finding_landed,
     cmd_set_overview,
+    cmd_set_spec_number,
 )
 from ._cmds_phase4_verify import (
     cmd_check_constitution_compliance,
@@ -333,6 +334,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--feature-name", required=True, dest="feature_name")
     sp.set_defaults(func=cmd_assign_feature_name)
+
+    sp = sub.add_parser(
+        "set-spec-number",
+        help=(
+            "Explicit-value spec_number setter (no scan) -- D5 cold-path "
+            "seeding when the resolved intake dir's NNN is already known."
+        ),
+    )
+    sp.add_argument(
+        "--value", required=True,
+        help="Spec number, 3+ digits, zero-padding OK (e.g. '001').",
+    )
+    sp.set_defaults(func=cmd_set_spec_number)
 
     sp = sub.add_parser(
         "set-date",
@@ -714,18 +728,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "find-handoffs",
-        help="Glob research/**/handoff.json; filter by mtime within --since window.",
+        help=(
+            "List feature dirs with a pending intake handoff "
+            "(specs/*/research-handoff.json or specs/*/discover-handoff.json) "
+            "whose spec.md does not exist yet."
+        ),
     )
     sp.add_argument(
-        "--since", required=True,
-        help="Duration window, e.g. '7 days', '24 hours', '1 hour'.",
+        "--since", default=None,
+        help=(
+            "DEPRECATED, accepted-but-ignored (68-INTAKE-OWNS-FEATURE-DIR-"
+            "PLAN.md Phase 4 / OQ-2): the pending-intake predicate is now "
+            "structural (a research/discover handoff present AND spec.md "
+            "absent), so this window is never applied as a filter -- hits "
+            "are ordered by mtime, newest first, regardless. Kept only so "
+            "pre-Phase-4 callers that still pass --since do not break. "
+            "When supplied, must still match '<N> day(s)', '<N> hour(s)', "
+            "or '<N> minute(s)' (validated, not applied)."
+        ),
     )
     sp.add_argument(
         "--require", action="store_true", default=False,
         help=(
-            "Exit 2 with a BLOCKED message when zero handoffs are found. "
-            "Used by Phase 0.4 to enforce the research/discover precondition. "
-            "No override path exists."
+            "Exit 2 with a BLOCKED message when zero pending handoffs are "
+            "found. Used by Phase 0.4 to enforce the research/discover "
+            "precondition. No override path exists."
         ),
     )
     sp.set_defaults(func=cmd_find_handoffs)

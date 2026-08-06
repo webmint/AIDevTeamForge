@@ -21,9 +21,7 @@ from ._schema import (
     IMPACT_ENUM,
     LANDED_IN_ENUM,
     LIKELIHOOD_ENUM,
-    SPEC_NUMBER_DIR_RE,
     SPEC_NUMBER_WIDTH,
-    SPECS_ROOT_DEFAULT,
 )
 from ._state import _load_state, _state_transaction
 from ._validators import (
@@ -34,7 +32,10 @@ from ._validators import (
     _validate_nfr_quantifier,
     _validate_scalar,
 )
-from _shared.feature_alloc import decide_branch_action  # type: ignore[import]
+from _shared.feature_alloc import (  # type: ignore[import]
+    decide_branch_action,
+    next_spec_number,
+)
 
 
 def _parse_finding_refs(raw: Optional[List[str]]) -> List[str]:
@@ -74,25 +75,28 @@ def _flip_findings(
             finding["landed_ref"] = landed_ref
 
 
-def _existing_spec_numbers(specs_root: Path) -> List[int]:
-    """Return all NNN prefixes already used under specs_root."""
-    if not specs_root.exists() or not specs_root.is_dir():
-        return []
-    out: List[int] = []
-    for entry in specs_root.iterdir():
-        if not entry.is_dir():
-            continue
-        m = SPEC_NUMBER_DIR_RE.match(entry.name)
-        if m:
-            out.append(int(m.group(1)))
-    return out
-
-
 def cmd_assign_spec_number(args: argparse.Namespace) -> int:
-    """Scan specs/ for highest NNN-* dir, persist + emit next zero-padded."""
-    specs_root = Path(args.specs_root or SPECS_ROOT_DEFAULT)
-    nums = _existing_spec_numbers(specs_root)
-    nxt = (max(nums) + 1) if nums else 1
+    """Scan specs/ for highest NNN-* dir, persist + emit next zero-padded.
+
+    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4 python-reviewer finding 4:
+    delegates the scan to _shared.feature_alloc.next_spec_number(devforge_dir)
+    -- the SAME single-source-of-truth scan research_helper / discover_helper
+    / this module's allocate_feature_dir already use -- instead of the
+    formerly-duplicated local _existing_spec_numbers scan.
+
+    --specs-root is now ACCEPTED-BUT-IGNORED: next_spec_number always scans
+    repo_root/specs where repo_root = the parent of --devforge-dir, which
+    is the value every existing caller already passes (src/commands/
+    specify/main.md's `assign-spec-number --specs-root specs`, and every
+    test in this repo) -- so no caller's observable behavior changes.
+    Kept only so a caller still passing --specs-root does not break.
+
+    With this verb's fresh-scan reachable only via the D5 fallback guard
+    (import-handoff now seeds spec_number/feature_slug directly from the
+    resolved intake dir on the normal path -- see _cmds_handoff.py), this
+    scan runs only for a genuine cold/no-intake spec.
+    """
+    nxt = next_spec_number(args.devforge_dir)
     formatted = "{0:0{w}d}".format(nxt, w=SPEC_NUMBER_WIDTH)
     try:
         with _state_transaction(args.devforge_dir) as state:
@@ -100,6 +104,43 @@ def cmd_assign_spec_number(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as err:
         return _die("assign-spec-number: {0}".format(err))
     sys.stdout.write(formatted + "\n")
+    return 0
+
+
+_SPEC_NUMBER_VALUE_RE = re.compile(r"^\d{3,}$")
+
+
+def cmd_set_spec_number(args: argparse.Namespace) -> int:
+    """Explicit-value spec_number setter -- mirrors assign-feature-name's
+    explicit-value contract (validate + persist verbatim, no scan).
+
+    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4 python-reviewer finding 1(b):
+    covers the D5 COLD-path case -- /specify resolves an existing pending
+    intake feature dir (find-handoffs), the user picks "cold" (import
+    skipped), so import-handoff's directory-derived spec_number/
+    feature_slug seeding never ran, yet /specify still writes spec.md into
+    that resolved dir. The caller (main.md) already knows the resolved
+    dir's NNN (it just parsed it to find the dir) and passes it straight
+    through -- unlike assign-spec-number, this verb performs NO scan.
+
+    --value must be 3+ digits (zero-padding OK, e.g. "001", "042", "1234").
+    """
+    try:
+        value = _validate_scalar(args.value, "value")
+    except ValueError as err:
+        return _die(str(err), code=2)
+    if not _SPEC_NUMBER_VALUE_RE.match(value):
+        return _die(
+            "set-spec-number: {0!r} is not a valid spec number (expected"
+            " 3+ digits, zero-padding OK, e.g. '001', '042',"
+            " '1234')".format(value),
+            code=2,
+        )
+    try:
+        with _state_transaction(args.devforge_dir) as state:
+            state["spec_number"] = value
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("set-spec-number: {0}".format(err))
     return 0
 
 

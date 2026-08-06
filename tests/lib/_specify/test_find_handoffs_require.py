@@ -1,15 +1,33 @@
-"""Tests for find-handoffs --require gate (Step 6 of 18-SCOPE-FIDELITY plan).
+"""Tests for find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4).
 
-Covers:
-- zero handoffs + --require -> exit 2, BLOCKED message mentioning /research and /discover
-- research handoff present + --require -> exit 0 (gate passes)
-- discover handoff present + --require -> exit 0 (gate passes)
-- zero handoffs WITHOUT --require -> exit 0 (regression: existing contract unchanged)
-- non-zero handoffs WITHOUT --require -> exit 0, output unchanged (regression)
+Covers the D5 structural "pending intake" predicate that replaced the old
+top-level research/**/handoff.json + discover/*.handoff.json glob pair and
+the --since mtime-window filter:
+
+- zero pending handoffs + --require -> exit 2, BLOCKED message naming the
+  new specs/*/{research,discover}-handoff.json locations + /research and
+  /discover
+- research-handoff.json present, spec.md absent + --require -> exit 0
+- discover-handoff.json present, spec.md absent + --require -> exit 0
+- research-handoff.json present AND spec.md present -> excluded (D5:
+  already consumed by /specify) — with --require, exit 2 (zero PENDING
+  hits) even though the handoff.json file still exists on disk
+- one glob pass surfaces both lanes at once (a research feature dir + a
+  sibling discover feature dir in the same specs/ root)
+- mtime orders hits (most-recent first) but is no longer applied as a
+  --since FILTER — an old handoff still surfaces even under a narrow
+  --since window, and --since may be omitted entirely
+- zero handoffs WITHOUT --require -> exit 0 (regression: existing contract
+  unchanged)
+- non-zero handoffs WITHOUT --require -> exit 0, output unchanged
+  (regression)
+- --since format is still validated when supplied (a malformed value still
+  exits 2), even though it is no longer applied as a filter
+- corrupt handoff.json is skipped silently
 
 Uses real producer round-trips:
-- research handoffs built via research_helper finalize-handoff
-- discover handoffs built via discover_helper finalize-handoff
+- research handoffs built via research_helper finalize-handoff --feature-dir
+- discover handoffs built via discover_helper finalize-handoff --feature-dir
 No hand-authored JSON fixtures.
 
 Stdlib only. Python 3.8+. No third-party deps.
@@ -75,12 +93,17 @@ def _run_discover(argv, cwd=None):
 
 
 # ---------------------------------------------------------------------------
-# Real fixture factories (round-trip via producers).
+# Real fixture factories (round-trip via producers, --feature-dir anchored —
+# the real /research and /discover call shape post plan 68).
 # ---------------------------------------------------------------------------
 
 
-def _build_research_handoff(devforge: Path, handoff_out: Path) -> None:
-    """Build a valid research handoff.json via real research_helper setters."""
+def _build_research_handoff(devforge: Path, feature_dir: Path) -> Path:
+    """Build a valid research-handoff.json under feature_dir via real setters.
+
+    Returns feature_dir / "research-handoff.json" (created by
+    finalize-handoff itself — feature_dir need not pre-exist).
+    """
     df = str(devforge)
     _run_research(["--devforge-dir", df, "reset-memo"])
     _run_research(["--devforge-dir", df, "reset-report"])
@@ -211,17 +234,22 @@ def _build_research_handoff(devforge: Path, handoff_out: Path) -> None:
     r = _run_research([
         "--devforge-dir", df,
         "finalize-handoff",
-        "--emit-handoff-json", str(handoff_out),
+        "--feature-dir", str(feature_dir),
     ])
     if r.returncode != 0:
         raise RuntimeError(
             "research finalize-handoff failed:\n"
             "stdout: {0}\nstderr: {1}".format(r.stdout, r.stderr)
         )
+    return feature_dir / "research-handoff.json"
 
 
-def _build_discover_handoff(devforge: Path, handoff_out: Path) -> None:
-    """Build a valid discover handoff.json via real discover_helper setters."""
+def _build_discover_handoff(devforge: Path, feature_dir: Path) -> Path:
+    """Build a valid discover-handoff.json under feature_dir via real setters.
+
+    Returns feature_dir / "discover-handoff.json" (created by
+    finalize-handoff itself — feature_dir need not pre-exist).
+    """
     df = str(devforge)
     _run_discover(["--devforge-dir", df, "reset-memo"])
     _run_discover(["--devforge-dir", df, "reset-report"])
@@ -295,13 +323,14 @@ def _build_discover_handoff(devforge: Path, handoff_out: Path) -> None:
     r = _run_discover([
         "--devforge-dir", df,
         "finalize-handoff",
-        "--emit-handoff-json", str(handoff_out),
+        "--feature-dir", str(feature_dir),
     ])
     if r.returncode != 0:
         raise RuntimeError(
             "discover finalize-handoff failed:\n"
             "stdout: {0}\nstderr: {1}".format(r.stdout, r.stderr)
         )
+    return feature_dir / "discover-handoff.json"
 
 
 # ---------------------------------------------------------------------------
@@ -309,215 +338,346 @@ def _build_discover_handoff(devforge: Path, handoff_out: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-class TestFindHandoffsRequireGate(unittest.TestCase):
-    """Gate behaviour of find-handoffs --require (Step 6 precondition gate)."""
+class TestFindHandoffsD5Predicate(unittest.TestCase):
+    """D5: pending == (intake handoff present) AND (spec.md absent)."""
 
     def _devforge(self, tmp: str) -> Path:
         d = Path(tmp) / ".devforge"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-    def _run_find(self, devforge: Path, since: str, require: bool = False):
-        argv = [
-            "--devforge-dir", str(devforge),
-            "find-handoffs",
-            "--since", since,
-        ]
+    def _run_find(self, devforge: Path, require: bool = False, since=None):
+        argv = ["--devforge-dir", str(devforge), "find-handoffs"]
+        if since is not None:
+            argv += ["--since", since]
         if require:
             argv.append("--require")
         return _run_specify(argv)
 
     # ------------------------------------------------------------------
-    # Core gate behaviour.
+    # Core gate behaviour — zero pending hits.
     # ------------------------------------------------------------------
 
     def test_zero_handoffs_require_exits_nonzero(self):
-        """Zero handoffs + --require → exit 2."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._devforge(tmp)
-            r = self._run_find(devforge, "7 days", require=True)
-            self.assertEqual(r.returncode, 2, "Expected exit 2, got {0}; stderr={1}".format(
-                r.returncode, r.stderr
-            ))
+            r = self._run_find(devforge, require=True)
+            self.assertEqual(r.returncode, 2, "stderr={0}".format(r.stderr))
 
     def test_zero_handoffs_require_blocked_message_mentions_blocked(self):
-        """Zero handoffs + --require → stderr contains BLOCKED."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._devforge(tmp)
-            r = self._run_find(devforge, "7 days", require=True)
+            r = self._run_find(devforge, require=True)
             self.assertIn("BLOCKED", r.stderr)
 
     def test_zero_handoffs_require_blocked_message_mentions_research(self):
-        """Zero handoffs + --require → stderr instructs to run /research."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._devforge(tmp)
-            r = self._run_find(devforge, "7 days", require=True)
+            r = self._run_find(devforge, require=True)
             self.assertIn("/research", r.stderr)
 
     def test_zero_handoffs_require_blocked_message_mentions_discover(self):
-        """Zero handoffs + --require → stderr instructs to run /discover."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._devforge(tmp)
-            r = self._run_find(devforge, "7 days", require=True)
+            r = self._run_find(devforge, require=True)
             self.assertIn("/discover", r.stderr)
 
-    def test_zero_handoffs_require_stdout_empty(self):
-        """Zero handoffs + --require → stdout is empty (no confusing output)."""
+    def test_zero_handoffs_require_blocked_message_names_new_locations(self):
+        """BLOCKED text names the new specs/*/{research,discover}-handoff.json paths."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._devforge(tmp)
-            r = self._run_find(devforge, "7 days", require=True)
+            r = self._run_find(devforge, require=True)
+            self.assertIn("specs/*/research-handoff.json", r.stderr)
+            self.assertIn("specs/*/discover-handoff.json", r.stderr)
+
+    def test_zero_handoffs_require_stdout_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            r = self._run_find(devforge, require=True)
             self.assertEqual(r.stdout.strip(), "")
 
     # ------------------------------------------------------------------
-    # Research handoff satisfies the gate.
+    # Positive: handoff present, spec.md absent -> pending, satisfies gate.
     # ------------------------------------------------------------------
 
-    def test_research_handoff_present_require_exits_zero(self):
-        """Research handoff within window + --require → exit 0 (gate passes)."""
+    def test_research_handoff_pending_require_exits_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             devforge = self._devforge(tmp)
 
             df_r = tmp_path / "df_r"
             df_r.mkdir()
-            research_dir = tmp_path / "research" / "2026-05-19-auth-token-refresh"
-            research_dir.mkdir(parents=True)
-            handoff_out = research_dir / "handoff.json"
-            _build_research_handoff(df_r, handoff_out)
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
 
-            # Set mtime to 1 hour ago (within "7 days").
-            now = time.time()
-            os.utime(str(handoff_out), (now - 3600, now - 3600))
-
-            r = self._run_find(devforge, "7 days", require=True)
-            self.assertEqual(r.returncode, 0, "Expected exit 0; stderr={0}".format(r.stderr))
-
-    def test_research_handoff_present_require_emits_output_line(self):
-        """Research handoff within window + --require → output line on stdout."""
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            devforge = self._devforge(tmp)
-
-            df_r = tmp_path / "df_r"
-            df_r.mkdir()
-            research_dir = tmp_path / "research" / "2026-05-19-auth-token-refresh"
-            research_dir.mkdir(parents=True)
-            handoff_out = research_dir / "handoff.json"
-            _build_research_handoff(df_r, handoff_out)
-
-            now = time.time()
-            os.utime(str(handoff_out), (now - 3600, now - 3600))
-
-            r = self._run_find(devforge, "7 days", require=True)
-            self.assertEqual(r.returncode, 0)
+            r = self._run_find(devforge, require=True)
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
-            self.assertEqual(len(lines), 1, "Expected 1 output line; got: " + r.stdout)
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
             self.assertIn("kind=research", lines[0])
 
-    # ------------------------------------------------------------------
-    # Discover handoff satisfies the gate.
-    # ------------------------------------------------------------------
-
-    def test_discover_handoff_present_require_exits_zero(self):
-        """Discover handoff within window + --require → exit 0 (gate passes)."""
+    def test_discover_handoff_pending_require_exits_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             devforge = self._devforge(tmp)
 
             df_d = tmp_path / "df_d"
             df_d.mkdir()
-            discover_dir = tmp_path / "discover"
-            discover_dir.mkdir()
-            handoff_out = discover_dir / "2026-05-20-audit-log-persistence.handoff.json"
-            _build_discover_handoff(df_d, handoff_out)
+            feature_dir = tmp_path / "specs" / "001-audit-log-persistence"
+            _build_discover_handoff(df_d, feature_dir)
 
-            now = time.time()
-            os.utime(str(handoff_out), (now - 3600, now - 3600))
-
-            r = self._run_find(devforge, "7 days", require=True)
-            self.assertEqual(r.returncode, 0, "Expected exit 0; stderr={0}".format(r.stderr))
-
-    def test_discover_handoff_present_require_emits_output_line(self):
-        """Discover handoff within window + --require → output line on stdout."""
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            devforge = self._devforge(tmp)
-
-            df_d = tmp_path / "df_d"
-            df_d.mkdir()
-            discover_dir = tmp_path / "discover"
-            discover_dir.mkdir()
-            handoff_out = discover_dir / "2026-05-20-audit-log-persistence.handoff.json"
-            _build_discover_handoff(df_d, handoff_out)
-
-            now = time.time()
-            os.utime(str(handoff_out), (now - 3600, now - 3600))
-
-            r = self._run_find(devforge, "7 days", require=True)
-            self.assertEqual(r.returncode, 0)
+            r = self._run_find(devforge, require=True)
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
-            self.assertEqual(len(lines), 1, "Expected 1 output line; got: " + r.stdout)
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
             self.assertIn("kind=discover", lines[0])
 
     # ------------------------------------------------------------------
-    # Regression: existing contract unchanged (no --require flag).
+    # Negative: handoff present AND spec.md present -> already consumed,
+    # excluded from the pending list (D5).
+    # ------------------------------------------------------------------
+
+    def test_research_handoff_with_spec_md_excluded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            handoff_out = _build_research_handoff(df_r, feature_dir)
+            self.assertTrue(handoff_out.exists())
+
+            # Simulate a completed /specify run: spec.md now exists beside
+            # the handoff.
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(
+                r.stdout.strip(), "",
+                "feature with spec.md must not surface as pending",
+            )
+
+    def test_research_handoff_with_spec_md_require_exits_nonzero(self):
+        """The D5 exclusion also drives --require: zero PENDING hits -> exit 2,
+        even though the handoff.json file itself still exists on disk."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+
+            r = self._run_find(devforge, require=True)
+            self.assertEqual(r.returncode, 2, "stderr={0}".format(r.stderr))
+            self.assertIn("BLOCKED", r.stderr)
+
+    # ------------------------------------------------------------------
+    # One glob pass surfaces both lanes.
+    # ------------------------------------------------------------------
+
+    def test_one_pass_surfaces_both_lanes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            research_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, research_dir)
+
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+            discover_dir = tmp_path / "specs" / "002-audit-log-persistence"
+            _build_discover_handoff(df_d, discover_dir)
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 2, "Expected 2 hits, got: " + r.stdout)
+            kinds = {("research" if "kind=research" in l else "discover") for l in lines}
+            self.assertEqual(kinds, {"research", "discover"})
+
+    def test_both_lanes_in_one_feature_dir_surfaces_both_with_require(self):
+        """python-reviewer finding 2: ONE specs/NNN-slug/ dir carrying BOTH
+        research-handoff.json AND discover-handoff.json (real producers,
+        same parent dir) -> find-handoffs --require surfaces both hits,
+        sharing the parent dir, exit 0, exactly 2 lines."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            feature_dir = tmp_path / "specs" / "001-hybrid-feature"
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            _build_research_handoff(df_r, feature_dir)
+
+            df_d = tmp_path / "df_d"
+            df_d.mkdir()
+            _build_discover_handoff(df_d, feature_dir)
+
+            r = self._run_find(devforge, require=True)
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 2, "Expected 2 hits, got: " + r.stdout)
+            kinds = {("research" if "kind=research" in l else "discover") for l in lines}
+            self.assertEqual(kinds, {"research", "discover"})
+            # Both hits' handoff_path (2nd pipe-delimited field) share the
+            # same parent dir.
+            parents = {
+                Path(l.split(" | ")[1]).parent for l in lines
+            }
+            self.assertEqual(len(parents), 1, "Both hits must share one parent dir")
+            self.assertEqual(parents.pop().name, "001-hybrid-feature")
+
+    # ------------------------------------------------------------------
+    # Ordering + --since deprecation (OQ-2): mtime orders, never filters.
+    # ------------------------------------------------------------------
+
+    def test_ordering_newest_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_a = tmp_path / "df_a"
+            df_a.mkdir()
+            older_dir = tmp_path / "specs" / "001-older"
+            older_handoff = _build_research_handoff(df_a, older_dir)
+
+            df_b = tmp_path / "df_b"
+            df_b.mkdir()
+            newer_dir = tmp_path / "specs" / "002-newer"
+            newer_handoff = _build_discover_handoff(df_b, newer_dir)
+
+            now = time.time()
+            os.utime(str(older_handoff), (now - 8 * 86400, now - 8 * 86400))
+            os.utime(str(newer_handoff), (now - 3600, now - 3600))
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 2)
+            self.assertIn("kind=discover", lines[0], "newest (discover) must sort first")
+            self.assertIn("kind=research", lines[1], "oldest (research) must sort last")
+
+    def test_since_window_does_not_filter_old_handoff(self):
+        """An 8-day-old handoff still surfaces under a narrow --since window
+        (OQ-2: --since is accepted-but-ignored as a filter -- structural
+        predicate replaced it)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_a = tmp_path / "df_a"
+            df_a.mkdir()
+            feature_dir = tmp_path / "specs" / "001-old-feature"
+            handoff_out = _build_research_handoff(df_a, feature_dir)
+
+            now = time.time()
+            os.utime(str(handoff_out), (now - 8 * 86400, now - 8 * 86400))
+
+            # A window that would have EXCLUDED this under the old semantics.
+            r = self._run_find(devforge, require=True, since="1 hour")
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
+            self.assertIn("kind=research", r.stdout)
+
+    def test_since_omitted_entirely_still_works(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_a = tmp_path / "df_a"
+            df_a.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_a, feature_dir)
+
+            r = self._run_find(devforge, require=True, since=None)
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
+            self.assertIn("kind=research", r.stdout)
+
+    def test_since_malformed_still_rejected(self):
+        """--since format is still validated when supplied, even though it
+        is never applied as a filter."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._devforge(tmp)
+            r = self._run_find(devforge, require=False, since="foo")
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("--since", r.stderr)
+
+    # ------------------------------------------------------------------
+    # Regression: existing no-require / non-zero-hits contract unchanged.
     # ------------------------------------------------------------------
 
     def test_zero_handoffs_no_require_exits_zero(self):
-        """Zero handoffs WITHOUT --require → exit 0 (original contract preserved)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._devforge(tmp)
-            r = self._run_find(devforge, "7 days", require=False)
-            self.assertEqual(r.returncode, 0, "Expected exit 0; stderr={0}".format(r.stderr))
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
 
     def test_zero_handoffs_no_require_stdout_empty(self):
-        """Zero handoffs WITHOUT --require → stdout empty (original contract preserved)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = self._devforge(tmp)
-            r = self._run_find(devforge, "7 days", require=False)
+            r = self._run_find(devforge, require=False)
             self.assertEqual(r.stdout.strip(), "")
 
     def test_nonzero_handoffs_no_require_exits_zero(self):
-        """Non-zero handoffs WITHOUT --require → exit 0, output unchanged."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             devforge = self._devforge(tmp)
 
             df_r = tmp_path / "df_r"
             df_r.mkdir()
-            research_dir = tmp_path / "research" / "2026-05-19-auth-token-refresh"
-            research_dir.mkdir(parents=True)
-            handoff_out = research_dir / "handoff.json"
-            _build_research_handoff(df_r, handoff_out)
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
 
-            now = time.time()
-            os.utime(str(handoff_out), (now - 3600, now - 3600))
-
-            r = self._run_find(devforge, "7 days", require=False)
-            self.assertEqual(r.returncode, 0, "Expected exit 0; stderr={0}".format(r.stderr))
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
             lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
-            self.assertEqual(len(lines), 1, "Expected 1 output line; got: " + r.stdout)
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
 
-    def test_out_of_window_handoff_require_exits_nonzero(self):
-        """Handoff older than --since window + --require → exit 2 (not in window = zero hits)."""
+    # ------------------------------------------------------------------
+    # Corrupt file handling.
+    # ------------------------------------------------------------------
+
+    def test_corrupt_handoff_skipped_silently(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             devforge = self._devforge(tmp)
 
             df_r = tmp_path / "df_r"
             df_r.mkdir()
-            research_dir = tmp_path / "research" / "2026-04-01-old-feature"
-            research_dir.mkdir(parents=True)
-            handoff_out = research_dir / "handoff.json"
-            _build_research_handoff(df_r, handoff_out)
+            valid_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, valid_dir)
 
-            # Set mtime to 10 days ago (outside "7 days" window).
-            now = time.time()
-            os.utime(str(handoff_out), (now - 10 * 86400, now - 10 * 86400))
+            corrupt_dir = tmp_path / "specs" / "002-corrupt"
+            corrupt_dir.mkdir(parents=True)
+            (corrupt_dir / "research-handoff.json").write_text(
+                "{ not json }", encoding="utf-8",
+            )
 
-            r = self._run_find(devforge, "7 days", require=True)
-            self.assertEqual(r.returncode, 2, "Expected exit 2; stderr={0}".format(r.stderr))
-            self.assertIn("BLOCKED", r.stderr)
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("kind=research", lines[0])
+
+    def test_non_dir_entries_under_specs_root_skipped(self):
+        """A stray file directly under specs/ (not a feature dir) is skipped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+            specs_root = tmp_path / "specs"
+            specs_root.mkdir()
+            (specs_root / "README.md").write_text("stray\n", encoding="utf-8")
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
 
 
 if __name__ == "__main__":

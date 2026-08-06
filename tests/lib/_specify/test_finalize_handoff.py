@@ -448,6 +448,89 @@ class TestNoUpstreamProvenance(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# TestUpstreamHandoffPathRootRelative (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md
+# Phase 4 / D9(d)). cmd_finalize_handoff copies state["source"]["handoff_path"]
+# into Provenance.upstream_handoff_path VERBATIM (no path manipulation) --
+# so a root-relative source.handoff_path (as import-handoff now produces;
+# see tests/lib/test_specify_helper.py::TestImportHandoff for the producer
+# side) must survive finalize-handoff unchanged, with no leading "/".
+# ---------------------------------------------------------------------------
+
+
+class TestUpstreamHandoffPathRootRelative(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.devforge_dir = self.tmp / ".devforge"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_root_relative_research_handoff_path_survives_verbatim(self):
+        state = _make_state(
+            source={
+                "handoff_path": "specs/001-audit-log-persistence/research-handoff.json",
+                "handoff_kind": "research",
+                "research_completed_at": "2026-05-20T08:00:00Z",
+                "discover_completed_at": None,
+                "discover_recommended_summary": None,
+            }
+        )
+        _write_state(self.devforge_dir, state)
+        emit_path = str(self.tmp / "out" / "handoff.json")
+        args = _make_args(self.devforge_dir, emit_path=emit_path)
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 0)
+
+        with open(emit_path, encoding="utf-8") as f:
+            raw = json.load(f)
+        handoff = _dict_to_dataclass(specify_handoff_schema.Handoff, raw)
+
+        self.assertEqual(
+            handoff.provenance.upstream_handoff_path,
+            "specs/001-audit-log-persistence/research-handoff.json",
+        )
+        self.assertFalse(
+            handoff.provenance.upstream_handoff_path.startswith("/"),
+            "provenance.upstream_handoff_path must stay root-relative,"
+            " never absolutized by finalize-handoff",
+        )
+        # Same assertion against the raw written JSON (not just the
+        # reconstructed dataclass) -- the "WRITTEN handoff JSON" the plan
+        # item requires.
+        self.assertEqual(
+            raw["provenance"]["upstream_handoff_path"],
+            "specs/001-audit-log-persistence/research-handoff.json",
+        )
+        self.assertFalse(raw["provenance"]["upstream_handoff_path"].startswith("/"))
+
+    def test_root_relative_discover_handoff_path_survives_verbatim(self):
+        state = _make_state(
+            source={
+                "handoff_path": "specs/002-scheduled-export-jobs/discover-handoff.json",
+                "handoff_kind": "discover",
+                "research_completed_at": None,
+                "discover_completed_at": "2026-05-19T14:32:00Z",
+                "discover_recommended_summary": "Extend ORM | Build",
+            }
+        )
+        _write_state(self.devforge_dir, state)
+        emit_path = str(self.tmp / "out" / "handoff.json")
+        args = _make_args(self.devforge_dir, emit_path=emit_path)
+        rc = cmd_finalize_handoff(args)
+        self.assertEqual(rc, 0)
+
+        with open(emit_path, encoding="utf-8") as f:
+            raw = json.load(f)
+
+        self.assertEqual(
+            raw["provenance"]["upstream_handoff_path"],
+            "specs/002-scheduled-export-jobs/discover-handoff.json",
+        )
+        self.assertFalse(raw["provenance"]["upstream_handoff_path"].startswith("/"))
+
+
+# ---------------------------------------------------------------------------
 # TestProvenanceCompletedAtMapping.
 # ---------------------------------------------------------------------------
 

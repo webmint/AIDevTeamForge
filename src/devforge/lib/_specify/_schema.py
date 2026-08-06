@@ -269,12 +269,20 @@ MANDATORY_READS_BY_TYPE: Dict[str, Tuple[Tuple[str, str], ...]] = {
          "Framework docs via WebSearch for feature pattern"),
         (".claude/memory/MEMORY.md",
          "MEMORY.md prior-feature lessons"),
-        ("discover/*.md",
-         "/discover reference md (if Phase 1 adapter loaded one)"),
+        ("specs/*/discovery-report.md",
+         "/discover reference md (if Phase 1 adapter loaded one) -- "
+         "68-INTAKE-OWNS-FEATURE-DIR-PLAN.md moved this inside "
+         "specs/NNN-slug/ (was discover/*.md)"),
     ),
 }
 
 # Helper-owned render-group order for findings.
+# 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: no change needed here despite
+# /research and /discover now writing under specs/NNN-slug/ -- the group
+# KEYS below are unchanged; _cmds_phase01._group_for_path was updated to
+# classify specs/*/research-report.md and specs/*/discovery-report.md by
+# FILENAME into the "research/" / "discover/" keys before falling back to
+# prefix matching, so it still only ever emits the keys listed here.
 _RENDER_SECTION_ORDER: Tuple[str, ...] = (
     "constitution.md",
     ".claude/memory/MEMORY.md",

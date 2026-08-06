@@ -19,12 +19,26 @@ import-handoff:
     "discover"           -> discover branch (source has handoff_kind + discover_completed_at).
     absent / "research"  -> research branch (existing behaviour).
   Unknown explicit handoff_kind -> exit 2.
+  68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4 (python-reviewer finding 1):
+  also seeds state["spec_number"] / state["feature_slug"] by parsing the
+  handoff's own containing dir name (e.g. "003-foo-bar") against
+  SPEC_NUMBER_DIR_RE -- so a later Phase's spec.md write lands in the SAME
+  dir the intake handoff already lives in, instead of a fresh NNN scan
+  allocating a different one.  A non-matching dir name (pre-migration
+  handoff imported from an arbitrary path) leaves both fields unseeded, no
+  error -- the D5 fallback guard (assign-spec-number / the new
+  set-spec-number verb) covers that case.
 
-find-handoffs:
-  Glob research/**/handoff.json AND discover/*.handoff.json under the repo
-  root (parent of .devforge dir).  Filter by mtime within a --since window.
-  Emit one line per hit; skip corrupt or schema-invalid files silently.
-  Exit 0 on zero hits (unless --require is passed; see cmd_find_handoffs for gate behavior).
+find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4):
+  One glob pass over specs/*/research-handoff.json AND
+  specs/*/discover-handoff.json under the repo root (parent of .devforge
+  dir), filtered to feature dirs that do NOT yet contain spec.md (D5's
+  structural "pending intake" predicate).  mtime is used only to ORDER
+  hits, most-recent first -- --since is accepted-but-ignored, kept only so
+  pre-Phase-4 callers do not break (see cmd_find_handoffs).  Emit one line
+  per hit; skip corrupt or schema-invalid files silently.  Exit 0 on zero
+  hits (unless --require is passed; see cmd_find_handoffs for gate
+  behavior).
 
 Stdlib only. Python 3.8+.
 """
@@ -35,17 +49,15 @@ import argparse
 import dataclasses
 import datetime as _datetime_module
 import json
-import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ._schema import SPEC_NUMBER_WIDTH
+from ._schema import SPEC_NUMBER_DIR_RE
 from ._state import _atomic_write_json, _load_state, _state_path, _state_transaction
 from ._validators import _die
-from _shared.feature_alloc import next_spec_number  # type: ignore[import]
 
 # ---------------------------------------------------------------------------
 # handoff_schema imports — both research and discover schemas.
@@ -77,14 +89,6 @@ _UNIT_SECONDS: Dict[str, int] = {
     "hour": 3600,
     "minute": 60,
 }
-
-# Research-path slug extraction — matches two common patterns:
-#   research/YYYY-MM-DD-<slug>.md
-#   research/YYYY-MM-DD-<slug>/handoff.json
-_RESEARCH_PATH_SLUG_RE = re.compile(
-    r'\d{4}-\d{2}-\d{2}-([^/\\]+?)(?:\.md|/.*)?$'
-)
-
 
 def _parse_since_seconds(since: str) -> Optional[int]:
     """Parse --since string to a duration in seconds.
@@ -187,31 +191,28 @@ def _dict_to_dataclass(cls: Any, d: Any) -> Any:
 
 
 
-def _extract_slug_from_research_path(research_path: str) -> str:
-    """Derive a feature slug from the research_path field in handoff.json.
+def _root_relative(path: Path, repo_root: Path) -> str:
+    """Root-relative posix-style path string when `path` is under `repo_root`.
 
-    Matches patterns:
-      research/YYYY-MM-DD-<slug>.md
-      research/YYYY-MM-DD-<slug>/handoff.json
-    Falls back to a sanitized version of the basename.
+    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D9(d): source.handoff_path (specify
+    state) and downstream_links.spec_path (written back into the upstream
+    handoff.json) become install-root-relative strings, matching the
+    already-root-relative research_path / report_path fields the intake
+    lanes write -- so /plan's render-plan-seeds provenance follow (Phase 5)
+    can resolve them against the install root (cwd) instead of dying on a
+    stale absolute path from a different machine/checkout.
+
+    Falls back to the absolute path string when `path` is NOT under
+    `repo_root` -- "shouldn't happen in new layout" (every intake artifact
+    lives under repo_root/specs/), but a caller passing an explicit
+    --emit-handoff-json outside specs/ (or a pre-migration on-disk file
+    D3 never deletes) can still hit this; storing the absolute path is the
+    documented, honest fallback rather than raising.
     """
-    m = _RESEARCH_PATH_SLUG_RE.search(research_path)
-    if m:
-        return m.group(1)
-    # Fallback: use basename without extension, strip leading date pattern.
-    base = Path(research_path).stem
-    # Remove leading YYYY-MM-DD- prefix if present.
-    base = re.sub(r'^\d{4}-\d{2}-\d{2}-', '', base)
-    # Replace non-alnum/hyphen characters with hyphens and lower-case.
-    base = re.sub(r'[^a-z0-9-]', '-', base.lower()).strip('-')
-    return base or "unknown"
-
-
-# next_spec_number moved to _shared/feature_alloc.py (plan 68 Phase 1) --
-# imported at the top of this module.  Call sites below unchanged in
-# behavior: devforge_dir is already resolved to an absolute path by the
-# caller (see cmd_import_handoff), so the shared function's internal
-# `.resolve()` is a no-op here.
+    try:
+        return path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _normalize_ws(s: str) -> str:
@@ -454,12 +455,25 @@ def _import_handoff_research(
         "selectors": list(seeds.design_anchor.selectors),
     }
 
-    # Compute future spec_path.
+    # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D5: the feature dir was already
+    # allocated by /research at intake finalize (D1) -- the handoff already
+    # sits inside it. future_spec_path is simply that dir's spec.md; no NEW
+    # NNN is computed here (next_spec_number is not called in this path).
     devforge_dir = Path(args.devforge_dir).resolve()
-    nnn = next_spec_number(devforge_dir)
-    slug = _extract_slug_from_research_path(handoff.research_path)
-    nnn_str = str(nnn).zfill(SPEC_NUMBER_WIDTH)
-    future_spec_path = "specs/{0}-{1}/spec.md".format(nnn_str, slug)
+    repo_root = devforge_dir.parent
+    handoff_path_rel = _root_relative(handoff_path, repo_root)
+    future_spec_path = _root_relative(handoff_path.parent / "spec.md", repo_root)
+
+    # python-reviewer finding 1 (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4):
+    # seed spec_number + feature_slug from the RESOLVED intake dir's own
+    # name -- without this, main.md's unconditional assign-spec-number
+    # fresh-scan on a later Phase would allocate a NEW NNN and send spec.md
+    # to a *different* directory than the one the handoff (and this
+    # future_spec_path) already lives in. A non-matching parent dir name
+    # (e.g. a pre-migration handoff imported manually from an arbitrary
+    # path) leaves both fields unseeded -- no error; the D5 fallback guard
+    # (assign-spec-number / set-spec-number) covers that case downstream.
+    dir_match = SPEC_NUMBER_DIR_RE.match(handoff_path.parent.name)
 
     # Pre-seed state; check for re-import.
     warn_user_content = False
@@ -494,9 +508,12 @@ def _import_handoff_research(
             state["risks"] = risks
             state["open_questions"] = open_questions
             state["design_anchor"] = design_anchor
-            state["source"]["handoff_path"] = str(handoff_path)
+            state["source"]["handoff_path"] = handoff_path_rel
             state["source"]["handoff_kind"] = "research"
             state["source"]["research_completed_at"] = research_completed_at
+            if dir_match:
+                state["spec_number"] = dir_match.group(1)
+                state["feature_slug"] = dir_match.group(2)
     except (OSError, json.JSONDecodeError) as err:
         sys.stderr.write("import-handoff: state error: {0}\n".format(err))
         return 2
@@ -627,12 +644,20 @@ def _import_handoff_discover(
     bvb_rec = plan_seeds.build_vs_buy.recommendation
     discover_recommended_summary = "{0} | {1}".format(rationale, bvb_rec)
 
-    # Compute future spec_path using intent.topic_slug (discover has no research_path).
+    # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D5: the feature dir was already
+    # allocated by /discover at intake finalize (D1) -- the handoff already
+    # sits inside it. future_spec_path is simply that dir's spec.md; no NEW
+    # NNN is computed here (next_spec_number is not called in this path;
+    # handoff.intent.topic_slug is no longer consulted either).
     devforge_dir = Path(args.devforge_dir).resolve()
-    nnn = next_spec_number(devforge_dir)
-    slug = handoff.intent.topic_slug
-    nnn_str = str(nnn).zfill(SPEC_NUMBER_WIDTH)
-    future_spec_path = "specs/{0}-{1}/spec.md".format(nnn_str, slug)
+    repo_root = devforge_dir.parent
+    handoff_path_rel = _root_relative(handoff_path, repo_root)
+    future_spec_path = _root_relative(handoff_path.parent / "spec.md", repo_root)
+
+    # python-reviewer finding 1 -- see the matching comment in
+    # _import_handoff_research above; identical rationale for the discover
+    # lane.
+    dir_match = SPEC_NUMBER_DIR_RE.match(handoff_path.parent.name)
 
     # Pre-seed state; check for re-import.
     warn_user_content = False
@@ -667,10 +692,13 @@ def _import_handoff_discover(
             state["risks"] = risks
             state["open_questions"] = open_questions
             state["design_anchor"] = design_anchor
-            state["source"]["handoff_path"] = str(handoff_path)
+            state["source"]["handoff_path"] = handoff_path_rel
             state["source"]["handoff_kind"] = "discover"
             state["source"]["discover_completed_at"] = discover_completed_at
             state["source"]["discover_recommended_summary"] = discover_recommended_summary
+            if dir_match:
+                state["spec_number"] = dir_match.group(1)
+                state["feature_slug"] = dir_match.group(2)
     except (OSError, json.JSONDecodeError) as err:
         sys.stderr.write("import-handoff: state error: {0}\n".format(err))
         return 2
@@ -714,16 +742,111 @@ def _import_handoff_discover(
 # ---------------------------------------------------------------------------
 
 
+def _try_research_hit(fpath: Path) -> Optional[Dict[str, Any]]:
+    """Build a find-handoffs hit dict for a candidate research-handoff.json.
+
+    Returns None (silently) when the file is absent, unreadable, corrupt, or
+    schema-invalid — find-handoffs skips those rather than erroring.
+    """
+    if not fpath.is_file():
+        return None
+    try:
+        mtime = fpath.stat().st_mtime
+    except OSError:
+        return None
+    try:
+        raw = json.loads(fpath.read_text(encoding="utf-8"))
+        # Guard: only accept files without handoff_kind or with kind=="research".
+        raw_kind = raw.get("handoff_kind", "research")
+        if raw_kind != "research":
+            return None
+        handoff = _dict_to_dataclass(handoff_schema.Handoff, raw)
+    except Exception:
+        return None  # corrupt or invalid — skip silently
+
+    mtime_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+    mtime_iso = mtime_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    summary = handoff.plan_seeds.recommended_approach_summary
+    if len(summary) > 80:
+        summary = summary[:77] + "..."
+
+    return {
+        "mtime_ts": mtime,
+        "mtime_iso": mtime_iso,
+        "handoff_path": str(fpath),
+        "kind": "research",
+        "mode_or_verdict": "mode={0}".format(handoff.mode),
+        "summary": summary,
+    }
+
+
+def _try_discover_hit(fpath: Path) -> Optional[Dict[str, Any]]:
+    """Build a find-handoffs hit dict for a candidate discover-handoff.json.
+
+    Returns None (silently) when the file is absent, unreadable, corrupt, or
+    schema-invalid — find-handoffs skips those rather than erroring.
+    """
+    if not fpath.is_file():
+        return None
+    try:
+        mtime = fpath.stat().st_mtime
+    except OSError:
+        return None
+    try:
+        raw = json.loads(fpath.read_text(encoding="utf-8"))
+        _inject_plan_seeds_internal_fields(raw)
+        handoff = _dict_to_dataclass(discover_handoff_schema.Handoff, raw)
+    except Exception:
+        return None  # corrupt or invalid — skip silently
+
+    mtime_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+    mtime_iso = mtime_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    summary = handoff.plan_seeds.recommended_option_rationale
+    if not summary:
+        summary = handoff.intent.feature_concept
+    if len(summary) > 80:
+        summary = summary[:77] + "..."
+
+    return {
+        "mtime_ts": mtime,
+        "mtime_iso": mtime_iso,
+        "handoff_path": str(fpath),
+        "kind": "discover",
+        "mode_or_verdict": "verdict={0}".format(handoff.discovery_block.verdict),
+        "summary": summary,
+    }
+
+
 def cmd_find_handoffs(args: argparse.Namespace) -> int:
-    """Glob research/**/handoff.json and discover/*.handoff.json; filter by mtime.
+    """List feature dirs carrying a PENDING intake handoff (plan 68 D5).
 
-    --since accepts: "<N> day(s)", "<N> hour(s)", "<N> minute(s)".
-    --require: when set, exit 2 with a BLOCKED message on zero hits instead of
-      exit 0.  Callers that need the handoff-exists precondition (e.g. Phase 0.4)
-      pass --require; callers that only want the list (e.g. multi-pick UI) omit it.
-      The --require path does NOT offer an override or escape hatch.
+    One glob pass over specs/*/research-handoff.json and
+    specs/*/discover-handoff.json, filtered to feature dirs that do NOT yet
+    contain spec.md — the D5 structural predicate ("an intake handoff is
+    present AND the feature has not already been consumed by /specify").
+    A feature dir may legitimately surface both a research hit and a
+    discover hit if both files happen to be present.
 
-    Output format (newest first):
+    --since is DEPRECATED, accepted-but-ignored (plan 68 Phase 4 / OQ-2):
+    the old --since mtime window existed to avoid resurfacing a stale
+    top-level research/discover run, but under the D5 predicate a feature
+    is "pending" precisely because /specify has not consumed it yet — a
+    window would incorrectly BLOCK a legitimately-paused 8-day-old feature.
+    When supplied, the format is still validated (so a typo like --since
+    "foo" still fails loud), but the value is never applied as a filter.
+    mtime remains the ORDER key only (most-recent-first) — see the sort
+    below.
+
+    --require: when set, exit 2 with a BLOCKED message on zero hits instead
+      of exit 0.  Callers that need the handoff-exists precondition (e.g.
+      Phase 0.4) pass --require; callers that only want the list (e.g.
+      multi-pick UI) omit it.  The --require path does NOT offer an
+      override or escape hatch.
+
+    Output format (most-recent mtime first; ties broken by handoff_path for
+    determinism):
       <mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <summary>
     For research: mode_or_verdict = "mode=<mode>", summary from plan_seeds.recommended_approach_summary.
     For discover: mode_or_verdict = "verdict=<verdict>", summary from plan_seeds.recommended_option_rationale.
@@ -732,8 +855,7 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
     Exit 0 on zero hits (unless --require).
     """
     since_str = getattr(args, "since", None) or ""
-    since_seconds = _parse_since_seconds(since_str)
-    if since_seconds is None:
+    if since_str and _parse_since_seconds(since_str) is None:
         sys.stderr.write(
             "find-handoffs: --since must match '<N> day(s)|hour(s)|minute(s)',"
             " got {0!r}\n".format(since_str)
@@ -742,110 +864,37 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
 
     devforge_dir = Path(args.devforge_dir).resolve()
     repo_root = devforge_dir.parent
-
-    now_ts = datetime.now(timezone.utc).timestamp()
-    cutoff_ts = now_ts - since_seconds
+    specs_root = repo_root / "specs"
 
     hits: List[Dict[str, Any]] = []
 
-    # --- Walk research/**/handoff.json ---
-    research_dir = repo_root / "research"
-    if research_dir.exists():
-        for root_dir, dirs, files in os.walk(str(research_dir)):
-            dirs.sort()  # deterministic traversal
-            for fname in files:
-                if fname != "handoff.json":
-                    continue
-                fpath = Path(root_dir) / fname
-                try:
-                    mtime = fpath.stat().st_mtime
-                except OSError:
-                    continue  # skip inaccessible files
-
-                if mtime < cutoff_ts:
-                    continue
-
-                # Try to parse and validate — skip silently on failure.
-                try:
-                    raw = json.loads(fpath.read_text(encoding="utf-8"))
-                    # Guard: only accept files without handoff_kind or with kind=="research".
-                    raw_kind = raw.get("handoff_kind", "research")
-                    if raw_kind != "research":
-                        continue
-                    handoff = _dict_to_dataclass(handoff_schema.Handoff, raw)
-                except Exception:
-                    continue  # corrupt or invalid — skip silently
-
-                mtime_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
-                mtime_iso = mtime_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-                summary = handoff.plan_seeds.recommended_approach_summary
-                if len(summary) > 80:
-                    summary = summary[:77] + "..."
-
-                hits.append({
-                    "mtime_ts": mtime,
-                    "mtime_iso": mtime_iso,
-                    "handoff_path": str(fpath),
-                    "kind": "research",
-                    "mode_or_verdict": "mode={0}".format(handoff.mode),
-                    "summary": summary,
-                })
-
-    # --- Walk discover/*.handoff.json ---
-    discover_dir = repo_root / "discover"
-    if discover_dir.exists():
-        for fpath in sorted(discover_dir.iterdir()):
-            if not fpath.is_file():
+    if specs_root.exists() and specs_root.is_dir():
+        for feature_dir in sorted(specs_root.iterdir()):
+            if not feature_dir.is_dir():
                 continue
-            if not fpath.name.endswith(".handoff.json"):
-                continue
+            if (feature_dir / "spec.md").exists():
+                continue  # D5: already consumed by /specify — not pending
 
-            try:
-                mtime = fpath.stat().st_mtime
-            except OSError:
-                continue  # skip inaccessible files
+            research_hit = _try_research_hit(feature_dir / "research-handoff.json")
+            if research_hit is not None:
+                hits.append(research_hit)
 
-            if mtime < cutoff_ts:
-                continue
+            discover_hit = _try_discover_hit(feature_dir / "discover-handoff.json")
+            if discover_hit is not None:
+                hits.append(discover_hit)
 
-            # Try to parse and validate — skip silently on failure.
-            try:
-                raw = json.loads(fpath.read_text(encoding="utf-8"))
-                _inject_plan_seeds_internal_fields(raw)
-                handoff = _dict_to_dataclass(discover_handoff_schema.Handoff, raw)
-            except Exception:
-                continue  # corrupt or invalid — skip silently
-
-            mtime_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
-            mtime_iso = mtime_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-            summary = handoff.plan_seeds.recommended_option_rationale
-            if not summary:
-                summary = handoff.intent.feature_concept
-            if len(summary) > 80:
-                summary = summary[:77] + "..."
-
-            hits.append({
-                "mtime_ts": mtime,
-                "mtime_iso": mtime_iso,
-                "handoff_path": str(fpath),
-                "kind": "discover",
-                "mode_or_verdict": "verdict={0}".format(
-                    handoff.discovery_block.verdict
-                ),
-                "summary": summary,
-            })
-
-    # Sort newest first (across both lists merged).
-    hits.sort(key=lambda h: h["mtime_ts"], reverse=True)
+    # Most-recent mtime first; ties broken by handoff_path for determinism.
+    hits.sort(key=lambda h: (-h["mtime_ts"], h["handoff_path"]))
 
     # --require gate: block when zero hits instead of exit 0.
     require = getattr(args, "require", False)
     if require and not hits:
         sys.stderr.write(
-            "BLOCKED: /specify requires a research or discover handoff.\n"
-            "No research or discover handoff found within the --since window.\n"
+            "BLOCKED: /specify requires a pending research or discover handoff.\n"
+            "No feature dir under specs/ carries an intake handoff"
+            " (specs/*/research-handoff.json or specs/*/discover-handoff.json)"
+            " that has not already been consumed by /specify (i.e. its"
+            " spec.md does not yet exist).\n"
             "\n"
             "Run one of the following first, then retry /specify:\n"
             "  /research \"<topic>\"  — for a bug or enhancement against existing code\n"
