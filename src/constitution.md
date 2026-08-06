@@ -120,6 +120,7 @@ function process(input) {
 
 **Narrowing (restricting shared-code behavior):**
 - When restricting existing behavior of shared code (a shared service, utility, or layer used by multiple callers), prefer a caller-scoped opt-in — a parameter, option, or wrapper the affected caller passes — over a layer-wide policy change inside the shared code.
+- A caller-scoped opt-in is complete only when every caller that needs the restricted behavior is named — traced from the actual callers, not listed from memory — and each named caller's opt-in is wired. When that set of callers cannot be fully established, a layer-wide change keyed on data every caller already passes is the more failure-tolerant choice, and the layer-wide naming rule below then applies.
 - A layer-wide restriction inside shared code changes behavior for every caller, including callers nobody checked. A broadened rule inside a shared service MUST name every current caller it affects, in the plan.
 - This is the tie-breaker against KISS's "fewest touch points" instinct: the smallest API diff is not the narrowest semantic blast radius. When the two conflict for a behavior-restricting change, blast radius wins.
 
