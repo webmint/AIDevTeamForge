@@ -21,7 +21,7 @@ It is neurosymbolic — two parts, one soft, one hard. **Auto-formalization (sof
 
 **Opt-in by construction — never an auto-gate (D14).** `/spec-check` runs because the USER invoked it (like `/audit` and `/grill`) — it NEVER auto-runs, and there is NO forced gate on any `/specify` run. Blocking belongs to the DETERMINISTIC forcing-functions family (no stochastic link); an advisory check atop a stochastic formalizer must never become a blocking gate, or every mistranslation would hard-stop a correct specification. Skipping `/spec-check` leaves the `/specify → /plan` chain byte-unchanged. Run it for high-stakes specs — those with many interacting numeric/threshold, state/enum, or conditional-permission acceptance criteria over shared quantities, where a hidden contradiction is most likely and most costly to discover only after `/plan` has designed against it.
 
-Usage: `/spec-check` (auto-resolve the lowest-numbered feature under `specs/` that has a `spec.md`) · `/spec-check specs/001-auth` or `/spec-check specs/001-auth/spec.md` (an explicit feature dir or a `spec.md` path inside it).
+Usage: `/spec-check` (auto-resolve the most-recently-modified feature under `specs/` that has a `spec.md`) · `/spec-check specs/001-auth` or `/spec-check specs/001-auth/spec.md` (an explicit feature dir or a `spec.md` path inside it).
 
 ## Maintainer note
 
@@ -69,13 +69,13 @@ Cheapest guards first; preflight before any formalization. `/spec-check` runs on
 Resolve the feature dir from `$ARGUMENTS`:
 
 - When `$ARGUMENTS` names a feature directory (`specs/NNN-<slug>`) or a `spec.md` inside one (e.g. `specs/001-auth/spec.md`), use that feature directory (strip a trailing `spec.md` filename to the `specs/NNN-<slug>` dir).
-- When `$ARGUMENTS` is empty, select the lowest-numbered `specs/NNN-*` directory that contains a `spec.md` (the `resolve-scope` verb does NOT auto-detect — it requires a `--feature-dir` or `--spec-file` — so resolve it here):
+- When `$ARGUMENTS` is empty, select the `specs/NNN-*` directory whose `spec.md` was modified most recently — the feature most likely just finished `/specify` (matching how `/plan` and `/verify` auto-resolve). The `resolve-scope` verb does NOT auto-detect — it requires a `--feature-dir` or `--spec-file` — so resolve it here:
 
 ```bash
-for d in specs/[0-9]*/; do [ -f "${d}spec.md" ] && { echo "${d%/}"; break; }; done
+newest=$(ls -t specs/[0-9]*/spec.md 2>/dev/null | head -1); [ -n "$newest" ] && dirname "$newest"
 ```
 
-Carry TWO values forward from the resolved result: `<feature-dir>` — the full path (e.g. `specs/001-auth`), taken by every `--feature-dir` flag and used as the `specs/<feature-dir>/...` artifact-path root; and `<feature>` — the SLUG, the directory's basename (e.g. `001-auth`, from `basename "$d"`), taken by `--feature` (the report-header / seed label). Keep the two distinct: `<feature-dir>` always carries the `specs/` prefix, `<feature>` never does. If no `specs/NNN-*` directory has a `spec.md`, tell the user to run `/specify` first and end the turn.
+Carry TWO values forward from the resolved result: `<feature-dir>` — the full path (e.g. `specs/001-auth`), taken by every `--feature-dir` flag and used as the `specs/<feature-dir>/...` artifact-path root; and `<feature>` — the SLUG, the directory's basename (e.g. `001-auth`, from `basename` of that resolved `<feature-dir>` path), taken by `--feature` (the report-header / seed label). Keep the two distinct: `<feature-dir>` always carries the `specs/` prefix, `<feature>` never does. If no `specs/NNN-*` directory has a `spec.md`, tell the user to run `/specify` first and end the turn.
 
 ### 0.2 — Preflight gate
 

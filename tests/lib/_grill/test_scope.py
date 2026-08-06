@@ -2,10 +2,10 @@
 
 Coverage:
   resolve_target_feature   — explicit feature-dir arg, explicit plan.md path arg,
-                             auto-detection (lowest-numbered with plan.md),
+                             auto-detection (most-recently-modified plan.md wins),
                              missing-plan.md dirs skipped, no candidates error,
                              missing specs_root error, explicit bad dir error,
-                             tie-breaking (001 < 002), non-numeric dirs ignored
+                             non-numeric dirs ignored
   build_scope_manifest     — happy path all paths present, handoff_path None when absent,
                              missing plan.md error, missing spec.md error,
                              feature_id is basename of feature_dir
@@ -20,6 +20,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -32,7 +33,6 @@ if str(_LIB_DIR) not in sys.path:
 
 from _grill._scope import (  # noqa: E402
     GrillScopeManifest,
-    _feature_sort_key,
     build_scope_manifest,
     cmd_resolve_scope,
     resolve_target_feature,
@@ -71,25 +71,6 @@ def _make_workspace(tmp_root):
     Path(os.path.join(tmp_root, "constitution.md")).write_text("# constitution\n")
     Path(os.path.join(tmp_root, "CLAUDE.md")).write_text("# CLAUDE\n")
     return tmp_root
-
-
-# ---------------------------------------------------------------------------
-# Tests: _feature_sort_key
-# ---------------------------------------------------------------------------
-
-
-class TestFeatureSortKey(unittest.TestCase):
-    def test_numeric_prefix_returns_int(self):
-        self.assertEqual(_feature_sort_key("001-auth"), 1)
-        self.assertEqual(_feature_sort_key("012-payments"), 12)
-        self.assertEqual(_feature_sort_key("999-last"), 999)
-
-    def test_no_numeric_prefix_returns_maxint(self):
-        self.assertEqual(_feature_sort_key("no-number"), 2 ** 31)
-        self.assertEqual(_feature_sort_key(""), 2 ** 31)
-
-    def test_full_path_uses_basename(self):
-        self.assertEqual(_feature_sort_key("/specs/003-foo"), 3)
 
 
 # ---------------------------------------------------------------------------
@@ -144,15 +125,26 @@ class TestResolveTargetFeature(unittest.TestCase):
 
     # --- auto-detection ---
 
-    def test_auto_picks_lowest_numbered_with_plan_md(self):
+    def test_auto_picks_newest_mtime_even_if_higher_number(self):
+        """Auto-detection picks the newest plan.md mtime, not the lowest number.
+
+        003 (the highest-numbered dir) has the newest plan.md mtime, set
+        explicitly via os.utime — not left to write order or filesystem
+        timestamp granularity. The lowest-numbered dir (001) has a middle
+        mtime and does NOT win, which rules out lowest-number-wins logic.
+        """
         specs = _make_specs(self.tmp, [
             ("001-auth", True, True, False),
             ("002-pay", True, True, False),
             ("003-notif", True, True, False),
         ])
+        base = time.time() - 1000
+        os.utime(os.path.join(specs, "002-pay", "plan.md"), (base, base))
+        os.utime(os.path.join(specs, "001-auth", "plan.md"), (base + 100, base + 100))
+        os.utime(os.path.join(specs, "003-notif", "plan.md"), (base + 200, base + 200))
         result, error = resolve_target_feature(specs, None)
         self.assertIsNone(error)
-        self.assertEqual(os.path.basename(result), "001-auth")
+        self.assertEqual(os.path.basename(result), "003-notif")
 
     def test_auto_skips_dirs_without_plan_md(self):
         specs = _make_specs(self.tmp, [
@@ -193,12 +185,27 @@ class TestResolveTargetFeature(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIn("no feature directories with a plan.md", error)
 
-    def test_auto_tie_break_001_before_002(self):
-        """When both 001 and 002 have plan.md, 001 wins."""
+    def test_auto_decisive_lower_number_newer_mtime_wins(self):
+        """Decisive regression: mtime drives the pick, not directory number.
+
+        Both dirs have plan.md. The higher-numbered dir (002-later)'s
+        plan.md is given the OLDER mtime; the lower-numbered dir
+        (001-first)'s plan.md is touched AFTER — given the NEWER mtime —
+        via explicit os.utime (not write order / fs timestamp
+        granularity). Auto-detection returns 001-first because its
+        plan.md is newest. Paired with
+        test_auto_picks_newest_mtime_even_if_higher_number (where the
+        higher-numbered dir wins instead), the two together pin genuine
+        mtime-driven selection rather than a coincidental match with
+        legacy lowest-number sort.
+        """
         specs = _make_specs(self.tmp, [
             ("002-later", True, True, False),
             ("001-first", True, True, False),
         ])
+        base = time.time() - 1000
+        os.utime(os.path.join(specs, "002-later", "plan.md"), (base, base))
+        os.utime(os.path.join(specs, "001-first", "plan.md"), (base + 500, base + 500))
         result, error = resolve_target_feature(specs, None)
         self.assertIsNone(error)
         self.assertEqual(os.path.basename(result), "001-first")

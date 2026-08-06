@@ -1084,8 +1084,8 @@ def _register_subcommands(subparsers):
                 help=(
                     "Explicit feature directory (e.g. specs/001-auth/) or a "
                     "path to a plan.md file. "
-                    "When omitted, auto-detects the lowest-numbered feature "
-                    "under specs/ that has a plan.md."
+                    "When omitted, auto-detects the most-recently-modified "
+                    "feature under specs/ that has a plan.md."
                 ),
             )
             sp.add_argument(

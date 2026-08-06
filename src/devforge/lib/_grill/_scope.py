@@ -11,7 +11,7 @@ _scope's ONLY responsibility is:
 
   1. Resolve the target feature directory — from an explicit arg
      (specs/NNN-*/ dir or a plan.md path) or by auto-detecting the
-     lowest-numbered feature under specs/ that has a plan.md.
+     most-recently-modified feature under specs/ that has a plan.md.
 
   2. Build a GrillScopeManifest — a small dataclass carrying the
      existence-checked paths the agent will be handed. File CONTENTS are
@@ -40,26 +40,10 @@ from typing import Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
-# Feature sort key (matches _implement/_cmds_resolve.py precedent)
+# Feature numeric-prefix pattern
 # ---------------------------------------------------------------------------
 
 _NNN_RE = re.compile(r"^(\d+)")
-
-
-def _feature_sort_key(name):
-    # type: (str) -> int
-    """Return the numeric prefix of a feature directory name for sort order.
-
-    Non-numeric or missing prefix returns maxint so those dirs sort last.
-    """
-    base = os.path.basename(name)
-    m = _NNN_RE.match(base)
-    if not m:
-        return 2 ** 31
-    try:
-        return int(m.group(1))
-    except ValueError:
-        return 2 ** 31
 
 
 # ---------------------------------------------------------------------------
@@ -82,8 +66,8 @@ def resolve_target_feature(
         Optional explicit argument — either:
           - a path to a specs/NNN-*/ directory, or
           - a path to a plan.md file (parent dir is used as the feature dir).
-        When None, auto-detect: pick the lowest-numbered subdir of specs_root
-        that contains a plan.md file.
+        When None, auto-detect: pick the most-recently-modified (by plan.md
+        mtime) subdir of specs_root that contains a plan.md file.
 
     Returns
     -------
@@ -93,8 +77,8 @@ def resolve_target_feature(
         error:       human-readable error string, or None on success.
 
     Auto-detection criteria: directory name must match r'^\\d+' (has a numeric
-    NNN prefix) AND contain a plan.md file.  The lowest-numbered such directory
-    is returned.  Directories without a numeric prefix are ignored.
+    NNN prefix) AND contain a plan.md file.  The one with the newest plan.md
+    mtime is returned.  Directories without a numeric prefix are ignored.
     """
     if feature_arg is not None:
         # Normalise: if the arg is a path to a plan.md file, use its parent.
@@ -139,7 +123,10 @@ def resolve_target_feature(
             "Run /plan first to produce a plan.md.".format(specs_root)
         )
 
-    candidates.sort(key=_feature_sort_key)
+    candidates.sort(
+        key=lambda d: os.path.getmtime(os.path.join(d, "plan.md")),
+        reverse=True,
+    )
     return os.path.abspath(candidates[0]), None
 
 

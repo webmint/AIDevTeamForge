@@ -15,7 +15,7 @@ The genuine gap it fills: `/plan` *compares* 2–3 alternatives and the architec
 
 **Opt-in by construction — never an auto-gate.** `/grill` runs because the USER invoked it (like `/audit`) — it NEVER auto-runs, and there is NO forced gate on every `/plan` run. `/plan` DOES emit a NON-BLOCKING advisory hint that MAY suggest considering `/grill` when the finished plan looks high-stakes (wide file impact / new data model / new dependency / security-relevant / risk-laden with 4+ risks) — but that hint neither runs `/grill` nor gates anything; it is a suggestion the user is free to ignore. It is RECOMMENDED for high-stakes plans (new architecture / new dependency / new external integration / new data model / security-relevant) and SKIPPED for mechanical ones — the human decides by choosing to invoke it. Skipping `/grill` leaves the `/plan → /breakdown` chain byte-unchanged.
 
-Usage: `/grill` (auto-resolve the lowest-numbered feature under `specs/` that has a `plan.md`) · `/grill specs/001-auth` or `/grill specs/001-auth/plan.md` (an explicit feature dir or a `plan.md` path inside it).
+Usage: `/grill` (auto-resolve the feature under `specs/` whose `plan.md` was modified most recently) · `/grill specs/001-auth` or `/grill specs/001-auth/plan.md` (an explicit feature dir or a `plan.md` path inside it).
 
 ## Maintainer note
 
@@ -73,7 +73,7 @@ Cheapest guards first; preflight before any feature work. `/grill` runs only by 
 Resolve the feature dir from `$ARGUMENTS`:
 
 - When `$ARGUMENTS` names a feature directory (`specs/NNN-<slug>`) or a `plan.md` inside one (e.g. `specs/001-auth/plan.md`), use that feature directory (strip a trailing `plan.md` filename to the `specs/NNN-<slug>` dir).
-- When `$ARGUMENTS` is empty, auto-resolve the lowest-numbered `specs/NNN-*` directory that contains a `plan.md` (PHASE 1's `resolve-scope` performs this auto-detection — so when `$ARGUMENTS` is empty you may leave the feature unresolved here and let `resolve-scope --feature` auto-detect it, then carry forward the `feature_dir` it returns).
+- When `$ARGUMENTS` is empty, auto-resolve the `specs/NNN-*` directory whose `plan.md` was modified most recently — the feature most likely just finished `/plan`. (PHASE 1's `resolve-scope` performs this auto-detection — so when `$ARGUMENTS` is empty you may leave the feature unresolved here and let `resolve-scope --feature` auto-detect it, then carry forward the `feature_dir` it returns.)
 
 Carry the resolved feature dir forward as `<feature>` — every subsequent `--feature` / `--feature-dir` flag takes it. (When the feature was left for `resolve-scope` to auto-detect, set `<feature>` from the manifest's `feature_dir` after PHASE 1.)
 
@@ -122,7 +122,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-grill"
 .devforge/lib/grill_helper resolve-scope --feature <feature> --workspace-root . > "$WORKDIR/manifest.json"
 ```
 
-`resolve-scope` resolves the feature (an explicit `specs/NNN-*` dir or `plan.md` path via `--feature`, else auto-detects the lowest-numbered feature under `specs/` that has a `plan.md`) and emits the `GrillScopeManifest` JSON to stdout; the `>` redirect captures it to `$WORKDIR/manifest.json`. Stdout JSON carries `feature_dir`, `feature_id`, `plan_path`, `spec_path` (both required and existence-checked), `handoff_path` (the upstream specify handoff if present, else `null`), `constitution_path`, and `claude_md_path` — the existence-checked paths the adversary will read directly (the helper does NOT read file CONTENTS; the agent reads them). On a non-zero exit (feature not found, missing `plan.md` / `spec.md`), copy the helper's stderr VERBATIM and end the turn. When PHASE 0 left the feature for auto-detection, set `<feature>` from the manifest's `feature_dir` now and re-run the PHASE-0.2 `preflight --feature-dir <feature>` gate before dispatching.
+`resolve-scope` resolves the feature (an explicit `specs/NNN-*` dir or `plan.md` path via `--feature`, else auto-detects the `specs/NNN-*` directory whose `plan.md` was modified most recently) and emits the `GrillScopeManifest` JSON to stdout; the `>` redirect captures it to `$WORKDIR/manifest.json`. Stdout JSON carries `feature_dir`, `feature_id`, `plan_path`, `spec_path` (both required and existence-checked), `handoff_path` (the upstream specify handoff if present, else `null`), `constitution_path`, and `claude_md_path` — the existence-checked paths the adversary will read directly (the helper does NOT read file CONTENTS; the agent reads them). On a non-zero exit (feature not found, missing `plan.md` / `spec.md`), copy the helper's stderr VERBATIM and end the turn. When PHASE 0 left the feature for auto-detection, set `<feature>` from the manifest's `feature_dir` now and re-run the PHASE-0.2 `preflight --feature-dir <feature>` gate before dispatching.
 
 Extract the human-readable scope block into its own file — the refuter briefs (PHASE 4) take a pre-rendered scope-block FILE via `--scope-block`, not the manifest JSON. The scope block is a short plain-text summary of what is under attack (the feature id + the plan/spec paths):
 
