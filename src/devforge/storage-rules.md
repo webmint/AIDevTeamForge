@@ -148,6 +148,7 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 **Review checkpoint**: Yes/No
 **Context docs**: [doc file paths] or None
 **Property targets**: [comma-separated pure-builder target names]
+**Dead code removal**: [semicolon-separated literal anchor tokens]
 
 ## Files
 
@@ -193,6 +194,8 @@ Each task file (`specs/NNN-feature/tasks/NNN-title.md`) contains:
 ```
 
 The `**Property targets**:` line is OPTIONAL — `render-task-file` emits it only when passed `--property-targets`, so it appears solely on the dedicated property-test tasks `/breakdown` creates for `/plan`-declared pure-builder targets. Its comma-separated target names are exact-match-consumed by `breakdown_helper verify-property-coverage` (the Phase 3.5 property-coverage gate). Ordinary tasks omit the line entirely.
+
+The `**Dead code removal**:` line is likewise OPTIONAL — `render-task-file` emits it only when passed `--dead-code-removal`, so it appears solely on the OWNING task(s) of `/plan`-declared change-induced dead-code rows. Its value is a SEMICOLON-separated list of literal anchor tokens (semicolon, not comma — anchor tokens are code fragments that commonly contain commas; the schema rejects a semicolon INSIDE a token at creation), split-and-exact-match-consumed by `breakdown_helper verify-dead-code-coverage` (the Phase 3.5 dead-code-coverage gate — every declared row covered by exactly ONE task) and confirmed removed post-change by `verify_helper check-dead-code-removal` at `/verify`. Ordinary tasks omit the line entirely.
 
 ## File Lifecycle
 

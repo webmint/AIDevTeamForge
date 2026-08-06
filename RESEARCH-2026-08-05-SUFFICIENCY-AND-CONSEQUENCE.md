@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-05 · **Branch:** `develop-2.0-init` · **Status:** RESOLVED 2026-08-06 — both ideas routed to plans; this doc is now the rationale record, not the recommendation of record.
 
-> **Resolution (2026-08-06):** Plan 67 SHIPPED before this doc's recommendations could apply (`e22317c`, release 2.0.7) — the "reframe plan 67" recommendation below is therefore impossible as written. **Idea 1** → folded into `69-CALLER-ENUM-RESIDUAL-HARDENING-PLAN.md` as **WI-F** (checks 8b + 18 mode-widened per OQ-A's structural/runtime split; caller-enumeration facets already covered by 67 + 69 WI-A/WI-E). **Idea 2** → `71-POST-CHANGE-CONSEQUENCE-PLAN.md` (the "new plan 68" named below — that number was taken by the intake plan; 71 is the actual home). Both DRAFT, awaiting Phase 0 ratification.
+> **Resolution (2026-08-06):** Plan 67 SHIPPED before this doc's recommendations could apply (`e22317c`, release 2.0.7) — the "reframe plan 67" recommendation below is therefore impossible as written. **Idea 1** → folded into `69-CALLER-ENUM-RESIDUAL-HARDENING-PLAN.md` as **WI-F** (checks 8b + 18 mode-widened per OQ-A's structural/runtime split; caller-enumeration facets already covered by 67 + 69 WI-A/WI-E). **Idea 2** → `71-POST-CHANGE-CONSEQUENCE-PLAN.md` (the "new plan 68" named below — that number was taken by the intake plan; 71 is the actual home). Plan 69 SHIPPED+CLOSED 2026-08-06; plan 71 Phases 0–6 SHIPPED 2026-08-06 (e2e pending).
 **Seed:** forge benchmark run (`testframeworks/forge`, `eval/forge-run1`) parametrized a shared helper at a low-context layer AND left the branch its change orphaned in place. Companion to plans 66, 67, and `CONSULT-2026-08-05-CALLER-ENUM-REGRESSION.md`.
 
 ---
