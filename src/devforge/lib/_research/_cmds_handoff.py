@@ -320,9 +320,23 @@ def cmd_append_outcome(args):
         return _die("append-outcome: cannot write {0}: {1}".format(target, err))
 
     # Optionally append '## Outcome' section to the parallel .md file.
+    #
+    # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D4 bug fix: research_path is now a
+    # root-relative path INTO the same feature dir the handoff already
+    # lives in (e.g. "specs/003-x/research-report.md" alongside
+    # "specs/003-x/research-handoff.json" -- D2's flat sibling layout, D1's
+    # "write report + handoff together" ordering). Joining
+    # Path(handoff_path).parent / research_path (the pre-68 code) therefore
+    # double-nested the feature dir and silently no-opped the append (the
+    # resulting path never existed). Under D2's guarantee that the report
+    # is ALWAYS the handoff's sibling, the correct join is the handoff's
+    # own parent dir plus the report's BASENAME -- this is also robust to
+    # whether research_path happens to be root-relative or (for a
+    # pre-migration handoff, per D3) absolute, since only the basename is
+    # used.
     research_path = data.get("research_path")
     if research_path and isinstance(research_path, str):
-        md_path = (Path(handoff_path_str).parent / research_path).resolve()
+        md_path = (Path(handoff_path_str).parent / Path(research_path).name).resolve()
         if md_path.is_file():
             md_section = _build_outcome_md_section(outcome_dict)
             try:

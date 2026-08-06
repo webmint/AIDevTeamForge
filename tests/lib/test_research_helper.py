@@ -9236,6 +9236,78 @@ class TestAppendOutcome(unittest.TestCase):
             self.assertIn("## Outcome", md_content,
                           "md file should have been found + appended via relative path resolution")
 
+    def test_append_outcome_appends_md_at_new_layout_root_relative_path(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D4 regression.
+
+        Under the new layout, research_path is a root-relative path INTO
+        the same feature dir the handoff lives in (e.g.
+        "specs/001-config-fix/research-report.md" alongside
+        "specs/001-config-fix/research-handoff.json" -- D2's flat sibling
+        layout). The pre-fix join (Path(handoff_path).parent /
+        research_path) double-nested the feature dir into a path that
+        never existed, so the md append silently no-opped (returncode
+        stayed 0 -- exit code alone would NOT have caught this).
+
+        Real-producer round-trip: finalize-handoff --feature-dir + a
+        root-relative --research-md-path override (the same combination
+        /research's main.md D1 write-order produces), matching
+        test_finalize_handoff_feature_dir_research_md_path_still_overridable
+        in TestFinalizeHandoff.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            feature_dir = Path(tmp) / "specs" / "001-config-fix"
+            root_relative_research_path = "specs/001-config-fix/research-report.md"
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+                "--research-md-path", root_relative_research_path,
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            handoff_path = feature_dir / "research-handoff.json"
+            self.assertTrue(handoff_path.is_file())
+            data = json.loads(handoff_path.read_text())
+            self.assertEqual(
+                data["research_path"], root_relative_research_path,
+                "precondition: research_path must be root-relative (not "
+                "absolute, not a bare sibling filename) to reproduce the "
+                "D4 double-nesting bug",
+            )
+
+            # Create the report md as the handoff's ACTUAL sibling (D2 flat
+            # layout) -- not at the double-nested (buggy) location.
+            md_path = feature_dir / "research-report.md"
+            md_path.write_text("# Research Report\n\nBody.\n")
+            buggy_double_nested_path = feature_dir / root_relative_research_path
+            self.assertFalse(
+                buggy_double_nested_path.exists(),
+                "sanity: the double-nested path must not exist",
+            )
+
+            r2 = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="Verified manually",
+                actual_fix_path="services/api/config.py",
+            )
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            # The regression assertion: the md file's POST-CONTENT actually
+            # gained the appended section (not just exit 0 -- the pre-fix
+            # code also exited 0 while silently no-opping the append).
+            md_content = md_path.read_text()
+            self.assertIn(
+                "## Outcome", md_content,
+                "D4 regression: the pre-fix join double-nested the feature "
+                "dir and silently no-opped the md append",
+            )
+            self.assertIn("hypothesis_confirmed", md_content)
+            self.assertIn("confidence_grade", md_content)
+
 
 class TestCheckOutcome(unittest.TestCase):
     """Tests for research_helper check-outcome subcommand (Step 7)."""
@@ -9457,6 +9529,47 @@ class TestCheckOutcomeDispatch(unittest.TestCase):
             self.assertIn("confidence=", r.stdout)
             self.assertIn("build_vs_buy=Build", r.stdout)
             self.assertIn("internal_extension=", r.stdout)
+
+    def test_check_outcome_dispatches_correctly_at_new_layout_specs_path(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 5: check-outcome is
+        path-agnostic -- dispatch reads handoff_kind from the JSON content,
+        not from the path. Confirm both kinds still dispatch correctly
+        when the handoff lives at the plan-68 new-layout location
+        (specs/NNN-slug/{research,discover}-handoff.json), not just at an
+        arbitrary tmp path.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            # Research kind, built directly at the new-layout location via
+            # --feature-dir (the real producer path).
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            research_feature_dir = Path(tmp) / "specs" / "001-research-feature"
+            r = _run([
+                "--devforge-dir", str(devforge), "finalize-handoff",
+                "--feature-dir", str(research_feature_dir),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            research_handoff = research_feature_dir / "research-handoff.json"
+            self.assertTrue(research_handoff.is_file())
+
+            r_check = _run_check_outcome(str(research_handoff))
+            self.assertEqual(r_check.returncode, 0, r_check.stderr)
+            self.assertIn("unmarked", r_check.stdout)
+
+            # Discover kind: build via discover_helper's real producer, then
+            # place the output at a new-layout specs/ location (discover
+            # kind dispatch is content-only -- confirms it doesn't matter
+            # where the file lives, only handoff_kind in the JSON).
+            discover_source = _build_minimal_discover_handoff_for_check_outcome(tmp)
+            discover_feature_dir = Path(tmp) / "specs" / "002-discover-feature"
+            discover_feature_dir.mkdir(parents=True)
+            discover_handoff = discover_feature_dir / "discover-handoff.json"
+            discover_handoff.write_text(discover_source.read_text())
+
+            r_check2 = _run_check_outcome(str(discover_handoff))
+            self.assertEqual(r_check2.returncode, 0, r_check2.stderr)
+            self.assertIn("unmarked", r_check2.stdout)
+            self.assertIn("shipped", r_check2.stdout.lower())
 
     def test_check_outcome_rejects_unknown_handoff_kind(self):
         """handoff_kind='bogus' -> exit 2."""

@@ -891,6 +891,77 @@ class TestSectionBundle(unittest.TestCase):
         self.assertIn("proceed", result)
         self.assertIn("2026-05-01", result)
 
+    def test_new_header_imported_intake_handoffs(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 5 python-reviewer fix:
+        the section header names both intake lanes, not just research."""
+        state = _make_state(bundle={
+            "constitution_md_content": "",
+            "constitute_json": None,
+            "concern_docs": [],
+            "adrs": [],
+            "plan_files": [],
+            "research_handoffs": [],
+        })
+        result = _section_bundle(state)
+        self.assertIn("### Imported intake handoffs", result)
+        self.assertNotIn("### Imported research handoffs", result)
+
+    def test_discover_kind_handoff_rendered_with_kind_token(self):
+        """A discover-lane bundle entry renders its own kind, not silently
+        under a research-only header (the python-reviewer HIGH finding)."""
+        state = _make_state(bundle={
+            "constitution_md_content": "",
+            "constitute_json": None,
+            "concern_docs": [],
+            "adrs": [],
+            "plan_files": [],
+            "research_handoffs": [
+                {
+                    "path": "/specs/002-widget-search/discover-handoff.json",
+                    "date": "2026-05-12",
+                    "slug": "widget-search",
+                    "kind": "discover",
+                    "verdict": "Worth pursuing",
+                    "mode": "",
+                    "matched_via": "ticket_text_substring",
+                    "content_excerpt": "verdict=Worth pursuing",
+                }
+            ],
+        })
+        result = _section_bundle(state)
+        self.assertIn("### Imported intake handoffs", result)
+        self.assertIn("widget-search", result)
+        self.assertIn("kind=discover", result)
+
+    def test_kind_less_entry_omits_kind_token_gracefully(self):
+        """An entry with no 'kind' key (an old state.json written before the
+        field existed) renders without a KeyError and without a stray
+        'kind=' token -- graceful omission, not a crash."""
+        state = _make_state(bundle={
+            "constitution_md_content": "",
+            "constitute_json": None,
+            "concern_docs": [],
+            "adrs": [],
+            "plan_files": [],
+            "research_handoffs": [
+                {
+                    "path": "/specs/001-auth/research-handoff.json",
+                    "date": "2026-05-01",
+                    "slug": "auth",
+                    "verdict": "proceed",
+                    "mode": "bug",
+                    "matched_via": "ticket_text_substring",
+                    "content_excerpt": "verdict=proceed",
+                }
+            ],
+        })
+        try:
+            result = _section_bundle(state)
+        except KeyError as exc:
+            self.fail("_section_bundle raised KeyError on a kind-less entry: {0}".format(exc))
+        self.assertIn("auth", result)
+        self.assertNotIn("kind=", result)
+
     def test_research_handoffs_empty_placeholder(self):
         state = _make_state(bundle={
             "constitution_md_content": "",

@@ -196,10 +196,10 @@ Skip ONLY when alternatives are mechanical (one library is project-default per `
 When 1+ signals are detected, document research findings somewhere visible to the plan reviewer. Two valid paths:
 
 - **Default**: Generate `specs/[feature-name]/research.md` with the structured template below.
-- **Skip-with-reference**: If an existing file under `research/` directly addresses ALL detected signals (verified by reading the existing file), you may reference it instead of generating a new file. In this case:
-  1. Cite the existing path in the plan's Supporting Documents section
+- **Skip-with-reference**: If this feature's own intake report — `specs/[feature-name]/research-report.md` (written by `/research`) or `specs/[feature-name]/discovery-report.md` (written by `/discover`) — directly addresses ALL detected signals (verified by reading that report), you may reference it instead of generating a new file. Intake writes its report into the feature's own directory, so that directory is the only place to look for it. In this case:
+  1. Cite the report's path in the plan's Supporting Documents section
   2. Add a brief "Why no new research" note in the plan's Summary section
-  3. Quote 2-3 specific findings from the existing file in the plan body to prove the reference was actually consulted
+  3. Quote 2-3 specific findings from that report in the plan body to prove the reference was actually consulted
   4. Do NOT skip without reference — that is a hard error
 
 If signals are detected and neither path is taken, the plan is incomplete.

@@ -407,7 +407,7 @@ def _section_bundle(
       3. Concern docs
       4. ADRs (first 10)
       5. Repo-root PLAN files (first 5)
-      6. Imported research handoffs
+      6. Imported intake handoffs (research + discover lanes)
 
     caps: optional override dict for {
         'constitution': int,
@@ -522,23 +522,33 @@ def _section_bundle(
         lines.append("_None._")
     lines.append("")
 
-    # --- 6. Research handoffs ---
-    lines.append("### Imported research handoffs")
+    # --- 6. Intake handoffs (research + discover lanes) ---
+    # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 5: import-handoffs now scans
+    # BOTH specs/*/research-handoff.json and specs/*/discover-handoff.json
+    # (see _handoff_import.py's module docstring), so an entry may be
+    # either lane -- render the per-entry "kind" field so a discover-lane
+    # handoff is never mistaken for a research one under this header.
+    # `kind` is OMITTED (not KeyError'd) when absent -- an old state.json
+    # written before the kind field existed still renders.
+    lines.append("### Imported intake handoffs")
     lines.append("")
     research_handoffs = bundle.get("research_handoffs") or []
     if research_handoffs:
         for handoff in research_handoffs:
             slug = handoff.get("slug", "(unknown)")
             date = handoff.get("date", "")
+            kind = handoff.get("kind", "")
             verdict = handoff.get("verdict", "")
             mode = handoff.get("mode", "")
             matched_via = handoff.get("matched_via", "")
             excerpt = handoff.get("content_excerpt", "")
+            kind_token = "kind={0}, ".format(kind) if kind else ""
             lines.append(
-                "- **{slug}** ({date}) verdict={verdict}, mode={mode},"
+                "- **{slug}** ({date}) {kind_token}verdict={verdict}, mode={mode},"
                 " matched_via={matched_via}".format(
                     slug=slug,
                     date=date,
+                    kind_token=kind_token,
                     verdict=verdict,
                     mode=mode,
                     matched_via=matched_via,

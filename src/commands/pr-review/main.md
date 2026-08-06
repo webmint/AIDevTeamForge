@@ -183,15 +183,15 @@ Helper aggregates the universal `src/constitution.md`, the per-target `.devforge
 
 Surface the summary JSON to the reviewer verbatim as a fenced code block. On non-zero exit, copy stderr VERBATIM and end the turn.
 
-### Phase 4.5 — Import research handoffs (filtered)
+### Phase 4.5 — Import intake handoffs (filtered)
 
 ```bash
 .devforge/lib/pr_review_helper import-handoffs --pr $pr_number --target .
 ```
 
-Helper scans `<target>/research/**/handoff.json` for handoffs whose ticket-area tokens overlap with `state.ticket_text` + PR title. Matching handoffs are appended to `state.bundle.research_handoffs`. Stdout is a summary JSON with `matched` + `scanned` counts.
+Helper scans `<target>/specs/*/research-handoff.json` AND `<target>/specs/*/discover-handoff.json` — each feature directory's own intake handoff, from either lane — for handoffs whose ticket-area tokens overlap with `state.ticket_text` + PR title. Those two globs are the only locations scanned: a handoff left in a pre-migration top-level `research/` or `discover/` directory is not picked up. Matching handoffs are appended to `state.bundle.research_handoffs`, each carrying a `kind` field (`research` / `discover`) naming the lane it came from; the field name is lane-neutral despite its wording — it holds both kinds. Stdout is a summary JSON with `matched` + `scanned` counts.
 
-Surface the summary JSON to the reviewer verbatim as a fenced code block. Zero matches is not a failure — many PRs have no prior research; the field is left empty and Phase 6's brief carries no handoff section content.
+Surface the summary JSON to the reviewer verbatim as a fenced code block. Zero matches is not a failure — many PRs have no prior `/research` or `/discover` run; the field is left empty and Phase 6's brief carries no handoff section content.
 
 ### Phase 5 — Check scope drift (extract ticket bullets)
 
@@ -211,7 +211,7 @@ When zero bullets are extracted (empty ticket + empty PR body), surface to the r
 .devforge/lib/pr_review_helper dispatch-review --pr $pr_number --target .
 ```
 
-Helper assembles the 10-section FAT reviewer brief and writes it atomically to `.devforge/pr-reviews/$pr_number/brief.md`. The 10 canonical sections in order: metadata, ticket text, linked issues, diff (mid-excerpt strategy when over 80 000-char cap), code-smell findings (from Phase 2), blast-radius probe specs (from Phase 3 + 3.5 fill), scope-drift bullets (from Phase 5), context bundle (constitution + constitute.json + concern docs + ADRs + plan files + research handoffs from Phase 4 + 4.5), reviewer instructions, notes.
+Helper assembles the 10-section FAT reviewer brief and writes it atomically to `.devforge/pr-reviews/$pr_number/brief.md`. The 10 canonical sections in order: metadata, ticket text, linked issues, diff (mid-excerpt strategy when over 80 000-char cap), code-smell findings (from Phase 2), blast-radius probe specs (from Phase 3 + 3.5 fill), scope-drift bullets (from Phase 5), context bundle (constitution + constitute.json + concern docs + ADRs + plan files + intake handoffs from Phase 4 + 4.5), reviewer instructions, notes.
 
 Stdout is a summary JSON with keys `brief_path`, `brief_size_chars`, `sections_included`, plus per-section counts. Surface the summary JSON to the reviewer verbatim as a fenced code block. Brief size must be under 100 000 chars; per-section caps inside the helper enforce this.
 

@@ -634,7 +634,7 @@ def _register_subcommands(subparsers) -> None:
         "--handoff-path",
         required=True,
         dest="handoff_path",
-        help="Path to the handoff.json file (e.g. discover/<date>-<slug>.handoff.json).",
+        help="Path to the handoff.json file (e.g. specs/NNN-slug/discover-handoff.json).",
     )
     sp.add_argument(
         "--design-option-shipped-id",

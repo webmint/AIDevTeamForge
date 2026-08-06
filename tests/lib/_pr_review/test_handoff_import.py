@@ -1,15 +1,18 @@
 """Tests for src/devforge/lib/_pr_review/_handoff_import.py.
 
 Coverage:
-  _scan_research_dir: glob discovery; empty dir; missing dir.
-  _parse_handoff: valid handoff.json with all fields; missing optional fields;
-    malformed JSON (fail-soft None); missing file (fail-soft None);
-    dir name without expected date-slug format.
+  _scan_specs_dir: glob discovery of research-handoff.json /
+    discover-handoff.json under specs/*/; empty dir; missing dir; mixed
+    kinds in one specs/ tree.
+  _parse_handoff: valid research-handoff.json with all fields; valid
+    discover-handoff.json (nested discovery_block.verdict extraction);
+    missing optional fields; malformed JSON (fail-soft None); missing
+    file (fail-soft None); dir name without the NNN-slug shape.
   _filter_by_ticket_text: substring match by ticket_text token; substring
     match by pr_title; no filter content returns all with matched_via="all";
     no match returns empty; short tokens below min length ignored.
   _excerpt_handoff: under cap unchanged; exactly at cap; over cap with marker.
-  run (happy path): multi-handoff dir + state.json with ticket_text →
+  run (happy path): multi-handoff specs/ tree + state.json with ticket_text →
     filtered set in state.bundle["research_handoffs"].
   run (persistence): bundle["research_handoffs"] replaced on re-run;
     other bundle keys preserved.
@@ -17,6 +20,10 @@ Coverage:
   run (no filter): no ticket_text + no pr_body → all returned with
     matched_via="all".
   run (no state.json → ValueError).
+
+68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 5 re-point: fixtures write
+specs/NNN-slug/{research-handoff.json,discover-handoff.json} — the D2/D7
+unified layout — not the retired research/<date>-slug>/handoff.json shape.
 """
 
 import dataclasses
@@ -36,7 +43,7 @@ from _pr_review._handoff_import import (  # noqa: E402
     _excerpt_handoff,
     _filter_by_ticket_text,
     _parse_handoff,
-    _scan_research_dir,
+    _scan_specs_dir,
     _MAX_HANDOFFS,
     _EXCERPT_CHARS,
     run,
@@ -67,24 +74,57 @@ def _make_state(tmpdir: str, pr_number: int = 1, **kwargs) -> str:
     return sp
 
 
-def _make_handoff(research_dir: str, date_slug: str, mode: str = "bug", extra: dict = None) -> str:
-    """Create a minimal handoff.json and return its path."""
-    subdir = os.path.join(research_dir, date_slug)
+def _make_research_handoff(
+    specs_dir: str,
+    feature_dir: str,
+    mode: str = "bug",
+    completed_at: str = "2026-05-10T12:00:00+00:00",
+    extra: dict = None,
+) -> str:
+    """Create a minimal specs/<feature_dir>/research-handoff.json and return its path."""
+    subdir = os.path.join(specs_dir, feature_dir)
     os.makedirs(subdir, exist_ok=True)
-    data = {"schema_version": "1.0", "mode": mode, "verdict": "proceed"}
+    data = {
+        "schema_version": "1.0",
+        "mode": mode,
+        "research_completed_at": completed_at,
+    }
     if extra:
         data.update(extra)
-    hf = os.path.join(subdir, "handoff.json")
+    hf = os.path.join(subdir, "research-handoff.json")
+    _write_file(hf, json.dumps(data, indent=2))
+    return hf
+
+
+def _make_discover_handoff(
+    specs_dir: str,
+    feature_dir: str,
+    verdict: str = "Worth pursuing",
+    completed_at: str = "2026-05-10T12:00:00+00:00",
+    extra: dict = None,
+) -> str:
+    """Create a minimal specs/<feature_dir>/discover-handoff.json and return its path."""
+    subdir = os.path.join(specs_dir, feature_dir)
+    os.makedirs(subdir, exist_ok=True)
+    data = {
+        "schema_version": "1.0",
+        "handoff_kind": "discover",
+        "discover_completed_at": completed_at,
+        "discovery_block": {"verdict": verdict},
+    }
+    if extra:
+        data.update(extra)
+    hf = os.path.join(subdir, "discover-handoff.json")
     _write_file(hf, json.dumps(data, indent=2))
     return hf
 
 
 # ---------------------------------------------------------------------------
-# TestScanResearchDir.
+# TestScanSpecsDir.
 # ---------------------------------------------------------------------------
 
 
-class TestScanResearchDir(unittest.TestCase):
+class TestScanSpecsDir(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
 
@@ -92,43 +132,75 @@ class TestScanResearchDir(unittest.TestCase):
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def test_missing_research_dir_returns_empty(self):
-        result = _scan_research_dir(self._tmp)
+    def test_missing_specs_dir_returns_empty(self):
+        result = _scan_specs_dir(self._tmp)
         self.assertEqual(result, [])
 
-    def test_empty_research_dir_returns_empty(self):
-        os.makedirs(os.path.join(self._tmp, "research"))
-        result = _scan_research_dir(self._tmp)
+    def test_empty_specs_dir_returns_empty(self):
+        os.makedirs(os.path.join(self._tmp, "specs"))
+        result = _scan_specs_dir(self._tmp)
         self.assertEqual(result, [])
 
-    def test_discovers_handoff_json_files(self):
-        research = os.path.join(self._tmp, "research")
-        _make_handoff(research, "2026-05-01-auth-bug")
-        result = _scan_research_dir(self._tmp)
+    def test_discovers_research_handoff_json(self):
+        specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(specs, "001-auth-bug")
+        result = _scan_specs_dir(self._tmp)
         self.assertEqual(len(result), 1)
-        self.assertTrue(result[0].endswith("handoff.json"))
+        self.assertTrue(result[0].endswith("research-handoff.json"))
+
+    def test_discovers_discover_handoff_json(self):
+        specs = os.path.join(self._tmp, "specs")
+        _make_discover_handoff(specs, "001-new-widget")
+        result = _scan_specs_dir(self._tmp)
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0].endswith("discover-handoff.json"))
+
+    def test_discovers_both_kinds_in_same_specs_tree(self):
+        specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(specs, "001-alpha")
+        _make_discover_handoff(specs, "002-beta")
+        result = _scan_specs_dir(self._tmp)
+        self.assertEqual(len(result), 2)
 
     def test_discovers_multiple_handoff_files(self):
-        research = os.path.join(self._tmp, "research")
-        _make_handoff(research, "2026-05-01-alpha")
-        _make_handoff(research, "2026-05-02-beta")
-        _make_handoff(research, "2026-05-03-gamma")
-        result = _scan_research_dir(self._tmp)
+        specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(specs, "001-alpha")
+        _make_research_handoff(specs, "002-beta")
+        _make_research_handoff(specs, "003-gamma")
+        result = _scan_specs_dir(self._tmp)
         self.assertEqual(len(result), 3)
 
-    def test_dirs_without_handoff_json_skipped(self):
-        research = os.path.join(self._tmp, "research")
-        sub = os.path.join(research, "2026-05-01-no-handoff")
+    def test_feature_dirs_without_intake_handoffs_skipped(self):
+        specs = os.path.join(self._tmp, "specs")
+        sub = os.path.join(specs, "001-no-handoff")
         os.makedirs(sub, exist_ok=True)
-        _write_file(os.path.join(sub, "notes.md"), "notes")
-        result = _scan_research_dir(self._tmp)
+        _write_file(os.path.join(sub, "spec.md"), "# spec")
+        result = _scan_specs_dir(self._tmp)
         self.assertEqual(result, [])
 
+    def test_feature_dir_with_spec_md_still_scanned(self):
+        """Unlike /specify's find-handoffs, a completed feature (spec.md
+        present) is NOT filtered out — pr-review wants historical context
+        regardless of completion state."""
+        specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(specs, "001-done-feature")
+        _write_file(os.path.join(specs, "001-done-feature", "spec.md"), "# spec")
+        result = _scan_specs_dir(self._tmp)
+        self.assertEqual(len(result), 1)
+
     def test_result_contains_absolute_paths(self):
-        research = os.path.join(self._tmp, "research")
-        _make_handoff(research, "2026-05-01-auth-bug")
-        result = _scan_research_dir(self._tmp)
+        specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(specs, "001-auth-bug")
+        result = _scan_specs_dir(self._tmp)
         self.assertTrue(os.path.isabs(result[0]))
+
+    def test_old_layout_research_dir_not_scanned(self):
+        """D3 clean cut: a pre-migration top-level research/ dir is invisible."""
+        old_research = os.path.join(self._tmp, "research", "2026-05-01-old-topic")
+        os.makedirs(old_research, exist_ok=True)
+        _write_file(os.path.join(old_research, "handoff.json"), '{"mode": "bug"}')
+        result = _scan_specs_dir(self._tmp)
+        self.assertEqual(result, [])
 
 
 # ---------------------------------------------------------------------------
@@ -139,39 +211,64 @@ class TestScanResearchDir(unittest.TestCase):
 class TestParseHandoff(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
-        self._research = os.path.join(self._tmp, "research")
+        self._specs = os.path.join(self._tmp, "specs")
 
     def tearDown(self):
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def test_valid_handoff_returns_metadata(self):
-        hf = _make_handoff(self._research, "2026-05-10-login-bug", mode="bug")
+    def test_valid_research_handoff_returns_metadata(self):
+        hf = _make_research_handoff(
+            self._specs, "001-login-bug", mode="bug",
+            completed_at="2026-05-10T09:30:00+00:00",
+        )
         result = _parse_handoff(hf)
         self.assertIsNotNone(result)
         self.assertEqual(result["date"], "2026-05-10")
         self.assertEqual(result["slug"], "login-bug")
         self.assertEqual(result["mode"], "bug")
+        self.assertEqual(result["verdict"], "bug")
+        self.assertEqual(result["kind"], "research")
+
+    def test_research_top_level_verdict_takes_priority_over_mode(self):
+        hf = _make_research_handoff(
+            self._specs, "001-login-bug", mode="bug",
+            extra={"verdict": "proceed"},
+        )
+        result = _parse_handoff(hf)
         self.assertEqual(result["verdict"], "proceed")
 
+    def test_valid_discover_handoff_returns_metadata(self):
+        hf = _make_discover_handoff(
+            self._specs, "002-new-widget", verdict="Worth pursuing",
+            completed_at="2026-05-12T14:00:00+00:00",
+        )
+        result = _parse_handoff(hf)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["date"], "2026-05-12")
+        self.assertEqual(result["slug"], "new-widget")
+        self.assertEqual(result["kind"], "discover")
+        self.assertEqual(result["verdict"], "Worth pursuing")
+        self.assertEqual(result["mode"], "")
+
     def test_path_field_matches_input(self):
-        hf = _make_handoff(self._research, "2026-05-10-login-bug")
+        hf = _make_research_handoff(self._specs, "001-login-bug")
         result = _parse_handoff(hf)
         self.assertEqual(result["path"], hf)
 
     def test_missing_mode_field_defaults_to_empty(self):
-        subdir = os.path.join(self._research, "2026-05-10-no-mode")
+        subdir = os.path.join(self._specs, "001-no-mode")
         os.makedirs(subdir, exist_ok=True)
-        hf = os.path.join(subdir, "handoff.json")
+        hf = os.path.join(subdir, "research-handoff.json")
         _write_file(hf, '{"schema_version": "1.0"}')
         result = _parse_handoff(hf)
         self.assertIsNotNone(result)
         self.assertEqual(result["mode"], "")
 
     def test_malformed_json_returns_none(self):
-        subdir = os.path.join(self._research, "2026-05-10-broken")
+        subdir = os.path.join(self._specs, "001-broken")
         os.makedirs(subdir, exist_ok=True)
-        hf = os.path.join(subdir, "handoff.json")
+        hf = os.path.join(subdir, "research-handoff.json")
         _write_file(hf, "{bad json}")
         result = _parse_handoff(hf)
         self.assertIsNone(result)
@@ -180,10 +277,10 @@ class TestParseHandoff(unittest.TestCase):
         result = _parse_handoff(os.path.join(self._tmp, "nonexistent.json"))
         self.assertIsNone(result)
 
-    def test_dir_without_date_slug_format(self):
-        subdir = os.path.join(self._research, "nondated-dir")
+    def test_dir_without_nnn_slug_format(self):
+        subdir = os.path.join(self._specs, "nondated-dir")
         os.makedirs(subdir, exist_ok=True)
-        hf = os.path.join(subdir, "handoff.json")
+        hf = os.path.join(subdir, "research-handoff.json")
         _write_file(hf, '{"mode": "bug"}')
         result = _parse_handoff(hf)
         self.assertIsNotNone(result)
@@ -191,16 +288,16 @@ class TestParseHandoff(unittest.TestCase):
         self.assertEqual(result["slug"], "nondated-dir")
 
     def test_content_excerpt_present(self):
-        hf = _make_handoff(self._research, "2026-05-10-test")
+        hf = _make_research_handoff(self._specs, "001-test")
         result = _parse_handoff(hf)
         self.assertIn("content_excerpt", result)
         self.assertIsInstance(result["content_excerpt"], str)
         self.assertGreater(len(result["content_excerpt"]), 0)
 
     def test_content_excerpt_truncated_when_large(self):
-        subdir = os.path.join(self._research, "2026-05-10-big")
+        subdir = os.path.join(self._specs, "001-big")
         os.makedirs(subdir, exist_ok=True)
-        hf = os.path.join(subdir, "handoff.json")
+        hf = os.path.join(subdir, "research-handoff.json")
         # Build a valid JSON object large enough to exceed _EXCERPT_CHARS (5000).
         big_value = "a" * 6000
         _write_file(hf, json.dumps({"mode": "bug", "big_field": big_value}))
@@ -209,25 +306,48 @@ class TestParseHandoff(unittest.TestCase):
         self.assertTrue(result["content_excerpt"].endswith("... [truncated]"))
 
     def test_empty_json_file_returns_metadata_with_empty_fields(self):
-        subdir = os.path.join(self._research, "2026-05-10-empty")
+        subdir = os.path.join(self._specs, "001-empty")
         os.makedirs(subdir, exist_ok=True)
-        hf = os.path.join(subdir, "handoff.json")
+        hf = os.path.join(subdir, "research-handoff.json")
         _write_file(hf, "{}")
         result = _parse_handoff(hf)
         self.assertIsNotNone(result)
         self.assertEqual(result["mode"], "")
 
     def test_verdict_falls_back_to_mode_when_verdict_absent(self):
-        """handoff.json with mode but no verdict key -> verdict equals mode value."""
-        subdir = os.path.join(self._research, "2026-05-10-mode-only")
+        """research-handoff.json with mode but no verdict key -> verdict equals mode value."""
+        subdir = os.path.join(self._specs, "001-mode-only")
         os.makedirs(subdir, exist_ok=True)
-        hf = os.path.join(subdir, "handoff.json")
+        hf = os.path.join(subdir, "research-handoff.json")
         # Older handoff shape: has 'mode' but no 'verdict'.
         _write_file(hf, json.dumps({"schema_version": "1.0", "mode": "bug"}))
         result = _parse_handoff(hf)
         self.assertIsNotNone(result)
         self.assertEqual(result["verdict"], "bug",
                          "verdict should fall back to mode value when verdict key absent")
+
+    def test_discover_verdict_falls_back_to_mode_when_block_absent(self):
+        """discover-handoff.json with no discovery_block -> verdict falls back to mode ('')."""
+        subdir = os.path.join(self._specs, "001-no-block")
+        os.makedirs(subdir, exist_ok=True)
+        hf = os.path.join(subdir, "discover-handoff.json")
+        _write_file(hf, json.dumps({"schema_version": "1.0"}))
+        result = _parse_handoff(hf)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["verdict"], "")
+        self.assertEqual(result["kind"], "discover")
+
+    def test_discover_top_level_verdict_takes_priority(self):
+        """A future top-level 'verdict' key (forward-compat) wins over the nested one."""
+        subdir = os.path.join(self._specs, "001-top-level")
+        os.makedirs(subdir, exist_ok=True)
+        hf = os.path.join(subdir, "discover-handoff.json")
+        _write_file(hf, json.dumps({
+            "verdict": "top-level-value",
+            "discovery_block": {"verdict": "nested-value"},
+        }))
+        result = _parse_handoff(hf)
+        self.assertEqual(result["verdict"], "top-level-value")
 
 
 # ---------------------------------------------------------------------------
@@ -238,11 +358,12 @@ class TestParseHandoff(unittest.TestCase):
 class TestFilterByTicketText(unittest.TestCase):
     def _make_handoff_meta(self, slug: str, mode: str = "bug") -> dict:
         return {
-            "path": "/fake/{0}/handoff.json".format(slug),
+            "path": "/fake/specs/001-{0}/research-handoff.json".format(slug),
             "date": "2026-05-01",
             "slug": slug,
             "verdict": "proceed",
             "mode": mode,
+            "kind": "research",
             "content_excerpt": "excerpt",
         }
 
@@ -358,11 +479,11 @@ class TestRunHappyPath(unittest.TestCase):
             self._pr_number,
             ticket_text="login auth issue",
         )
-        self._research = os.path.join(self._tmp, "research")
+        self._specs = os.path.join(self._tmp, "specs")
         # Relevant handoff.
-        _make_handoff(self._research, "2026-05-10-auth-login-fix", mode="bug")
+        _make_research_handoff(self._specs, "001-auth-login-fix", mode="bug")
         # Irrelevant handoff.
-        _make_handoff(self._research, "2026-05-01-billing-update", mode="feature_addition")
+        _make_research_handoff(self._specs, "002-billing-update", mode="feature_addition")
 
     def tearDown(self):
         import shutil
@@ -401,7 +522,7 @@ class TestRunHappyPath(unittest.TestCase):
         with open(self._sp, "r", encoding="utf-8") as fh:
             state = json.load(fh)
         h = state["bundle"]["research_handoffs"][0]
-        for key in ("path", "date", "slug", "verdict", "mode", "matched_via", "content_excerpt"):
+        for key in ("path", "date", "slug", "verdict", "mode", "kind", "matched_via", "content_excerpt"):
             self.assertIn(key, h, "handoff missing key: {0}".format(key))
 
     def test_matched_handoff_has_correct_slug(self):
@@ -420,6 +541,38 @@ class TestRunHappyPath(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# TestRunDiscoverLane.
+# ---------------------------------------------------------------------------
+
+
+class TestRunDiscoverLane(unittest.TestCase):
+    """discover-handoff.json is scanned alongside research-handoff.json."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._pr_number = 66
+        self._sp = _make_state(self._tmp, self._pr_number)
+        self._specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(self._specs, "001-auth-fix")
+        _make_discover_handoff(self._specs, "002-new-widget")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_both_lanes_found(self):
+        result = run(self._tmp, self._pr_number)
+        self.assertEqual(result["handoffs_found"], 2)
+
+    def test_kinds_present_in_bundle(self):
+        run(self._tmp, self._pr_number)
+        with open(self._sp, "r", encoding="utf-8") as fh:
+            state = json.load(fh)
+        kinds = sorted(h["kind"] for h in state["bundle"]["research_handoffs"])
+        self.assertEqual(kinds, ["discover", "research"])
+
+
+# ---------------------------------------------------------------------------
 # TestRunNoFilter.
 # ---------------------------------------------------------------------------
 
@@ -431,9 +584,9 @@ class TestRunNoFilter(unittest.TestCase):
         self._tmp = tempfile.mkdtemp()
         self._pr_number = 22
         self._sp = _make_state(self._tmp, self._pr_number)  # no ticket_text
-        self._research = os.path.join(self._tmp, "research")
-        _make_handoff(self._research, "2026-05-01-alpha")
-        _make_handoff(self._research, "2026-05-02-beta")
+        self._specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(self._specs, "001-alpha")
+        _make_research_handoff(self._specs, "002-beta")
 
     def tearDown(self):
         import shutil
@@ -488,8 +641,8 @@ class TestRunPersistence(unittest.TestCase):
 
     def test_research_handoffs_replaced_on_rerun(self):
         """Re-running replaces research_handoffs — no merge."""
-        research = os.path.join(self._tmp, "research")
-        _make_handoff(research, "2026-05-10-alpha")
+        specs = os.path.join(self._tmp, "specs")
+        _make_research_handoff(specs, "001-alpha")
 
         # First run: 1 handoff.
         run(self._tmp, self._pr_number)
@@ -525,12 +678,17 @@ class TestRunCap(unittest.TestCase):
         self._tmp = tempfile.mkdtemp()
         self._pr_number = 55
         self._sp = _make_state(self._tmp, self._pr_number)
-        research = os.path.join(self._tmp, "research")
-        # Create 30 handoff dirs (well above the cap of 20).
+        specs = os.path.join(self._tmp, "specs")
+        # Create 30 feature dirs (well above the cap of 20).
         for i in range(30):
-            date = "2026-{0:02d}-{1:02d}".format((i % 12) + 1, (i % 28) + 1)
+            month = (i % 12) + 1
+            day = (i % 28) + 1
+            completed_at = "2026-{0:02d}-{1:02d}T00:00:00+00:00".format(month, day)
             slug = "topic-{0:03d}".format(i)
-            _make_handoff(research, "{0}-{1}".format(date, slug))
+            _make_research_handoff(
+                specs, "{0:03d}-{1}".format(i + 1, slug),
+                completed_at=completed_at,
+            )
 
     def tearDown(self):
         import shutil
@@ -558,11 +716,11 @@ class TestRunCap(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# TestRunEmptyResearchDir.
+# TestRunEmptySpecsDir.
 # ---------------------------------------------------------------------------
 
 
-class TestRunEmptyResearchDir(unittest.TestCase):
+class TestRunEmptySpecsDir(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
         self._pr_number = 77
@@ -572,7 +730,7 @@ class TestRunEmptyResearchDir(unittest.TestCase):
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def test_no_research_dir_produces_empty_list(self):
+    def test_no_specs_dir_produces_empty_list(self):
         result = run(self._tmp, self._pr_number)
         self.assertEqual(result["handoffs_found"], 0)
         self.assertEqual(result["handoffs_matched"], 0)
@@ -580,8 +738,8 @@ class TestRunEmptyResearchDir(unittest.TestCase):
             state = json.load(fh)
         self.assertEqual(state["bundle"]["research_handoffs"], [])
 
-    def test_empty_research_dir_produces_empty_list(self):
-        os.makedirs(os.path.join(self._tmp, "research"))
+    def test_empty_specs_dir_produces_empty_list(self):
+        os.makedirs(os.path.join(self._tmp, "specs"))
         result = run(self._tmp, self._pr_number)
         self.assertEqual(result["handoffs_found"], 0)
 

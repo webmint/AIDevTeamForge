@@ -864,7 +864,7 @@ def _register_subcommands(subparsers) -> None:
         help="Record the post-probe outcome into handoff.json (Step 7).",
     )
     sp.add_argument("--handoff-path", required=True, dest="handoff_path",
-                    help="Path to the handoff.json file (e.g. research/<NNN>/handoff.json).")
+                    help="Path to the handoff.json file (e.g. specs/NNN-slug/research-handoff.json).")
     sp.add_argument(
         "--hypothesis-confirmed",
         required=True,

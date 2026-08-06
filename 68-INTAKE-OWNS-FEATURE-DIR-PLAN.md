@@ -1,6 +1,6 @@
 # 68 — Intake Owns the Feature Dir
 
-**Status**: Phase 0 DONE — **D1–D9 RATIFIED by the maintainer 2026-08-05** (interactive session). Phases 1–8 NOT STARTED.
+**Status**: Phases 0–5 BUILT 2026-08-05/06 — **D1–D9 RATIFIED by the maintainer 2026-08-05** (interactive session) + **D10 ratified in-session 2026-08-06**. Phases 1–4 committed (`4bd613c` substrate, `52a417c` producer helpers, `b42e75a` producer specs, `43bfbf2` + `086cf01` consumer — the atomic unit is CLOSED); Phase 5 built + reviewed in the working tree. Remaining: Phase 6 (prefix-list sweep + docs reconcile), Phase 7 (full-suite + cross-ref sweep + install ride), Phase 8 (testForge20 e2e — user-driven HARD GATE).
 **Type**: BUILD plan — artifact-relocation + allocation-ownership move across the two intake lanes (`/research`, `/discover`), their consumer (`/specify`), and every downstream reader.
 **Branch**: `develop-2.0-init`.
 **Created**: 2026-08-05, from a maintainer-ratified inversion of where intake artifacts live.
@@ -162,6 +162,10 @@ The relocation eliminates, by construction: (a) the double-import hole; (b) the 
 **(d) is decided, not merely enabled:** `source.handoff_path` (specify state) and `Provenance.upstream_handoff_path` (specify→plan handoff) become **install-root-relative** paths — e.g. `specs/001-x/research-handoff.json` — consistent with `research_path` / `report_path`, which are already root-relative strings. `plan_helper render-plan-seeds` resolves them against the install root (cwd) and **keeps its existing absolute-path tolerance** so pre-migration handoffs still resolve (they do, because D3 never deletes the old files).
 
 Each of (a)–(d) is a consequence of the move, not a separate work item. No phase may claim one as its headline deliverable; every phase must avoid *re-introducing* one.
+
+### D10 — Re-entry seeds keep the gate passable (amendment, ratified in-session 2026-08-06)
+
+`find-handoffs`' pending predicate has a second arm: a feature dir whose intake handoff is present AND whose `spec.md` already exists is STILL listed when a sibling `*-seed.json` carries `target_stage: "spec"` (the `/grill` RE-ENTER-UPSTREAM and `/spec-check` REVISE-SPEC re-entry case), marked with a trailing ` | re-entry` sixth output field (backward-compatible — the first five fields are byte-identical for normal hits). Without this arm, the D5 predicate made `/specify` re-entry structurally unreachable — on a revision run `spec.md` exists, so the mandatory Phase 0.4 gate exited 2 BLOCKED before Phase 0.5's seed block ever ran — a regression against plans 23/36/39/62's seed consumers (the pre-68 any-handoff-in-window predicate admitted those runs). This is NOT a loosening of the no-cold-spec-escape stance: seeds are verdict-gated (plan 39 — written only when the user's pick matches the recommendation), so arm (b) admits only human-sanctioned revisions. Helper: `_specify/_cmds_handoff.py` `_has_spec_reentry_seed` + the `cmd_find_handoffs` two-arm predicate; corrupt or non-spec-target seeds do not admit.
 
 ## Honest scope statements
 
@@ -352,7 +356,7 @@ On a fresh consumer install:
 
 ## When resuming work
 
-1. Read this file in full. D1–D9 are ratified — do not re-litigate them; resolve OQ-1..OQ-5 at their named phases.
+1. Read this file in full. D1–D10 are ratified — do not re-litigate them; OQ-1..OQ-5 were resolved during the Phase 1–5 build (see the per-phase reports in git history).
 2. Re-verify the `file:line` refs for the phase you are about to execute (the sweep is dated 2026-08-05; line numbers drift). Where this plan says "locate at build time", locate — do not guess.
 3. Check whether plan 67's `_research` handoff work has landed; if it is still in flight, sequence Phase 2 after it.
 4. Execute phases in order — 1 (substrate) gates 2 and 3; 2+3 (producers) gate 4 (consumer); 4 gates 5. **Land 1–4 as one change-set** (shipping stance in Phase 4) — a producer-only landing bricks `/specify`.

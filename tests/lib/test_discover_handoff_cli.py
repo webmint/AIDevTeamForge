@@ -958,6 +958,76 @@ class TestAppendOutcomeAppendsMdSection(unittest.TestCase):
         outcome = _load_json(hpath)["outcome"]
         self.assertIsNotNone(outcome)
 
+    def test_appends_md_section_at_new_layout_root_relative_report_path(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D4 simplification regression.
+
+        Under the new layout, report_path is a root-relative path INTO the
+        same feature dir the handoff lives in (e.g.
+        "specs/001-my-feature/discovery-report.md" alongside
+        "specs/001-my-feature/discover-handoff.json" -- D2's flat sibling
+        layout, produced by the real --feature-dir producer). The
+        pre-simplification two-candidate probe's first branch
+        (handoff_dir / report_path) double-nested the feature dir into a
+        path that never existed; its second branch (report_path relative
+        to cwd) happened to still work when cwd == install root, masking
+        the bug in that case. Pin the fixed single sibling-basename
+        resolution directly -- it must find the md regardless of cwd.
+        """
+        import os
+        devforge = self.tmp / ".devforge"
+        _write_state(
+            devforge,
+            _make_memo(date="2026-05-20", topic_slug="my-feature"),
+            _make_report(date="2026-05-20", topic_slug="my-feature"),
+        )
+        args = _finalize_args(devforge, feature_dir="specs/001-my-feature")
+        orig_cwd = os.getcwd()
+        try:
+            os.chdir(str(self.tmp))
+            rc = cmd_finalize_handoff(args)
+        finally:
+            os.chdir(orig_cwd)
+        self.assertEqual(rc, 0)
+
+        handoff_path = self.tmp / "specs" / "001-my-feature" / "discover-handoff.json"
+        self.assertTrue(handoff_path.is_file())
+        data = _load_json(handoff_path)
+        self.assertEqual(
+            data["report_path"], "specs/001-my-feature/discovery-report.md",
+            "precondition: report_path must be root-relative to reproduce "
+            "the D4 double-nesting shape",
+        )
+
+        # Create the report md as the handoff's ACTUAL sibling (D2 flat layout).
+        md_file = self.tmp / "specs" / "001-my-feature" / "discovery-report.md"
+        md_file.write_text("# Discovery Report\n\nOriginal content.\n", encoding="utf-8")
+        buggy_double_nested = (
+            self.tmp / "specs" / "001-my-feature" / "specs" / "001-my-feature"
+            / "discovery-report.md"
+        )
+        self.assertFalse(buggy_double_nested.exists(), "sanity: double-nested path must not exist")
+
+        append_args = _make_args(
+            handoff_path=str(handoff_path),
+            design_option_shipped_id="A",
+            design_option_shipped_summary="Shipped the PostgreSQL approach",
+            build_vs_buy_actual="Build",
+            shipped_commit_sha=None,
+            delta_from_recommendation=None,
+            internal_extension_followed=None,
+        )
+        rc2 = cmd_append_outcome(append_args)
+        self.assertEqual(rc2, 0)
+
+        md_content = md_file.read_text(encoding="utf-8")
+        self.assertIn(
+            "## Outcome", md_content,
+            "D4 regression: the fixed resolution must still find the "
+            "sibling md at the new-layout root-relative report_path",
+        )
+        self.assertIn("confidence_grade", md_content)
+        self.assertIn("Original content.", md_content)
+
 
 class TestAppendOutcomeRejectsWhenHandoffSchemaInvalid(unittest.TestCase):
     """Corrupted base handoff.json -> exit 2."""

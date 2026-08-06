@@ -1,11 +1,32 @@
-"""Research handoff importer for pr_review_helper (PR-REVIEW Step 6).
+"""Intake handoff importer for pr_review_helper (PR-REVIEW Step 6).
 
 `run(target, pr_number, devforge_dir)` is the Phase 4b entry point.
 
-It reads state.json (written by Step 3 intake), scans <target>/research/
-for date-slug subdirectories containing handoff.json files, filters by
+It reads state.json (written by Step 3 intake), scans
+<target>/specs/*/{research-handoff.json,discover-handoff.json} (the
+68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D2/D7 unified layout), filters by
 relevance to state.ticket_text or PR title, and APPENDS/REPLACES the
 `research_handoffs` key in state.bundle.
+
+## Re-point note (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 5, D3 clean cut)
+
+Both intake lanes now write inside the feature dir they allocate:
+`specs/NNN-slug/research-handoff.json` (the `/research` lane) and
+`specs/NNN-slug/discover-handoff.json` (the `/discover` lane). This module
+reads ONLY the new layout — the old top-level `<target>/research/<date>-
+<slug>/handoff.json` dirs are never scanned again (D3: no dual-glob
+transition code; old installs' pre-migration `research/` dirs are simply
+invisible to this scanner now, matching `/specify`'s `find-handoffs`
+re-point). Discover-lane handoffs are a NEW addition here — the pre-68
+version of this module scanned research only; discover is added because
+every consumer of `state.bundle["research_handoffs"]` (`_dispatch.py`'s
+render step, this module's own filter) is kind-agnostic: it renders
+whatever slug/date/verdict/mode/matched_via/excerpt fields are present
+without branching on which lane produced them. The bundle key stays named
+`research_handoffs` (renaming it would be a wider, out-of-scope schema
+change touching `_dispatch.py` + `_bundle.py` + `pr-review/main.md`); a
+new per-entry `kind` field (`"research"` or `"discover"`) disambiguates
+provenance for the Step 8 LLM consumer.
 
 ## research_handoffs schema (helper-owns; LLM at Step 8 consumes it)
 
@@ -13,21 +34,36 @@ After import-handoffs, state.bundle["research_handoffs"] contains:
 
     [
         {
-            "path": "<absolute path to handoff.json>",
+            "path": "<absolute path to research-handoff.json / discover-handoff.json>",
             "date": "YYYY-MM-DD",
-            "slug": "<topic slug>",
-            "verdict": "<handoff['verdict'] if present, else handoff['mode'] if present, else ''>",
-            "mode": "<from handoff.json or ''>",
+            "slug": "<feature slug, from the specs/NNN-slug/ dir name>",
+            "verdict": "<see per-kind extraction below>",
+            "mode": "<top-level 'mode' from the handoff, or '' (discover has none)>",
+            "kind": "research" | "discover",
             "matched_via": "ticket_text_substring" | "title_substring" | "all",
-            "content_excerpt": "<first 5000 chars of handoff.json>"
+            "content_excerpt": "<first 5000 chars of the handoff JSON>"
         },
         ...
     ]
 
+`date` is read from the handoff's own completion timestamp
+(`research_completed_at` for research-handoff.json, `discover_completed_at`
+for discover-handoff.json) — the new `NNN-slug` feature-dir name carries no
+date, unlike the old `YYYY-MM-DD-slug` research dir name.
+
+`verdict` extraction is kind-aware (research and discover carry the concept
+in different places):
+  research-handoff.json:  top-level 'verdict' (future-proofing) > top-level
+                           'mode' > ""
+  discover-handoff.json:  nested 'discovery_block.verdict' (the D-mirror
+                           build-vs-buy verdict) > top-level 'mode'
+                           (absent on discover today, so this is a
+                           forward-compat fallback) > ""
+
 `matched_via` values:
-  "ticket_text_substring" — the research dir slug or handoff mode/verdict
+  "ticket_text_substring" — the feature slug or handoff mode/verdict
                             contains a substring of state.ticket_text.
-  "title_substring"       — the research dir slug contains a substring
+  "title_substring"       — the feature slug contains a substring
                             of the PR title (from state.pr_body header
                             or state.repo field).
   "all"                   — no filter criteria available (ticket_text and
@@ -35,8 +71,8 @@ After import-handoffs, state.bundle["research_handoffs"] contains:
 
 ## Filtering
 
-Substring matching is case-insensitive. The filter checks whether
-`topic_slug` (extracted from the research dir name) contains any word
+Substring matching is case-insensitive. The filter checks whether `slug`
+(the feature-dir name with its `NNN-` prefix stripped) contains any word
 from ticket_text or PR title (split on whitespace, minimum 3 chars).
 
 If both ticket_text and a derivable PR title are empty, the filter is
@@ -44,7 +80,8 @@ skipped and all handoffs are returned with matched_via="all".
 
 ## Bounds
 
-- Handoffs are sorted most-recent-first by date (extracted from dir name).
+- Handoffs are sorted most-recent-first by date (from the handoff's own
+  completion timestamp — see above).
 - Capped at _MAX_HANDOFFS = 20 after filtering.
 
 ## Re-invocation semantics
@@ -68,6 +105,8 @@ import os
 import tempfile
 from typing import Dict, List, Optional
 
+from _shared.feature_alloc import SPEC_NUMBER_DIR_RE  # type: ignore[import]
+
 from ._state import PRReviewState, state_path
 
 
@@ -79,41 +118,55 @@ _MAX_HANDOFFS = 20
 _EXCERPT_CHARS = 5000
 _MIN_FILTER_TOKEN_LEN = 3   # tokens shorter than this are ignored in filter
 
+# The two intake handoff filenames a feature dir may carry (68-INTAKE-OWNS-
+# FEATURE-DIR-PLAN.md D2), keyed to the `kind` value each produces.
+_INTAKE_HANDOFF_KINDS = (
+    ("research-handoff.json", "research"),
+    ("discover-handoff.json", "discover"),
+)
+
 
 # ---------------------------------------------------------------------------
-# Research directory scanner.
+# specs/ directory scanner.
 # ---------------------------------------------------------------------------
 
 
-def _scan_research_dir(target: str) -> List[str]:
-    """Return sorted list of handoff.json paths under <target>/research/.
+def _scan_specs_dir(target: str) -> List[str]:
+    """Return sorted list of intake handoff paths under <target>/specs/.
 
-    Scans for date-slug subdirectories of the form YYYY-MM-DD-*.
-    Returns only paths where handoff.json actually exists and is a file.
+    Scans every `specs/<feature-dir>/` subdirectory for
+    `research-handoff.json` and `discover-handoff.json` (68-INTAKE-OWNS-
+    FEATURE-DIR-PLAN.md D2/D7 unified layout — both lanes write inside the
+    feature dir they allocate). Unlike `/specify`'s `find-handoffs`, this
+    scanner does NOT filter out feature dirs that already contain
+    `spec.md` — pr-review wants historical research context regardless of
+    whether the feature's spec was ever finished.
 
     Args:
         target: Absolute path to the repository root.
 
     Returns:
-        List of absolute paths to handoff.json files (may be empty).
+        List of absolute paths to research-handoff.json / discover-
+        handoff.json files (may be empty).
     """
-    research_dir = os.path.join(target, "research")
-    if not os.path.isdir(research_dir):
+    specs_dir = os.path.join(target, "specs")
+    if not os.path.isdir(specs_dir):
         return []
 
     try:
-        entries = os.listdir(research_dir)
+        entries = os.listdir(specs_dir)
     except OSError:
         return []
 
     paths = []
     for name in entries:
-        subdir = os.path.join(research_dir, name)
+        subdir = os.path.join(specs_dir, name)
         if not os.path.isdir(subdir):
             continue
-        hf_path = os.path.join(subdir, "handoff.json")
-        if os.path.isfile(hf_path):
-            paths.append(hf_path)
+        for filename, _kind in _INTAKE_HANDOFF_KINDS:
+            hf_path = os.path.join(subdir, filename)
+            if os.path.isfile(hf_path):
+                paths.append(hf_path)
 
     paths.sort()
     return paths
@@ -127,20 +180,35 @@ def _scan_research_dir(target: str) -> List[str]:
 def _parse_handoff(path: str) -> Optional[Dict]:
     """Parse a handoff.json file and extract key metadata.
 
-    Returns a dict with keys: path, date, slug, verdict, mode.
+    Returns a dict with keys: path, date, slug, verdict, mode, kind.
     Returns None on any parse error (fail-soft).
 
-    The dir name is expected to be YYYY-MM-DD-<slug>. If the name does
-    not match the expected pattern, date defaults to "" and slug defaults
-    to the dir basename.
+    `kind` is derived from the filename: "research-handoff.json" ->
+    "research", "discover-handoff.json" -> "discover"; any other filename
+    (a foreign/hand-placed file) defaults to "research" (the pre-68
+    default kind, preserved for fail-soft tolerance).
 
-    The `verdict` output field uses a fallback chain:
-      handoff['verdict'] > handoff['mode'] > ""
-    This handles older handoff.json shapes that don't have an explicit
-    `verdict` field but do have a `mode` classifier.
+    The parent dir name is expected to be the plan-68 feature-dir shape
+    `NNN-<slug>` (e.g. `003-checkout-flow`) — see `SPEC_NUMBER_DIR_RE`. If
+    the name does not match, `slug` falls back to the full dir name
+    (fail-soft — a foreign/non-conforming dir still parses).
+
+    `date` is read from the handoff's own completion timestamp
+    (`research_completed_at` for a research-handoff.json,
+    `discover_completed_at` for a discover-handoff.json), truncated to the
+    first 10 chars (the ISO date prefix of an ISO 8601 timestamp) — the
+    new `NNN-slug` dir name carries no date, unlike the retired
+    `YYYY-MM-DD-slug` research dir name.
+
+    The `verdict` output field uses a kind-aware fallback chain (research
+    and discover carry the concept in different places):
+      research:  handoff['verdict'] (future-proofing) > handoff['mode'] > ""
+      discover:  handoff['discovery_block']['verdict'] > handoff['mode']
+                 (absent on discover today; forward-compat fallback) > ""
 
     Args:
-        path: Absolute path to the handoff.json file.
+        path: Absolute path to a research-handoff.json / discover-
+              handoff.json file.
 
     Returns:
         Metadata dict, or None on failure.
@@ -152,20 +220,31 @@ def _parse_handoff(path: str) -> Optional[Dict]:
     except (OSError, json.JSONDecodeError):
         return None
 
-    # Extract date and slug from the parent directory name.
-    dir_name = os.path.basename(os.path.dirname(path))
-    # Expected format: YYYY-MM-DD-<slug>
-    date = ""
-    slug = dir_name
-    if len(dir_name) >= 10 and dir_name[4] == "-" and dir_name[7] == "-":
-        date = dir_name[:10]
-        slug = dir_name[11:] if len(dir_name) > 11 else ""
+    filename = os.path.basename(path)
+    kind = "discover" if filename == "discover-handoff.json" else "research"
 
+    # Extract slug from the parent feature-dir name: NNN-<slug>.
+    dir_name = os.path.basename(os.path.dirname(path))
+    dir_match = SPEC_NUMBER_DIR_RE.match(dir_name)
+    slug = dir_match.group(2) if dir_match else dir_name
+
+    date = ""
     verdict = ""
     mode = ""
     if isinstance(data, dict):
-        verdict = str(data.get("verdict", data.get("mode", "")))
         mode = str(data.get("mode", ""))
+        if kind == "discover":
+            discovery_block = data.get("discovery_block")
+            block_verdict = (
+                discovery_block.get("verdict", "")
+                if isinstance(discovery_block, dict) else ""
+            )
+            verdict = str(data.get("verdict", block_verdict or mode))
+            completed_at = str(data.get("discover_completed_at", ""))
+        else:
+            verdict = str(data.get("verdict", mode))
+            completed_at = str(data.get("research_completed_at", ""))
+        date = completed_at[:10]
 
     # content_excerpt: first _EXCERPT_CHARS characters of the raw JSON text.
     excerpt = _excerpt_handoff(raw)
@@ -176,6 +255,7 @@ def _parse_handoff(path: str) -> Optional[Dict]:
         "slug": slug,
         "verdict": verdict,
         "mode": mode,
+        "kind": kind,
         "content_excerpt": excerpt,
     }
 
@@ -318,12 +398,13 @@ def run(
     pr_number: int,
     devforge_dir: str = ".devforge",
 ) -> dict:
-    """Scan research/ for relevant handoffs and write to state.bundle.research_handoffs.
+    """Scan specs/ for relevant intake handoffs and write to state.bundle.research_handoffs.
 
-    Reads state.json (written by Step 3 intake), discovers handoff.json
-    files under <target>/research/*/handoff.json, filters by relevance to
-    state.ticket_text and PR title, and REPLACES state.bundle["research_handoffs"]
-    with the filtered set (capped at _MAX_HANDOFFS, most-recent-first).
+    Reads state.json (written by Step 3 intake), discovers
+    research-handoff.json / discover-handoff.json files under
+    <target>/specs/*/, filters by relevance to state.ticket_text and PR
+    title, and REPLACES state.bundle["research_handoffs"] with the
+    filtered set (capped at _MAX_HANDOFFS, most-recent-first).
 
     Other keys in state.bundle (from bundle-context) are preserved.
 
@@ -369,8 +450,8 @@ def run(
             "state schema error: {exc}".format(exc=exc)
         ) from exc
 
-    # Scan for handoff.json files.
-    handoff_paths = _scan_research_dir(abs_target)
+    # Scan for research-handoff.json / discover-handoff.json files.
+    handoff_paths = _scan_specs_dir(abs_target)
 
     # Parse each handoff; fail-soft on broken files.
     parsed = []

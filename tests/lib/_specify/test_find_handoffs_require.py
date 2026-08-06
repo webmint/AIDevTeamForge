@@ -1,17 +1,42 @@
-"""Tests for find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4).
+"""Tests for find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4 + D10).
 
-Covers the D5 structural "pending intake" predicate that replaced the old
-top-level research/**/handoff.json + discover/*.handoff.json glob pair and
-the --since mtime-window filter:
+find-handoffs makes ONE glob pass over specs/*/research-handoff.json AND
+specs/*/discover-handoff.json under the repo root (parent of --devforge-dir)
+-- there is no separate top-level research/ or discover/ glob; both lanes
+live inside the feature dir they allocate (see _specify/_cmds_handoff.py::
+cmd_find_handoffs for the authoritative contract this test file pins).
+
+A feature dir is PENDING -- and therefore a hit -- under a two-arm
+predicate:
+  (a) D5: an intake handoff is present AND spec.md is absent (the feature
+      has not yet been consumed by /specify).
+  (b) D10: an intake handoff is present AND spec.md IS present, but a
+      sibling *-seed.json (grill-seed.json / spec-check-seed.json) has
+      target_stage == "spec" -- a /grill RE-ENTER-UPSTREAM or /spec-check
+      REVISE-SPEC seed asking the user to re-run /specify on an already-
+      specified feature. Without arm (b), Phase 0.4 would BLOCK on that
+      feature before Phase 0.5 ever reads the seed, making re-entry
+      structurally unreachable. A dir admitted ONLY via arm (b) carries a
+      trailing " | re-entry" token on its output line(s); arm (a) hits are
+      unmarked and byte-identical to pre-D10 output.
+
+Covers:
 
 - zero pending handoffs + --require -> exit 2, BLOCKED message naming the
-  new specs/*/{research,discover}-handoff.json locations + /research and
+  specs/*/{research,discover}-handoff.json locations + /research and
   /discover
-- research-handoff.json present, spec.md absent + --require -> exit 0
-- discover-handoff.json present, spec.md absent + --require -> exit 0
-- research-handoff.json present AND spec.md present -> excluded (D5:
-  already consumed by /specify) — with --require, exit 2 (zero PENDING
+- research-handoff.json present, spec.md absent (arm a) + --require ->
+  exit 0
+- discover-handoff.json present, spec.md absent (arm a) + --require ->
+  exit 0
+- research-handoff.json present AND spec.md present, no re-entry seed ->
+  excluded (neither arm matches) — with --require, exit 2 (zero PENDING
   hits) even though the handoff.json file still exists on disk
+- research-handoff.json present AND spec.md present AND a sibling
+  *-seed.json has target_stage == "spec" (arm b) -> included, with the
+  trailing " | re-entry" marker; a seed with a different target_stage
+  (e.g. "plan") does NOT admit; a corrupt seed file is tolerated as
+  not-a-seed, not a crash
 - one glob pass surfaces both lanes at once (a research feature dir + a
   sibling discover feature dir in the same specs/ root)
 - mtime orders hits (most-recent first) but is no longer applied as a

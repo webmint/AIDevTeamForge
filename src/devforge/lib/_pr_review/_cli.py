@@ -314,10 +314,11 @@ def cmd_bundle_context(args: argparse.Namespace) -> int:
 
 
 def cmd_import_handoffs(args: argparse.Namespace) -> int:
-    """Phase 4b: scan research/ for relevant handoffs and write to state.bundle.
+    """Phase 4b: scan specs/ for relevant intake handoffs and write to state.bundle.
 
-    Reads state.json (written by Step 3 intake), discovers handoff.json
-    files under <target>/research/, filters by relevance to state.ticket_text
+    Reads state.json (written by Step 3 intake), discovers
+    research-handoff.json / discover-handoff.json files under
+    <target>/specs/*/, filters by relevance to state.ticket_text
     and PR title, and writes the filtered set to state.bundle["research_handoffs"].
 
     Returns 0 on success, 1 on any error.

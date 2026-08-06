@@ -410,28 +410,33 @@ def cmd_append_outcome(args):
         return _die("append-outcome: cannot write {0}: {1}".format(target, err))
 
     # Optionally append '## Outcome' section to the parallel .md file.
+    #
+    # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D4 simplification: report_path is
+    # now a root-relative path INTO the same feature dir the handoff
+    # already lives in (e.g. "specs/003-x/discovery-report.md" alongside
+    # "specs/003-x/discover-handoff.json" -- D2's flat sibling layout, D1's
+    # "write report + handoff together" ordering), so the report is always
+    # the handoff's sibling. The pre-68 two-candidate probe (handoff_dir /
+    # report_path, then report_path relative to cwd) is collapsed to the
+    # single sibling-basename resolution research_helper's append-outcome
+    # already uses -- robust regardless of whether report_path happens to
+    # be root-relative or (for a pre-migration handoff, per D3) absolute,
+    # since only the basename is used, and independent of cwd.
     report_path = data.get("report_path")
     md_appended_path = None
     if report_path and isinstance(report_path, str):
-        # report_path is relative to the project root; resolve relative to handoff location.
         handoff_dir = Path(handoff_path_str).resolve().parent
-        # Try relative to handoff dir first, then relative to cwd.
-        candidate_paths = [
-            handoff_dir / report_path,
-            Path(report_path),
-        ]
-        for candidate in candidate_paths:
-            if candidate.is_file():
-                md_section = _build_outcome_md_section(outcome_dict)
-                try:
-                    with open(str(candidate), "a", encoding="utf-8") as f:
-                        f.write("\n")
-                        f.write(md_section)
-                    md_appended_path = str(candidate)
-                except OSError:
-                    # Non-fatal: handoff.json is source of truth.
-                    pass
-                break
+        candidate = handoff_dir / Path(report_path).name
+        if candidate.is_file():
+            md_section = _build_outcome_md_section(outcome_dict)
+            try:
+                with open(str(candidate), "a", encoding="utf-8") as f:
+                    f.write("\n")
+                    f.write(md_section)
+                md_appended_path = str(candidate)
+            except OSError:
+                # Non-fatal: handoff.json is source of truth.
+                pass
 
     sys.stdout.write("wrote: {0}\n".format(target))
     if md_appended_path:

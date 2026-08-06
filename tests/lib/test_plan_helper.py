@@ -1985,6 +1985,100 @@ class RenderPlanSeedsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("unknown handoff_kind", result.stderr)
 
+    def test_root_relative_upstream_path_resolves_against_cwd(self):
+        """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D9(d) pin.
+
+        provenance.upstream_handoff_path as an install-root-relative string
+        (e.g. "specs/001-x/research-handoff.json", no leading slash -- the
+        new-layout shape import-handoff now writes) resolves against
+        Path.cwd() when cwd == install root, and plan seeds render.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        # Produce the research handoff at the new-layout feature-dir location.
+        feature_dir = self.tmp / "specs" / "001-widget-fix"
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--feature-dir", str(feature_dir),
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+        research_emit = feature_dir / "research-handoff.json"
+        self.assertTrue(research_emit.is_file())
+
+        # Root-relative upstream path -- the D9(d) new-layout shape, NOT absolute.
+        root_relative_path = "specs/001-widget-fix/research-handoff.json"
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=root_relative_path,
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+        # Sanity: the specify handoff's provenance really is root-relative,
+        # not absolute -- otherwise this test would silently degrade into a
+        # duplicate of test_research_upstream_renders_research_block.
+        specify_data = json.loads(specify_emit.read_text(encoding="utf-8"))
+        upstream_path_in_json = specify_data["provenance"]["upstream_handoff_path"]
+        self.assertEqual(upstream_path_in_json, root_relative_path)
+        self.assertFalse(Path(upstream_path_in_json).is_absolute())
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+        self.assertIn("Upstream plan-seeds (research handoff:", output)
+        self.assertIn("Recommended approach", output)
+
+    def test_absolute_upstream_path_still_resolves(self):
+        """D3/D9(d) backward-compat pin: the pre-existing absolute-path
+        tolerance is retained -- a pre-migration (or any absolute-path)
+        specify handoff still resolves, since D3 never deletes old files."""
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        research_emit = self.tmp / "research" / "2026-05-22-widget-stale-results.handoff.json"
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path",
+                "research/2026-05-22-widget-stale-results.md",
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+
+        # Absolute upstream path -- the legacy/pre-migration shape.
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=str(research_emit),
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+        specify_data = json.loads(specify_emit.read_text(encoding="utf-8"))
+        upstream_path_in_json = specify_data["provenance"]["upstream_handoff_path"]
+        self.assertTrue(
+            Path(upstream_path_in_json).is_absolute(),
+            "precondition: this test must exercise the absolute-path branch",
+        )
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Upstream plan-seeds (research handoff:", result.stdout)
+
 
 # ---------------------------------------------------------------------------
 # Tests: render-consultation-block

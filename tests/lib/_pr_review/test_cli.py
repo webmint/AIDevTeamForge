@@ -709,11 +709,12 @@ class TestImportHandoffsVerb(unittest.TestCase):
 
     def test_import_handoffs_writes_research_handoffs_to_state(self):
         import json as _json
-        # Create a handoff.
-        research_dir = self._tmp + "/research/2026-05-01-auth-fix"
+        # Create a handoff (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D2 layout:
+        # specs/NNN-slug/research-handoff.json).
+        feature_dir = self._tmp + "/specs/001-auth-fix"
         import os as _os
-        _os.makedirs(research_dir, exist_ok=True)
-        with open(research_dir + "/handoff.json", "w") as fh:
+        _os.makedirs(feature_dir, exist_ok=True)
+        with open(feature_dir + "/research-handoff.json", "w") as fh:
             _json.dump({"mode": "bug", "verdict": "proceed"}, fh)
 
         _run_helper([
