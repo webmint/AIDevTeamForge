@@ -245,6 +245,11 @@ class DeadCodeRow:
     kind classifies what the anchor names -- "arm" is a switch/match/case
     arm; "branch" is an if/else (or ternary) conditional branch; the two
     are distinct kinds even though both are conditional-dispatch shapes.
+    anchor_token must NOT contain a semicolon -- the '**Dead code
+    removal**:' task field's value is a semicolon-separated list of anchor
+    tokens (plan 71 D9); a literal token containing a semicolon (e.g. a
+    C-style for-loop header) cannot be carried through that field
+    unambiguously, so construction raises ValueError.
 
     Populated only when /plan declared change-induced dead code (plan 71
     D3); breakdown_helper finalize-handoff reads
@@ -265,6 +270,14 @@ class DeadCodeRow:
         # type: () -> None
         _require_nonempty(self.file, "DeadCodeRow.file")
         _require_nonempty(self.anchor_token, "DeadCodeRow.anchor_token")
+        if ";" in self.anchor_token:
+            raise ValueError(
+                "DeadCodeRow.anchor_token must not contain ';' -- the "
+                "'**Dead code removal**:' task field's value is "
+                "semicolon-delimited (plan 71 D9); a literal anchor token "
+                "containing a semicolon (e.g. a C-style for-loop header) "
+                "cannot be carried through that field unambiguously"
+            )
         _require_in_enum(self.kind, DEAD_CODE_KIND_ENUM, "DeadCodeRow.kind")
         _require_nonempty(self.why_dead, "DeadCodeRow.why_dead")
 

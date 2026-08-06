@@ -424,6 +424,23 @@ class DeadCodeRowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             DeadCodeRow(file="f.ts", anchor_token="x", kind="arm", why_dead=123)  # type: ignore[arg-type]
 
+    def test_semicolon_in_anchor_token_raises(self):
+        """finding C (plan 71 D9 review hardening): anchor_token must not
+        contain a semicolon -- the '**Dead code removal**:' task field's
+        value is semicolon-delimited, so a literal token containing one
+        (e.g. a C-style for-loop header) cannot be carried unambiguously."""
+        with self.assertRaises(ValueError):
+            DeadCodeRow(
+                file="src/loop.ts",
+                anchor_token="for (i = 0; i < n; i++)",
+                kind="branch",
+                why_dead="Superseded loop removed",
+            )
+
+    def test_token_without_semicolon_accepted(self):
+        r = DeadCodeRow(file="f.ts", anchor_token="foo", kind="arm", why_dead="Dead")
+        self.assertEqual(r.anchor_token, "foo")
+
 
 class ProvenanceTests(unittest.TestCase):
     def test_both_none_valid(self):
@@ -861,6 +878,42 @@ class FinalizeHandoffHappyPathTests(unittest.TestCase):
             self.assertTrue(row.anchor_token.strip(), "anchor_token must be non-empty")
             self.assertIn(row.kind, ("arm", "function", "param", "import", "branch"))
             self.assertTrue(row.why_dead.strip(), "why_dead must be non-empty")
+
+    def test_finalize_handoff_warns_on_skipped_dead_code_row(self):
+        """plan 71 D9 finding-C UX close: a plan.md dead-code row whose
+        anchor_token contains a semicolon fails DeadCodeRow construction and
+        is silently absent from dead_code_rows -- finalize-handoff WARNs on
+        stderr naming the row + reason (mirroring breakdown_helper's own
+        WARN style) instead of leaving the author to a declared-but-
+        unsubstantiated chokepoint remedy ('re-run finalize-handoff') that
+        can never succeed for this row. A second, VALID row in the same
+        table still parses through cleanly (exit 0, no chokepoint)."""
+        plan_dir = self.tmp / "specs" / "010-loop-cleanup"
+        plan_dir.mkdir(parents=True)
+        plan_path = plan_dir / "plan.md"
+        plan_path.write_text(
+            "# Plan: Loop Cleanup\n\n"
+            "**Date**: 2026-08-06\n"
+            "**Status**: Draft\n\n"
+            "## Summary\n\nRemove a dead loop.\n\n"
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "|------|--------------|------|----------|\n"
+            "| src/loop.ts | for (i = 0; i < n; i++) | branch | Superseded loop removed |\n"
+            "| src/other.ts | goodToken | arm | Fine row |\n\n"
+            "## Dependencies\n\nNone.\n",
+            encoding="utf-8",
+        )
+
+        result = _run("finalize-handoff", str(plan_path), cwd=self.tmp)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("plan_helper: finalize-handoff: WARN:", result.stderr)
+        self.assertIn("src/loop.ts", result.stderr)
+        self.assertIn("semicolon", result.stderr)
+
+        h = _load_handoff(plan_dir / "plan-handoff.json")
+        anchors = [r.anchor_token for r in h.breakdown_seeds.dead_code_rows]
+        self.assertEqual(anchors, ["goodToken"])
 
     def test_finalize_handoff_dependencies_parsed(self):
         """Fixture plan has 2 non-blank dependency lines."""
@@ -1376,6 +1429,85 @@ class ParseDeadCodeRowsTests(unittest.TestCase):
         )
         rows = plan_helper._parse_dead_code_rows(content)
         self.assertEqual(len(rows), 1)
+
+
+class ParseDeadCodeRowsFullFnTests(unittest.TestCase):
+    """Direct unit tests of _parse_dead_code_rows_full (plan 71 D9 finding-C
+    UX close): the (rows, warnings) pair _parse_dead_code_rows wraps."""
+
+    def test_all_valid_rows_no_warnings(self):
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| f.ts | tok | arm | Dead |\n"
+        )
+        rows, warnings = plan_helper._parse_dead_code_rows_full(content)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(warnings, [])
+
+    def test_section_absent_returns_empty_rows_and_warnings(self):
+        rows, warnings = plan_helper._parse_dead_code_rows_full(
+            "## Summary\n\nNothing.\n"
+        )
+        self.assertEqual(rows, [])
+        self.assertEqual(warnings, [])
+
+    def test_semicolon_token_row_produces_one_warning_naming_the_row(self):
+        """A row whose Anchor token contains a semicolon fails DeadCodeRow
+        construction (finding C) -- excluded from rows, one warning naming
+        the file + anchor_token + reason."""
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| src/loop.ts | for (i = 0; i < n; i++) | branch | Superseded loop |\n"
+        )
+        rows, warnings = plan_helper._parse_dead_code_rows_full(content)
+        self.assertEqual(rows, [])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("src/loop.ts", warnings[0])
+        self.assertIn("semicolon", warnings[0])
+
+    def test_invalid_kind_row_produces_one_warning(self):
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| f.ts | tok | bogus | Dead |\n"
+        )
+        rows, warnings = plan_helper._parse_dead_code_rows_full(content)
+        self.assertEqual(rows, [])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("f.ts", warnings[0])
+        self.assertIn("tok", warnings[0])
+
+    def test_mixed_valid_and_invalid_rows_one_warning_one_row(self):
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| good.ts | goodToken | arm | Fine |\n"
+            "| bad.ts | for (i = 0; i < n; i++) | branch | Also dead |\n"
+        )
+        rows, warnings = plan_helper._parse_dead_code_rows_full(content)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].file, "good.ts")
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("bad.ts", warnings[0])
+
+    def test_placeholder_row_produces_no_warning(self):
+        """A placeholder row is skipped silently (same as _parse_dead_code_rows)
+        -- it is not a malformed AUTHORED row, so it must not WARN."""
+        content = (
+            "### Change-Induced Dead Code\n\n"
+            "| File | Anchor token | Kind | Why dead |\n"
+            "| --- | --- | --- | --- |\n"
+            "| [file] | [anchor] | [kind] | [why] |\n"
+        )
+        rows, warnings = plan_helper._parse_dead_code_rows_full(content)
+        self.assertEqual(rows, [])
+        self.assertEqual(warnings, [])
 
 
 class ParseDocImpactRowsTests(unittest.TestCase):

@@ -277,7 +277,12 @@ class DeadCodeRow:
     if/else (or ternary) conditional branch; the two are distinct kinds
     even though both are conditional-dispatch shapes. why_dead is required
     non-empty prose (unlike PureBuilderRow.why, which may be empty) -- a
-    claim of change-induced deadness must be justified.
+    claim of change-induced deadness must be justified. anchor_token must
+    NOT contain a semicolon -- the '**Dead code removal**:' task field's
+    value is a semicolon-separated list of anchor tokens (plan 71 D9); a
+    literal token containing a semicolon (e.g. a C-style for-loop header)
+    cannot be carried through that field unambiguously, so construction
+    raises ValueError.
     """
 
     file: str
@@ -289,6 +294,14 @@ class DeadCodeRow:
         # type: () -> None
         _require_nonempty(self.file, "DeadCodeRow.file")
         _require_nonempty(self.anchor_token, "DeadCodeRow.anchor_token")
+        if ";" in self.anchor_token:
+            raise ValueError(
+                "DeadCodeRow.anchor_token must not contain ';' -- the "
+                "'**Dead code removal**:' task field's value is "
+                "semicolon-delimited (plan 71 D9); a literal anchor token "
+                "containing a semicolon (e.g. a C-style for-loop header) "
+                "cannot be carried through that field unambiguously"
+            )
         _require_in_enum(self.kind, DEAD_CODE_KIND_ENUM, "DeadCodeRow.kind")
         _require_nonempty(self.why_dead, "DeadCodeRow.why_dead")
 

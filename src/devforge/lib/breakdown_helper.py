@@ -111,6 +111,30 @@ Subcommands:
               uncovered target.
               Prints a "## Property coverage findings" block on offenders.
 
+  verify-dead-code-coverage <tasks-dir> [--plan-handoff <path>]
+      Verify that every change-induced dead-code row declared in the
+      sibling plan-handoff.json (breakdown_seeds.dead_code_rows, plan 71
+      D9) is covered by EXACTLY ONE task's '**Dead code removal**:' field
+      (semicolon-separated anchor tokens; see cmd_render_task_file's
+      --dead-code-removal docstring). Mirrors verify-property-coverage's
+      structure + never-declared-vs-declared-but-unverifiable asymmetry
+      EXACTLY (fallback to sibling plan.md via _plan_declares_dead_code_rows
+      on any handoff error), plus a NEW duplicate-assignment check: a row
+      claimed by 2+ tasks is as much a violation as zero (D7 requires
+      exactly one owning task).
+      --plan-handoff defaults to <tasks-dir's parent>/plan-handoff.json.
+      Exit 0: no declared rows (skip), or every declared row covered by
+              exactly one task. Prints "dead-code-coverage: skip (no
+              declared dead-code rows)", "dead-code-coverage: skip (no
+              plan-handoff.json and no change-induced dead code declared in
+              plan.md)", or "dead-code-coverage: ok (N rows, M covering
+              tasks)".
+      Exit 2: a missing/malformed handoff paired with at least one real
+              dead-code row declared in plan.md (remedy printed), no task
+              files found (when rows ARE declared), at least one uncovered
+              row, or at least one row claimed by 2+ tasks. Prints a
+              "## Dead-code coverage findings" block naming both kinds.
+
   finalize-handoff <plan-path> [--completed-at ISO] [--agents-dir <path>]
       PRODUCER: parse tasks/*.md (+ tasks/README.md) into a schema-validated
       Breakdown record and write <plan-dir>/breakdown-handoff.json (sibling
@@ -127,11 +151,22 @@ Subcommands:
       breakdown_seeds.pure_builder_targets, every declared target must be
       covered by a task's '**Property targets**:' line; a missing/malformed
       sibling handoff is silently skipped here (see verify-property-coverage
-      for the strict fail-closed arm).
+      for the strict fail-closed arm). Carries + chokepoints dead-code rows
+      (plan 71 D8(b)/D9): copies breakdown_seeds.dead_code_rows into the
+      written handoff verbatim (WARNs on stderr, non-fatal, if the sibling
+      is malformed); fails closed if plan.md declares change-induced dead
+      code the sibling carries none of; and, mirroring the pure-builder
+      chokepoint above, fails closed if a sibling-declared dead-code row is
+      not covered by EXACTLY ONE task's '**Dead code removal**:' field
+      (see verify-dead-code-coverage for the strict fail-closed arm on
+      handoff errors).
       Exit 0 + prints written path on success.
       Exit 2: plan.md/tasks missing or empty, placeholder **Agent**: detected
               (names the offending file), roster absent or agent not installed,
-              schema validation failure, or an uncovered pure-builder target.
+              schema validation failure, an uncovered pure-builder target,
+              plan.md declaring dead code the sibling handoff carries none
+              of, or a sibling-declared dead-code row left uncovered/
+              double-covered by the task files.
       Exit 1: I/O write failure.
       Idempotent: re-running overwrites the previous breakdown-handoff.json.
 
@@ -963,10 +998,20 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
     pre-flag skeleton -- no line is emitted, no back-compat branch needed
     since this is a pure additive emitter flag.
 
-    --dead-code-removal (plan 71 D7/D8(b)): mirrors --property-targets'
-    mechanics exactly. When passed and non-empty (after stripping), a
-    '**Dead code removal**:' line is emitted immediately after the
-    '**Property targets**:' line when present, else immediately after
+    --dead-code-removal (plan 71 D7/D8(b), tightened by the coverage-gate
+    hardening): mirrors --property-targets' EMISSION mechanics exactly
+    (placement, stripping, empty-omitted) but carries a DIFFERENT list
+    format -- a semicolon-separated list of literal anchor tokens matching
+    breakdown_seeds.dead_code_rows[].anchor_token character-for-character,
+    NOT free-text prose. Semicolon (not comma) is the separator because
+    anchor tokens are literal code fragments that commonly contain commas
+    (e.g. multi-arg call-site literals); verify-dead-code-coverage parses
+    this field by splitting on ';' and stripping each segment. An anchor
+    token must not itself contain a semicolon (no escaping -- mirrors the
+    property-targets no-escaping convention with the necessarily different
+    delimiter). When passed and non-empty (after stripping the whole flag
+    value), a '**Dead code removal**:' line is emitted immediately after
+    the '**Property targets**:' line when present, else immediately after
     '**Context docs**:' -- so the D7 owning-task fold-in is visible on the
     task file. When absent (or empty after stripping), output is
     BYTE-IDENTICAL to the pre-flag skeleton -- no line is emitted.
@@ -2260,6 +2305,349 @@ def cmd_verify_property_coverage(args):
 
 
 # ---------------------------------------------------------------------------
+# Dead-code coverage validation (plan 71 D9 amendment — shared predicate +
+# verify-dead-code-coverage). Mirrors the property-coverage block above
+# EXACTLY in shape (_validate_property_coverage / cmd_verify_property_coverage
+# / _render_property_coverage_findings), with one new axis: D7 requires each
+# declared row be folded into EXACTLY ONE owning task, so this predicate also
+# reports DUPLICATE assignment (2+ covering tasks), not just zero coverage.
+# ---------------------------------------------------------------------------
+
+# Dead code removal frontmatter line, mirroring _PROPERTY_TARGETS_LINE_RE in
+# shape: horizontal-whitespace-only after the colon so a blank value never
+# bleeds into the next line, MULTILINE so it matches anywhere in the task
+# file. Field VALUE format is semicolon-separated (NOT comma-separated like
+# _PROPERTY_TARGETS_LINE_RE) -- see cmd_render_task_file's --dead-code-removal
+# docstring for why: anchor tokens are literal code fragments that commonly
+# contain commas.
+_DEAD_CODE_REMOVAL_LINE_RE = re.compile(
+    r"^\*\*Dead code removal\*\*:[^\S\n]*(.+)$", re.MULTILINE
+)
+
+
+def _validate_dead_code_coverage(tasks_dir, plan_handoff_path):
+    # type: (str, str) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]], List[Tuple[str, str, List[str]]], int, Optional[str]]
+    """Validate every declared dead-code row is covered by EXACTLY ONE task.
+
+    Parameters
+    ----------
+    tasks_dir : str
+        Path to the tasks/ directory (passed to _glob_task_files).
+    plan_handoff_path : str
+        Path to the sibling plan-handoff.json to read
+        breakdown_seeds.dead_code_rows from.
+
+    Returns
+    -------
+    (declared, offenders, duplicates, covering_task_count, error)
+
+    declared:
+        List of (anchor_token, file) tuples parsed from
+        breakdown_seeds.dead_code_rows. Each raw row is validated by
+        CONSTRUCTING a full _breakdown.handoff_schema.DeadCodeRow (the
+        SAME validation _extract_dead_code_rows applies to the passthrough
+        carrier) -- a row failing construction (empty file/anchor_token,
+        invalid kind, empty why_dead, or a semicolon in anchor_token; see
+        DeadCodeRow.__post_init__) is SKIPPED, not declared. This closes a
+        review-hardening finding (plan 71 D9 amendment, finding B): declared
+        must never be a superset of what _extract_dead_code_rows actually
+        carries into breakdown-handoff.json -- otherwise this gate could
+        demand coverage for a row that will never exist in the written
+        handoff (an unsatisfiable exit-2). A token repeated across multiple
+        declared rows is DEDUPED, keeping only the first occurrence's file
+        value -- a twice-declared token renders as ONE finding, not two.
+        Empty when the handoff has no key, an empty list, every row is
+        invalid, or the handoff cannot be read (co-varies with error being
+        set in the latter case).
+
+    offenders:
+        Subset of declared whose anchor_token is named by ZERO tasks'
+        '**Dead code removal**:' field. Empty when declared is empty.
+
+    duplicates:
+        Subset of declared whose anchor_token is named by TWO OR MORE
+        DISTINCT tasks' '**Dead code removal**:' field, rendered as
+        (anchor_token, file, covering_task_filenames) -- D7 requires
+        exactly one owning task per row; 2+ claimants is as much a
+        violation as zero. "Distinct" is load-bearing (finding A): a
+        single task listing the same token twice within its OWN field
+        (e.g. 'foo; foo') is deduped per-task before aggregation, so it
+        counts as ONE covering task, not two -- a task cannot claim a row
+        twice by repeating itself. Empty when declared is empty or every
+        declared token has exactly one covering task.
+
+    covering_task_count:
+        Number of task files whose '**Dead code removal**:' field names at
+        least one declared anchor_token (each qualifying task file counted
+        once, regardless of how many declared tokens it names).
+
+    error:
+        None on success (including the "no declared rows" case — that is
+        NOT an error). A short string when plan_handoff_path is missing,
+        unreadable, not valid JSON, its root is not a JSON object, or
+        breakdown_seeds/dead_code_rows is present but wrong-shape. The
+        caller decides severity: the standalone verb fails closed via the
+        plan.md fallback (_plan_declares_dead_code_rows); the
+        finalize-handoff chokepoint treats a non-None error the same way
+        (this predicate mirrors _validate_property_coverage's error-path
+        shape exactly for the JSON-structure axis; on the PER-ROW axis it
+        is now STRICTER than _validate_property_coverage on purpose --
+        property-targets rows have no second, stricter reader to diverge
+        from, so that looseness was safe; a dead-code row DOES have one
+        [_extract_dead_code_rows], so this predicate must apply the exact
+        same per-row validity criterion or risk demanding coverage for a
+        row that was never going to ship).
+    """
+    handoff_path = Path(plan_handoff_path)
+    if not handoff_path.is_file():
+        return (
+            [], [], [], 0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify dead-code coverage".format(plan_handoff_path),
+        )
+
+    try:
+        raw_text = handoff_path.read_text(encoding="utf-8")
+        d = json.loads(raw_text)
+    except (OSError, IOError, json.JSONDecodeError):
+        return (
+            [], [], [], 0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify dead-code coverage".format(plan_handoff_path),
+        )
+
+    if not isinstance(d, dict):
+        return (
+            [], [], [], 0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify dead-code coverage".format(plan_handoff_path),
+        )
+
+    # A present-but-wrong-shape breakdown_seeds / dead_code_rows is a
+    # MALFORMED handoff and must route through the error path (mirrors
+    # _validate_property_coverage's own treatment). Absent/None is the
+    # legitimate no-rows case.
+    seeds = d.get("breakdown_seeds")
+    if seeds is None:
+        seeds = {}
+    elif not isinstance(seeds, dict):
+        return (
+            [], [], [], 0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify dead-code coverage".format(plan_handoff_path),
+        )
+    raw_rows = seeds.get("dead_code_rows")
+    if raw_rows is None:
+        raw_rows = []
+    elif not isinstance(raw_rows, list):
+        return (
+            [], [], [], 0,
+            "plan-handoff.json not found/unreadable at {0} "
+            "— cannot verify dead-code coverage".format(plan_handoff_path),
+        )
+
+    from _breakdown.handoff_schema import DeadCodeRow
+
+    declared: "List[Tuple[str, str]]" = []
+    seen_tokens: "set" = set()
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            parsed_row = DeadCodeRow(
+                file=row.get("file", ""),
+                anchor_token=row.get("anchor_token", ""),
+                kind=row.get("kind", ""),
+                why_dead=row.get("why_dead", ""),
+            )
+        except (TypeError, ValueError):
+            # Fails the SAME validation _extract_dead_code_rows applies to
+            # the passthrough carrier (finding B) -- a row that will never
+            # ship into breakdown-handoff.json must never be declared here.
+            continue
+        anchor_token = parsed_row.anchor_token
+        if anchor_token in seen_tokens:
+            # Dedup by anchor token, keeping the first occurrence's file
+            # value -- a twice-declared token must render as ONE finding.
+            continue
+        seen_tokens.add(anchor_token)
+        declared.append((anchor_token, parsed_row.file))
+
+    if not declared:
+        return [], [], [], 0, None
+
+    declared_tokens = {token for token, _file in declared}
+
+    task_files = _glob_task_files(tasks_dir)
+    covering_tasks: "Dict[str, List[str]]" = {}
+    covering_task_count = 0
+    for fpath in task_files:
+        content = _read_file(fpath)
+        if content is None:
+            continue
+        m = _DEAD_CODE_REMOVAL_LINE_RE.search(content)
+        if not m:
+            continue
+        entries = [e.strip() for e in m.group(1).split(";")]
+        entries = [e for e in entries if e]
+        # Dedup entries WITHIN this one task's own field (finding A) -- a
+        # task listing the same token twice ('foo; foo') must not inflate
+        # its own coverage into a phantom 2-claimant "duplicate assignment".
+        entries = list(dict.fromkeys(entries))
+        if not entries:
+            continue
+        matched_this_task = False
+        fname = Path(fpath).name
+        for entry in entries:
+            if entry in declared_tokens:
+                covering_tasks.setdefault(entry, []).append(fname)
+                matched_this_task = True
+        if matched_this_task:
+            covering_task_count += 1
+
+    offenders = [
+        (token, file_val)
+        for token, file_val in declared
+        if token not in covering_tasks
+    ]
+    duplicates = [
+        (token, file_val, sorted(set(covering_tasks[token])))
+        for token, file_val in declared
+        if token in covering_tasks and len(set(covering_tasks[token])) >= 2
+    ]
+    return declared, offenders, duplicates, covering_task_count, None
+
+
+def _render_dead_code_coverage_findings(offenders, duplicates):
+    # type: (List[Tuple[str, str]], List[Tuple[str, str, List[str]]]) -> str
+    """Render the '## Dead-code coverage findings' block.
+
+    Shared by cmd_verify_dead_code_coverage and the finalize-handoff
+    chokepoint (mirrors the _render_property_coverage_findings shared-
+    rendering precedent) so the two emission sites cannot drift apart.
+    Renders BOTH finding kinds: zero-coverage offenders and 2+-coverage
+    duplicates -- D7 requires exactly one owning task, so both are
+    violations.
+    """
+    parts = ["## Dead-code coverage findings\n\n"]
+    for token, file_val in offenders:
+        parts.append(
+            "- anchor '{t}' ({f}): no task's '**Dead code removal**:' "
+            "field covers it\n".format(t=token, f=file_val)
+        )
+    for token, file_val, task_names in duplicates:
+        parts.append(
+            "- anchor '{t}' ({f}): claimed by {n} tasks ({names}) -- must "
+            "be folded into exactly ONE owning task\n".format(
+                t=token,
+                f=file_val,
+                n=len(task_names),
+                names=", ".join(sorted(task_names)),
+            )
+        )
+    parts.append(
+        "\nDeclared in plan-handoff.json breakdown_seeds.dead_code_rows; "
+        "fold each uncovered/duplicated anchor into exactly one task's "
+        "'**Dead code removal**:' field (semicolon-separated list of "
+        "anchor tokens, mirroring '**Property targets**:').\n"
+    )
+    return "".join(parts)
+
+
+def cmd_verify_dead_code_coverage(args):
+    # type: (argparse.Namespace) -> int
+    """Verify every declared dead-code row is covered by EXACTLY ONE task.
+
+    Usage: verify-dead-code-coverage <tasks-dir> [--plan-handoff <path>]
+
+    --plan-handoff defaults to Path(tasks_dir).parent / 'plan-handoff.json'.
+
+    Mirrors cmd_verify_property_coverage's never-declared-vs-declared-but-
+    unverifiable asymmetry EXACTLY (same fallback to sibling plan.md via
+    _plan_declares_dead_code_rows, the SAME criterion the producer
+    plan_helper._parse_dead_code_rows uses: heading present AND >=1
+    non-placeholder row, not just the heading alone), PLUS a NEW
+    duplicate-assignment check (D7: exactly one owning task per row --
+    zero coverage and 2+ coverage are BOTH violations).
+
+    Exit codes:
+      0 — no declared rows (skip; covers both an empty dead_code_rows list
+          AND a missing/malformed handoff paired with no real dead-code
+          row declared in plan.md), or every declared row covered by
+          exactly one task.
+      2 — a missing/malformed handoff paired with at least one real
+          dead-code row declared in plan.md (fail-closed, remedy printed);
+          no task files found while rows ARE declared; at least one
+          uncovered row; or at least one row claimed by 2+ tasks.
+    """
+    tasks_dir_raw = args.tasks_dir
+    plan_handoff_raw = getattr(args, "plan_handoff", None)
+
+    tasks_path = Path(tasks_dir_raw)
+    if not tasks_path.is_absolute():
+        tasks_path = Path.cwd() / tasks_path
+
+    if plan_handoff_raw:
+        plan_handoff_path = Path(plan_handoff_raw)
+        if not plan_handoff_path.is_absolute():
+            plan_handoff_path = Path.cwd() / plan_handoff_path
+    else:
+        plan_handoff_path = tasks_path.parent / "plan-handoff.json"
+
+    declared, offenders, duplicates, covering_task_count, error = (
+        _validate_dead_code_coverage(str(tasks_path), str(plan_handoff_path))
+    )
+
+    if error is not None:
+        # Check whether plan.md actually declares a REAL dead-code row (not
+        # just the heading) before failing closed -- see the docstring
+        # asymmetry note above.
+        plan_md_path = tasks_path.parent / "plan.md"
+        plan_md_content = _read_file(str(plan_md_path))
+        declared_in_plan = (
+            plan_md_content is not None
+            and _plan_declares_dead_code_rows(plan_md_content)
+        )
+        if not declared_in_plan:
+            sys.stdout.write(
+                "dead-code-coverage: skip (no plan-handoff.json and no "
+                "change-induced dead code declared in plan.md)\n"
+            )
+            return 0
+        return _die(
+            "verify-dead-code-coverage: plan-handoff.json not found/unreadable "
+            "at {0} — plan.md declares change-induced dead code; run "
+            "plan_helper finalize-handoff {1} to produce it, then re-run "
+            "this gate".format(plan_handoff_path, plan_md_path)
+        )
+
+    if not declared:
+        sys.stdout.write(
+            "dead-code-coverage: skip (no declared dead-code rows)\n"
+        )
+        return 0
+
+    # Declared rows present — task files are now required.
+    task_files = _glob_task_files(str(tasks_path))
+    if not task_files:
+        sys.stderr.write(
+            "breakdown_helper: no task files found in {0}\n".format(tasks_dir_raw)
+        )
+        return 2
+
+    if not offenders and not duplicates:
+        sys.stdout.write(
+            "dead-code-coverage: ok ({n} rows, {m} covering tasks)\n".format(
+                n=len(declared), m=covering_task_count
+            )
+        )
+        return 0
+
+    sys.stdout.write(_render_dead_code_coverage_findings(offenders, duplicates))
+    return 2
+
+
+# ---------------------------------------------------------------------------
 # Phase 4 — task-file parsing helpers (for finalize-handoff).
 # ---------------------------------------------------------------------------
 
@@ -2635,6 +3023,19 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
       declared MUST-lane kill-list -- see the declared-but-unsubstantiated
       chokepoint below.
 
+    dead_code_rows task-coverage CHOKEPOINT (plan 71 D9 amendment):
+      Mirrors the pure-builder-targets property-coverage chokepoint above
+      EXACTLY in shape (same asymmetry: runs only when a sibling
+      plan-handoff.json exists, silently skips on ANY predicate error).
+      When the sibling declares breakdown_seeds.dead_code_rows, every
+      declared row's anchor_token must be covered by EXACTLY ONE task's
+      '**Dead code removal**:' field -- zero coverage OR 2+ coverage both
+      fail closed (exit 2) with a '## Dead-code coverage findings' block.
+      This closes the gap the declared-but-unsubstantiated chokepoint above
+      does NOT cover: it proves plan.md and plan-handoff.json AGREE a row
+      is declared, but says nothing about whether any TASK actually folds
+      the removal in (D7's owning-task rule was prose-only before this).
+
     Output: <plan-dir>/breakdown-handoff.json (atomic write, sibling to plan.md).
     Idempotent: re-running overwrites the previous breakdown-handoff.json.
 
@@ -2644,19 +3045,22 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
             design-manifest violation (design/reference.html present but
             design-manifest.json absent/invalid — plan 42 WI-1 chokepoint),
             an uncovered pure-builder target when the sibling plan-handoff.json
-            declares one (plan 66 WI-1 chokepoint), or plan.md declaring
+            declares one (plan 66 WI-1 chokepoint), plan.md declaring
             change-induced dead code that the sibling plan-handoff.json
             carries none of (plan 71 declared-but-unsubstantiated
-            chokepoint). The plan-66 chokepoint is SKIPPED SILENTLY when the
-            sibling plan-handoff.json is itself absent or
-            unreadable/malformed — see the inline comment at the call site
+            chokepoint), or a sibling-declared dead-code row left
+            uncovered/double-covered by the task files (plan 71 D9
+            task-coverage chokepoint). The plan-66 chokepoint AND the
+            plan-71 D9 task-coverage chokepoint are SKIPPED SILENTLY when
+            the sibling plan-handoff.json is itself absent or
+            unreadable/malformed — see the inline comment at each call site
             for the asymmetry vs. the strict fail-closed standalone
-            verify-property-coverage verb. The plan-71 chokepoint does NOT
-            share that asymmetry — it fails closed on ANY reason the
-            passthrough produced zero rows (absent, unreadable, or
-            malformed sibling) whenever plan.md itself declares real rows;
-            see _extract_dead_code_rows + the inline comment at the call
-            site.
+            verify-property-coverage / verify-dead-code-coverage verbs. The
+            plan-71 declared-but-unsubstantiated chokepoint does NOT share
+            that asymmetry — it fails closed on ANY reason the passthrough
+            produced zero rows (absent, unreadable, or malformed sibling)
+            whenever plan.md itself declares real rows; see
+            _extract_dead_code_rows + the inline comment at the call site.
     Exit 1: I/O write failure.
     """
     # Ensure lib dir on path for schema imports.
@@ -2918,6 +3322,33 @@ def cmd_finalize_handoff_breakdown(args: argparse.Namespace) -> int:
                 "it with 'plan_helper finalize-handoff {0}' before re-running "
                 "this command".format(plan_path)
             )
+
+    # Dead-code coverage CHOKEPOINT (plan 71 D9 amendment): mirrors the
+    # pure-builder-targets property-coverage chokepoint above EXACTLY in
+    # shape (same asymmetry -- runs only when the sibling plan-handoff.json
+    # exists, and silently skips on ANY predicate error such as an
+    # unreadable/malformed sibling; the declared-but-unsubstantiated
+    # chokepoint just above already guards the absent/malformed-sibling
+    # case for dead code specifically). When the sibling declares
+    # breakdown_seeds.dead_code_rows, every declared row's anchor_token
+    # must be covered by EXACTLY ONE task's '**Dead code removal**:' field
+    # before the handoff is written -- an owning-task fold-in the
+    # orchestrator forgot (D7 prose-only until now) is caught here instead
+    # of shipping as silent guard-and-leave.
+    if _plan_handoff_candidate.is_file():
+        (
+            _dc_declared, _dc_offenders, _dc_duplicates, _dc_covering, _dc_error,
+        ) = _validate_dead_code_coverage(
+            str(tasks_dir), str(_plan_handoff_candidate)
+        )
+        if _dc_error is None and _dc_declared and (_dc_offenders or _dc_duplicates):
+            sys.stdout.write(
+                _render_dead_code_coverage_findings(_dc_offenders, _dc_duplicates)
+            )
+            return 2
+        # _dc_error not None (unreadable/malformed sibling), or no declared
+        # rows, or no offenders/duplicates -> fall through silently (mirrors
+        # the property-coverage chokepoint's own asymmetry comment above).
 
     # Parse README.md for dependency_graph and additions.
     readme_path = tasks_dir / "README.md"
@@ -3195,9 +3626,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="dead_code_removal",
         default=None,
         help=(
-            "Free-text summary of change-induced dead code folded into this "
-            "owning task (plan 71 D7/D8(b)). When given and non-empty, emits "
-            "a '**Dead code removal**:' line after '**Property targets**:' "
+            "Semicolon-separated list of change-induced dead-code anchor "
+            "tokens folded into this owning task (plan 71 D7; each token "
+            "must match breakdown_seeds.dead_code_rows[].anchor_token "
+            "character-for-character -- verify-dead-code-coverage matches "
+            "on it exactly). Anchor tokens must not themselves contain a "
+            "semicolon (no escaping). When given and non-empty, emits a "
+            "'**Dead code removal**:' line after '**Property targets**:' "
             "(or after '**Context docs**:' when no property targets). "
             "Omit to leave the skeleton unchanged."
         ),
@@ -3339,6 +3774,31 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_verify_property_coverage)
+
+    # verify-dead-code-coverage
+    sp = sub.add_parser(
+        "verify-dead-code-coverage",
+        help=(
+            "Verify every change-induced dead-code row declared in the "
+            "sibling plan-handoff.json (breakdown_seeds.dead_code_rows) is "
+            "covered by EXACTLY ONE task's '**Dead code removal**:' field. "
+            "Exit 0 when no rows are declared or all are covered by "
+            "exactly one task; exit 2 on a missing/malformed handoff, no "
+            "task files found (when rows are declared), an uncovered row, "
+            "or a row claimed by 2+ tasks."
+        ),
+    )
+    sp.add_argument("tasks_dir", help="Directory containing task *.md files.")
+    sp.add_argument(
+        "--plan-handoff",
+        dest="plan_handoff",
+        default=None,
+        help=(
+            "Path to plan-handoff.json (default: "
+            "<tasks-dir's parent>/plan-handoff.json)."
+        ),
+    )
+    sp.set_defaults(func=cmd_verify_dead_code_coverage)
 
     # finalize-handoff
     sp = sub.add_parser(

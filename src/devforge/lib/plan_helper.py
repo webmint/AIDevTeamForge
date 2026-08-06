@@ -1749,17 +1749,30 @@ def _parse_pure_builder_targets(plan_content: str) -> List[Any]:
     return result
 
 
-def _parse_dead_code_rows(plan_content: str) -> List[Any]:
-    """Parse ### Change-Induced Dead Code table rows into DeadCodeRow records.
+def _parse_dead_code_rows_full(plan_content: str) -> "Tuple[List[Any], List[str]]":
+    """Parse ### Change-Induced Dead Code rows, returning (rows, warnings).
 
-    Columns: File | Anchor token | Kind | Why dead.
-    Uses _extract_plan_section to locate the section boundary.
-    Skips placeholder rows. A row whose Kind is not one of
-    DEAD_CODE_KIND_ENUM, or whose Why dead is empty, fails DeadCodeRow
-    construction and is skipped (mirrors the malformed-row handling of the
-    sibling parsers via the except clause below). Returns empty list when
-    section absent (the section is optional -- populated only when the
-    architect predicts change-induced dead code, plan 71 D3).
+    rows: the same DeadCodeRow list _parse_dead_code_rows returns (same
+    construction, same placeholder-skip, same malformed-row skip).
+
+    warnings: one diagnostic string per non-placeholder row that FAILED
+    DeadCodeRow construction (and so is silently absent from rows) --
+    naming the row (file + anchor_token, as parsed from the table cells)
+    and the validation failure reason (empty file/anchor_token/why_dead,
+    invalid kind, or -- since plan 71 D9's finding-C hardening -- a
+    semicolon inside anchor_token). Without this, the row simply vanishes
+    from plan-handoff.json's dead_code_rows while
+    _plan_declares_dead_code_rows (breakdown_helper's own heading + first-
+    cell-non-placeholder check) still sees the plan.md row as "declared" --
+    the declared-but-unsubstantiated chokepoint then fires with a
+    "re-run plan_helper finalize-handoff" remedy that can NEVER succeed for
+    THIS row (re-parsing the same malformed plan.md text just drops it
+    again). cmd_finalize_handoff surfaces these warnings on stderr
+    (mirroring breakdown_helper's own WARN style) so the author sees a
+    FIXABLE reason instead of a dead-end remedy.
+
+    _parse_dead_code_rows is a thin wrapper returning only rows, for
+    back-compat with its existing callers/tests that expect a plain list.
     """
     from _plan.handoff_schema import DeadCodeRow
 
@@ -1768,10 +1781,11 @@ def _parse_dead_code_rows(plan_content: str) -> List[Any]:
     )
     section = _extract_plan_section(plan_content, pat)
     if not section:
-        return []
+        return [], []
 
     rows = _parse_table_rows(section)
-    result = []
+    result: List[Any] = []
+    warnings: List[str] = []
     for cells in rows:
         if not cells:
             continue
@@ -1790,9 +1804,34 @@ def _parse_dead_code_rows(plan_content: str) -> List[Any]:
                     why_dead=why_dead,
                 )
             )
-        except (TypeError, ValueError):
-            continue
-    return result
+        except (TypeError, ValueError) as err:
+            warnings.append(
+                "Change-Induced Dead Code row (file={0!r}, "
+                "anchor_token={1!r}) skipped: {2}".format(
+                    file_, anchor_token, err
+                )
+            )
+    return result, warnings
+
+
+def _parse_dead_code_rows(plan_content: str) -> List[Any]:
+    """Parse ### Change-Induced Dead Code table rows into DeadCodeRow records.
+
+    Columns: File | Anchor token | Kind | Why dead.
+    Uses _extract_plan_section to locate the section boundary.
+    Skips placeholder rows. A row whose Kind is not one of
+    DEAD_CODE_KIND_ENUM, whose Why dead is empty, or whose Anchor token
+    contains a semicolon (plan 71 D9 finding C -- the delimiter used by the
+    '**Dead code removal**:' task field), fails DeadCodeRow construction
+    and is skipped (mirrors the malformed-row handling of the sibling
+    parsers). Returns empty list when section absent (the section is
+    optional -- populated only when the architect predicts change-induced
+    dead code, plan 71 D3). Thin wrapper over _parse_dead_code_rows_full;
+    see that function for the WARN-worthy skip reasons this wrapper
+    discards -- cmd_finalize_handoff calls the _full form directly so it
+    can surface them.
+    """
+    return _parse_dead_code_rows_full(plan_content)[0]
 
 
 # Accepted verdict values for specialist consultation rows.
@@ -2014,7 +2053,15 @@ def cmd_finalize_handoff(args: argparse.Namespace) -> int:
     specialist_consultation = _parse_specialist_consultation(plan_content)
     dependencies = _parse_dependencies(plan_content)
     pure_builder_targets = _parse_pure_builder_targets(plan_content)
-    dead_code_rows = _parse_dead_code_rows(plan_content)
+    dead_code_rows, dead_code_row_warnings = _parse_dead_code_rows_full(plan_content)
+    # plan 71 D9 finding-C UX close: WARN per skipped row so the author sees
+    # a fixable reason instead of the declared-but-unsubstantiated
+    # chokepoint's "re-run finalize-handoff" remedy, which can never
+    # succeed for a row that fails DeadCodeRow validation on every
+    # re-parse of the same plan.md text (mirrors breakdown_helper's own
+    # WARN style: "<helper>: finalize-handoff: WARN: <message>").
+    for _w in dead_code_row_warnings:
+        sys.stderr.write("plan_helper: finalize-handoff: WARN: {0}\n".format(_w))
 
     try:
         breakdown_seeds = BreakdownSeeds(
