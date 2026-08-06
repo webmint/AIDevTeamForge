@@ -1,6 +1,6 @@
 === EMERGENT CROSS-TASK ISSUE CHECKLIST ===
 
-Hunt the ASSEMBLED feature diff for these four cross-task patterns. These are
+Hunt the ASSEMBLED feature diff for these five cross-task patterns. These are
 EXAMPLES of what to look for, NOT a list of bugs you should find. If the
 feature has none of them, report none. Every pattern here requires reading TWO
 OR MORE tasks together — a finding you can state from a single task's diff is
@@ -77,6 +77,26 @@ Cross-task architectural drift  (Category: system_design)
   reaches around it to the underlying resource directly. Anchor on the bypass
   (quote it in `Evidence:`) and name the abstraction it reaches around by path
   and line.
+
+
+Cross-task change-induced dead code  (Category: mislogic)
+- A kill-list split across tasks — one task lands a dominating change (an early
+  return, a narrowed guard, a removed call) that renders a branch, arm, function,
+  parameter, or import unreachable, while the SEPARATE task that owned deleting
+  that now-dead code was dropped, reordered, or shipped without its deletion — so
+  the assembled feature carries code the composed change already killed. This is
+  visible ONLY across two tasks: the task with the dominating change is complete
+  and correct on its own diff (leaving the deletion to another task is the
+  legitimate split for a kill-list too big for one task), so the orphan appears
+  only when you read that guarding task together with the task that was supposed
+  to carry the deletion and find its coverage missing or partial. This applies
+  whether or not the plan DECLARED the kill-list — the defining signal is the
+  two-task visibility, not prior declaration: an undeclared kill (a decision
+  spanning tasks that nobody named as dead-code rows at planning time) has no
+  mechanical check downstream at all, so this pattern is its only net. Anchor on
+  the surviving dead code (quote it in `Evidence:`) and name the task's diff that
+  lands the dominating change by path and line, plus which deletion coverage is
+  absent.
 
 
 Grounding rule (mandatory — same single-anchor discipline as /audit)
