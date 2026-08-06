@@ -352,6 +352,8 @@ Phase 2.3 framing locks in. Without adversarial competition, Phase 2.4 / 2.4b / 
    - Same frame, two hypotheses (NOT what Phase 2.3b wants): primary frame "comparator field-name typo" → H1 "primary-id vs alternate-id mismatch" / H2 "type coercion drops the match". Both H1 + H2 live inside the same comparator-typo frame.
    - Different framings (what Phase 2.3b wants): primary "id-field mismatch (presentation-layer fix)" vs runner-up "shallow walk + missing structural classifier (cross-layer fix)". Different root causes, different fix layers, different surfaces.
 
+   **Surface-count frame (when the ticket names a specific surface).** When the ticket names a specific UI surface, screen, or tab (e.g. "on the 'Suggested' search", "in the dealer modal"), you MUST evaluate a surface-count frame as one of the candidates here: "the named surface is NOT the only entry point — other surfaces reach the same shared symbol," with falsifier = the inbound `trace_path` of that shared symbol. If a different framing wins the runner-up slot, that is fine — no second recorded frame is required, because the surface-count question is still mechanically probed downstream by Phase 2.4c's caller enumeration + Step 2b's per-caller surface trace.
+
 3. **Identify the CONCRETE FALSIFIER** — the specific evidence that would prove the alternative framing OVER the primary. Phase 2.4 / 2.4b / 2.4c searches will probe FOR this evidence.
 
 4. **Rate `confidence_vs_primary`** as one of `lower` / `comparable` / `higher` relative to the primary framing.
@@ -439,9 +441,9 @@ Without this step the LLM anchors on view-layer / minimal-change fixes when the 
 
 **Definition of "fix-path helper".** A helper whose signature carries the symptom value, or any value the symptom value derives from.
 
-**Stopping rule (layer-boundary, NOT same-package).** Trace AT MOST 2 layer boundaries above the symptom site, following the dependency-inversion direction (outer-to-inner; e.g., presentation-layer file → composable/store → domain helper → entity static; presentation → application → domain). Stop at framework/vendor packages (do not trace into framework internals, vendored SDKs, or shared utility libs). Cross application/domain package boundaries within the project workspace — this is the explicit point of the rule. The OLD same-package restriction is removed: cross-package traces within the project are NOT just allowed, they are REQUIRED when the symptom lives in a presentation-layer file (Vue / React component, view, page). Verify check 8b enforces this in bug mode: when the primary finding's `file:line` resolves to a presentation-layer path AND `fix_path_helpers` is non-empty with every entry's `file_line` in the same package as the symptom, `verify` exits non-zero with a `cross-layer rule` violation. Domain-layer symptoms (a bug whose symptom site is already inside `pkg-<domain>/`) remain same-package OK — no cross-layer trace is required for domain-internal bugs because the helper layer is already the symptom layer.
+**Stopping rule (layer-boundary, NOT same-package).** Trace AT MOST 2 layer boundaries above the symptom site, following the dependency-inversion direction (outer-to-inner; e.g., presentation-layer file → composable/store → domain helper → entity static; presentation → application → domain). Stop at framework/vendor packages (do not trace into framework internals, vendored SDKs, or shared utility libs). Cross application/domain package boundaries within the project workspace — this is the explicit point of the rule. The OLD same-package restriction is removed: cross-package traces within the project are NOT just allowed, they are REQUIRED when the symptom lives in a presentation-layer file (Vue / React component, view, page). Verify check 8b enforces this on every run (mode-independent): when the primary finding's `file:line` resolves to a presentation-layer path AND `fix_path_helpers` is non-empty with every entry's `file_line` in the same package as the symptom, `verify` exits non-zero with a `cross-layer rule` violation. Domain-layer symptoms (a bug whose symptom site is already inside `pkg-<domain>/`) remain same-package OK — no cross-layer trace is required for domain-internal bugs because the helper layer is already the symptom layer.
 
-For each fix-path helper, run the four steps below in order.
+For each fix-path helper, run the steps below in order.
 
 **Step 1 — Record the helper itself.** Run `search_graph(label="Method", qn_pattern="<helper QN>")` (or `label="Function"` / `label="Class"` per the helper's kind) to confirm the helper exists in the codebase index and to capture its definition `file_path:line`. Both the helper's qualified name AND its definition `file:line` are required:
 
@@ -459,13 +461,25 @@ For each fix-path helper, run the four steps below in order.
 
 **Recovery on anchor rejection.** When the helper rejects with the "does not anchor" stderr, copy the stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Then either (a) return to Phase 2.3 / 2.4 to record the missing finding via `record-finding` FIRST + then call `record-fix-path-helper` with a DIFFERENT `--file-line` (the original combo is sticky-rejected — pick a closer-anchored helper site instead), or (b) reconsider whether the helper QN is the right fix-path target — if Phase 2.4c surfaced it via `trace_path` inbound walk, the trace_path result row's own `file_path:line` is the helper's call-site (which should already be in findings); re-anchor to that.
 
-**Step 2 — Inbound caller enumeration.**
+**Step 2 — Inbound caller enumeration + declared total.**
 
 ```
 trace_path(<helper_qn>, mode=calls, direction=inbound)
 ```
 
-Record EVERY caller (including the symptom site itself) via:
+Run the trace at depth 1. Before counting anything, **verify the result belongs to THIS helper.** `trace_path` keys on the BARE function name, so for a name shared by two functions it can silently return the OTHER symbol's callers with no error — a wrong-symbol trace yields a confidently wrong total. The result rows carry the CALLERS' qualified names, not the helper's, so you cannot match rows against the helper QN directly. Sanity-check with what you already know instead: the caller that LED you to this helper (typically the symptom site's function, whose call site is already in your findings) must appear among the returned rows. If it does not, or the returned callers' packages are implausible for the helper's recorded definition `file:line`, assume the trace resolved a different same-named symbol: confirm uniqueness via `search_graph(label="<the helper's kind, as in Step 1>", qn_pattern="<helper QN>")`, discard the ENTIRE result set (never filter per-row), and re-derive the callers via `search_code` on the helper's call sites before declaring any total.
+
+**Declare the caller total** — the number of inbound caller rows the trace returned for this helper, including the symptom site's own function when it appears as a caller:
+
+```bash
+.devforge/lib/research_helper declare-caller-total \
+    --helper-qn "<helper_qn>" \
+    --total <N>
+```
+
+`<N>` is that verified row count. This counting rule — inbound rows at depth 1, symptom site included when it appears — is pinned verbatim in the setter's `--help`; declare `--total` against exactly that rule so the check-9 comparison is honest. `--helper-qn` must match a helper already recorded via Step 1 (the setter rejects an unrecorded QN with exit 2).
+
+**Record EVERY caller** (including the symptom site itself) via:
 
 ```bash
 .devforge/lib/research_helper record-inbound-caller \
@@ -474,7 +488,36 @@ Record EVERY caller (including the symptom site itself) via:
     --file-line "<path:line>"
 ```
 
-The Phase 2.3 `file:line` grounding rule applies — `<path:line>` MUST be copied verbatim from the `trace_path` result row's `file_path` + `line` fields. Never reconstruct.
+The Phase 2.3 `file:line` grounding rule applies — `<path:line>` MUST be copied verbatim from the `trace_path` result row's `file_path` + `line` fields. Never reconstruct. The recorded row count for this helper must EQUAL the declared total; check 9 rejects a mismatch (see the gates block below).
+
+**Step 2b — Trace each caller to its surface and classify scope.**
+
+Enumeration only puts callers on the table; it does not say which ones the change actually touches. For EACH caller recorded in Step 2, trace UP toward its user-facing entry point, then classify it in- or out-of-scope with a justification.
+
+Trace up from the caller:
+
+```
+trace_path(<caller_qn>, mode=calls, direction=inbound)
+```
+
+Follow the inbound chain until the first user-facing entry point — a component, route, view, or CLI command — surfaces, bounded at 8 hops (whichever comes first). The empirically-validated chain for the seed incident was depth ≤ 6; if no entry point surfaces within 8 hops, use surface `"none"` and state in the justification how far the trace got. A caller genuinely not reachable from any user-facing surface (a pure internal utility, test-only code) also takes surface `"none"` — the bare word `none`, NOT the parenthesized `(none)` sentinel used elsewhere in this file; the setter accepts any non-empty string, so a mistyped `(none)` would persist silently.
+
+Then classify the caller:
+
+```bash
+.devforge/lib/research_helper classify-caller-scope \
+    --helper-qn "<helper_qn>" \
+    --caller-qn "<caller_qn>" \
+    --surface "<user-facing entry point, or none for a caller not reachable from any surface>" \
+    --scope <in|out> \
+    --justification "<why this caller is or is not affected by the change>"
+```
+
+The `(helper_qn, caller_qn)` pair MUST already exist from Step 2 — the setter rejects an unrecorded pair with exit 2. `--surface` and `--justification` must be non-empty; `--scope` is exactly `in` or `out`. When an entry point WAS found, the `--justification` MUST cite it by name — that is what converts "X is a caller" into "X is reachable from surface Y, therefore in/out of scope."
+
+**Honesty bound.** This gate forces the classification + justification to EXIST for every caller; it cannot force the in/out call to be CORRECT. Correctness stays your judgment and is audited downstream — at `/plan`'s architect consult (sub-question 7) and by the human.
+
+Verify check 19 enforces this: every `inbound_callers` row must carry a non-empty surface, a scope ∈ {in, out}, and a non-empty justification. On non-zero exit from `verify` citing check 19, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then classify the missing caller(s) via `classify-caller-scope` before re-running `verify`.
 
 **Step 3 — Sibling-method enumeration.**
 
@@ -519,11 +562,12 @@ Record the consumer-chain endpoint (the consumer that actually reads the value) 
 
 The Phase 2.3 `file:line` grounding rule applies to `--file-line` here as well.
 
-**MANDATORY — mode-independent.** This phase runs on EVERY `/research` run — bug or enhancement alike, however the mode was determined (auto-detected from symptom tokens, or picked by the user when detection was ambiguous). The helper's `verify` step enforces three gates on Phase 2.4c state:
+**MANDATORY — mode-independent.** This phase runs on EVERY `/research` run — bug or enhancement alike, however the mode was determined (auto-detected from symptom tokens, or picked by the user when detection was ambiguous). The helper's `verify` step enforces four gates on Phase 2.4c state:
 
 - **Check 8 (mode-independent)** rejects a report whose `fix_path_helpers` list is empty AND that carries no no-shared-callers justification. Two remedies satisfy it: enumerate at least one fix-path helper via Steps 1-2 above, OR record the justification described in **No-shared-callers escape** below. `verify` separately rejects the contradictory state where BOTH the list and the justification are set; its stderr names the recovery — `reset-report`, then re-record via exactly one of the two paths.
-- **Check 8b (bug mode only)** — the cross-layer rule documented in the Stopping rule above — rejects a NON-EMPTY list where every `fix_path_helpers[].file_line` is in the same package as the primary symptom's file path when that symptom path is presentation-layer (Vue / React / views). It cannot fire on the justification escape, which leaves the list empty.
-- **Check 9 (mode-independent)** rejects any `fix_path_helpers` entry that has no `inbound_callers` row — in any mode, for every helper recorded. It is vacuous when the list is empty.
+- **Check 8b (mode-independent)** — the cross-layer rule documented in the Stopping rule above — rejects a NON-EMPTY list where every `fix_path_helpers[].file_line` is in the same package as the primary symptom's file path when that symptom path is presentation-layer (Vue / React / views). It cannot fire on the justification escape, which leaves the list empty.
+- **Check 9 (mode-independent)** rejects a helper that has no declared caller total, and rejects a helper whose recorded `inbound_callers` row count does not equal its declared total — for every helper recorded, in any mode. Remedy: declare the total via `declare-caller-total` (Step 2), then record every missing caller via `record-inbound-caller`; if the declared total was itself wrong, re-run the Step 2 trace and re-declare. It is vacuous when the list is empty.
+- **Check 19 (mode-independent)** rejects any recorded `inbound_callers` row that Step 2b did not scope-classify — every caller must carry a non-empty surface, a scope ∈ {in, out}, and a non-empty justification. Remedy: run `classify-caller-scope` for each unclassified caller. It is vacuous when no caller was recorded.
 
 On non-zero exit from `verify` citing any of these checks, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then return to Phase 2.4c and complete the missing steps before re-running `verify`. For check 8b specifically, the fix is to trace one helper UP through a package boundary (presentation → application or presentation → domain) and re-run Step 1 with that helper's qualified name and definition `file:line`.
 
@@ -886,7 +930,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 
    **MANDATORY (when the recommended approach replaces a hardcoded literal):** if `--rationale` or the linked approach's `--description` will contain literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) where `<X>` is a primitive literal, Phase 2.5b `record-literal-archaeology` for `<X>` at the bug's `file_line` MUST have been called BEFORE `set-recommended-approach`. Check 17 enforces this at verify time: on non-zero exit citing check 17, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), run Phase 2.5b's git-archaeology steps + `record-literal-archaeology`, then re-run `verify`.
 
-   **Proposed call-shape gate (Patch 9).** In bug mode, when EITHER `--single-layer-justification` is set OR `--rationale` (or the linked approach's `--description`) contains literal-replacement prose, `--proposed-call-shape` is REQUIRED. The shape must be the exact post-fix call as it would appear at the bug site (function name + parenthesized arg list, multi-line accepted — helper collapses whitespace). The helper parses the shape, splits the arg list on top-level commas, and rejects when the same identifier (bare name, dotted member access, or optional-chained `a?.b?.c`) appears more than once — argument duplication signals the default-source belongs at a different layer (wrapper signature / state initialization / use-case default) rather than at the call site. Example call:
+   **Proposed call-shape gate (Patch 9).** When EITHER `--single-layer-justification` is set OR `--rationale` (or the linked approach's `--description`) contains literal-replacement prose, `--proposed-call-shape` is REQUIRED. The shape must be the exact post-fix call as it would appear at the bug site (function name + parenthesized arg list, multi-line accepted — helper collapses whitespace). The helper parses the shape, splits the arg list on top-level commas, and rejects when the same identifier (bare name, dotted member access, or optional-chained `a?.b?.c`) appears more than once — argument duplication signals the default-source belongs at a different layer (wrapper signature / state initialization / use-case default) rather than at the call site. Example call:
 
    ```bash
    .devforge/lib/research_helper set-recommended-approach \
@@ -945,13 +989,13 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 .devforge/lib/research_helper verify
 ```
 
-Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 8 (caller-enumeration gate) is mode-independent — it rejects a report in ANY mode whose `fix_path_helpers` list is empty and that carries no no-shared-callers justification, and separately rejects a report where both are set; see Phase 2.4c for the two remedies and the escape's contradiction rules. Check 8b (cross-layer rule) rejects a bug-mode report where the primary symptom's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers[].file_line` is in the same package as the symptom — at least one helper must trace through a package boundary; see Phase 2.4c Stopping rule. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Check 13 (single-layer recommendation gate) rejects a bug-mode report where all `fix_path_helpers[].file_line` resolve to one package AND `recommended_approach.single_layer_justification` / `cites` are missing or empty — supply both via `set-recommended-approach --single-layer-justification ... --cites '[...]'` (see Phase 3 step 3). Check 13 is suppressed when check 8b applies (presentation-layer symptom + same-package helpers); in that case the single-layer escape path cannot satisfy verify and the only recovery is adding a cross-layer helper. Check 14 (fix-path-helper anchor gate) rejects a bug-mode report where any `fix_path_helpers[]` entry's `file_line` does not anchor to a recorded finding (exact match OR same path within ±5 lines) — see Phase 2.4c Step 1 anchor gate. Check 17 (literal-archaeology gate) rejects a bug-mode report whose `recommended_approach.rationale` OR the linked approach's `description` contains literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) where `<X>` is a recognizable primitive literal AND no `literal_archaeology` row exists for `<X>` at a `findings[].file_line` — recovery: run Phase 2.5b archaeology + `record-literal-archaeology`, then re-run `verify`. Check 18 (argument-duplication shape check) rejects a bug-mode report whose `recommended_approach.proposed_call_shape` contains the same identifier (bare / dotted / optional-chained) more than once in its arg list — argument duplication signals the default-source belongs at a different layer; recovery: escalate the default-source upstream (wrapper signature / state initialization / use-case default) and re-call `set-recommended-approach` with a non-duplicating `--proposed-call-shape`. Shapes that could not be parsed (nested calls, unsupported syntax) are treated as non-duplicating — same fail-soft rule as the setter gate. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
+Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 8 (caller-enumeration gate) is mode-independent — it rejects a report in ANY mode whose `fix_path_helpers` list is empty and that carries no no-shared-callers justification, and separately rejects a report where both are set; see Phase 2.4c for the two remedies and the escape's contradiction rules. Check 8b (cross-layer rule) rejects a report where the primary symptom's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers[].file_line` is in the same package as the symptom — at least one helper must trace through a package boundary; see Phase 2.4c Stopping rule. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Check 13 (single-layer recommendation gate) rejects a report where all `fix_path_helpers[].file_line` resolve to one package AND `recommended_approach.single_layer_justification` / `cites` are missing or empty — supply both via `set-recommended-approach --single-layer-justification ... --cites '[...]'` (see Phase 3 step 3). Check 13 is suppressed when check 8b applies (presentation-layer symptom + same-package helpers); in that case the single-layer escape path cannot satisfy verify and the only recovery is adding a cross-layer helper. Check 14 (fix-path-helper anchor gate) rejects a report where any `fix_path_helpers[]` entry's `file_line` does not anchor to a recorded finding (exact match OR same path within ±5 lines) — see Phase 2.4c Step 1 anchor gate. Check 17 (literal-archaeology gate) rejects a bug-mode report whose `recommended_approach.rationale` OR the linked approach's `description` contains literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) where `<X>` is a recognizable primitive literal AND no `literal_archaeology` row exists for `<X>` at a `findings[].file_line` — recovery: run Phase 2.5b archaeology + `record-literal-archaeology`, then re-run `verify`. Check 18 (argument-duplication shape check) rejects a report whose `recommended_approach.proposed_call_shape` contains the same identifier (bare / dotted / optional-chained) more than once in its arg list — argument duplication signals the default-source belongs at a different layer; recovery: escalate the default-source upstream (wrapper signature / state initialization / use-case default) and re-call `set-recommended-approach` with a non-duplicating `--proposed-call-shape`. Shapes that could not be parsed (nested calls, unsupported syntax) are treated as non-duplicating — same fail-soft rule as the setter gate. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
 
 On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` from scratch (all prior state will be overwritten).
 
 ### Hypothesis-suppression gate
 
-After `verify` exits 0, run the dedicated hypothesis-suppression gate (this is a separate verb from `verify`, not one of its 18 checks):
+After `verify` exits 0, run the dedicated hypothesis-suppression gate (this is a separate verb from `verify`, not one of its 19 checks):
 
 ```bash
 .devforge/lib/research_helper verify-hypothesis-suppression
