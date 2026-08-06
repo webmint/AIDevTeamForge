@@ -118,6 +118,12 @@ def default_report_state() -> dict:
         # Phase 2.4c — helper-API surface enumeration fields.
         "fix_path_helpers": [],
         "inbound_callers": [],
+        # Plan 69 D1/WI-A — per-helper declared caller total (dict: helper_qn
+        # -> int). Populated by declare-caller-total; check 9 requires the
+        # count of inbound_callers rows per helper to EQUAL the declared
+        # total (not merely >=1), closing the "record one caller, stop
+        # early" gap. Empty dict is the valid default (no helpers declared).
+        "caller_totals": {},
         # Plan 67 D1/D2 — the check-8 escape. None until
         # record-no-shared-callers-justification fires; last-write-wins on
         # re-call (mirrors data_flow_chain's scalar last-write-wins

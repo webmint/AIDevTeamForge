@@ -159,6 +159,11 @@ class TestSchemas(unittest.TestCase):
             "probe_scripts",
         ):
             self.assertEqual(rep[arr_field], [], "field {0} default".format(arr_field))
+        for dict_field in (
+            # Plan 69 D1/WI-A — per-helper declared caller total.
+            "caller_totals",
+        ):
+            self.assertEqual(rep[dict_field], {}, "field {0} default".format(dict_field))
         self.assertEqual(
             sorted(rep["symptom_snapshot"].keys()),
             sorted(research_helper.RUBRIC_DIMENSIONS),
@@ -1239,6 +1244,29 @@ def _build_bug_state(devforge):
         "--caller-qn", "ProductsListComponent.sortItems",
         "--file-line", "src/admin/Products.vue:215",  # this is the CALL SITE in admin
     ])
+    # Plan 69 D1/D5 — declare + classify each helper's caller total (checks 9 + 19).
+    _run([
+        "--devforge-dir", str(devforge), "declare-caller-total",
+        "--helper-qn", "ProductsListComponent.sortItems", "--total", "1",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "classify-caller-scope",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--caller-qn", "ProductsListComponent.watchItems",
+        "--surface", "Products list page", "--scope", "in",
+        "--justification", "Same component that owns the sort behavior being fixed.",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "declare-caller-total",
+        "--helper-qn", "SharedProductsHelper.compare", "--total", "1",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "classify-caller-scope",
+        "--helper-qn", "SharedProductsHelper.compare",
+        "--caller-qn", "ProductsListComponent.sortItems",
+        "--surface", "Products list page", "--scope", "in",
+        "--justification", "Only caller of the shared comparator in this change.",
+    ])
 
     # Phase 2.3b: satisfy check 12 (mandatory runner-up framing + ≥1 tagged finding).
     _run([
@@ -2008,6 +2036,346 @@ class TestPhase24cSetters(unittest.TestCase):
             tmp.cleanup()
 
 
+class TestDeclareCallerTotal(unittest.TestCase):
+    """declare-caller-total (plan 69 D1/WI-A sibling setter)."""
+
+    def _fresh_with_helper(self):
+        """Fresh report state with one recorded fix_path_helper."""
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        _run([
+            "--devforge-dir", str(devforge), "record-finding",
+            "--surface", "helper site",
+            "--file-line", "lib/helper.ts:10",
+            "--relevance", "fix-path helper definition",
+        ])
+        _run([
+            "--devforge-dir", str(devforge), "record-fix-path-helper",
+            "--helper-qn", "Helper.method",
+            "--file-line", "lib/helper.ts:10",
+        ])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_declare_caller_total_happy_path(self):
+        tmp, devforge = self._fresh_with_helper()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "declare-caller-total",
+                "--helper-qn", "Helper.method", "--total", "3",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["caller_totals"], {"Helper.method": 3})
+        finally:
+            tmp.cleanup()
+
+    def test_declare_caller_total_rejects_unknown_helper(self):
+        tmp, devforge = self._fresh_with_helper()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "declare-caller-total",
+                "--helper-qn", "Unknown.helper", "--total", "1",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("does not match any recorded fix_path_helpers entry", r.stderr)
+            self.assertIn("record-fix-path-helper", r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep.get("caller_totals"), {})
+        finally:
+            tmp.cleanup()
+
+    def test_declare_caller_total_rejects_total_below_one(self):
+        tmp, devforge = self._fresh_with_helper()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "declare-caller-total",
+                "--helper-qn", "Helper.method", "--total", "0",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--total must be >= 1", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_declare_caller_total_rejects_negative_total(self):
+        tmp, devforge = self._fresh_with_helper()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "declare-caller-total",
+                "--helper-qn", "Helper.method", "--total", "-2",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--total must be >= 1", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_declare_caller_total_rejects_non_integer(self):
+        tmp, devforge = self._fresh_with_helper()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "declare-caller-total",
+                "--helper-qn", "Helper.method", "--total", "two",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+        finally:
+            tmp.cleanup()
+
+    def test_declare_caller_total_redeclare_overwrites(self):
+        tmp, devforge = self._fresh_with_helper()
+        try:
+            r1 = _run([
+                "--devforge-dir", str(devforge), "declare-caller-total",
+                "--helper-qn", "Helper.method", "--total", "2",
+            ])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run([
+                "--devforge-dir", str(devforge), "declare-caller-total",
+                "--helper-qn", "Helper.method", "--total", "5",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["caller_totals"], {"Helper.method": 5})
+        finally:
+            tmp.cleanup()
+
+
+class TestClassifyCallerScope(unittest.TestCase):
+    """classify-caller-scope (plan 69 D5/WI-E sibling setter)."""
+
+    def _fresh_with_caller(self):
+        """Fresh report state with one recorded inbound_callers row."""
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        _run([
+            "--devforge-dir", str(devforge), "record-inbound-caller",
+            "--helper-qn", "Helper.method",
+            "--caller-qn", "Caller.call",
+            "--file-line", "lib/caller.ts:5",
+        ])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_classify_caller_scope_happy_path(self):
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "Admin dashboard", "--scope", "in",
+                "--justification", "Reachable from the admin dashboard button.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            row = rep["inbound_callers"][0]
+            self.assertEqual(row["surface"], "Admin dashboard")
+            self.assertEqual(row["scope"], "in")
+            self.assertEqual(row["justification"], "Reachable from the admin dashboard button.")
+        finally:
+            tmp.cleanup()
+
+    def test_classify_caller_scope_surface_none_is_legal(self):
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "none", "--scope", "out",
+                "--justification", "Background job; not reachable from any UI surface.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["inbound_callers"][0]["surface"], "none")
+            self.assertEqual(rep["inbound_callers"][0]["scope"], "out")
+        finally:
+            tmp.cleanup()
+
+    def test_classify_caller_scope_rejects_unknown_pair(self):
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Unknown.caller",
+                "--surface", "x", "--scope", "in", "--justification", "y",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("no recorded inbound_callers row", r.stderr)
+            self.assertIn("record-inbound-caller", r.stderr)
+            rep = self._read_report(devforge)
+            self.assertNotIn("surface", rep["inbound_callers"][0])
+        finally:
+            tmp.cleanup()
+
+    def test_classify_caller_scope_rejects_bad_scope_value(self):
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "x", "--scope", "sideways", "--justification", "y",
+            ])
+            self.assertNotEqual(r.returncode, 0)
+        finally:
+            tmp.cleanup()
+
+    def test_classify_caller_scope_rejects_empty_surface(self):
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "   ", "--scope", "in", "--justification", "y",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("surface", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_classify_caller_scope_rejects_empty_justification(self):
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "x", "--scope", "in", "--justification", "   ",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("justification", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_classify_caller_scope_reclassify_overwrites(self):
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            r1 = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "Admin dashboard", "--scope", "in",
+                "--justification", "First pass.",
+            ])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "none", "--scope", "out",
+                "--justification", "Re-traced; actually out of scope.",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            rep = self._read_report(devforge)
+            row = rep["inbound_callers"][0]
+            self.assertEqual(row["surface"], "none")
+            self.assertEqual(row["scope"], "out")
+            self.assertEqual(row["justification"], "Re-traced; actually out of scope.")
+            self.assertEqual(len(rep["inbound_callers"]), 1)
+        finally:
+            tmp.cleanup()
+
+    def test_classify_caller_scope_classifies_all_duplicate_rows(self):
+        """record-inbound-caller is append-only/no-dedup — a duplicate
+        (helper_qn, caller_qn) pair recorded twice must have BOTH rows
+        classified by one classify-caller-scope call (python-reviewer
+        fix 2), not just the first, so check 19 can pass without a
+        reset-report escape hatch."""
+        tmp, devforge = self._fresh_with_caller()
+        try:
+            # Record the SAME pair a second time (distinct call-site file_line).
+            r0 = _run([
+                "--devforge-dir", str(devforge), "record-inbound-caller",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--file-line", "lib/caller2.ts:9",
+            ])
+            self.assertEqual(r0.returncode, 0, r0.stderr)
+            rep_before = self._read_report(devforge)
+            self.assertEqual(len(rep_before["inbound_callers"]), 2)
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "Helper.method", "--caller-qn", "Caller.call",
+                "--surface", "Admin dashboard", "--scope", "in",
+                "--justification", "Both call sites are in scope.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["inbound_callers"]), 2)
+            for row in rep["inbound_callers"]:
+                self.assertEqual(row["surface"], "Admin dashboard")
+                self.assertEqual(row["scope"], "in")
+                self.assertEqual(row["justification"], "Both call sites are in scope.")
+            # Check 19 (WI-E) must not flag either row as unclassified.
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("classify-caller-scope", v.stderr)
+        finally:
+            tmp.cleanup()
+
+
+class TestVerifyCheck19(unittest.TestCase):
+    """Check 19 (plan 69 D5/WI-E, new): every inbound_callers row must carry
+    a non-empty surface + scope in {in, out} + non-empty justification."""
+
+    def test_check19_passes_when_all_classified(self):
+        """_build_bug_state happy path: both rows are classified by the fixture."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertNotIn("classify-caller-scope", r.stderr)
+
+    def test_check19_fails_when_row_unclassified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            # Drop classification fields from one row (simulates a row recorded
+            # via record-inbound-caller but never classified).
+            data["inbound_callers"][0].pop("surface", None)
+            data["inbound_callers"][0].pop("scope", None)
+            data["inbound_callers"][0].pop("justification", None)
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("classify-caller-scope", r.stderr)
+            self.assertIn("surface", r.stderr)
+            self.assertIn("scope", r.stderr)
+            self.assertIn("justification", r.stderr)
+
+    def test_check19_fails_when_scope_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["inbound_callers"][0]["scope"] = "sideways"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("classify-caller-scope", r.stderr)
+
+    def test_check19_vacuous_when_no_inbound_callers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Purely additive change; no shared callers.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("classify-caller-scope", r.stderr)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
 class TestRecordNoSharedCallersJustification(unittest.TestCase):
     """record-no-shared-callers-justification — plan 67's check-8 escape."""
 
@@ -2177,6 +2545,20 @@ class TestVerifyCheck8(unittest.TestCase):
                 "--caller-qn", "SomeCaller.call",
                 "--file-line", "src/caller.ts:10",
             ])
+            # Plan 69 D1/D5 — declare + classify (checks 9 + 19).
+            _run([
+                "--devforge-dir", str(devforge),
+                "declare-caller-total",
+                "--helper-qn", "SomeHelper.doThing", "--total", "1",
+            ])
+            _run([
+                "--devforge-dir", str(devforge),
+                "classify-caller-scope",
+                "--helper-qn", "SomeHelper.doThing",
+                "--caller-qn", "SomeCaller.call",
+                "--surface", "none", "--scope", "in",
+                "--justification", "Only caller of this helper in this change.",
+            ])
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
 
@@ -2295,50 +2677,114 @@ class TestVerifyCheck8(unittest.TestCase):
 
 
 class TestVerifyCheck9(unittest.TestCase):
-    """Check 9: every enumerated helper needs at least one inbound caller row."""
+    """Check 9 (plan 69 D1/WI-A upgrade): every enumerated helper needs a
+    declared caller total (declare-caller-total), and the recorded
+    inbound_callers row count for that helper must EQUAL the declared
+    total — not merely >=1."""
 
-    def test_check9_fails_when_helper_missing_caller(self):
+    def _base_single_layer_state(self, devforge):
+        """_build_bug_state + a single-layer (lib/blocs) helper replacing
+        fix_path_helpers, with the single-layer + check-14-anchor scaffolding
+        each test in this class needs regardless of the caller_totals/
+        inbound_callers shape under test."""
+        _build_bug_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+        data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+        # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
+        data.setdefault("findings", []).append({
+            "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+            "relevance": "cross-layer helper candidate", "framing": "primary",
+        })
+        # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
+        data["consumer_chain"] = [
+            {"value": "loadData", "consumer_qn": "View.build",
+             "file_line": "src/v.dart:5", "role": "caller"}
+        ]
+        if data.get("recommended_approach"):
+            data["recommended_approach"]["single_layer_justification"] = (
+                "Bug is local to the BLoC layer; no cross-layer helpers involved."
+            )
+            data["recommended_approach"]["cites"] = ["View.build"]
+        return data, rep_path
+
+    def test_check9_fails_missing_declaration(self):
+        """No declare-caller-total call at all → violation names the remedy verb."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
-            _build_bug_state(devforge)
-            # Add helper without a corresponding caller.
-            rep_path = devforge / "research-report.json"
-            data = json.loads(rep_path.read_text())
-            data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data, rep_path = self._base_single_layer_state(devforge)
             data["inbound_callers"] = []
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 2)
             self.assertIn("inbound_callers", r.stderr)
             self.assertIn("Service.loadData", r.stderr)
+            self.assertIn("declare-caller-total", r.stderr)
 
-    def test_check9_passes_when_all_helpers_have_callers(self):
+    def test_check9_passes_when_totals_match(self):
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
-            _build_bug_state(devforge)
-            rep_path = devforge / "research-report.json"
-            data = json.loads(rep_path.read_text())
-            data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data, rep_path = self._base_single_layer_state(devforge)
+            data["caller_totals"] = {"Service.loadData": 1}
             data["inbound_callers"] = [
-                {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+                {"helper_qn": "Service.loadData", "caller_qn": "View.build",
+                 "file_line": "src/v.dart:5", "surface": "Order view",
+                 "scope": "in", "justification": "Only caller in this change."}
             ]
-            # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
-            data.setdefault("findings", []).append({
-                "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                "relevance": "cross-layer helper candidate", "framing": "primary",
-            })
-            # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
-            data["consumer_chain"] = [
-                {"value": "loadData", "consumer_qn": "View.build",
-                 "file_line": "src/v.dart:5", "role": "caller"}
-            ]
-            if data.get("recommended_approach"):
-                data["recommended_approach"]["single_layer_justification"] = (
-                    "Bug is local to the BLoC layer; no cross-layer helpers involved."
-                )
-                data["recommended_approach"]["cites"] = ["View.build"]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_check9_fails_under_record(self):
+        """Declared total 2, only 1 row recorded → violation states both numbers."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            data, rep_path = self._base_single_layer_state(devforge)
+            data["caller_totals"] = {"Service.loadData": 2}
+            data["inbound_callers"] = [
+                {"helper_qn": "Service.loadData", "caller_qn": "View.build",
+                 "file_line": "src/v.dart:5", "surface": "Order view",
+                 "scope": "in", "justification": "One of two callers."}
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("Service.loadData", r.stderr)
+            self.assertIn("has 1 recorded row(s) but declared total is 2", r.stderr)
+
+    def test_check9_fails_over_record(self):
+        """Declared total 1, 2 rows recorded → violation states both numbers."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            data, rep_path = self._base_single_layer_state(devforge)
+            data["caller_totals"] = {"Service.loadData": 1}
+            data["inbound_callers"] = [
+                {"helper_qn": "Service.loadData", "caller_qn": "View.build",
+                 "file_line": "src/v.dart:5", "surface": "Order view",
+                 "scope": "in", "justification": "First caller."},
+                {"helper_qn": "Service.loadData", "caller_qn": "Other.caller",
+                 "file_line": "src/o.dart:1", "surface": "none",
+                 "scope": "in", "justification": "Second caller not in declared total."},
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("Service.loadData", r.stderr)
+            self.assertIn("has 2 recorded row(s) but declared total is 1", r.stderr)
+
+    def test_check9_vacuous_when_fix_path_helpers_empty(self):
+        """No fix_path_helpers → check 9 does not fire (the check-8 escape path)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-no-shared-callers-justification",
+                "--justification", "Purely additive change; no shared callers.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("declare-caller-total", r.stderr)
             self.assertEqual(r.returncode, 0, r.stderr)
 
 
@@ -2349,10 +2795,12 @@ class TestVerifyCheck10(unittest.TestCase):
         _build_bug_state(devforge)
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
-        # Satisfy checks 8 + 9.
+        # Satisfy checks 8 + 9 + 19.
         data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+        data["caller_totals"] = {"Service.loadData": 1}
         data["inbound_callers"] = [
-            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5",
+             "surface": "Order view", "scope": "in", "justification": "Only caller in this change."}
         ]
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
@@ -2421,10 +2869,12 @@ class TestVerifyCheck10(unittest.TestCase):
             _build_bug_state(devforge)
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            # Satisfy checks 8 + 9.
+            # Satisfy checks 8 + 9 + 19.
             data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["caller_totals"] = {"Service.loadData": 1}
             data["inbound_callers"] = [
-                {"helper_qn": "Service.loadData", "caller_qn": "V.build", "file_line": "src/v.dart:5"}
+                {"helper_qn": "Service.loadData", "caller_qn": "V.build", "file_line": "src/v.dart:5",
+                 "surface": "Order view", "scope": "in", "justification": "Only caller in this change."}
             ]
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
@@ -2459,10 +2909,12 @@ class TestVerifyCheck11(unittest.TestCase):
         _build_bug_state(devforge)
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
-        # Satisfy checks 8 + 9.
+        # Satisfy checks 8 + 9 + 19.
         data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+        data["caller_totals"] = {"Service.loadData": 1}
         data["inbound_callers"] = [
-            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5",
+             "surface": "Order view", "scope": "in", "justification": "Only caller in this change."}
         ]
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
@@ -2525,10 +2977,12 @@ class TestVerifyCheck11(unittest.TestCase):
             _build_bug_state(devforge)
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            # Satisfy checks 8 + 9.
+            # Satisfy checks 8 + 9 + 19.
             data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["caller_totals"] = {"Service.loadData": 1}
             data["inbound_callers"] = [
-                {"helper_qn": "Service.loadData", "caller_qn": "V.build", "file_line": "s:1"}
+                {"helper_qn": "Service.loadData", "caller_qn": "V.build", "file_line": "s:1",
+                 "surface": "Order view", "scope": "in", "justification": "Only caller in this change."}
             ]
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
@@ -2576,6 +3030,21 @@ class TestVerifyHappyPathWithPhase24c(unittest.TestCase):
                 "--helper-qn", "Service.loadData",
                 "--caller-qn", "OrderViewWidget.build",
                 "--file-line", "lib/order_view.dart:88",
+            ])
+            # Satisfy check 19: classify the row check 9's record-inbound-caller
+            # call above just recorded (plan 69 D5/WI-E). NOTE: the preceding
+            # record-fix-path-helper call omits --file-line (a pre-existing
+            # test quirk unrelated to this change) so it fails argparse and
+            # "Service.loadData" never actually lands in fix_path_helpers --
+            # this classify-caller-scope call still succeeds because it keys
+            # only on a matching inbound_callers row, which DID get recorded.
+            _run([
+                "--devforge-dir", str(devforge),
+                "classify-caller-scope",
+                "--helper-qn", "Service.loadData",
+                "--caller-qn", "OrderViewWidget.build",
+                "--surface", "Order view", "--scope", "in",
+                "--justification", "Only caller in this change.",
             ])
             # Set up consumer_chain (required before invariant classification).
             _run([
@@ -2780,10 +3249,12 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
         _build_bug_state(devforge)
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
-        # Satisfy checks 8 + 9.
+        # Satisfy checks 8 + 9 + 19.
         data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+        data["caller_totals"] = {"Service.loadData": 1}
         data["inbound_callers"] = [
-            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5"}
+            {"helper_qn": "Service.loadData", "caller_qn": "View.build", "file_line": "src/v.dart:5",
+             "surface": "Order view", "scope": "in", "justification": "Only caller in this change."}
         ]
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
@@ -2837,11 +3308,13 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
             _build_bug_state(devforge)
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            # Satisfy checks 8 + 9.
+            # Satisfy checks 8 + 9 + 19.
             data["fix_path_helpers"] = [{"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"}]
+            data["caller_totals"] = {"Service.loadData": 1}
             data["inbound_callers"] = [
                 {"helper_qn": "Service.loadData", "caller_qn": "View.build",
-                 "file_line": "src/v.dart:5"}
+                 "file_line": "src/v.dart:5", "surface": "Order view", "scope": "in",
+                 "justification": "Only caller in this change."}
             ]
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
@@ -3537,6 +4010,31 @@ def _build_bug_state_same_package(devforge):
         "--caller-qn", "ProductsListComponent.sortItems",
         "--file-line", "src/admin/Products.vue:205",
     ])
+    # Plan 69 D1/D5 — declare + classify each helper's caller total (checks 9 + 19).
+    # (This fixture is used exclusively for check-8b-fires tests, so satisfying
+    # 9/19 keeps 8b's violation the only one under test.)
+    _run([
+        "--devforge-dir", str(devforge), "declare-caller-total",
+        "--helper-qn", "ProductsListComponent.sortItems", "--total", "1",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "classify-caller-scope",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--caller-qn", "ProductsListComponent.watchItems",
+        "--surface", "Products list page", "--scope", "in",
+        "--justification", "Same component that owns the sort behavior being fixed.",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "declare-caller-total",
+        "--helper-qn", "ProductsAdminHelper.doSort", "--total", "1",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "classify-caller-scope",
+        "--helper-qn", "ProductsAdminHelper.doSort",
+        "--caller-qn", "ProductsListComponent.sortItems",
+        "--surface", "Products list page", "--scope", "in",
+        "--justification", "Only caller of the admin helper in this change.",
+    ])
 
     # Mandatory runner-up framing (check 12a).
     _run([
@@ -3585,11 +4083,15 @@ class TestVerifyCheck8b(unittest.TestCase):
             # but domain symptom means 8b is skipped.
             # Check 13 still fires for single-layer, so add justification + cites.
             data["fix_path_helpers"] = [{"qn": "CoreUtil.compare", "file_line": "foo/utils.ts:10"}]
+            data["caller_totals"] = {"CoreUtil.compare": 1}
             data["inbound_callers"] = [
                 {
                     "helper_qn": "CoreUtil.compare",
                     "caller_qn": "CoreUtil.sort",
                     "file_line": "foo/sort.ts:5",
+                    "surface": "none",
+                    "scope": "in",
+                    "justification": "Only caller of CoreUtil.compare in this change.",
                 },
             ]
             # Provide consumer_chain to anchor cites for check 13.
@@ -3641,6 +4143,25 @@ class TestVerifyCheck8b(unittest.TestCase):
             # 8b must not contribute a violation — only 12b (no runner-up finding)
             # might fire; confirm 8b's specific message is absent.
             self.assertNotIn("cross-layer rule", r.stderr)
+
+    def test_verify_check8b_fires_in_enhancement_mode(self):
+        """Plan 69 D6/WI-F: check 8b is now mode-independent — the exact
+        same-package fixture that trips it in bug mode also trips it when
+        report.mode/memo.mode are overridden to enhancement (previously
+        bug-mode only, would have passed)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state_same_package(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["mode"] = "enhancement"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            memo_path = devforge / "research-state.json"
+            memo = json.loads(memo_path.read_text())
+            memo["mode"] = "enhancement"
+            memo_path.write_text(json.dumps(memo, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertIn("cross-layer rule", r.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -4039,6 +4560,18 @@ def _build_single_layer_bug_state(devforge):
         "--caller-qn", "ProductsListComponent.watchItems",
         "--file-line", "src/admin/Products.vue:201",
     ])
+    # Plan 69 D1/D5 — declare + classify the helper's caller total (checks 9 + 19).
+    _run([
+        "--devforge-dir", str(devforge), "declare-caller-total",
+        "--helper-qn", "ProductsListComponent.sortItems", "--total", "1",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "classify-caller-scope",
+        "--helper-qn", "ProductsListComponent.sortItems",
+        "--caller-qn", "ProductsListComponent.watchItems",
+        "--surface", "Products list page", "--scope", "in",
+        "--justification", "Same component that owns the sort behavior being fixed.",
+    ])
 
     # Mandatory runner-up framing.
     _run([
@@ -4173,6 +4706,18 @@ def _build_domain_single_layer_bug_state(devforge):
         "--helper-qn", "Service.loadData",
         "--caller-qn", "Service.handleRefresh",
         "--file-line", "lib/blocs/order_bloc.dart:5",
+    ])
+    # Plan 69 D1/D5 — declare + classify the helper's caller total (checks 9 + 19).
+    _run([
+        "--devforge-dir", str(devforge), "declare-caller-total",
+        "--helper-qn", "Service.loadData", "--total", "1",
+    ])
+    _run([
+        "--devforge-dir", str(devforge), "classify-caller-scope",
+        "--helper-qn", "Service.loadData",
+        "--caller-qn", "Service.handleRefresh",
+        "--surface", "none", "--scope", "in",
+        "--justification", "Internal BLoC caller that drives the fetch/refresh path.",
     ])
 
     _run([
@@ -4542,6 +5087,152 @@ class TestVerifyCheck13(unittest.TestCase):
             self.assertIn("check 13", r.stderr)
             self.assertIn("single_layer_justification", r.stderr)
 
+    def test_verify_check13_fires_in_enhancement_mode(self):
+        """Plan 69 D6/WI-F: check 13 is now mode-independent — the exact
+        single-layer/no-justification fixture that trips it in bug mode
+        also trips it with mode overridden to enhancement (previously
+        bug-mode only, would have passed)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["mode"] = "enhancement"
+            data["findings"] = [
+                {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
+                 "relevance": "primary symptom site", "framing": "primary"},
+                {"surface": "race probe", "file_line": "lib/blocs/order_bloc.dart:99",
+                 "relevance": "runner-up", "framing": "runner-up"},
+            ]
+            data["fix_path_helpers"] = [
+                {"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"},
+            ]
+            data["caller_totals"] = {"Service.loadData": 1}
+            data["inbound_callers"] = [
+                {"helper_qn": "Service.loadData", "caller_qn": "Service.handleRefresh",
+                 "file_line": "lib/blocs/order_bloc.dart:5",
+                 "surface": "none", "scope": "in", "justification": "Internal caller."},
+            ]
+            if data.get("recommended_approach"):
+                data["recommended_approach"].pop("single_layer_justification", None)
+                data["recommended_approach"].pop("cites", None)
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            memo_path = devforge / "research-state.json"
+            memo = json.loads(memo_path.read_text())
+            memo["mode"] = "enhancement"
+            memo_path.write_text(json.dumps(memo, indent=2) + "\n")
+            r = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertIn("check 13", r.stderr)
+            self.assertIn("single_layer_justification", r.stderr)
+
+    def test_set_recommended_approach_stores_single_layer_justification_in_enhancement_mode(self):
+        """Plan 69 python-reviewer fix 1: STORAGE of single_layer_justification
+        + cites is mode-independent (the HARD-REQUIRE rejection stays
+        bug-mode-only per plan 67 D5, but voluntarily-supplied fields are
+        always validated + stored) — real setter round-trip in enhancement
+        mode; verify no longer flags check 13."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            # Flip to enhancement mode post-build (the fixture forces bug
+            # via detect-mode --override bug).
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["mode"] = "enhancement"
+            data["verdict"] = "Feasible"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            memo_path = devforge / "research-state.json"
+            memo = json.loads(memo_path.read_text())
+            memo["mode"] = "enhancement"
+            memo_path.write_text(json.dumps(memo, indent=2) + "\n")
+
+            _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "fetchId", "--consumer-qn", "FetchConsumer.handleResult",
+                "--file-line", "lib/blocs/order_bloc.dart:80", "--role", "drives sink emission",
+            ])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Enhancement change is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = json.loads((devforge / "research-report.json").read_text())
+            rec = rep["recommended_approach"]
+            self.assertEqual(
+                rec.get("single_layer_justification"),
+                "Enhancement change is local to the BLoC layer.",
+            )
+            self.assertEqual(rec.get("cites"), ["FetchConsumer.handleResult"])
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 13", v.stderr)
+
+    def test_verify_check13_remedy_works_in_enhancement_mode(self):
+        """Plan 69 python-reviewer fix 1: the check-13 remedy message
+        (set-recommended-approach --single-layer-justification ...) must
+        actually be followable in enhancement mode. Before this fix the
+        setter's storage was nested under `if bug_mode:`, so following the
+        remedy in enhancement mode silently dropped the fields — a
+        permanent dead-end (reviewer reproduced live)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_domain_single_layer_bug_state(devforge)
+            # Flip to enhancement BEFORE ever calling set-recommended-approach
+            # (bug mode would hard-reject a justification-less call, so the
+            # 'before remedy' recommended_approach must be seeded post-flip).
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["mode"] = "enhancement"
+            data["verdict"] = "Feasible"
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            memo_path = devforge / "research-state.json"
+            memo = json.loads(memo_path.read_text())
+            memo["mode"] = "enhancement"
+            memo_path.write_text(json.dumps(memo, indent=2) + "\n")
+
+            # Set recommended_approach WITHOUT single-layer fields — enhancement
+            # mode accepts this (the HARD-REQUIRE is bug-mode-only).
+            r0 = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-not-covered", json.dumps([]),
+            ])
+            self.assertEqual(r0.returncode, 0, r0.stderr)
+
+            # Before the remedy: check 13 fires (single-layer, no justification).
+            r1 = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertIn("check 13", r1.stderr)
+            self.assertIn("single_layer_justification", r1.stderr)
+
+            # Follow the named remedy for real.
+            _run([
+                "--devforge-dir", str(devforge), "record-consumer-chain",
+                "--value", "fetchId", "--consumer-qn", "FetchConsumer.handleResult",
+                "--file-line", "lib/blocs/order_bloc.dart:80", "--role", "drives sink emission",
+            ])
+            r2 = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: fetch-id guard",
+                "--rationale", "Fetch-id guard is the minimal fix",
+                "--hypotheses-addressed", json.dumps(["last-fetch-wins racing in loadData"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--single-layer-justification", "Enhancement change is local to the BLoC layer.",
+                "--cites", json.dumps(["FetchConsumer.handleResult"]),
+                "--proposed-call-shape", "loadData(quoteId, fetchId)",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            # After the remedy: check 13 no longer fires.
+            r3 = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 13", r3.stderr)
+
     def test_verify_check13_fails_single_layer_no_cites(self):
         """Single-layer state (non-presentation) with justification but no cites → check 13 violation (cites)."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -4574,8 +5265,15 @@ class TestVerifyCheck13(unittest.TestCase):
             self.assertIn("check 13", r.stderr)
             self.assertIn("cites", r.stderr)
 
-    def test_verify_check13_skipped_for_enhancement_mode(self):
-        """Enhancement mode: check 13 never fires."""
+    def test_verify_check13_skipped_when_no_fix_path_helpers_in_enhancement_mode(self):
+        """Check 13 requires fix_path_helpers non-empty to fire at all (the
+        empty-list vacuity all its callers share, per check 13's own `and
+        fix_path_helpers` condition) — NOT mode. Check 13 is mode-
+        independent since plan 69 D6/WI-F; this passes only because
+        _build_enhancement_state's default fixture leaves fix_path_helpers
+        empty, not because the mode is enhancement (see
+        test_verify_check13_fires_in_enhancement_mode for the case where
+        fix_path_helpers IS populated in enhancement mode)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_enhancement_state(devforge)
@@ -5043,7 +5741,8 @@ class TestVerifyCheck14(unittest.TestCase):
     """Check 14: every fix_path_helpers[].file_line must anchor to a finding.
 
     Catches direct state mutation that bypassed the record-fix-path-helper
-    anchor gate setter. Gated on bug mode.
+    anchor gate setter. Mode-independent (plan 69 D6/WI-F — previously
+    bug-mode only).
     """
 
     def test_check14_passes_when_all_helpers_anchored(self):
@@ -5093,31 +5792,38 @@ class TestVerifyCheck14(unittest.TestCase):
                 "qn": "TolerantHelper.method",
                 "file_line": "pkg-shared/sort.ts:14",
             })
+            data.setdefault("caller_totals", {})["TolerantHelper.method"] = 1
             data.setdefault("inbound_callers", []).append({
                 "helper_qn": "TolerantHelper.method",
                 "caller_qn": "SomeCaller.call",
                 "file_line": "src/admin/Products.vue:201",
+                "surface": "none",
+                "scope": "in",
+                "justification": "Only caller of TolerantHelper.method in this change.",
             })
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("check 14", r.stderr)
 
-    def test_check14_enhancement_mode_skipped(self):
-        """Enhancement mode: check 14 does not fire even with unanchored helpers."""
+    def test_check14_fires_in_enhancement_mode(self):
+        """Plan 69 D6/WI-F: check 14 is now mode-independent — an unanchored
+        helper trips it in enhancement mode too (previously bug-mode only)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_enhancement_state(devforge)
             rep_path = devforge / "research-report.json"
             data = json.loads(rep_path.read_text())
-            # Insert helpers with no matching findings (enhancement has no helpers by default).
+            # Insert a helper with no matching finding (enhancement has no
+            # helpers by default).
             data["fix_path_helpers"] = [{"qn": "SomeHelper.method", "file_line": "novel/path.ts:1"}]
             data["inbound_callers"] = [{"helper_qn": "SomeHelper.method",
                                         "caller_qn": "C.m", "file_line": "novel/path.ts:1"}]
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
             r = _run(["--devforge-dir", str(devforge), "verify"])
-            # Check 14 is bug-mode-gated; enhancement mode → check 14 cannot fire.
-            self.assertNotIn("check 14", r.stderr)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 14", r.stderr)
+            self.assertIn("novel/path.ts:1", r.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -6643,8 +7349,11 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertNotIn("could not be fully parsed", r.stderr)
 
-    def test_set_recommended_approach_skips_shape_gate_in_enhancement_mode(self):
-        """Enhancement mode + literal-replacement rationale → Patch 9 gate is bug-mode only; exit 0."""
+    def test_set_recommended_approach_requires_shape_in_enhancement_mode(self):
+        """Plan 69 D6/WI-F: Patch 9's proposed-call-shape gate is now
+        mode-independent — enhancement mode + literal-replacement rationale
+        WITHOUT --proposed-call-shape now rejects (previously bug-mode only,
+        exit 0)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             _build_enhancement_state(devforge)
@@ -6669,7 +7378,38 @@ class TestSetRecommendedApproachProposedCallShape(unittest.TestCase):
                 "--rationale", "replace false with isExternalUser.value",
                 "--hypotheses-addressed", json.dumps(["export speed"]),
                 "--hypotheses-not-covered", json.dumps([]),
-                # --proposed-call-shape NOT provided — enhancement mode, gate should not fire
+                # --proposed-call-shape deliberately omitted
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("--proposed-call-shape is required", r.stderr)
+
+    def test_set_recommended_approach_accepts_shape_in_enhancement_mode(self):
+        """Same enhancement-mode literal-replacement trigger, but WITH a
+        non-duplicating --proposed-call-shape supplied → exit 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_enhancement_state(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["approaches"] = [
+                {
+                    "name": "Option A: Export speed boost",
+                    "description": "replace false with isExternalUser.value",
+                    "addresses_hypotheses": ["export speed"],
+                    "does_not_cover": [],
+                    "pros": [],
+                    "cons": [],
+                    "complexity": "Low",
+                }
+            ]
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            r = _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Option A: Export speed boost",
+                "--rationale", "replace false with isExternalUser.value",
+                "--hypotheses-addressed", json.dumps(["export speed"]),
+                "--hypotheses-not-covered", json.dumps([]),
+                "--proposed-call-shape", "exportJob(userId, includeArchived)",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
 
@@ -6747,8 +7487,9 @@ class TestVerifyCheck18(unittest.TestCase):
             r = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertNotIn("check 18", r.stderr)
 
-    def test_verify_check_18_silent_in_enhancement_mode(self):
-        """Enhancement mode + duplicating shape → check 18 NOT fired (bug-mode only)."""
+    def test_verify_check_18_fires_in_enhancement_mode(self):
+        """Plan 69 D6/WI-F: check 18 is now mode-independent — enhancement
+        mode + duplicating shape now fires (previously bug-mode only)."""
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
             # Use _build_enhancement_state so BOTH memo and report are in enhancement mode.
@@ -6771,12 +7512,12 @@ class TestVerifyCheck18(unittest.TestCase):
                 "rationale": "apply fix",
                 "hypotheses_addressed": ["export speed"],
                 "hypotheses_not_covered": [],
-                "proposed_call_shape": "f(x, x)",  # duplicating — but enhancement mode, gate must not fire
+                "proposed_call_shape": "f(x, x)",  # duplicating — mode-independent, gate must fire
             }
             rep_path.write_text(json.dumps(data, indent=2) + "\n")
-            # Enhancement mode — check 18 must not fire.
             r = _run(["--devforge-dir", str(devforge), "verify"])
-            self.assertNotIn("check 18", r.stderr)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 18", r.stderr)
 
 
 class TestRenderPatch9(unittest.TestCase):
@@ -7728,6 +8469,63 @@ class TestFinalizeHandoff(unittest.TestCase):
                 ],
             )
             self.assertIsNone(ce["no_shared_callers_justification"])
+
+    # -------------------------------------------------------------------
+    # Plan 69 D5/WI-E — per-caller classify-caller-scope handoff carry.
+    # -------------------------------------------------------------------
+
+    def test_finalize_handoff_carries_caller_classification_verbatim(self):
+        """A classify-caller-scope call on the recorded (config.load,
+        main.startup) pair rides finalize-handoff into the emitted
+        inbound_callers row's surface/scope/justification verbatim.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-caller-scope",
+                "--helper-qn", "config.load", "--caller-qn", "main.startup",
+                "--surface", "Startup sequence", "--scope", "in",
+                "--justification", "main.startup is the only caller; always in scope.",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            ce = data["plan_seeds"]["caller_enumeration"]
+            self.assertEqual(
+                ce["inbound_callers"],
+                [
+                    {
+                        "helper_qn": "config.load",
+                        "caller_qn": "main.startup",
+                        "file_line": "services/api/main.py:15",
+                        "surface": "Startup sequence",
+                        "scope": "in",
+                        "justification": "main.startup is the only caller; always in scope.",
+                    },
+                ],
+            )
+
+    def test_finalize_handoff_unclassified_caller_defaults_classification_fields_empty(self):
+        """A recorded-but-never-classified inbound_callers row (Step 2b
+        skipped) still carries surface/scope/justification -- as "" (the
+        unclassified-legacy-row default), never absent, never fabricated.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            # Deliberately skip classify-caller-scope.
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            ce = data["plan_seeds"]["caller_enumeration"]
+            row = ce["inbound_callers"][0]
+            self.assertEqual(row["surface"], "")
+            self.assertEqual(row["scope"], "")
+            self.assertEqual(row["justification"], "")
 
     def test_finalize_handoff_carries_no_shared_callers_justification(self):
         """The check-8 escape path (record-no-shared-callers-justification

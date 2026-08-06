@@ -60,6 +60,8 @@ from ._cmds_phase2 import (
     cmd_set_verdict,
 )
 from ._cmds_dataflow import (
+    cmd_classify_caller_scope,
+    cmd_declare_caller_total,
     cmd_record_consumer_chain,
     cmd_record_data_flow_chain,
     cmd_record_dead_sibling,
@@ -526,12 +528,13 @@ def _register_subcommands(subparsers) -> None:
         default=None,
         dest="proposed_call_shape",
         help=(
-            "Exact post-fix call as it would appear at the bug site. "
-            "REQUIRED when bug mode AND (--single-layer-justification is set "
-            "OR --rationale contains literal-replacement prose). Helper checks "
-            "for argument duplication (same identifier appearing >1 time) — "
-            "duplication signals the default-source belongs at a different layer "
-            "(wrapper signature / state-init / use-case default) and rejects."
+            "Exact post-fix call as it would appear at the fix site. "
+            "REQUIRED when --single-layer-justification is set OR --rationale "
+            "contains literal-replacement prose (mode-independent -- plan 69 "
+            "D6/WI-F). Helper checks for argument duplication (same identifier "
+            "appearing >1 time) — duplication signals the default-source "
+            "belongs at a different layer (wrapper signature / state-init / "
+            "use-case default) and rejects."
         ),
     )
     sp.set_defaults(func=cmd_set_recommended_approach)
@@ -655,6 +658,74 @@ def _register_subcommands(subparsers) -> None:
     sp.add_argument("--caller-qn", required=True, dest="caller_qn")
     sp.add_argument("--file-line", required=True, dest="file_line")
     sp.set_defaults(func=cmd_record_inbound_caller)
+
+    sp = subparsers.add_parser(
+        "declare-caller-total",
+        help=(
+            "Declare the trace_path row count for a fix-path helper "
+            "(plan 69 D1/WI-A). Check 9 requires the recorded "
+            "inbound_callers row count to equal this declared total."
+        ),
+    )
+    sp.add_argument(
+        "--helper-qn",
+        required=True,
+        dest="helper_qn",
+        help="Must match an existing fix_path_helpers[].qn entry.",
+    )
+    sp.add_argument(
+        "--total",
+        required=True,
+        type=int,
+        help=(
+            "Integer >= 1. Counting rule (must match Phase 2.4c Step 2's "
+            "prose): total = the number of inbound caller rows returned "
+            "by trace_path(<helper-qn>, mode=calls, direction=inbound) at "
+            "depth 1, INCLUDING the symptom site's own function when it "
+            "appears as a caller."
+        ),
+    )
+    sp.set_defaults(func=cmd_declare_caller_total)
+
+    sp = subparsers.add_parser(
+        "classify-caller-scope",
+        help=(
+            "Classify a recorded inbound_callers row with its user-facing "
+            "surface + in/out scope + justification (plan 69 D5/WI-E). "
+            "Append-then-classify: the (helper_qn, caller_qn) pair must "
+            "already be recorded via record-inbound-caller."
+        ),
+    )
+    sp.add_argument(
+        "--helper-qn", required=True, dest="helper_qn",
+        help="Must match an existing inbound_callers[].helper_qn.",
+    )
+    sp.add_argument(
+        "--caller-qn", required=True, dest="caller_qn",
+        help="Must match an existing inbound_callers[].caller_qn for the same row.",
+    )
+    sp.add_argument(
+        "--surface",
+        required=True,
+        help=(
+            "User-facing entry point (component/route/CLI command) this "
+            "caller is reachable from, traced UP from the caller. The "
+            "literal 'none' is legal for a caller with no user-facing "
+            "surface (e.g. a background job)."
+        ),
+    )
+    sp.add_argument(
+        "--scope",
+        required=True,
+        choices=("in", "out"),
+        help="Whether this caller is in-scope (affected) or out-of-scope for the change.",
+    )
+    sp.add_argument(
+        "--justification",
+        required=True,
+        help="Prose explaining why this caller is in/out of scope for the change.",
+    )
+    sp.set_defaults(func=cmd_classify_caller_scope)
 
     sp = subparsers.add_parser(
         "record-dead-sibling",

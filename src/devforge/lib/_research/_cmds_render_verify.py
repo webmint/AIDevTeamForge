@@ -1,7 +1,7 @@
 """Render + verify command handlers.
 
 cmd_render emits the report markdown via _render_report_md. cmd_verify
-runs the 18-check cross-state validator. Each check enumerated in the
+runs the 19-check cross-state validator. Each check enumerated in the
 cmd_verify docstring; violations accumulate then emit to stderr.
 cmd_verify_hypothesis_suppression is a dedicated gate that ensures an
 unverified suspected-cause hypothesis (probe tier 2 or 3, or feasibility
@@ -110,51 +110,75 @@ def cmd_verify(args: argparse.Namespace) -> int:
          justification are set (a recorded helper implies a shared caller
          was found, which contradicts a zero-shared-callers claim) —
          catches direct state mutation bypassing the setter's own guard.
-      8b. Bug mode + symptom is presentation-layer + all fix_path_helpers
-          defined in same package → cross-layer trace required. Package
-          derived from fix_path_helpers[].file_line (helper definition),
-          NOT from inbound_callers call-sites. Check 13 is subordinate:
-          when 8b fires, the single-layer-justification path cannot
-          satisfy verify, so check 13 is suppressed to give the LLM a
-          single actionable error.
-      9. Every fix_path_helper has at least one inbound_callers row.
+      8b. Symptom is presentation-layer + all fix_path_helpers defined in
+          same package → cross-layer trace required. Package derived from
+          fix_path_helpers[].file_line (helper definition), NOT from
+          inbound_callers call-sites. Mode-independent (plan 69 D6/WI-F —
+          previously bug-mode only). Check 13 is subordinate: when 8b
+          fires, the single-layer-justification path cannot satisfy
+          verify, so check 13 is suppressed to give the LLM a single
+          actionable error.
+      9. Every fix_path_helper must have a declared caller total (via
+         declare-caller-total) AND its recorded inbound_callers row count
+         must EQUAL that declared total — not merely >=1 (plan 69 D1/WI-A;
+         upgraded from a bare-floor check that let one recorded caller
+         pass verify without enumerating the rest).
      10. If value_semantics has an invariant AND dead_siblings is non-empty,
          at least one approach mentions the signature change or dead-sibling QN.
      11. If value_semantics has an invariant, recommended_approach.rationale
          cites a consumer_chain entry, invariant evidence, or dead-sibling QN.
      12. If runner_up_framing is set, at least one finding must be tagged
          framing=runner-up (Phase 2.4 must probe the runner-up frame).
-     13. Cross-layer recommendation enforcement: when bug mode + fix_path_helpers
-         all resolve to the same package (single-layer), recommended_approach
+     13. Cross-layer recommendation enforcement: when fix_path_helpers all
+         resolve to the same package (single-layer), recommended_approach
          must carry single_layer_justification (non-empty) and cites (non-empty).
          Catches out-of-order setter calls where recommended_approach was set
-         before fix_path_helpers collapsed to single-layer. Only fires when
-         check 8b does NOT apply (i.e., symptom is NOT presentation-layer);
-         for presentation-layer symptoms, check 8b is the blocking gate and
-         the single-layer escape path is structurally unavailable.
+         before fix_path_helpers collapsed to single-layer. Mode-independent
+         (plan 69 D6/WI-F — widened together with check 8b; they are one
+         mechanism). Only fires when check 8b does NOT apply (i.e., symptom
+         is NOT presentation-layer); for presentation-layer symptoms, check
+         8b is the blocking gate and the single-layer escape path is
+         structurally unavailable.
      14. Anchor gate mirror (verify-time): every fix_path_helpers[].file_line
          must anchor to a finding (exact match OR same path within ±5 lines).
          Catches direct state mutation bypassing record-fix-path-helper setter.
-         Gated on bug mode (consistent with check 13; check 8 is mode-independent).
+         Mode-independent (plan 69 D6/WI-F — consistent with checks 8/8b/13;
+         the anchor gate is structural evidence-grounding, not runtime-bug-
+         specific).
      15. Data-flow chain required for bug mode + presentation-layer primary
          symptom: data_flow_chain must be non-null. Fires only when mode==bug
          AND the first primary finding's path is presentation-layer. Forces
          the LLM to trace from click handler through intermediates to the
          write-boundary call via record-data-flow-chain (Patch 6 / Gap 6).
+         Stays bug-mode-gated (plan 69 OQ-A — runtime-symptom-specific).
      16. Hypothesis must cite production-site rewriter when any value_semantics
          row has stable_across_calls=false. Gated on bug mode. Fires when
          unstable value(s) exist in value_semantics AND no hypothesis cause
          contains any production-site file_line as a substring. Closes Gap 7
          — forces Phase 2.5 to enumerate the production-site rewriter (e.g.,
          Math.random, Date.now) as a candidate root cause when randomization
-         is detected (Patch 7).
+         is detected (Patch 7). Stays bug-mode-gated (plan 69 OQ-A —
+         runtime-symptom-specific).
      17. Literal-archaeology required when recommended-approach prose contains
          a literal-replacement pattern ("replace <X> with <Y>" / "<X> -> <Y>"
          / etc.) and <X> is a primitive literal. Gated on bug mode. Fires when
          no literal_archaeology row exists whose literal == <X> AND whose
          file_line matches a recorded finding's file_line. Closes Gap 8 (V3)
          — forces git-blame archaeology before recommending literal replacement
-         (Patch 8).
+         (Patch 8). Stays bug-mode-gated (plan 69 OQ-A — runtime-symptom-specific).
+     18. Argument-duplication shape check (Patch 9 / Gap 9): when
+         recommended_approach.proposed_call_shape is set, it must not
+         contain the same identifier more than once. Mirrors the setter
+         gate in set-recommended-approach; catches state-mutation bypass.
+         Mode-independent (plan 69 D6/WI-F — widened together with the
+         setter mirror; previously bug-mode only).
+     19. Every inbound_callers row must carry a non-empty surface + a
+         scope ∈ {in, out} + a non-empty justification (plan 69 D5/WI-E),
+         set via classify-caller-scope. Mode-independent. Forces the
+         trace-to-surface + in/out classification step to EXIST with an
+         auditable justification for every recorded caller; it cannot
+         force the classification to be CORRECT (LLM judgment, audited
+         downstream at /plan sub-question 7 + human review).
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -300,16 +324,20 @@ def cmd_verify(args: argparse.Namespace) -> int:
             "record-no-shared-callers-justification if they do not."
         )
 
-    # Check 8b: when bug mode + symptom is in a presentation-layer file, at
-    # least one fix_path_helper must be defined in a DIFFERENT package
-    # (cross-layer rule). Package derived from fix_path_helpers[].file_line
-    # (the helper's definition location), NOT from inbound_callers call-sites.
-    # Fires only when fix_path_helpers is non-empty and mode==bug — a
-    # narrower condition than check 8's pass (which, since plan 67, can
-    # also pass via the no-shared-callers justification escape with the
-    # list empty; 8b never fires in that case, since it needs the list
-    # non-empty to derive a helper package).
-    if fix_path_helpers and (report.get("mode") == "bug" or memo.get("mode") == "bug"):
+    # Check 8b: when symptom is in a presentation-layer file, at least one
+    # fix_path_helper must be defined in a DIFFERENT package (cross-layer
+    # rule). Package derived from fix_path_helpers[].file_line (the
+    # helper's definition location), NOT from inbound_callers call-sites.
+    # Mode-independent (plan 69 D6/WI-F — previously bug-mode only; an
+    # enhancement whose primary finding is presentation-layer with all
+    # helpers same-package now also trips this rule, giving the sufficiency-
+    # of-context principle mechanical backing regardless of mode). Fires
+    # only when fix_path_helpers is non-empty — a narrower condition than
+    # check 8's pass (which, since plan 67, can also pass via the
+    # no-shared-callers justification escape with the list empty; 8b never
+    # fires in that case, since it needs the list non-empty to derive a
+    # helper package).
+    if fix_path_helpers:
         findings_for_8b = report.get("findings") or []
         # Identify the primary symptom path: first finding with framing==primary
         # (or framing missing, which defaults to primary per record-finding).
@@ -350,14 +378,35 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     "(cross-layer rule)".format(primary_path_8b)
                 )
 
-    # Check 9: every enumerated helper needs at least one inbound caller row.
+    # Check 9: every enumerated helper needs a declared caller total (plan 69
+    # D1/WI-A) AND the recorded inbound_callers row count for that helper
+    # must EQUAL the declared total (not merely >=1). Upgraded from a bare
+    # >=1 floor -- an LLM could previously trace_path a helper, record one
+    # obvious caller, and pass verify without enumerating the rest. Under-
+    # or over-recording now requires actively contradicting a declared
+    # number (an auditable lie) instead of passively stopping early.
     inbound_callers = report.get("inbound_callers") or []
+    caller_totals = report.get("caller_totals") or {}
     for h in fix_path_helpers:
         helper_qn = h.get("qn") if isinstance(h, dict) else h
-        if not any(r.get("helper_qn") == helper_qn for r in inbound_callers):
+        declared_total = caller_totals.get(helper_qn)
+        actual_count = sum(1 for r in inbound_callers if r.get("helper_qn") == helper_qn)
+        if declared_total is None:
             violations.append(
-                "inbound_callers: no entry for helper {0!r} "
-                "(record-inbound-caller required for every fix_path_helper)".format(helper_qn)
+                "inbound_callers: helper {0!r} has no declared caller total "
+                "(call declare-caller-total --helper-qn {0!r} --total N first, "
+                "where N = the trace_path(mode=calls, direction=inbound) row "
+                "count at depth 1, including the symptom site's own function "
+                "when it appears as a caller)".format(helper_qn)
+            )
+        elif actual_count != declared_total:
+            violations.append(
+                "inbound_callers: helper {0!r} has {1} recorded row(s) but "
+                "declared total is {2} (record-inbound-caller for every "
+                "missing caller, or re-run trace_path and re-declare via "
+                "declare-caller-total if the declared total was wrong)".format(
+                    helper_qn, actual_count, declared_total
+                )
             )
 
     # Check 10: invariant + dead siblings demands signature-touching approach.
@@ -438,24 +487,23 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 "(record-finding --framing runner-up ...)"
             )
 
-    # Check 13: cross-layer recommendation enforcement. When bug mode +
-    # fix_path_helpers all resolve to the same package (single-layer detection),
-    # recommended_approach must carry single_layer_justification (non-empty) and
-    # cites (non-empty). This catches out-of-order setter calls where
-    # recommended_approach was written before fix_path_helpers collapsed to
-    # single-layer. Closes Gap 4 (verify-time) in RESEARCH-FRAMING-REGRESSION-PLAN.
+    # Check 13: cross-layer recommendation enforcement. When fix_path_helpers
+    # all resolve to the same package (single-layer detection), recommended_
+    # approach must carry single_layer_justification (non-empty) and cites
+    # (non-empty). This catches out-of-order setter calls where recommended_
+    # approach was written before fix_path_helpers collapsed to single-layer.
+    # Closes Gap 4 (verify-time) in RESEARCH-FRAMING-REGRESSION-PLAN. Mode-
+    # independent (plan 69 D6/WI-F — widened together with check 8b; they
+    # are one mechanism, 8b-fires-else-13).
     # SUPPRESSION: check 13 is subordinate to check 8b. When 8b would fire
     # (presentation-layer symptom + all helpers same package), the single-layer-
     # justification escape is structurally unavailable — the only recovery is
     # adding cross-layer helpers. Skip check 13 so the LLM gets a single
     # actionable error from 8b rather than a misleading 13 violation pointing at
     # a path that cannot satisfy verify.
-    check_13_suppressed = _compute_check_8b_would_fire(
-        report, report.get("mode") == "bug" or memo.get("mode") == "bug"
-    )
+    check_13_suppressed = _compute_check_8b_would_fire(report)
     if (
-        (report.get("mode") == "bug" or memo.get("mode") == "bug")
-        and rec is not None
+        rec is not None
         and fix_path_helpers
         and not check_13_suppressed
     ):
@@ -489,9 +537,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
     # Check 14: anchor gate mirror — every fix_path_helpers[].file_line must
     # anchor to a finding (exact match OR same path within ±5 lines). Catches
     # state mutations that bypassed the record-fix-path-helper setter.
-    # Gated on bug mode (consistent with check 13; check 8 is mode-independent).
-    bug_mode_14 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
-    if bug_mode_14 and fix_path_helpers:
+    # Mode-independent (plan 69 D6/WI-F — consistent with checks 8/8b/13; the
+    # anchor gate is structural evidence-grounding, not runtime-bug-specific).
+    if fix_path_helpers:
         all_findings_14 = report.get("findings") or []
         for h in fix_path_helpers:
             if not isinstance(h, dict):
@@ -633,10 +681,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
     # Patch 9 (V3) — Gap 9: argument-duplication shape check at verify
     # time. Mirrors the setter gate; catches state-mutation bypass where
     # someone wrote proposed_call_shape directly to JSON without going
-    # through set-recommended-approach.
-    bug_mode_18 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
+    # through set-recommended-approach. Mode-independent (plan 69 D6/WI-F —
+    # widened together with the set-recommended-approach setter mirror in
+    # _cmds_approach.py; a mode-gated setter under a mode-independent
+    # verify check would be incoherent).
     rec_approach_18 = report.get("recommended_approach") or {}
-    if bug_mode_18 and rec_approach_18:
+    if rec_approach_18:
         proposed_shape_18 = rec_approach_18.get("proposed_call_shape")
         if proposed_shape_18:
             dup_18 = _detect_arg_duplication(proposed_shape_18)
@@ -652,6 +702,31 @@ def cmd_verify(args: argparse.Namespace) -> int:
                         proposed_shape_18, ident_18, count_18
                     )
                 )
+
+    # Check 19: every inbound_callers row must carry a surface + scope +
+    # justification classification (plan 69 D5/WI-E). Mode-independent (like
+    # checks 8/8b/9/13/14) — converting "this is a caller" into "this caller
+    # is in/out of scope, traced up to its user-facing entry point" is a
+    # mandatory recorded step rather than left to chance. The gate forces
+    # the classification to EXIST with an auditable justification; it
+    # cannot force the classification to be CORRECT (LLM judgment, audited
+    # downstream at /plan sub-question 7 + human review).
+    for r in inbound_callers:
+        missing = []
+        if not (r.get("surface") or "").strip():
+            missing.append("surface")
+        if r.get("scope") not in ("in", "out"):
+            missing.append("scope")
+        if not (r.get("justification") or "").strip():
+            missing.append("justification")
+        if missing:
+            violations.append(
+                "inbound_callers: row (helper_qn={0!r}, caller_qn={1!r}) missing "
+                "{2}; call classify-caller-scope --helper-qn {0!r} --caller-qn "
+                "{1!r} --surface <...> --scope in|out --justification <...>".format(
+                    r.get("helper_qn"), r.get("caller_qn"), " + ".join(missing)
+                )
+            )
 
     if violations:
         for v in violations:

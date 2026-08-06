@@ -5,7 +5,9 @@ record-dead-sibling, record-consumer-chain, set-value-semantics
 (invariant guards), record-value-production-site, record-data-flow-chain
 (intermediate→Finding cross-check), record-literal-archaeology (Patch 8),
 record-probe-script (Step 5), record-no-shared-callers-justification
-(plan 67 — the check-8 escape).
+(plan 67 — the check-8 escape), declare-caller-total + classify-caller-scope
+(plan 69 D1/D5 — sibling setters backing the check-9 exhaustiveness floor
+and the new WI-E per-caller scope classification check).
 """
 
 from __future__ import annotations
@@ -215,6 +217,151 @@ def cmd_record_inbound_caller(args: argparse.Namespace) -> int:
             )
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-inbound-caller: {0}".format(err))
+    return 0
+
+
+def cmd_declare_caller_total(args: argparse.Namespace) -> int:
+    """Upsert report.caller_totals[helper_qn] = total (last-write-wins).
+
+    Plan 69 D1/WI-A sibling setter — declares the trace_path row count for
+    a fix-path helper so verify check 9 can require an EXACT match (rows
+    recorded == declared total) instead of merely >=1, closing the
+    "record one caller, stop early" gap. A sibling setter (not a new
+    required arg on record-fix-path-helper) so that setter's existing
+    signature stays frozen (D1).
+
+    Counting rule (OQ-2 — must match Phase 2.4c Step 2's prose exactly):
+    total = the number of inbound caller rows returned by
+    trace_path(<helper-qn>, mode=calls, direction=inbound) at depth 1,
+    INCLUDING the symptom site's own function when it appears as a caller.
+
+    Validates:
+      - --helper-qn must match an existing report.fix_path_helpers[].qn
+        entry (record-fix-path-helper is the prerequisite).
+      - --total must be an integer >= 1 (a fix-path helper always has at
+        least one caller -- the symptom site itself, per the counting rule
+        above).
+    """
+    total = args.total
+    if total < 1:
+        return _die(
+            "declare-caller-total: --total must be >= 1 (got {0}); a "
+            "fix-path helper always has at least one caller -- the "
+            "symptom site itself, per the trace_path row count (Phase "
+            "2.4c Step 2)".format(total),
+            code=2,
+        )
+    try:
+        helper_qn = _validate_scalar(args.helper_qn, "caller_totals.helper_qn")
+    except ValueError as err:
+        return _die(str(err), code=2)
+
+    try:
+        report_snapshot = _load_report(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("declare-caller-total: {0}".format(err))
+    fix_path_helpers = report_snapshot.get("fix_path_helpers") or []
+    known_qns = sorted({
+        h.get("qn") for h in fix_path_helpers if isinstance(h, dict) and h.get("qn")
+    })
+    if helper_qn not in known_qns:
+        return _die(
+            "declare-caller-total: --helper-qn {0!r} does not match any "
+            "recorded fix_path_helpers entry; call record-fix-path-helper "
+            "first. Recorded helper QNs: {1!r}".format(helper_qn, known_qns),
+            code=2,
+        )
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            report.setdefault("caller_totals", {})[helper_qn] = total
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("declare-caller-total: {0}".format(err))
+    return 0
+
+
+def cmd_classify_caller_scope(args: argparse.Namespace) -> int:
+    """Augment a matching inbound_callers row with {surface, scope, justification}.
+
+    Plan 69 D5/WI-E sibling setter — append-then-classify shape: the
+    (helper_qn, caller_qn) pair MUST already be recorded via
+    record-inbound-caller (Step 2) before it can be classified (Step 2b).
+    NOT a new required arg on record-inbound-caller -- keeps that setter's
+    signature frozen (D5) and preserves the two-step record-then-classify
+    workflow the spec's Step 2 -> Step 2b prose presupposes.
+
+    Re-classifying the same (helper_qn, caller_qn) pair overwrites the
+    prior surface/scope/justification (last-write-wins on that row).
+    Classifies EVERY inbound_callers row matching the pair, not just the
+    first -- record-inbound-caller is append-only with no dedup, so a
+    duplicate (helper_qn, caller_qn) pair can legitimately have multiple
+    rows (e.g. two distinct call sites); classifying only one would leave
+    the other permanently unclassifiable (check 19 would never pass short
+    of reset-report).
+
+    Validates:
+      - --helper-qn + --caller-qn must match an existing
+        report.inbound_callers[] row (record-inbound-caller is the
+        prerequisite).
+      - --surface non-empty (the literal string "none" is a legal value
+        for a caller that is not reachable from any user-facing surface).
+      - --scope one of in|out.
+      - --justification non-empty.
+    """
+    try:
+        helper_qn = _validate_scalar(args.helper_qn, "classify_caller_scope.helper_qn")
+        caller_qn = _validate_scalar(args.caller_qn, "classify_caller_scope.caller_qn")
+        surface = _validate_scalar(args.surface, "classify_caller_scope.surface")
+        justification = _validate_scalar(
+            args.justification, "classify_caller_scope.justification"
+        )
+    except ValueError as err:
+        return _die(str(err), code=2)
+    # --scope is already constrained by argparse choices=("in", "out").
+    scope = args.scope
+
+    # Pre-transaction existence check (mirrors record-data-flow-chain /
+    # set-value-semantics — validation runs against a snapshot BEFORE
+    # entering the transaction so the state file is never rewritten on a
+    # rejection).
+    try:
+        report_snapshot = _load_report(args.devforge_dir)
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("classify-caller-scope: {0}".format(err))
+    inbound_callers_snapshot = report_snapshot.get("inbound_callers") or []
+    if not any(
+        r.get("helper_qn") == helper_qn and r.get("caller_qn") == caller_qn
+        for r in inbound_callers_snapshot
+    ):
+        known_pairs = sorted({
+            "({0}, {1})".format(r.get("helper_qn"), r.get("caller_qn"))
+            for r in inbound_callers_snapshot
+        })
+        return _die(
+            "classify-caller-scope: no recorded inbound_callers row for "
+            "(helper_qn={0!r}, caller_qn={1!r}); call record-inbound-caller "
+            "first. Recorded (helper_qn, caller_qn) pairs: {2!r}".format(
+                helper_qn, caller_qn, known_pairs
+            ),
+            code=2,
+        )
+
+    try:
+        with _state_transaction(args.devforge_dir, "report") as report:
+            # No `break` -- classify EVERY matching row, not just the first.
+            # record-inbound-caller is append-only with no dedup on
+            # (helper_qn, caller_qn), so a duplicate pair's second row would
+            # otherwise stay permanently unclassifiable (a check-19 dead-end
+            # recoverable only via reset-report). Idempotent: an unmatched
+            # pair leaves the report unmodified, already covered by the
+            # existence check above.
+            for row in report.get("inbound_callers") or []:
+                if row.get("helper_qn") == helper_qn and row.get("caller_qn") == caller_qn:
+                    row["surface"] = surface
+                    row["scope"] = scope
+                    row["justification"] = justification
+    except (OSError, json.JSONDecodeError) as err:
+        return _die("classify-caller-scope: {0}".format(err))
     return 0
 
 

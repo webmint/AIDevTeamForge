@@ -109,16 +109,21 @@ def _extract_package(file_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _compute_check_8b_would_fire(report: dict, bug_mode: bool) -> bool:
+def _compute_check_8b_would_fire(report: dict) -> bool:
     """Return True iff check 8b's conditions are fully met.
 
     Conditions (all must hold):
-    - bug_mode is True
     - fix_path_helpers is non-empty
     - The first primary finding's file_line resolves to a presentation-layer path
       (per _is_presentation_layer)
     - Every fix_path_helper's file_line resolves to the SAME package as the
       primary symptom (i.e., no helper crosses a package boundary)
+
+    Mode-independent (plan 69 D6/WI-F — the bug_mode parameter this function
+    used to require was dropped when check 8b widened to mode-independent;
+    the setter caller in _cmds_approach.py still gates its OWN bug_mode
+    check before ever calling this function, so dropping the parameter here
+    changes no setter behavior).
 
     Used by cmd_verify (to decide whether check 13 is suppressed) and by
     cmd_set_recommended_approach (to decide whether the single-layer gate
@@ -126,8 +131,6 @@ def _compute_check_8b_would_fire(report: dict, bug_mode: bool) -> bool:
     are structurally unavailable — the LLM's only recovery path is to add
     cross-layer helpers, not to supply single_layer_justification.
     """
-    if not bug_mode:
-        return False
     fix_path_helpers = report.get("fix_path_helpers") or []
     if not fix_path_helpers:
         return False
