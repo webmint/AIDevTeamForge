@@ -1,6 +1,6 @@
 # 64 — Spec-Check (+ Grill) Latest-Spec Resolution Fix
 
-**Status**: BUILT 2026-08-06 — Phases 1–3 SHIPPED (spec-check inline `ls -t` resolver + grill `_scope.py` mtime sort + prose/docstrings/help reconciled + CHANGELOG + stale plan-23 ref fixed; instruction-author→instruction-reviewer + python-engineer→python-reviewer loops, 1 low finding each, both fixed; 342 `_grill` tests green, full suite 10052 ran / 0 failures / 2 pre-existing env-only pytest-import collection errors). **Phase 4 (consumer e2e) remains — user-driven HARD GATE.** Phase 0 signed off 2026-07-17 (D1 mtime confirmed; `/grill` IN scope).
+**Status**: ✅ DONE 2026-08-06 — Phases 1–3 SHIPPED, committed `4099006` (spec-check inline `ls -t` resolver + grill `_scope.py` mtime sort + prose/docstrings/help reconciled + CHANGELOG + stale plan-23 ref fixed; instruction-author→instruction-reviewer + python-engineer→python-reviewer loops, 1 low finding each, both fixed; 342 `_grill` tests green, full suite 10052 ran / 0 failures / 2 pre-existing env-only pytest-import collection errors). **Phase 4 (consumer e2e) DEFERRED by maintainer 2026-08-06 — not blocking; run opportunistically** (recipe stands in Phase 4 below). Phase 0 signed off 2026-07-17 (D1 mtime confirmed; `/grill` IN scope).
 **Branch**: `develop-2.0-init`.
 **Discovered**: 2026-07-16, live — ran `/specify` on `018-code-editor-extract`, then `/spec-check` resolved `001-ui-primitives` (the lowest-numbered spec) instead of the just-authored 018.
 
