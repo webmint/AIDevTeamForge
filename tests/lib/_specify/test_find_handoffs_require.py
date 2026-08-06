@@ -35,6 +35,8 @@ Stdlib only. Python 3.8+. No third-party deps.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import os
 import subprocess
 import sys
@@ -55,6 +57,8 @@ if str(LIB) not in sys.path:
 SPECIFY_HELPER = LIB / "specify_helper.py"
 RESEARCH_HELPER = LIB / "research_helper.py"
 DISCOVER_HELPER = LIB / "discover_helper.py"
+
+from _shared.seed_schema import ReEntrySeed, SEED_SCHEMA_VERSION  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +335,33 @@ def _build_discover_handoff(devforge: Path, feature_dir: Path) -> Path:
             "stdout: {0}\nstderr: {1}".format(r.stdout, r.stderr)
         )
     return feature_dir / "discover-handoff.json"
+
+
+def _write_reentry_seed(
+    feature_dir: Path, target_stage: str, filename: str = "grill-seed.json",
+) -> Path:
+    """Write a real ReEntrySeed (via _shared.seed_schema + dataclasses.asdict
+    -- the exact serialization write_seed() in _grill/_report.py and
+    _spec_check/_seed.py use) to feature_dir/filename. Real-schema round
+    trip, not a hand-typed JSON blob."""
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    seed = ReEntrySeed(
+        seed_version=SEED_SCHEMA_VERSION,
+        source="grill",
+        target_stage=target_stage,
+        feature=feature_dir.name,
+        prior_conclusion="The prior AC logic was assumed permission-consistent.",
+        invalidating_evidence="grill.md: AC-3 and AC-7 conflict on role X.",
+        must_satisfy="Resolve the AC-3/AC-7 conflict before re-planning.",
+        cycle_count=1,
+        carried_findings=[],
+        provenance="specs/{0}/grill.md".format(feature_dir.name),
+    )
+    seed_path = feature_dir / filename
+    seed_path.write_text(
+        json.dumps(dataclasses.asdict(seed), indent=2) + "\n", encoding="utf-8",
+    )
+    return seed_path
 
 
 # ---------------------------------------------------------------------------
@@ -678,6 +709,186 @@ class TestFindHandoffsD5Predicate(unittest.TestCase):
             r = self._run_find(devforge, require=False)
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(r.stdout.strip(), "")
+
+
+class TestFindHandoffsD10ReentrySeed(unittest.TestCase):
+    """D10: a feature dir whose spec.md ALREADY exists is still pending when
+    a sibling *-seed.json (grill-seed.json / spec-check-seed.json) has
+    target_stage == "spec" -- without this arm, /grill RE-ENTER-UPSTREAM
+    and /spec-check REVISE-SPEC re-entry into /specify is structurally
+    unreachable (Phase 0.4 would BLOCK before Phase 0.5 ever reads the
+    seed)."""
+
+    def _devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_find(self, devforge: Path, require: bool = False):
+        argv = ["--devforge-dir", str(devforge), "find-handoffs"]
+        if require:
+            argv.append("--require")
+        return _run_specify(argv)
+
+    def test_spec_target_stage_seed_admits_with_reentry_marker(self):
+        """(1) handoff + spec.md + seed target_stage=='spec' -> listed,
+        marked with a trailing ' | re-entry' token."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            _write_reentry_seed(feature_dir, target_stage="spec")
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("kind=research", lines[0])
+            self.assertTrue(
+                lines[0].endswith(" | re-entry"),
+                "re-entry hit must carry the trailing marker: " + lines[0],
+            )
+            # First 5 pipe-delimited fields stay in the pre-D10 shape.
+            fields = lines[0].split(" | ")
+            self.assertEqual(len(fields), 6)
+            self.assertEqual(fields[5], "re-entry")
+
+        # --require also passes (exit 0) for the same fixture.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            _write_reentry_seed(feature_dir, target_stage="spec")
+
+            r = self._run_find(devforge, require=True)
+            self.assertEqual(r.returncode, 0, "stderr={0}".format(r.stderr))
+
+    def test_plan_target_stage_seed_does_not_admit(self):
+        """(2) handoff + spec.md + seed target_stage=='plan' -> NOT listed
+        (the seed doesn't target this stage -- a /grill REVISE-PLAN seed,
+        e.g., is /plan's re-entry, not /specify's)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            _write_reentry_seed(feature_dir, target_stage="plan")
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
+
+    def test_corrupt_seed_json_does_not_admit(self):
+        """(3) handoff + spec.md + corrupt seed JSON -> NOT listed (tolerated
+        as not-a-seed, not a crash)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            (feature_dir / "grill-seed.json").write_text(
+                "{ not json }", encoding="utf-8",
+            )
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
+
+    def test_normal_pending_no_spec_md_listed_unmarked(self):
+        """(4) handoff + no spec.md (normal D5 pending) -> listed, NO
+        trailing ' | re-entry' marker -- pre-D10 output stays byte-identical
+        for the common case."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+
+            r = self._run_find(devforge, require=False)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertFalse(
+                lines[0].endswith(" | re-entry"),
+                "a normal (non-re-entry) hit must not carry the marker: "
+                + lines[0],
+            )
+            self.assertEqual(len(lines[0].split(" | ")), 5)
+
+    def test_require_semantics_unchanged_when_no_reentry_seed(self):
+        """(5) --require semantics unchanged: spec.md present, no matching
+        seed at all -> zero pending hits -> exit 2 BLOCKED, same as pre-D10
+        D5-only behavior."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "001-auth-token-refresh"
+            _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+
+            r = self._run_find(devforge, require=True)
+            self.assertEqual(r.returncode, 2, "stderr={0}".format(r.stderr))
+            self.assertIn("BLOCKED", r.stderr)
+
+    def test_import_handoff_on_reentry_dir_behaves_sanely(self):
+        """import-handoff on a re-entry feature dir (spec.md already exists,
+        a target_stage=='spec' seed sits alongside it) still succeeds:
+        future_spec_path stays the SAME dir's spec.md (import-handoff never
+        touches spec.md itself), and spec_number/feature_slug still seed
+        correctly from the dir name -- unaffected by D10's find-handoffs
+        predicate change, since import-handoff's own logic never inspects
+        spec.md or *-seed.json."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._devforge(tmp)
+
+            df_r = tmp_path / "df_r"
+            df_r.mkdir()
+            feature_dir = tmp_path / "specs" / "003-auth-token-refresh"
+            handoff_out = _build_research_handoff(df_r, feature_dir)
+            (feature_dir / "spec.md").write_text("# spec\n", encoding="utf-8")
+            _write_reentry_seed(feature_dir, target_stage="spec")
+
+            r = _run_specify([
+                "--devforge-dir", str(devforge),
+                "import-handoff", "--handoff-path", str(handoff_out),
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("downstream_links.spec_path set to", r.stdout)
+
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            self.assertEqual(
+                handoff_data["downstream_links"]["spec_path"],
+                "specs/003-auth-token-refresh/spec.md",
+            )
+            state = json.loads(
+                (devforge / "specify-state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["spec_number"], "003")
+            self.assertEqual(state["feature_slug"], "auth-token-refresh")
 
 
 if __name__ == "__main__":

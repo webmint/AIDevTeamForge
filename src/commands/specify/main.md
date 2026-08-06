@@ -7,15 +7,15 @@ disable-model-invocation: true
 
 # /specify — Feature Specification
 
-`/specify` is repeatable per feature. It reads the seven mandatory Phase 1 input sources, enumerates structured findings into the conversation, surfaces every decision point across seven categories, classifies the spec into one of five types, then renders a deterministic 9-section spec to `specs/NNN-<feature-name>/spec.md` via `.devforge/lib/specify_helper` setters. State + render shape are owned by the helper; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any spec work fires.
+`/specify` is repeatable per feature. It reads the seven mandatory Phase 1 input sources, enumerates structured findings into the conversation, surfaces every decision point across seven categories, classifies the spec into one of five types, then renders a deterministic 9-section spec to `specs/NNN-<feature-name>/spec.md` via `.devforge/lib/specify_helper` setters. State + render shape are owned by the helper; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any spec work fires. Phase 0.4's gate then RESOLVES the feature directory `/research` or `/discover` already allocated at intake — `/specify` writes `spec.md` into that existing directory instead of allocating a new one.
 
 Usage: `/specify "<feature description>"` (e.g. `/specify "migrate the monorepo from lerna to pnpm workspaces"` or `/specify "add scheduled export jobs for tenant data"`). If `$ARGUMENTS` is empty, ask the user to describe the feature before calling any helper subcommand.
 
 ## Outputs of this phase
 
 - `.devforge/specify-state.json` — canonical SpecDoc state (Phase 0–5 buckets). Owned + shaped by the helper; mutated only via setter subcommands.
-- `specs/NNN-<feature-name>/spec.md` — rendered 9-section spec markdown. Helper's `render` writes to stdout; orchestrator saves the bytes verbatim under `<install_root>/specs/`.
-- New branch `spec/NNN-<short-desc>` when invoked from the repository's default branch — created in Phase 4 so the branch number matches the spec directory number.
+- `specs/NNN-<feature-name>/spec.md` — rendered 9-section spec markdown, written into the feature directory resolved in Phase 0.4 (the one `/research` or `/discover` allocated at intake). Helper's `render` writes to stdout; orchestrator saves the bytes verbatim under `<install_root>/specs/`.
+- Branch `spec/NNN-<feature-name>` — FALLBACK only. `/research` and `/discover` create this branch at intake, so `/specify` normally creates nothing; Step 4.1 calls `create-branch` only when Phase 0.2 deferred creation, and only its default-branch arm emits a checkout.
 - `specs/NNN-<feature-name>/handoff.json` — specify→plan structured handoff, written by `finalize-handoff` on the approve branch of Phase 5 (sibling to `spec.md`). Carries `spec_seeds` (structured spec sections) + upstream research/discover provenance; spec status stays `Draft` (`/plan` owns the flip). `/plan` auto-discovers this sibling handoff on its first run and reads the upstream plan-seeds; the user still invokes `/plan` manually (no auto-dispatch from `/specify`).
 - `specs/NNN-<feature-name>/design-anchor.json` — structured, immutable design-intent record (`kind` / `file` / `selectors` plus a `source_hash` baseline), written by `write-design-anchor` on the approve branch of Phase 5 (Step 5.4). Composed from the design anchor carried across the `/research` / `/discover` intake handoff, or — when intake captured none — from the `**Design source**:` declaration as a backstop. `/specify` is the gate that guarantees this record exists before `/plan`.
 
@@ -23,7 +23,7 @@ On approve, Step 5.4 `[WIP]`-commits the spec into the install repo via `.devfor
 
 The LLM does NOT edit `.devforge/specify-state.json` or the rendered `spec.md` via Write or Edit at any point. The helper's setters + `render` are the only writers; this preserves the helper-owns-shape invariant.
 
-## Phase 0 — Preflight + branch detection + session-state reset + handoff discovery
+## Phase 0 — Preflight + branch detection + session-state reset + feature-dir resolution
 
 Four preflight steps run in order. All must pass before Phase 1 begins.
 
@@ -67,11 +67,11 @@ Detect the repository's default branch, in this order; stop at the first that su
 3. `git show-ref --verify --quiet refs/heads/master`.
 4. None of the above resolved → ask the user via AskUserQuestion: `"What's the default branch for this repo?"` with options `["main", "master"]`. Single-line question text. End the turn. The user's reply opens the next turn; treat it as the default-branch value.
 
-Branch decision:
+Branch decision. `/research` and `/discover` create the `spec/NNN-<slug>` branch themselves at intake when the run is on the default branch, so the first arm below is the normal case and `/specify` creates no branch. The other two arms are the fallback states: intake skipped the checkout (not a git repository, unresolvable default branch, or intake itself ran on a non-default branch), or the user switched branches since.
 
-- **Already on a `spec/*` branch:** keep the branch. Proceed to Phase 0.3. Branch creation in Phase 4 is skipped.
-- **On the default branch:** prepare for spec-branch creation. From `$ARGUMENTS`, derive a 2-3 word kebab-case slug that captures the feature's essence (e.g., `"add user authentication"` → `user-auth`). Hold the slug in working memory; branch creation is deferred to Phase 4 so the branch number matches the spec directory number. Phases 1–3 are read-only research and safe to run on the default branch.
-- **On any other branch** (not default, not `spec/*`): ask the user via AskUserQuestion: `"You're on <branch>. Create a spec branch from here, switch to <default-branch> first, or stay on <branch>?"` with options `["from-here", "switch-to-default", "stay"]`. Single-line question text. End the turn. The user's reply opens the next turn. On `from-here`: keep current branch as base; defer branch creation to Phase 4. On `switch-to-default`: run `git checkout <default-branch>` in the next turn before continuing. On `stay`: skip branch creation entirely (Phase 4 will not call `create-branch`).
+- **Already on a `spec/*` branch:** keep the branch. Proceed to Phase 0.3. Branch creation in Step 4.1 is skipped.
+- **On the default branch:** prepare for the fallback spec-branch creation. Do NOT derive a slug from `$ARGUMENTS` here — `create-branch` composes the branch name from the `spec_number` + `feature_slug` in state, which Step 4.1 sets, so the branch name matches the directory `spec.md` is written into. Branch creation is deferred to Step 4.1 for that reason. Phases 1–3 are read-only research and safe to run on the default branch.
+- **On any other branch** (not default, not `spec/*`): ask the user via AskUserQuestion: `"You're on <branch>. Create a spec branch from here, switch to <default-branch> first, or stay on <branch>?"` with options `["from-here", "switch-to-default", "stay"]`. Single-line question text. End the turn. The user's reply opens the next turn. On `from-here`: keep current branch as base; defer branch creation to Step 4.1. On `switch-to-default`: run `git checkout <default-branch>` in the next turn before continuing. On `stay`: skip branch creation entirely (Step 4.1 will not call `create-branch`).
 
 ### Phase 0.3 — Session-state reset
 
@@ -94,27 +94,40 @@ Then reset helper state for this run:
 
 `reset-state` writes a fresh defaults JSON at `.devforge/specify-state.json`. Fresh-every-run: any prior state is overwritten. `/specify` does not resume mid-flight prior runs — every invocation starts clean.
 
-### Phase 0.4 — Handoff discovery
+### Phase 0.4 — Pending-feature-dir resolution
 
 ```bash
-.devforge/lib/specify_helper find-handoffs --since "7 days" --require
+.devforge/lib/specify_helper find-handoffs --require
 ```
 
-Helper globs `research/**/handoff.json` AND `discover/*.handoff.json` modified within the window; emits one summary line per finding to stdout (newest first). Output format per line: `<mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <truncated summary>`. For research handoffs `mode_or_verdict` is `mode=<mode>` (summary from `plan_seeds.recommended_approach_summary`); for discover handoffs it is `verdict=<verdict>` (summary from `plan_seeds.recommended_option_rationale`). Summary truncated to 80 chars. Exit 0 when ≥1 handoff (research OR discover) is found; exit 2 with a BLOCKED message on zero hits — the gate is enforced via `--require`.
+`/research` and `/discover` allocate the feature directory `specs/NNN-<slug>/` themselves at intake finalize and write their report + handoff inside it, so by the time `/specify` runs, the directory — its `NNN` and its slug — already exists. This step RESOLVES that directory; it never allocates one.
 
-**This gate is mandatory, with no override.** A research OR discover handoff must exist before `/specify` proceeds. The intake interrogation that validates the user's prompt lives in `/research` and `/discover`; allowing `/specify` to run cold would let a user skip straight past that gate, so the precondition is unbypassable — there is NO cold-spec escape hatch, even for a feature the user researched externally. The mitigation for the externally-researched case is PROPORTIONATE research, not a bypass: the user runs `/research "<topic>"` (or `/discover "<idea>"`), but the rubric scales DOWN to a fast pass that still runs the intake gate (the prompt echo-back included), so the prompt is validated at the boundary regardless. "Mandatory" therefore does not mean "heavyweight" — a two-sentence bug still goes through research, but research for it is a 30-second pass, not a full investigation. The gate accepts research OR discover so neither track is excluded (discover covers greenfield, where research's bug/enhancement framing does not fit).
+Helper makes one glob pass over `specs/*/research-handoff.json` AND `specs/*/discover-handoff.json` and lists only feature dirs that are **pending**. A feature dir is pending when its intake handoff is present AND either arm holds:
+
+- **(a) `spec.md` is absent** — the feature has not been specified yet. This is the normal arm.
+- **(b) `spec.md` exists AND a sibling `*-seed.json` in the same dir has `target_stage == "spec"`** — the re-entry arm: a `/grill` RE-ENTER-UPSTREAM or `/spec-check` REVISE-SPEC verdict is asking for this spec to be REVISED. Without this arm the gate would block every re-entry before Phase 0.5 could consume the seed. A corrupt seed file, or one targeting another stage, does not admit the dir.
+
+Emits one summary line per hit to stdout (most recent first). Output format per line: `<mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <truncated summary>`, with a sixth field ` | re-entry` appended when — and only when — arm (b) admitted the dir. For research handoffs `mode_or_verdict` is `mode=<mode>` (summary from `plan_seeds.recommended_approach_summary`); for discover handoffs it is `verdict=<verdict>` (summary from `plan_seeds.recommended_option_rationale`, falling back to `intent.feature_concept` when that rationale is empty). Summary truncated to 80 chars. Exit 0 when ≥1 pending feature dir is found; exit 2 with a BLOCKED message on zero hits — the gate is enforced via `--require`, and its stderr names both arms.
+
+A `re-entry`-marked hit resolves to its feature dir exactly like an unmarked one — same pick flow, same import, same `spec.md` path. The only difference is that `spec.md` already exists there and this run REVISES it; Phase 0.5 governs how, from the seed sitting in that same dir.
+
+mtime orders the hits and does nothing else: there is no age filter, so a feature dir whose intake ran weeks ago stays discoverable for as long as it is pending. Do NOT pass `--since` — the flag is deprecated and accepted-but-ignored (a malformed value still fails loudly, but a well-formed one filters nothing).
+
+**This gate is mandatory, with no override.** A pending feature dir — arm (a) or arm (b) above — must exist before `/specify` proceeds. Arm (b) is not a loosening: it still requires an intake handoff, and it additionally requires a downstream check to have asked for the revision. The intake interrogation that validates the user's prompt lives in `/research` and `/discover`; allowing `/specify` to run cold would let a user skip straight past that gate, so the precondition is unbypassable — there is NO cold-spec escape hatch, even for a feature the user researched externally. The mitigation for the externally-researched case is PROPORTIONATE research, not a bypass: the user runs `/research "<topic>"` (or `/discover "<idea>"`), but the rubric scales DOWN to a fast pass that still runs the intake gate (the prompt echo-back included), so the prompt is validated at the boundary regardless. "Mandatory" therefore does not mean "heavyweight" — a two-sentence bug still goes through research, but research for it is a 30-second pass, not a full investigation. The gate accepts research OR discover so neither track is excluded (discover covers greenfield, where research's bug/enhancement framing does not fit).
 
 **Scope of this gate (it applies ONLY to the spec pipeline).** The standalone `/audit` flow is separate from the spec pipeline and is NOT gated by this precondition; it exists precisely to bypass the heavy pipeline for small, one-off work.
 
-On zero hits (exit 2): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The stderr names the two recovery commands — `/research "<topic>"` for a bug or enhancement against existing code, `/discover "<idea>"` for a greenfield feature. The user runs one, then re-invokes `/specify`. Do NOT proceed to Phase 1 and do NOT offer a cold-start alternative — there is no override.
+On zero hits (exit 2): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The stderr names the two locations it globbed, both pending arms, and the two recovery commands — `/research "<topic>"` for a bug or enhancement against existing code, `/discover "<idea>"` for a greenfield feature. The user runs one, then re-invokes `/specify`. Do NOT proceed to Phase 1 and do NOT offer a cold-start alternative — there is no override.
 
-On one or more hits: count R research and D discover handoffs from the output lines. AskUserQuestion: `"Found handoff(s) — R research, D discover. Pre-seed spec from one?"` (substitute actual counts for R and D) with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
+On one or more hits: count R research and D discover handoffs from the output lines (one feature dir contributes two lines when both lanes ran for it). AskUserQuestion: `"Found handoff(s) — R research, D discover. Pre-seed spec from one?"` (substitute actual counts for R and D) with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
 
-- **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the second field (the handoff path) from the first line of the `find-handoffs` stdout (newest-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
-- **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line. Each line is prefixed with `[research]` or `[discover]` as the kind tag (derived from the `kind=<kind>` field in the output line). Ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1.
-- **`cold`** → skip import. Continue to Phase 1 with no pre-seed.
+Every arm resolves a feature directory: it is the PARENT directory of the handoff path on the chosen stdout line. Hold it in working memory as the **resolved feature dir** — Phase 1's §1.5/§1.6 corpus reads, Step 4.1's header assignment, and Step 4.11's spec write all use it, and `spec.md` is written into it in every arm (created on a first pass, overwritten on a `re-entry` revision) — except Step 4.1's genuine-fallback path, which allocates a fresh directory instead; see Step 4.1. Also carry whether the chosen line ended in ` | re-entry`, so Phase 0.5 knows to expect a seed in that dir. Intake always names the directory `<NNN>-<slug>`; the helper also lists any other `specs/` subdirectory that happens to carry an intake handoff, and Step 4.1's genuine-fallback path covers that shape.
 
-`import-handoff` dispatches on `handoff_kind` automatically; no separate subcommand is needed for research vs discover handoffs.
+- **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the second field (the handoff path) from the first line of the `find-handoffs` stdout (most-recent-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1. The resolved feature dir is that path's parent.
+- **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line. Each line is prefixed with `[research]` or `[discover]` as the kind tag (derived from the `kind=<kind>` field in the output line); print each line's trailing ` | re-entry` marker unchanged where present, and state in one line of prose above the block that a `re-entry` line revises an already-specified feature. Ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1. The resolved feature dir is the picked path's parent.
+- **`cold`** → skip the import. `cold` means "do not pre-seed the spec from the handoff's CONTENT" — it does NOT mean "no feature dir" and it is NOT a bypass of the gate above, which has already passed. The resolved feature dir is the FIRST (most-recent) line's parent directory, the same one `yes-most-recent` would have imported from; there is no cold-pick-other arm. `spec.md` still lands in that directory, and Step 4.1 derives `spec_number` + `feature_slug` from its basename. Continue to Phase 1 with no pre-seed. One cost to weigh before picking `cold` on a `re-entry`-marked hit: skipping the import leaves the design anchor empty in state, so Step 5.4's `write-design-anchor` — which composes purely from state and overwrites unconditionally — replaces the feature's existing `design-anchor.json` with a selector-less anchor built from this run's `**Design source**:` answer; pick `yes-most-recent` or `pick-other` instead when the feature has a design anchor worth keeping.
+
+On the two importing arms, `import-handoff` also seeds `spec_number` + `feature_slug` in state from the resolved feature dir's basename whenever that basename has the `<NNN>-<slug>` shape (always true for an intake-allocated directory), so Step 4.1 allocates no number; a basename without that shape leaves both fields unseeded for Step 4.1's genuine fallback. It dispatches on `handoff_kind` automatically; no separate subcommand is needed for research vs discover handoffs.
 
 On `import-handoff` exit 2 (missing file / invalid JSON / schema validation failure / unknown kind): copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Do NOT proceed to Phase 1 — end the turn. The user fixes the upstream handoff and re-runs `/specify`.
 
@@ -122,7 +135,7 @@ On `import-handoff` exit 0 with a `warning:` line on stderr (prefixed `import-ha
 
 ### Phase 0.5 — Re-entry from `/grill` or `/spec-check` (conditional — skip if no seed)
 
-Before beginning the spec work, check for a re-entry seed. Glob `specs/*/*-seed.json`. If any matched file has a `target_stage` equal to `"spec"` (this command's stage), you are re-entering this (upstream) spec stage because a DOWNSTREAM adversarial check found the flaw is rooted here; read the seed's `source` field to know which check fired: `/grill` (a RE-ENTER-UPSTREAM verdict on the plan's design) or `/spec-check` (a REVISE-SPEC verdict on the spec's AC logic). In either case a downstream adversarial check invalidated a conclusion of THIS spec stage, so the re-run must be DIRECTED and must not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any `grill_helper` verb or (once it exists) `spec_check_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/grill` or `/spec-check` is ever removed). The seed carries these fields:
+Before beginning the spec work, check for a re-entry seed. When Phase 0.4's chosen hit carried the ` | re-entry` marker, the seed that admitted it is in the resolved feature dir and this block WILL fire; when the hit was unmarked, it normally does not. Either way the check is the same and is run unconditionally: glob `specs/<resolved-feature-dir>/*-seed.json` — the feature dir resolved in Phase 0.4, and ONLY that dir. Do NOT glob `specs/*/` project-wide: another feature's stale spec-targeted seed would then bind this run to a directive that was never about this feature, and the same-dir scoping is exactly what Phase 0.4's arm (b) already keyed on. If any matched file has a `target_stage` equal to `"spec"` (this command's stage), you are re-entering this (upstream) spec stage because a DOWNSTREAM adversarial check found the flaw is rooted here; read the seed's `source` field to know which check fired: `/grill` (a RE-ENTER-UPSTREAM verdict on the plan's design) or `/spec-check` (a REVISE-SPEC verdict on the spec's AC logic). In either case a downstream adversarial check invalidated a conclusion of THIS spec stage, so the re-run must be DIRECTED and must not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any `grill_helper` verb or (once it exists) `spec_check_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/grill` or `/spec-check` is ever removed). The seed carries these fields:
 
 - `source` — which command emitted this seed (`grill` or `spec-check`); read it first and state up front which command's verdict you are re-entering from (`/grill` RE-ENTER-UPSTREAM, or `/spec-check` REVISE-SPEC).
 - `feature` — the feature this seed was emitted for; read it from the seed and state it up front in your re-entry message (do NOT infer it from the file path).
@@ -133,15 +146,17 @@ Before beginning the spec work, check for a re-entry seed. Glob `specs/*/*-seed.
 
 State up front in your first user-facing message that you are running in re-entry mode — naming the seed's `source` command (`/grill` or `/spec-check`) — for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–5 normally, with the seed's directive constraining the spec.
 
-When MORE THAN ONE file matches `target_stage == "spec"` (e.g. a stale `spec-check-seed.json` left by an earlier REVISE-SPEC alongside a later `grill-seed.json`, since this block does not delete a consumed seed), process ALL of them: narrate each seed's `source` up front and address every seed's `must_satisfy`, unioning their `carried_findings`. If only one can be fully addressed this run, name the others explicitly as still-pending in the re-entry message. Do not silently pick one.
+A re-entry run REVISES an existing spec: the resolved feature dir already contains `spec.md`, and Step 4.11 overwrites it with the fresh render. That is the intended outcome — the superseded version stays recoverable from the per-step `[WIP]` commits, so nothing is lost. No phase treats an existing `spec.md` as an error, and no phase feeds it into the new render: the render is composed from `.devforge/specify-state.json`, which Phase 0.3 reset to defaults, so the revision is authored from the seed plus this run's Phase 1–3 inputs rather than edited in place. To carry forward material from the superseded spec, read it as a Phase 1 input (§1.7) so it lands in the Phase 1.5 findings like any other source.
+
+When MORE THAN ONE file in that one directory matches `target_stage == "spec"` (e.g. a stale `spec-check-seed.json` left by an earlier REVISE-SPEC alongside a later `grill-seed.json` for the same feature, since this block does not delete a consumed seed), process ALL of them: narrate each seed's `source` up front and address every seed's `must_satisfy`, unioning their `carried_findings`. If only one can be fully addressed this run, name the others explicitly as still-pending in the re-entry message. Do not silently pick one.
 
 This block only READS the seed's directive. It does not delete the seed or mutate its `cycle_count` — that lifecycle management, whatever form it takes, is the emitting command's responsibility, not this consumer's. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/*/*-seed.json` file matches `target_stage == "spec"` (the normal case — both `/grill` and `/spec-check` are opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict or a `/spec-check` run reaches a REVISE-SPEC verdict), this block is a no-op: proceed directly to Phase 1.
+When no `specs/<resolved-feature-dir>/*-seed.json` file matches `target_stage == "spec"` (the normal case — both `/grill` and `/spec-check` are opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict or a `/spec-check` run reaches a REVISE-SPEC verdict), this block is a no-op: proceed directly to Phase 1.
 
 ## Phase 1 — Input reads (7 sources)
 
-Read the feature description from `$ARGUMENTS` and hold it in working memory as the **topic** used for filename-overlap matching against `research/`, `discover/`, and `specs/`.
+Read the feature description from `$ARGUMENTS` and hold it in working memory as the **topic** used for filename-overlap matching against prior spec directories under `specs/` (§1.7). This feature's own intake reports (§1.5 / §1.6) are NOT topic-matched — they sit at fixed paths inside the feature dir resolved in Phase 0.4.
 
 Before any analysis, read these inputs for context. **All bullets are required if the file/directory exists. Do not skip discretionarily — every applicable input must be read.**
 
@@ -151,7 +166,7 @@ For every file actually read, call:
 .devforge/lib/specify_helper record-input-read --path "<relative path>"
 ```
 
-The helper auto-tags `source_origin` from the path (`discover` / `research` / `prior_spec` / `context`); no content parsing. Idempotent — re-recording the same path overwrites the prior entry.
+The helper auto-tags `source_origin` from the path (`discover` / `research` / `prior_spec` / `context`); no content parsing. Under `specs/` the tag is decided by FILENAME, not by the prefix: `research-report.md` tags `research`, `discovery-report.md` tags `discover`, and every other `specs/` path tags `prior_spec`. Idempotent — re-recording the same path overwrites the prior entry.
 
 ### 1.1 `constitution.md` — project rules and patterns
 
@@ -190,21 +205,33 @@ Use the codebase-memory-mcp graph for the package + concern lookups; do NOT use 
 
 Record one `record-input-read` call per md file actually consumed, with the relative path.
 
-### 1.5 `research/` (if directory exists) — investigation reports from `/research`
+### 1.5 `specs/<NNN>-<slug>/research-report.md` (if the file exists) — this feature's `/research` investigation report
 
-Enumerate via `ls research/` and read every file whose filename has ≥1 topic-token overlap with the feature description (helper's filename-token rule — case-insensitive alnum tokens ≥3 chars, year-prefix digits suppressed). The most-recent files (by date prefix) are usually the most relevant.
+The `/research` run that produced this feature's intake handoff wrote its report beside that handoff, inside the feature dir resolved in Phase 0.4 — so there is exactly one candidate, at a fixed path, and no topic-token scan applies. Read the file in full when it exists, then record it:
 
-Record one `record-input-read --path "research/<filename>"` per file actually consumed. Auto-tagged `source_origin = "research"`. No content parsing of `/research` output — the file is consumed as plain markdown into Phase 1.5 findings.
+```bash
+.devforge/lib/specify_helper record-input-read --path "specs/<NNN>-<slug>/research-report.md"
+```
 
-### 1.6 `discover/` (if directory exists) — discovery reports from `/discover`
+Auto-tagged `source_origin = "research"` (the helper dispatches on the `research-report.md` filename, not on the `specs/` prefix). No content parsing of `/research` output — the file is consumed as plain markdown into Phase 1.5 findings.
 
-Enumerate via `ls discover/` and read every file whose filename has ≥1 topic-token overlap with the feature description (same filename-token rule as `research/`). Record one `record-input-read --path "discover/<filename>"` per file consumed. Auto-tagged `source_origin = "discover"`.
+### 1.6 `specs/<NNN>-<slug>/discovery-report.md` (if the file exists) — this feature's `/discover` discovery report
+
+Same shape as §1.5, at the sibling path in the same resolved feature dir. Read the file in full when it exists, then record it:
+
+```bash
+.devforge/lib/specify_helper record-input-read --path "specs/<NNN>-<slug>/discovery-report.md"
+```
+
+Auto-tagged `source_origin = "discover"`. A feature dir normally carries one lane's report; both files exist when both lanes ran for it. Read whichever of the two are present.
 
 The literal `/specify "<distilled topic>"` line that may appear at the top of a `/discover` Next-Step block is the user's manual handoff text in the source doc — NOT an instruction to recurse. Treat it as plain prose; do not re-invoke `/specify` on it.
 
 ### 1.7 `specs/` (if directory exists) — prior spec directories on related topics
 
 Enumerate via `ls specs/` and read the `spec.md` of any prior spec directory whose name has ≥1 topic-token overlap with the feature description. Record one `record-input-read --path "specs/<dir-name>/spec.md"` per file consumed. Auto-tagged `source_origin = "prior_spec"`.
+
+On a re-entry run (Phase 0.5 fired), the resolved feature dir's own `spec.md` — the version this run supersedes — is read here too, under the same call and the same `prior_spec` tag. Read it so the material worth keeping survives into the Phase 1.5 findings; the seed's directive still governs what must change.
 
 ### Phase 1 finalize
 
@@ -391,7 +418,7 @@ Goal: classify the spec type, read the mandatory per-type files, supplement with
 
 ### Step 1 — Classify the spec type
 
-**Handoff-seeded spec_type check (precondition).** If Phase 0.4 ran `import-handoff` (state has `spec_type_seeded_by_upstream == true` AND `spec_type` is set AND `source.handoff_path` is non-null pointing at `research/...`), surface the pre-seeded value to the user before classifying:
+**Handoff-seeded spec_type check (precondition).** If Phase 0.4 ran `import-handoff` on a research handoff (state has `spec_type_seeded_by_upstream == true` AND `spec_type` is set AND `source.handoff_kind == "research"`, with `source.handoff_path` the install-root-relative `specs/<NNN>-<slug>/research-handoff.json`), surface the pre-seeded value to the user before classifying:
 
 - AskUserQuestion `"Research handoff pre-seeded spec_type=<value>; accept or override?"` with options `["accept", "override"]`.
 - On `accept`: call `.devforge/lib/specify_helper classify-spec-type --spec-type <pre-seeded-value> --rationale "pre-seeded from research handoff at <handoff_path>" --seeded-by-upstream`. Lock in the value.
@@ -413,9 +440,9 @@ Choose one of five spec types based on `$ARGUMENTS` + Phase 1.5 findings:
     --rationale "<one-line rationale>"
 ```
 
-**Upstream pre-seeding (path-based, from Phase 1 source-origin tags).** When any Phase 1 input has `source_origin == "discover"` (file under `discover/`), pre-seed `spec_type=greenfield_feature` because `/discover` is scope-locked to greenfield. Add `--seeded-by-upstream` to the call and use a rationale that cites the discover file. Surface the pre-seed to the user before locking it in, via AskUserQuestion: `"Upstream is /discover — pre-seeded spec_type=greenfield_feature; override?"` with options `["accept", "override"]`. Single-line question text. End the turn. On `accept`, proceed. On `override`, ask which of the other four types in the next turn and re-call `classify-spec-type` without `--seeded-by-upstream`.
+**Upstream pre-seeding (origin-based, from Phase 1 source-origin tags).** When any Phase 1 input has `source_origin == "discover"` (this feature's `discovery-report.md`, §1.6), pre-seed `spec_type=greenfield_feature` because `/discover` is scope-locked to greenfield. Add `--seeded-by-upstream` to the call and use a rationale that cites the discovery report. Surface the pre-seed to the user before locking it in, via AskUserQuestion: `"Upstream is /discover — pre-seeded spec_type=greenfield_feature; override?"` with options `["accept", "override"]`. Single-line question text. End the turn. On `accept`, proceed. On `override`, ask which of the other four types in the next turn and re-call `classify-spec-type` without `--seeded-by-upstream`.
 
-`research/`-only and `specs/`-only origins do NOT pre-seed (research is neutral on bug/enhancement/refactor; the LLM classifies from content). Cold mode (no `research/`, no `discover/`) does NOT pre-seed.
+A `research` origin (this feature's `research-report.md`) and `prior_spec` origins do NOT pre-seed (research is neutral on bug/enhancement/refactor; the LLM classifies from content). A resolved feature dir carrying neither report — no `research`- or `discover`-tagged Phase 1 input — does NOT pre-seed either. This pre-seed is driven by the Phase 1 reads, not by the import: a `cold` pick in Phase 0.4 skips the handoff-content import but still reads the reports in §1.5/§1.6, so a `discovery-report.md` pre-seeds `greenfield_feature` on the cold path too. The handoff-seeded precondition above is the one that does NOT fire on `cold`, because no import ran.
 
 State the classification at the start of Phase 3 user-facing output so the user can challenge it before mandatory reads consume tokens.
 
@@ -441,7 +468,7 @@ The per-type slot tables (helper-owned, walked in order):
 - **`feature_addition`**: `__entry__` (root component / entry files — router, store, app init) · `__similar_feature__` (most-similar existing feature via grep) · `__type_defs__` (type defs for affected entities) · `__api_ops__` (API / GraphQL ops for affected resources) · `__test_files__` (test files for affected area).
 - **`bug_fix`**: `__buggy_files__` (the buggy file(s) named in the request) · `__direct_deps__` (direct deps of buggy file) · `__direct_callers__` (direct callers via grep) · `__recent_git_log__` (recent git log on buggy file — `git log -5 -- path/to/file`).
 - **`refactor`**: `__refactored_files__` (the file(s) being refactored) · `__all_callers__` (all callers via grep) · `__all_tests__` (all tests for refactored code).
-- **`greenfield_feature`**: `constitution.md#scaffolding-guide` (Constitution Section 7) · `__framework_docs__` (framework docs via WebSearch for the feature pattern) · `.claude/memory/MEMORY.md` (prior-feature lessons) · `discover/*.md` (the `/discover` reference md, if Phase 1 loaded one).
+- **`greenfield_feature`**: `constitution.md#scaffolding-guide` (Constitution Section 7) · `__framework_docs__` (framework docs via WebSearch for the feature pattern) · `.claude/memory/MEMORY.md` (prior-feature lessons) · `specs/*/discovery-report.md` (the `/discover` reference md, if Phase 1 loaded one).
 
 Gate:
 
@@ -486,17 +513,37 @@ Goal: deterministic 9-section render via setters + verifiers; the helper owns se
 
 ### Step 4.1 — Header (spec number, feature name, date, branch)
 
+`spec_number` + `feature_slug` decide which directory `spec.md` is written into, so wherever Phase 0.4 resolved a feature dir they must name THAT dir rather than a fresh one. Take exactly ONE of the three number paths below — they are ordered; use the first whose condition holds — then run the feature-name, date, and branch steps that follow, which apply to all three. A re-entry revision (Phase 0.5 fired) takes the same paths on the same conditions: an existing `spec.md` in the resolved dir changes nothing here, because these paths key on state and on the directory's name.
+
+**Warm path — state already carries `spec_number` and `feature_slug` (the normal case).** `import-handoff` seeded both in Phase 0.4 from the resolved feature dir's `<NNN>-<slug>` basename. Do NOT call `assign-spec-number`: its fresh `max+1` scan would produce a different number and send `spec.md` to a different directory than the intake artifacts. Take `<NNN>` and `<slug>` from that basename and go straight to the feature-name step.
+
+**Cold path — state carries neither field, and the resolved feature dir's basename has the form `<NNN>-<slug>`** (exactly three digits, a hyphen, then the slug — the shape intake allocates). This is the `cold` pick in Phase 0.4: no import ran, so nothing was seeded. Split the basename at the first hyphen and seed the number from it:
+
 ```bash
-.devforge/lib/specify_helper assign-spec-number --specs-root specs
+.devforge/lib/specify_helper set-spec-number --value "<NNN>"
 ```
 
-Scans `specs/` for the highest `NNN-*` prefix and emits the next zero-padded number to stdout (`001`, `002`, …). Persists `spec_number`.
+Persists the value verbatim after validating it is 3+ digits (zero-padding preserved). Performs no scan — the caller already knows the number.
+
+**Genuine fallback — state carries no `spec_number` and the resolved dir's basename is not `<NNN>-<slug>`.** Reachable two ways: a handoff sitting in a non-`NNN` directory under `specs/` (`find-handoffs` lists any `specs/` subdirectory carrying an intake handoff, not only `NNN-`-prefixed ones), or a pre-migration handoff imported by explicit path from outside `specs/`. In both cases `import-handoff` leaves the fields unseeded and there is no number to split out, so allocate fresh — and note the consequence to the user: `spec.md` will land in a NEW directory, not beside the intake handoff.
+
+One documented limitation of this path: on the importing arms `import-handoff` has already written `downstream_links.spec_path` into the intake handoff, pointing at the handoff's OWN directory — which the fresh allocation then does not use, so that field is left stale. Nothing corrects it and no defensive check is added; say so when you note the new directory, so the user knows the two do not agree. The other two paths are unaffected, because there the allocated directory IS the handoff's directory.
+
+```bash
+.devforge/lib/specify_helper assign-spec-number
+```
+
+Scans `specs/` for the highest `NNN-*` prefix and emits the next zero-padded number to stdout (`001`, `002`, …). Persists `spec_number`. Do not pass `--specs-root`: the flag is accepted-but-ignored, and the scan always targets `specs/` under the install root.
+
+**Feature name (all three paths).**
 
 ```bash
 .devforge/lib/specify_helper assign-feature-name --feature-name "<2-4 word kebab-case>"
 ```
 
-Generates a 2-4 word kebab-case slug (e.g., `user-auth`, `dark-mode-toggle`). Helper validates the pattern: `^[a-z][a-z0-9]*(?:-[a-z0-9]+){1,3}$`. If the LLM proposal fails validation, fix the slug and re-call.
+On the warm and cold paths, `<slug>` is the resolved feature dir's basename after the `<NNN>-` prefix — pass it verbatim so the rendered header matches the directory. On the genuine-fallback path, generate a 2-4 word kebab-case slug from `$ARGUMENTS` (e.g., `user-auth`, `dark-mode-toggle`) and, if the proposal fails validation, fix it and re-call. The helper validates the pattern `^[a-z][a-z0-9]*(?:-[a-z0-9]+){1,3}$` and persists both `feature_name` and `feature_slug`.
+
+This call runs on the warm path too, even though `import-handoff` already seeded `feature_slug`: the import seeds `feature_slug` alone, and `feature_name` is what the rendered spec title and the Step 5.1 approval summary use. An intake-allocated directory always carries a slug that passes validation, because intake validates the slug against this same pattern before creating the directory. If the helper nonetheless rejects a dir-derived slug (a hand-created or pre-migration directory), copy its stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) and end the turn — the user renames the directory or re-runs intake.
 
 ```bash
 .devforge/lib/specify_helper set-date --date "$(date -u +%Y-%m-%d)"
@@ -504,7 +551,7 @@ Generates a 2-4 word kebab-case slug (e.g., `user-auth`, `dark-mode-toggle`). He
 
 Helper accepts only `YYYY-MM-DD` format.
 
-If Phase 0 deferred branch creation (current branch was the default branch), create the spec branch now so its number matches the spec directory:
+**Branch — fallback only.** `/research` and `/discover` create `spec/NNN-<slug>` at intake, so the session is normally already on it and nothing runs here. Call `create-branch` only when Phase 0.2 deferred branch creation — the default-branch arm, or the `from-here` choice on the other-branch arm:
 
 ```bash
 .devforge/lib/specify_helper create-branch \
@@ -518,7 +565,7 @@ When on the default branch, the helper's stdout emits a single line of the form 
 git checkout -b spec/NNN-<slug>
 ```
 
-Tell the user: `"Created and switched to branch spec/NNN-<slug>"`. When on a non-default branch (Phase 0 user choice = `from-here` or `stay`), the helper emits a `# already on non-default branch ...` informational comment and skips the checkout.
+Tell the user: `"Created and switched to branch spec/NNN-<slug>"`. The `NNN-<slug>` in that line is the one now in state, so on the warm and cold paths the branch name matches the resolved feature dir. When on a non-default branch (Phase 0.2 user choice = `from-here`), the helper emits a `# already on non-default branch ...` informational comment and skips the checkout.
 
 ### Step 4.2 — Narrative sections (§1 Overview, §2 Current State, §3 Desired Behavior)
 
@@ -758,7 +805,7 @@ The setter validates the shape: it exits non-zero (with a stderr message naming 
 
 Stdout is the full 9-section spec markdown matching the helper's locked template. Capture the stdout bytes verbatim; do not paraphrase or re-format.
 
-Create the spec directory and write the rendered bytes:
+Write the rendered bytes into the feature directory. On the warm and cold paths that directory is the one resolved in Phase 0.4 and already exists — the `mkdir -p` is a no-op there and creates the directory only on the genuine-fallback path:
 
 ```bash
 mkdir -p "specs/<NNN>-<feature-name>"
@@ -766,7 +813,7 @@ mkdir -p "specs/<NNN>-<feature-name>"
 #   specs/<NNN>-<feature-name>/spec.md
 ```
 
-Use Write with the captured bytes as the file content. Do NOT edit the rendered markdown — any change goes back through the relevant setter + a fresh `render`.
+Use Write with the captured bytes as the file content. Do NOT edit the rendered markdown — any change goes back through the relevant setter + a fresh `render`. On a re-entry revision (Phase 0.5 fired) `spec.md` already exists at that path and this Write REPLACES it wholesale — that is correct, not a collision to route around; the superseded version stays in git history via the per-step `[WIP]` commits.
 
 After Write, verify the on-disk bytes match the helper render in canonical form:
 
@@ -832,7 +879,7 @@ This step runs ONLY on the `approve` branch of Step 5.3 — never on `request-ch
 .devforge/lib/specify_helper write-design-anchor
 ```
 
-The helper writes `specs/<NNN>-<feature-name>/design-anchor.json` atomically from the design anchor already in `/specify` state — the one carried from a `/research` / `/discover` handoff by `import-handoff` (Phase 0.4) when intake captured one, or, when intake captured none, one the helper composes from the `**Design source**:` declaration recorded by `set-design-source` (Step 4.10) as a backstop. The backstop is internal to the helper; no separate orchestration is required. Its only preconditions are `spec_number` and the feature name, both assigned in Step 4.1 (`assign-spec-number` + `assign-feature-name`) and therefore already set on this branch; the helper creates the feature directory itself if needed. The `**Design source**:` frontmatter line stays as the human-readable summary of the same intent; `design-anchor.json` is persisted as the structured, immutable design-intent record, so later pipeline stages can read it directly in place instead of having it re-carried through handoffs. `/specify` is the gate that guarantees this record is persisted before `/plan`; the write is idempotent — a re-run of `/specify` overwrites it. On a non-zero exit, copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), address the cited cause, and re-run.
+The helper writes `specs/<NNN>-<feature-name>/design-anchor.json` atomically from the design anchor already in `/specify` state — the one carried from a `/research` / `/discover` handoff by `import-handoff` (Phase 0.4) when intake captured one, or, when intake captured none, one the helper composes from the `**Design source**:` declaration recorded by `set-design-source` (Step 4.10) as a backstop. The backstop is internal to the helper; no separate orchestration is required. Its only preconditions are `spec_number` and `feature_slug`, both set in Step 4.1 (by whichever of its three number paths applied, plus `assign-feature-name`) and therefore already present on this branch; the helper creates the feature directory itself if needed. The `**Design source**:` frontmatter line stays as the human-readable summary of the same intent; `design-anchor.json` is persisted as the structured, immutable design-intent record, so later pipeline stages can read it directly in place instead of having it re-carried through handoffs. `/specify` is the gate that guarantees this record is persisted before `/plan`; the write is idempotent — a re-run of `/specify` overwrites it. On a non-zero exit, copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), address the cited cause, and re-run.
 
 **Write the handoff artefact first.** Before emitting the manual block, write the structured specify→plan handoff:
 

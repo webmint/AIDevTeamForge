@@ -85,11 +85,12 @@ def cmd_assign_spec_number(args: argparse.Namespace) -> int:
     formerly-duplicated local _existing_spec_numbers scan.
 
     --specs-root is now ACCEPTED-BUT-IGNORED: next_spec_number always scans
-    repo_root/specs where repo_root = the parent of --devforge-dir, which
-    is the value every existing caller already passes (src/commands/
-    specify/main.md's `assign-spec-number --specs-root specs`, and every
-    test in this repo) -- so no caller's observable behavior changes.
-    Kept only so a caller still passing --specs-root does not break.
+    repo_root/specs where repo_root = the parent of --devforge-dir. Every
+    existing caller either passed exactly that value already or (as of
+    this rewrite) calls this verb bare -- src/commands/specify/main.md now
+    invokes `assign-spec-number` with no --specs-root at all -- so no
+    caller's observable behavior changes. Kept only so a caller still
+    passing --specs-root does not break.
 
     With this verb's fresh-scan reachable only via the D5 fallback guard
     (import-handoff now seeds spec_number/feature_slug directly from the

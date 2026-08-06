@@ -29,16 +29,25 @@ import-handoff:
   error -- the D5 fallback guard (assign-spec-number / the new
   set-spec-number verb) covers that case.
 
-find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4):
+find-handoffs (68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4, D10):
   One glob pass over specs/*/research-handoff.json AND
   specs/*/discover-handoff.json under the repo root (parent of .devforge
-  dir), filtered to feature dirs that do NOT yet contain spec.md (D5's
-  structural "pending intake" predicate).  mtime is used only to ORDER
-  hits, most-recent first -- --since is accepted-but-ignored, kept only so
-  pre-Phase-4 callers do not break (see cmd_find_handoffs).  Emit one line
-  per hit; skip corrupt or schema-invalid files silently.  Exit 0 on zero
-  hits (unless --require is passed; see cmd_find_handoffs for gate
-  behavior).
+  dir), filtered to feature dirs that are PENDING -- D5's structural
+  predicate, extended by D10: a feature dir is pending when its intake
+  handoff is present AND (spec.md is absent OR a sibling *-seed.json file
+  (grill-seed.json / spec-check-seed.json) exists whose target_stage ==
+  "spec").  The second arm exists because a /grill RE-ENTER-UPSTREAM or
+  /spec-check REVISE-SPEC seed asks the user to re-run /specify on a
+  feature whose spec.md ALREADY exists -- without it, Phase 0.4 would exit
+  2 BLOCKED before Phase 0.5's re-entry-seed consumption ever runs,
+  making re-entry structurally unreachable.  A dir admitted only via the
+  seed arm is marked with a trailing " | re-entry" token on its output
+  line (see cmd_find_handoffs) so the caller can tell the two arms apart
+  without re-globbing.  mtime is used only to ORDER hits, most-recent
+  first -- --since is accepted-but-ignored, kept only so pre-Phase-4
+  callers do not break (see cmd_find_handoffs).  Emit one line per hit;
+  skip corrupt or schema-invalid files silently.  Exit 0 on zero hits
+  (unless --require is passed; see cmd_find_handoffs for gate behavior).
 
 Stdlib only. Python 3.8+.
 """
@@ -819,15 +828,51 @@ def _try_discover_hit(fpath: Path) -> Optional[Dict[str, Any]]:
     }
 
 
+def _has_spec_reentry_seed(feature_dir: Path) -> bool:
+    """True iff feature_dir contains a *-seed.json whose target_stage is "spec".
+
+    68-INTAKE-OWNS-FEATURE-DIR-PLAN.md D10: the glob "*-seed.json" matches
+    both grill-seed.json and spec-check-seed.json (see
+    _shared/seed_schema.py's ReEntrySeed -- both are serialized via
+    dataclasses.asdict, so the on-disk JSON's top-level "target_stage" key
+    is exactly the field name). Matches on that field ONLY -- does NOT
+    reconstruct a ReEntrySeed via the schema, because a seed that is
+    schema-invalid on some OTHER field (e.g. a malformed cycle_count) is
+    irrelevant to this predicate; re-validating the whole record here would
+    make this gate fail for reasons that have nothing to do with re-entry
+    routing. A corrupt/unreadable/non-dict seed file is tolerated as "not
+    a match" (skip it, keep checking siblings) rather than raising -- the
+    pending-feature scan must never crash on a stray or partially-written
+    seed file.
+    """
+    for seed_path in sorted(feature_dir.glob("*-seed.json")):
+        try:
+            raw = json.loads(seed_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(raw, dict) and raw.get("target_stage") == "spec":
+            return True
+    return False
+
+
 def cmd_find_handoffs(args: argparse.Namespace) -> int:
-    """List feature dirs carrying a PENDING intake handoff (plan 68 D5).
+    """List feature dirs carrying a PENDING intake handoff (plan 68 D5+D10).
 
     One glob pass over specs/*/research-handoff.json and
-    specs/*/discover-handoff.json, filtered to feature dirs that do NOT yet
-    contain spec.md — the D5 structural predicate ("an intake handoff is
-    present AND the feature has not already been consumed by /specify").
-    A feature dir may legitimately surface both a research hit and a
-    discover hit if both files happen to be present.
+    specs/*/discover-handoff.json, filtered to feature dirs that are
+    PENDING: an intake handoff is present AND EITHER (a) spec.md is absent
+    (D5's original predicate: "the feature has not already been consumed
+    by /specify") OR (b) spec.md IS present but a sibling *-seed.json file
+    has target_stage == "spec" (D10: a /grill RE-ENTER-UPSTREAM or
+    /spec-check REVISE-SPEC seed asks the user to re-run /specify on a
+    feature whose spec.md already exists -- without arm (b), Phase 0.4
+    would BLOCK before Phase 0.5's re-entry-seed consumption ever ran).
+    A dir admitted ONLY via arm (b) gets a trailing " | re-entry" marker
+    on every one of its output lines (see the Output format note below);
+    a dir admitted via arm (a) is unmarked, byte-identical to pre-D10
+    output. A feature dir may legitimately surface both a research hit and
+    a discover hit if both files happen to be present (independent of
+    which arm admitted it).
 
     --since is DEPRECATED, accepted-but-ignored (plan 68 Phase 4 / OQ-2):
     the old --since mtime window existed to avoid resurfacing a stale
@@ -847,7 +892,13 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
 
     Output format (most-recent mtime first; ties broken by handoff_path for
     determinism):
-      <mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <summary>
+      <mtime ISO> | <handoff_path> | kind=<research|discover> | <mode_or_verdict> | <summary>[ | re-entry]
+    The trailing " | re-entry" field is OPTIONAL and appended only for a
+    D10 arm-(b) hit -- a caller that splits on " | " and reads only the
+    first 5 fields (mtime, handoff_path, kind, mode_or_verdict, summary)
+    by position sees byte-identical output to before D10; only a caller
+    that inspects the tail can observe the marker. This is a deliberate
+    backward-compatible extension, not a reformat of the existing 5 fields.
     For research: mode_or_verdict = "mode=<mode>", summary from plan_seeds.recommended_approach_summary.
     For discover: mode_or_verdict = "verdict=<verdict>", summary from plan_seeds.recommended_option_rationale.
     Summary truncated to 80 chars.
@@ -872,15 +923,23 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
         for feature_dir in sorted(specs_root.iterdir()):
             if not feature_dir.is_dir():
                 continue
+
+            reentry = False
             if (feature_dir / "spec.md").exists():
-                continue  # D5: already consumed by /specify — not pending
+                # D5 arm (a) fails (already consumed) -- D10 arm (b): only
+                # pending if a re-entry seed targets this (spec) stage.
+                reentry = _has_spec_reentry_seed(feature_dir)
+                if not reentry:
+                    continue
 
             research_hit = _try_research_hit(feature_dir / "research-handoff.json")
             if research_hit is not None:
+                research_hit["reentry"] = reentry
                 hits.append(research_hit)
 
             discover_hit = _try_discover_hit(feature_dir / "discover-handoff.json")
             if discover_hit is not None:
+                discover_hit["reentry"] = reentry
                 hits.append(discover_hit)
 
     # Most-recent mtime first; ties broken by handoff_path for determinism.
@@ -893,8 +952,9 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
             "BLOCKED: /specify requires a pending research or discover handoff.\n"
             "No feature dir under specs/ carries an intake handoff"
             " (specs/*/research-handoff.json or specs/*/discover-handoff.json)"
-            " that has not already been consumed by /specify (i.e. its"
-            " spec.md does not yet exist).\n"
+            " that is pending -- either its spec.md does not yet exist, or"
+            " (re-entry) a sibling *-seed.json targets this stage"
+            " (target_stage == \"spec\").\n"
             "\n"
             "Run one of the following first, then retry /specify:\n"
             "  /research \"<topic>\"  — for a bug or enhancement against existing code\n"
@@ -903,15 +963,16 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
         return 2
 
     for h in hits:
-        sys.stdout.write(
-            "{0} | {1} | kind={2} | {3} | {4}\n".format(
-                h["mtime_iso"],
-                h["handoff_path"],
-                h["kind"],
-                h["mode_or_verdict"],
-                h["summary"],
-            )
+        line = "{0} | {1} | kind={2} | {3} | {4}".format(
+            h["mtime_iso"],
+            h["handoff_path"],
+            h["kind"],
+            h["mode_or_verdict"],
+            h["summary"],
         )
+        if h.get("reentry"):
+            line += " | re-entry"
+        sys.stdout.write(line + "\n")
 
     return 0
 

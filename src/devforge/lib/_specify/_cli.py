@@ -324,7 +324,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument(
         "--specs-root", default=SPECS_ROOT_DEFAULT, dest="specs_root",
-        help="Path to specs/ root (default: specs).",
+        help=(
+            "Accepted-but-ignored; kept for backward compatibility. The "
+            "scan always targets specs/ under the install root."
+        ),
     )
     sp.set_defaults(func=cmd_assign_spec_number)
 
@@ -730,8 +733,10 @@ def build_parser() -> argparse.ArgumentParser:
         "find-handoffs",
         help=(
             "List feature dirs with a pending intake handoff "
-            "(specs/*/research-handoff.json or specs/*/discover-handoff.json) "
-            "whose spec.md does not exist yet."
+            "(specs/*/research-handoff.json or specs/*/discover-handoff.json): "
+            "spec.md absent, OR (D10 re-entry) spec.md present but a "
+            "sibling *-seed.json targets this stage -- a re-entry hit's "
+            "output line carries a trailing ' | re-entry' marker."
         ),
     )
     sp.add_argument(
