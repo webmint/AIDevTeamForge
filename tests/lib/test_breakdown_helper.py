@@ -1789,7 +1789,7 @@ class RenderTaskFileTests(_CwdIsolationBH):
         result = _run_bh(self.tmp_path, "render-task-file")
         self.assertEqual(result.returncode, 0, result.stderr)
         output = result.stdout
-        self.assertIn("[Filled in by /implement after completion]", output)
+        self.assertIn("[Filled in by /devforge:implement after completion]", output)
         self.assertIn("**Completed**:", output)
         self.assertIn("**Files changed**:", output)
         self.assertIn("**Contract**: Expects", output)
@@ -6063,20 +6063,20 @@ class RenderImplementHandoffTests(_CwdIsolationBH):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_block_heading_present(self):
-        """Output contains the '## Manual next step — run /implement' heading."""
+        """Output contains the '## Manual next step — run /devforge:implement' heading."""
         _, plan_path = self._setup_tasks()
         result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("## Manual next step — run /implement", result.stdout)
+        self.assertIn("## Manual next step — run /devforge:implement", result.stdout)
 
     def test_first_task_invocation_line(self):
-        """Output contains the bare '/implement' copy-paste command (no task number arg)."""
+        """Output contains the bare '/devforge:implement' copy-paste command (no task number arg)."""
         _, plan_path = self._setup_tasks()
         result = _run_bh(self.tmp_path, "render-implement-handoff", str(plan_path))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("/implement", result.stdout)
+        self.assertIn("/devforge:implement", result.stdout)
         # The copy-paste line must NOT include a task-number argument.
-        self.assertNotIn("/implement 001", result.stdout)
+        self.assertNotIn("/devforge:implement 001", result.stdout)
 
     def test_restart_reminder_present(self):
         """Output contains a restart Claude Code reminder."""
@@ -6117,7 +6117,7 @@ class RenderImplementHandoffTests(_CwdIsolationBH):
         Non-zero-padded filenames expose the alpha vs numeric gap:
         '10-bar.md' sorts BEFORE '2-foo.md' alphabetically but 2 < 10 numerically.
         The emitter must select task 2 (identified as '002' after zero-padding),
-        not task 10. The bare '/implement' copy-paste line carries no task number,
+        not task 10. The bare '/devforge:implement' copy-paste line carries no task number,
         but the informational 'First task' line must show the correct number.
         """
         feature_dir = self.tmp_path / "specs" / "002-ordered"
@@ -6144,8 +6144,8 @@ class RenderImplementHandoffTests(_CwdIsolationBH):
         # The informational text (not the copy-paste line) must show '002'.
         self.assertIn("002", result.stdout)
         # The bare copy-paste command must NOT have any task-number argument.
-        self.assertNotIn("/implement 002", result.stdout)
-        self.assertIn("/implement", result.stdout)
+        self.assertNotIn("/devforge:implement 002", result.stdout)
+        self.assertIn("/devforge:implement", result.stdout)
 
     def test_missing_plan_exits_2(self):
         """Non-existent plan.md → exit 2."""

@@ -363,6 +363,29 @@ class TestPreflightContext(unittest.TestCase):
             self.assertTrue(result["constitution_present"])
             self.assertFalse(result["constitution_populated"])
 
+    def test_constitution_legacy_no_slash_sentinel_detected(self):
+        # Pre-namespace stub literal (no slash) -- the form every existing
+        # consumer install actually carries.
+        with tempfile.TemporaryDirectory() as td:
+            _make_full_install(td)
+            sentinel = _UNPOPULATED_SENTINELS[2]
+            self.assertEqual(sentinel, "Run constitute to populate")
+            _write(td, "constitution.md", "# Rules\n\n{0}\n".format(sentinel))
+            result = preflight_context(td)
+            self.assertTrue(result["constitution_present"])
+            self.assertFalse(result["constitution_populated"])
+
+    def test_constitution_devforge_namespaced_sentinel_detected(self):
+        # Post-namespace stub literal (current, plan 63 Phase 4c).
+        with tempfile.TemporaryDirectory() as td:
+            _make_full_install(td)
+            sentinel = _UNPOPULATED_SENTINELS[4]
+            self.assertEqual(sentinel, "Run /devforge:constitute to populate")
+            _write(td, "constitution.md", "# Rules\n\n{0}\n".format(sentinel))
+            result = preflight_context(td)
+            self.assertTrue(result["constitution_present"])
+            self.assertFalse(result["constitution_populated"])
+
     def test_full_install_passes(self):
         with tempfile.TemporaryDirectory() as td:
             _make_full_install(td)

@@ -956,10 +956,10 @@ class TestRenderReportDesignSection(unittest.TestCase):
     def test_ensemble_sections_unchanged_with_design_section(self):
         """Every line up to (and including) ## Methodology is identical whether
         or not design_section is supplied — the addition is purely additive."""
-        idx_no_flag_end = self.no_flag_report.rindex("the verdict is `/verify`'s.")
-        idx_with_end = self.with_section_report.rindex("the verdict is `/verify`'s.")
-        no_flag_head = self.no_flag_report[: idx_no_flag_end + len("the verdict is `/verify`'s.")]
-        with_head = self.with_section_report[: idx_with_end + len("the verdict is `/verify`'s.")]
+        idx_no_flag_end = self.no_flag_report.rindex("the verdict is `/devforge:verify`'s.")
+        idx_with_end = self.with_section_report.rindex("the verdict is `/devforge:verify`'s.")
+        no_flag_head = self.no_flag_report[: idx_no_flag_end + len("the verdict is `/devforge:verify`'s.")]
+        with_head = self.with_section_report[: idx_with_end + len("the verdict is `/devforge:verify`'s.")]
         self.assertEqual(no_flag_head, with_head)
 
     def test_summary_counts_unaffected_by_design_section(self):
@@ -1203,10 +1203,10 @@ class TestRenderReportA11ySection(unittest.TestCase):
     def test_ensemble_sections_unchanged_with_a11y_section(self):
         """Every line up to (and including) ## Methodology is identical whether
         or not a11y_section is supplied — the addition is purely additive."""
-        idx_no_flag_end = self.no_flag_report.rindex("the verdict is `/verify`'s.")
-        idx_with_end = self.with_a11y_report.rindex("the verdict is `/verify`'s.")
-        no_flag_head = self.no_flag_report[: idx_no_flag_end + len("the verdict is `/verify`'s.")]
-        with_head = self.with_a11y_report[: idx_with_end + len("the verdict is `/verify`'s.")]
+        idx_no_flag_end = self.no_flag_report.rindex("the verdict is `/devforge:verify`'s.")
+        idx_with_end = self.with_a11y_report.rindex("the verdict is `/devforge:verify`'s.")
+        no_flag_head = self.no_flag_report[: idx_no_flag_end + len("the verdict is `/devforge:verify`'s.")]
+        with_head = self.with_a11y_report[: idx_with_end + len("the verdict is `/devforge:verify`'s.")]
         self.assertEqual(no_flag_head, with_head)
 
     # -- Empty / falsy a11y_section values are all treated as omitted --------

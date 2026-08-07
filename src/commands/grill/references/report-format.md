@@ -8,11 +8,11 @@ report; call `render-report`.
 
 ## Findings PLUS a recommended disposition
 
-Unlike `/review` (findings only, because `/verify` owns its verdict downstream),
-`/grill` carries a LIGHT recommended **disposition** — there is no downstream
-design-`/verify` to own it. The disposition is one of four: PROCEED / REVISE-PLAN
+Unlike `/devforge:review` (findings only, because `/devforge:verify` owns its verdict downstream),
+`/devforge:grill` carries a LIGHT recommended **disposition** — there is no downstream
+design-`/devforge:verify` to own it. The disposition is one of four: PROCEED / REVISE-PLAN
 / RE-ENTER-UPSTREAM / KILL. It is a RECOMMENDATION — the human makes the final
-call at the existing `/breakdown` approval gate. The disposition (verdict +
+call at the existing `/devforge:breakdown` approval gate. The disposition (verdict +
 rationale, and for RE-ENTER-UPSTREAM the target stage) is computed by the
 orchestrator's PHASE 5 CLASSIFY reasoning and passed to `render-report` via
 `--disposition` / `--rationale` / `--re-entry-target`; this helper RENDERS the
@@ -53,7 +53,7 @@ every finding (see `references/design-attack-checklist.md` and the output
 contract). The renderer groups by that declared value; it never infers a category
 from which agent produced the finding.
 
-Finding tags: `[CROSS-AGENT]` (raised by ≥2 finders — rare for `/grill`, which
+Finding tags: `[CROSS-AGENT]` (raised by ≥2 finders — rare for `/devforge:grill`, which
 dispatches a single `devils-advocate` finder), `[CONSTITUTION-VIOLATION]` (always
 Critical), `[DATA-LOSS]` / `[IRREVERSIBLE]` (a data-loss / irreversible-migration
 marker), and `[CONTESTED]` (a high-stakes `security` / `[CONSTITUTION-VIOLATION]` /
@@ -82,10 +82,10 @@ both are surfaced in the headline, never buried).
 [the orchestrator's CLASSIFY rationale — why this disposition]
 
 > [verdict-specific guidance — the helper renders one of:]
-> - PROCEED — the grill attack found no disqualifying plan-level defect; the plan is sound to execute (run `/breakdown`).
-> - REVISE-PLAN — the defects are real but correctable at the plan level; revise `plan.md`, then re-run (re-`/plan` / hand-patch, optionally re-`/grill`). If you choose `Revise plan` at the human gate, the orchestrator emits a `grill-seed.json` (`target_stage="plan"`) that `/plan` consumes on re-entry, so the re-`/plan` is directed, not a repeat.
-> - RE-ENTER-UPSTREAM — the defect is rooted upstream; re-enter at the named stage (`/specify` for `spec`, `/discover` for `discovery`, `/research` for `research`). If you choose `Re-enter upstream` at the human gate, the orchestrator emits a `grill-seed.json` for that stage so the re-run is directed, not a repeat.
-> - KILL — the defect is fundamental; the plan should be abandoned (re-`/plan` with a wholly different approach).
+> - PROCEED — the grill attack found no disqualifying plan-level defect; the plan is sound to execute (run `/devforge:breakdown`).
+> - REVISE-PLAN — the defects are real but correctable at the plan level; revise `plan.md`, then re-run (re-`/devforge:plan` / hand-patch, optionally re-`/devforge:grill`). If you choose `Revise plan` at the human gate, the orchestrator emits a `grill-seed.json` (`target_stage="plan"`) that `/devforge:plan` consumes on re-entry, so the re-`/devforge:plan` is directed, not a repeat.
+> - RE-ENTER-UPSTREAM — the defect is rooted upstream; re-enter at the named stage (`/devforge:specify` for `spec`, `/devforge:discover` for `discovery`, `/devforge:research` for `research`). If you choose `Re-enter upstream` at the human gate, the orchestrator emits a `grill-seed.json` for that stage so the re-run is directed, not a repeat.
+> - KILL — the defect is fundamental; the plan should be abandoned (re-`/devforge:plan` with a wholly different approach).
 
 ## Confirmed — Top Priorities
 Force-ranked across the confirmed findings. Fix these first.
@@ -173,8 +173,8 @@ The seed is written in PHASE 7's matching re-entry arm: when the PHASE-5
 disposition is RE-ENTER-UPSTREAM or REVISE-PLAN AND the user's PHASE-7 pick
 matches that recommendation, the orchestrator calls `grill_helper write-seed`,
 which writes `specs/[feature]/grill-seed.json` — the structured backward handoff
-the named re-entry command (`/specify`, `/discover`, or `/research` when the user
-picks `Re-enter upstream`; `/plan` when the user picks `Revise plan`) consumes on
+the named re-entry command (`/devforge:specify`, `/devforge:discover`, or `/devforge:research` when the user
+picks `Re-enter upstream`; `/devforge:plan` when the user picks `Revise plan`) consumes on
 re-entry so the re-run is DIRECTED, not a repeat. A cross-pick (the user picks a
 different arm than the recommendation), or a PROCEED / KILL disposition, writes no
 seed. The seed is NOT part of

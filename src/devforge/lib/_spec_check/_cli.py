@@ -215,7 +215,8 @@ def cmd_preflight(args):
         sys.stderr.write(
             "spec_check_helper preflight: setup chain incomplete. "
             "Run the 4-command setup sequence first:\n"
-            "  /init-forge -> /generate-docs -> /configure -> /constitute\n"
+            "  /devforge:init-forge -> /devforge:generate-docs -> /devforge:configure -> "
+            "/devforge:constitute\n"
             "Missing: {0}\n".format(", ".join(missing))
         )
         return 2
@@ -223,8 +224,8 @@ def cmd_preflight(args):
     if not result["constitution_populated"]:
         sys.stderr.write(
             "spec_check_helper preflight: constitution.md contains an "
-            "unpopulated sentinel. Run /constitute to populate it before "
-            "running /spec-check.\n"
+            "unpopulated sentinel. Run /devforge:constitute to populate it before "
+            "running /devforge:spec-check.\n"
         )
         return 2
 
@@ -233,7 +234,7 @@ def cmd_preflight(args):
         sys.stderr.write(
             "spec_check_helper preflight: feature artefacts missing in "
             "{0!r}: {1}\n"
-            "Run /specify to produce these before running /spec-check.\n".format(
+            "Run /devforge:specify to produce these before running /devforge:spec-check.\n".format(
                 feature_dir, ", ".join(missing_feat)
             )
         )
@@ -800,10 +801,10 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="spec_check_helper",
         description=(
-            "Helper for /spec-check -- proves a feature's acceptance "
+            "Helper for /devforge:spec-check -- proves a feature's acceptance "
             "criteria are mutually consistent via a deterministic Z3 SMT "
-            "solve over an LLM-formalized IR. Runs between /specify and "
-            "/plan; on a proven contradiction (REVISE-SPEC) emits a "
+            "solve over an LLM-formalized IR. Runs between /devforge:specify and "
+            "/devforge:plan; on a proven contradiction (REVISE-SPEC) emits a "
             "backward spec-check-seed.json re-entry seed."
         ),
     )

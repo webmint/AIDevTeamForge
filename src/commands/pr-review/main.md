@@ -1,9 +1,8 @@
 ---
 name: pr-review
-description: Personal-overlay PR review of a foreign-repo PR — fetch diff + ticket, run code-smell heuristics, compute blast radius via CBM, check scope drift, dispatch cavecrew-reviewer, render terse findings locally.
+description: Personal-overlay PR review of a foreign-repo PR — fetch diff + ticket, run code-smell heuristics, compute blast radius, check scope drift, render terse findings locally.
 argument-hint: "<PR#>"
 arguments: [pr_number]
-disable-model-invocation: true
 allowed-tools:
   - Bash(gh pr *)
   - Bash(gh issue *)
@@ -17,13 +16,13 @@ allowed-tools:
   - Read(.)
 ---
 
-# /pr-review — Personal-Overlay PR Review
+# /devforge:pr-review — Personal-Overlay PR Review
 
-`/pr-review` is a private, reviewer-side command for inspecting a teammate's pull request against a foreign-repo codebase. The reviewer's forge install holds the overlay (`.devforge/` + `constitution.md` + concern docs + CBM index); the PR-authoring team is unaware of forge. Output stays in `.devforge/pr-reviews/<PR#>/` on the reviewer's machine — findings are NEVER posted to the PR automatically. The reviewer reads `findings.md`, then manually re-translates each finding into PR-comment-shaped language appropriate for the author's team.
+`/devforge:pr-review` is a private, reviewer-side command for inspecting a teammate's pull request against a foreign-repo codebase. The reviewer's forge install holds the overlay (`.devforge/` + `constitution.md` + concern docs + CBM index); the PR-authoring team is unaware of forge. Output stays in `.devforge/pr-reviews/<PR#>/` on the reviewer's machine — findings are NEVER posted to the PR automatically. The reviewer reads `findings.md`, then manually re-translates each finding into PR-comment-shaped language appropriate for the author's team.
 
 State + render shape are owned by `.devforge/lib/pr_review_helper`; the orchestrator composes values via verb invocations and dispatches MCP / Task-tool work itself. The helper makes ZERO MCP calls and ZERO LLM calls — every CBM `trace_path`, every cavecrew dispatch, every state.findings append is the orchestrator's responsibility.
 
-Usage: `/pr-review $pr_number` — e.g. `/pr-review 304`. The PR number is positional and required.
+Usage: `/devforge:pr-review $pr_number` — e.g. `/devforge:pr-review 304`. The PR number is positional and required.
 
 ## Overview
 
@@ -51,7 +50,7 @@ The LLM does NOT edit `state.json`, `brief.md`, `findings.md`, or `pr-review-bun
   - User-supplied file path (orchestrator reads the file and passes `--ticket-file <path>` to `intake`).
   - Empty (proceed without ticket; scope-drift Phase 5 degrades to PR-body-only).
 
-If `$pr_number` is empty or non-numeric, end the turn with `"/pr-review requires a PR number, e.g. /pr-review 304"`. Do not invoke any helper verb.
+If `$pr_number` is empty or non-numeric, end the turn with `"/devforge:pr-review requires a PR number, e.g. /devforge:pr-review 304"`. Do not invoke any helper verb.
 
 ## Pre-conditions
 
@@ -63,7 +62,7 @@ Three preflight checks run in order. All must pass before Phase -1 begins.
 command -v gh >/dev/null
 ```
 
-Non-zero → end the turn with: `"gh CLI not found. Install from https://cli.github.com/ then re-run /pr-review."` No further phases run.
+Non-zero → end the turn with: `"gh CLI not found. Install from https://cli.github.com/ then re-run /devforge:pr-review."` No further phases run.
 
 ### Pre-condition 2 — `gh` authenticated
 
@@ -71,11 +70,11 @@ Non-zero → end the turn with: `"gh CLI not found. Install from https://cli.git
 gh auth status >/dev/null 2>&1
 ```
 
-Non-zero → end the turn with: `"gh is not authenticated. Run gh auth login then re-run /pr-review."` No further phases run.
+Non-zero → end the turn with: `"gh is not authenticated. Run gh auth login then re-run /devforge:pr-review."` No further phases run.
 
 ### Pre-condition 3 — CBM MCP availability check (warn-only)
 
-If `mcp__codebase-memory-mcp__*` tools are not loaded in this session, surface to the reviewer as plain prose: `"CBM MCP not available in this session — Phase 3 blast-radius probe specs will be emitted but not filled. Run /pr-review again with CBM loaded for full blast-radius analysis, OR proceed with helper-only output."` Then continue — CBM unavailability is not a hard stop; the helper-side probe specs are still useful for the reviewer.
+If `mcp__codebase-memory-mcp__*` tools are not loaded in this session, surface to the reviewer as plain prose: `"CBM MCP not available in this session — Phase 3 blast-radius probe specs will be emitted but not filled. Run /devforge:pr-review again with CBM loaded for full blast-radius analysis, OR proceed with helper-only output."` Then continue — CBM unavailability is not a hard stop; the helper-side probe specs are still useful for the reviewer.
 
 After all three preflight checks, surface the confidentiality reminder (see `## Confidentiality`) to the reviewer as plain prose. Then proceed to Phase -1.
 
@@ -94,7 +93,7 @@ Branch on `status`:
 - **`ok`** → continue to Phase 0.
 - **`stale`** → surface the helper's JSON to the reviewer verbatim as a fenced code block, then dispatch `mcp__codebase-memory-mcp__detect_changes` per the `mcp_tool_hint`. After the MCP call returns, run `.devforge/lib/cbm_sync_helper write` to refresh the stamp. Continue to Phase 0.
 - **`absent`** → surface the helper's JSON to the reviewer verbatim as a fenced code block. The dict carries `cost_estimate_usd` (rule-of-thumb $1 per 1000 source files, capped at 10 000 files). Quote that estimate to the reviewer as plain prose alongside the JSON, then ask via AskUserQuestion: `"CBM index missing; estimated indexing cost ~$<value> USD. Run index_repository?"` with options `["index", "skip"]`. Single-line question text. End the turn. The reviewer's reply opens the next turn. On `index`: dispatch `mcp__codebase-memory-mcp__index_repository` per the `mcp_tool_hint`, then run `.devforge/lib/cbm_sync_helper write`. Continue to Phase 0. On `skip`: continue to Phase 0; Phase 3.5 blast-radius fill will skip (no graph to query).
-- **`not-a-git-repo`** → surface the helper's JSON to the reviewer verbatim as a fenced code block. End the turn with: `"Target is not a git repository. /pr-review requires a git working tree."` No further phases run.
+- **`not-a-git-repo`** → surface the helper's JSON to the reviewer verbatim as a fenced code block. End the turn with: `"Target is not a git repository. /devforge:pr-review requires a git working tree."` No further phases run.
 
 ### Phase 0 — Forge-state tier detection
 
@@ -134,7 +133,7 @@ Invoke intake:
 
 Helper invokes `gh pr view --json` + `gh pr diff`, builds the initial `PRReviewState`, writes it atomically to `.devforge/pr-reviews/$pr_number/state.json`, and emits a summary JSON dict with keys `status`, `state_path`, `pr_number`, `repo`, `files_changed`, `additions`, `deletions`, `title`, `ticket_text_length`. Surface the summary JSON to the reviewer verbatim as a fenced code block.
 
-On non-zero exit, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). End the turn. The reviewer fixes the upstream cause (auth, PR number, network) and re-invokes `/pr-review`.
+On non-zero exit, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). End the turn. The reviewer fixes the upstream cause (auth, PR number, network) and re-invokes `/devforge:pr-review`.
 
 ### Phase 2 — Code-smell + slop heuristics
 
@@ -191,7 +190,7 @@ Surface the summary JSON to the reviewer verbatim as a fenced code block. On non
 
 Helper scans `<target>/specs/*/research-handoff.json` AND `<target>/specs/*/discover-handoff.json` — each feature directory's own intake handoff, from either lane — for handoffs whose ticket-area tokens overlap with `state.ticket_text` + PR title. Those two globs are the only locations scanned: a handoff left in a pre-migration top-level `research/` or `discover/` directory is not picked up. Matching handoffs are appended to `state.bundle.research_handoffs`, each carrying a `kind` field (`research` / `discover`) naming the lane it came from; the field name is lane-neutral despite its wording — it holds both kinds. Stdout is a summary JSON with `matched` + `scanned` counts.
 
-Surface the summary JSON to the reviewer verbatim as a fenced code block. Zero matches is not a failure — many PRs have no prior `/research` or `/discover` run; the field is left empty and Phase 6's brief carries no handoff section content.
+Surface the summary JSON to the reviewer verbatim as a fenced code block. Zero matches is not a failure — many PRs have no prior `/devforge:research` or `/devforge:discover` run; the field is left empty and Phase 6's brief carries no handoff section content.
 
 ### Phase 5 — Check scope drift (extract ticket bullets)
 
@@ -254,7 +253,7 @@ Helper writes the full state snapshot atomically to `.devforge/pr-reviews/$pr_nu
 
 Stdout is a summary JSON with `status`, `bundle_path`, `corpus_index_path`, `entry_action`, `review_count`, `findings_count`. Surface the summary JSON to the reviewer verbatim as a fenced code block.
 
-End the turn with: `"/pr-review complete for PR $pr_number. Read findings.md, translate to PR comments, then move on."`
+End the turn with: `"/devforge:pr-review complete for PR $pr_number. Read findings.md, translate to PR comments, then move on."`
 
 ## Verify
 
@@ -280,13 +279,13 @@ The reviewer's primary read target is `findings.md`. The full artefact set, with
 | Replay bundle | `.devforge/pr-reviews/$pr_number/pr-review-bundle.json` | Regression-test replay corpus; future heuristic-catalog validation |
 | Corpus index | `.devforge/pr-reviews/_corpus_index.json` | Reviewer cross-PR lookup; corpus-replay tooling |
 
-Findings are NEVER posted to the PR automatically. The reviewer translates each finding into team-appropriate PR-comment language manually — this is the explicit design contract and the reason `/pr-review` is private-overlay rather than team-shared.
+Findings are NEVER posted to the PR automatically. The reviewer translates each finding into team-appropriate PR-comment language manually — this is the explicit design contract and the reason `/devforge:pr-review` is private-overlay rather than team-shared.
 
 ## Confidentiality
 
-Diff text, PR body, ticket text, and linked-issue references are sent to Claude via MCP for `cavecrew-reviewer` dispatch and (during Phase 3.5) to the CBM index. This means the foreign-repo source code present in the diff transits Claude's inference path. **Verify NDA / employer policy / client approval before running `/pr-review` against any repository whose source you do not have explicit permission to share with a third-party LLM service.**
+Diff text, PR body, ticket text, and linked-issue references are sent to Claude via MCP for `cavecrew-reviewer` dispatch and (during Phase 3.5) to the CBM index. This means the foreign-repo source code present in the diff transits Claude's inference path. **Verify NDA / employer policy / client approval before running `/devforge:pr-review` against any repository whose source you do not have explicit permission to share with a third-party LLM service.**
 
-All output artefacts under `.devforge/pr-reviews/` stay on the reviewer's local machine. By default, the install script adds `.devforge/` to the target repo's `.gitignore` — verify the gitignore entry is present before running `/pr-review`. If `.devforge/` is committed (which would be a misconfiguration), every PR review you run leaks the diff + ticket + findings into the foreign repo's git history.
+All output artefacts under `.devforge/pr-reviews/` stay on the reviewer's local machine. By default, the install script adds `.devforge/` to the target repo's `.gitignore` — verify the gitignore entry is present before running `/devforge:pr-review`. If `.devforge/` is committed (which would be a misconfiguration), every PR review you run leaks the diff + ticket + findings into the foreign repo's git history.
 
 This reminder is surfaced to the reviewer as plain prose after the three pre-condition checks pass. The reviewer's continuation past that prompt is treated as confirmation; no AskUserQuestion gate is enforced (one-time prose reminder is sufficient for a private-overlay workflow).
 
@@ -318,14 +317,14 @@ All per-PR artefacts live under `.devforge/pr-reviews/$pr_number/`:
     └── pr-review-bundle.json # full state snapshot (Phase 7.5 archive)
 ```
 
-`.devforge/` is gitignored by default (install-script-enforced). Per-PR directories are NEVER deleted automatically — the reviewer manages retention by hand. Re-running `/pr-review` on the same PR overwrites `state.json` / `brief.md` / `findings.md` / `pr-review-bundle.json` for that PR and increments the corpus index's `review_count` field.
+`.devforge/` is gitignored by default (install-script-enforced). Per-PR directories are NEVER deleted automatically — the reviewer manages retention by hand. Re-running `/devforge:pr-review` on the same PR overwrites `state.json` / `brief.md` / `findings.md` / `pr-review-bundle.json` for that PR and increments the corpus index's `review_count` field.
 
 ## IMPORTANT RULES
 
-1. **Findings stay private.** `/pr-review` never posts to the PR. The reviewer translates findings to PR comments manually, in the author's team's preferred tone.
+1. **Findings stay private.** `/devforge:pr-review` never posts to the PR. The reviewer translates findings to PR comments manually, in the author's team's preferred tone.
 2. **Helper-owned shape.** State + brief + findings + bundle structure is locked by `pr_review_helper`. The orchestrator's only direct JSON edits are Phase 3.5's blast-probe fill and Phase 6.5's `state.findings` + `state.drift` append — both fill helper-declared fields only.
 3. **No MCP from helpers.** Every CBM `trace_path` / `search_graph` / `search_code` / `index_repository` / `detect_changes` call is dispatched by the orchestrator, not by helper code. The helper-side surface is pure filesystem + subprocess (`gh`, `cbm_sync_helper`).
 4. **CBM unavailable is degrade-not-stop.** When MCP tools are not loaded, Phase 3.5 is skipped, blast probe specs travel to cavecrew unfilled, and the reviewer is told explicitly. Phases -1 through 7.5 still run.
 5. **Confidentiality is the reviewer's responsibility.** The pre-Phase-(-1) reminder is informational. No automated check enforces NDA / approval status — the reviewer's continuation past the reminder is treated as confirmation.
 6. **Phase 6.5 finding-schema fields are locked.** `{severity, location, category, evidence, fix_hint, source_heuristic}` is the canonical shape. When cavecrew omits `confidence`, default to `0.0` (matches the helper's defensive default). Do not invent fields.
-7. **Re-running is idempotent on the PR.** Re-invoking `/pr-review` on the same PR overwrites the per-PR artefacts and increments the corpus index's `review_count`; the corpus index's `first_reviewed_at` is preserved.
+7. **Re-running is idempotent on the PR.** Re-invoking `/devforge:pr-review` on the same PR overwrites the per-PR artefacts and increments the corpus index's `review_count`; the corpus index's `first_reviewed_at` is preserved.

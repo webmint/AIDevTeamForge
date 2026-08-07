@@ -83,7 +83,7 @@ def _validate_constitution_anchor_ref(
     constitution = install_root / "constitution.md"
     if not constitution.is_file():
         return False, (
-            "constitution_anchor: constitution.md not found at {0} — run /constitute first"
+            "constitution_anchor: constitution.md not found at {0} — run /devforge:constitute first"
             .format(constitution)
         )
     pattern = re.compile(

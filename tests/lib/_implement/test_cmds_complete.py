@@ -260,7 +260,7 @@ class TestFillCompletionNotes(unittest.TestCase):
             "## Done When\n\n"
             "- [ ] Condition A\n\n"
             "## Completion Notes\n\n"
-            "[Filled in by /implement after completion]\n"
+            "[Filled in by /devforge:implement after completion]\n"
             "**Completed**: [date/time]\n"
             "**Files changed**: [actual files]\n"
             "**Contract**: Expects [X/Y verified] | Produces [X/Y verified]\n"
@@ -843,7 +843,7 @@ class TestCmdMarkSkipped(unittest.TestCase):
             "## Done When\n\n"
             "- [ ] Widget exists\n\n"
             "## Completion Notes\n\n"
-            "[Filled in by /implement after completion]\n"
+            "[Filled in by /devforge:implement after completion]\n"
             "**Completed**: [date/time]\n"
             "**Files changed**: [actual files]\n"
             "**Contract**: Expects [X/Y verified] | Produces [X/Y verified]\n"
@@ -945,7 +945,7 @@ class TestCmdMarkSkipped(unittest.TestCase):
 
         text = task_file.read_text(encoding="utf-8")
         # Skeleton placeholders must still be present.
-        self.assertIn("[Filled in by /implement after completion]", text)
+        self.assertIn("[Filled in by /devforge:implement after completion]", text)
         self.assertIn("[date/time]", text)
         self.assertIn("[actual files]", text)
 

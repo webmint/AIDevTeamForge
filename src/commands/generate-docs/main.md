@@ -4,7 +4,7 @@ description: Generate the docs/ knowledge base — bottom-up bottom-tier (concer
 disable-model-invocation: true
 ---
 
-# /generate-docs
+# /devforge:generate-docs
 
 Generates the project's `docs/` knowledge base end-to-end. The pipeline is
 bottom-up across three tiers (concern → package → project), gated by per-tier
@@ -27,7 +27,7 @@ init-doc → set-doc-purpose → set-doc-structure → render-doc → validate-d
 
 Concern-tier authoring is **orchestrator-direct**: this thread reads the `concern-input` batch JSON inline and emits Purpose + per-leaf annotations itself. NO Task-tool dispatch to any compose subagent. Subagent dispatch costs 30-90K tokens per concern + redundant source-file reads inside the subagent. Orchestrator-direct is 3-10× cheaper because session context is already loaded; the concern's batch JSON inlines (~3-5K tokens) and structured output emits (~2-4K tokens).
 
-The following are FORBIDDEN under /generate-docs:
+The following are FORBIDDEN under /devforge:generate-docs:
 
 - Writing concern markdown to disk via the Write tool (helper owns that path via `render-doc`).
 - Running custom Python or bash that emits markdown content directly to `docs/<pkg>/<concern>/index.md`.
@@ -42,7 +42,7 @@ The helper chain is the ONLY canonical path. Any divergence emits the wrong shap
 
 Before executing any step below, run `.devforge/lib/cbm_sync_helper check`. If output is `drift ...`, call `mcp__codebase-memory-mcp__detect_changes` then `.devforge/lib/cbm_sync_helper write` before continuing. If output is `missing`, call `mcp__codebase-memory-mcp__index_repository` then `.devforge/lib/cbm_sync_helper write` before continuing. If output is `current` or `not-a-git-repo`, proceed.
 
-This catches mid-session `git pull` / `git checkout` drift that the SessionStart hook (`cbm-sync-session-start`) cannot see — the SessionStart hook only fires at session boot. /generate-docs queries CBM heavily (Phase 4 Patterns + Cross-Cuts via `get_code_snippet`; Phase B glossary via `query_graph` + `search_graph` + `get_code_snippet`); a stale graph silently corrupts cite-back paths and snippet contents.
+This catches mid-session `git pull` / `git checkout` drift that the SessionStart hook (`cbm-sync-session-start`) cannot see — the SessionStart hook only fires at session boot. /devforge:generate-docs queries CBM heavily (Phase 4 Patterns + Cross-Cuts via `get_code_snippet`; Phase B glossary via `query_graph` + `search_graph` + `get_code_snippet`); a stale graph silently corrupts cite-back paths and snippet contents.
 
 ---
 
@@ -52,7 +52,7 @@ This catches mid-session `git pull` / `git checkout` drift that the SessionStart
    ```
    test -f .devforge/index.json
    ```
-   If non-zero → ABORT: "missing .devforge/index.json — run /init-forge first."
+   If non-zero → ABORT: "missing .devforge/index.json — run /devforge:init-forge first."
 
 2. `codebase-memory-mcp` binary on PATH:
    ```
@@ -134,7 +134,7 @@ Frontmatter values:
 
 ### Step 2.3 — Compose Purpose + leaf annotations (orchestrator-direct, NO subagent)
 
-The orchestrator (the main /generate-docs thread) reads the Step 2.1 batch JSON inline and produces:
+The orchestrator (the main /devforge:generate-docs thread) reads the Step 2.1 batch JSON inline and produces:
 
 1. **Purpose** — 1-3 sentences describing what the concern does. Concrete + cross-cuts named. No banned phrases ("this document", "in this section", "various", "several", "many", "some", "other"). Sourced from filename inference + `files[].comment_rich_span` content.
 
@@ -144,7 +144,7 @@ For very large concerns (>100 leaves), the orchestrator emits the annotations ma
 
 ### Step 2.4 — Setters
 
-Two setter calls (Hazards dropped — `/audit` territory). Setters edit the skeleton file in-place:
+Two setter calls (Hazards dropped — `/devforge:audit` territory). Setters edit the skeleton file in-place:
 
 ```
 ./.devforge/lib/generate_docs_helper set-doc-purpose --tier concern --target "$pkg/$concern" \
@@ -544,7 +544,7 @@ The helper validates the entries (count, definition shape, term-uniqueness case-
 
 **Output shape** (helper-owned):
 
-- Frontmatter: `generated_by: /generate-docs (Phase B — glossary)`, `last_indexed: <UTC date>`, `total_terms: <N>`
+- Frontmatter: `generated_by: /devforge:generate-docs (Phase B — glossary)`, `last_indexed: <UTC date>`, `total_terms: <N>`
 - H1 `# Project Glossary` + intro paragraph
 - Entries sorted alphabetically (case-insensitive). Per entry:
   - `## TermName` heading

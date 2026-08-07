@@ -1,10 +1,10 @@
 # Q12 — AC verification mode
 
-`/configure` Phase 4 asks one AskUserQuestion to pick the acceptance-criteria verification mode, then conditionally asks three follow-up questions (Q12.1 / Q12.2 / Q12.3) when the user selects `runtime-assisted`. Persist each answer via its setter before issuing the next question.
+`/devforge:configure` Phase 4 asks one AskUserQuestion to pick the acceptance-criteria verification mode, then conditionally asks three follow-up questions (Q12.1 / Q12.2 / Q12.3) when the user selects `runtime-assisted`. Persist each answer via its setter before issuing the next question.
 
 ## Q12 — Mode selection
 
-Use AskUserQuestion: "How should /verify check acceptance criteria?"
+Use AskUserQuestion: "How should /devforge:verify check acceptance criteria?"
 - `code-only` (Recommended) — read code; no test execution; no runtime probing
 - `tests` — run tests; no runtime probing
 - `runtime-assisted` — run app + probe via Chrome DevTools MCP / API calls
@@ -14,10 +14,10 @@ Save via `.devforge/lib/configure_helper set-ac-verification-mode <choice>`.
 
 ### Mode taxonomy
 
-- **`code-only`** — `/verify` reads task output files, source code, and the spec to check that acceptance criteria are mechanically satisfied. No subprocess execution, no runtime probing. Default for projects without a stable test suite or running app.
-- **`tests`** — `/verify` runs the project's test suite (per-package, scope-aware) and checks that tests pass alongside reading code. Suitable for projects with reliable test coverage.
-- **`runtime-assisted`** — `/verify` boots the app (or assumes it is already running) and probes via Chrome DevTools MCP and/or API calls to validate user-facing behavior. Suitable for web apps with a stable dev server.
-- **`off`** — `/verify` skips behavioral AC verification (no browser/API probing, no test execution) but still applies a code-reading floor: it reads the changed files and produces per-AC code-only statuses, noted as code-verified in the verdict (advisory, not blocking). Pick this when the project has no running app and no test suite, or when behavioral AC verification is owned by an external pipeline.
+- **`code-only`** — `/devforge:verify` reads task output files, source code, and the spec to check that acceptance criteria are mechanically satisfied. No subprocess execution, no runtime probing. Default for projects without a stable test suite or running app.
+- **`tests`** — `/devforge:verify` runs the project's test suite (per-package, scope-aware) and checks that tests pass alongside reading code. Suitable for projects with reliable test coverage.
+- **`runtime-assisted`** — `/devforge:verify` boots the app (or assumes it is already running) and probes via Chrome DevTools MCP and/or API calls to validate user-facing behavior. Suitable for web apps with a stable dev server.
+- **`off`** — `/devforge:verify` skips behavioral AC verification (no browser/API probing, no test execution) but still applies a code-reading floor: it reads the changed files and produces per-AC code-only statuses, noted as code-verified in the verdict (advisory, not blocking). Pick this when the project has no running app and no test suite, or when behavioral AC verification is owned by an external pipeline.
 
 If the user picks `code-only`, `tests`, or `off`, Phase 4 advances directly to Phase 5 — Q12.1 / Q12.2 / Q12.3 are NOT asked.
 

@@ -82,8 +82,8 @@ CONFLICT_TYPE_ENUM = ("direct", "drift", "refinement", "mode-flip")
 # enumeration. constitution.md lives at install-root; the rest under
 # .devforge/ + docs/.
 PREFLIGHT_PREREQS = (
-    (".devforge/init.yaml", "/init-forge"),
-    ("docs/architecture.md", "/generate-docs"),
-    (".devforge/configure.yaml", "/configure"),
-    ("constitution.md", "/constitute"),
+    (".devforge/init.yaml", "/devforge:init-forge"),
+    ("docs/architecture.md", "/devforge:generate-docs"),
+    (".devforge/configure.yaml", "/devforge:configure"),
+    ("constitution.md", "/devforge:constitute"),
 )

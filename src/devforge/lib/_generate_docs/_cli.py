@@ -561,7 +561,7 @@ _SUBCOMMANDS: Tuple[Tuple[str, _ParserFactory, _Handler], ...] = (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="generate_docs_helper",
-        description="State + setters for /generate-docs (PackageDoc tier).",
+        description="State + setters for /devforge:generate-docs (PackageDoc tier).",
     )
     sub = parser.add_subparsers(dest="subcommand")
     for name, factory, handler in _SUBCOMMANDS:

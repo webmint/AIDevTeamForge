@@ -425,18 +425,20 @@ class TestRenderReportDispositionGuidance(unittest.TestCase):
     def test_revise_plan_guidance_text(self):
         result = render_report(**_minimal_render_kwargs(disposition="REVISE-PLAN"))
         self.assertIn("correctable at the plan level", result)
-        # Must route to /plan (not /breakdown) as the immediate next step.
-        self.assertIn("re-run `/plan`", result)
-        # /breakdown is mentioned only as the step AFTER /plan, not as the immediate next step.
-        # The guidance string references /breakdown after "proceeding to", so it is present
-        # but comes AFTER the /plan re-run instruction, not before it.
-        self.assertIn("/breakdown", result)
-        plan_pos = result.index("re-run `/plan`")
-        breakdown_pos = result.index("/breakdown")
+        # Must route to /devforge:plan (not /devforge:breakdown) as the immediate next step.
+        self.assertIn("re-run `/devforge:plan`", result)
+        # /devforge:breakdown is mentioned only as the step AFTER /devforge:plan, not as the
+        # immediate next step. The guidance string references /devforge:breakdown after
+        # "proceeding to", so it is present but comes AFTER the /devforge:plan re-run
+        # instruction, not before it.
+        self.assertIn("/devforge:breakdown", result)
+        plan_pos = result.index("re-run `/devforge:plan`")
+        breakdown_pos = result.index("/devforge:breakdown")
         self.assertLess(
             plan_pos,
             breakdown_pos,
-            "re-run `/plan` must appear before `/breakdown` in the REVISE-PLAN guidance",
+            "re-run `/devforge:plan` must appear before `/devforge:breakdown` in the "
+            "REVISE-PLAN guidance",
         )
 
     def test_re_enter_upstream_guidance_text(self):
@@ -449,35 +451,35 @@ class TestRenderReportDispositionGuidance(unittest.TestCase):
         self.assertIn("grill-seed.json", result)
 
     def test_re_enter_upstream_spec_stage_uses_slash_specify(self):
-        """re_entry_target='spec' must produce '/specify' in guidance, not '/spec'."""
+        """re_entry_target='spec' must produce '/devforge:specify' in guidance, not '/devforge:spec'."""
         result = render_report(
             **_minimal_render_kwargs(
                 disposition="RE-ENTER-UPSTREAM", re_entry_target="spec"
             )
         )
-        self.assertIn("/specify", result)
-        self.assertNotIn("`/spec`", result)
+        self.assertIn("/devforge:specify", result)
+        self.assertNotIn("`/devforge:spec`", result)
 
     def test_re_enter_upstream_discovery_stage_uses_slash_discover(self):
-        """re_entry_target='discovery' must produce '/discover' in guidance,
-        not '/discovery'."""
+        """re_entry_target='discovery' must produce '/devforge:discover' in guidance,
+        not '/devforge:discovery'."""
         result = render_report(
             **_minimal_render_kwargs(
                 disposition="RE-ENTER-UPSTREAM", re_entry_target="discovery"
             )
         )
-        self.assertIn("/discover", result)
-        self.assertNotIn("`/discovery`", result)
+        self.assertIn("/devforge:discover", result)
+        self.assertNotIn("`/devforge:discovery`", result)
 
     def test_re_enter_upstream_research_stage_uses_slash_research(self):
-        """re_entry_target='research' must produce '/research' in guidance
+        """re_entry_target='research' must produce '/devforge:research' in guidance
         (already correct -- regression guard)."""
         result = render_report(
             **_minimal_render_kwargs(
                 disposition="RE-ENTER-UPSTREAM", re_entry_target="research"
             )
         )
-        self.assertIn("/research", result)
+        self.assertIn("/devforge:research", result)
 
     def test_kill_guidance_text(self):
         result = render_report(**_minimal_render_kwargs(disposition="KILL"))

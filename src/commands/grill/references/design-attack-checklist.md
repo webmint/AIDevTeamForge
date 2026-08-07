@@ -11,7 +11,8 @@ which `Category` its findings carry.
 The available Category values are: `mislogic | system_design | best_practice |
 duplication | security | blind_spot`. Use only these. A **constitution violation**
 has no category of its own — tag it `blind_spot` and put a `[CONSTITUTION-VIOLATION]`
-marker in the `Pattern` line and `Why it's wrong` (matching `/audit` and `/review`).
+marker in the `Pattern` line and `Why it's wrong` (matching `/devforge:audit` and
+`/devforge:review`).
 A **data-integrity / irreversible-migration** defect likewise has no category of its
 own — tag it `blind_spot` (or `system_design` when the defect is structural) and put
 a `[DATA-LOSS]` and/or `[IRREVERSIBLE]` marker in the `Pattern` line and `Why it's
@@ -115,7 +116,7 @@ blind_spot, or system_design when the defect is structural)
   `Speculative`.
 
 
-Grounding rule (mandatory — same single-anchor discipline as /audit and /review)
+Grounding rule (mandatory — same single-anchor discipline as /devforge:audit and /devforge:review)
 Every finding MUST include a verbatim Evidence quote copy-pasted from exactly ONE
 artifact — the one named in the finding's `File:` field. `File:` is polymorphic:
 it holds `plan.md`, `spec.md`, the constitution path, OR a real source file

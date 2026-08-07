@@ -782,7 +782,7 @@ class TestReadDocs(unittest.TestCase):
 # Minimal 3-term glossary fixture.
 _GLOSSARY_3_TERMS = """\
 ---
-generated_by: /generate-docs
+generated_by: /devforge:generate-docs
 total_terms: 3
 ---
 

@@ -113,7 +113,7 @@ class TestInlineSummaryStructure(unittest.TestCase):
         self.assertIn("Not committed", self.summary)
 
     def test_adversarial_note_present(self):
-        self.assertIn("NOTE: /audit is adversarial", self.summary)
+        self.assertIn("NOTE: /devforge:audit is adversarial", self.summary)
 
     def test_adversarial_note_mentions_verbatim_grounding(self):
         # The NOTE now describes the grounding + cross-examination model instead
@@ -298,7 +298,7 @@ class TestInlineSummaryEdgeCases(unittest.TestCase):
         # Minimal dict — only required structure
         summary = render_inline_summary({})
         self.assertIn("## Audit Complete", summary)
-        self.assertIn("NOTE: /audit is adversarial", summary)
+        self.assertIn("NOTE: /devforge:audit is adversarial", summary)
 
 
 # ---------------------------------------------------------------------------
@@ -500,8 +500,8 @@ class TestInlineNoteUpdated(unittest.TestCase):
         self.assertIn("Speculative", self.summary)
 
     def test_adversarial_note_still_present(self):
-        """NOTE: /audit is adversarial line must still be present."""
-        self.assertIn("NOTE: /audit is adversarial", self.summary)
+        """NOTE: /devforge:audit is adversarial line must still be present."""
+        self.assertIn("NOTE: /devforge:audit is adversarial", self.summary)
 
 
 if __name__ == "__main__":

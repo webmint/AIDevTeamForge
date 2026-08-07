@@ -56,10 +56,10 @@ from typing import Dict, List, Optional
 # same four-command chain.  Must stay in sync with those preflights.
 _SETUP_CHAIN_ARTEFACTS = [
     # (relative_path, label) — label shown in missing_artefacts list
-    ("constitution.md",                      "/constitute"),
-    ("CLAUDE.md",                            "/init-forge"),
-    (".devforge/project-config.json",        "/configure"),
-    (".devforge/index.json",                 "/generate-docs"),
+    ("constitution.md",                      "/devforge:constitute"),
+    ("CLAUDE.md",                            "/devforge:init-forge"),
+    (".devforge/project-config.json",        "/devforge:configure"),
+    (".devforge/index.json",                 "/devforge:generate-docs"),
 ]
 
 # The only valid status value that allows /finalize to proceed.

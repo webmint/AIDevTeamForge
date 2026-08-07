@@ -177,7 +177,7 @@ def render_inline_summary(report_dict):
     )
     out.append("")
     out.append(
-        "NOTE: /audit is adversarial. Every finding is grounded in a verbatim"
+        "NOTE: /devforge:audit is adversarial. Every finding is grounded in a verbatim"
     )
     out.append(
         "code quote and cross-examined before ranking. \"Speculative\" findings"

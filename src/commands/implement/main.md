@@ -2,7 +2,6 @@
 name: implement
 argument-hint: ""
 description: Drain an approved feature's breakdown tasks one at a time — dispatch the assigned agent, verify, autonomous four-reviewer review panel, forcing-functions gate, then a per-task human hard gate before any commit.
-disable-model-invocation: true
 allowed-tools:
   - Bash(.devforge/lib/implement_helper resolve-next-task *)
   - Bash(.devforge/lib/implement_helper preflight *)
@@ -23,17 +22,17 @@ allowed-tools:
   - Bash(git -C * reset --hard *)
 ---
 
-# /implement — Per-Task Execution Loop
+# /devforge:implement — Per-Task Execution Loop
 
-`/implement` is repeatable per feature. It drains the lowest-numbered incomplete feature's breakdown tasks one at a time, in dependency order. Each task runs through dispatch → scope-aware verify → an autonomous four-reviewer review panel → a forcing-functions gate, then **stops at a per-task hard gate** where the orchestrator (the LLM following this spec) shows the diff and asks the user to approve, repair, skip, or stop. **Nothing the agent produced is committed until `approve`.** On `approve`, one per-task WIP commit lands and the loop auto-advances to the next task. The loop exits only on user `stop` or when the feature has no incomplete tasks left.
+`/devforge:implement` is repeatable per feature. It drains the lowest-numbered incomplete feature's breakdown tasks one at a time, in dependency order. Each task runs through dispatch → scope-aware verify → an autonomous four-reviewer review panel → a forcing-functions gate, then **stops at a per-task hard gate** where the orchestrator (the LLM following this spec) shows the diff and asks the user to approve, repair, skip, or stop. **Nothing the agent produced is committed until `approve`.** On `approve`, one per-task WIP commit lands and the loop auto-advances to the next task. The loop exits only on user `stop` or when the feature has no incomplete tasks left.
 
 The orchestrator runs the loop in the main thread. Subagent dispatch via the Task tool is reserved for the implementing engineer (per task) and the four read-only review-panel agents (`code-reviewer`, `qa-reviewer`, `security-reviewer`, `performance-analyst`), fanned out in parallel per review-panel round. The helper (`.devforge/lib/implement_helper`) owns task resolution, scope-aware verification, the self-repair and review-panel counters, the forcing-functions gate, the per-task commit, completion marking, and session-state — the orchestrator composes values and drives the loop.
 
-Usage: `/implement` — no arguments. The command resolves the lowest-numbered incomplete feature and walks its tasks in dependency order; there is no `N`, range, or `all` form. Per-task human approval is logically incompatible with batch forms.
+Usage: `/devforge:implement` — no arguments. The command resolves the lowest-numbered incomplete feature and walks its tasks in dependency order; there is no `N`, range, or `all` form. Per-task human approval is logically incompatible with batch forms.
 
 ## Outputs of this phase
 
-- A per-task WIP commit per approved task (`[WIP] task: <title> (Task NNN)` in non-wrapper mode; `[TICKET-ID] - <title> (Task NNN)` in wrapper mode). WIP commits are squashed by `/finalize`.
+- A per-task WIP commit per approved task (`[WIP] task: <title> (Task NNN)` in non-wrapper mode; `[TICKET-ID] - <title> (Task NNN)` in wrapper mode). WIP commits are squashed by `/devforge:finalize`.
 - Updated `tasks/<NNN>-<title>.md` (Status `Complete`, ticked Done-When boxes, filled Completion Notes) + `tasks/README.md` index row per approved task. When verification was scoped (PHASE 5 `tooling_unavailable` → `scope-and-approve`), the type-check / lint / test Done-When boxes are left unticked and annotated `_(unverified — see Completion Notes)_` instead of ticked.
 - A pre-task `[checkpoint] pre-task NNN` empty commit + `.devforge/wip.md` marker per task (the crash-recovery affordance; `wip.md` is cleared on commit, skip, or rollback).
 - Refreshed `.devforge/session-state.md` + an appended `.devforge/memory.md` line per approved task.
@@ -41,15 +40,15 @@ Usage: `/implement` — no arguments. The command resolves the lowest-numbered i
 ## Context in the Workflow
 
 ```
-/research (optional) → /specify → /plan → /breakdown → /implement → /review → /verify → /summarize → /finalize
+/devforge:research (optional) → /devforge:specify → /devforge:plan → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 ```
 
-`/implement` runs AFTER `/breakdown` produces the task set, BEFORE `/review`. It consumes the structured `specs/NNN-<feature>/breakdown-handoff.json` (the producer-side handoff written by `/breakdown`) as its read contract: the orchestrator never re-derives task structure from the markdown task files — it reads the machine contract via `resolve-next-task` and the markdown task body via Read.
+`/devforge:implement` runs AFTER `/devforge:breakdown` produces the task set, BEFORE `/devforge:review`. It consumes the structured `specs/NNN-<feature>/breakdown-handoff.json` (the producer-side handoff written by `/devforge:breakdown`) as its read contract: the orchestrator never re-derives task structure from the markdown task files — it reads the machine contract via `resolve-next-task` and the markdown task body via Read.
 
 ## What this command does NOT do
 
-- **No feature-level docs.** `tech-writer` is NOT invoked here, and no per-task `docs/` regeneration runs. Inline documentation (docstrings / JSDoc) is the implementing agent's job, verified by `code-reviewer` during the review panel. Feature-level `docs/` generation happens at `/finalize`. Do not add `tech-writer` or per-task `docs/` regeneration to this loop.
-- **No batch task targeting.** There is no `/implement N` form (see Usage).
+- **No feature-level docs.** `tech-writer` is NOT invoked here, and no per-task `docs/` regeneration runs. Inline documentation (docstrings / JSDoc) is the implementing agent's job, verified by `code-reviewer` during the review panel. Feature-level `docs/` generation happens at `/devforge:finalize`. Do not add `tech-writer` or per-task `docs/` regeneration to this loop.
+- **No batch task targeting.** There is no `/devforge:implement N` form (see Usage).
 
 ---
 
@@ -60,8 +59,8 @@ Usage: `/implement` — no arguments. The command resolves the lowest-numbered i
 Read `.devforge/wip.md`.
 
 - **Absent** → no interrupted task. Proceed directly to PHASE 1 (`resolve-next-task`).
-- **Present with `**Command**: /implement`** → a `/implement` task was interrupted mid-flight. Ask the user via `AskUserQuestion`:
-  - Question: `"Interrupted /implement task found — how to proceed?"` — single-line text.
+- **Present with `**Command**: /implement`** → a `/devforge:implement` task was interrupted mid-flight. Ask the user via `AskUserQuestion`:
+  - Question: `"Interrupted /devforge:implement task found — how to proceed?"` — single-line text.
   - Options: `["resume", "rollback", "skip", "manual"]`.
   - **`resume`** → re-enter the recorded task at its `**Phase**:` field (dispatch / verify / review / forcing_functions / gate). The marker carries `**Feature**`, `**Task**`, `**Title**`, `**Agent**`, `**Checkpoint**` — use them to rebuild context, then continue the loop from that phase.
   - **`rollback`** → `git -C <source_root> reset --hard <checkpoint_sha>` (the `**Checkpoint**:` field, which is the **source** repo HEAD), then clear `wip.md` (the orchestrator removes the file), then proceed to PHASE 1 to re-resolve. Resolve `<source_root>` from `.devforge/project-config.json` `PROJECT_ROOT` (`.` → standalone, source==install) — see PHASE 2 "Workspace resolution".
@@ -72,8 +71,8 @@ Read `.devforge/wip.md`.
     ```
 
     The helper sets `**Status**: Skipped` in the task file and rewrites the matching `tasks/README.md` index row (it does NOT touch git or `wip.md`); exit 2 means the task file or index row was not found — copy its stderr VERBATIM into a fenced code block and resolve before re-running. `resolve-next-task` treats `Skipped` as satisfied for dependency resolution, so downstream tasks are not permanently blocked.
-  - **`manual`** → keep all state and `wip.md` in place; tell the user `"/implement paused for manual inspection. Re-run /implement when ready."` and end the turn.
-- **Present with a `**Command**:` value other than `/implement`** → a different command was interrupted. Do NOT proceed. Tell the user `"A previous session of a different command was interrupted (see .devforge/wip.md). Resolve that session first before running /implement."` and end the turn.
+  - **`manual`** → keep all state and `wip.md` in place; tell the user `"/devforge:implement paused for manual inspection. Re-run /devforge:implement when ready."` and end the turn.
+- **Present with a `**Command**:` value other than the marker literal `/implement`** → a different command was interrupted. Do NOT proceed. Tell the user `"A previous session of a different command was interrupted (see .devforge/wip.md). Resolve that session first before running /devforge:implement."` and end the turn.
 
 ---
 
@@ -87,8 +86,8 @@ Resolve the lowest-numbered incomplete feature's lowest dependency-ready task vi
 
 The helper scans `specs/*/` for features with a `breakdown-handoff.json`, reads each task's `**Status**:` line, picks the lowest-numbered feature with ≥1 incomplete task (Status not `Complete` and not `Skipped`), and within it the lowest-numbered task whose `depends_on` are all `Complete` or `Skipped`. It emits one JSON object on stdout with a `state` field:
 
-- **`{"state": "task", ...}`** (exit 0) → a runnable task. The object carries `feature_dir`, `number`, `title`, `agent`, `depends_on`, `touched_files`, `expects`, `produces`, `ac_addressed`, `doc_refs`, `review_checkpoint`, plus the resolved on-disk paths and progress snapshot: `task_file` (absolute path to the task's `tasks/NNN-*.md`, or `null` if the file is missing), `index_file` (absolute path to `tasks/README.md`, or `null` if missing), `completed_count` (int), and `total_count` (int) for the active feature. Capture all of these; they drive the rest of the loop. **Null-path guard:** if `task_file` is `null` OR `index_file` is `null`, STOP — do NOT proceed to PHASE 2. The task is scheduled in the breakdown handoff but its task file or index is missing on disk (a `/breakdown` setup failure). Tell the user which is missing (the `null` field) and that the breakdown must be re-run or repaired before `/implement` can advance. Otherwise proceed to PHASE 2.
-- **`{"state": "all-complete"}`** (exit 0) → every feature's tasks are `Complete` or `Skipped` (or there are no features with a breakdown handoff). Tell the user `"✅ All feature tasks complete. Next: run /review → /verify → /summarize → /finalize"` and end the loop.
+- **`{"state": "task", ...}`** (exit 0) → a runnable task. The object carries `feature_dir`, `number`, `title`, `agent`, `depends_on`, `touched_files`, `expects`, `produces`, `ac_addressed`, `doc_refs`, `review_checkpoint`, plus the resolved on-disk paths and progress snapshot: `task_file` (absolute path to the task's `tasks/NNN-*.md`, or `null` if the file is missing), `index_file` (absolute path to `tasks/README.md`, or `null` if missing), `completed_count` (int), and `total_count` (int) for the active feature. Capture all of these; they drive the rest of the loop. **Null-path guard:** if `task_file` is `null` OR `index_file` is `null`, STOP — do NOT proceed to PHASE 2. The task is scheduled in the breakdown handoff but its task file or index is missing on disk (a `/devforge:breakdown` setup failure). Tell the user which is missing (the `null` field) and that the breakdown must be re-run or repaired before `/devforge:implement` can advance. Otherwise proceed to PHASE 2.
+- **`{"state": "all-complete"}`** (exit 0) → every feature's tasks are `Complete` or `Skipped` (or there are no features with a breakdown handoff). Tell the user `"✅ All feature tasks complete. Next: run /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize"` and end the loop.
 - **`{"state": "blocked", ...}`** (exit 2) → a feature has incomplete tasks but none are dependency-ready (an unmet dependency or a cycle). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase); the JSON carries `feature_dir`, `reason`, and `blocking_tasks`. Tell the user the dependency graph cannot advance and end the loop.
 
 ---
@@ -101,7 +100,7 @@ Run pre-task checks via the helper:
 .devforge/lib/implement_helper preflight
 ```
 
-The helper checks (in order): constitution populated (`constitution.md` lacks the `_Run /constitute to populate_` sentinel), a feature branch is checked out in the **source** repo (refuses `main`/`master`/`trunk` and the source repo's origin default branch — that is where code commits land), no stale `.devforge/wip.md` remains in the install root, and a readable git HEAD exists in the source repo. On success it emits JSON `{constitution_digest, memory_digest, head_sha, branch, source_branch, source_dirty_warning}` on stdout (exit 0). `head_sha` is the **source** repo HEAD; capture it as the task's **checkpoint SHA** — the rollback target for `skip` and recovery. (`constitution.md` and `.devforge/` are install-root artifacts; the helper reads them from the install root and runs the branch/HEAD/dirty git checks against the source repo, resolving `<source_root>` internally from the install-root `--root`.)
+The helper checks (in order): constitution populated (`constitution.md` lacks the `_Run /devforge:constitute to populate_` sentinel — the check also matches the legacy un-namespaced `_Run /constitute to populate_` that an older install may still carry), a feature branch is checked out in the **source** repo (refuses `main`/`master`/`trunk` and the source repo's origin default branch — that is where code commits land), no stale `.devforge/wip.md` remains in the install root, and a readable git HEAD exists in the source repo. On success it emits JSON `{constitution_digest, memory_digest, head_sha, branch, source_branch, source_dirty_warning}` on stdout (exit 0). `head_sha` is the **source** repo HEAD; capture it as the task's **checkpoint SHA** — the rollback target for `skip` and recovery. (`constitution.md` and `.devforge/` are install-root artifacts; the helper reads them from the install root and runs the branch/HEAD/dirty git checks against the source repo, resolving `<source_root>` internally from the install-root `--root`.)
 
 The `preflight` JSON also carries two source-repo fields the orchestrator must surface: `source_branch` (the source repo's current branch — equals `branch`) and `source_dirty_warning` (a string when the source repo had pre-existing uncommitted changes at task start, else `null`). When `source_dirty_warning` is non-null, relay it to the user as an advisory (the source repo was not clean when the task started, so its diff will be harder to read) and continue — it is NOT a stop (the helper kept exit 0 because precise touched-files staging means the dirty tree will not corrupt the per-task commit). When it is `null`, say nothing.
 
@@ -109,7 +108,7 @@ Exit 2 means a check failed — copy the helper's stderr VERBATIM into your next
 
 ### Workspace resolution (two roots)
 
-`/implement` operates across TWO roots. Resolve them once here, after `preflight`, and use them consistently for the rest of the loop:
+`/devforge:implement` operates across TWO roots. Resolve them once here, after `preflight`, and use them consistently for the rest of the loop:
 
 - **Install root** — where `.devforge/`, `specs/`, `constitution.md`, and `wip.md` live (the wrapper repo). All `specs/`/`.devforge/` artifact ops stay at the install root.
 - **Source root** — `<install_root>/PROJECT_ROOT`, where the code and its own git repo live. Read `PROJECT_ROOT` from `.devforge/project-config.json` and join it to the install root to compute `<source_root>`. ALL source-repo git ops (checkpoint, diff display, reset) run with `git -C <source_root>`.
@@ -118,7 +117,7 @@ When `PROJECT_ROOT` is `"."` (standalone), `<source_root>` equals the install ro
 
 Then the orchestrator creates the pre-task checkpoint and writes the WIP marker:
 
-1. Create the empty checkpoint commit in the **source** repo (its only purpose is a stable rollback anchor; it is squashed by `/finalize`):
+1. Create the empty checkpoint commit in the **source** repo (its only purpose is a stable rollback anchor; it is squashed by `/devforge:finalize`):
 
    ```bash
    git -C <source_root> commit --allow-empty -m "[checkpoint] pre-task NNN"
@@ -131,7 +130,7 @@ Then the orchestrator creates the pre-task checkpoint and writes the WIP marker:
 
 ## PHASE 3: Dispatch the implementing agent
 
-Invoke the agent named in the resolved task's `agent` field via the Task tool. **Architect guard:** if that field is `architect`, HALT — the architect is a director and cannot write implementation code (per `.claude/agents/architect.md` Rule 1; its charter is to refuse-and-route coding work back to the owning stack's implementer). Re-run `/breakdown` (now fixed to never assign `architect` as a coder) to get the owning stack's implementer, or add the missing agent. Do not dispatch the architect to implement. **Missing-agent fallback:** if the assigned agent is absent from `.claude/agents/` (not all projects generate all agents), HALT and escalate to the human — split the task or re-run `/breakdown` to assign the owning stack's implementer. Never fall back to `architect`; it cannot write code.
+Invoke the agent named in the resolved task's `agent` field via the Task tool. **Architect guard:** if that field is `architect`, HALT — the architect is a director and cannot write implementation code (per `.claude/agents/architect.md` Rule 1; its charter is to refuse-and-route coding work back to the owning stack's implementer). Re-run `/devforge:breakdown` (now fixed to never assign `architect` as a coder) to get the owning stack's implementer, or add the missing agent. Do not dispatch the architect to implement. **Missing-agent fallback:** if the assigned agent is absent from `.claude/agents/` (not all projects generate all agents), HALT and escalate to the human — split the task or re-run `/devforge:breakdown` to assign the owning stack's implementer. Never fall back to `architect`; it cannot write code.
 
 The brief MUST give the agent complete context — it sees only what you brief it with (per `feedback_no_underspecification_when_delegating`). Assemble the brief per `references/agent-brief.md`: the task body (read the resolved `task_file` path from PHASE 1), the spec acceptance-criteria slice (`ac_addressed`), the constitution rules, the `.devforge/memory.md` pitfalls, the `touched_files` scope constraint, and an explicit "make ONLY the changes this task describes — do not modify unrelated code" rule. The agent writes its edits into the working tree; nothing is committed yet.
 
@@ -182,7 +181,7 @@ All four reviewers are read-only and tools-locked (per the standardized roster �
 Start the loop iteration counter at 0 and run:
 
 1. **Fan out the four reviewers in parallel.** In ONE turn, dispatch `code-reviewer` (consumer `.claude/agents/code-reviewer.md`), `qa-reviewer`, `security-reviewer`, and `performance-analyst` via the Task tool — four Task calls in the same turn. Give EACH the same inputs: the `touched_files`, the constitution, and the task body. Each reviewer is independent and sees ONLY its own brief. The four results return UNORDERED, so key each returned markdown to the agent you dispatched it to (do not assume return order). Each reviewer returns a markdown verdict carrying a `### Verdict:` line in its own vocabulary (`code-reviewer`: `APPROVE` / `REQUEST CHANGES` / `BLOCK`; `qa-reviewer`: `ADEQUATE` / `GAPS FOUND`; `security-reviewer`: `PASS` / `FAIL`; `performance-analyst`: `MEETS TARGETS` / `BOTTLENECKS FOUND`).
-2. **Write each reviewer's returned markdown to a run-scoped scratch file** (a tmp dir OUTSIDE the repo so the scratch never pollutes the source tree, mirroring how `/audit` uses a `${TMPDIR:-/tmp}/forge-audit` working dir): write each with the Write tool to `${TMPDIR:-/tmp}/forge-implement-review/<agent>.md` (one file per reviewer, named for the agent). A bash subprocess cannot read a subagent's return value, so these files are the bridge to the merge helper.
+2. **Write each reviewer's returned markdown to a run-scoped scratch file** (a tmp dir OUTSIDE the repo so the scratch never pollutes the source tree, mirroring how `/devforge:audit` uses a `${TMPDIR:-/tmp}/forge-audit` working dir): write each with the Write tool to `${TMPDIR:-/tmp}/forge-implement-review/<agent>.md` (one file per reviewer, named for the agent). A bash subprocess cannot read a subagent's return value, so these files are the bridge to the merge helper.
 3. **Merge the four verdicts** via the helper, passing the current iteration `N` and one `--reviewer <agent>:<path>` per reviewer (the path written in step 2):
 
    ```bash
@@ -269,7 +268,7 @@ End the turn. The user's reply opens the next turn.
 
      Pass the same `task_file` and `index_file` paths emitted by PHASE 1.
 
-     The helper never uses `git add -A`. In **standalone** mode it stages the touched files + the task file + index together in the single repo and commits them. In **wrapper** mode (D1) it commits ONLY the source `touched_files` to the **source** repo on its branch (deriving the `[TICKET-ID]` from the source branch per D2) and leaves the wrapper artifacts — the `mark-complete` task `Status` edit + index row from step 1 — written to disk but **uncommitted** in the wrapper repo; expect the wrapper tree to stay dirty (it is already dirty from `/specify`//`plan`//`breakdown`, and `/finalize` later squashes the accumulated source WIP commits). Either way the helper composes the message per the wrapper/non-wrapper convention (reading `WORKSPACE_MODE` + `COMMIT_ATTRIBUTION` from `.devforge/project-config.json`), commits, captures the new source HEAD SHA, and clears `.devforge/wip.md` in the install root (exit 0 → `{"committed": true, ...}`, carrying `head_sha` and `message`). It resolves `<source_root>` internally from the install-root `--root`. Exit 1 (config/I/O) or exit 2 (git staging/commit failure) — copy the helper's stderr VERBATIM into a fenced code block and resolve before re-running.
+     The helper never uses `git add -A`. In **standalone** mode it stages the touched files + the task file + index together in the single repo and commits them. In **wrapper** mode (D1) it commits ONLY the source `touched_files` to the **source** repo on its branch (deriving the `[TICKET-ID]` from the source branch per D2) and leaves the wrapper artifacts — the `mark-complete` task `Status` edit + index row from step 1 — written to disk but **uncommitted** in the wrapper repo; expect the wrapper tree to stay dirty (it is already dirty from `/devforge:specify` / `/devforge:plan` / `/devforge:breakdown`, and `/devforge:finalize` later squashes the accumulated source WIP commits). Either way the helper composes the message per the wrapper/non-wrapper convention (reading `WORKSPACE_MODE` + `COMMIT_ATTRIBUTION` from `.devforge/project-config.json`), commits, captures the new source HEAD SHA, and clears `.devforge/wip.md` in the install root (exit 0 → `{"committed": true, ...}`, carrying `head_sha` and `message`). It resolves `<source_root>` internally from the install-root `--root`. Exit 1 (config/I/O) or exit 2 (git staging/commit failure) — copy the helper's stderr VERBATIM into a fenced code block and resolve before re-running.
   3. **CBM post-commit refresh (orchestrator MCP call — NOT a helper subprocess).** Because the loop drains dependency-ordered tasks, a later task's `Expects` reads the just-committed `Produces`; the codebase-memory-mcp graph would otherwise be stale. Call `mcp__codebase-memory-mcp__detect_changes` (incremental — re-indexes only the committed delta, including new inline docs), then advance the stamp:
 
      ```bash
@@ -318,7 +317,7 @@ When PHASE 5 returns `tooling_unavailable`, a configured type-check, lint, or te
 
 - Question: `"Task NNN's type-check, lint, or test command can't run — how to proceed?"` — single-line text (substitute the resolved `number`).
 - Options: `["fix-tooling", "scope-and-approve", "skip", "stop"]`. `fix-tooling` is the recommended option — fixing the tooling is the root cause and restores full mechanical verification.
-  - **`fix-tooling`** (recommended) → tell the user to correct the configured command or install the missing tool, then re-run `/implement`. The command config is owned by `/configure` — point the user there to fix the type-check, lint, or test command. Leave `.devforge/wip.md` (and the PHASE 2 `[checkpoint]` commit) in place — do NOT clear them here. On the next `/implement` run PHASE 0 detects the marker and offers the crash-recovery prompt: `resume` re-enters the recorded task at its `**Phase**:` field — the verify leg (PHASE 5) re-runs from the top once the tooling is fixed; `rollback` discards the agent's work via the checkpoint SHA. End the turn.
+  - **`fix-tooling`** (recommended) → tell the user to correct the configured command or install the missing tool, then re-run `/devforge:implement`. The command config is owned by `/devforge:configure` — point the user there to fix the type-check, lint, or test command. Leave `.devforge/wip.md` (and the PHASE 2 `[checkpoint]` commit) in place — do NOT clear them here. On the next `/devforge:implement` run PHASE 0 detects the marker and offers the crash-recovery prompt: `resume` re-enters the recorded task at its `**Phase**:` field — the verify leg (PHASE 5) re-runs from the top once the tooling is fixed; `rollback` discards the agent's work via the checkpoint SHA. End the turn.
   - **`scope-and-approve`** → the mechanical verify gate is acknowledged unavailable (the configured type-check, lint, or test command could not run) for this task. Proceed to **PHASE 6** — the review panel AND the forcing-functions gate still run, since they are independent of the type checker — then the normal **Stage B** hard gate. Carry a **verification-scoped** flag noting the type-check, lint, and test Done-When conditions are unconfirmed; Stage B's `mark-complete` (step 1) leaves those boxes unticked per the verification-scoped rule.
   - **`skip`** → the Stage B `skip` path above.
   - **`stop`** → keep `.devforge/wip.md` + the working tree; end the loop.
@@ -332,4 +331,4 @@ When PHASE 5 returns `tooling_unavailable`, a configured type-check, lint, or te
 3. **One task at a time, dependency order.** `resolve-next-task` picks exactly one task; the loop drains the feature task-by-task. There is no batch mode.
 4. **Decisions are pushed, never summarized.** Judgment calls and conflicts the review panel surfaced appear as sequential Stage A questions with the agent's resolution pre-selected (or the contested positions named) — never a text wall to scroll. Most tasks record zero decisions.
 5. **Relay machine reports VERBATIM.** Where a helper emits a user-facing finding report on stdout (blocked verify, forcing-functions exit 2, blocked resolve), copy its stdout VERBATIM into a fenced code block. For helper failures, copy the stderr VERBATIM into a fenced code block. Do not summarize or paraphrase.
-6. **Inline docs are the agent's job; feature docs wait for `/finalize`.** Do not invoke `tech-writer` or regenerate `docs/` in this loop (see "What this command does NOT do").
+6. **Inline docs are the agent's job; feature docs wait for `/devforge:finalize`.** Do not invoke `tech-writer` or regenerate `docs/` in this loop (see "What this command does NOT do").

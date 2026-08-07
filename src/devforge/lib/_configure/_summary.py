@@ -115,7 +115,7 @@ def _render_executability_warnings(warnings: List[dict]) -> str:
 
     Each warning becomes one line:
         WARNING  <scope>: '<command>' — '<missing_token>' not found on PATH
-                  (verify may fail at /implement time)
+                  (verify may fail at /devforge:implement time)
 
     Returns an empty string when `warnings` is empty.
     """
@@ -125,7 +125,7 @@ def _render_executability_warnings(warnings: List[dict]) -> str:
     for w in warnings:
         lines.append(
             "  WARNING  {scope}: '{command}' — '{missing_token}' not found on PATH"
-            " (verify may fail at /implement time)\n".format(**w)
+            " (verify may fail at /devforge:implement time)\n".format(**w)
         )
     return "".join(lines)
 

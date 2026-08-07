@@ -309,7 +309,7 @@ def cmd_pick_spec(args) -> int:
     specs_dir = Path(cwd) / "specs"
     if not specs_dir.is_dir():
         sys.stderr.write(
-            "plan_helper: no valid spec found under specs/; run /specify first\n"
+            "plan_helper: no valid spec found under specs/; run /devforge:specify first\n"
         )
         return 2
 
@@ -317,7 +317,7 @@ def cmd_pick_spec(args) -> int:
     valid = _valid_specs(all_paths)
     if not valid:
         sys.stderr.write(
-            "plan_helper: no valid spec found under specs/; run /specify first\n"
+            "plan_helper: no valid spec found under specs/; run /devforge:specify first\n"
         )
         return 2
 
@@ -946,17 +946,17 @@ def cmd_render_breakdown_handoff(args) -> int:
     risk_count = _count_risks(plan_content)
 
     output = (
-        "## Manual next step — run /breakdown\n"
+        "## Manual next step — run /devforge:breakdown\n"
         "\n"
         "The plan is approved. No automated handoff exists — restart Claude Code "
         "(exit and relaunch the CLI/app so any newly-installed command is picked up), "
         "then run:\n"
         "\n"
         "```\n"
-        "/breakdown {plan_path}\n"
+        "/devforge:breakdown {plan_path}\n"
         "```\n"
         "\n"
-        "**Plan status**: Draft — plan stays Draft until `/breakdown` runs.\n"
+        "**Plan status**: Draft — plan stays Draft until `/devforge:breakdown` runs.\n"
         "**Spec ACs**: {total_acs} criteria across {subsections} subsections\n"
         "**Plan file impact**: {total_files} files ({new_files} new, "
         "{modified_files} modified)\n"
@@ -1236,12 +1236,12 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
             else:
                 helper_lines.append("  - (no inbound callers recorded)")
         caller_block = (
-            "\n**Caller enumeration** (recorded at /research):\n"
+            "\n**Caller enumeration** (recorded at /devforge:research):\n"
             + "\n".join(helper_lines) + "\n"
         )
     elif no_shared_callers_justification:
         caller_block = (
-            "\n**Caller enumeration**: recorded at /research — zero shared "
+            "\n**Caller enumeration**: recorded at /devforge:research — zero shared "
             "callers asserted: {0}\n".format(no_shared_callers_justification)
         )
     else:
@@ -2208,7 +2208,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="plan_helper",
         description=(
-            "Structural emission helper for the /plan slash command. "
+            "Structural emission helper for the /devforge:plan slash command. "
             "Helper owns shape; LLM composes values."
         ),
     )
@@ -2261,7 +2261,7 @@ def build_parser() -> argparse.ArgumentParser:
     # render-breakdown-handoff
     sp = sub.add_parser(
         "render-breakdown-handoff",
-        help="Emit Phase 4 manual handoff block targeting /breakdown.",
+        help="Emit Phase 4 manual handoff block targeting /devforge:breakdown.",
     )
     sp.add_argument("spec_path", help="Path to spec.md.")
     sp.add_argument("plan_path", help="Path to plan.md.")
@@ -2329,7 +2329,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser(
         "stakes-hint",
         help=(
-            "Advisory-only: print a '/grill <plan-path>' hint to stdout when a "
+            "Advisory-only: print a '/devforge:grill <plan-path>' hint to stdout when a "
             "just-finalized plan crosses a high-stakes signal (wide blast radius, "
             "many risks, a new dependency, a new data model, or a security-relevant "
             "risk/decision). Prints nothing and exits 0 when no signal fires. "

@@ -1,9 +1,10 @@
 """_cmds_preflight -- preflight verb for implement_helper.
 
-Checks that the project is ready for /implement to start a task:
+Checks that the project is ready for /devforge:implement to start a task:
 
   1. Constitution populated: read constitution.md (relative to install root);
-     if it contains the sentinel "_Run /constitute to populate_" → exit 2.
+     if it contains any populate-guard sentinel (see
+     CONSTITUTION_POPULATE_GUARDS below) → exit 2.
   2. Branch check: get current git branch of the **source** repo; refuse
      main / master / trunk and the source repo's actual default branch
      detected dynamically via `git symbolic-ref --quiet refs/remotes/origin/HEAD`;
@@ -40,9 +41,9 @@ Design notes:
   install_root, so all git ops target the same directory — identical to
   before this change.  When PROJECT_ROOT is a non-trivial path (wrapper mode),
   git ops (branch check, HEAD SHA, dirty check) target the source repo.
-- Constitution sentinel constant: "_Run /constitute to populate_" (verbatim
-  from _specify._schema.CONSTITUTION_POPULATE_GUARD; not imported to avoid
-  cross-package coupling — the value is stable by contract).
+- Constitution sentinel constants: CONSTITUTION_POPULATE_GUARDS (verbatim
+  from _specify._schema.CONSTITUTION_POPULATE_GUARDS; not imported to avoid
+  cross-package coupling — the values are stable by contract).
 - constitution.md and .devforge/ (memory.md, wip.md) are install-root
   artifacts — they stay at the install root in wrapper mode.
 - Default branches refused: main, master, trunk (case-insensitive static set)
@@ -75,10 +76,20 @@ from _implement._workspace import resolve_workspace
 # Constants
 # ---------------------------------------------------------------------------
 
-# The literal that _Run /constitute to populate_ writes into constitution.md
-# before the user has run /constitute.  (Verbatim from
-# src/devforge/lib/_specify/_schema.py CONSTITUTION_POPULATE_GUARD.)
-CONSTITUTION_POPULATE_GUARD = "_Run /constitute to populate_"
+# The literals the constitution.md stub writes before the user has run
+# /devforge:constitute. (Verbatim from
+# src/devforge/lib/_specify/_schema.py CONSTITUTION_POPULATE_GUARDS -- kept
+# as an independent copy, not imported, to avoid cross-package coupling; the
+# values are stable by contract.) Multiple forms are checked for backward
+# compatibility across the pre/post plan-63-Phase-4c namespace move: the
+# pre-namespace no-slash form every existing consumer install actually
+# carries, the pre-namespace with-slash form kept for back-compat with a
+# hand-edited constitution.md, and the current post-namespace form.
+CONSTITUTION_POPULATE_GUARDS = (
+    "_Run constitute to populate_",
+    "_Run /constitute to populate_",
+    "_Run /devforge:constitute to populate_",
+)
 
 # Branch names that are STATICALLY considered "default" and are refused.
 # Compared case-insensitively.  Does NOT include "develop" — gitflow teams use
@@ -233,17 +244,18 @@ def _check_constitution(root):
     if not constitution_path.exists():
         return (
             "constitution.md not found at {0}; "
-            "run /constitute to populate.".format(constitution_path)
+            "run /devforge:constitute to populate.".format(constitution_path)
         )
     try:
         text = constitution_path.read_text(encoding="utf-8")
     except (OSError, IOError) as exc:
         return "cannot read constitution.md: {0}".format(exc)
-    if CONSTITUTION_POPULATE_GUARD in text:
-        return (
-            "constitution.md contains the populate-guard sentinel "
-            "{0!r} — run /constitute to populate.".format(CONSTITUTION_POPULATE_GUARD)
-        )
+    for sentinel in CONSTITUTION_POPULATE_GUARDS:
+        if sentinel in text:
+            return (
+                "constitution.md contains the populate-guard sentinel "
+                "{0!r} — run /devforge:constitute to populate.".format(sentinel)
+            )
     return None
 
 
@@ -269,17 +281,17 @@ def _check_branch(cwd):
     if branch == "HEAD":
         return (None,
                 "currently in detached HEAD state; "
-                "check out a feature branch before running /implement.")
+                "check out a feature branch before running /devforge:implement.")
     if branch.lower() in DEFAULT_BRANCHES:
         return (None,
                 "currently on default branch {0!r}; "
-                "/implement requires a feature branch.".format(branch))
+                "/devforge:implement requires a feature branch.".format(branch))
     # Dynamic check: refuse if this branch IS the repo's origin default.
     origin_default = _git_origin_default_branch(cwd)
     if origin_default is not None and branch == origin_default:
         return (None,
                 "currently on default branch {0!r} (origin/HEAD); "
-                "/implement requires a feature branch.".format(branch))
+                "/devforge:implement requires a feature branch.".format(branch))
     return (branch, None)
 
 
@@ -299,7 +311,7 @@ def _check_wip_marker(root):
         return (
             "stale .devforge/wip.md detected; "
             "a previous task was interrupted. "
-            "Re-run /implement (or restart the loop) to enter the "
+            "Re-run /devforge:implement (or restart the loop) to enter the "
             "Phase 9 crash-recovery branch (resume / rollback / skip / manual)."
         )
     return None

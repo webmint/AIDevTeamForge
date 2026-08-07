@@ -102,10 +102,10 @@ Inline sort in reactive body is unstable; recommended fix is a derived computed 
 
 ## Next step
 
-Copy the block below into a new `/specify` session manually. No automation — user controls when (or if) `/specify` runs.
+Copy the block below into a new `/devforge:specify` session manually. No automation — user controls when (or if) `/devforge:specify` runs.
 
 ~~~
-/specify "Items not sorted in admin products list (sort fails) — alphabetical sort by name A->Z"
+/devforge:specify "Items not sorted in admin products list (sort fails) — alphabetical sort by name A->Z"
 
 Research reference: (path assigned when this research is saved to its feature directory)
 Key facts:

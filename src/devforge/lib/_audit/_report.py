@@ -541,7 +541,7 @@ def render_report(report_dict):
     out.append("## Not Audited")
     out.append("- Runtime behavior (no dynamic analysis)")
     out.append("- Dependency CVEs (run `npm audit` / `pip audit` separately)")
-    out.append("- Runtime performance profiling (out of scope — use /review); static performance-idiom smells are in scope")
+    out.append("- Runtime performance profiling (out of scope — use /devforge:review); static performance-idiom smells are in scope")
     out.append("- UI/design consistency (out of scope)")
     out.append("- Infrastructure / deployment config")
     out.append("")

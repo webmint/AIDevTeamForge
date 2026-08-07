@@ -138,7 +138,7 @@ def _build_risks(complexity):
             risk=risk_notes,
             likelihood=risk_level,
             impact=risk_level,
-            mitigation="tbd via /plan",
+            mitigation="tbd via /devforge:plan",
         )
     ]
 
@@ -318,7 +318,7 @@ def _build_alternatives(approaches, recommended_name):
         result.append(handoff_schema.Alternative(
             id=_to_snake_case(name) if name else "unnamed",
             summary=summary,
-            rejected_reason="not recommended; see /plan if needed",
+            rejected_reason="not recommended; see /devforge:plan if needed",
         ))
     return result
 

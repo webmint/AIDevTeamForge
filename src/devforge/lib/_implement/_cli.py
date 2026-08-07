@@ -191,7 +191,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="implement_helper",
         description=(
-            "Task execution helper for /implement. "
+            "Task execution helper for /devforge:implement. "
             "Drains a feature's breakdown tasks one at a time with per-task "
             "hard-gate approval before committing."
         ),

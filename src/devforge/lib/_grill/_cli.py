@@ -141,7 +141,8 @@ def cmd_preflight(args):
         sys.stderr.write(
             "grill_helper preflight: setup chain incomplete. "
             "Run the 4-command setup sequence first:\n"
-            "  /init-forge → /generate-docs → /configure → /constitute\n"
+            "  /devforge:init-forge → /devforge:generate-docs → /devforge:configure → "
+            "/devforge:constitute\n"
             "Missing: {0}\n".format(", ".join(missing))
         )
         return 2
@@ -150,7 +151,7 @@ def cmd_preflight(args):
     if not result["constitution_populated"]:
         sys.stderr.write(
             "grill_helper preflight: constitution.md contains an unpopulated "
-            "sentinel. Run /constitute to populate it before running /grill.\n"
+            "sentinel. Run /devforge:constitute to populate it before running /devforge:grill.\n"
         )
         return 2
 
@@ -159,7 +160,8 @@ def cmd_preflight(args):
         missing_feat = result.get("missing_feature_artefacts", [])
         sys.stderr.write(
             "grill_helper preflight: feature artefacts missing in {0!r}: {1}\n"
-            "Run /specify then /plan to produce these before running /grill.\n".format(
+            "Run /devforge:specify then /devforge:plan to produce these before "
+            "running /devforge:grill.\n".format(
                 feature_dir, ", ".join(missing_feat)
             )
         )
@@ -203,7 +205,7 @@ def cmd_render_brief(args):
 
     references_dir = (
         getattr(args, "references_dir", None)
-        or ".claude/commands/grill/references"
+        or ".devforge/command-refs/grill"
     )
 
     try:
@@ -471,7 +473,7 @@ def cmd_render_verify_brief(args):
     refuter = getattr(args, "refuter", None)
     references_dir = (
         getattr(args, "references_dir", None)
-        or ".claude/commands/grill/references"
+        or ".devforge/command-refs/grill"
     )
     scope_block_path = getattr(args, "scope_block", None)
     source_root = getattr(args, "source_root", ".") or "."
@@ -1004,9 +1006,9 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="grill_helper",
         description=(
-            "Helper for /grill — the plan-level adversarial attack. "
+            "Helper for /devforge:grill — the plan-level adversarial attack. "
             "Dispatches a single devils-advocate agent to grill the plan "
-            "and spec before /breakdown; emits a 4-way disposition verdict "
+            "and spec before /devforge:breakdown; emits a 4-way disposition verdict "
             "(PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL) + optional "
             "backward grill-seed.json handoff for upstream re-entry."
         ),
@@ -1121,13 +1123,13 @@ def _register_subcommands(subparsers):
             )
             sp.add_argument(
                 "--references-dir",
-                default=".claude/commands/grill/references",
+                default=".devforge/command-refs/grill",
                 dest="references_dir",
                 metavar="DIR",
                 help=(
                     "Directory containing anti-relitigation-preamble.md and "
                     "design-attack-checklist.md "
-                    "(default: .claude/commands/grill/references)."
+                    "(default: .devforge/command-refs/grill)."
                 ),
             )
             sp.add_argument(
@@ -1250,12 +1252,12 @@ def _register_subcommands(subparsers):
             )
             sp.add_argument(
                 "--references-dir",
-                default=".claude/commands/grill/references",
+                default=".devforge/command-refs/grill",
                 dest="references_dir",
                 metavar="DIR",
                 help=(
                     "Directory containing refutation-preamble.md "
-                    "(default: .claude/commands/grill/references)."
+                    "(default: .devforge/command-refs/grill)."
                 ),
             )
             sp.add_argument(

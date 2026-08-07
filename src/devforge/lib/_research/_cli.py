@@ -95,7 +95,7 @@ from ._cmds_feature_alloc import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="research_helper",
-        description="State + render helper for /research. Owns research artifact shape.",
+        description="State + render helper for /devforge:research. Owns research artifact shape.",
     )
     parser.add_argument(
         "--devforge-dir",

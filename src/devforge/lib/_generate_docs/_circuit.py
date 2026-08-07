@@ -219,7 +219,7 @@ def _check_invocation_budget(records: List[dict], current_subcommand: str) -> Op
     return (
         "circuit-breaker: invocation budget exceeded — current run has "
         "reached {0} helper invocations (limit: {1}). Aborting. Run "
-        "/generate-docs again with reset if you want a fresh attempt, "
+        "/devforge:generate-docs again with reset if you want a fresh attempt, "
         "or investigate why so many calls were needed."
     ).format(count, budget)
 

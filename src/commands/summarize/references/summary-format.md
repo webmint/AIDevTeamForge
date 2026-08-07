@@ -1,10 +1,10 @@
 # summary.md artifact shape
 
-This documents the shape of `specs/[feature]/summary.md`, the artifact `/summarize` writes (PHASE 4). Unlike `/verify`'s report, there is **no `render-report` helper verb** — the orchestrator composes the summary INLINE in PHASE 3 (agent-free, D1) and writes it with the Write tool. This file is **orientation only**, documenting the shape so the orchestrator knows what to produce. Do not treat it as a verbatim fill-in template — the synthesis is human-facing prose, not a mechanical substitution.
+This documents the shape of `specs/[feature]/summary.md`, the artifact `/devforge:summarize` writes (PHASE 4). Unlike `/devforge:verify`'s report, there is **no `render-report` helper verb** — the orchestrator composes the summary INLINE in PHASE 3 (agent-free, D1) and writes it with the Write tool. This file is **orientation only**, documenting the shape so the orchestrator knows what to produce. Do not treat it as a verbatim fill-in template — the synthesis is human-facing prose, not a mechanical substitution.
 
-## Findings-free + verdict-free — UNLIKE /verify
+## Findings-free + verdict-free — UNLIKE /devforge:verify
 
-This summary contains NO verdict and NO findings. `/verify` owns the verdict (APPROVED / NEEDS WORK / REJECTED); `/review` owns findings. `/summarize` owns the PR-ready narrative. The summary may REFERENCE the verdict `/verify` already rendered (read from `verification.md`), but it never computes or renders one. Do not add a verdict line, a findings list, or a refutation pass — those belong to `/verify` and `/review`.
+This summary contains NO verdict and NO findings. `/devforge:verify` owns the verdict (APPROVED / NEEDS WORK / REJECTED); `/devforge:review` owns findings. `/devforge:summarize` owns the PR-ready narrative. The summary may REFERENCE the verdict `/devforge:verify` already rendered (read from `verification.md`), but it never computes or renders one. Do not add a verdict line, a findings list, or a refutation pass — those belong to `/devforge:verify` and `/devforge:review`.
 
 ## Inputs that shape the summary
 
@@ -65,7 +65,7 @@ AC is left `- [ ]` and annotated with its status:]
 - [ ] AC-2: [short label] — PARTIAL
 
 (When verification.md is absent — the read-verification missing-fallback in PHASE
-2.1 — replace this section with: "_No verification report found — run `/verify`
+2.1 — replace this section with: "_No verification report found — run `/devforge:verify`
 to populate AC status._")
 ```
 
@@ -76,4 +76,4 @@ to populate AC status._")
 - **Deduplicate** — group files by area in Files changed rather than listing each.
 - **Omit empty sections** — the Deviations section is omitted entirely when no task deviated.
 - **AC status is authoritative** — taken from `verification.md`, never re-derived from the spec (D3).
-- **No verdict, no findings** — `/summarize` narrates; it does not verify or judge.
+- **No verdict, no findings** — `/devforge:summarize` narrates; it does not verify or judge.

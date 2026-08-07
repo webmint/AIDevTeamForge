@@ -412,6 +412,29 @@ class TestPreflightContext(unittest.TestCase):
         self.assertTrue(r["constitution_present"])
         self.assertFalse(r["constitution_populated"])
 
+    def test_constitution_with_legacy_no_slash_sentinel(self):
+        # Pre-namespace stub literal (no slash) -- the form every existing
+        # consumer install actually carries.
+        self._write("constitution.md", "Run constitute to populate this file.")
+        r = preflight_context(self.td)
+        self.assertTrue(r["constitution_present"])
+        self.assertFalse(r["constitution_populated"])
+
+    def test_constitution_with_legacy_slash_sentinel(self):
+        # Pre-namespace guard literal (with slash) -- never actually shipped
+        # by the stub template, kept for back-compat.
+        self._write("constitution.md", "Run /constitute to populate this file.")
+        r = preflight_context(self.td)
+        self.assertTrue(r["constitution_present"])
+        self.assertFalse(r["constitution_populated"])
+
+    def test_constitution_with_devforge_namespaced_sentinel(self):
+        # Post-namespace stub literal (current, plan 63 Phase 4c).
+        self._write("constitution.md", "Run /devforge:constitute to populate this file.")
+        r = preflight_context(self.td)
+        self.assertTrue(r["constitution_present"])
+        self.assertFalse(r["constitution_populated"])
+
     def test_constitution_with_real_content_populated(self):
         self._write("constitution.md", "# Architecture Rules\n\n1. Use dependency injection.\n2. No globals.")
         r = preflight_context(self.td)

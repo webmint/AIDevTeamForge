@@ -8,8 +8,8 @@ not hand-author the report; call `render-report`.
 
 ## Findings only — NO verdict
 
-This report is FINDINGS ONLY. `/review` does not render a verdict. The verdict
-is `/verify`'s job: `/review` produces `specs/[feature]/review.md`, and `/verify`
+This report is FINDINGS ONLY. `/devforge:review` does not render a verdict. The verdict
+is `/devforge:verify`'s job: `/devforge:review` produces `specs/[feature]/review.md`, and `/devforge:verify`
 consumes it (folding its findings into the verdict, and warning if it is
 missing). Do not add a pass/fail line, an approval line, or a "ready to ship"
 judgment — the report ends at the findings.
@@ -142,13 +142,13 @@ Dismissed / Worth a Glance appendix; contested findings (a high-stakes `security
 / `[CONSTITUTION-VIOLATION]` finding the refuter could not confirm, or a
 `[CONSTITUTION-VIOLATION]` finding the refuter dismissed) are surfaced in the
 headline, flagged `[CONTESTED]`, never buried. This report is findings only —
-the verdict is `/verify`'s.
+the verdict is `/devforge:verify`'s.
 ```
 
 ## Optional `## Design Fidelity` section
 
 The report carries an OPTIONAL `## Design Fidelity` section — present ONLY when
-`design-auditor` was dispatched for the runtime design-fidelity check (`/review`
+`design-auditor` was dispatched for the runtime design-fidelity check (`/devforge:review`
 PHASE 2.5, which fires only when the feature has a `design/reference.html` and a
 valid `specs/[feature]/design-manifest.json` binding). `render-report
 --design-section` appends it AFTER `## Methodology` — as the last section when
@@ -179,7 +179,7 @@ Coverage: NOT-COVERED / CLEAN / DEFECT — state which, and why.
 
 The report carries an OPTIONAL `## Accessibility` section — present ONLY when
 `design-auditor` was dispatched for the accessibility / responsive / native
-audit (`/review` PHASE 2.5b, which fires when the feature touches UI, as
+audit (`/devforge:review` PHASE 2.5b, which fires when the feature touches UI, as
 determined by the recall-biased `resolve-ui-scope` verb). It is ORTHOGONAL to
 the `## Design Fidelity` section: 2.5 fires on a design reference + binding,
 2.5b fires on any UI-touching feature, so a feature can carry one section, both,
@@ -198,7 +198,7 @@ NOT-COVERED, when Chrome MCP is unavailable or the platform is non-web/non-mobil
 followed by the `### Accessibility` / `### Responsive` / (mobile only) `### Native`
 tables it emits — using `###` or deeper so it nests under the `## Accessibility`
 heading `render-report` supplies. There is no `### Verdict` line (the verdict is
-`/verify`'s).
+`/devforge:verify`'s).
 
 ```markdown
 ## Accessibility

@@ -1077,7 +1077,7 @@ def cmd_project_input(args: argparse.Namespace) -> int:
         if not concern_paths:
             print(
                 f"no package overviews or concern docs found under "
-                f"{project_root / 'docs'} — run /generate-docs through the "
+                f"{project_root / 'docs'} — run /devforge:generate-docs through the "
                 f"concern/package tier first",
                 file=sys.stderr,
             )

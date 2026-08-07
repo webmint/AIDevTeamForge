@@ -2,14 +2,13 @@
 name: discover
 description: Pre-spec exploration of a greenfield feature; produce a structured discovery report grounded in prior-art survey + codebase fit-check.
 argument-hint: "<topic>"
-disable-model-invocation: true
 ---
 
-# /discover — Greenfield Feature Discovery
+# /devforge:discover — Greenfield Feature Discovery
 
-`/discover` is repeatable per greenfield feature. It clarifies a vague feature idea into a structured scoping memo across 8 dimensions, runs an orchestrator-direct investigation that surveys prior art via web + Context7 AND reconciles user-belief against codebase reality via the CBM graph + `docs/` corpus, composes a discovery report with 2-3 design options + Build-vs-Buy + Derisk plan, and — once the user confirms the save — allocates the feature directory `specs/NNN-<feature-name>/` and writes the rendered report plus its specify-bound handoff inside it. `/discover` reads source code without modifying it, but a saved run is NOT inert on the repository: it creates that directory, creates a `spec/NNN-<feature-name>` git branch when the session is on the default branch, and `[WIP]`-commits what it wrote. State + render shape are owned by `.devforge/lib/discover_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any investigation fires.
+`/devforge:discover` is repeatable per greenfield feature. It clarifies a vague feature idea into a structured scoping memo across 8 dimensions, runs an orchestrator-direct investigation that surveys prior art via web + Context7 AND reconciles user-belief against codebase reality via the CBM graph + `docs/` corpus, composes a discovery report with 2-3 design options + Build-vs-Buy + Derisk plan, and — once the user confirms the save — allocates the feature directory `specs/NNN-<feature-name>/` and writes the rendered report plus its specify-bound handoff inside it. `/devforge:discover` reads source code without modifying it, but a saved run is NOT inert on the repository: it creates that directory, creates a `spec/NNN-<feature-name>` git branch when the session is on the default branch, and `[WIP]`-commits what it wrote. State + render shape are owned by `.devforge/lib/discover_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any investigation fires.
 
-Usage: `/discover "<topic>"` (e.g. `/discover "audit log persistence layer"` or `/discover "auth in a TypeScript backend framework"`).
+Usage: `/devforge:discover "<topic>"` (e.g. `/devforge:discover "audit log persistence layer"` or `/devforge:discover "auth in a TypeScript backend framework"`).
 
 ## Outputs of this phase
 
@@ -19,7 +18,7 @@ Usage: `/discover "<topic>"` (e.g. `/discover "audit log persistence layer"` or 
 - `<install_root>/specs/NNN-<feature-name>/discovery-report.md` — rendered report. Helper's `render` writes to stdout; the orchestrator writes those bytes into the feature directory in Phase 4's save flow.
 - `<install_root>/specs/NNN-<feature-name>/discover-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff` (sibling to the rendered report). The report stem is `discovery-` and the handoff stem is `discover-`; that asymmetry is deliberate — never normalize one to match the other.
 
-On save, Phase 4 `[WIP]`-commits the rendered report + its handoff into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
+On save, Phase 4 `[WIP]`-commits the rendered report + its handoff into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/devforge:finalize`'s squash.
 
 ## Phase 0 — Pre-flight gate
 
@@ -33,12 +32,12 @@ Two preflight checks run in order. Both must pass before Phase 1 begins.
 
 Helper checks four artefacts under `<install_root>`:
 
-- `.devforge/init.yaml` (produced by `/init-forge`)
-- `docs/architecture.md` (produced by `/generate-docs`)
-- `.devforge/configure.yaml` (produced by `/configure`)
-- `constitution.md` (produced by `/constitute`)
+- `.devforge/init.yaml` (produced by `/devforge:init-forge`)
+- `docs/architecture.md` (produced by `/devforge:generate-docs`)
+- `.devforge/configure.yaml` (produced by `/devforge:configure`)
+- `constitution.md` (produced by `/devforge:constitute`)
 
-Exit 0 → all present + non-empty; proceed. Exit 2 → at least one missing or empty; helper emits a `BLOCKED:` message on stderr naming each missing artefact + producer command. On exit 2: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The user must run the missing predecessor command(s) and re-invoke `/discover`.
+Exit 0 → all present + non-empty; proceed. Exit 2 → at least one missing or empty; helper emits a `BLOCKED:` message on stderr naming each missing artefact + producer command. On exit 2: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The user must run the missing predecessor command(s) and re-invoke `/devforge:discover`.
 
 ### Phase 0.2 — CBM index refresh
 
@@ -53,7 +52,7 @@ This refreshes the CBM index stamp so Phase 2 graph queries see current code. Sk
   [ "$(( $(date +%s) - $(stat -f %m .devforge/.preflight-stamp 2>/dev/null || stat -c %Y .devforge/.preflight-stamp) ))" -lt 60 ]
 ```
 
-Exit 0 → stamp fresh; skip the helper call. Non-zero → run `.devforge/lib/generate_docs_helper preflight`. Helper non-zero exit: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn; user re-runs `/generate-docs` or `index_repository` and re-invokes `/discover`.
+Exit 0 → stamp fresh; skip the helper call. Non-zero → run `.devforge/lib/generate_docs_helper preflight`. Helper non-zero exit: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn; user re-runs `/devforge:generate-docs` or `index_repository` and re-invokes `/devforge:discover`.
 
 ### Phase 0.3 — Topic argument
 
@@ -72,13 +71,13 @@ Reset chain (runs in the turn determined by the branch above):
 .devforge/lib/discover_helper set-date --value $(date -u +%Y-%m-%d)
 ```
 
-`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/discover` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence feature description; the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
+`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/devforge:discover` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence feature description; the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
 
-Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/discover-scope.json` + `.devforge/discover-report.json` are overwritten with fresh defaults. `/discover` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
+Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/discover-scope.json` + `.devforge/discover-report.json` are overwritten with fresh defaults. `/devforge:discover` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
 
 ### Phase 0.4 — Suspected-fit classification (pre-rubric, runs before Phase 1)
 
-A `/discover` prompt sometimes carries a placement guess alongside the feature idea — a clause asserting WHERE the feature should live or HOW it should be built ("this belongs in the auth module", "we should reuse the existing queue", "probably a new service", "the bottleneck is …"). Scan the verbatim prompt persisted by `set-verbatim-prompt` for any such lead-in BEFORE the eight-dimension rubric runs. A user-supplied placement or mechanism guess is a CLAIM TO RECONCILE, not a fact: it MUST NOT silently become a scope dimension's value or the recommended design option. It belongs in the user-belief lane that Phase 2's Stream B fit-check reconciles against codebase reality.
+A `/devforge:discover` prompt sometimes carries a placement guess alongside the feature idea — a clause asserting WHERE the feature should live or HOW it should be built ("this belongs in the auth module", "we should reuse the existing queue", "probably a new service", "the bottleneck is …"). Scan the verbatim prompt persisted by `set-verbatim-prompt` for any such lead-in BEFORE the eight-dimension rubric runs. A user-supplied placement or mechanism guess is a CLAIM TO RECONCILE, not a fact: it MUST NOT silently become a scope dimension's value or the recommended design option. It belongs in the user-belief lane that Phase 2's Stream B fit-check reconciles against codebase reality.
 
 When such a clause is present, record it as a gap against the `integration_points` dimension (the dimension whose captured value is explicitly the user's BELIEF about where the feature lives — see the Rubric dimensions table — reconciled vs reality in Phase 2):
 
@@ -88,17 +87,17 @@ When such a clause is present, record it as a gap against the `integration_point
     --description "user-supplied placement guess (confirm via Phase 2 fit-check): <verbatim guess>"
 ```
 
-Recording it as a gap (not as a settled `integration_points` value) keeps the guess a claim the fit-check must confirm or refute — the same separation `/research` enforces via its hypothesis lane. This pre-rubric classifier is the home Step 5's binary-classification gate routes `hypothesis` statements into (per plan 18 Step 5 — the user-facing front door over this same lane). **Discover's hypothesis lane diverges from `/research`'s and a Step-5 builder must respect the divergence:** discover's lane IS the `record-gap --dimension integration_points` call already above in this Phase 0.4 — it has NO `record-hypothesis` verb (that is `/research`-only). Do NOT mirror `/research`'s `record-hypothesis` into `/discover`; route a classified `hypothesis` to this `record-gap` call instead. And discover's backstop against a leaked guess is the Phase 2 fit-check + the Step-5 echo-back human gate, NOT a `verify-hypothesis-suppression` gate (no such verb exists for `/discover` — see the callout below). The captured guess does NOT enter any scope dimension's value and does NOT pre-commit a design option.
+Recording it as a gap (not as a settled `integration_points` value) keeps the guess a claim the fit-check must confirm or refute — the same separation `/devforge:research` enforces via its hypothesis lane. This pre-rubric classifier is the home Step 5's binary-classification gate routes `hypothesis` statements into (per plan 18 Step 5 — the user-facing front door over this same lane). **Discover's hypothesis lane diverges from `/devforge:research`'s and a Step-5 builder must respect the divergence:** discover's lane IS the `record-gap --dimension integration_points` call already above in this Phase 0.4 — it has NO `record-hypothesis` verb (that is `/devforge:research`-only). Do NOT mirror `/devforge:research`'s `record-hypothesis` into `/devforge:discover`; route a classified `hypothesis` to this `record-gap` call instead. And discover's backstop against a leaked guess is the Phase 2 fit-check + the Step-5 echo-back human gate, NOT a `verify-hypothesis-suppression` gate (no such verb exists for `/devforge:discover` — see the callout below). The captured guess does NOT enter any scope dimension's value and does NOT pre-commit a design option.
 
 When the prompt carries NO placement or mechanism guess, this step is a no-op — proceed directly to Phase 0.5.
 
-**No mechanical suppression gate in `/discover`.** Unlike `/research`, `/discover` has no hypothesis/probe-tier machinery and no `verify-hypothesis-suppression` verb. The discover backstop against a guess leaking into design direction is the Phase 2 Stream B fit-check plus the Step-5 echo-back human gate, NOT a mechanical suppression check.
+**No mechanical suppression gate in `/devforge:discover`.** Unlike `/devforge:research`, `/devforge:discover` has no hypothesis/probe-tier machinery and no `verify-hypothesis-suppression` verb. The discover backstop against a guess leaking into design direction is the Phase 2 Stream B fit-check plus the Step-5 echo-back human gate, NOT a mechanical suppression check.
 
 ### Phase 0.5 — Intake-interrogation gate (user-facing front door, runs before Phase 1)
 
 Phase 0.4 silently recorded any placement / mechanism guess as a gap against `integration_points`; Phase 0.5 is the USER-FACING front door over that same machinery. It surfaces the framework's interpretation of the verbatim prompt for ONE confirmation before the Phase 1 rubric commits scoping cost — this is the gate that closes the over-solve failure (plan 18 Step 5: in the original failure the user never saw, and so could never correct, the framework's interpretation). Phase 0.5 does NOT re-run Phase 0.4's detection logic — it reuses the detection decision Phase 0.4 made (a placement / mechanism guess is a scope-expander; everything else is a requirement) and adds the minimality challenge + echo-back + confirmation on top. Phase 0.4's only helper call is `record-gap --dimension integration_points` for the guess; the binary `requirement`-vs-scope-expander split is first persisted at Phase 0.5 Step 1, via `record-intake-classification`.
 
-**Discover lane divergence (do NOT mirror `/research`).** Discover has NO `record-hypothesis` verb and NO research-shaped hypothesis lane — a classified scope-expander routes to `record-gap --dimension integration_points` (the Phase 0.4 call already above), NOT to `record-hypothesis`. The echo-back render uses scope-expander wording ("Scope-expanders to verify — NOT requirements"), not the research "suspected cause" wording. This is the same divergence stated in Phase 0.4; a builder must preserve it. `record-intake-classification --kind hypothesis` is the tag the discover echo-back reads — that `hypothesis` kind value names a scope-expander here, not a bug-cause hypothesis.
+**Discover lane divergence (do NOT mirror `/devforge:research`).** Discover has NO `record-hypothesis` verb and NO research-shaped hypothesis lane — a classified scope-expander routes to `record-gap --dimension integration_points` (the Phase 0.4 call already above), NOT to `record-hypothesis`. The echo-back render uses scope-expander wording ("Scope-expanders to verify — NOT requirements"), not the research "suspected cause" wording. This is the same divergence stated in Phase 0.4; a builder must preserve it. `record-intake-classification --kind hypothesis` is the tag the discover echo-back reads — that `hypothesis` kind value names a scope-expander here, not a bug-cause hypothesis.
 
 **PROPORTIONALITY (HARD requirement — not advice).** The gate is PROPORTIONATE, inheriting the same proportionality the Phase 1 rubric already carries (its turn caps + accept-gaps coverage exit). Auto-classify the easy parts; surface to the user ONLY the high-stakes ambiguities — conflations (a requirement mixed with a placement guess), scope-expanders (a "we should also …" speculative addition not in the stated feature intent), and big-design-driving placement guesses (a "this belongs in module X" guess that would shape the design). It is NOT a 20-question inquisition. A clean prompt — no scope-expander, no placement guess, one obvious minimal scope — passes with ONE echo-back confirmation and ZERO interrogation. Over-interrogating a trivial feature idea is itself the over-build failure mode this gate exists to fight.
 
@@ -136,13 +135,13 @@ Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["c
 
 When the prompt is a clean single-requirement feature idea with no scope-expander and one obvious minimal scope, Steps 1-2 are a single `record-intake-classification --kind requirement --minimal-fix "…"` call and Step 3 is one echo-back the user confirms in a single turn — zero interrogation, per the proportionality requirement above.
 
-### Phase 0.6 — Re-entry from `/grill` (conditional — skip if no seed)
+### Phase 0.6 — Re-entry from `/devforge:grill` (conditional — skip if no seed)
 
-Before beginning the investigation, check for a `/grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"discovery"` (this command's stage), you are re-entering from a `/grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS discovery / build-vs-buy stage's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `grill_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/grill` is ever removed). The seed carries these fields:
+Before beginning the investigation, check for a `/devforge:grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"discovery"` (this command's stage), you are re-entering from a `/devforge:grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS discovery / build-vs-buy stage's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `grill_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/devforge:grill` is ever removed). The seed carries these fields:
 
 - `feature` — the feature this seed was emitted for; read it from the seed and state it up front in your re-entry message (do NOT infer it from the file path).
 - `prior_conclusion` — what the previous discovery / build-vs-buy conclusion was; it was invalidated, so do NOT re-derive it.
-- `invalidating_evidence` — how `/grill` proved it wrong, grounded in the plan / spec / code.
+- `invalidating_evidence` — how `/devforge:grill` proved it wrong, grounded in the plan / spec / code.
 - `must_satisfy` — what this re-run must now additionally satisfy; address it explicitly.
 - `carried_findings` — prior findings to carry forward; stay monotonic (never re-surface a finding a prior pass already disproved).
 
@@ -150,9 +149,9 @@ State up front in your first user-facing message that you are running in grill-r
 
 **Attach mode — the feature directory already exists.** Hold the matched seed file's PARENT DIRECTORY in working memory as this run's feature directory (a seed at `specs/004-audit-log-store/grill-seed.json` means the feature directory is `specs/004-audit-log-store`). Because that directory was allocated by the earlier run of this feature, Phase 4's save flow SKIPS allocation and SKIPS branch creation, and overwrites the discovery report + handoff in place; the superseded versions stay recoverable from the earlier `[WIP]` commit. The parent directory is a path fact about where the seed was found — it is NOT the seed's `feature` field, which is the name you state in user-facing text.
 
-This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
+This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/devforge:grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/*/grill-seed.json` file matches `target_stage == "discovery"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
+When no `specs/*/grill-seed.json` file matches `target_stage == "discovery"` (the normal case — `/devforge:grill` is opt-in, and no seed is ever produced unless a `/devforge:grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
 
 ## Phase 1 — Scoping dialogue (rubric Q&A)
 
@@ -270,7 +269,7 @@ For each of the 8 dimensions, in highest-uncertainty-first order:
    - `refinement` — new answer is a superset of the earlier one (e.g., `"login + signup"` → `"login + signup + password-reset"`). Re-call the affected dimension's setter with the superset value to overwrite (e.g., `set-scope-functional-scope --value "login + signup + password-reset" --state Clear`). No user prompt.
    - `none` — no drift; advance to the next dimension.
 
-   Direct contradictions are persisted by the helper in `memo.conflicts` (step 3 above). Drift and refinement classifications live in the orchestrator's working memory only — they are not written to `memo.conflicts` by the helper, and the orchestrator must carry them across turns within the same `/discover` run by reading prior assistant messages in the conversation.
+   Direct contradictions are persisted by the helper in `memo.conflicts` (step 3 above). Drift and refinement classifications live in the orchestrator's working memory only — they are not written to `memo.conflicts` by the helper, and the orchestrator must carry them across turns within the same `/devforge:discover` run by reading prior assistant messages in the conversation.
 
 5. **Advance.** Pick the next highest-uncertainty dimension and return to step 1.
 
@@ -447,7 +446,7 @@ After all fit-assessments are recorded, aggregate:
 
 `set-overall-fit` enum is `Good` / `Acceptable` / `Strained` / `Misfit`. `set-effort-estimate` shares the `EFFORT_ENUM` used by `record-fit-assessment`.
 
-Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string or an enum-spelling miss), retry up to 3 times. On the 4th failure, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) and end the turn; user must re-run `/discover` from scratch — prior partial state will be overwritten.
+Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string or an enum-spelling miss), retry up to 3 times. On the 4th failure, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase) and end the turn; user must re-run `/devforge:discover` from scratch — prior partial state will be overwritten.
 
 ## Phase 3 — Report drafting + render
 
@@ -527,7 +526,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 
 9. **Next-step text** — composed by the helper from `memo.functional_scope` + `memo.users` + `memo.success_criteria` + `report.verdict` + `report.recommended_option`. Call the subcommand on every verdict — on `Worth pursuing` / `Promising with caveats` the helper composes a copy-pasteable handoff block; on `Reconsider` the helper clears `next_step_text` to `None` so the rendered report omits the Next-Step section (invariant E enforces this in `verify`).
 
-   Pass an LLM-distilled 1-2 sentence topic via `--topic`. Compose the topic yourself from `memo.functional_scope` + `memo.users` + `memo.success_criteria` — keep it ≤2 sentences and ≤200 characters; never copy the entire `functional_scope` value verbatim. The distilled topic becomes the argument inside `/specify "..."` at the top of the handoff block. The helper strips literal `\n` escape sequences from the topic and from the embedded key-fact values; do not rely on that as a license to pass multi-paragraph junk — the cleanup is defensive, not stylistic.
+   Pass an LLM-distilled 1-2 sentence topic via `--topic`. Compose the topic yourself from `memo.functional_scope` + `memo.users` + `memo.success_criteria` — keep it ≤2 sentences and ≤200 characters; never copy the entire `functional_scope` value verbatim. The distilled topic becomes the argument inside `/devforge:specify "..."` at the top of the handoff block (that literal invocation string is composed by the helper — it is the helper's string, not this spec's, so do not rewrite it here). The helper strips literal `\n` escape sequences from the topic and from the embedded key-fact values; do not rely on that as a license to pass multi-paragraph junk — the cleanup is defensive, not stylistic.
 
    ```bash
    .devforge/lib/discover_helper set-next-step-text \
@@ -558,7 +557,7 @@ Helper cross-checks the following invariants. Exit 0 → pass; non-zero → at l
 - **F** — `derisk_plan` ≥ 1 entry when verdict ∈ `{Worth pursuing, Promising with caveats}`.
 - **G — Internal canonical-pattern cite rule** — when any `prior_art[*].source` starts with `internal:`, `recommended_option.rationale` MUST contain at least one of those `internal:` file/dir paths as a substring. Forces the recommended option to be framed as "extend existing `<path>`" or to state explicitly which capability the existing implementation does NOT cover. Triggered only when Step 2.0 surfaced ≥1 internal hit; no-op otherwise.
 
-On non-zero exit: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/discover` from scratch (all prior state will be overwritten).
+On non-zero exit: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/devforge:discover` from scratch (all prior state will be overwritten).
 
 ### Render
 
@@ -614,10 +613,10 @@ Exit 0 → stdout is a JSON object; read `path`, `dirname` (`NNN-<feature-name>`
 
 Exit 2 → copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then branch on which error the helper cited. Nothing has been written to the repository in either branch:
 
-- **`invalid slug ...`** — the helper rejected `<feature-name>` against the 2-4 word lowercase kebab-case shape. Do NOT end the run. Compose a corrected name that satisfies that shape and return to `### Ask to save`, re-asking that question with the corrected proposal; end the turn there. Sending the user back to re-invoke `/discover` instead would be destructive: Phase 0.3 resets the memo and report unconditionally on every invocation, so the eight rubric answers and the whole Phase 2 investigation would be thrown away over a name the user can fix in one turn.
-- **Any other error** (`feature dir already exists ...`, `cannot create ...`) — a filesystem condition this run cannot compose its way out of. End the turn; the user resolves the cited condition and re-invokes `/discover`.
+- **`invalid slug ...`** — the helper rejected `<feature-name>` against the 2-4 word lowercase kebab-case shape. Do NOT end the run. Compose a corrected name that satisfies that shape and return to `### Ask to save`, re-asking that question with the corrected proposal; end the turn there. Sending the user back to re-invoke `/devforge:discover` instead would be destructive: Phase 0.3 resets the memo and report unconditionally on every invocation, so the eight rubric answers and the whole Phase 2 investigation would be thrown away over a name the user can fix in one turn.
+- **Any other error** (`feature dir already exists ...`, `cannot create ...`) — a filesystem condition this run cannot compose its way out of. End the turn; the user resolves the cited condition and re-invokes `/devforge:discover`.
 
-A seedless run ALWAYS allocates a new directory, even when an earlier `/discover` already covered the same topic — this command does no topic matching against existing features. Say so in the closing message so the user can delete the duplicate if that was not the intent.
+A seedless run ALWAYS allocates a new directory, even when an earlier `/devforge:discover` already covered the same topic — this command does no topic matching against existing features. Say so in the closing message so the user can delete the duplicate if that was not the intent.
 
 **2 — Create the feature branch.** (skipped in attach mode)
 
@@ -665,7 +664,7 @@ Write step 3's `render` stdout byte-verbatim to `specs/NNN-<feature-name>/discov
 .devforge/lib/discover_helper finalize-handoff --feature-dir specs/NNN-<feature-name>
 ```
 
-The helper writes `specs/NNN-<feature-name>/discover-handoff.json` and records the sibling report at `specs/NNN-<feature-name>/discovery-report.md`. The report stem (`discovery-`) and the handoff stem (`discover-`) differ on purpose — pass `--feature-dir` and let the helper own both names. On exit 0 stdout is a `wrote: <path>` line; surface that path to the user. On non-zero exit: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), tell the user the report is saved but the handoff is missing so `/specify` will block until it exists, and end the turn — the fix is to correct the cited violation with the relevant Phase 3 setter and re-run this one command with the same `--feature-dir`, NOT to re-run `/discover` (which would allocate a second directory).
+The helper writes `specs/NNN-<feature-name>/discover-handoff.json` and records the sibling report at `specs/NNN-<feature-name>/discovery-report.md`. The report stem (`discovery-`) and the handoff stem (`discover-`) differ on purpose — pass `--feature-dir` and let the helper own both names. On exit 0 stdout is a `wrote: <path>` line; surface that path to the user. On non-zero exit: copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), tell the user the report is saved but the handoff is missing so `/devforge:specify` will block until it exists, and end the turn — the fix is to correct the cited violation with the relevant Phase 3 setter and re-run this one command with the same `--feature-dir`, NOT to re-run `/devforge:discover` (which would allocate a second directory).
 
 **6 — Commit both artefacts.**
 
@@ -679,14 +678,14 @@ The label keeps using the run's `topic_slug`, not the confirmed feature slug —
 
 ### On don't-save
 
-Nothing is written outside `.devforge/` scratch: no feature directory is allocated, no branch is created, neither the report nor the handoff is written, and no `[WIP]` commit fires. The rendered report stays in the assistant message only. `.devforge/discover-scope.json` and `.devforge/discover-report.json` remain on disk until the next `/discover` invocation overwrites them — re-run `/discover` and save to produce the feature directory with both artefacts in it.
+Nothing is written outside `.devforge/` scratch: no feature directory is allocated, no branch is created, neither the report nor the handoff is written, and no `[WIP]` commit fires. The rendered report stays in the assistant message only. `.devforge/discover-scope.json` and `.devforge/discover-report.json` remain on disk until the next `/devforge:discover` invocation overwrites them — re-run `/devforge:discover` and save to produce the feature directory with both artefacts in it.
 
 ### Closing message
 
-If a save happened AND the verdict is in the proceeding-set (`Worth pursuing` / `Promising with caveats`), the written report already contains a `## Next Step` section with a copy-pasteable handoff block. Tell the user: `"/discover is done. Open specs/NNN-<feature-name>/discovery-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for your next session — copy it manually when you're ready."`
+If a save happened AND the verdict is in the proceeding-set (`Worth pursuing` / `Promising with caveats`), the written report already contains a `## Next Step` section with a copy-pasteable handoff block. Tell the user: `"/devforge:discover is done. Open specs/NNN-<feature-name>/discovery-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for your next session — copy it manually when you're ready."`
 
-If a save happened AND the verdict is `Reconsider`, the report omits the Next-Step section. Tell the user: `"/discover is done. Open specs/NNN-<feature-name>/discovery-report.md to review. The verdict was 'Reconsider' — address the cited concerns or refine scope before continuing."`
+If a save happened AND the verdict is `Reconsider`, the report omits the Next-Step section. Tell the user: `"/devforge:discover is done. Open specs/NNN-<feature-name>/discovery-report.md to review. The verdict was 'Reconsider' — address the cited concerns or refine scope before continuing."`
 
 On either saving branch, also state which directory was used and how — a fresh allocation: `"Allocated a new feature directory specs/NNN-<feature-name>/ for this discovery; delete it if you meant to add to an existing feature."`; attach mode: `"Overwrote the discovery artefacts in the existing feature directory specs/NNN-<feature-name>/."` When step 2 created a branch, name that branch too.
 
-If the user chose `Don't save`, tell the user: `"/discover is done. The report is in the prior message; nothing was written under specs/ and no branch was created. .devforge/discover-scope.json and .devforge/discover-report.json hold the state but will be overwritten on the next /discover invocation."`
+If the user chose `Don't save`, tell the user: `"/devforge:discover is done. The report is in the prior message; nothing was written under specs/ and no branch was created. .devforge/discover-scope.json and .devforge/discover-report.json hold the state but will be overwritten on the next /devforge:discover invocation."`

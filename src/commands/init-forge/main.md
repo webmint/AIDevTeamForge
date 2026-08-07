@@ -1,12 +1,12 @@
 ---
 name: init-forge
-description: Bootstrap project — captures structural fields, hands off to /generate-docs
+description: Bootstrap project — captures structural fields, hands off to /devforge:generate-docs
 disable-model-invocation: true
 ---
 
-# /init-forge — Project Bootstrap
+# /devforge:init-forge — Project Bootstrap
 
-`/init-forge` captures five structural fields about the target project and persists them to `.devforge/init.yaml` via the `.devforge/lib/init_helper` setter helpers. It performs no classification — no language inference, no framework detection, no library categorization, no architectural shape inference. Those fields stay at their helper-default empty values; later commands populate them.
+`/devforge:init-forge` captures five structural fields about the target project and persists them to `.devforge/init.yaml` via the `.devforge/lib/init_helper` setter helpers. It performs no classification — no language inference, no framework detection, no library categorization, no architectural shape inference. Those fields stay at their helper-default empty values; later commands populate them.
 
 ## Outputs of this phase
 
@@ -65,7 +65,7 @@ Use AskUserQuestion (replace each `<folder-N>` with the corresponding path from 
 
 If the user picks `<folder-N>`, invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <folder-N>`. If the user picks `None of these`, follow up with a plain free-text prompt: "Which folder contains the client's source code?", then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <answer>`.
 
-**Multi-root rejection:** If a free-text answer in this substep names more than one folder (e.g., separated by `and`, `&`, or a comma between path-like tokens — illustrative, not exhaustive; lean toward triggering when ambiguous, since a false-positive costs one re-prompt while a false-negative corrupts `project_root`), reply in first person: "I noticed your answer names more than one folder. Multi-root coordination across nested repos isn't supported — please name a single primary source root." Then re-issue the same free-text prompt: "Which folder contains the client's source code?". Allow up to 2 retries (3 total attempts). After the third invalid answer, extract the first folder from the most recent answer by splitting on the same multi-root separators (`and`, `&`, comma, whitespace between path-like tokens) and taking the leading non-empty token (strip a trailing slash if present). Warn the user ("I'll proceed with `<first-folder>`; re-run `/init-forge` if that's wrong"), then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <first-folder>`.
+**Multi-root rejection:** If a free-text answer in this substep names more than one folder (e.g., separated by `and`, `&`, or a comma between path-like tokens — illustrative, not exhaustive; lean toward triggering when ambiguous, since a false-positive costs one re-prompt while a false-negative corrupts `project_root`), reply in first person: "I noticed your answer names more than one folder. Multi-root coordination across nested repos isn't supported — please name a single primary source root." Then re-issue the same free-text prompt: "Which folder contains the client's source code?". Allow up to 2 retries (3 total attempts). After the third invalid answer, extract the first folder from the most recent answer by splitting on the same multi-root separators (`and`, `&`, comma, whitespace between path-like tokens) and taking the leading non-empty token (strip a trailing slash if present). Warn the user ("I'll proceed with `<first-folder>`; re-run `/devforge:init-forge` if that's wrong"), then invoke `.devforge/lib/init_helper set-workspace-mode wrapper` then `.devforge/lib/init_helper set-project-root <first-folder>`.
 
 ## Step 2: Project State Classification
 
@@ -108,7 +108,7 @@ For each manifest, invoke `.devforge/lib/init_helper add-package --path <package
 
 ## Step 5: Render Summary
 
-Renders the persisted state from `.devforge/init.yaml` so the user can verify the captured fields before handoff to `/generate-docs`.
+Renders the persisted state from `.devforge/init.yaml` so the user can verify the captured fields before handoff to `/devforge:generate-docs`.
 
 Invoke `.devforge/lib/init_helper summary`. The helper reads `.devforge/init.yaml` and prints a deterministic, human-readable report to stdout. After the helper runs, copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
 
@@ -128,9 +128,9 @@ Exit code 0 is required. The helper:
 
 Both writes are atomic. Re-running `build-index` is idempotent: byte-identical output across re-runs on stable input (modulo the `generated_at` timestamp).
 
-If the helper exits non-zero, surface the stderr to the user and stop — `/init-forge` is incomplete without the index. The error is most likely one of:
+If the helper exits non-zero, surface the stderr to the user and stop — `/devforge:init-forge` is incomplete without the index. The error is most likely one of:
 
-- `.devforge/init.yaml` is missing or malformed → re-run `/init-forge` from the start
+- `.devforge/init.yaml` is missing or malformed → re-run `/devforge:init-forge` from the start
 - A `packages_detected[]` entry points at a path that no longer exists → user reconciles, then retries
 - A package's manifest file is malformed (e.g., invalid JSON in `package.json`) → the helper emits `"manifest_parse_skipped": true` for that package and continues; not a hard failure
 
@@ -151,4 +151,4 @@ Cross-checks `.devforge/init.yaml` + `.devforge/index.json` + `docs/structure.md
 
 ## Closing
 
-`/init-forge` is complete. The five structural fields are persisted in `.devforge/init.yaml`, and the structural index is materialized at `.devforge/index.json` + `docs/structure.md`. Tell the user: "Run `/generate-docs` next."
+`/devforge:init-forge` is complete. The five structural fields are persisted in `.devforge/init.yaml`, and the structural index is materialized at `.devforge/index.json` + `docs/structure.md`. Tell the user: "Run `/devforge:generate-docs` next."

@@ -120,7 +120,7 @@ def resolve_target_feature(
     if not candidates:
         return None, (
             "no feature directories with a plan.md found under {0!r}. "
-            "Run /plan first to produce a plan.md.".format(specs_root)
+            "Run /devforge:plan first to produce a plan.md.".format(specs_root)
         )
 
     candidates.sort(
@@ -206,12 +206,12 @@ def build_scope_manifest(
     if not os.path.isfile(plan_path):
         return None, (
             "required artefact missing: {0}. "
-            "Run /plan to produce a plan.md for this feature.".format(plan_path)
+            "Run /devforge:plan to produce a plan.md for this feature.".format(plan_path)
         )
     if not os.path.isfile(spec_path):
         return None, (
             "required artefact missing: {0}. "
-            "Run /specify to produce a spec.md for this feature.".format(spec_path)
+            "Run /devforge:specify to produce a spec.md for this feature.".format(spec_path)
         )
 
     # Optional handoff.json — present or None.

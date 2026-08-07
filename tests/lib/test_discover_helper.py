@@ -255,7 +255,7 @@ class TestPreflight(unittest.TestCase):
                 "preflight",
             ])
             self.assertEqual(r.returncode, 2)
-            self.assertIn("Missing: constitution.md (produced by /constitute)", r.stderr)
+            self.assertIn("Missing: constitution.md (produced by /devforge:constitute)", r.stderr)
 
     def test_one_missing_stderr_contains_blocked(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -327,8 +327,8 @@ class TestPreflight(unittest.TestCase):
                 "--install-root", str(install),
                 "preflight",
             ])
-            self.assertIn("/init-forge", r.stderr)
-            self.assertIn("/constitute", r.stderr)
+            self.assertIn("/devforge:init-forge", r.stderr)
+            self.assertIn("/devforge:constitute", r.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -401,10 +401,10 @@ class TestEdgeCases(unittest.TestCase):
 
     def test_preflight_prereqs_exact_tuple(self):
         expected = (
-            (".devforge/init.yaml", "/init-forge"),
-            ("docs/architecture.md", "/generate-docs"),
-            (".devforge/configure.yaml", "/configure"),
-            ("constitution.md", "/constitute"),
+            (".devforge/init.yaml", "/devforge:init-forge"),
+            ("docs/architecture.md", "/devforge:generate-docs"),
+            (".devforge/configure.yaml", "/devforge:configure"),
+            ("constitution.md", "/devforge:constitute"),
         )
         self.assertEqual(discover_helper.PREFLIGHT_PREREQS, expected)
 
@@ -1594,7 +1594,7 @@ class TestSetNextStepText(unittest.TestCase):
             report = _read_report(devforge)
             text = report["next_step_text"]
             self.assertIsNotNone(text)
-            self.assertIn("/specify", text)
+            self.assertIn("/devforge:specify", text)
             self.assertIn("Discovery reference:", text)
             # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 3 item 3: the composed
             # line uses --feature-dir + the D2 "discovery-report.md" stem --
@@ -1750,7 +1750,7 @@ class TestSetNextStepText(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             report = _read_report(devforge)
             text = report["next_step_text"]
-            self.assertTrue(text.startswith('/specify "'))
+            self.assertTrue(text.startswith('/devforge:specify "'))
 
     def test_literal_escape_sequences_stripped_from_values(self):
         # Fix F2: setter values containing literal `\n\n` / `\n` (from shell

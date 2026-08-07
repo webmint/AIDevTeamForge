@@ -5,9 +5,9 @@ Reads from src/ (template authoring source) and writes the Claude-native
 runtime files into the target project.
 
 Responsibilities:
-  - src/commands/init-forge/main.md    → target/.claude/commands/init-forge.md
-  - src/commands/generate-docs/main.md → target/.claude/commands/generate-docs.md
-  - src/commands/constitute/main.md    → target/.claude/commands/constitute.md
+  - src/commands/init-forge/main.md    → target/.claude/commands/devforge/init-forge.md
+  - src/commands/generate-docs/main.md → target/.claude/commands/devforge/generate-docs.md
+  - src/commands/constitute/main.md    → target/.claude/commands/devforge/constitute.md
   (both flat and folder-based sources supported during migration)
 
   NOTE: /setup-wizard and /onboard have been retired. The architecture pivot
@@ -16,14 +16,22 @@ Responsibilities:
   /onboard retired in plan 29 C; /setup-wizard retired in plan 30. Neither has a
   source tree under src/commands/ anymore.
 
+  NOTE: commands are namespaced under a `devforge/` subdirectory so each one
+  surfaces in Claude Code as `/devforge:<name>` (the documented flat-file
+  naming rule: a file at `.claude/commands/<path>.md` is named by its
+  subpath) — zero collision with bundled/plugin skills of the same verb.
+  See 63-SKILL-COLLISION-SUPPRESSION-PLAN.md.
+
 Handled by other generators, not this emitter:
   - CoreLLM files (CLAUDE.md)      → scripts/generate-corellm.py
   - Subagents (.claude/agents/*)   → scripts/generate-agents.py
 
 Does NOT substitute {{PLACEHOLDERS}} — wizard does that post-install with
 user answers. Does rewrite `references/<h>.md` cross-references to project-
-relative `.claude/commands/<cmd>/references/<h>.md` paths so the runtime's
-file-read tool resolves them unambiguously.
+relative `.devforge/command-refs/<cmd>/<h>.md` paths so the runtime's
+file-read tool resolves them unambiguously. References live OUTSIDE
+`.claude/commands/` so they are not recursively discovered as phantom
+commands (Claude Code colon-namespaces every `.md` under `.claude/commands/`).
 """
 
 from __future__ import annotations
@@ -58,8 +66,9 @@ def emit(src: Path, target: Path, only: "str | None" = None) -> None:
     is responsible for validating that *only* is a member of *_PROMOTED*
     before calling this function.
     """
-    commands_dir = target / ".claude" / "commands"
+    commands_dir = target / ".claude" / "commands" / "devforge"
     commands_dir.mkdir(parents=True, exist_ok=True)
+    refs_root = target / ".devforge" / "command-refs"
 
     to_emit = (only,) if only is not None else _PROMOTED
 
@@ -67,8 +76,8 @@ def emit(src: Path, target: Path, only: "str | None" = None) -> None:
         source = load_command(src / "commands", cmd_name)
         if source is None:
             continue
-        refs_dir = commands_dir / source.name / "references"
-        refs_prefix = f".claude/commands/{source.name}/references"
+        refs_dir = refs_root / source.name
+        refs_prefix = f".devforge/command-refs/{source.name}"
         body, refs = process_source(source, refs_prefix)
         (commands_dir / f"{source.name}.md").write_text(body)
         n_refs = write_references(refs, refs_dir)
@@ -86,8 +95,8 @@ def emit(src: Path, target: Path, only: "str | None" = None) -> None:
     #         src_obj = load_command(src_commands, name)
     #         if src_obj is None:
     #             continue
-    #         refs_dir = commands_dir / src_obj.name / "references"
-    #         refs_prefix = f".claude/commands/{src_obj.name}/references"
+    #         refs_dir = refs_root / src_obj.name
+    #         refs_prefix = f".devforge/command-refs/{src_obj.name}"
     #         body, refs = process_source(src_obj, refs_prefix)
     #         (commands_dir / f"{src_obj.name}.md").write_text(body)
     #         write_references(refs, refs_dir)

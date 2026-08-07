@@ -37,110 +37,125 @@ This file provides guidance to Claude Code when working with code in this reposi
 ### Spec-Driven Development Flow
 
 ```
-/init-forge → /generate-docs → /configure → /constitute → /research OR /discover → /specify → [/spec-check] → /plan → [/grill] → /breakdown → /implement → /review → /verify → /summarize → /finalize
-  (once)         (once)         (once)       (once)     (per feat — required)     (per feat)  (optional,   (per feat)  (optional,   (per feat)   (per task)    (per feat) (per feat) (per feat)  (per feat)
-                                                                                              spec-tier)               high-stakes)
+Setup (once per project):
+/devforge:init-forge → /devforge:generate-docs → /devforge:configure → /devforge:constitute
+
+Per feature:
+/devforge:research OR /devforge:discover → /devforge:specify → [/devforge:spec-check] → /devforge:plan → [/devforge:grill] → /devforge:breakdown → /devforge:implement (per task) → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 ```
 
-`/research` (bug/enhancement against existing code) OR `/discover` (greenfield) is a **required precondition** for `/specify` — `/specify` blocks until a pending research or discover handoff exists in a feature directory. Use `/research` when investigating existing code, `/discover` when surveying a greenfield idea; the two cover complementary intake lanes, and either one satisfies the `/specify` gate.
+`[bracketed]` steps are optional and opt-in — not mandatory gates.
 
-`[/spec-check]` is **optional, opt-in** — a spec-tier consistency check run between `/specify` and `/plan` that formalizes the acceptance criteria and proves whether they contradict each other (bracketed in the chain because it is opt-in, not a mandatory gate); run it for high-stakes specs before planning. It is a consistency prover, not a mind-reader — it checks whether the ACs contradict EACH OTHER, not whether they are what you meant.
+Forge commands are namespaced — invoke them as `/devforge:<name>` (e.g. `/devforge:verify`). Seven are **human-typed only**: the one-time setup commands `/devforge:init-forge`, `/devforge:generate-docs`, `/devforge:configure` and `/devforge:constitute`, the opt-in adversarial checks `/devforge:grill` and `/devforge:spec-check`, and `/devforge:fix`. Never invoke those seven — name the command and let the user type it. Every other forge command is model-invocable: propose it, and once the user agrees, run it directly rather than asking the user to type it.
 
-`/fix` is **not a linear step** — it is a proposal-only remediation loop OFF `/review` and `/verify` (and off an in-window conversational defect), run inside the post-`/implement`/pre-`/summarize` window; the model OFFERS it, the user invokes it. It never appears in the arrow chain above.
+`/devforge:research` (bug/enhancement against existing code) OR `/devforge:discover` (greenfield) is a **required precondition** for `/devforge:specify` — `/devforge:specify` blocks until a pending research or discover handoff exists in a feature directory. Use `/devforge:research` when investigating existing code, `/devforge:discover` when surveying a greenfield idea; the two cover complementary intake lanes, and either one satisfies the `/devforge:specify` gate.
 
-- `/research "topic"` — Investigate a bug or enhancement against the existing codebase (required intake lane for `/specify`); on a confirmed save allocates `specs/NNN-name/` + the `spec/NNN-name` branch and writes `research-report.md` + `research-handoff.json` there, WIP-committing them as it writes (folds into `/finalize`'s squash)
-- `/discover "feature idea"` — Greenfield-feature discovery (required intake lane for `/specify`); on a confirmed save allocates `specs/NNN-name/` + the `spec/NNN-name` branch and writes `discovery-report.md` + `discover-handoff.json` there, WIP-committing them as it writes (folds into `/finalize`'s squash)
-- `/specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md`, written into the feature directory intake already allocated (blocks until a pending research or discover handoff exists); captures a per-feature `**Design source**:` declaration (`html` / `figma` / `screenshot` / `none`) in the spec frontmatter and persists a structured design anchor (`specs/NNN-name/design-anchor.json` — the design source plus which selectors carry the design intent) captured at intake; WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash)
-- `/spec-check` — **Optional, opt-in** spec-tier SMT consistency check of the acceptance criteria → `specs/NNN-name/spec-check.md` (run between `/specify` and `/plan`; a consistency prover, not a mind-reader — checks whether the ACs contradict each other, not whether they are what you meant); WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash)
-- `/plan` — Technical plan from approved spec → `specs/NNN-name/plan.md`; WIP-commits the plan + handoff (and the spec's Draft→Approved status flip) as it writes them (folds into `/finalize`'s squash)
-- `/grill` — **Optional, opt-in** design-time adversarial review of the completed `plan.md` → `specs/NNN-name/grill.md` (run for high-stakes plans before `/breakdown`; not a mandatory gate); WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash)
-- `/breakdown` — Atomic tasks with dependencies → `specs/NNN-name/tasks/`; WIP-commits the task files + handoff (and the plan's Draft→Approved status flip) as it writes them (folds into `/finalize`'s squash)
-- `/implement` — Drain the feature's tasks one at a time (no args); per-task hard gate before commit
-- `/review` — Feature-level emergent cross-task review → findings report; WIP-commits the report as it writes it (folds into `/finalize`'s squash)
-- `/verify` — Verify ACs + assembled mechanical checks, fold `/review` findings → APPROVED / NEEDS WORK / REJECTED verdict + spec flip on APPROVED; WIP-commits the verification report (and the flipped spec) as it writes them (folds into `/finalize`'s squash)
-- `/fix` — **Proposal-only remediation loop** (NOT a linear step) OFFERED off `/review` findings / `/verify` NEEDS WORK / an in-window conversational defect → gated fix via `/implement`'s back half → `[WIP] fix:` commit; `/report-bug` is the file-and-defer alternative
-- `/finalize` — Surgical `docs/` updates via tech-writer + an unconditional `specs/<feature>/` safety-net commit + squash WIP commits into a clean feature commit
+`[/devforge:spec-check]` is **optional, opt-in** — a spec-tier consistency check run between `/devforge:specify` and `/devforge:plan` that formalizes the acceptance criteria and proves whether they contradict each other (bracketed in the chain because it is opt-in, not a mandatory gate); run it for high-stakes specs before planning. It is a consistency prover, not a mind-reader — it checks whether the ACs contradict EACH OTHER, not whether they are what you meant.
 
-`/research` and `/discover` are read-only on source code and produce no spec themselves — but a confirmed save is a repository mutation: it creates the feature directory, creates the `spec/NNN-name` branch when the session is on the default branch, and WIP-commits the artifacts. Their handoffs are a required precondition for `/specify`, so they belong to the spec pipeline above, not to the standalone group below.
+`/devforge:fix` is **not a linear step** — it is a proposal-only remediation loop OFF `/devforge:review` and `/devforge:verify` (and off an in-window conversational defect), run inside the post-`/devforge:implement`/pre-`/devforge:summarize` window; the model OFFERS it, the user invokes it. It never appears in the arrow chain above.
+
+- `/devforge:research "topic"` — Investigate a bug or enhancement against the existing codebase (required intake lane for `/devforge:specify`); on a confirmed save allocates `specs/NNN-name/` + the `spec/NNN-name` branch and writes `research-report.md` + `research-handoff.json` there, WIP-committing them as it writes (folds into `/devforge:finalize`'s squash)
+- `/devforge:discover "feature idea"` — Greenfield-feature discovery (required intake lane for `/devforge:specify`); on a confirmed save allocates `specs/NNN-name/` + the `spec/NNN-name` branch and writes `discovery-report.md` + `discover-handoff.json` there, WIP-committing them as it writes (folds into `/devforge:finalize`'s squash)
+- `/devforge:specify "feature"` — Create spec with acceptance criteria → `specs/NNN-name/spec.md`, written into the feature directory intake already allocated (blocks until a pending research or discover handoff exists); captures a per-feature `**Design source**:` declaration (`html` / `figma` / `screenshot` / `none`) in the spec frontmatter and persists a structured design anchor (`specs/NNN-name/design-anchor.json` — the design source plus which selectors carry the design intent) captured at intake; WIP-commits the spec + handoff as it writes them (folds into `/devforge:finalize`'s squash)
+- `/devforge:spec-check` — **Optional, opt-in** spec-tier SMT consistency check of the acceptance criteria → `specs/NNN-name/spec-check.md` (run between `/devforge:specify` and `/devforge:plan`; a consistency prover, not a mind-reader — checks whether the ACs contradict each other, not whether they are what you meant); WIP-commits its report + any re-entry seed as it writes them (folds into `/devforge:finalize`'s squash)
+- `/devforge:plan` — Technical plan from approved spec → `specs/NNN-name/plan.md`; WIP-commits the plan + handoff (and the spec's Draft→Approved status flip) as it writes them (folds into `/devforge:finalize`'s squash)
+- `/devforge:grill` — **Optional, opt-in** design-time adversarial review of the completed `plan.md` → `specs/NNN-name/grill.md` (run for high-stakes plans before `/devforge:breakdown`; not a mandatory gate); WIP-commits its report + any re-entry seed as it writes them (folds into `/devforge:finalize`'s squash)
+- `/devforge:breakdown` — Atomic tasks with dependencies → `specs/NNN-name/tasks/`; WIP-commits the task files + handoff (and the plan's Draft→Approved status flip) as it writes them (folds into `/devforge:finalize`'s squash)
+- `/devforge:implement` — Drain the feature's tasks one at a time (no args); per-task hard gate before commit
+- `/devforge:review` — Feature-level emergent cross-task review → findings report; WIP-commits the report as it writes it (folds into `/devforge:finalize`'s squash)
+- `/devforge:verify` — Verify ACs + assembled mechanical checks, fold `/devforge:review` findings → APPROVED / NEEDS WORK / REJECTED verdict + spec flip on APPROVED; WIP-commits the verification report (and the flipped spec) as it writes them (folds into `/devforge:finalize`'s squash)
+- `/devforge:fix` — **Proposal-only remediation loop** (NOT a linear step) OFFERED off `/devforge:review` findings / `/devforge:verify` NEEDS WORK / an in-window conversational defect → gated fix via `/devforge:implement`'s back half → `[WIP] fix:` commit; `/devforge:report-bug` is the file-and-defer alternative
+- `/devforge:summarize` — PR-ready feature synthesis → `specs/NNN-name/summary.md`; WIP-commits the summary as it writes it (folds into `/devforge:finalize`'s squash)
+- `/devforge:finalize` — Surgical `docs/` updates via tech-writer + an unconditional `specs/<feature>/` safety-net commit + squash WIP commits into a clean feature commit
+
+`/devforge:research` and `/devforge:discover` are read-only on source code and produce no spec themselves — but a confirmed save is a repository mutation: it creates the feature directory, creates the `spec/NNN-name` branch when the session is on the default branch, and WIP-commits the artifacts. Their handoffs are a required precondition for `/devforge:specify`, so they belong to the spec pipeline above, not to the standalone group below.
 
 Standalone (no pipeline connection — runs outside the spec pipeline):
-- `/audit` — Adversarial whole-codebase quality + system-design + best-practices review
-- `/report-bug` — Pure-capture bug report: writes one `bugs/NNN-<slug>.md` (Status Open, Source manual) and stops; dispatches no agent
+- `/devforge:audit` — Adversarial whole-codebase quality + system-design + best-practices review
+- `/devforge:report-bug` — Pure-capture bug report: writes one `bugs/NNN-<slug>.md` (Status Open, Source manual) and stops; dispatches no agent
 
 ### Command Details
 
-#### `/research "<topic>"` (required intake lane for `/specify`)
-Investigate a bug or enhancement against the existing codebase and produce a structured research report grounded in the codebase-memory-mcp graph + `docs/`. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Read-only on source code — it never modifies code — but the save is not inert: once the user confirms saving AND the feature name, the run allocates the feature directory `specs/NNN-<feature-name>/`, creates the `spec/NNN-<feature-name>` branch when the session is on the default branch, and writes `research-report.md` + `research-handoff.json` (plus `probe-script.<ext>` when a tier-1.5 probe ran) inside it, then WIP-commits them (folds into `/finalize`'s squash). A run the user declines to save leaves nothing under `specs/`. `/specify` auto-discovers that handoff and requires it (see `/specify` Phase 0.4 — a research OR discover handoff is a mandatory precondition); the run also prints a copy-pasteable `/specify` block (manual, no auto-dispatch). Proportionate: scales down to a fast pass for a trivial bug.
+Argument syntax per command; the workflow list above carries the one-line purposes, and a command's full behavior loads when it runs. Seven commands — `/devforge:init-forge`, `/devforge:generate-docs`, `/devforge:configure`, `/devforge:constitute`, `/devforge:spec-check`, `/devforge:grill`, `/devforge:fix` — are human-typed only, so their entries below carry a full description: this section is the only place the model sees what they do.
 
-#### `/discover "<feature idea>"` (required intake lane for `/specify`, greenfield)
-Pre-`/specify` discovery for a greenfield feature — surveys internal prior art then the web, and produces a fit-checked discovery report with design options (typically 2-3) and a build-vs-buy verdict. Same 4-command setup-chain hard gate. Read-only on source code — it never modifies code — but the save is not inert: once the user confirms saving AND the feature name, the run allocates the feature directory `specs/NNN-<feature-name>/`, creates the `spec/NNN-<feature-name>` branch when the session is on the default branch, and writes `discovery-report.md` + `discover-handoff.json` inside it, then WIP-commits them (folds into `/finalize`'s squash). The report stem is `discovery-` and the handoff stem is `discover-` — that asymmetry is deliberate; never normalize one to match the other. A run the user declines to save leaves nothing under `specs/` and no orphaned handoff. `/specify` auto-discovers that handoff and requires it (the greenfield counterpart to `/research`'s handoff; either one satisfies the `/specify` Phase 0.4 gate); the run also prints a copy-pasteable `/specify` block (manual, no auto-dispatch).
+#### `/devforge:research "<topic>"`
+Bug/enhancement intake lane. Hard-gated on the 4-command setup chain.
 
-#### `/specify "feature description"`
-Authors a structured 9-section feature spec at `specs/NNN-<feature-name>/spec.md` with EARS-validated acceptance criteria. Hard-gated on the 4-command setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). Its Phase 0.4 gate RESOLVES the feature directory `/research` or `/discover` already allocated at intake — it globs `specs/*/research-handoff.json` and `specs/*/discover-handoff.json` for a PENDING directory (its `spec.md` is absent, or a sibling `*-seed.json` targets the spec stage for a `/grill` or `/spec-check` re-entry revision) and writes `spec.md` into it, allocating no number of its own. **Requires approval before proceeding**; on approve, writes a specify→plan `handoff.json` + a manual-next-step `/plan` block (no auto-dispatch). WIP-commits the spec + handoff as it writes them (folds into `/finalize`'s squash). Branch creation is a FALLBACK only — intake creates `spec/NNN-<feature-name>`, so `/specify` creates it only when the session is still on the default branch at spec time (intake skipped the checkout, or the user switched back since).
+#### `/devforge:discover "<topic>"`
+Greenfield intake lane. Hard-gated on the 4-command setup chain.
 
-#### `/spec-check [feature-or-spec]`
-**Optional, opt-in** spec-tier consistency check of the acceptance criteria — the spec-level mirror of `/grill`, positioned between `/specify` and `/plan` so a self-contradictory spec is caught before `/plan` builds on it. Formalizes each acceptance criterion into a constraint IR via the read-only `spec-formalizer` agent (a fixed 2-pass quorum keeps the formalization — and so the verdict — reproducible), runs the Z3 SMT solver over the constraints, and recommends a 3-way disposition — CONSISTENT / REVISE-SPEC / DISMISS. The human checks the TRANSLATION (does the IR faithfully capture each AC?) and owns the final verdict — the tool recommends, it never decides. Writes `specs/[feature]/spec-check.md`; when the user's pick matches a REVISE-SPEC recommendation, the orchestrator emits a backward re-entry seed (`specs/[feature]/spec-check-seed.json`, `target_stage="spec"`) that `/specify` consumes on re-run. WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash). Scope boundary: it is a consistency prover, not a mind-reader — it checks whether the ACs contradict EACH OTHER, not whether they are what you MEANT (a single coherent-but-wrong AC passes). It is STRONG on numeric / state / enum invariants but catches a permission clash ONLY when a permitting case is asserted reachable (not "permission logic" in general). The Z3 proof is deterministic over a human-checked, quorum-stable formalization — not a bare "deterministic proof of your spec".
+#### `/devforge:specify "<feature description>"`
+Writes `spec.md` into the feature directory intake allocated; blocks until a pending research or discover handoff exists. **Requires approval before `/devforge:plan`.**
 
-#### `/plan [spec-file]`
-Takes an approved spec and produces a technical plan: architecture decisions, data model, API contracts, research. Saves to `specs/[feature]/plan.md`. When the feature carries a design anchor (`specs/[feature]/design-anchor.json`), `/plan` reads it to shape the UI approach — a light, passive read that never gates. On re-run, consumes a `/grill` REVISE-PLAN re-entry seed (`grill-seed.json`, `target_stage="plan"`) when present, directing the revision at the grill's confirmed findings. WIP-commits the plan + handoff — and the spec's Draft→Approved status flip that Phase 0b applies on consume — as it writes them (folds into `/finalize`'s squash). On finalize it also surfaces a non-blocking advisory hint suggesting the user consider `/grill` when the plan looks high-stakes (wide file impact, a new data model, a new dependency, security-relevant risks or decisions, or 4+ risks); the hint never runs `/grill` and never gates. The mandatory Phase 1.3 architect consult additionally classifies any decision that restricts shared-code behavior per the constitution's Narrowing rule (caller-scoped opt-in vs layer-wide — either way every affected/needing caller is named, sourced from the carried caller enumeration when present), names the feature's pure-builder targets (deterministic, no-I/O construction logic) into a `### Pure-Builder Targets` table the handoff carries to `/breakdown` as the property-test lane, and declares any change-induced dead code — paths a Key Design Decision renders unreachable — into a `### Change-Induced Dead Code` table (each row a MUST-delete obligation the handoff carries; enabled follow-on cleanups render in a separate advisory section the user reads at the approval gate, never silently becoming tasks). **Requires approval before breakdown.**
+#### `/devforge:spec-check [feature-or-spec]`
+**Optional, opt-in** spec-tier consistency check of the acceptance criteria — the spec-level mirror of `/devforge:grill`, positioned between `/devforge:specify` and `/devforge:plan` so a self-contradictory spec is caught before `/devforge:plan` builds on it. Formalizes each acceptance criterion into a constraint IR via the read-only `spec-formalizer` agent (a fixed 2-pass quorum keeps the formalization — and so the verdict — reproducible), runs the Z3 SMT solver over the constraints, and recommends a 3-way disposition — CONSISTENT / REVISE-SPEC / DISMISS. The human checks the TRANSLATION (does the IR faithfully capture each AC?) and owns the final verdict — the tool recommends, it never decides. Writes `specs/[feature]/spec-check.md`; when the user's pick matches a REVISE-SPEC recommendation, the orchestrator emits a backward re-entry seed (`specs/[feature]/spec-check-seed.json`, `target_stage="spec"`) that `/devforge:specify` consumes on re-run. WIP-commits its report + any re-entry seed as it writes them (folds into `/devforge:finalize`'s squash). Scope boundary: it is a consistency prover, not a mind-reader — it checks whether the ACs contradict EACH OTHER, not whether they are what you MEANT (a single coherent-but-wrong AC passes). It is STRONG on numeric / state / enum invariants but catches a permission clash ONLY when a permitting case is asserted reachable (not "permission logic" in general). The Z3 proof is deterministic over a human-checked, quorum-stable formalization — not a bare "deterministic proof of your spec".
 
-#### `/breakdown [plan-file]`
-Takes an approved plan and generates ordered, atomic tasks with dependencies, agent assignments, and verifiable Expects/Produces contracts. Each assigned agent is validated against the installed `.claude/agents/` roster (a Phase 3.5 hard gate) so a task can never be assigned an agent the project doesn't have. Saves task files to `specs/[feature]/tasks/` and writes a structured `specs/[feature]/breakdown-handoff.json` (the producer side of the breakdown→`/implement` handoff). When the feature has a `design/reference.html`, `/breakdown` authors a design-fidelity binding (`specs/[feature]/design-manifest.json` — a `route` plus a set of `{anchor_selector ↔ built_testid}` pairs, backing the constitution's Design Fidelity principle) and a Phase 3.5 integrity gate (`verify-manifest-present`) hard-halts if that binding is absent or invalid, so a skipped intake cannot ship a feature with the design-fidelity contract silently missing. When `/plan` declared pure-builder targets, `/breakdown` must emit a dedicated `qa-engineer` property-test task covering every target (fast-check / hypothesis by package stack, ≥100 iterations, adversarial special-char/unicode arbitraries, honest-skip on unsupported stacks), and a fifth Phase 3.5 integrity gate (`verify-property-coverage`) plus a `finalize-handoff` chokepoint hard-halt when a declared target has no covering task — an orphaned property. When `/plan` declared change-induced dead code, each row's removal folds into the OWNING task's `**Dead code removal**:` field (never a dedicated deletion task), enforced by a sixth Phase 3.5 gate (`verify-dead-code-coverage`) + `finalize-handoff` chokepoints that hard-halt when a declared row is uncovered, claimed by 2+ tasks, or lost in the handoff carry. WIP-commits the task files + handoff — and the plan's Draft→Approved status flip that Phase 0b applies on consume — as it writes them (folds into `/finalize`'s squash). **Requires approval before execution.**
+#### `/devforge:plan [spec-file]`
+**Requires approval before `/devforge:breakdown`.**
 
-#### `/grill [plan-file]`
-**Optional, opt-in** design-time adversarial review of the completed `plan.md` — the design-level mirror of `/review`, positioned between `/plan` and `/breakdown` so a fatally-flawed design is killed before `/breakdown` decomposes it. Run it for high-stakes plans (new architecture / dependency / data model / security); it is NOT a mandatory gate. This high-stakes recommendation is now backed by `/plan`'s finalize-time stakes-hint — a non-blocking advisory nudge to consider `/grill` when the plan looks high-stakes — so it is no longer left entirely to author self-diagnosis; the nudge never gates, and `/grill` stays opt-in. Dispatches the `devils-advocate` adversary plus a refutation pass (architect-excluded `[code-reviewer, qa-reviewer, security-reviewer]`), reusing the shared refutation engine. The adversary reads `plan.md` + `spec.md` + the recon dossier + `constitution.md` + a scoped three-ring codebase slice, with self-gated web-verification of the plan's external claims. Writes `specs/[feature]/grill.md` with a recommended 4-way disposition — PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; when the user's PHASE-7 pick matches a REVISE-PLAN or RE-ENTER-UPSTREAM recommendation, the orchestrator emits a backward re-entry seed (`specs/[feature]/grill-seed.json`) whose `target_stage` routes the consumer — on RE-ENTER-UPSTREAM the seed targets an upstream stage for the `/research`/`/discover`/`/specify` commands to consume, on REVISE-PLAN it targets `plan` for `/plan` to consume on re-run (so the revision addresses the grill's confirmed findings instead of re-deriving the plan). WIP-commits its report + any re-entry seed as it writes them (folds into `/finalize`'s squash). The USER owns the final verdict at the `/breakdown` approval gate.
+#### `/devforge:breakdown [plan-file]`
+**Requires approval before `/devforge:implement`.**
 
-#### `/implement`
-Drains an approved feature's breakdown tasks one at a time — NO arguments; auto-resolves the lowest-numbered incomplete feature and its next dependency-ready task, and loops. Per task: dispatch the assigned agent → scope-aware verify with self-repair (type-check / lint / build / test) → an autonomous parallel review **panel of four read-only reviewers** (code-reviewer + qa-reviewer + security-reviewer + performance-analyst, merged to a single verdict) → forcing-functions gate (which includes a static, manifest-independent design-token provenance check, backing the constitution's Design Fidelity principle) → a per-task HARD GATE where all findings are fixed before approval (the human reviews the ready diff and approves/repairs/skips/stops; nothing is committed before approval; approval is reachable only from a fully-clean panel, and any reviewer conflicts surface as focused questions first). On approve: mark the task complete, single WIP commit, refresh the codebase-memory graph, advance. WIP commits accumulate and are squashed by `/finalize`. Writes a `.devforge/wip.md` marker + git checkpoint for crash recovery.
+#### `/devforge:grill [plan-file-or-feature]`
+**Optional, opt-in** design-time adversarial review of the completed `plan.md` — the design-level mirror of `/devforge:review`, positioned between `/devforge:plan` and `/devforge:breakdown` so a fatally-flawed design is killed before `/devforge:breakdown` decomposes it. Run it for high-stakes plans (new architecture / dependency / data model / security); it is NOT a mandatory gate. This high-stakes recommendation is now backed by `/devforge:plan`'s finalize-time stakes-hint — a non-blocking advisory nudge to consider `/devforge:grill` when the plan looks high-stakes — so it is no longer left entirely to author self-diagnosis; the nudge never gates, and `/devforge:grill` stays opt-in. Dispatches the `devils-advocate` adversary plus a refutation pass (architect-excluded `[code-reviewer, qa-reviewer, security-reviewer]`), reusing the shared refutation engine. The adversary reads `plan.md` + `spec.md` + the recon dossier + `constitution.md` + a scoped three-ring codebase slice, with self-gated web-verification of the plan's external claims. Writes `specs/[feature]/grill.md` with a recommended 4-way disposition — PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; when the user's PHASE-7 pick matches a REVISE-PLAN or RE-ENTER-UPSTREAM recommendation, the orchestrator emits a backward re-entry seed (`specs/[feature]/grill-seed.json`) whose `target_stage` routes the consumer — on RE-ENTER-UPSTREAM the seed targets an upstream stage for the `/devforge:research`/`/devforge:discover`/`/devforge:specify` commands to consume, on REVISE-PLAN it targets `plan` for `/devforge:plan` to consume on re-run (so the revision addresses the grill's confirmed findings instead of re-deriving the plan). WIP-commits its report + any re-entry seed as it writes them (folds into `/devforge:finalize`'s squash). The USER owns the final verdict at the `/devforge:breakdown` approval gate.
 
-#### `/review [spec-file]`
-Feature-level emergent cross-task review — runs after `/implement` drains a feature's tasks, before `/verify`. Dispatches a 5-finder ensemble (code-reviewer, architect, qa-reviewer, security-reviewer, performance-analyst) in emergent-cross-task mode over the ASSEMBLED feature diff (all the feature's tasks together) — plus `design-auditor` for a runtime two-tier design-fidelity check (an always-on sanity floor + anchor-gated value+geometry fidelity) when the feature has a `design/reference.html` and a valid binding, whose findings + coverage verdict embed as a `## Design Fidelity` section in `review.md`, AND dispatches `design-auditor` a second time in its Accessibility-scoped mode for an accessibility/responsive/native audit when the feature touches UI (determined by the recall-biased `resolve-ui-scope` verb over the project's `PROJECT_NATURES`), whose result embeds as a `## Accessibility` section in `review.md` — then a refutation pass cross-examines each finding — hunting the emergent cross-task issues the `/implement` per-task panel structurally cannot see (cross-task security holes, assembled-data-flow performance, cross-task duplication, architectural drift). Writes a findings-only report to `specs/[feature]/review.md` that `/verify` folds into its verdict and `/audit`'s recurring-issue scan reads, and WIP-commits that report as it writes it (folds into `/finalize`'s squash). Read-only on source — findings only, NO verdict (the verdict is `/verify`'s).
+#### `/devforge:implement`
+No arguments — auto-resolves the lowest-numbered incomplete feature and drains its tasks in dependency order, with a per-task hard gate before each commit.
 
-#### `/verify [spec-file]`
-The pipeline step after `/review`, before `/summarize`/`/finalize` — it OWNS the verdict (`/review` is findings-only). Proves the spec's acceptance criteria PASS/FAIL/PARTIAL via the **ac-verifier** agent, whose method is set by `ac_verification_mode` in `.devforge/project-config.json` (`runtime-assisted` probes the running app via Chrome DevTools MCP and/or API using the `ac_runtime_*` config; `tests` / `code-only` / `off` read code). Runs the assembled-feature mechanical checks (type-check / lint / build / test across all the feature's tasks together, reusing `implement_helper verify-touched` report-only — no self-repair) AND a full-suite regression gate (`verify_helper regression-gate`, config-gated by `regression_gate` in `.devforge/project-config.json`, default on) that flags a feature which breaks a previously-green test suite — green→red between the feature's merge-base (run in an isolated git worktree) and HEAD; a suite already red at the merge-base is a pre-existing failure, reported but never gated; a `regression` folds into the verdict as a NEEDS WORK blocker (never REJECTED), and the gate is fail-soft (a git/test error is `inconclusive`, never a false gate). Runs the declared dead-code removal check (`check-dead-code-removal`: each `/plan`-declared kill-list row's anchor token confirmed ABSENT from the post-change code; a survivor folds in as a NEEDS WORK blocker, never REJECTED — declared rows only, undeclared deadness is the advisory backstops' territory). Folds in `/review`'s findings (warns if `review.md` is missing), and renders the single APPROVED / NEEDS WORK / REJECTED verdict to `specs/[feature]/verification.md`. On APPROVED it flips the spec `**Status**:` → Complete (after a task-completion cross-check) and ticks the passed AC boxes; on NEEDS WORK it can file bugs to `bugs/`; on REJECTED (a spec-level problem) the user revises the spec via `/specify` → `/plan` → `/breakdown` and re-implements, rather than filing bugs. WIP-commits the verification report (and the flipped spec) as it writes them (folds into `/finalize`'s squash). It does NOT re-review — `/review` owns cross-task code-quality reasoning.
+#### `/devforge:review [spec-file/feature-dir]`
+Findings only, NO verdict — the verdict is `/devforge:verify`'s.
 
-#### `/fix`
-**Proposal-only gated remediation loop** — NOT a linear pipeline step and NOT a cold bug-fixer. OFFERED (never auto-invoked — the model proposes, the user types `/fix`) off `/review`'s findings, `/verify`'s NEEDS WORK verdict, or an in-window conversational defect the user raised and the model code-confirmed, all inside the post-`/implement`/pre-`/summarize` window. Consumes those already-diagnosed findings (`specs/[feature]/review.md` / `specs/[feature]/verification.md`) — it never invents a defect — triages and scopes them, then reuses `/implement`'s back half by CALLING the `implement_helper` verbs (scope-aware verify + self-repair → four-reviewer panel → forcing-functions gate → two-stage hard gate → `[WIP] fix:` commit); it copies no machinery. Writes NO `bugs/` file (`/report-bug` is the separate "defer" arm). A "fix" that turns out to need an architectural/behavior change bounces to `/specify` instead.
+#### `/devforge:verify [spec-file]`
+Owns the single APPROVED / NEEDS WORK / REJECTED verdict; on APPROVED it flips the spec `**Status**:` → Complete.
 
-#### `/summarize [spec-file]`
-The pipeline step after `/verify` approves, before `/finalize` — pure SYNTHESIS that renders a PR-ready feature narrative: what was built (in user terms), change stats, key decisions, deviations, and AC status. Gates on the spec `**Status**: Complete` flip that `/verify` owns. Agent-free and renders NO verdict — the AC status is read from `/verify`'s `specs/[feature]/verification.md`, NOT re-derived from the spec. Consumes the spec + plan + each task's `## Completion Notes` + git change stats + `verification.md`, and writes ONLY `specs/[feature]/summary.md` (mutates none of its inputs). Idempotent — a re-run overwrites `summary.md`; the run makes a `[WIP]` commit that `/finalize` squashes.
+#### `/devforge:fix [spec-file/feature-dir]`
+**Proposal-only gated remediation loop** — NOT a linear pipeline step and NOT a cold bug-fixer. OFFERED (never auto-invoked — the model proposes, the user types `/devforge:fix`) off `/devforge:review`'s findings, `/devforge:verify`'s NEEDS WORK verdict, or an in-window conversational defect the user raised and the model code-confirmed, all inside the post-`/devforge:implement`/pre-`/devforge:summarize` window. Consumes those already-diagnosed findings (`specs/[feature]/review.md` / `specs/[feature]/verification.md`) — it never invents a defect — triages and scopes them, then reuses `/devforge:implement`'s back half by CALLING the `implement_helper` verbs (scope-aware verify + self-repair → four-reviewer panel → forcing-functions gate → two-stage hard gate → `[WIP] fix:` commit); it copies no machinery. Writes NO `bugs/` file (`/devforge:report-bug` is the separate "defer" arm). A "fix" that turns out to need an architectural/behavior change bounces to `/devforge:specify` instead.
 
-#### `/finalize [spec-file]`
-Dispatches tech-writer for surgical `docs/` updates (`docs/<package>/`, `docs/architecture.md`) — not a dropped `docs/features/` tier — makes an unconditional `specs/<feature>/` safety-net commit (so any planning artifact a per-step commit missed is captured), then squashes all WIP commits — including each pipeline command's per-step artifact commits — into a single clean feature commit. Gate-checked: spec must be Complete (set by `/verify`). The last step before creating a PR.
+#### `/devforge:summarize [spec-file]`
+Gates on the spec `**Status**: Complete` flip `/devforge:verify` owns; writes only `specs/[feature]/summary.md` and renders no verdict.
 
-#### `/generate-docs`
-One-time brownfield doc generation (second command in the 4-command setup chain) — reads the indexed codebase and builds the `docs/` knowledge base in bottom-up tiers (concern → package → project + glossary) via the `generate_docs_helper` setter API (tech-writer in Skeleton-Fill Mode). Handles both monorepo and standalone single-root layouts. The replacement for the retired `/onboard`. Re-run when the codebase structure changes significantly.
+#### `/devforge:finalize [spec-file]`
+Gate-checked: the spec must be Complete (set by `/devforge:verify`). The last step before creating a PR.
 
-#### `/constitute`
+#### `/devforge:init-forge`
+First command in the 4-command setup chain — bootstraps the project: captures the structural fields, then hands off to `/devforge:generate-docs`.
+
+#### `/devforge:generate-docs`
+One-time brownfield doc generation (second command in the 4-command setup chain) — reads the indexed codebase and builds the `docs/` knowledge base in bottom-up tiers (concern → package → project + glossary) via the `generate_docs_helper` setter API (tech-writer in Skeleton-Fill Mode). Handles both monorepo and standalone single-root layouts. Re-run when the codebase structure changes significantly.
+
+#### `/devforge:configure`
+Third command in the 4-command setup chain — populates `.devforge/project-config.json` and substitutes the file templates, from `/devforge:init-forge` state + `/devforge:generate-docs` output.
+
+#### `/devforge:constitute`
 One-time deep codebase analysis (or interview for greenfield projects) that generates `constitution.md` — non-negotiable rules, architecture decisions, patterns. Its Section 3.5 forcing-functions config-capture offers the `design_token_provenance` rule (the build-time half of the Design Fidelity principle) for UI projects with a design source.
 
-#### `/audit [--full | --uncommitted | --top N | path] [--passes N]`
-Standalone adversarial whole-codebase audit for periodic "second opinion" quality reviews. Three scope modes: **broad** (`--full` / empty — whole codebase), **hotspot** (`--top N`, default 25 — risk-scored files by churn × CBM-callers × size, for large repos), **narrow** (file / directory / `--uncommitted`). **Full-spectrum** — one run hunts five dimensions: mislogic (lying names/comments, dead branches, cross-file contradictions) + **system design** (layering/SOLID/god-component) + **language/framework best practices** (type-safety suppression, untyped boundaries, reactivity/lifecycle misuse, perf-idiom smells) + **duplication/divergence** + **constitution-principle adherence** — system/software design, NOT visual. Launches code-reviewer, architect, qa-reviewer, and security-reviewer in **adversarial mode** with two structured checklists (Mislogic Hunt + Best-Practices/System-Design); each finding declares a `Category` (`mislogic | system_design | best_practice | duplication | security | blind_spot`) and the report buckets by it. Subjective best-practice findings are marked `Likely`/`Speculative`, never `Certain`. Reads up to 5 recent `specs/*/review.md` files to track recurring/unresolved issues across features. Anti-hallucination grounding: every finding must include a verbatim Evidence quote from the actual code; Phase 4 validation re-reads cited files and discards ungrounded findings. Writes dated reports to `audits/YYYY-MM-DD-audit.md` and prints inline summary. `--passes N` (clamped 1–3) overrides the **mode-conditional default** — broad/hotspot default to 2 passes (union findings to widen recall), narrow defaults to 1 — and composes with all three scope modes; multi-pass costs K× and is for periodic deep audits, and multi-pass recurrence is descriptive only — it no longer inflates a finding's confidence. Before ranking, a **refutation pass** cross-examines each finding (routed to a non-author reviewer; default-dismiss unless the defect is demonstrated from quoted code) and gates which findings reach the report. The report then separates CONFIRMED findings (the `## Top N Priorities` + `## Findings by File` headline) from DISMISSED + low-stakes uncertain findings (a `## Dismissed / Worth a Glance` appendix); high-stakes `[CONTESTED]` findings (`security` / `[CONSTITUTION-VIOLATION]` the refuter could not confirm) are surfaced in the headline flagged, never buried. Read-only, not auto-committed, **NOT part of any workflow chain** — invoke manually after several specs ship.
+#### `/devforge:audit [--full | --uncommitted | --top N | path] [--passes N]`
+**NOT part of any workflow chain** — invoke manually after several specs ship. `--top N` defaults to 25; `--passes N` (clamped 1–3) defaults to 2 for the broad and hotspot scopes and 1 for narrow.
 
-#### `/report-bug "<description>" [--file <path>] [--severity Critical|Warning|Info]`
-Standalone **pure-capture** bug report — writes one `bugs/NNN-<slug>.md` record (`**Status**: Open`, `**Source**: manual`, the description, the optional `--file`, and the severity — default `Warning`) and stops. The `NNN` prefix is assigned by the helper (it scans `bugs/` for the highest number and increments); the file lands in the working tree uncommitted. Dispatches no agent, reads no source to confirm the defect, and does NOT advance or close the bug — the `Open → In Progress → Fixed` lifecycle is manual. The file-it-for-later counterpart to `/fix`'s remediate-now path; it never proposes or chains into `/fix`. Forward pointer only: `/research "<description>"` to investigate, or `/specify "<description>"` to address it as a feature. **NOT part of any workflow chain.**
+#### `/devforge:report-bug "<bug description>" [--file <path>] [--severity Critical|Warning|Info]`
+**NOT part of any workflow chain.** Severity defaults to `Warning`; the `NNN` prefix is assigned by the helper.
 
 ### Conversational fix-or-file offer
 
-When the user points out a defect AND you confirm it is real by reading the actual code AND the active feature is implemented-but-not-yet-summarized (verify with `.devforge/lib/fix_helper in-fix-window --feature <feature>` — exit 0 = in-window; any other result, whether out-of-window or the helper is unavailable/errors, → treat as not in-window and offer file-only), offer a two-arm choice: run `/fix` to remediate now (a gated remediation loop), or run `/report-bug` to file a bug and defer. All three conditions are required (user-raised AND code-confirmed AND in-window) — if any is absent (the defect is unconfirmed, you originated it, or no feature is in that window), offer only `/report-bug`, never `/fix`. Never auto-run `/fix` — propose it; the user invokes it.
+When the user points out a defect AND you confirm it is real by reading the actual code AND the active feature is implemented-but-not-yet-summarized (verify with `.devforge/lib/fix_helper in-fix-window --feature <feature>` — exit 0 = in-window; any other result, whether out-of-window or the helper is unavailable/errors, → treat as not in-window and offer file-only), offer a two-arm choice: run `/devforge:fix` to remediate now (a gated remediation loop), or run `/devforge:report-bug` to file a bug and defer. All three conditions are required (user-raised AND code-confirmed AND in-window) — if any is absent (the defect is unconfirmed, you originated it, or no feature is in that window), offer only `/devforge:report-bug`, never `/devforge:fix`. Never auto-run `/devforge:fix` — propose it; the user invokes it.
 
 ## Available Agents
 
 {{AGENT_LIST}}
 
-Agent selection is automatic in `/implement` based on the task's assigned agent.
+Agent selection is automatic in `/devforge:implement` based on the task's assigned agent.
 
 ## Enforced Quality Gates
 
 ### Hard Gates (block until approved)
-- Spec approval → before `/plan` can run
-- Plan approval → before `/breakdown` can run
-- Task breakdown approval → before `/implement` can start
-- Acceptance criteria → verified in `/verify`
+- Spec approval → before `/devforge:plan` can run
+- Plan approval → before `/devforge:breakdown` can run
+- Task breakdown approval → before `/devforge:implement` can start
+- Acceptance criteria → verified in `/devforge:verify`
 
 ### Verification (explicit, scope-aware — no per-edit hooks)
 
-Verification runs at task boundaries (end of `/implement`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build / test commands apply to each file touched during the task.
+Verification runs at task boundaries (end of `/devforge:implement`, etc.), not after every file edit. No per-edit hooks, no auto-execution after Edit/Write. (Runtime hooks for CBM-first discovery enforcement are described in **CBM-first Protocol Enforcement** below — those operate on Read/Grep/Glob/Bash/SessionStart, not on Edit/Write.) Verification is **scope-aware**: the phase reads `PACKAGE_STACKS` (see `## Packages` above) to determine which type-check / lint / build / test commands apply to each file touched during the task.
 
 **Scope-aware verification flow**:
 
@@ -153,7 +168,7 @@ Verification runs at task boundaries (end of `/implement`, etc.), not after ever
 
 **Pre-flight check** (before each task): read `constitution.md` and `.devforge/memory.md` so the task starts with the right context.
 
-Full specification in `/implement`.
+Full specification in `/devforge:implement`.
 
 ## CBM-first Protocol Enforcement
 
@@ -196,8 +211,8 @@ Authors of template files — constitution, agent files, docs, this CLAUDE.md �
 10. **Validate at boundaries** — validate external input (user input, API responses, env vars); trust internal code
 11. **SOLID, DRY, KISS** — single responsibility, don't repeat logic 3+ times, keep it simple
 12. **Search before building** — before writing anything generic/reusable, search the codebase for existing utilities, helpers, or components that already do it
-13. **Session state** — after each `/implement`, overwrite `.devforge/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
-14. **Crash recovery** — `/implement` writes a WIP marker (`.devforge/wip.md`) before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
+13. **Session state** — after each `/devforge:implement`, overwrite `.devforge/session-state.md` with a fixed-size snapshot of current progress. At session start, read it first if it exists.
+14. **Crash recovery** — `/devforge:implement` writes a WIP marker (`.devforge/wip.md`) before execution and creates git checkpoints at each phase. If interrupted, the next run detects it and offers resume/rollback/skip options.
 
 ### Never
 1. **Never swallow errors** — empty catch blocks are forbidden; handle, re-throw, or log with reason
@@ -231,18 +246,18 @@ Authors of template files — constitution, agent files, docs, this CLAUDE.md �
 
 ```
 specs/
-  001-feature-name/            # Numbered feature directories (allocated by /research or /discover)
-    research-report.md         # /research report — bug/enhancement lane
-    research-handoff.json      # /research → /specify handoff
-    probe-script.<ext>         # /research tier-1.5 probe (optional)
-    discovery-report.md        # /discover report — greenfield lane
-    discover-handoff.json      # /discover → /specify handoff
-    spec.md                    # /specify output
-    plan.md                    # /plan output
-    research.md                # /plan research notes (optional) — NOT research-report.md
-    data-model.md              # /plan data model (optional)
-    contracts.md               # /plan API contracts (optional)
-    tasks/                     # /breakdown output
+  001-feature-name/            # Numbered feature dirs (allocated by /devforge:research or /devforge:discover)
+    research-report.md         # /devforge:research report — bug/enhancement lane
+    research-handoff.json      # /devforge:research → /devforge:specify handoff
+    probe-script.<ext>         # /devforge:research tier-1.5 probe (optional)
+    discovery-report.md        # /devforge:discover report — greenfield lane
+    discover-handoff.json      # /devforge:discover → /devforge:specify handoff
+    spec.md                    # /devforge:specify output
+    plan.md                    # /devforge:plan output
+    research.md                # /devforge:plan research notes (optional) — NOT research-report.md
+    data-model.md              # /devforge:plan data model (optional)
+    contracts.md               # /devforge:plan API contracts (optional)
+    tasks/                     # /devforge:breakdown output
       README.md                # Task index with dependency graph
       001-define-types.md      # Individual task files
       002-create-repo.md
@@ -261,8 +276,8 @@ docs/
 
 - Feature dirs: `NNN-kebab-name`, sequential numbering (001, 002, ...)
 - Task files: `NNN-short-title.md`, sequential within feature
-- Everything for a feature lives in one directory — including the intake report + handoff, since `/research` and `/discover` create the directory (and the `spec/NNN-name` branch) at their confirmed save and `/specify` resolves it rather than allocating one
-- docs/ is generated by `/generate-docs` (Plan F): bottom-up tiers (concerns → packages → project), incremental skip via `source_stamp` frontmatter
+- Everything for a feature lives in one directory — including the intake report + handoff, since `/devforge:research` and `/devforge:discover` create the directory (and the `spec/NNN-name` branch) at their confirmed save and `/devforge:specify` resolves it rather than allocating one
+- docs/ is generated by `/devforge:generate-docs` (Plan F): bottom-up tiers (concerns → packages → project), incremental skip via `source_stamp` frontmatter
 - docs/ files are LLM context source first, dev-greppable second (LLM-first density format; see `.devforge/storage-rules.md`)
 - Structural queries (exports, types, callers, deps, dead code) are NOT in docs/ — query the codebase-memory-mcp graph live via MCP tools (`search_graph`, `trace_path`, `get_code_snippet`, `search_code`, `query_graph`)
 - Md files are auto-indexed by codebase-memory-mcp; `search_graph(query="<fuzzy topic>")` plus `search_code(pattern)` together surface md narrative + code structure
@@ -278,17 +293,17 @@ This file is:
 - **Fixed-size** — always fully overwritten, never appended, max ~40 lines
 - **A sliding window** — only tracks the last 3 tasks' modifications and last 3 decisions
 - **Not a history log** — history lives in task completion notes (`specs/`) and `MEMORY.md`
-- **Updated automatically** by `/implement` (Phase 7)
+- **Updated automatically** by `/devforge:implement` (Phase 7)
 
-If context is compacted or a new session starts, session-state.md ensures the next `/implement` can bootstrap without re-discovering state.
+If context is compacted or a new session starts, session-state.md ensures the next `/devforge:implement` can bootstrap without re-discovering state.
 
 ### Crash Recovery
 
-If a task execution is interrupted (power loss, terminal crash, network drop), the next `/implement` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command was interrupted; if you run a different command while a marker exists, it detects the mismatch and asks you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/finalize` when the feature is approved.
+If a task execution is interrupted (power loss, terminal crash, network drop), the next `/devforge:implement` will detect the interrupted state via `.devforge/wip.md` and offer recovery options: resume from where it stopped, rollback and retry, rollback and skip, or keep changes for manual handling. The WIP marker includes a `Command` field identifying which command was interrupted; if you run a different command while a marker exists, it detects the mismatch and asks you to resolve the previous session first. Git checkpoint commits (`[WIP]` prefix) preserve partial work and are squashed into a clean feature commit by `/devforge:finalize` when the feature is approved.
 
 ## References
 
 - [Constitution](constitution.md) — Project rules and patterns
 - [Specs](specs/) — Feature specifications, plans, and tasks
 - [Memory](.devforge/memory.md) — Persistent learnings
-- [Project Config](.devforge/project-config.json) — `/configure` answers plus per-stack arrays (`LANGUAGES`, `FRAMEWORKS`, `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`) and per-package `PACKAGE_STACKS` records
+- [Project Config](.devforge/project-config.json) — `/devforge:configure` answers plus per-stack arrays (`LANGUAGES`, `FRAMEWORKS`, `ARCHITECTURES`, `ERROR_HANDLINGS`, `API_LAYERS`, `TESTINGS`) and per-package `PACKAGE_STACKS` records

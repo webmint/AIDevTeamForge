@@ -118,7 +118,7 @@ class TestCheckZ3(unittest.TestCase):
         self.assertIn("opt-in", Z3_INSTALL_MESSAGE)
 
     def test_install_message_mentions_spec_check(self):
-        self.assertIn("/spec-check", Z3_INSTALL_MESSAGE)
+        self.assertIn("/devforge:spec-check", Z3_INSTALL_MESSAGE)
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ class TestPreflightAllAbsent(unittest.TestCase):
             self.assertFalse(result["setup_chain_ok"])
             self.assertEqual(
                 set(result["missing_artefacts"]),
-                {"/constitute", "/init-forge", "/configure", "/generate-docs"},
+                {"/devforge:constitute", "/devforge:init-forge", "/devforge:configure", "/devforge:generate-docs"},
             )
             self.assertFalse(result["z3_available"])
             self.assertEqual(result["z3_message"], Z3_INSTALL_MESSAGE)
@@ -167,7 +167,7 @@ class TestPreflightSetupChainIndividual(unittest.TestCase):
             os.remove(os.path.join(td, "constitution.md"))
             result = preflight(workspace_root=td)
             self.assertFalse(result["setup_chain_ok"])
-            self.assertEqual(result["missing_artefacts"], ["/constitute"])
+            self.assertEqual(result["missing_artefacts"], ["/devforge:constitute"])
             self.assertFalse(result["constitution_present"])
 
     def test_missing_claude_md_only(self):
@@ -176,7 +176,7 @@ class TestPreflightSetupChainIndividual(unittest.TestCase):
             os.remove(os.path.join(td, "CLAUDE.md"))
             result = preflight(workspace_root=td)
             self.assertFalse(result["setup_chain_ok"])
-            self.assertEqual(result["missing_artefacts"], ["/init-forge"])
+            self.assertEqual(result["missing_artefacts"], ["/devforge:init-forge"])
 
     def test_missing_project_config_only(self):
         with tempfile.TemporaryDirectory() as td:
@@ -184,7 +184,7 @@ class TestPreflightSetupChainIndividual(unittest.TestCase):
             os.remove(os.path.join(td, ".devforge", "project-config.json"))
             result = preflight(workspace_root=td)
             self.assertFalse(result["setup_chain_ok"])
-            self.assertEqual(result["missing_artefacts"], ["/configure"])
+            self.assertEqual(result["missing_artefacts"], ["/devforge:configure"])
 
     def test_missing_index_json_only(self):
         with tempfile.TemporaryDirectory() as td:
@@ -192,12 +192,12 @@ class TestPreflightSetupChainIndividual(unittest.TestCase):
             os.remove(os.path.join(td, ".devforge", "index.json"))
             result = preflight(workspace_root=td)
             self.assertFalse(result["setup_chain_ok"])
-            self.assertEqual(result["missing_artefacts"], ["/generate-docs"])
+            self.assertEqual(result["missing_artefacts"], ["/devforge:generate-docs"])
 
     def test_setup_chain_artefacts_are_the_expected_four(self):
         labels = [label for _rel, label in _SETUP_CHAIN_ARTEFACTS]
         self.assertEqual(
-            labels, ["/constitute", "/init-forge", "/configure", "/generate-docs"]
+            labels, ["/devforge:constitute", "/devforge:init-forge", "/devforge:configure", "/devforge:generate-docs"]
         )
 
 
@@ -229,8 +229,25 @@ class TestPreflightConstitutionSentinel(unittest.TestCase):
             result = preflight(workspace_root=td)
             self.assertFalse(result["constitution_populated"])
 
+    def test_unpopulated_sentinel_legacy_no_slash_form(self):
+        # Pre-namespace stub literal (no slash) -- the form every existing
+        # consumer install actually carries.
+        with tempfile.TemporaryDirectory() as td:
+            _make_full_install(td)
+            _write(td, "constitution.md", "Run constitute to populate the rules.\n")
+            result = preflight(workspace_root=td)
+            self.assertFalse(result["constitution_populated"])
+
+    def test_unpopulated_sentinel_devforge_namespaced_form(self):
+        # Post-namespace stub literal (current, plan 63 Phase 4c).
+        with tempfile.TemporaryDirectory() as td:
+            _make_full_install(td)
+            _write(td, "constitution.md", "Run /devforge:constitute to populate the rules.\n")
+            result = preflight(workspace_root=td)
+            self.assertFalse(result["constitution_populated"])
+
     def test_all_sentinels_exported(self):
-        self.assertEqual(len(_UNPOPULATED_SENTINELS), 3)
+        self.assertEqual(len(_UNPOPULATED_SENTINELS), 5)
 
     def test_populated_constitution_true(self):
         with tempfile.TemporaryDirectory() as td:

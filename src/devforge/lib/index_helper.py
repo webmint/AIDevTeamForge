@@ -827,7 +827,7 @@ def cmd_build_index(args):
     init_yaml_path = devforge_dir / init_helper.OUTPUT_FILE_NAME
     if not init_yaml_path.exists():
         return _die(
-            "init.yaml not found at {0}; run /init-forge first".format(
+            "init.yaml not found at {0}; run /devforge:init-forge first".format(
                 init_yaml_path
             )
         )

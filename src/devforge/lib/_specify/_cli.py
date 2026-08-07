@@ -96,7 +96,7 @@ from ._schema import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="specify_helper",
-        description="State helper for /specify; owns "
+        description="State helper for /devforge:specify; owns "
                     ".devforge/specify-state.json shape.",
     )
     parser.add_argument(
@@ -280,7 +280,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--seeded-by-upstream", action="store_true", default=False,
         dest="seeded_by_upstream",
-        help="Phase 1 adapter pre-seeded from /discover (path-based).",
+        help="Phase 1 adapter pre-seeded from /devforge:discover (path-based).",
     )
     sp.set_defaults(func=cmd_classify_spec_type)
 
@@ -671,7 +671,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser(
         "render-plan-handoff",
-        help="Emit deterministic /plan handoff block; persist to state.",
+        help="Emit deterministic /devforge:plan handoff block; persist to state.",
     )
     sp.set_defaults(func=cmd_render_plan_handoff)
 

@@ -74,8 +74,8 @@ _claude = _load_claude_emitter()
 # ---------------------------------------------------------------------------
 
 def _emitted_commands(target: Path) -> set:
-    """Return the set of command-stem names written under target/.claude/commands/."""
-    commands_dir = target / ".claude" / "commands"
+    """Return the set of command-stem names written under target/.claude/commands/devforge/."""
+    commands_dir = target / ".claude" / "commands" / "devforge"
     if not commands_dir.is_dir():
         return set()
     return {p.stem for p in commands_dir.glob("*.md")}
@@ -112,21 +112,21 @@ class OnlyFlagTests(unittest.TestCase):
 
     def test_only_audit_emits_references_folder(self):
         _claude.emit(_SRC, self.target, only="audit")
-        refs_dir = self.target / ".claude" / "commands" / "audit" / "references"
+        refs_dir = self.target / ".devforge" / "command-refs" / "audit"
         self.assertTrue(
             refs_dir.is_dir(),
-            "audit/references/ directory should be created when audit has references",
+            ".devforge/command-refs/audit/ directory should be created when audit has references",
         )
         ref_files = list(refs_dir.glob("*.md"))
         self.assertGreater(
             len(ref_files),
             0,
-            "audit/references/ should contain at least one reference file",
+            ".devforge/command-refs/audit/ should contain at least one reference file",
         )
 
     def test_only_audit_does_not_emit_implement(self):
         _claude.emit(_SRC, self.target, only="audit")
-        implement_md = self.target / ".claude" / "commands" / "implement.md"
+        implement_md = self.target / ".claude" / "commands" / "devforge" / "implement.md"
         self.assertFalse(
             implement_md.exists(),
             "implement.md must NOT be emitted when --only audit is used",
@@ -134,10 +134,51 @@ class OnlyFlagTests(unittest.TestCase):
 
     def test_only_audit_does_not_emit_plan(self):
         _claude.emit(_SRC, self.target, only="audit")
-        plan_md = self.target / ".claude" / "commands" / "plan.md"
+        plan_md = self.target / ".claude" / "commands" / "devforge" / "plan.md"
         self.assertFalse(
             plan_md.exists(),
             "plan.md must NOT be emitted when --only audit is used",
+        )
+
+    def test_only_audit_command_not_flat_at_top_level(self):
+        """The command file must NOT also exist at the old flat top-level path."""
+        _claude.emit(_SRC, self.target, only="audit")
+        stale_flat = self.target / ".claude" / "commands" / "audit.md"
+        self.assertFalse(
+            stale_flat.exists(),
+            "audit.md must not be emitted at the old flat .claude/commands/ path",
+        )
+
+    def test_only_audit_no_references_under_claude_commands(self):
+        """References must never land anywhere under .claude/commands/ (phantom-command guard)."""
+        _claude.emit(_SRC, self.target, only="audit")
+        commands_dir = self.target / ".claude" / "commands"
+        leaked = [
+            p for p in commands_dir.rglob("*.md")
+            if p.name != "audit.md"
+        ]
+        self.assertEqual(
+            leaked,
+            [],
+            f"no reference .md files should exist under .claude/commands/ besides the command itself: {leaked!r}",
+        )
+
+    def test_only_audit_body_links_rewritten_to_command_refs(self):
+        """Author-relative references/<file>.md links rewrite to the new .devforge/command-refs/ prefix.
+
+        NOTE: this only covers the auto-rewrite (bare `references/<file>.md` links handled by
+        scripts/lib/command_source.py `rewrite_refs`). Explicit `--references-dir
+        .claude/commands/<name>/references` literals + refs-path prose baked directly into the
+        command body are NOT touched by the emitter — that is Phase 4a's cross-reference-sweep
+        work, out of scope here (see 63-SKILL-COLLISION-SUPPRESSION-PLAN.md).
+        """
+        _claude.emit(_SRC, self.target, only="audit")
+        audit_md = self.target / ".claude" / "commands" / "devforge" / "audit.md"
+        body = audit_md.read_text()
+        self.assertIn(
+            "- `.devforge/command-refs/audit/adversarial-preamble.md`", body,
+            "the bare 'references/adversarial-preamble.md' author-relative link must rewrite "
+            "to the new .devforge/command-refs/audit/ prefix",
         )
 
     # 2 ─ invalid --only name: main() returns 1, nothing written

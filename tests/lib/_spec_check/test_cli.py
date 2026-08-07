@@ -1024,7 +1024,7 @@ class TestRenderReport(unittest.TestCase):
             self.assertIn(
                 "**Formalization unstable:** a contradiction appeared in "
                 "some but not a majority of 1/2 passes -- NOT treated as "
-                "confirmed; re-run `/spec-check` or inspect the "
+                "confirmed; re-run `/devforge:spec-check` or inspect the "
                 "formalization.",
                 content,
             )

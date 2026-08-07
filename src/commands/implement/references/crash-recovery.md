@@ -1,6 +1,6 @@
-# Crash recovery (`/implement` PHASE 0)
+# Crash recovery (`/devforge:implement` PHASE 0)
 
-This reference defines the interrupted-session recovery handled by PHASE 0 of `main.md`. A `/implement` run can be interrupted mid-task by a power loss, terminal crash, or network drop. Two artefacts make a mid-task interruption recoverable: the per-task empty checkpoint commit (`[checkpoint] pre-task NNN`, PHASE 2 — created in the **source** repo) and the `.devforge/wip.md` marker (in the install root). The `**Checkpoint**` SHA the marker records is the source repo HEAD captured at task start, so recovery resets the source repo, not the wrapper.
+This reference defines the interrupted-session recovery handled by PHASE 0 of `main.md`. A `/devforge:implement` run can be interrupted mid-task by a power loss, terminal crash, or network drop. Two artefacts make a mid-task interruption recoverable: the per-task empty checkpoint commit (`[checkpoint] pre-task NNN`, PHASE 2 — created in the **source** repo) and the `.devforge/wip.md` marker (in the install root). The `**Checkpoint**` SHA the marker records is the source repo HEAD captured at task start, so recovery resets the source repo, not the wrapper.
 
 ## The WIP marker
 
@@ -37,4 +37,4 @@ When PHASE 0 reads a `wip.md` whose `**Command**:` is `/implement`, it asks via 
 
 ## Command-mismatch detection
 
-When PHASE 0 reads a `wip.md` whose `**Command**:` is anything OTHER than `/implement` (a marker left by a different command), it does NOT proceed. It tells the user a previous session of a different command was interrupted and to resolve that session first, then ends the turn. Running `/implement` against another command's marker would corrupt that command's recovery state — the mismatch guard prevents it.
+When PHASE 0 reads a `wip.md` whose `**Command**:` is anything OTHER than `/implement` (a marker left by a different command), it does NOT proceed. It tells the user a previous session of a different command was interrupted and to resolve that session first, then ends the turn. Running `/devforge:implement` against another command's marker would corrupt that command's recovery state — the mismatch guard prevents it.

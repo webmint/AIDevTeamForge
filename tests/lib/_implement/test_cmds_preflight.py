@@ -72,7 +72,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from _implement._cmds_preflight import (  # noqa: E402
-    CONSTITUTION_POPULATE_GUARD,
+    CONSTITUTION_POPULATE_GUARDS,
     DEFAULT_BRANCHES,
     _read_first_n_lines,
     _git_current_branch,
@@ -145,14 +145,18 @@ def _init_git_repo(tmpdir, branch="feature/widget", with_commit=True):
     )
 
 
-def _write_constitution(root, populated=True):
-    # type: (Path, bool) -> None
-    """Write constitution.md.  If populated=False, write the populate-guard."""
+def _write_constitution(root, populated=True, guard_index=-1):
+    # type: (Path, bool, int) -> None
+    """Write constitution.md.  If populated=False, write a populate-guard.
+
+    guard_index selects which CONSTITUTION_POPULATE_GUARDS sentinel form to
+    write (default -1: the current post-namespace form).
+    """
     if populated:
         content = (
             "# Constitution\n\n"
             "## What this project is for\n\n"
-            "Test project for /implement.\n\n"
+            "Test project for /devforge:implement.\n\n"
             "## Rules\n\n"
             "- Rule 1: Do not break things.\n"
             "- Rule 2: Write tests.\n"
@@ -160,7 +164,7 @@ def _write_constitution(root, populated=True):
     else:
         content = (
             "# Constitution\n\n"
-            "{guard}\n".format(guard=CONSTITUTION_POPULATE_GUARD)
+            "{guard}\n".format(guard=CONSTITUTION_POPULATE_GUARDS[guard_index])
         )
     (root / "constitution.md").write_text(content, encoding="utf-8")
 
@@ -268,7 +272,25 @@ class TestCheckConstitution(unittest.TestCase):
     def test_error_message_mentions_constitute(self):
         _write_constitution(self.tmp, populated=False)
         result = _check_constitution(self.tmp)
-        self.assertIn("/constitute", result)
+        self.assertIn("/devforge:constitute", result)
+
+    def test_returns_error_for_legacy_no_slash_guard_form(self):
+        """Pre-namespace stub literal (no slash) -- the form every existing
+        consumer install actually carries.
+        """
+        _write_constitution(self.tmp, populated=False, guard_index=0)
+        result = _check_constitution(self.tmp)
+        self.assertIsNotNone(result)
+        self.assertIn("populate", result.lower())
+
+    def test_returns_error_for_legacy_slash_guard_form(self):
+        """Pre-namespace guard literal (with slash) -- never actually
+        shipped by the stub template, kept for back-compat.
+        """
+        _write_constitution(self.tmp, populated=False, guard_index=1)
+        result = _check_constitution(self.tmp)
+        self.assertIsNotNone(result)
+        self.assertIn("populate", result.lower())
 
 
 # ---------------------------------------------------------------------------
@@ -783,14 +805,26 @@ class TestCmdPreflightDefaultBranchConstant(unittest.TestCase):
 
 
 class TestCmdPreflightConstitutionGuardConstant(unittest.TestCase):
-    """Verify CONSTITUTION_POPULATE_GUARD matches the sentinel in _specify."""
+    """Verify CONSTITUTION_POPULATE_GUARDS matches the sentinels in _specify."""
 
     def test_guard_literal(self):
-        """Sentinel must match _specify._schema.CONSTITUTION_POPULATE_GUARD."""
+        """Sentinels must match the literal values (kept as an independent,
+        not-imported copy of _specify._schema.CONSTITUTION_POPULATE_GUARDS
+        per the cross-package-coupling design note).
+        """
         self.assertEqual(
-            CONSTITUTION_POPULATE_GUARD,
-            "_Run /constitute to populate_",
+            CONSTITUTION_POPULATE_GUARDS,
+            (
+                "_Run constitute to populate_",
+                "_Run /constitute to populate_",
+                "_Run /devforge:constitute to populate_",
+            ),
         )
+
+    def test_guard_literal_matches_specify_schema(self):
+        """Cross-package parity check against the real _specify source of truth."""
+        from _specify._schema import CONSTITUTION_POPULATE_GUARDS as _SPECIFY_GUARDS
+        self.assertEqual(CONSTITUTION_POPULATE_GUARDS, _SPECIFY_GUARDS)
 
 
 # ---------------------------------------------------------------------------

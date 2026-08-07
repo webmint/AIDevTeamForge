@@ -62,5 +62,5 @@ the logic reading), `must_satisfy` (the conflict the revised spec must resolve),
 `cycle_count`, `carried_findings`, and `provenance` (a pointer to this
 `spec-check.md`). The schema is owned by
 `src/devforge/lib/_shared/seed_schema.py` (`ReEntrySeed`); the helper validates and
-atomically writes it — do not hand-author the seed. `/specify` consumes it on
+atomically writes it — do not hand-author the seed. `/devforge:specify` consumes it on
 re-entry (a `Consistent` / `Dismiss` / cross-pick verdict writes no seed).

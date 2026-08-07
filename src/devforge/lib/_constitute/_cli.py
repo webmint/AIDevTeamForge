@@ -48,7 +48,7 @@ from ._schema import _PATTERN_SCOPE_TO_SUFFIX, _SECTION_BUCKET_TO_KEY
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="constitute_helper",
-        description="State + render helper for /constitute. Owns constitution.md shape.",
+        description="State + render helper for /devforge:constitute. Owns constitution.md shape.",
     )
     parser.add_argument(
         "--devforge-dir",

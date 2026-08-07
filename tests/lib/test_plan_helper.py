@@ -928,8 +928,8 @@ class RenderBreakdownHandoffTests(_CwdIsolation):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         output = result.stdout
-        self.assertIn("## Manual next step — run /breakdown", output)
-        self.assertIn("/breakdown", output)
+        self.assertIn("## Manual next step — run /devforge:breakdown", output)
+        self.assertIn("/devforge:breakdown", output)
         self.assertIn(str(FIXTURE_PLAN), output)
         self.assertIn("**Spec ACs**:", output)
         self.assertIn("**Plan file impact**:", output)
@@ -2534,7 +2534,7 @@ class CallerEnumerationRenderTests(unittest.TestCase):
         output = plan_helper._render_research_plan_seeds(
             "research/2026-01-01-test.handoff.json", d
         )
-        self.assertIn("recorded at /research", output)
+        self.assertIn("recorded at /devforge:research", output)
         self.assertIn("zero shared callers asserted", output)
         self.assertIn("purely additive in a new module", output)
         # The helper-enumeration path must not also render.

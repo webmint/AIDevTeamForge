@@ -62,7 +62,7 @@ _FOCUS_BLOCKS = {
     "security-reviewer": (
         "Your primary mission in ADVERSARIAL MODE: scan for security regressions "
         "and drift in code that has **NOT** been touched in recent features. You "
-        "are the second line of defense after per-feature `/review`. Assume "
+        "are the second line of defense after per-feature `/devforge:review`. Assume "
         "nothing is safe just because it is old. "
         "Tag these findings `Category: security`."
     ),

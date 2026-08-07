@@ -91,7 +91,7 @@ Force-ranked across all buckets. Fix these first.
 ## Not Audited
 - Runtime behavior (no dynamic analysis)
 - Dependency CVEs (run `npm audit` / `pip audit` separately)
-- Runtime performance profiling (out of scope — use /review); static performance-idiom smells are in scope
+- Runtime performance profiling (out of scope — use /devforge:review); static performance-idiom smells are in scope
 - UI/design consistency (out of scope)
 - Infrastructure / deployment config
 

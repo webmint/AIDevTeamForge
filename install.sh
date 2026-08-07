@@ -5,10 +5,10 @@
 # All project detection and configuration happens in the 4-command sequence
 # (run later, inside the target, by Claude Code, in this order):
 #
-#   /init-forge      — bootstrap: 5 structural fields + index.json
-#   /generate-docs   — deep codebase scan → docs/ knowledge base
-#   /configure       — populate config + substitute templates + prune agents
-#   /constitute      — synthesize constitution.md
+#   /devforge:init-forge      — bootstrap: 5 structural fields + index.json
+#   /devforge:generate-docs   — deep codebase scan → docs/ knowledge base
+#   /devforge:configure       — populate config + substitute templates + prune agents
+#   /devforge:constitute      — synthesize constitution.md
 #
 # Each command can be re-run independently. install.sh just lays the
 # framework files down — wrapper-mode detection, packages_detected,
@@ -75,13 +75,17 @@ fi
 # Install-time generators (scripts/generate.sh → generate-agents.py /
 # emitters) and the wizard-time Detection Report composer
 # (.devforge/lib/detect_report.py) all require Python 3. Surface the
-# dependency now rather than letting it fail mid-install.
+# dependency now rather than letting it fail mid-install. Resolve ONE
+# interpreter command here and reuse it everywhere below (the --only branch
+# and the post-generate stale-command cleanup, both further down) instead of
+# re-detecting independently at each call site.
+PY_CMD=""
 if command -v python3 >/dev/null 2>&1; then
-  : # python3 ok
+  PY_CMD="python3"
 elif command -v py >/dev/null 2>&1; then
-  : # Windows Python launcher routes to 3.x
+  PY_CMD="py -3" # Windows Python launcher routes to 3.x
 elif command -v python >/dev/null 2>&1 && [ "$(python -c 'import sys; print(sys.version_info[0])' 2>/dev/null)" = "3" ]; then
-  : # bare python is 3.x
+  PY_CMD="python" # bare python is 3.x
 else
   echo "AIDevTeamForge requires Python 3 on the target machine." >&2
   echo "Install Python 3.8+ (https://www.python.org/downloads/) and re-run." >&2
@@ -90,11 +94,12 @@ fi
 
 # ── Surgical mode: --only <command> ────────────────────────────────────────
 # Patch an EXISTING install with a single command + its helper subpackage.
-# Delivers ONLY the emitted command (.claude/commands/<cmd>.md + references/),
-# its helper (.devforge/lib/_<cmd>/ + <cmd>_helper{,.py}), and the shared helper
-# package (.devforge/lib/_shared/) that refactored helpers import — no agents,
-# no other commands, no config/hooks, no full .devforge copy. Use it to push one
-# command's changes to a dev/test install without dragging in unrelated work.
+# Delivers ONLY the emitted command (.claude/commands/devforge/<cmd>.md +
+# .devforge/command-refs/<cmd>/), its helper (.devforge/lib/_<cmd>/ +
+# <cmd>_helper{,.py}), and the shared helper package (.devforge/lib/_shared/)
+# that refactored helpers import — no agents, no other commands, no
+# config/hooks, no full .devforge copy. Use it to push one command's changes
+# to a dev/test install without dragging in unrelated work.
 if [ -n "$ONLY_CMD" ]; then
   if [ ! -d "$TARGET_DIR/.devforge" ] || [ ! -d "$TARGET_DIR/.claude" ]; then
     echo "error: --only patches an EXISTING install, but '$TARGET_DIR' has no .devforge/ + .claude/." >&2
@@ -102,19 +107,25 @@ if [ -n "$ONLY_CMD" ]; then
     exit 1
   fi
 
-  # Resolve a Python 3 interpreter for the emitter (same selector as generate.sh).
-  if command -v python3 >/dev/null 2>&1; then PY="python3"
-  elif command -v py >/dev/null 2>&1; then PY="py -3"
-  else PY="python"; fi
-
   echo "Surgical install: delivering only '$ONLY_CMD' into $TARGET_DIR"
 
   # Emit just this command. claude.py --only validates it is a promoted command
-  # and exits non-zero (emitting nothing) if not.
-  if ! $PY "$TEMPLATE_DIR/scripts/emitters/claude.py" \
+  # and exits non-zero (emitting nothing) if not. Reuses PY_CMD resolved by the
+  # module-level Python 3 preflight above.
+  if ! $PY_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" \
        --src "$TEMPLATE_DIR/src" --target "$TARGET_DIR" --only "$ONLY_CMD"; then
     echo "error: emit failed for '$ONLY_CMD' (not a promoted command?)." >&2
     exit 1
+  fi
+
+  # Clean up the pre-move flat layout for this one command, if present (plan
+  # 63 namespace move) — fail-soft, absent paths are a benign no-op. Without
+  # this, a surgical delivery would leave a stale flat duplicate alongside the
+  # freshly emitted devforge/-namespaced command.
+  if [ -f "$TARGET_DIR/.claude/commands/$ONLY_CMD.md" ] || [ -d "$TARGET_DIR/.claude/commands/$ONLY_CMD" ]; then
+    rm -f "$TARGET_DIR/.claude/commands/$ONLY_CMD.md" 2>/dev/null || true
+    rm -rf "$TARGET_DIR/.claude/commands/$ONLY_CMD" 2>/dev/null || true
+    echo "  removed stale: .claude/commands/$ONLY_CMD.md (+ references/, pre-move layout)"
   fi
 
   # Copy the command's helper subpackage + launcher, if any. Command name maps
@@ -224,11 +235,13 @@ fi
 echo "Installing AIDevTeamForge into: $TARGET_DIR"
 
 # ── Copy .devforge/ scaffolding + runtime helpers ────────────────────────
-# Must run BEFORE generate.sh: emitters may create subdirectories under
-# .devforge/ (e.g. .devforge/commands/<cmd>/references/ for folder-based
-# commands). If we copied the scaffolding AFTER the emitter ran, cp -R
-# would nest src/devforge into an already-existing .devforge/ → wrong
-# layout .devforge/devforge/*.
+# Must run BEFORE generate.sh: the emitter writes command reference files to
+# .devforge/command-refs/<cmd>/ (plan 63 — relocated out of .claude/commands/
+# to avoid phantom-command menu pollution). If we copied the scaffolding
+# AFTER the emitter ran, cp -R would nest src/devforge into an
+# already-existing .devforge/ → wrong layout .devforge/devforge/*. This
+# ordering is now genuinely load-bearing (not just a directory-nesting
+# precaution) — the emitter really does write under .devforge/ on every run.
 #
 # The `src/devforge/.` + trailing `/` syntax copies CONTENTS (not the
 # folder itself) so this is idempotent regardless of whether .devforge/
@@ -317,6 +330,35 @@ cp "$TEMPLATE_DIR/src/CLAUDE.md" "$TARGET_DIR/CLAUDE.md"
 # Claude file generation (commands, agents) to scripts/generate.sh.
 "$TEMPLATE_DIR/scripts/generate.sh" "$TARGET_DIR"
 
+# ── Clean up pre-move flat command layout (plan 63 namespace move) ─────────
+# On a re-install into an existing consumer, an old flat
+# .claude/commands/<name>.md (+ .claude/commands/<name>/references/) from
+# before the devforge/ namespace move would otherwise survive alongside the
+# command generate.sh + the emitter just wrote to
+# .claude/commands/devforge/<name>.md — leaving BOTH a stale and a live copy,
+# so a typed /<name> would resolve to the stale one. install.sh has no
+# general-purpose command pruner (that is update.sh's FIX-B); this targets
+# only the specific canonical-named paths the namespace move makes stale.
+# Fail-soft: absent paths / a failed --list are a no-op. Reuses PY_CMD
+# resolved by the module-level Python 3 preflight above (guaranteed set — that
+# preflight aborts install.sh otherwise), instead of re-detecting Python here.
+if [ -d "$TARGET_DIR/.claude/commands" ]; then
+  _canon_cmds="$($PY_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" --list 2>/dev/null || true)"
+  if [ -n "$_canon_cmds" ]; then
+    echo "$_canon_cmds" | while IFS= read -r _cname; do
+      [ -z "$_cname" ] && continue
+      if [ -f "$TARGET_DIR/.claude/commands/$_cname.md" ]; then
+        rm -f "$TARGET_DIR/.claude/commands/$_cname.md"
+        echo "  removed stale: .claude/commands/$_cname.md"
+      fi
+      if [ -d "$TARGET_DIR/.claude/commands/$_cname" ]; then
+        rm -rf "$TARGET_DIR/.claude/commands/$_cname"
+        echo "  removed stale: .claude/commands/$_cname/"
+      fi
+    done
+  fi
+fi
+
 # ── Snapshot template output to .devforge/template/ ───────────────────────
 # Stores raw (un-substituted) generated files so update.sh can three-way
 # merge on the very first update — fixes the first-update gap where the old
@@ -348,7 +390,7 @@ echo ""
 echo "Done. AIDevTeamForge installed."
 echo "CBM sync: SessionStart hook (cbm-sync-session-start) compares .devforge/cbm-last-indexed-sha to parent HEAD on every session boot and prompts Claude to call detect_changes / index_repository when stale."
 echo "Next — open the project in Claude Code and run, in order:"
-echo "  /init-forge      — bootstrap structural fields"
-echo "  /generate-docs   — deep codebase scan"
-echo "  /configure       — populate config + substitute templates"
-echo "  /constitute      — synthesize constitution.md"
+echo "  /devforge:init-forge      — bootstrap structural fields"
+echo "  /devforge:generate-docs   — deep codebase scan"
+echo "  /devforge:configure       — populate config + substitute templates"
+echo "  /devforge:constitute      — synthesize constitution.md"

@@ -1,6 +1,6 @@
 # Section shapes — per-section authoring guidance
 
-`/constitute` Phase 2 composes section content from Phase 1 JSON outputs. The structural shape (section numbers, bucket assignment, rule-tag enum, table column/row consistency) is locked by `constitute_helper`; only the rule TEXT, table CELLS, code-example CONTENT, and section DESCRIPTION are LLM-composed. This file documents per-section authoring expectations: opening prose template, tag distribution rules, sub-section count expectations, table shape examples, and code-example selection criteria.
+`/devforge:constitute` Phase 2 composes section content from Phase 1 JSON outputs. The structural shape (section numbers, bucket assignment, rule-tag enum, table column/row consistency) is locked by `constitute_helper`; only the rule TEXT, table CELLS, code-example CONTENT, and section DESCRIPTION are LLM-composed. This file documents per-section authoring expectations: opening prose template, tag distribution rules, sub-section count expectations, table shape examples, and code-example selection criteria.
 
 ## Cross-section numbering convention
 
@@ -149,7 +149,7 @@ A rule may legitimately fit more than one tag (an extracted rule that is also en
 
 **`--sample-files-json`** — JSON array of `{path, language, content}` records. Aim for 3-6 files: one manifest (`package.json` / `pyproject.toml` / `Cargo.toml`), one type-config (`tsconfig.json` / etc. when applicable), one entry-point file (`src/index.ts` / `src/main.py`), one README, one CI config (optional).
 
-Each file's `content` is the full literal file content as a string (no placeholder substitution; the user edits after `/constitute` ships).
+Each file's `content` is the full literal file content as a string (no placeholder substitution; the user edits after `/devforge:constitute` ships).
 
 **Tag distribution**: Section 7 carries no rule tags; it is a structural sub-doc, not a rule list.
 

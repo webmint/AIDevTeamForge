@@ -1,28 +1,28 @@
 ---
 name: research
 description: Investigate a bug or enhancement against the codebase; produce a structured research report grounded in CBM + docs.
-disable-model-invocation: true
+argument-hint: "<topic>"
 ---
 
-# /research — Codebase Research
+# /devforge:research — Codebase Research
 
-`/research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and — once the user confirms the save — allocates the feature directory `specs/NNN-<feature-slug>/` and saves the rendered report there as `research-report.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) has completed before any investigation fires.
+`/devforge:research` is repeatable per ticket. It clarifies a vague bug or enhancement input into a structured symptom memo, runs an orchestrator-direct investigation that consults the CBM graph + `docs/` corpus, composes a research report with mandatory ≥2 hypothesis enumeration, and — once the user confirms the save — allocates the feature directory `specs/NNN-<feature-slug>/` and saves the rendered report there as `research-report.md`. State + render shape are owned by `.devforge/lib/research_helper`; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any investigation fires.
 
-`/research` reads source code and never writes it. The confirmed save is nonetheless a repository mutation: it creates the feature directory, may create the `spec/NNN-<feature-slug>` branch, and `[WIP]`-commits the artifacts it wrote. A run the user declines to save leaves nothing behind in the repository outside `.devforge/` scratch (a tier-1.5 probe script, if any, persists separately in system scratch — see Step 4.7).
+`/devforge:research` reads source code and never writes it. The confirmed save is nonetheless a repository mutation: it creates the feature directory, may create the `spec/NNN-<feature-slug>` branch, and `[WIP]`-commits the artifacts it wrote. A run the user declines to save leaves nothing behind in the repository outside `.devforge/` scratch (a tier-1.5 probe script, if any, persists separately in system scratch — see Step 4.7).
 
-Usage: `/research "<topic>"` (e.g. `/research "items not sorted in admin products view"` or `/research "make export faster on large datasets"`).
+Usage: `/devforge:research "<topic>"` (e.g. `/devforge:research "items not sorted in admin products view"` or `/devforge:research "make export faster on large datasets"`).
 
 ## Outputs of this phase
 
 - `.devforge/research-state.json` — SymptomMemo (Phase 1 state). Owned + shaped by the helper; initialized at Phase 0.3 (`reset-memo`, `set-topic`), then mutated via Phase-1 setter subcommands.
 - `.devforge/research-report.json` — ResearchReport (Phase 2 + 3 state). Owned + shaped by the helper; mutated only via Phase-2/3 setter subcommands.
-- `<install_root>/specs/NNN-<feature-slug>/` — the feature directory, allocated by Phase 4's `allocate-feature-dir` after the user confirms the save and the feature name (a `/grill` re-entry run reuses the seed's existing directory instead — see Phase 0.6). Nothing under `specs/` is created before that confirmation.
+- `<install_root>/specs/NNN-<feature-slug>/` — the feature directory, allocated by Phase 4's `allocate-feature-dir` after the user confirms the save and the feature name (a `/devforge:grill` re-entry run reuses the seed's existing directory instead — see Phase 0.6). Nothing under `specs/` is created before that confirmation.
 - `<install_root>/specs/NNN-<feature-slug>/research-report.md` — rendered report. Helper's `render` writes to stdout; Phase 4 saves those bytes into the allocated directory.
 - `<install_root>/specs/NNN-<feature-slug>/research-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff --feature-dir` on save (sibling to the report).
 - `<install_root>/specs/NNN-<feature-slug>/probe-script.<ext>` — CONDITIONAL: present only when Phase 2.6 recorded a tier-1.5 probe script; Phase 4 copies it out of scratch on save.
-- Branch `spec/NNN-<feature-slug>` — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/grill` re-entry run, no checkout is emitted and the current branch is kept.
+- Branch `spec/NNN-<feature-slug>` — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/devforge:grill` re-entry run, no checkout is emitted and the current branch is kept.
 
-On save, Phase 4 `[WIP]`-commits the artifacts it wrote into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/finalize`'s squash.
+On save, Phase 4 `[WIP]`-commits the artifacts it wrote into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/devforge:finalize`'s squash.
 
 ## Phase 0 — Pre-flight gate
 
@@ -36,12 +36,12 @@ Two preflight checks run in order. Both must pass before Phase 1 begins.
 
 Helper checks four artefacts under `<install_root>`:
 
-- `.devforge/init.yaml` (produced by `/init-forge`)
-- `docs/architecture.md` (produced by `/generate-docs`)
-- `.devforge/configure.yaml` (produced by `/configure`)
-- `constitution.md` (produced by `/constitute`)
+- `.devforge/init.yaml` (produced by `/devforge:init-forge`)
+- `docs/architecture.md` (produced by `/devforge:generate-docs`)
+- `.devforge/configure.yaml` (produced by `/devforge:configure`)
+- `constitution.md` (produced by `/devforge:constitute`)
 
-Exit 0 → all present + non-empty; proceed. Exit 2 → at least one missing or empty; helper emits a `BLOCKED:` message on stderr naming each missing artefact + producer command. On exit 2: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The user must run the missing predecessor command(s) and re-invoke `/research`.
+Exit 0 → all present + non-empty; proceed. Exit 2 → at least one missing or empty; helper emits a `BLOCKED:` message on stderr naming each missing artefact + producer command. On exit 2: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The user must run the missing predecessor command(s) and re-invoke `/devforge:research`.
 
 ### Phase 0.2 — CBM index refresh
 
@@ -56,7 +56,7 @@ This refreshes the CBM index stamp so Phase 2 graph queries see current code. Sk
   [ "$(( $(date +%s) - $(stat -f %m .devforge/.preflight-stamp 2>/dev/null || stat -c %Y .devforge/.preflight-stamp) ))" -lt 60 ]
 ```
 
-Exit 0 → stamp fresh; skip the helper call. Non-zero → run `.devforge/lib/generate_docs_helper preflight`. Helper non-zero exit: copy stderr VERBATIM and end the turn; user re-runs `/generate-docs` or `index_repository` and re-invokes `/research`.
+Exit 0 → stamp fresh; skip the helper call. Non-zero → run `.devforge/lib/generate_docs_helper preflight`. Helper non-zero exit: copy stderr VERBATIM and end the turn; user re-runs `/devforge:generate-docs` or `index_repository` and re-invokes `/devforge:research`.
 
 ### Phase 0.3 — Topic argument
 
@@ -70,13 +70,13 @@ If `$ARGUMENTS` is non-empty, treat it as the topic. If empty, ask the user via 
 .devforge/lib/research_helper set-date --value $(date -u +%Y-%m-%d)
 ```
 
-`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/research` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence prompt (e.g. a symptom plus a trailing "Suspected cause:" hypothesis); the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
+`reset-memo` + `reset-report` write fresh-defaults state. `set-topic` auto-derives `topic_slug` for the eventual filename. `set-date` enforces `YYYY-MM-DD`. `set-verbatim-prompt` persists the full original prompt the user passed to `/devforge:research` — the complete `$ARGUMENTS`, NOT the one-sentence topic `set-topic` records. `$ARGUMENTS` may carry a multi-sentence prompt (e.g. a symptom plus a trailing "Suspected cause:" hypothesis); the topic is a curated paraphrase, so the un-paraphrased boundary input would otherwise be lost after Phase 0.3. Persisting it here is what lets Phase 4's `finalize-handoff` carry it into the handoff as `Intent.verbatim_prompt`, so a downstream stage can tell what the user ACTUALLY asked from what this command INTERPRETED (per plan 18 Step 1). When `$ARGUMENTS` was empty and the topic came from the AskUserQuestion fallback above, pass that same user reply as `--value` — it is the verbatim input in that branch.
 
-Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/research-state.json` + `.devforge/research-report.json` are overwritten with fresh defaults. `/research` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
+Fresh-every-run: `reset-memo` + `reset-report` ALWAYS run at Phase 0.3, unconditionally. Any prior `.devforge/research-state.json` + `.devforge/research-report.json` are overwritten with fresh defaults. `/devforge:research` does not resume mid-flight prior runs — every invocation starts clean. If the user killed a prior run mid-investigation, that work is lost; re-answer the rubric from scratch.
 
 ### Phase 0.4 — Suspected-cause classification (pre-rubric, runs before Phase 1)
 
-A `/research` prompt often carries a mechanism guess alongside the symptom — a trailing "Suspected cause: …" clause (or an equivalent lead-in: "I think it's …", "probably because …", "root cause is …", "this is caused by …"). Scan the verbatim prompt persisted by `set-verbatim-prompt` for any such lead-in BEFORE the six-dimension rubric runs. A user- or research-supplied mechanism guess is a CLAIM TO DISPROVE, not a fact: it MUST NOT silently become the `desired` dimension, any other rubric dimension, or the eventual recommended approach. It belongs in the hypothesis lane.
+A `/devforge:research` prompt often carries a mechanism guess alongside the symptom — a trailing "Suspected cause: …" clause (or an equivalent lead-in: "I think it's …", "probably because …", "root cause is …", "this is caused by …"). Scan the verbatim prompt persisted by `set-verbatim-prompt` for any such lead-in BEFORE the six-dimension rubric runs. A user- or research-supplied mechanism guess is a CLAIM TO DISPROVE, not a fact: it MUST NOT silently become the `desired` dimension, any other rubric dimension, or the eventual recommended approach. It belongs in the hypothesis lane.
 
 When a suspected-cause clause is present, hold the verbatim mechanism text in working memory now (so it is not lost during the rubric) and carry it forward as one of the candidates Phase 2.5 enumerates. There is no pre-rubric setter for a standalone hypothesis — the suspected cause is persisted by the existing Phase 2.6 `record-hypothesis` call (which requires `--cause`, `--falsifier`, and `--runtime-probe-needed`), alongside the ≥2 enumerated candidates. The point of capturing it here is to guarantee the guessed mechanism enters Phase 2.5 as a hypothesis to disprove — with its own falsifier (the observation that would refute the guessed mechanism) — rather than bleeding into a rubric dimension. This pre-rubric classifier is the home Step 5's binary-classification gate routes `hypothesis` statements into (per plan 18 Step 5 — the user-facing front door over this same lane); treating the suspected cause as a falsifiable hypothesis is what makes it a typed, gate-detectable claim rather than free prose. The captured mechanism feeds Phase 2.5 hypothesis enumeration; it never enters `symptom` / `desired` or any rubric dimension.
 
@@ -122,23 +122,23 @@ Then ask via AskUserQuestion `"Is this interpretation right?"` with options `["c
 
 When the prompt is a clean single-requirement bug with no hypothesis and one obvious minimal fix, Steps 1-2 are a single `record-intake-classification --kind requirement --minimal-fix "…"` call and Step 3 is one echo-back the user confirms in a single turn — zero interrogation, per the proportionality requirement above.
 
-### Phase 0.6 — Re-entry from `/grill` (conditional — skip if no seed)
+### Phase 0.6 — Re-entry from `/devforge:grill` (conditional — skip if no seed)
 
-Before beginning the investigation, check for a `/grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"research"` (this command's stage), you are re-entering from a `/grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS research investigation's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `grill_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/grill` is ever removed). The seed carries these fields:
+Before beginning the investigation, check for a `/devforge:grill` re-entry seed. Glob `specs/*/grill-seed.json`. If any matched file has a `target_stage` equal to `"research"` (this command's stage), you are re-entering from a `/devforge:grill` RE-ENTER-UPSTREAM verdict — the design-time grill proved a plan defect was rooted in THIS research investigation's conclusion, and the re-run must be DIRECTED so it does not re-derive the invalidated conclusion. Read that seed and treat it as a binding directive for this run. Read it DIRECTLY: parse the matched file's flat JSON inline — do NOT call any grill helper or `grill_helper` verb (the orchestrator reads the file itself, so this block stays valid even if `/devforge:grill` is ever removed). The seed carries these fields:
 
 - `feature` — the feature this seed was emitted for; read it from the seed and state it up front in your re-entry message (do NOT infer it from the file path).
 - `prior_conclusion` — what the previous research investigation concluded; it was invalidated, so do NOT re-derive it.
-- `invalidating_evidence` — how `/grill` proved it wrong, grounded in the plan / spec / code.
+- `invalidating_evidence` — how `/devforge:grill` proved it wrong, grounded in the plan / spec / code.
 - `must_satisfy` — what this re-run must now additionally satisfy; address it explicitly.
 - `carried_findings` — prior findings to carry forward; stay monotonic (never re-surface a finding a prior pass already disproved).
 
-**Attach mode (binds Phase 4).** The matched seed file's PARENT DIRECTORY is this feature's already-allocated feature directory — a `/grill` seed exists only for a feature that already has one. Record that directory path (e.g. `specs/NNN-slug`) in working memory now: on save, Phase 4 reuses it instead of allocating a new one, skips branch creation, and overwrites the artifacts in place. This is the one value you take from the seed's location rather than from its contents — the `feature` field above is still what you NAME in your messages; the parent directory is where you WRITE.
+**Attach mode (binds Phase 4).** The matched seed file's PARENT DIRECTORY is this feature's already-allocated feature directory — a `/devforge:grill` seed exists only for a feature that already has one. Record that directory path (e.g. `specs/NNN-slug`) in working memory now: on save, Phase 4 reuses it instead of allocating a new one, skips branch creation, and overwrites the artifacts in place. This is the one value you take from the seed's location rather than from its contents — the `feature` field above is still what you NAME in your messages; the parent directory is where you WRITE.
 
 State up front in your first user-facing message that you are running in grill-re-entry mode for the named `feature`, and name how this run addresses `must_satisfy`. Then run Phases 1–4 normally, with the seed's directive constraining the investigation and Phase 4 saving in attach mode.
 
-This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
+This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` — seed lifecycle (deleting or incrementing `cycle_count` after consumption) is handled by the next `/devforge:grill` run, which reads `carried_findings` to stay monotonic. That is a v1 simplification; do not add seed-deletion logic here.
 
-When no `specs/*/grill-seed.json` file matches `target_stage == "research"` (the normal case — `/grill` is opt-in, and no seed is ever produced unless a `/grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
+When no `specs/*/grill-seed.json` file matches `target_stage == "research"` (the normal case — `/devforge:grill` is opt-in, and no seed is ever produced unless a `/devforge:grill` run reaches a RE-ENTER-UPSTREAM verdict), this block is a no-op: proceed directly to Phase 1, and Phase 4 allocates a fresh feature directory on save.
 
 ## Phase 1 — Symptom clarification (rubric Q&A)
 
@@ -255,7 +255,7 @@ For each of the 6 dimensions, in highest-uncertainty-first order:
    - `mode-flip` — symptom signaled bug-shape, the new answer signals enhancement-shape (or vice versa). Ask via AskUserQuestion `"Treat this as a bug or an enhancement?"` with options `["bug", "enhancement"]`, then call `detect-mode --override <choice>`.
    - `none` — no drift; advance to the next dimension.
 
-   Direct contradictions are persisted by the helper in `memo.conflicts` (step 3 above). Drift, refinement, and mode-flip classifications live in the orchestrator's working memory only — they are not written to `memo.conflicts` by the helper, and the orchestrator must carry them across turns within the same `/research` run by reading prior assistant messages in the conversation.
+   Direct contradictions are persisted by the helper in `memo.conflicts` (step 3 above). Drift, refinement, and mode-flip classifications live in the orchestrator's working memory only — they are not written to `memo.conflicts` by the helper, and the orchestrator must carry them across turns within the same `/devforge:research` run by reading prior assistant messages in the conversation.
 
 5. **Advance.** Pick the next highest-uncertainty dimension and return to step 1.
 
@@ -315,7 +315,7 @@ Phase 2 runs in the main thread — NO subagent dispatch. Orchestrator-inline ke
 
 Before any CBM call, surface the estimated CBM call count + token cost based on `affected_area`. Rough rule of thumb: one-package scope ≈ 15-30 CBM calls; feature-wide ≈ 30-60 calls; cross-cutting ≈ 60-120 calls. Token cost is bounded — orchestrator-inline reuses the existing session context, no fresh subagent boot.
 
-Ask via AskUserQuestion `"Investigation will scan roughly <N> CBM calls. Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled. Re-run /research from scratch when ready — prior state will be overwritten.") into the user-facing message and end the turn. On `proceed`: continue.
+Ask via AskUserQuestion `"Investigation will scan roughly <N> CBM calls. Proceed?"` with options `["proceed", "cancel"]`. On `cancel`: copy a one-line note ("Investigation cancelled. Re-run /devforge:research from scratch when ready — prior state will be overwritten.") into the user-facing message and end the turn. On `proceed`: continue.
 
 ### Phase 2.2 — Read docs layer first
 
@@ -367,7 +367,7 @@ Phase 2.3 framing locks in. Without adversarial competition, Phase 2.4 / 2.4b / 
        --confidence-vs-primary "lower|comparable|higher"
    ```
 
-   ONE call per `/research` run. Re-calling overwrites (last call wins).
+   ONE call per `/devforge:research` run. Re-calling overwrites (last call wins).
 
 **MANDATORY — never skip, even when the bug looks unambiguous.** The phase exists specifically to challenge "looks unambiguous" framings: the regression class this phase guards against is the LLM that commits to the first plausible frame in Phase 2.3 and stops considering alternatives.
 
@@ -457,7 +457,7 @@ For each fix-path helper, run the steps below in order.
 
 **Anchor gate (Patch 5).** `--file-line` MUST also anchor to at least one already-recorded `findings[]` row's `--file-line` — either exact match OR same path with line number within ±5 (lenient to absorb minor CBM/trace offsets). This forces every fix-path helper to start from CBM evidence already in the report, not an invented file location. Recording sequence: run Phase 2.3 + 2.4 + 2.4b FIRST (which calls `record-finding` repeatedly), THEN Phase 2.4c (which calls `record-fix-path-helper`). When the helper has no anchoring finding, the setter exits with code 2 and stderr `record-fix-path-helper: --file-line <X> does not anchor to any recorded finding (no finding's file_line collides — exact match or same path within ±5 lines).` plus the current set of finding file_lines for reference.
 
-**Sticky-reject (anti-adversarial).** Once a `(helper_qn, file_line)` pair is rejected by the anchor gate, the setter records it in `helper_rejection_log` and refuses ALL future retries of the same pair, even if a finding at that file_line is recorded post-hoc. This closes the adversarial path where the LLM would record a fabricated finding to unblock a rejected helper. Stderr: `record-fix-path-helper: this (helper_qn, file_line) combo was previously rejected as unanchored (...); cannot retry even if findings now contain a collision (sticky-reject closes the post-hoc-anchor adversarial path).` Workarounds (in order): (a) pick a DIFFERENT `--file-line` for the same helper that anchors to a finding AT THE TIME OF THE NEW CALL; (b) restart `/research` from scratch to clear rejection state. Note: changing the `--helper-qn` alone does NOT unblock — the anchor gate fires on the unanchored `--file-line` regardless of QN, so a new QN at the same unanchored file_line gets its own rejection log entry without making progress. Verify check 14 mirrors the anchor rule at verify time — catches direct-state-mutation bypass attempts.
+**Sticky-reject (anti-adversarial).** Once a `(helper_qn, file_line)` pair is rejected by the anchor gate, the setter records it in `helper_rejection_log` and refuses ALL future retries of the same pair, even if a finding at that file_line is recorded post-hoc. This closes the adversarial path where the LLM would record a fabricated finding to unblock a rejected helper. Stderr: `record-fix-path-helper: this (helper_qn, file_line) combo was previously rejected as unanchored (...); cannot retry even if findings now contain a collision (sticky-reject closes the post-hoc-anchor adversarial path).` Workarounds (in order): (a) pick a DIFFERENT `--file-line` for the same helper that anchors to a finding AT THE TIME OF THE NEW CALL; (b) restart `/devforge:research` from scratch to clear rejection state. Note: changing the `--helper-qn` alone does NOT unblock — the anchor gate fires on the unanchored `--file-line` regardless of QN, so a new QN at the same unanchored file_line gets its own rejection log entry without making progress. Verify check 14 mirrors the anchor rule at verify time — catches direct-state-mutation bypass attempts.
 
 **Recovery on anchor rejection.** When the helper rejects with the "does not anchor" stderr, copy the stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Then either (a) return to Phase 2.3 / 2.4 to record the missing finding via `record-finding` FIRST + then call `record-fix-path-helper` with a DIFFERENT `--file-line` (the original combo is sticky-rejected — pick a closer-anchored helper site instead), or (b) reconsider whether the helper QN is the right fix-path target — if Phase 2.4c surfaced it via `trace_path` inbound walk, the trace_path result row's own `file_path:line` is the helper's call-site (which should already be in findings); re-anchor to that.
 
@@ -515,7 +515,7 @@ Then classify the caller:
 
 The `(helper_qn, caller_qn)` pair MUST already exist from Step 2 — the setter rejects an unrecorded pair with exit 2. `--surface` and `--justification` must be non-empty; `--scope` is exactly `in` or `out`. When an entry point WAS found, the `--justification` MUST cite it by name — that is what converts "X is a caller" into "X is reachable from surface Y, therefore in/out of scope."
 
-**Honesty bound.** This gate forces the classification + justification to EXIST for every caller; it cannot force the in/out call to be CORRECT. Correctness stays your judgment and is audited downstream — at `/plan`'s architect consult (sub-question 7) and by the human.
+**Honesty bound.** This gate forces the classification + justification to EXIST for every caller; it cannot force the in/out call to be CORRECT. Correctness stays your judgment and is audited downstream — at `/devforge:plan`'s architect consult (sub-question 7) and by the human.
 
 Verify check 19 enforces this: every `inbound_callers` row must carry a non-empty surface, a scope ∈ {in, out}, and a non-empty justification. On non-zero exit from `verify` citing check 19, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then classify the missing caller(s) via `classify-caller-scope` before re-running `verify`.
 
@@ -562,7 +562,7 @@ Record the consumer-chain endpoint (the consumer that actually reads the value) 
 
 The Phase 2.3 `file:line` grounding rule applies to `--file-line` here as well.
 
-**MANDATORY — mode-independent.** This phase runs on EVERY `/research` run — bug or enhancement alike, however the mode was determined (auto-detected from symptom tokens, or picked by the user when detection was ambiguous). The helper's `verify` step enforces four gates on Phase 2.4c state:
+**MANDATORY — mode-independent.** This phase runs on EVERY `/devforge:research` run — bug or enhancement alike, however the mode was determined (auto-detected from symptom tokens, or picked by the user when detection was ambiguous). The helper's `verify` step enforces four gates on Phase 2.4c state:
 
 - **Check 8 (mode-independent)** rejects a report whose `fix_path_helpers` list is empty AND that carries no no-shared-callers justification. Two remedies satisfy it: enumerate at least one fix-path helper via Steps 1-2 above, OR record the justification described in **No-shared-callers escape** below. `verify` separately rejects the contradictory state where BOTH the list and the justification are set; its stderr names the recovery — `reset-report`, then re-record via exactly one of the two paths.
 - **Check 8b (mode-independent)** — the cross-layer rule documented in the Stopping rule above — rejects a NON-EMPTY list where every `fix_path_helpers[].file_line` is in the same package as the primary symptom's file path when that symptom path is presentation-layer (Vue / React / views). It cannot fire on the justification escape, which leaves the list empty.
@@ -862,7 +862,7 @@ Validators (all rejected with exit 2 + stderr message prefixed `record-probe-scr
 
 Skip-clause consequences. If you skip this sub-step but tier later resolves to 1.5 in Phase 4 `finalize-handoff`, the handoff.json will fall back to the deterministic default `${TMPDIR:-/tmp}/forge-research/probe-script.mjs` — but no file exists at that path, leaving a dangling reference. If you record a probe script but tier resolves to ≠ 1.5, the recorded entry is silently ignored — `finalize-handoff` only reads `probe_scripts` when it classifies tier 1.5, so the entry stays in `research-report.json` unused and the written script file lingers in the scratch directory. Skip only when the trigger conditions above clearly don't hold; recording speculatively wastes work and leaves an unreferenced file behind.
 
-Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string), retry up to 3 times. On the 4th failure, copy stderr VERBATIM to the user and end the turn; user must re-run `/research` from scratch — prior partial state will be overwritten.
+Non-zero exit on any setter: capture stderr, fix the value (likely a JSON-escape issue on a multi-line string), retry up to 3 times. On the 4th failure, copy stderr VERBATIM to the user and end the turn; user must re-run `/devforge:research` from scratch — prior partial state will be overwritten.
 
 ## Phase 3 — Report drafting + render
 
@@ -991,7 +991,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
 
 Helper cross-checks: ≥2 hypotheses, recommended-approach name matches an approach, recommended-approach respects `unchanged_behavior`, verdict ∈ mode-allowed-set, structured root-cause fields populated when bug-mode + confidence ∈ {`Confirmed`, `Hypothesis`}, verify-step's 3 sub-fields populated when any hypothesis needs a runtime probe, all required sections populated. Check 8 (caller-enumeration gate) is mode-independent — it rejects a report in ANY mode whose `fix_path_helpers` list is empty and that carries no no-shared-callers justification, and separately rejects a report where both are set; see Phase 2.4c for the two remedies and the escape's contradiction rules. Check 8b (cross-layer rule) rejects a report where the primary symptom's `file:line` resolves to a presentation-layer path AND every `fix_path_helpers[].file_line` is in the same package as the symptom — at least one helper must trace through a package boundary; see Phase 2.4c Stopping rule. Check 12a (unconditional) rejects a report whose `runner_up_framing` is unset — Phase 2.3b must execute before `verify`. Check 12b (conditional on `runner_up_framing` set) rejects a report where no finding row carries `framing == "runner-up"` — at least one finding (positive or negative — disproving the runner-up via its falsifier is a valid outcome) must be tagged `--framing runner-up` for the runner-up to be considered probed. Check 13 (single-layer recommendation gate) rejects a report where all `fix_path_helpers[].file_line` resolve to one package AND `recommended_approach.single_layer_justification` / `cites` are missing or empty — supply both via `set-recommended-approach --single-layer-justification ... --cites '[...]'` (see Phase 3 step 3). Check 13 is suppressed when check 8b applies (presentation-layer symptom + same-package helpers); in that case the single-layer escape path cannot satisfy verify and the only recovery is adding a cross-layer helper. Check 14 (fix-path-helper anchor gate) rejects a report where any `fix_path_helpers[]` entry's `file_line` does not anchor to a recorded finding (exact match OR same path within ±5 lines) — see Phase 2.4c Step 1 anchor gate. Check 17 (literal-archaeology gate) rejects a bug-mode report whose `recommended_approach.rationale` OR the linked approach's `description` contains literal-replacement prose (`replace <X> with <Y>` / `change <X> to <Y>` / `<X> -> <Y>` / `swap the literal <X> with <Y>`) where `<X>` is a recognizable primitive literal AND no `literal_archaeology` row exists for `<X>` at a `findings[].file_line` — recovery: run Phase 2.5b archaeology + `record-literal-archaeology`, then re-run `verify`. Check 18 (argument-duplication shape check) rejects a report whose `recommended_approach.proposed_call_shape` contains the same identifier (bare / dotted / optional-chained) more than once in its arg list — argument duplication signals the default-source belongs at a different layer; recovery: escalate the default-source upstream (wrapper signature / state initialization / use-case default) and re-call `set-recommended-approach` with a non-duplicating `--proposed-call-shape`. Shapes that could not be parsed (nested calls, unsupported syntax) are treated as non-duplicating — same fail-soft rule as the setter gate. Exit 0 → pass; non-zero → at least one violation enumerated on stderr.
 
-On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/research` from scratch (all prior state will be overwritten).
+On non-zero exit: copy stderr VERBATIM, identify the missing or invalid setter from the cited violation, fix it by re-calling the relevant setter, and re-run `verify`. Cap at 3 fix iterations. On the 4th failure, surface to the user and end the turn — the user re-runs `/devforge:research` from scratch (all prior state will be overwritten).
 
 ### Hypothesis-suppression gate
 
@@ -1052,9 +1052,9 @@ End the turn. The user's reply opens the next turn. Read the reply as follows:
 
 Stdout is a JSON object. Take `dirname` (the `NNN-slug` directory name) and `formatted_number` (the zero-padded `NNN`) from it; the feature-directory path used by every step below is `specs/<dirname>`. The helper creates the directory and fails loudly rather than reusing an existing one.
 
-On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then: on a rejected slug, return to Step 4.1 and ask again with a corrected proposal; on any other error, report it and end the turn — nothing has been written yet, so the run stops cleanly and the user can re-run `/research`.
+On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then: on a rejected slug, return to Step 4.1 and ask again with a corrected proposal; on any other error, report it and end the turn — nothing has been written yet, so the run stops cleanly and the user can re-run `/devforge:research`.
 
-**A seedless re-run always allocates a NEW directory.** No topic matching is performed: running `/research` again on a topic that already has a feature directory produces another one under the next `NNN`, with no reference to the earlier run. That is intended — the closing message names the directory that was created so the user can delete it if it is an unwanted duplicate.
+**A seedless re-run always allocates a NEW directory.** No topic matching is performed: running `/devforge:research` again on a topic that already has a feature directory produces another one under the next `NNN`, with no reference to the earlier run. That is intended — the closing message names the directory that was created so the user can delete it if it is an unwanted duplicate.
 
 ### Step 4.3 — Create the feature branch (fresh allocation only)
 
@@ -1141,14 +1141,14 @@ The helper stages those paths in the install repo and makes a `[WIP] research: <
 
 Nothing is written outside `.devforge/` scratch: no feature directory, no branch, no report, no handoff, no commit. Do not run `finalize-handoff` on this arm — it has not run yet at this point in the flow, and running it would leave an orphaned handoff for a feature that does not exist.
 
-The rendered report stays in the assistant message only. `.devforge/research-state.json` and `.devforge/research-report.json` remain on disk until the next `/research` invocation overwrites them, and a tier-1.5 probe script written during the run stays in `${TMPDIR:-/tmp}/forge-research/`.
+The rendered report stays in the assistant message only. `.devforge/research-state.json` and `.devforge/research-report.json` remain on disk until the next `/devforge:research` invocation overwrites them, and a tier-1.5 probe script written during the run stays in `${TMPDIR:-/tmp}/forge-research/`.
 
 ### Closing message
 
-If a save happened AND the verdict is in the proceeding-set, the saved report contains a `## Next Step` section with a copy-pasteable `/specify "..."` block. Tell the user: `"/research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new /specify session — copy it manually when you're ready. The intake handoff /specify requires is its sibling, specs/<dirname>/research-handoff.json; delete the directory if you meant to add to an existing feature."`
+If a save happened AND the verdict is in the proceeding-set, the saved report contains a `## Next Step` section with a copy-pasteable `/devforge:specify "..."` block (that block is composed by `research_helper render` — it is the helper's string, not this spec's, so do not rewrite it here). Tell the user: `"/devforge:research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The 'Next Step' section at the bottom is a copy-pasteable block for a new spec session — copy it manually when you're ready. The intake handoff /devforge:specify requires is its sibling, specs/<dirname>/research-handoff.json; delete the directory if you meant to add to an existing feature."`
 
-If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix. The handoff at specs/<dirname>/research-handoff.json records the research state for downstream tooling; delete the directory if you meant to add to an existing feature."`
+If a save happened AND the verdict is not in the proceeding-set, the report omits the Next-Step section. Tell the user: `"/devforge:research is done. Created feature directory specs/<dirname>/ — open specs/<dirname>/research-report.md to review. The verdict was '<verdict>' — recommended next step is to address the cited uncertainties or follow the recommended verify probe before specifying a fix. The handoff at specs/<dirname>/research-handoff.json records the research state for downstream tooling; delete the directory if you meant to add to an existing feature."`
 
 In attach mode, make two substitutions in whichever template applies: replace `"Created feature directory specs/<dirname>/"` with `"Updated feature directory specs/<dirname>/ in place (grill re-entry)"`, and drop the trailing `"; delete the directory if you meant to add to an existing feature."` clause. Attach mode creates no directory and no branch, so there is nothing to delete.
 
-If the user declined to save, tell the user: `"/research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /research invocation. No feature directory, branch, report, or handoff was written — re-run /research and save to produce them."`
+If the user declined to save, tell the user: `"/devforge:research is done. The report is in the prior message; .devforge/research-state.json and .devforge/research-report.json hold the state but will be overwritten on the next /devforge:research invocation. No feature directory, branch, report, or handoff was written — re-run /devforge:research and save to produce them."`

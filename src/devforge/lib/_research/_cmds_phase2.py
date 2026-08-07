@@ -153,10 +153,10 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
             )
             text = (
                 "## Next step\n\n"
-                "Copy the block below into a new `/specify` session manually. "
-                "No automation — user controls when (or if) `/specify` runs.\n\n"
+                "Copy the block below into a new `/devforge:specify` session manually. "
+                "No automation — user controls when (or if) `/devforge:specify` runs.\n\n"
                 "~~~\n"
-                "/specify \"{refined}\"\n\n"
+                "/devforge:specify \"{refined}\"\n\n"
                 "Research reference: {research_reference}\n"
                 "Key facts:\n"
                 "- Mode: {mode}\n"

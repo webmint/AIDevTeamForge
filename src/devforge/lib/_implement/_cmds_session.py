@@ -8,7 +8,7 @@ Algorithm (update-session-state)
 1. Parse --recent-tasks (JSON array of {number, title, status}), cap to last 3.
 2. Parse --recent-decisions (JSON array of strings), cap to last 3.
 3. Build the session-state.md content (always fully overwritten):
-     # Session State — /implement
+     # Session State — /devforge:implement
      **Feature**: <feature>
      **Progress**: <completed>/<total> tasks complete
      **Updated**: <UTC timestamp>
@@ -258,7 +258,7 @@ def _build_session_state(
     lines = []  # type: List[str]
 
     # Header.
-    lines.append("# Session State — /implement")
+    lines.append("# Session State — /devforge:implement")
     lines.append("")
     lines.append("**Feature**: {0}".format(feature))
     lines.append("**Progress**: {0}/{1} tasks complete".format(completed_count, total_count))

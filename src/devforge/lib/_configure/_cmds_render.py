@@ -356,7 +356,7 @@ def cmd_prune_agents(args: argparse.Namespace) -> int:
     if not project_natures:
         sys.stderr.write(
             "configure_helper prune-agents: project_natures unset; "
-            "complete /configure Phase 2 first\n"
+            "complete /devforge:configure Phase 2 first\n"
         )
         return 2
 

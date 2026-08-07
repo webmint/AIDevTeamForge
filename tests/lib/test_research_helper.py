@@ -983,7 +983,7 @@ class TestPhase2Setters(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             rep = self._read_report(devforge)
             self.assertIsNotNone(rep["next_step_text"])
-            self.assertIn("/specify", rep["next_step_text"])
+            self.assertIn("/devforge:specify", rep["next_step_text"])
             self.assertIn("Recommended approach: Option A", rep["next_step_text"])
         finally:
             tmp.cleanup()

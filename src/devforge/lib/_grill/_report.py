@@ -415,15 +415,15 @@ def _render_disposition(disposition, rationale, re_entry_target, out):
     elif disposition == "REVISE-PLAN":
         out.append(
             "> The defects are real but correctable at the plan level. "
-            "Revise `plan.md` to address the confirmed findings, then re-run `/plan` "
-            "(or hand-patch `plan.md`), and optionally re-run `/grill` before proceeding "
-            "to `/breakdown`."
+            "Revise `plan.md` to address the confirmed findings, then re-run `/devforge:plan` "
+            "(or hand-patch `plan.md`), and optionally re-run `/devforge:grill` before proceeding "
+            "to `/devforge:breakdown`."
         )
     elif disposition == "RE-ENTER-UPSTREAM":
         cmd_name = _STAGE_TO_CMD.get(re_entry_target, re_entry_target)
         out.append(
             "> The defect is rooted upstream -- the plan faithfully implements a flawed "
-            "{0} conclusion. Re-enter at `/{1}` with the emitted `grill-seed.json` "
+            "{0} conclusion. Re-enter at `/devforge:{1}` with the emitted `grill-seed.json` "
             "so the re-run is directed, not a repeat.".format(
                 re_entry_target, cmd_name
             )

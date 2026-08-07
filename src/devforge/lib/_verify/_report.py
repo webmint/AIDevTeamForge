@@ -33,7 +33,7 @@ Report sections (verification.md)
   ## Code Quality
 
   **Mechanical checks**: <mechanical_status> (or N/A when not run)
-  **Cross-task consistency**: see /review report at specs/[feature]/review.md
+  **Cross-task consistency**: see /devforge:review report at specs/[feature]/review.md
   **Scope creep**: N changed files outside the planned scope: <files>
   **Leftover artifacts**: N flagged
 
@@ -168,7 +168,7 @@ def render_report(
     mech_display = _MECH_DISPLAY.get(mech_norm or None, mech_norm)
     out.append("**Mechanical checks**: {0}".format(mech_display))
     out.append(
-        "**Cross-task consistency**: see /review report at "
+        "**Cross-task consistency**: see /devforge:review report at "
         "{0}/review.md".format(feature or "specs/[feature]")
     )
 
@@ -206,7 +206,7 @@ def render_report(
     review_missing = (review_findings or {}).get("missing", True)
     if review_missing:
         out.append(
-            "_No review report found — run `/review` before `/verify` to fold "
+            "_No review report found — run `/devforge:review` before `/devforge:verify` to fold "
             "cross-task findings into this verdict._"
         )
     else:
@@ -242,7 +242,7 @@ def render_report(
 
     if not headline_findings:
         if review_missing:
-            out.append("_No review report — run /review to identify issues._")
+            out.append("_No review report — run /devforge:review to identify issues._")
         else:
             out.append("_No confirmed or contested findings in the review report._")
     else:
@@ -295,16 +295,16 @@ def render_report(
 
     # Next-step guidance based on verdict
     if verdict_str == "APPROVED":
-        out.append("**Next step**: run `/summarize` then `/finalize`.")
+        out.append("**Next step**: run `/devforge:summarize` then `/devforge:finalize`.")
     elif verdict_str == "NEEDS WORK":
         out.append(
-            "**Next step**: address the issues above, then re-run `/verify`. "
-            "Run `/implement` for code fixes."
+            "**Next step**: address the issues above, then re-run `/devforge:verify`. "
+            "Run `/devforge:implement` for code fixes."
         )
     else:
         out.append(
-            "**Next step**: revise the spec via `/specify` → `/plan` → `/breakdown`, "
-            "then re-implement."
+            "**Next step**: revise the spec via `/devforge:specify` → `/devforge:plan` → "
+            "`/devforge:breakdown`, then re-implement."
         )
     out.append("")
 
@@ -430,7 +430,7 @@ def render_inline_summary(
     )
     out.append("**Mechanical checks**: {0}".format(mech_display))
     if review_missing:
-        out.append("**Review findings**: not available (run /review first)")
+        out.append("**Review findings**: not available (run /devforge:review first)")
     else:
         out.append(
             "**Review findings**: {0} confirmed, {1} contested".format(
@@ -451,12 +451,13 @@ def render_inline_summary(
 
     # Next-step pointer
     if verdict_str == "APPROVED":
-        out.append("**Next step**: `/summarize` → `/finalize`")
+        out.append("**Next step**: `/devforge:summarize` → `/devforge:finalize`")
     elif verdict_str == "NEEDS WORK":
-        out.append("**Next step**: address blockers → re-run `/verify`")
+        out.append("**Next step**: address blockers → re-run `/devforge:verify`")
     else:
         out.append(
-            "**Next step**: revise spec → `/specify` → `/plan` → `/breakdown` → re-implement"
+            "**Next step**: revise spec → `/devforge:specify` → `/devforge:plan` → "
+            "`/devforge:breakdown` → re-implement"
         )
 
     return "\n".join(out) + "\n"

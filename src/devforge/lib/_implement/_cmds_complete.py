@@ -21,7 +21,7 @@ Algorithm
       repair behavior).
    c. Fill Completion Notes: replace the skeleton lines with real values
       supplied via args:
-        [Filled in by /implement after completion] → (removed / replaced)
+        [Filled in by /devforge:implement after completion] → (removed / replaced)
         **Completed**: [date/time]    → **Completed**: <completed_at>
         **Files changed**: [actual files] → **Files changed**: <files list>
         **Contract**: Expects [X/Y verified] | Produces [X/Y verified]
@@ -73,7 +73,7 @@ Design notes:
   of falsely green. The function processes both `- [ ]` and `- [x]` forms so
   it is idempotent across repair re-runs.
 - Completion Notes filling: uses exact heading text from the storage-rules.md
-  skeleton (`[Filled in by /implement after completion]` placeholder line;
+  skeleton (`[Filled in by /devforge:implement after completion]` placeholder line;
   exact **Key**: [placeholder] patterns). Only the Completion Notes section
   (from `## Completion Notes` until EOF or next `##`) is rewritten.
 - README.md row update: the Task Index table row has format
@@ -309,7 +309,7 @@ def _fill_completion_notes(text, completed_at, files_changed, expects_met, produ
 
         ## Completion Notes
 
-        [Filled in by /implement after completion]
+        [Filled in by /devforge:implement after completion]
         **Completed**: [date/time]
         **Files changed**: [actual files]
         **Contract**: Expects [X/Y verified] | Produces [X/Y verified]

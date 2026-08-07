@@ -33,17 +33,25 @@ from typing import Dict, List, Optional, Tuple
 _UNPOPULATED_SENTINELS = (
     "{{CONSTITUTION_BODY}}",
     "Run `/constitute`",
+    # Pre-namespace stub literal (no slash) -- the form every existing
+    # consumer install actually carries (src/constitution.md has always
+    # shipped "_Run constitute to populate_", never the slash form below).
+    "Run constitute to populate",
+    # Pre-namespace guard literal (with slash) -- kept for back-compat with
+    # any hand-edited constitution.md carrying this exact text.
     "Run /constitute to populate",
+    # Post-namespace stub literal (plan 63 Phase 4c).
+    "Run /devforge:constitute to populate",
 )
 
 # Setup-chain artefacts that must exist for /spec-check to run.
 # Parallel to /audit, /review, and /grill preflights — same four-command chain.
 _SETUP_CHAIN_ARTEFACTS = [
     # (relative_path, label) — label shown in missing_artefacts list
-    ("constitution.md",                      "/constitute"),
-    ("CLAUDE.md",                            "/init-forge"),
-    (".devforge/project-config.json",        "/configure"),
-    (".devforge/index.json",                 "/generate-docs"),
+    ("constitution.md",                      "/devforge:constitute"),
+    ("CLAUDE.md",                            "/devforge:init-forge"),
+    (".devforge/project-config.json",        "/devforge:configure"),
+    (".devforge/index.json",                 "/devforge:generate-docs"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -51,11 +59,11 @@ _SETUP_CHAIN_ARTEFACTS = [
 # ---------------------------------------------------------------------------
 
 Z3_INSTALL_MESSAGE = (
-    "/spec-check requires the Z3 SMT solver. Install it once with:\n"
+    "/devforge:spec-check requires the Z3 SMT solver. Install it once with:\n"
     "\n"
     "    pip install z3-solver\n"
     "\n"
-    "(opt-in dependency -- not installed by default, since /spec-check is "
+    "(opt-in dependency -- not installed by default, since /devforge:spec-check is "
     "opt-in.)"
 )
 

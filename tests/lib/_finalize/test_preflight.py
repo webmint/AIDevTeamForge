@@ -406,7 +406,7 @@ class TestPreflightContext(unittest.TestCase):
         os.unlink(os.path.join(self.td, "constitution.md"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/constitute", r["missing_artefacts"])
+        self.assertIn("/devforge:constitute", r["missing_artefacts"])
 
     # --- Each setup-chain artefact missing individually ---
 
@@ -415,21 +415,21 @@ class TestPreflightContext(unittest.TestCase):
         os.unlink(os.path.join(self.td, "CLAUDE.md"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/init-forge", r["missing_artefacts"])
+        self.assertIn("/devforge:init-forge", r["missing_artefacts"])
 
     def test_missing_project_config_flagged(self):
         _make_full_install(self.td)
         os.unlink(os.path.join(self.td, ".devforge", "project-config.json"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/configure", r["missing_artefacts"])
+        self.assertIn("/devforge:configure", r["missing_artefacts"])
 
     def test_missing_index_json_flagged(self):
         _make_full_install(self.td)
         os.unlink(os.path.join(self.td, ".devforge", "index.json"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/generate-docs", r["missing_artefacts"])
+        self.assertIn("/devforge:generate-docs", r["missing_artefacts"])
 
     # --- Memory: .devforge/memory.md (live path) ---
 
@@ -945,7 +945,7 @@ class TestCmdPreflight(unittest.TestCase):
     def test_missing_artefact_stderr_names_setup_sequence(self):
         code, _, err = self._run_preflight(self.td)
         self.assertEqual(code, 2)
-        self.assertIn("/init-forge", err)
+        self.assertIn("/devforge:init-forge", err)
 
     # --- Spec not Complete → exit 3 ---
 
@@ -956,7 +956,7 @@ class TestCmdPreflight(unittest.TestCase):
         code, out, err = self._run_preflight(self.td, spec=spec_path)
         self.assertEqual(code, 3,
                          msg="Expected exit 3 for Draft spec, got {0}".format(code))
-        self.assertIn("/verify", err)
+        self.assertIn("/devforge:verify", err)
 
     def test_not_complete_stderr_mentions_current_status(self):
         """stderr must name the actual (non-Complete) status value."""
@@ -982,8 +982,8 @@ class TestCmdPreflight(unittest.TestCase):
         )
         self.assertEqual(code, 3,
                          msg="Nonexistent spec path must exit 3 (not setup-chain exit 2), got {0}".format(code))
-        self.assertIn("/verify", err,
-                      msg="stderr must mention /verify when spec gate fails")
+        self.assertIn("/devforge:verify", err,
+                      msg="stderr must mention /devforge:verify when spec gate fails")
 
     # --- JSON always emitted to stdout ---
 

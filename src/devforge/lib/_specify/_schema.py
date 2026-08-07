@@ -14,14 +14,35 @@ STATE_FILE_NAME = "specify-state.json"
 # (project-config.json is a downstream render). Matching the existing
 # helpers — single source of truth.
 PREFLIGHT_PREREQS: Tuple[Tuple[str, str], ...] = (
-    (".devforge/init.yaml", "/init-forge"),
-    ("docs/architecture.md", "/generate-docs"),
-    (".devforge/configure.yaml", "/configure"),
-    ("constitution.md", "/constitute"),
+    (".devforge/init.yaml", "/devforge:init-forge"),
+    ("docs/architecture.md", "/devforge:generate-docs"),
+    (".devforge/configure.yaml", "/devforge:configure"),
+    ("constitution.md", "/devforge:constitute"),
 )
 
-# Constitution populate-guard literal (v3 verbatim).
-CONSTITUTION_POPULATE_GUARD = "_Run /constitute to populate_"
+# Constitution populate-guard literals -- matched (substring) against
+# constitution.md text to detect an unpopulated stub. Multiple forms are
+# checked for backward compatibility across the pre/post plan-63-Phase-4c
+# namespace move:
+#   "_Run constitute to populate_"          -- pre-namespace, no slash; the
+#                                               form every existing consumer
+#                                               install actually carries
+#                                               (src/constitution.md has
+#                                               always shipped this exact
+#                                               text, never the slash form
+#                                               below).
+#   "_Run /constitute to populate_"         -- pre-namespace, with slash;
+#                                               never actually shipped by the
+#                                               stub template but kept for
+#                                               back-compat with any
+#                                               hand-edited constitution.md
+#                                               carrying this exact text.
+#   "_Run /devforge:constitute to populate_" -- post-namespace (current).
+CONSTITUTION_POPULATE_GUARDS: Tuple[str, ...] = (
+    "_Run constitute to populate_",
+    "_Run /constitute to populate_",
+    "_Run /devforge:constitute to populate_",
+)
 
 # Phase 1 — source_origin enum (auto-tagged from file path).
 SOURCE_ORIGIN_ENUM: Tuple[str, ...] = (
@@ -270,7 +291,7 @@ MANDATORY_READS_BY_TYPE: Dict[str, Tuple[Tuple[str, str], ...]] = {
         (".claude/memory/MEMORY.md",
          "MEMORY.md prior-feature lessons"),
         ("specs/*/discovery-report.md",
-         "/discover reference md (if Phase 1 adapter loaded one) -- "
+         "/devforge:discover reference md (if Phase 1 adapter loaded one) -- "
          "68-INTAKE-OWNS-FEATURE-DIR-PLAN.md moved this inside "
          "specs/NNN-slug/ (was discover/*.md)"),
     ),

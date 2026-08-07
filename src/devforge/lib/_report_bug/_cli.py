@@ -190,7 +190,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="report_bug_helper",
         description=(
-            "Helper for /report-bug — user-facing bug filing command. "
+            "Helper for /devforge:report-bug — user-facing bug filing command. "
             "Resolves the bugs/ directory under install_root and writes "
             "bug reports in storage-rules.md format via the shared "
             "file_bugs() writer."

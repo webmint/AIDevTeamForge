@@ -68,7 +68,8 @@ def cmd_preflight(args):
         sys.stderr.write(
             "summarize_helper preflight: setup chain incomplete. "
             "Run the 4-command setup sequence first:\n"
-            "  /init-forge -> /generate-docs -> /configure -> /constitute\n"
+            "  /devforge:init-forge -> /devforge:generate-docs -> /devforge:configure -> "
+            "/devforge:constitute\n"
             "Missing: {0}\n".format(", ".join(missing))
         )
         return 2
@@ -82,7 +83,7 @@ def cmd_preflight(args):
         sys.stderr.write(
             "summarize_helper preflight: spec is not Complete "
             "(current status: {0}). "
-            "Run `/verify` first to approve the feature before summarizing.\n".format(
+            "Run `/devforge:verify` first to approve the feature before summarizing.\n".format(
                 status
             )
         )
@@ -159,7 +160,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="summarize_helper",
         description=(
-            "Helper for /summarize — the per-feature PR-ready narrative synthesis. "
+            "Helper for /devforge:summarize — the per-feature PR-ready narrative synthesis. "
             "Reads spec + plan + task completion notes + git + verification.md, "
             "and orchestrates the inline composition of specs/[feature]/summary.md. "
             "Agent-free (no finder ensemble, no refutation, no verdict)."

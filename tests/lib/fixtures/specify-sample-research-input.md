@@ -91,10 +91,10 @@ Tasks created in the workspace view never round-trip to the persistence layer; r
 
 ## Next step
 
-Copy the block below into a new `/specify` session manually. No automation — user controls when (or if) `/specify` runs.
+Copy the block below into a new `/devforge:specify` session manually. No automation — user controls when (or if) `/devforge:specify` runs.
 
 ~~~
-/specify "Tasks created in workspace view disappear on refresh — make new tasks persist across refresh"
+/devforge:specify "Tasks created in workspace view disappear on refresh — make new tasks persist across refresh"
 
 Research reference: research/2026-05-14-tasks-not-saving.md
 Key facts:

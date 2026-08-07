@@ -1332,7 +1332,7 @@ def cmd_find_nested_git(args):
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="init_helper",
-        description="Compose the bootstrap state file for /init-forge.",
+        description="Compose the bootstrap state file for /devforge:init-forge.",
     )
     subparsers = parser.add_subparsers(dest="subcommand")
 

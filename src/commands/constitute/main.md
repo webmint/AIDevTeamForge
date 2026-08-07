@@ -1,12 +1,12 @@
 ---
 name: constitute
-description: Synthesize constitution.md from /configure + /generate-docs outputs (schema-anchored)
+description: Synthesize constitution.md from /devforge:configure + /devforge:generate-docs outputs (schema-anchored)
 disable-model-invocation: true
 ---
 
-# /constitute — Project Constitution
+# /devforge:constitute — Project Constitution
 
-`/constitute` is the fourth and last command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes the structural fields persisted by `/init-forge`, the configuration fields persisted by `/configure`, and the docs corpus produced by `/generate-docs`; populates `.devforge/constitute.json` via `.devforge/lib/constitute_helper` setters; renders `<install_root>/constitution.md` with seven schema-anchored sections (Section 7 emitted only when `mode == greenfield`); verifies the round-trip and content quality; and prints a deterministic summary.
+`/devforge:constitute` is the fourth and last command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge`, the configuration fields persisted by `/devforge:configure`, and the docs corpus produced by `/devforge:generate-docs`; populates `.devforge/constitute.json` via `.devforge/lib/constitute_helper` setters; renders `<install_root>/constitution.md` with seven schema-anchored sections (Section 7 emitted only when `mode == greenfield`); verifies the round-trip and content quality; and prints a deterministic summary.
 
 ## Outputs of this phase
 
@@ -26,11 +26,11 @@ test -f docs/architecture.md
 test -f docs/glossary.md
 ```
 
-- If `.devforge/init.yaml` is missing → ABORT: "missing .devforge/init.yaml — run `/init-forge` first."
-- If `.devforge/configure.yaml` is missing → ABORT: "missing .devforge/configure.yaml — run `/configure` first."
-- If `docs/overview.md` is missing → ABORT: "missing docs/overview.md — run `/generate-docs` first."
-- If `docs/architecture.md` is missing → ABORT: "missing docs/architecture.md — run `/generate-docs` first."
-- If `docs/glossary.md` is missing → ABORT: "missing docs/glossary.md — run `/generate-docs` first."
+- If `.devforge/init.yaml` is missing → ABORT: "missing .devforge/init.yaml — run `/devforge:init-forge` first."
+- If `.devforge/configure.yaml` is missing → ABORT: "missing .devforge/configure.yaml — run `/devforge:configure` first."
+- If `docs/overview.md` is missing → ABORT: "missing docs/overview.md — run `/devforge:generate-docs` first."
+- If `docs/architecture.md` is missing → ABORT: "missing docs/architecture.md — run `/devforge:generate-docs` first."
+- If `docs/glossary.md` is missing → ABORT: "missing docs/glossary.md — run `/devforge:generate-docs` first."
 
 ## Phase 1 — Reset + pull inputs
 
@@ -81,7 +81,7 @@ If any read subcommand exits non-zero, surface its stderr verbatim and ABORT —
 
 ## Phase 2 — Compose section content
 
-Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/configure` Phase 2 and `/generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes per-section content in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written via setters.
+Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/devforge:configure` Phase 2 and `/devforge:generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes per-section content in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written via setters.
 
 Compose the following per-section content. The structural shape (section numbers, bucket assignment, rule-tag enum) is locked by the helper; only the rule TEXT, table CELLS, and code-example CONTENT are LLM-composed. Authoring guidance (opening prose, tag distribution, code-example selection, sub-section count expectations) lives in `references/section-shapes.md` — read it before composing.
 
@@ -151,7 +151,7 @@ Plain prose echo, NOT AskUserQuestion (multi-line content cannot fit AskUserQues
 ### Section 1 echo template (Project Identity)
 
 ````
-Here's what /constitute proposes for Section 1 — Project Identity:
+Here's what /devforge:constitute proposes for Section 1 — Project Identity:
 
 - name:   <project_identity.name>
 - type:   <project_identity.type>
@@ -166,7 +166,7 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line 
 Section 4 has no numbered sub-sections — its 6 buckets are addressed by `(--bucket × --scope)` not by `--number`. Use this echo template (NOT the Sections 2/3/5/6 template below):
 
 ````
-Here's what /constitute proposes for Section 4 — Patterns & Anti-Patterns:
+Here's what /devforge:constitute proposes for Section 4 — Patterns & Anti-Patterns:
 
 Always Do (Universal):
 - [<rule.tag>] <rule.text>
@@ -204,7 +204,7 @@ Each accepted line maps to one `add-pattern-rule` call (`--bucket <bucket> --sco
 Applies to Sections 2, 3, 5, 6 (each has numbered sub-sections like 2.1, 3.5, etc.). Section 4 uses its own template above. For each section, echo the proposed sub-sections, rules, tables, and code examples as a hierarchical list. Use the following template (substitute `<...>` with Phase 2 composed values):
 
 ````
-Here's what /constitute proposes for Section <N> — <Section Name>:
+Here's what /devforge:constitute proposes for Section <N> — <Section Name>:
 
 ### <number> <title>  [<tag>]
 <description (one sentence)>
@@ -238,21 +238,21 @@ Section 3.5 captures the consumer's `forcing_functions` config block in `.devfor
 
 `design_token_provenance` is offered ONLY when the project has a design source — when `design/styles.css` and/or `design/reference.html` exists at install root. When neither file exists (non-UI projects have no design source), omit the `design_token_provenance` block from the echo entirely and issue no `set-forcing-functions` call for it; the rule stays at its disabled default. The other three rules are always offered (their echo blocks are always emitted, with empty or auto-detected defaults). `design_token_provenance` is the only rule whose echo block AND setter call are suppressed entirely when no design source exists.
 
-Enabling `design_token_provenance` turns on a static provenance check — no hardcoded color / border / spacing literals, no `var(--x, <literal>)` fallbacks, undefined tokens fail loud, token-binding required on MATCH elements, and `:hover` + `:focus-visible` required on interactive elements — that runs at the `/implement` per-task gate and the opt-in pre-commit hook. It is the build-time half of the constitution's Design Fidelity principle.
+Enabling `design_token_provenance` turns on a static provenance check — no hardcoded color / border / spacing literals, no `var(--x, <literal>)` fallbacks, undefined tokens fail loud, token-binding required on MATCH elements, and `:hover` + `:focus-visible` required on interactive elements — that runs at the `/devforge:implement` per-task gate and the opt-in pre-commit hook. It is the build-time half of the constitution's Design Fidelity principle.
 
 Pre-fill defaults before echo:
 
 - `generated_types_dirs` for `magic_enum_duplication` and `any_with_generated_available` — scan `INIT_JSON.packages_detected[]` for package roots that contain `.d.ts` or generated-types subdirectories; the populated default is the list of detected dirs (repo-relative). If detection yields zero candidates, default to `[]`.
 - `allowlist_paths` for `magic_enum_duplication` — default `[]`. The user supplies project-specific exemptions (fixtures, logs, scripts).
 - `layer_graph` and `layer_dirs` for `cross_layer_imports` — default `{}` (empty). Cross-layer enforcement has no safe default; the user supplies the explicit layer graph when enabling.
-- `token_source_css` for `design_token_provenance` (offered only when a design source exists, per the offer rule above) — default `design/styles.css` (the project's token-definitions + spacing-scale source). The user confirms or overrides the path the same way the other rules confirm their inputs. No manifest field is captured — the detector globs the per-feature `specs/*/design-manifest.json` files (written by `/breakdown`) at run time; the manifest is per-feature, not a global config value.
+- `token_source_css` for `design_token_provenance` (offered only when a design source exists, per the offer rule above) — default `design/styles.css` (the project's token-definitions + spacing-scale source). The user confirms or overrides the path the same way the other rules confirm their inputs. No manifest field is captured — the detector globs the per-feature `specs/*/design-manifest.json` files (written by `/devforge:breakdown`) at run time; the manifest is per-feature, not a global config value.
 - `allowlist_paths` for `design_token_provenance` — default `[]`. The user supplies project-specific exemptions (legacy / third-party component files exempt from the provenance check).
 - `enabled` for all rules — default `false` on first-time runs.
 
 Echo template:
 
 ````
-Here's what /constitute proposes for Section 3.5 — Forcing Functions [config-block]:
+Here's what /devforge:constitute proposes for Section 3.5 — Forcing Functions [config-block]:
 
 magic_enum_duplication:
 - enabled:              <true|false>
@@ -298,7 +298,7 @@ Per the stop discipline above (Phase 3 § stop discipline mandatory paragraph), 
 If Phase 4 resolved `mode == "greenfield"`, after Section 6 confirms, echo Section 7:
 
 ````
-Here's what /constitute proposes for Section 7 — Scaffolding Guide [greenfield-only]:
+Here's what /devforge:constitute proposes for Section 7 — Scaffolding Guide [greenfield-only]:
 
 Starter directories:
 - <dir-1>
@@ -319,9 +319,9 @@ Reply 'yes' to apply, 'cancel' to abort the run, or list overrides one per line:
 ### Parsing the user reply (per-section)
 
 - Reply equals `yes` (case-insensitive, exact after strip) → apply this section's Phase 2 composed values via the setters listed in the "Setter mapping per section" table below.
-- Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/constitute` again when you're ready to review the proposed sections." Leave `.devforge/constitute.json` in its post-`reset` defaults state plus any sections already applied in earlier per-section confirmations. Do not advance to the next section.
+- Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:constitute` again when you're ready to review the proposed sections." Leave `.devforge/constitute.json` in its post-`reset` defaults state plus any sections already applied in earlier per-section confirmations. Do not advance to the next section.
 - Otherwise → parse line-by-line per the override syntax shown in the section's echo template. Apply each accepted override in order; apply the Phase 2 composed value for every other rule/table/code-example. Tag values are case-insensitive (helper's `_validate_enum` normalizes mixed-case to canonical lowercase / uppercase per enum).
-- Reply not parsable as any of the above → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." Allow up to 2 retries (3 total attempts). On the third invalid reply, fall back to applying the section's Phase 2 composed values as confirmed and warn: "Proceeding with proposed values for Section <N>; re-run `/constitute` to revise."
+- Reply not parsable as any of the above → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm, 'cancel' to abort, or use the override syntax shown above." Allow up to 2 retries (3 total attempts). On the third invalid reply, fall back to applying the section's Phase 2 composed values as confirmed and warn: "Proceeding with proposed values for Section <N>; re-run `/devforge:constitute` to revise."
 
 After parsing each section's reply, apply the resulting setter calls IN ORDER per section type:
 - Section 1: one `set-project-identity` call.
@@ -436,11 +436,11 @@ Section 3.5 (Forcing Functions; config block) uses one `set-forcing-functions` c
 # --layer-graph-json and --layer-dirs-json require JSON-object form.
 # --token-source-css is a single path string (default design/styles.css); no manifest
 # flag is passed — the design_token_provenance detector globs specs/*/design-manifest.json
-# (per-feature, written by /breakdown) at run time.
+# (per-feature, written by /devforge:breakdown) at run time.
 # layer_dirs keys MUST match layer_graph keys; mismatched keys exit non-zero.
 ```
 
-If any setter exits non-zero, capture its stderr, fix the input value, and retry the same setter (cap at 3 retries per setter). On the 4th failure, surface the failure to the user and ABORT — `.devforge/constitute.json` is left in a partial state and the user must re-run `/constitute`.
+If any setter exits non-zero, capture its stderr, fix the input value, and retry the same setter (cap at 3 retries per setter). On the 4th failure, surface the failure to the user and ABORT — `.devforge/constitute.json` is left in a partial state and the user must re-run `/devforge:constitute`.
 
 ## Phase 4 — Sequential user-only prompts
 
@@ -509,7 +509,7 @@ Persist the top-level `project_name` scalar (separate from `set-project-identity
 
 - Exit 0 → render succeeded; `<install_root>/constitution.md` reflects the current state.
 - Exit 1 → state file unreadable or corrupted JSON. Surface stderr verbatim and ABORT.
-- Exit 2 → required field missing (one of the four required scalars `project_name` / `generated_date` / `last_updated` / `mode`, or one of the four `project_identity` subfields `name` / `type` / `domain` / `stack`). Surface stderr verbatim and ABORT — the user must re-run `/constitute` and ensure the missing field is composed in Phase 2 + applied in Phase 3.
+- Exit 2 → required field missing (one of the four required scalars `project_name` / `generated_date` / `last_updated` / `mode`, or one of the four `project_identity` subfields `name` / `type` / `domain` / `stack`). Surface stderr verbatim and ABORT — the user must re-run `/devforge:constitute` and ensure the missing field is composed in Phase 2 + applied in Phase 3.
 
 The LLM does NOT edit `<install_root>/constitution.md` directly via the Write or Edit tool at any point. The helper's `render` is the only writer; this preserves the helper-owns-shape invariant.
 
@@ -523,7 +523,7 @@ Run the three subcommands in order: `verify` (structural correctness), `validate
 .devforge/lib/constitute_helper verify
 ```
 
-`verify` cross-checks `.devforge/constitute.json`: required scalar fields populated; closed-enum tag membership (every `rule.tag` ∈ `{extracted, enforced, universal, project-specific}`, every `code_example.label` ∈ `{CORRECT, WRONG, EXAMPLE}`, etc.); table column/row consistency (every row has exactly `len(columns)` cells); scaffolding-guide shape (when `mode == "greenfield"`, `scaffolding_guide` non-null with `starter_directories` + `sample_files` populated); minimal round-trip identity check. Exit 0 = pass; exit 2 = at least one violation (each enumerated on stderr). On exit 2, surface stderr verbatim and recommend re-running `/constitute` to address the violations.
+`verify` cross-checks `.devforge/constitute.json`: required scalar fields populated; closed-enum tag membership (every `rule.tag` ∈ `{extracted, enforced, universal, project-specific}`, every `code_example.label` ∈ `{CORRECT, WRONG, EXAMPLE}`, etc.); table column/row consistency (every row has exactly `len(columns)` cells); scaffolding-guide shape (when `mode == "greenfield"`, `scaffolding_guide` non-null with `starter_directories` + `sample_files` populated); minimal round-trip identity check. Exit 0 = pass; exit 2 = at least one violation (each enumerated on stderr). On exit 2, surface stderr verbatim and recommend re-running `/devforge:constitute` to address the violations.
 
 ### Phase 6.2 — Validate
 
@@ -538,11 +538,11 @@ Run the three subcommands in order: `verify` (structural correctness), `validate
 3. **Code-example syntax** (0.25) — `python` → `ast.parse`; `json` → `json.loads`; `ts` / `tsx` / `js` / `jsx` → balanced-brace + non-empty heuristic; other languages → non-empty. Zero examples → N/A (1.0).
 4. **Rule-tag enum** (0.20) — every rule tag in the closed enum. Pass = 1.0 (mechanical check; failure indicates a helper bug, not LLM authorship).
 
-On exit 2, surface stderr verbatim, then ask the user via plain prose: "validate reports composite below 0.95 — see the per-dimension scores above. Reply 'ship' to keep the rendered `constitution.md` as-is, 'cancel' to leave the `constitution.md` in place but flag the run as incomplete, or 'fix <section-number>' to identify a section to revise (you'll re-run `/constitute` to apply the revision)." Stop the assistant turn after this prompt; await user reply.
+On exit 2, surface stderr verbatim, then ask the user via plain prose: "validate reports composite below 0.95 — see the per-dimension scores above. Reply 'ship' to keep the rendered `constitution.md` as-is, 'cancel' to leave the `constitution.md` in place but flag the run as incomplete, or 'fix <section-number>' to identify a section to revise (you'll re-run `/devforge:constitute` to apply the revision)." Stop the assistant turn after this prompt; await user reply.
 
 - Reply `ship` → proceed to Phase 6.3.
-- Reply `cancel` → write a one-line warning to stdout: "constitution.md flagged as incomplete; re-run `/constitute` to address per-dimension failures." Then proceed to Phase 6.3 (the summary still helps diagnose the gaps).
-- Reply `fix <number>` → proceed to Phase 6.3, then in the closing message recommend the user re-run `/constitute` and edit Section `<number>` during Phase 3.
+- Reply `cancel` → write a one-line warning to stdout: "constitution.md flagged as incomplete; re-run `/devforge:constitute` to address per-dimension failures." Then proceed to Phase 6.3 (the summary still helps diagnose the gaps).
+- Reply `fix <number>` → proceed to Phase 6.3, then in the closing message recommend the user re-run `/devforge:constitute` and edit Section `<number>` during Phase 3.
 
 ### Phase 6.3 — Summary
 
@@ -554,7 +554,7 @@ On exit 2, surface stderr verbatim, then ask the user via plain prose: "validate
 
 ### Phase 6.4 — Pre-commit hook opt-in (conditional)
 
-Skip this phase entirely when no `forcing_functions.<rule>` has `enabled: true` in `.devforge/constitute.json` — a pre-commit hook that has no enabled rules to run is a no-op install. Determine the enabled set by reading `.devforge/constitute.json` directly and inspecting each `forcing_functions.<rule>.enabled` value (the rules captured in Phase 3 § Section 3.5 echo template — the always-offered three plus `design_token_provenance` when a design source existed). If the `forcing_functions` key is absent from the JSON (older state file from a prior `/constitute` run), treat every rule as `enabled: false` and skip this phase.
+Skip this phase entirely when no `forcing_functions.<rule>` has `enabled: true` in `.devforge/constitute.json` — a pre-commit hook that has no enabled rules to run is a no-op install. Determine the enabled set by reading `.devforge/constitute.json` directly and inspecting each `forcing_functions.<rule>.enabled` value (the rules captured in Phase 3 § Section 3.5 echo template — the always-offered three plus `design_token_provenance` when a design source existed). If the `forcing_functions` key is absent from the JSON (older state file from a prior `/devforge:constitute` run), treat every rule as `enabled: false` and skip this phase.
 
 When at least one rule has `enabled: true`, ask via AskUserQuestion:
 
@@ -571,10 +571,10 @@ chmod +x .git/hooks/pre-commit
 
 If either `cp` or `chmod` exits non-zero, surface stderr verbatim and tell the user: "Pre-commit hook install failed — see stderr above. Re-run the two commands manually after resolving the failure."
 
-On `No, skip for now`: emit one line of plain prose: "Pre-commit hook skipped. Install later by running the two commands shown in `/constitute` Phase 6.4 against the same `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` source."
+On `No, skip for now`: emit one line of plain prose: "Pre-commit hook skipped. Install later by running the two commands shown in `/devforge:constitute` Phase 6.4 against the same `.devforge/templates/git-hooks/pre-commit-forcing-functions.sh` source."
 
 On `Other`: treat the free-text answer as a "No" with the user's text recorded inline in the closing message; do not attempt to interpret the free text as a partial install.
 
 ## Closing
 
-`/constitute` is complete. `.devforge/constitute.json` carries the canonical state; `<install_root>/constitution.md` is rendered with all required sections (plus Section 7 when `mode == "greenfield"`); `verify` passed; `validate` reported a composite quality score (≥ 0.95 = pass, below = user-acknowledged ship-as-is). The 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`) is now complete. Tell the user: "`/constitute` is done. Open `<install_root>/constitution.md` to review, or run `/specify <feature>` to start a feature."
+`/devforge:constitute` is complete. `.devforge/constitute.json` carries the canonical state; `<install_root>/constitution.md` is rendered with all required sections (plus Section 7 when `mode == "greenfield"`); `verify` passed; `validate` reported a composite quality score (≥ 0.95 = pass, below = user-acknowledged ship-as-is). The 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) is now complete. Tell the user: "`/devforge:constitute` is done. Open `<install_root>/constitution.md` to review, or run `/devforge:specify <feature>` to start a feature."

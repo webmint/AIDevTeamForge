@@ -93,10 +93,10 @@ Async via JobsQueue moves export off the request thread; preserves small-dataset
 
 ## Next step
 
-Copy the block below into a new `/specify` session manually. No automation — user controls when (or if) `/specify` runs.
+Copy the block below into a new `/devforge:specify` session manually. No automation — user controls when (or if) `/devforge:specify` runs.
 
 ~~~
-/specify "Export should be faster on large datasets — under 30 seconds OR async with progress"
+/devforge:specify "Export should be faster on large datasets — under 30 seconds OR async with progress"
 
 Research reference: (path assigned when this research is saved to its feature directory)
 Key facts:

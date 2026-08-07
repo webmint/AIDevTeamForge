@@ -49,10 +49,10 @@ BUILD_VS_BUY_ENUM = ("Build", "Buy", "Hybrid")
 # (relative-path-from-install-root, producer-label). Mirrors
 # research_helper.PREFLIGHT_PREREQS exactly.
 PREFLIGHT_PREREQS = (
-    (".devforge/init.yaml", "/init-forge"),
-    ("docs/architecture.md", "/generate-docs"),
-    (".devforge/configure.yaml", "/configure"),
-    ("constitution.md", "/constitute"),
+    (".devforge/init.yaml", "/devforge:init-forge"),
+    ("docs/architecture.md", "/devforge:generate-docs"),
+    (".devforge/configure.yaml", "/devforge:configure"),
+    ("constitution.md", "/devforge:constitute"),
 )
 
 
@@ -126,7 +126,7 @@ from ._cmds_scope import (  # noqa: E402
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="discover_helper",
-        description="State helper for /discover. Owns discover artifact shape.",
+        description="State helper for /devforge:discover. Owns discover artifact shape.",
     )
     parser.add_argument(
         "--devforge-dir",
@@ -514,7 +514,7 @@ def _register_subcommands(subparsers) -> None:
         required=False,
         default=None,
         help=(
-            "Distilled 1-2 sentence topic to embed in the /specify \"...\" block. "
+            "Distilled 1-2 sentence topic to embed in the /devforge:specify \"...\" block. "
             "Overrides the helper's first-sentence fallback. Pass the same distilled "
             "string the orchestrator composed from functional_scope + users + "
             "success_criteria."

@@ -260,7 +260,7 @@ def cmd_package_input(args: argparse.Namespace) -> int:
 
     if not concern_seeds:
         print(
-            f"no concern docs found under docs/{pkg}/ — run /generate-docs "
+            f"no concern docs found under docs/{pkg}/ — run /devforge:generate-docs "
             f"on this package's concerns before package-input",
             file=sys.stderr,
         )

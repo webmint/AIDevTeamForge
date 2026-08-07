@@ -213,7 +213,7 @@ def _render_constitution(state: dict) -> str:
         " to ALL projects.\n"
     )
     parts.append(
-        "> Sections marked `[project-specific]` are populated by `/constitute`"
+        "> Sections marked `[project-specific]` are populated by `/devforge:constitute`"
         " based on your codebase or interview answers.\n"
     )
     parts.append("\n---\n\n")

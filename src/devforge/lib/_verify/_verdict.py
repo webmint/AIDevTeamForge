@@ -503,7 +503,7 @@ def compute_verdict(
     # Missing review report — not a blocker, but noted
     if review_missing:
         reasons.append(
-            "Review report not found (run /review first). "
+            "Review report not found (run /devforge:review first). "
             "Proceeding without folded review findings."
         )
 

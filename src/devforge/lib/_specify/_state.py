@@ -136,7 +136,7 @@ def _load_state(devforge_dir: Union[str, "os.PathLike[str]"]) -> Dict[str, Any]:
             sys.stderr.write(
                 "specify_helper: legacy --kind=use constraint found in state"
                 " — content: {0!r}\n"
-                "  Action: re-record via /specify Step 4.6 using"
+                "  Action: re-record via /devforge:specify Step 4.6 using"
                 " nfr / constitution_anchor / external_system.\n"
                 .format(c.get("content", ""))
             )

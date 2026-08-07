@@ -18,11 +18,11 @@ In source, reference files cite each other by RELATIVE path (`references/X.md`)
 so the physical source layout is self-consistent. At emit time, paths are
 rewritten to the Claude target location:
 
-    references/detect.md → .claude/commands/<cmd>/references/detect.md
+    references/detect.md → .devforge/command-refs/<cmd>/detect.md
 
 The Claude emitter writes:
-  * main body → .claude/commands/<cmd>.md
-  * refs     → .claude/commands/<cmd>/references/*.md
+  * main body → .claude/commands/devforge/<cmd>.md
+  * refs     → .devforge/command-refs/<cmd>/*.md
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def rewrite_refs(text: str, target_prefix: str) -> str:
     """Rewrite `references/<h>.md` → `<target_prefix>/<h>.md`.
 
     `target_prefix` is a project-relative path (e.g.,
-    `.claude/commands/audit/references`). Idempotent: running on
+    `.devforge/command-refs/audit`). Idempotent: running on
     already-rewritten text is a no-op (the pattern no longer matches the
     expanded form).
     """
@@ -108,7 +108,7 @@ def processed(
     """Return (body, references_dict) with all `references/X.md` paths rewritten.
 
     `target_prefix` is the runtime-native project-relative path where references
-    will live — e.g., `.claude/commands/audit/references`. Both the main
+    will live — e.g., `.devforge/command-refs/audit`. Both the main
     body AND every reference file's content get rewritten (helpers cross-reference
     each other).
     """

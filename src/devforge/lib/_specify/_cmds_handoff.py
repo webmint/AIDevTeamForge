@@ -949,16 +949,16 @@ def cmd_find_handoffs(args: argparse.Namespace) -> int:
     require = getattr(args, "require", False)
     if require and not hits:
         sys.stderr.write(
-            "BLOCKED: /specify requires a pending research or discover handoff.\n"
+            "BLOCKED: /devforge:specify requires a pending research or discover handoff.\n"
             "No feature dir under specs/ carries an intake handoff"
             " (specs/*/research-handoff.json or specs/*/discover-handoff.json)"
             " that is pending -- either its spec.md does not yet exist, or"
             " (re-entry) a sibling *-seed.json targets this stage"
             " (target_stage == \"spec\").\n"
             "\n"
-            "Run one of the following first, then retry /specify:\n"
-            "  /research \"<topic>\"  — for a bug or enhancement against existing code\n"
-            "  /discover \"<idea>\"   — for a greenfield feature\n"
+            "Run one of the following first, then retry /devforge:specify:\n"
+            "  /devforge:research \"<topic>\"  — for a bug or enhancement against existing code\n"
+            "  /devforge:discover \"<idea>\"   — for a greenfield feature\n"
         )
         return 2
 

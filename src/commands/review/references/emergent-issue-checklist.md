@@ -99,7 +99,7 @@ Cross-task change-induced dead code  (Category: mislogic)
   absent.
 
 
-Grounding rule (mandatory — same single-anchor discipline as /audit)
+Grounding rule (mandatory — same single-anchor discipline as /devforge:audit)
 Every finding MUST include a verbatim Evidence quote copy-pasted from the actual
 source. The cross-task interaction spans two files, but the `Evidence:` block
 quotes exactly ONE of them — the ANCHOR file named in the finding's `File:`
@@ -121,9 +121,9 @@ quote, prose partner: grounding proves the anchor snippet is real, and the
 cross-task INTERACTION claim is then stress-tested by the refutation pass (a
 refuter reads BOTH files before the finding reaches the report). So a single
 anchor quote plus a path-and-line partner reference is sufficient and correct —
-it is exactly how /audit grounds its cross-file findings. If you cannot name a
-real defect site in one file and a real partner site in another, you cannot
-report the finding.
+it is exactly how /devforge:audit grounds its cross-file findings. If you
+cannot name a real defect site in one file and a real partner site in
+another, you cannot report the finding.
 
 A finding that is an OPINION or a best-practice PREFERENCE rather than a defect
 provable from the quoted anchor plus the named partner MUST be marked Confidence

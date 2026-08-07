@@ -120,7 +120,8 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         sys.stderr.write(
             "verify_helper preflight: setup chain incomplete. "
             "Run the 4-command setup sequence first:\n"
-            "  /init-forge → /generate-docs → /configure → /constitute\n"
+            "  /devforge:init-forge → /devforge:generate-docs → /devforge:configure → "
+            "/devforge:constitute\n"
             "Missing: {0}\n".format(", ".join(missing))
         )
         return 2
@@ -129,7 +130,7 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     if not result["constitution_populated"]:
         sys.stderr.write(
             "verify_helper preflight: constitution.md contains an unpopulated "
-            "sentinel. Run /constitute to populate it before running /verify.\n"
+            "sentinel. Run /devforge:constitute to populate it before running /devforge:verify.\n"
         )
         return 2
 
@@ -1205,9 +1206,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="verify_helper",
         description=(
-            "Helper for /verify — the per-feature AC verification + verdict. "
+            "Helper for /devforge:verify — the per-feature AC verification + verdict. "
             "Proves acceptance criteria, runs assembled mechanical checks, "
-            "folds in /review findings, and renders APPROVED/NEEDS WORK/REJECTED."
+            "folds in /devforge:review findings, and renders APPROVED/NEEDS WORK/REJECTED."
         ),
     )
 

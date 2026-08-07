@@ -1,25 +1,24 @@
 ---
 name: report-bug
-description: Capture a bug report for later — PURE CAPTURE, agent-free, NO diagnosis. Writes one structured `bugs/NNN-<slug>.md` file (Status Open, Source manual) from a free-text description plus an optional `--file` and `--severity`. Does NOT diagnose, fix, or close bugs — the Open → In Progress → Fixed lifecycle is manual; the forward pointer routes investigation to `/research` and a full fix to `/specify`.
+description: Capture a bug report for later — PURE CAPTURE, agent-free, NO diagnosis. Writes one structured record under `bugs/` from a free-text description. Does NOT diagnose, fix, or close bugs — `/devforge:research` investigates, `/devforge:specify` fixes.
 argument-hint: '"<bug description>" [--file <path>] [--severity Critical|Warning|Info]'
-disable-model-invocation: true
 allowed-tools:
   - Read
   - Bash(.devforge/lib/report_bug_helper preflight *)
   - Bash(.devforge/lib/report_bug_helper write-bug *)
 ---
 
-# /report-bug — Capture a Bug for Later
+# /devforge:report-bug — Capture a Bug for Later
 
-`/report-bug` is a **pure-capture** command: it records a developer-noticed bug as one structured `bugs/NNN-<slug>.md` file so the team can track it and address it later. It is the "file it for later" path for any bug — including a cold bug a developer notices independently of the spec pipeline. It does ONE thing: capture.
+`/devforge:report-bug` is a **pure-capture** command: it records a developer-noticed bug as one structured `bugs/NNN-<slug>.md` file so the team can track it and address it later. It is the "file it for later" path for any bug — including a cold bug a developer notices independently of the spec pipeline. It does ONE thing: capture.
 
-**`/report-bug` does NOT diagnose, fix, or close bugs.** It dispatches no agent, runs no investigation, reads no source code to confirm the defect, and never touches the `bugs/` lifecycle beyond writing a fresh `Open` file. Diagnosis is `/research`'s job; turning the bug into a fix is `/specify` → `/plan` → `/breakdown` → `/implement`'s job; the in-window gated remediation loop is `/fix`'s job. The `Open → In Progress → Fixed` lifecycle in each bug file is maintained MANUALLY by whoever works the bug — `/report-bug` only ever writes the initial `Open` record. File structure, sequential numbering, and the atomic write are owned by `.devforge/lib/report_bug_helper`; the orchestrator composes the values (description, file, severity, date) and dispatches the two verbs.
+**`/devforge:report-bug` does NOT diagnose, fix, or close bugs.** It dispatches no agent, runs no investigation, reads no source code to confirm the defect, and never touches the `bugs/` lifecycle beyond writing a fresh `Open` file. Diagnosis is `/devforge:research`'s job; turning the bug into a fix is `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement`'s job; the in-window gated remediation loop is `/devforge:fix`'s job. The `Open → In Progress → Fixed` lifecycle in each bug file is maintained MANUALLY by whoever works the bug — `/devforge:report-bug` only ever writes the initial `Open` record. File structure, sequential numbering, and the atomic write are owned by `.devforge/lib/report_bug_helper`; the orchestrator composes the values (description, file, severity, date) and dispatches the two verbs.
 
-Usage: `/report-bug "cart total shows NaN when all items are removed"` · `/report-bug "login fails silently on bad password" --file src/auth/login.ts` · `/report-bug "date renders in UTC, should be local" --file src/util/date.ts --severity Critical`.
+Usage: `/devforge:report-bug "cart total shows NaN when all items are removed"` · `/devforge:report-bug "login fails silently on bad password" --file src/auth/login.ts` · `/devforge:report-bug "date renders in UTC, should be local" --file src/util/date.ts --severity Critical`.
 
 ## Maintainer note
 
-This file lives at `src/commands/report-bug/main.md` in the AIDevTeamForge template repo and is the SSOT for the `/report-bug` command. Do NOT inject project-specifics — this spec is substituted + emitted into target projects by the build. Helper paths use the installed `.devforge/lib/...` location because that's where they resolve at runtime in the target project.
+This file lives at `src/commands/report-bug/main.md` in the AIDevTeamForge template repo and is the SSOT for the `/devforge:report-bug` command. Do NOT inject project-specifics — this spec is substituted + emitted into target projects by the build. Helper paths use the installed `.devforge/lib/...` location because that's where they resolve at runtime in the target project.
 
 ## Outputs of this command
 
@@ -27,13 +26,13 @@ The only file this command writes is one bug report under `bugs/`:
 
 - `bugs/NNN-<slug>.md` — one structured bug record in the `.devforge/storage-rules.md` format (`**Status**: Open`, `**Source**: manual`, `**Severity**: <severity>`, the description, the optional file, and `**Reported**: <date>`). The `NNN` prefix and the `<slug>` are assigned by `report_bug_helper write-bug` (it scans `bugs/` for the highest existing number and increments); the orchestrator does NOT choose the number or the slug.
 
-`/report-bug` writes NOTHING else: it does not mutate any spec, plan, task file, or other `bugs/` file, and it makes no git commit (the bug file is left in the working tree for the user to commit). One run writes exactly one bug file.
+`/devforge:report-bug` writes NOTHING else: it does not mutate any spec, plan, task file, or other `bugs/` file, and it makes no git commit (the bug file is left in the working tree for the user to commit). One run writes exactly one bug file.
 
 ## Helper interaction model
 
 Every mechanical step is a normal Bash tool call to `.devforge/lib/report_bug_helper <verb> ...`. `preflight` prints JSON to stdout (the `bugs_dir` the write targets); `write-bug` prints a JSON array of the written path(s) to stdout. On any non-zero exit, copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then follow the recovery note for that phase. The helper owns the bugs-directory resolution, file structure, sequential numbering, validation, and atomic write; the orchestrator owns the argument parsing, the user-facing prose, and supplying the current date.
 
-`/report-bug` keeps NO scratch state and NO run-state file of its own — it is a two-call flow (`preflight` → `write-bug`), so no scratch working directory and no phase-boundary state-flip call appear below.
+`/devforge:report-bug` keeps NO scratch state and NO run-state file of its own — it is a two-call flow (`preflight` → `write-bug`), so no scratch working directory and no phase-boundary state-flip call appear below.
 
 ## PHASE 1 — Parse `$ARGUMENTS`
 
@@ -84,19 +83,19 @@ Bug reported: <written path from PHASE 3>
   File(s):  <file path, or "(unknown)" when no --file was given>
 ```
 
-Then give the forward pointer (and nothing more — `/report-bug` does not act on the bug):
+Then give the forward pointer (and nothing more — `/devforge:report-bug` does not act on the bug):
 
-> To investigate this bug, run `/research "<description>"`; to address it directly as a feature, run `/specify "<description>"`.
+> To investigate this bug, run `/devforge:research "<description>"`; to address it directly as a feature, run `/devforge:specify "<description>"`.
 
-`/report-bug` stops here. It does not diagnose the bug, does not fix it, and does not advance its lifecycle — the developer picks up the bug later via `/research` (investigate) or `/specify` (turn it into a feature), and the `Open → In Progress → Fixed` transitions in the bug file are made manually.
+`/devforge:report-bug` stops here. It does not diagnose the bug, does not fix it, and does not advance its lifecycle — the developer picks up the bug later via `/devforge:research` (investigate) or `/devforge:specify` (turn it into a feature), and the `Open → In Progress → Fixed` transitions in the bug file are made manually.
 
 ## Important rules
 
-1. **Pure capture, never auto-invoked** — `/report-bug` only records a bug; the user types it (`disable-model-invocation: true`). It dispatches no agent and runs no investigation.
-2. **One bug per file** — if the user describes multiple distinct bugs, run `/report-bug` once per bug so each gets its own `bugs/NNN-<slug>.md` file. Do not pack several bugs into one record.
-3. **Don't diagnose** — this command records the bug as reported; it does not read source to confirm or root-cause it. Diagnosis happens in `/research`, a full fix in `/specify` → `/plan` → `/breakdown` → `/implement`.
+1. **Pure capture, no diagnosis** — `/devforge:report-bug` only records a bug. It may be model-invoked (when the user asks to log a bug in conversation) as well as typed by the user; what never changes is WHAT it does, not who invokes it. It dispatches no agent, reads no source to confirm the defect, and runs no investigation.
+2. **One bug per file** — if the user describes multiple distinct bugs, run `/devforge:report-bug` once per bug so each gets its own `bugs/NNN-<slug>.md` file. Do not pack several bugs into one record.
+3. **Don't diagnose** — this command records the bug as reported; it does not read source to confirm or root-cause it. Diagnosis happens in `/devforge:research`, a full fix in `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement`.
 4. **Sequential numbering is the helper's job** — `write-bug` scans `bugs/` for the highest existing `NNN` and increments. Never hardcode, guess, or compose the number or the slug yourself.
 5. **Severity defaults to Warning** — pass `--severity Critical` only when the user says so or the bug clearly breaks core functionality; the three valid values are `Critical | Warning | Info`.
 6. **Supply the date yourself** — `write-bug` requires `--date YYYY-MM-DD` and never calls the clock; the orchestrator passes the current date.
-7. **Never closes or advances a bug** — `/report-bug` only ever writes a fresh `Open` record. The `Open → In Progress → Fixed` lifecycle is maintained manually; this command never edits an existing bug file.
-8. **Never call `/fix` from here** — `/report-bug` is the file-it-for-later path, the deliberate counterpart to `/fix`'s remediate-now path. It does not propose, invoke, or chain into `/fix`; a bug captured here is addressed later through the normal pipeline.
+7. **Never closes or advances a bug** — `/devforge:report-bug` only ever writes a fresh `Open` record. The `Open → In Progress → Fixed` lifecycle is maintained manually; this command never edits an existing bug file.
+8. **Never call `/devforge:fix` from here** — `/devforge:report-bug` is the file-it-for-later path, the deliberate counterpart to `/devforge:fix`'s remediate-now path. It does not propose, invoke, or chain into `/devforge:fix`; a bug captured here is addressed later through the normal pipeline.

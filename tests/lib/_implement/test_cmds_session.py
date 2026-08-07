@@ -104,7 +104,7 @@ class TestBuildSessionState(unittest.TestCase):
 
     def test_header_fields_present(self):
         content = self._build()
-        self.assertIn("# Session State — /implement", content)
+        self.assertIn("# Session State — /devforge:implement", content)
         self.assertIn("**Feature**: 001-widget", content)
         self.assertIn("**Progress**: 1/3 tasks complete", content)
         self.assertIn("**Updated**: 2026-06-01T12:00:00Z", content)

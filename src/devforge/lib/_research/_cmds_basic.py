@@ -101,13 +101,13 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
     if missing:
         sys.stderr.write(
-            "BLOCKED: /research requires the full 4-command setup chain.\n"
+            "BLOCKED: /devforge:research requires the full 4-command setup chain.\n"
         )
         for rel, producer in missing:
             sys.stderr.write("Missing: {0} (produced by {1})\n".format(rel, producer))
         sys.stderr.write(
-            "Run: /init-forge → /generate-docs → /configure → /constitute, "
-            "then retry /research.\n"
+            "Run: /devforge:init-forge → /devforge:generate-docs → /devforge:configure → "
+            "/devforge:constitute, then retry /devforge:research.\n"
         )
         return 2
     return 0

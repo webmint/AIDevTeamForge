@@ -55,7 +55,7 @@ SPEC_CHECK_DISPOSITIONS = ("CONSISTENT", "REVISE-SPEC", "DISMISS")
 # The D11 scope boundary line -- rendered verbatim near the top of every
 # report.
 _SCOPE_LINE = (
-    "> **Scope:** /spec-check is a consistency prover, not a mind-reader. "
+    "> **Scope:** /devforge:spec-check is a consistency prover, not a mind-reader. "
     "It checks whether your acceptance criteria contradict *each other* -- "
     "not whether they are what you *meant*. A single coherent-but-wrong AC "
     "will pass."
@@ -177,7 +177,7 @@ def _render_stability(stability, out):
         out.append(
             "**Formalization unstable:** a contradiction appeared in some "
             "but not a majority of {0}/{1} passes -- NOT treated as "
-            "confirmed; re-run `/spec-check` or inspect the "
+            "confirmed; re-run `/devforge:spec-check` or inspect the "
             "formalization.".format(reproduced_in, of)
         )
     else:

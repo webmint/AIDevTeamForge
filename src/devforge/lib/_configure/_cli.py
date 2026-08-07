@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="configure_helper",
-        description="Compose the configuration state file for /configure.",
+        description="Compose the configuration state file for /devforge:configure.",
     )
     parser.add_argument(
         "--devforge-dir",

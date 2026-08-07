@@ -303,7 +303,7 @@ def _approval_summary(state: Dict[str, Any]) -> str:
         "- **Out of scope**: {oos}\n"
         "\n"
         "Please review and either approve or request changes. Once "
-        "approved, run `/plan` to create the technical implementation "
+        "approved, run `/devforge:plan` to create the technical implementation "
         "plan."
     ).format(
         n=number, f=name, ov=overview, fc=file_count, ac=area_count,
@@ -348,18 +348,18 @@ def _plan_handoff_block(state: Dict[str, Any]) -> str:
                     packages.append(pkg)
     pkg_list = ", ".join(packages) if packages else "(none)"
     return (
-        "## Manual next step — run /plan\n"
+        "## Manual next step — run /devforge:plan\n"
         "\n"
         "A structured handoff (specs/{n}-{f}/handoff.json) is written for "
-        "/plan. /plan auto-discovers it on its first run and reads the "
-        "upstream plan-seeds — but you still launch /plan manually (there is "
-        "no auto-dispatch from /specify). Restart Claude Code (exit and "
+        "/devforge:plan. /devforge:plan auto-discovers it on its first run and reads the "
+        "upstream plan-seeds — but you still launch /devforge:plan manually (there is "
+        "no auto-dispatch from /devforge:specify). Restart Claude Code (exit and "
         "relaunch the CLI/app so the newly installed command is picked up), "
         "then run the command below in this repo. The spec path is explicit "
-        "so /plan does not need most-recent-spec discovery:\n"
+        "so /devforge:plan does not need most-recent-spec discovery:\n"
         "\n"
         "~~~\n"
-        "/plan specs/{n}-{f}/spec.md\n"
+        "/devforge:plan specs/{n}-{f}/spec.md\n"
         "~~~\n"
         "\n"
         "Minimum handoff data:\n"

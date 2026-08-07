@@ -746,7 +746,7 @@ def _render_glossary(
 
     # Frontmatter.
     lines.append("---")
-    lines.append("generated_by: /generate-docs (Phase B — glossary)")
+    lines.append("generated_by: /devforge:generate-docs (Phase B — glossary)")
     lines.append("last_indexed: {0}".format(today))
     lines.append("total_terms: {0}".format(total))
     lines.append("---")

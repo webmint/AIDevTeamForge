@@ -86,7 +86,10 @@ if [ -n "$ONLY_CMD" ]; then
 
   header "Surgical update — only '$ONLY_CMD'"
   info "Target: $TARGET_DIR"
-  overwrt "RE-EMIT    .claude/commands/$ONLY_CMD.md (+ references/)"
+  overwrt "RE-EMIT    .claude/commands/devforge/$ONLY_CMD.md (+ .devforge/command-refs/$ONLY_CMD/)"
+  if [ -f "$TARGET_DIR/.claude/commands/$ONLY_CMD.md" ] || [ -d "$TARGET_DIR/.claude/commands/$ONLY_CMD" ]; then
+    overwrt "PRUNE      .claude/commands/$ONLY_CMD.md (stale pre-move layout, if present)"
+  fi
   if [ -d "$TEMPLATE_DIR/src/devforge/lib/_${cmd_u}" ]; then
     overwrt "OVERWRITE  .devforge/lib/_${cmd_u}/"
   fi
@@ -125,7 +128,18 @@ if [ -n "$ONLY_CMD" ]; then
     err "Emit failed for '$ONLY_CMD' (not a promoted command?)."
     exit 1
   fi
-  added "Re-emitted: .claude/commands/$ONLY_CMD.md (+ references/)"
+
+  # Clean up the pre-move flat layout for this one command, if present (plan
+  # 63 namespace move) — fail-soft, absent paths are a benign no-op. Without
+  # this, a surgical delivery would leave a stale flat duplicate alongside the
+  # freshly re-emitted devforge/-namespaced command.
+  if [ -f "$TARGET_DIR/.claude/commands/$ONLY_CMD.md" ] || [ -d "$TARGET_DIR/.claude/commands/$ONLY_CMD" ]; then
+    rm -f "$TARGET_DIR/.claude/commands/$ONLY_CMD.md" 2>/dev/null || true
+    rm -rf "$TARGET_DIR/.claude/commands/$ONLY_CMD" 2>/dev/null || true
+    overwrt "Pruned command: .claude/commands/$ONLY_CMD.md (stale pre-move layout)"
+  fi
+
+  added "Re-emitted: .claude/commands/devforge/$ONLY_CMD.md (+ .devforge/command-refs/$ONLY_CMD/)"
 
   if [ -d "$TEMPLATE_DIR/src/devforge/lib/_${cmd_u}" ]; then
     rm -rf "$TARGET_DIR/.devforge/lib/_${cmd_u}"
@@ -287,11 +301,11 @@ elif [ -f "$TARGET_DIR/.devforge/configure.yaml" ]; then
     added "Rebuilt .devforge/project-config.json"
   else
     warn "Could not rebuild project-config.json — skipping placeholder substitution."
-    warn "Run /configure to populate .devforge/configure.yaml + project-config.json"
+    warn "Run /devforge:configure to populate .devforge/configure.yaml + project-config.json"
   fi
 else
   warn "No .devforge config found — skipping placeholder substitution."
-  warn "Run /configure to populate .devforge/configure.yaml + project-config.json"
+  warn "Run /devforge:configure to populate .devforge/configure.yaml + project-config.json"
 fi
 
 # Validate config values — warn about placeholder-in-placeholder
@@ -586,20 +600,26 @@ echo "$REMOVED_AGENTS" | while IFS= read -r name; do
   overwrt "PRUNE  $AGENTS_TGT_DIR/$name"
 done
 
-# Removed/leftover commands to prune (FIX B) — compute the canonical command set
-# from the emitter and flag any *.md directly under .claude/commands/ that is no
-# longer canonical. Guard on Python; the emitter step already warns when absent.
+# Removed/leftover commands to prune (FIX B) — since the devforge/ namespace
+# move (plan 63), NO canonical command lives flat at the top level of
+# .claude/commands/ anymore: every promoted command is re-emitted to
+# .claude/commands/devforge/<name>.md. So a top-level *.md is ALWAYS stale — a
+# canonical-named one is stale-from-the-move (e.g. an old flat verify.md), a
+# non-canonical one is a dead/removed command (onboard / setup-wizard, same as
+# before the move). Prune every top-level *.md; never touch the devforge/
+# subdirectory (the glob below is non-recursive top-level only, so it can't
+# match a directory). Resolve the canonical list only as a safety guard
+# (Python present + --list resolves non-empty) before pruning anything —
+# parity with the execute block below.
 CANONICAL_COMMANDS=""
 if [ -n "$PYTHON3_CMD" ]; then
   CANONICAL_COMMANDS="$($PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" --list 2>/dev/null || true)"
 fi
-if [ -n "$PYTHON3_CMD" ] && [ -d "$TARGET_DIR/.claude/commands" ]; then
+if [ -n "$PYTHON3_CMD" ] && [ -n "$CANONICAL_COMMANDS" ] && [ -d "$TARGET_DIR/.claude/commands" ]; then
   for cf in "$TARGET_DIR/.claude/commands/"*.md; do
     [ -f "$cf" ] || continue
     cname="$(basename "$cf" .md)"
-    if ! printf '%s\n' "$CANONICAL_COMMANDS" | grep -qxF "$cname"; then
-      overwrt "PRUNE  .claude/commands/$cname.md"
-    fi
+    overwrt "PRUNE  .claude/commands/$cname.md"
   done
 fi
 
@@ -936,8 +956,9 @@ done
 # manifest.json's mergeFiles + templateOwned cover flat command files only.
 # Promoted dir-shaped commands (init-forge, generate-docs, configure,
 # constitute, research, …) live at src/commands/<name>/main.md +
-# (optional) references/ and are
-# emitted to .claude/commands/<name>.md by scripts/emitters/claude.py.
+# (optional) references/ and are emitted to
+# .claude/commands/devforge/<name>.md (references to
+# .devforge/command-refs/<name>/) by scripts/emitters/claude.py.
 # Without re-running the emitter, edits to dir-shaped command sources never
 # propagate to existing targets — install.sh emits them once, update.sh
 # previously skipped them.
@@ -958,24 +979,31 @@ else
   warn "Python 3 not found — promoted commands will not be re-emitted this run"
 fi
 
-# ── Execute: prune removed commands (FIX B) ────────────────────────────────
-# After the emitter re-delivers the canonical command set, remove any *.md
-# directly under .claude/commands/ whose basename is no longer canonical
-# (dead commands like onboard / setup-wizard) along with its references dir.
-# Guard on Python — the emitter step above already warned if it is missing.
+# ── Execute: prune stale top-level commands (FIX B) ────────────────────────
+# After the devforge/ namespace move (plan 63), NO canonical command lives
+# flat at the top level of .claude/commands/ anymore — every promoted command
+# is re-emitted above to .claude/commands/devforge/<name>.md, with references
+# under .devforge/command-refs/<name>/. So every top-level *.md is stale: a
+# canonical-named one is stale-from-the-move (an old flat verify.md etc.,
+# which would otherwise shadow the new /devforge:verify for a typed /verify),
+# a non-canonical one is a dead/removed command (onboard / setup-wizard, same
+# as before the move). Prune both, plus each one's old references/ dir. Never
+# touch the devforge/ subdirectory (the glob below is non-recursive top-level
+# only, so it can't match a directory).
+# Guard on Python + a non-empty canonical list resolving — a safety valve
+# before the mass prune, even though the list no longer gates which files
+# prune (every top-level file is now pruned unconditionally).
 if [ -n "$PYTHON3_CMD" ] && [ -d "$TARGET_DIR/.claude/commands" ]; then
   canon_cmds="$($PYTHON3_CMD "$TEMPLATE_DIR/scripts/emitters/claude.py" --list 2>/dev/null || true)"
   if [ -n "$canon_cmds" ]; then
     for cf in "$TARGET_DIR/.claude/commands/"*.md; do
       [ -f "$cf" ] || continue
       cname="$(basename "$cf" .md)"
-      if ! printf '%s\n' "$canon_cmds" | grep -qxF "$cname"; then
-        rm -f "$cf"
-        if [ -d "$TARGET_DIR/.claude/commands/$cname" ]; then
-          rm -rf "$TARGET_DIR/.claude/commands/$cname"
-        fi
-        overwrt "Pruned command: .claude/commands/$cname.md"
+      rm -f "$cf"
+      if [ -d "$TARGET_DIR/.claude/commands/$cname" ]; then
+        rm -rf "$TARGET_DIR/.claude/commands/$cname"
       fi
+      overwrt "Pruned command: .claude/commands/$cname.md"
     done
   else
     warn "Could not list canonical commands — skipping command prune this run"

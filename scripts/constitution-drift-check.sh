@@ -86,7 +86,7 @@ forge_check_constitution_drift() {
   if [ "$warned" -eq 1 ]; then
     printf "\n⚠  Constitution out of date — framework law has changed since this project was constituted:\n"
     printf "%b" "$detail"
-    printf "  Fix: re-run /constitute to re-synthesize constitution.md + forcing-function config.\n\n"
+    printf "  Fix: re-run /devforge:constitute to re-synthesize constitution.md + forcing-function config.\n\n"
   fi
   return 0
 }

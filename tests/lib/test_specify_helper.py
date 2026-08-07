@@ -227,8 +227,12 @@ class TestSchemaConstants(unittest.TestCase):
 
     def test_constitution_populate_guard_literal(self):
         self.assertEqual(
-            specify_helper.CONSTITUTION_POPULATE_GUARD,
-            "_Run /constitute to populate_",
+            specify_helper.CONSTITUTION_POPULATE_GUARDS,
+            (
+                "_Run constitute to populate_",
+                "_Run /constitute to populate_",
+                "_Run /devforge:constitute to populate_",
+            ),
         )
 
     def test_phase1_mandatory_reads_4(self):
@@ -608,11 +612,50 @@ class TestPreflight(unittest.TestCase):
             self.assertIn("docs/architecture.md", r.stderr)
 
     def test_constitution_populate_guard_blocks(self):
+        """Pre-namespace guard literal (with slash) -- never actually shipped
+        by the stub template, but kept for back-compat with a hand-edited
+        constitution.md carrying this exact text.
+        """
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             _setup_full_install(root)
             (root / "constitution.md").write_text(
                 "# Constitution\n\n_Run /constitute to populate_\n",
+                encoding="utf-8",
+            )
+            r = _run([
+                "--devforge-dir", str(root / ".devforge"),
+                "preflight", "--install-root", str(root),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("populate-guard", r.stderr)
+
+    def test_constitution_populate_guard_blocks_legacy_no_slash_form(self):
+        """Pre-namespace stub literal (no slash) -- the form every existing
+        consumer install actually carries (src/constitution.md has always
+        shipped this exact text).
+        """
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _setup_full_install(root)
+            (root / "constitution.md").write_text(
+                "# Constitution\n\n_Run constitute to populate_\n",
+                encoding="utf-8",
+            )
+            r = _run([
+                "--devforge-dir", str(root / ".devforge"),
+                "preflight", "--install-root", str(root),
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("populate-guard", r.stderr)
+
+    def test_constitution_populate_guard_blocks_devforge_namespaced_form(self):
+        """Post-namespace stub literal (current, plan 63 Phase 4c)."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _setup_full_install(root)
+            (root / "constitution.md").write_text(
+                "# Constitution\n\n_Run /devforge:constitute to populate_\n",
                 encoding="utf-8",
             )
             r = _run([
@@ -3926,7 +3969,7 @@ class TestPhase5RenderSummary(unittest.TestCase):
                 "**Acceptance criteria**:",
                 "**Out of scope**:",
                 "Please review and either approve or request changes.",
-                "run `/plan`",
+                "run `/devforge:plan`",
             ):
                 self.assertIn(needle, r.stdout)
             state = json.loads((dev / "specify-state.json").read_text())
@@ -3987,11 +4030,11 @@ class TestPhase5RenderPlanHandoff(unittest.TestCase):
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             for needle in (
-                "## Manual next step — run /plan",
-                "specs/001-test-spec/handoff.json) is written for /plan",
+                "## Manual next step — run /devforge:plan",
+                "specs/001-test-spec/handoff.json) is written for /devforge:plan",
                 "auto-discovers it on its first run",
                 "Restart Claude Code",
-                "/plan specs/001-test-spec/spec.md",
+                "/devforge:plan specs/001-test-spec/spec.md",
                 "Spec status: Approved",
                 "Spec type: feature_addition",
                 "AC count: 1",
@@ -4663,8 +4706,8 @@ class TestUpstreamCompanionFixtures(unittest.TestCase):
             "specify-sample-research-input.md not committed",
         )
         text = fp.read_text(encoding="utf-8")
-        # Must contain a /specify handoff block (single-tilde fence).
-        self.assertIn("/specify", text)
+        # Must contain a /devforge:specify handoff block (single-tilde fence).
+        self.assertIn("/devforge:specify", text)
 
     def test_greenfield_discover_input_fixture_exists(self):
         fp = FIXTURE_DIR / "specify-sample-greenfield-discover-input.md"
@@ -4673,7 +4716,7 @@ class TestUpstreamCompanionFixtures(unittest.TestCase):
             "specify-sample-greenfield-discover-input.md not committed",
         )
         text = fp.read_text(encoding="utf-8")
-        self.assertIn("/specify", text)
+        self.assertIn("/devforge:specify", text)
 
 
 # ---------------------------------------------------------------------------

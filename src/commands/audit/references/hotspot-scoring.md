@@ -1,4 +1,4 @@
-# /audit — Hotspot scoring (`--top N` mode)
+# /devforge:audit — Hotspot scoring (`--top N` mode)
 
 Reference for `src/commands/audit/main.md` Phase 2.1. This documents the risk-score formula, default weights, knobs, and the CBM-required gate for the hotspot middle mode. The scoring math + ranking live in `.devforge/lib/audit_helper compute-hotspots`; this file is the contract — keep it in sync with the helper if either changes.
 

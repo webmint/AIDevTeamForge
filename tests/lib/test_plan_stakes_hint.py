@@ -329,7 +329,7 @@ class CombinedSignalTests(_StakesHintTestBase):
 
         plan_path = handoff_path.resolve().parent / "plan.md"
         last_line = result.stdout.strip().splitlines()[-1]
-        self.assertEqual(last_line, "/grill {0}".format(plan_path))
+        self.assertEqual(last_line, "/devforge:grill {0}".format(plan_path))
 
     def test_grill_line_uses_handoffs_recorded_plan_path(self):
         """FIX 4: plan_path must come from the handoff's own plan_path field,
@@ -350,7 +350,7 @@ class CombinedSignalTests(_StakesHintTestBase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         last_line = result.stdout.strip().splitlines()[-1]
-        self.assertEqual(last_line, "/grill {0}".format(custom_plan_path))
+        self.assertEqual(last_line, "/devforge:grill {0}".format(custom_plan_path))
 
     def test_grill_line_falls_back_to_derived_plan_path_when_field_absent(self):
         """FIX 4 fallback: real finalize-handoff always writes plan_path
@@ -371,7 +371,7 @@ class CombinedSignalTests(_StakesHintTestBase):
         self.assertEqual(result.returncode, 0, result.stderr)
         derived_path = handoff_path.resolve().parent / "plan.md"
         last_line = result.stdout.strip().splitlines()[-1]
-        self.assertEqual(last_line, "/grill {0}".format(derived_path))
+        self.assertEqual(last_line, "/devforge:grill {0}".format(derived_path))
 
 
 # ---------------------------------------------------------------------------
@@ -715,14 +715,14 @@ class RenderHintUnitTests(unittest.TestCase):
         signals = {"large_blast_radius": True, "file_count": 12}
         text = render_hint(signals, "specs/001-x/plan.md")
         last_line = text.strip().splitlines()[-1]
-        self.assertEqual(last_line, "/grill specs/001-x/plan.md")
+        self.assertEqual(last_line, "/devforge:grill specs/001-x/plan.md")
 
     def test_no_reasons_still_renders_grill_line(self):
         """Defensive: even an empty signals dict renders a valid block (callers
         are expected to gate on 'fires' before calling, but this must not raise)."""
         text = render_hint({}, "specs/001-x/plan.md")
         last_line = text.strip().splitlines()[-1]
-        self.assertEqual(last_line, "/grill specs/001-x/plan.md")
+        self.assertEqual(last_line, "/devforge:grill specs/001-x/plan.md")
 
 
 if __name__ == "__main__":

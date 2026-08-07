@@ -1,6 +1,6 @@
 # Q11 — Claude tier model picks
 
-`/configure` Phase 4 asks three sequential AskUserQuestion calls — one per tier (think / do / verify). Each picks a Claude model from `Opus | Sonnet | Haiku | Other`. Persist each answer via its setter before issuing the next question.
+`/devforge:configure` Phase 4 asks three sequential AskUserQuestion calls — one per tier (think / do / verify). Each picks a Claude model from `Opus | Sonnet | Haiku | Other`. Persist each answer via its setter before issuing the next question.
 
 ## Q11.1 — Think tier
 

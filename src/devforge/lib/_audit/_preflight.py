@@ -29,7 +29,15 @@ _AUDIT_AGENTS: List[str] = [
 _UNPOPULATED_SENTINELS = (
     "{{CONSTITUTION_BODY}}",
     "Run `/constitute`",
+    # Pre-namespace stub literal (no slash) -- the form every existing
+    # consumer install actually carries (src/constitution.md has always
+    # shipped "_Run constitute to populate_", never the slash form below).
+    "Run constitute to populate",
+    # Pre-namespace guard literal (with slash) -- kept for back-compat with
+    # any hand-edited constitution.md carrying this exact text.
     "Run /constitute to populate",
+    # Post-namespace stub literal (plan 63 Phase 4c).
+    "Run /devforge:constitute to populate",
 )
 
 # Default passes by mode when --passes is not explicitly given.

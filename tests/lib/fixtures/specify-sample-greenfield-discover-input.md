@@ -78,10 +78,10 @@ Build. No off-the-shelf solution covers tenant-scoped recurring exports against 
 
 ## Next step
 
-Copy the block below into a new `/specify` session manually. No automation — user controls when (or if) `/specify` runs.
+Copy the block below into a new `/devforge:specify` session manually. No automation — user controls when (or if) `/devforge:specify` runs.
 
 ~~~
-/specify "Scheduled export jobs for tenant data — register a recurring export and receive the result file via the existing storage hook"
+/devforge:specify "Scheduled export jobs for tenant data — register a recurring export and receive the result file via the existing storage hook"
 
 Discover reference: discover/2026-05-14-scheduled-export-jobs.md
 Key facts:

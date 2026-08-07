@@ -578,7 +578,7 @@ def _build_handoff_from_state(memo, report, report_md_path=None):
     if build_vs_buy is None:
         build_vs_buy = handoff_schema.BuildVsBuy(
             recommendation="Build",
-            build_path="to be determined in /plan",
+            build_path="to be determined in /devforge:plan",
             buy_path="no known off-the-shelf replacement",
             reasoning="no explicit build-vs-buy analysis recorded during discovery",
         )

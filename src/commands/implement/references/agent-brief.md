@@ -1,4 +1,4 @@
-# Implementing-agent brief shape (`/implement` PHASE 3)
+# Implementing-agent brief shape (`/devforge:implement` PHASE 3)
 
 This reference defines the brief the orchestrator assembles when it dispatches the implementing agent for a task (PHASE 3 of `main.md`) and re-dispatches it during self-repair (PHASE 5) and review-panel repair legs (PHASE 6). The agent sees ONLY what the brief carries — it does not have the orchestrator's conversation history, its mental model of the architecture, or its knowledge of the task contract (per `feedback_no_underspecification_when_delegating`). A thin brief that makes the agent rediscover known context is the orchestrator's failure, not the agent's.
 
@@ -20,4 +20,4 @@ Assemble the brief with these sections, sized to the task (a one-file change doe
 
 ## Agent selection
 
-The agent name is the resolved task's `agent` field (assigned by `/breakdown`'s Agent Assignment table). If that field is `architect`, HALT — the architect cannot implement (per `.claude/agents/architect.md` Rule 1); re-run `/breakdown` to get the owning stack's implementer, or add the missing agent. If the assigned agent is absent from `.claude/agents/` (not every project generates every agent), HALT and escalate to the human — split the task or re-run `/breakdown` to assign the owning stack's implementer. Never fall back to `architect`; it cannot write code.
+The agent name is the resolved task's `agent` field (assigned by `/devforge:breakdown`'s Agent Assignment table). If that field is `architect`, HALT — the architect cannot implement (per `.claude/agents/architect.md` Rule 1); re-run `/devforge:breakdown` to get the owning stack's implementer, or add the missing agent. If the assigned agent is absent from `.claude/agents/` (not every project generates every agent), HALT and escalate to the human — split the task or re-run `/devforge:breakdown` to assign the owning stack's implementer. Never fall back to `architect`; it cannot write code.

@@ -283,7 +283,7 @@ class TestRenderReport(unittest.TestCase):
 
     def test_review_missing_shows_run_review_note(self):
         content = self._build_report(review_md_dir=None)
-        self.assertIn("run `/review`", content)
+        self.assertIn("run `/devforge:review`", content)
 
     def test_review_present_shows_counts(self):
         content = self._build_report(review_md_dir=self.tmp)
@@ -375,8 +375,8 @@ class TestRenderReport(unittest.TestCase):
     def test_next_step_approved_points_to_summarize(self):
         verdict = {"verdict": "APPROVED", "reasons": [], "blockers": []}
         content = self._build_report(verdict_override=verdict)
-        self.assertIn("/summarize", content)
-        self.assertIn("/finalize", content)
+        self.assertIn("/devforge:summarize", content)
+        self.assertIn("/devforge:finalize", content)
 
     def test_next_step_needs_work_points_to_verify(self):
         verdict = {
@@ -385,7 +385,7 @@ class TestRenderReport(unittest.TestCase):
             "blockers": [{"type": "mechanical_failed", "detail": "failed"}],
         }
         content = self._build_report(verdict_override=verdict)
-        self.assertIn("/verify", content)
+        self.assertIn("/devforge:verify", content)
 
     def test_next_step_rejected_points_to_specify(self):
         verdict = {
@@ -394,7 +394,7 @@ class TestRenderReport(unittest.TestCase):
             "blockers": [{"type": "constitution_confirmed", "detail": "broke rule"}],
         }
         content = self._build_report(verdict_override=verdict)
-        self.assertIn("/specify", content)
+        self.assertIn("/devforge:specify", content)
 
 
 class TestWriteVerificationReport(unittest.TestCase):
@@ -517,15 +517,15 @@ class TestRenderInlineSummary(unittest.TestCase):
 
     def test_approved_next_step(self):
         text = self._summary(verdict_str="APPROVED")
-        self.assertIn("/summarize", text)
+        self.assertIn("/devforge:summarize", text)
 
     def test_needs_work_next_step(self):
         text = self._summary(verdict_str="NEEDS WORK")
-        self.assertIn("/verify", text)
+        self.assertIn("/devforge:verify", text)
 
     def test_rejected_next_step(self):
         text = self._summary(verdict_str="REJECTED")
-        self.assertIn("/specify", text)
+        self.assertIn("/devforge:specify", text)
 
     def test_ends_with_newline(self):
         text = self._summary()

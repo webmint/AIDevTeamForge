@@ -131,7 +131,8 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         sys.stderr.write(
             "review_helper preflight: setup chain incomplete. "
             "Run the 4-command setup sequence first:\n"
-            "  /init-forge → /generate-docs → /configure → /constitute\n"
+            "  /devforge:init-forge → /devforge:generate-docs → /devforge:configure → "
+            "/devforge:constitute\n"
             "Missing: {0}\n".format(", ".join(missing))
         )
         return 2
@@ -140,7 +141,7 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     if not result["constitution_populated"]:
         sys.stderr.write(
             "review_helper preflight: constitution.md contains an unpopulated "
-            "sentinel. Run /constitute to populate it before running /review.\n"
+            "sentinel. Run /devforge:constitute to populate it before running /devforge:review.\n"
         )
         return 2
 
@@ -176,7 +177,7 @@ def cmd_render_agent_brief(args: argparse.Namespace) -> int:
 
     references_dir = (
         getattr(args, "references_dir", None)
-        or ".claude/commands/review/references"
+        or ".devforge/command-refs/review"
     )
 
     try:
@@ -405,7 +406,7 @@ def cmd_render_verify_brief(args: argparse.Namespace) -> int:
     refuter = getattr(args, "refuter", None)
     references_dir = (
         getattr(args, "references_dir", None)
-        or ".claude/commands/review/references"
+        or ".devforge/command-refs/review"
     )
     scope_block_path = getattr(args, "scope_block", None)
     source_root = getattr(args, "source_root", ".") or "."
@@ -982,7 +983,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="review_helper",
         description=(
-            "Helper for /review — the feature-level emergent cross-task review. "
+            "Helper for /devforge:review — the feature-level emergent cross-task review. "
             "Runs a 5-finder ensemble + refutation pass over the assembled "
             "feature diff; writes findings-only specs/[feature]/review.md."
         ),
@@ -1110,13 +1111,13 @@ def _register_subcommands(subparsers) -> None:
             )
             sp.add_argument(
                 "--references-dir",
-                default=".claude/commands/review/references",
+                default=".devforge/command-refs/review",
                 dest="references_dir",
                 metavar="DIR",
                 help=(
                     "Directory containing anti-relitigation-preamble.md and "
                     "emergent-issue-checklist.md "
-                    "(default: .claude/commands/review/references)."
+                    "(default: .devforge/command-refs/review)."
                 ),
             )
             sp.add_argument(
@@ -1222,12 +1223,12 @@ def _register_subcommands(subparsers) -> None:
             )
             sp.add_argument(
                 "--references-dir",
-                default=".claude/commands/review/references",
+                default=".devforge/command-refs/review",
                 dest="references_dir",
                 metavar="DIR",
                 help=(
                     "Directory containing refutation-preamble.md "
-                    "(default: .claude/commands/review/references)."
+                    "(default: .devforge/command-refs/review)."
                 ),
             )
             sp.add_argument(

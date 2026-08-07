@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Tuple
 from ._schema import (
     AUTO_MODE_ENV_VAR,
     AUTO_MODE_REMINDER_SUBSTRINGS,
-    CONSTITUTION_POPULATE_GUARD,
+    CONSTITUTION_POPULATE_GUARDS,
     LANDED_IN_DEFAULT,
     LANDED_IN_ENUM,
     PHASE1_MANDATORY_READS,
@@ -60,6 +60,7 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     install_root = Path(args.install_root)
     missing: List[Tuple[str, str]] = []
     populate_guard_present = False
+    matched_guard = None
     for rel_path, producer in PREFLIGHT_PREREQS:
         p = install_root / rel_path
         try:
@@ -78,12 +79,15 @@ def cmd_preflight(args: argparse.Namespace) -> int:
                 return _die(
                     "preflight: read failed on {0}: {1}".format(p, err)
                 )
-            if CONSTITUTION_POPULATE_GUARD in text:
-                populate_guard_present = True
+            for sentinel in CONSTITUTION_POPULATE_GUARDS:
+                if sentinel in text:
+                    populate_guard_present = True
+                    matched_guard = sentinel
+                    break
 
     if missing or populate_guard_present:
         sys.stderr.write(
-            "BLOCKED: /specify requires the full 4-command setup chain.\n"
+            "BLOCKED: /devforge:specify requires the full 4-command setup chain.\n"
         )
         for rel, producer in missing:
             sys.stderr.write(
@@ -92,13 +96,13 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         if populate_guard_present:
             sys.stderr.write(
                 "constitution.md present but populate-guard literal "
-                "{0!r} still in place — run /constitute to populate.\n".format(
-                    CONSTITUTION_POPULATE_GUARD,
+                "{0!r} still in place — run /devforge:constitute to populate.\n".format(
+                    matched_guard,
                 )
             )
         sys.stderr.write(
-            "Run: /init-forge → /generate-docs → /configure → /constitute, "
-            "then retry /specify.\n"
+            "Run: /devforge:init-forge → /devforge:generate-docs → /devforge:configure → "
+            "/devforge:constitute, then retry /devforge:specify.\n"
         )
         return 2
     return 0

@@ -1,12 +1,12 @@
 ---
 name: configure
-description: Populate config + substitute templates from /init-forge state + /generate-docs output
+description: Populate config + substitute templates from /devforge:init-forge state + /devforge:generate-docs output
 disable-model-invocation: true
 ---
 
-# /configure — Project Configuration
+# /devforge:configure — Project Configuration
 
-`/configure` is the third command in the 4-command sequence (`/init-forge` → `/generate-docs` → `/configure` → `/constitute`). It consumes the structural fields persisted by `/init-forge` and the docs corpus produced by `/generate-docs`, fills 29 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
+`/devforge:configure` is the third command in the 4-command sequence (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`). It consumes the structural fields persisted by `/devforge:init-forge` and the docs corpus produced by `/devforge:generate-docs`, fills 29 configuration fields via `.devforge/lib/configure_helper` setters, prunes `.claude/agents/*.md` against the project's natures, renders the consolidated config, and substitutes `{{KEY}}` placeholders in the framework's templates.
 
 ## Outputs of this phase
 
@@ -26,10 +26,10 @@ test -f docs/overview.md
 test -f docs/architecture.md
 ```
 
-- If `.devforge/init.yaml` is missing → ABORT: "missing .devforge/init.yaml — run `/init-forge` first."
-- If `.devforge/index.json` is missing → ABORT: "missing .devforge/index.json — run `/init-forge` first (Step 6 builds the index)."
-- If `docs/overview.md` is missing → ABORT: "missing docs/overview.md — run `/generate-docs` first."
-- If `docs/architecture.md` is missing → ABORT: "missing docs/architecture.md — run `/generate-docs` first."
+- If `.devforge/init.yaml` is missing → ABORT: "missing .devforge/init.yaml — run `/devforge:init-forge` first."
+- If `.devforge/index.json` is missing → ABORT: "missing .devforge/index.json — run `/devforge:init-forge` first (Step 6 builds the index)."
+- If `docs/overview.md` is missing → ABORT: "missing docs/overview.md — run `/devforge:generate-docs` first."
+- If `docs/architecture.md` is missing → ABORT: "missing docs/architecture.md — run `/devforge:generate-docs` first."
 
 ## Phase 1 — Reset + pull inputs
 
@@ -91,7 +91,7 @@ If any read subcommand exits non-zero, surface its stderr verbatim and ABORT —
 
 ## Phase 2 — Compose detection-derived values
 
-Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes 23 detection-derived values in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written. Composition rules per field:
+Orchestrator-direct compose (NO Task-tool dispatch to any subagent — same convention as `/devforge:generate-docs` Phase 2). The orchestrator (this thread) reads the four Phase 1 JSON outputs inline and synthesizes 23 detection-derived values in memory. Values are NOT yet persisted; Phase 3's bulk confirmation decides what gets written. Composition rules per field:
 
 **Identity**
 
@@ -154,7 +154,7 @@ Plain prose echo, NOT AskUserQuestion (multi-line content cannot fit AskUserQues
 Echo template (substitute `<...>` with the Phase 2 composed values):
 
 ````
-Here's what /init-forge + /generate-docs found and what /configure proposes:
+Here's what /devforge:init-forge + /devforge:generate-docs found and what /devforge:configure proposes:
 
 Project:
 - name: <PROJECT_NAME>
@@ -197,9 +197,9 @@ For the three verbatim fields (`project_structure`, `dev_commands`, `architectur
 ### Parsing the user reply
 
 - Reply equals `yes` (case-insensitive, exact after strip) → apply all 23 Phase 2 values via setters.
-- Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/configure` again when you're ready to review the detected values." Leave `configure.yaml` in its post-`reset` defaults state. Do not advance to Phase 4.
+- Reply equals `cancel` (case-insensitive, exact after strip) → ABORT cleanly: "Run `/devforge:configure` again when you're ready to review the detected values." Leave `configure.yaml` in its post-`reset` defaults state. Do not advance to Phase 4.
 - Otherwise → parse line-by-line as `<field>: <value>`. Field names are case-insensitive; tolerate either dashed (`project-name`) or underscore-separated (`project_name`) keys. Apply the user's override for matched lines; apply the Phase 2 composed value for every other field.
-- Reply not parsable as any of the above (no `yes`, no `cancel`, no `field: value` lines) → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm all, 'cancel' to abort, or list overrides one per line in 'field_name: value' format." Allow up to 2 retries (3 total attempts). After the third invalid reply, fall back to applying all Phase 2 values as confirmed and warn the user: "Proceeding with detected values; re-run `/configure` to revise."
+- Reply not parsable as any of the above (no `yes`, no `cancel`, no `field: value` lines) → re-prompt: "I couldn't parse your reply. Reply 'yes' to confirm all, 'cancel' to abort, or list overrides one per line in 'field_name: value' format." Allow up to 2 retries (3 total attempts). After the third invalid reply, fall back to applying all Phase 2 values as confirmed and warn the user: "Proceeding with detected values; re-run `/devforge:configure` to revise."
 
 ### Setter mapping
 
@@ -267,7 +267,7 @@ Include one object per detected package. Every record carries all 8 keys `{path,
 
 **MUST NOT**: do not build a whitespace-, tab-, or comma-delimited intermediate table; do not iterate with a bash `read` loop; do not call `add-package-stack` per record. Compose the JSON object once and pipe it once. A delimited `read` loop collapses empty fields and shifts every subsequent column left, silently corrupting records.
 
-If `set-package-stacks` exits non-zero, capture its stderr, surface it verbatim, fix the offending record in the JSON, and retry the one call (cap at 3 retries). `set-package-stacks` validates every record before entering the atomic `_state_transaction` and replaces the whole list in one write, so a failure never half-writes `configure.yaml` — the `package_stacks` field is simply left unpopulated while the other Phase 3 fields are already written. On the 4th failure, surface the failure to the user and ABORT; the user can re-run `/configure`, or read the JSON validation error, fix the source data, and re-run.
+If `set-package-stacks` exits non-zero, capture its stderr, surface it verbatim, fix the offending record in the JSON, and retry the one call (cap at 3 retries). `set-package-stacks` validates every record before entering the atomic `_state_transaction` and replaces the whole list in one write, so a failure never half-writes `configure.yaml` — the `package_stacks` field is simply left unpopulated while the other Phase 3 fields are already written. On the 4th failure, surface the failure to the user and ABORT; the user can re-run `/devforge:configure`, or read the JSON validation error, fix the source data, and re-run.
 
 ## Phase 4 — Sequential user-only prompts
 
@@ -383,7 +383,7 @@ For each `decisions[]` entry, render `applies_to` as a comma-separated list (or 
 
   Use absolute paths; do not rely on prior `cd` state. Then advance to Phase 5.3.
 
-- Reply unparseable (no `yes`, no `cancel`, no recognizable override lines, or override lines reference unknown agent names) → re-prompt once with the parsing rules clarified. On the second invalid reply, fall back to applying the helper's exact decisions (`prune-agents --apply`) and warn the user: "Proceeding with helper's pruning decisions; re-run `/configure` to revise."
+- Reply unparseable (no `yes`, no `cancel`, no recognizable override lines, or override lines reference unknown agent names) → re-prompt once with the parsing rules clarified. On the second invalid reply, fall back to applying the helper's exact decisions (`prune-agents --apply`) and warn the user: "Proceeding with helper's pruning decisions; re-run `/devforge:configure` to revise."
 
 ### Phase 5.3 — Substitute templates
 
@@ -414,7 +414,7 @@ Capture the JSON as `LINT_REPORT`.
 
 Exit-code interpretation:
 
-- Exit 1 → unexpected scanning error (stderr has the message). Surface stderr verbatim and SKIP this phase — do NOT abort `/configure`. Linter-exclusion is a convenience, not a correctness gate; advance to Phase 7. (Contrast: Phase 5.3 `substitute-templates` and Phase 7 `verify` ABORT on failure; this phase does not.)
+- Exit 1 → unexpected scanning error (stderr has the message). Surface stderr verbatim and SKIP this phase — do NOT abort `/devforge:configure`. Linter-exclusion is a convenience, not a correctness gate; advance to Phase 7. (Contrast: Phase 5.3 `substitute-templates` and Phase 7 `verify` ABORT on failure; this phase does not.)
 - Exit 0 with no actionable entries — no `auto` entry in `would-add` / `would-create` status AND no `manual` entry in `pending-manual` status → nothing to do (every applicable ignore file already excludes the framework folders). Skip the bulk-confirmation prompt entirely; advance to Phase 7 silently.
 - Exit 0 with actionable entries (any `auto` entry in `would-add` / `would-create`, or any `manual` entry) → proceed to the bulk-confirmation echo.
 
@@ -456,7 +456,7 @@ The folder list in the first echo line mirrors the helper's `FRAMEWORK_FOLDERS`;
 
 - Reply equals `cancel` (case-insensitive, exact after strip) → SKIP this phase; no ignore files written. Note that the `manual` instructions are still worth doing. Advance to Phase 7.
 
-- Reply unparseable (no `yes`, no `cancel`) → re-prompt once with the choice restated. On the second invalid reply, default to SKIP — write nothing — and warn the user: "Skipping framework-folder linter exclusions; re-run `/configure` to apply them." Do NOT auto-apply on an ambiguous reply: unlike Phase 5.2's prune-agents (which defaults to apply), this phase writes into the user's OWN project tooling configs, so default-skip is the safer fallback.
+- Reply unparseable (no `yes`, no `cancel`) → re-prompt once with the choice restated. On the second invalid reply, default to SKIP — write nothing — and warn the user: "Skipping framework-folder linter exclusions; re-run `/devforge:configure` to apply them." Do NOT auto-apply on an ambiguous reply: unlike Phase 5.2's prune-agents (which defaults to apply), this phase writes into the user's OWN project tooling configs, so default-skip is the safer fallback.
 
 ## Phase 7 — Verify + report
 
@@ -464,7 +464,7 @@ The folder list in the first echo line mirrors the helper's `FRAMEWORK_FOLDERS`;
 .devforge/lib/configure_helper verify
 ```
 
-`verify` cross-checks `.devforge/configure.yaml` + `.devforge/project-config.json`: every required field populated; AC runtime fields exempt unless `ac_verification_mode == runtime-assisted`; round-trip identity between the two files. Exit 0 = pass; exit 2 = at least one violation (each enumerated on stderr). On exit 2, surface stderr verbatim and ABORT — the user must address the violations before `/constitute`.
+`verify` cross-checks `.devforge/configure.yaml` + `.devforge/project-config.json`: every required field populated; AC runtime fields exempt unless `ac_verification_mode == runtime-assisted`; round-trip identity between the two files. Exit 0 = pass; exit 2 = at least one violation (each enumerated on stderr). On exit 2, surface stderr verbatim and ABORT — the user must address the violations before `/devforge:constitute`.
 
 `project_natures` is one of the required fields: an empty value is flagged as a violation (no AC-mode exemption applies). Phase 2's composition rule and Phase 3's `set-project-natures` setter are jointly responsible for populating it; if `verify` reports `PROJECT_NATURES is empty`, Phase 5.2's `prune-agents` would have already aborted with exit 2 before reaching Phase 7, so this violation only appears when `verify` is invoked standalone after a partial earlier run.
 
@@ -478,4 +478,4 @@ Scope note: `verify` does NOT re-scan `CLAUDE.md` or `.claude/agents/*.md` for r
 
 ## Closing
 
-`/configure` is complete. The 29 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 37 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/constitute` next."
+`/devforge:configure` is complete. The 29 configuration fields are persisted in `.devforge/configure.yaml`; `.devforge/project-config.json` carries all 37 keys; `.claude/agents/` is pruned to the agents whose `applies_to` overlaps `project_natures` (or every shipped agent retained when the user replied `cancel` in Phase 5.2); `CLAUDE.md` and every remaining file under `.claude/agents/` is fully substituted; the framework's folders were excluded from the project's linters (Phase 6 — applied, skipped on `cancel`/error, or nothing-to-do). Tell the user: "Run `/devforge:constitute` next."

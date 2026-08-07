@@ -88,13 +88,13 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
     if missing:
         sys.stderr.write(
-            "BLOCKED: /discover requires the full 4-command setup chain.\n"
+            "BLOCKED: /devforge:discover requires the full 4-command setup chain.\n"
         )
         for rel, producer in missing:
             sys.stderr.write("Missing: {0} (produced by {1})\n".format(rel, producer))
         sys.stderr.write(
-            "Run: /init-forge → /generate-docs → /configure → /constitute, "
-            "then retry /discover.\n"
+            "Run: /devforge:init-forge → /devforge:generate-docs → /devforge:configure → "
+            "/devforge:constitute, then retry /devforge:discover.\n"
         )
         return 2
     return 0
@@ -418,8 +418,8 @@ def cmd_render(args: argparse.Namespace) -> int:
         lines.append("## Next step")
         lines.append("")
         lines.append(
-            "Copy the block below into a new /specify session manually. "
-            "No automated handoff — user controls when /specify runs."
+            "Copy the block below into a new /devforge:specify session manually. "
+            "No automated handoff — user controls when /devforge:specify runs."
         )
         lines.append("")
         lines.append("~~~")

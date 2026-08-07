@@ -93,7 +93,8 @@ def cmd_preflight(args):
         sys.stderr.write(
             "finalize_helper preflight: setup chain incomplete. "
             "Run the 4-command setup sequence first:\n"
-            "  /init-forge -> /generate-docs -> /configure -> /constitute\n"
+            "  /devforge:init-forge -> /devforge:generate-docs -> /devforge:configure -> "
+            "/devforge:constitute\n"
             "Missing: {0}\n".format(", ".join(missing))
         )
         return 2
@@ -107,7 +108,7 @@ def cmd_preflight(args):
         sys.stderr.write(
             "finalize_helper preflight: spec is not Complete "
             "(current status: {0}). "
-            "Run `/verify` first to approve the feature before finalizing.\n".format(
+            "Run `/devforge:verify` first to approve the feature before finalizing.\n".format(
                 status
             )
         )
@@ -186,7 +187,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="finalize_helper",
         description=(
-            "Helper for /finalize — the terminal PR-prep step. "
+            "Helper for /devforge:finalize — the terminal PR-prep step. "
             "Gates on setup chain + spec Complete, dispatches tech-writer for "
             "surgical docs/ updates, and squashes WIP/checkpoint commits into "
             "one clean feature commit. "

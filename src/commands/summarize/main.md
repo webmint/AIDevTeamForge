@@ -1,29 +1,28 @@
 ---
 name: summarize
-description: PR-ready feature summary of a completed feature. Runs after `/verify` approves and before `/finalize`. Synthesizes a copy-pasteable narrative — what was built (user terms), change stats, key decisions, deviations, and the AC status read from `verification.md` — into `specs/[feature]/summary.md`. Pure synthesis: agent-free, renders no verdict, and mutates none of its inputs.
+description: PR-ready summary of a completed feature — what was built (in user terms), change stats, key decisions, deviations, and AC status. Runs after `/devforge:verify` approves and before `/devforge:finalize`. Pure synthesis — agent-free, renders no verdict, mutates none of its inputs.
 argument-hint: "[spec-file]"
-disable-model-invocation: true
 ---
 
-# /summarize — PR-Ready Feature Summary
+# /devforge:summarize — PR-Ready Feature Summary
 
-`/summarize` is the pipeline step run after `/verify` approves and before `/finalize`. It owns the ONE job nothing else in the pipeline owns: **the PR-ready human-facing feature narrative**. `/verify` owns the verdict; `/review` owns findings; `/summarize` owns the synthesized story of what was built — in user terms — once the feature record is complete. Its output (`specs/[feature]/summary.md`) is copy-ready for a PR description. State + render shape are owned by `.devforge/lib/summarize_helper`; the orchestrator composes values via verb subcommands and writes the summary prose itself.
+`/devforge:summarize` is the pipeline step run after `/devforge:verify` approves and before `/devforge:finalize`. It owns the ONE job nothing else in the pipeline owns: **the PR-ready human-facing feature narrative**. `/devforge:verify` owns the verdict; `/devforge:review` owns findings; `/devforge:summarize` owns the synthesized story of what was built — in user terms — once the feature record is complete. Its output (`specs/[feature]/summary.md`) is copy-ready for a PR description. State + render shape are owned by `.devforge/lib/summarize_helper`; the orchestrator composes values via verb subcommands and writes the summary prose itself.
 
-**`/summarize` is pure SYNTHESIS — agent-free, no verdict, read-only on its inputs.** It runs NO finder ensemble, NO refutation pass, and dispatches NO agent. It does NOT verify (that is `/verify`), does NOT find issues (that is `/review`), and does NOT squash commits or generate docs (that is `/finalize`). It REFERENCES the verdict `/verify` already computed (read from `verification.md`) but never renders one of its own. It writes ONLY `specs/[feature]/summary.md` and touches none of its inputs (spec, plan, task files, `verification.md`, git history).
+**`/devforge:summarize` is pure SYNTHESIS — agent-free, no verdict, read-only on its inputs.** It runs NO finder ensemble, NO refutation pass, and dispatches NO agent. It does NOT verify (that is `/devforge:verify`), does NOT find issues (that is `/devforge:review`), and does NOT squash commits or generate docs (that is `/devforge:finalize`). It REFERENCES the verdict `/devforge:verify` already computed (read from `verification.md`) but never renders one of its own. It writes ONLY `specs/[feature]/summary.md` and touches none of its inputs (spec, plan, task files, `verification.md`, git history).
 
-Usage: `/summarize` (auto-resolve the most-recently-modified `specs/NNN-*` feature) · `/summarize specs/001-auth` or `/summarize specs/001-auth/spec.md` (an explicit feature dir or a spec file inside it).
+Usage: `/devforge:summarize` (auto-resolve the most-recently-modified `specs/NNN-*` feature) · `/devforge:summarize specs/001-auth` or `/devforge:summarize specs/001-auth/spec.md` (an explicit feature dir or a spec file inside it).
 
 ## Maintainer note
 
-This file lives at `src/commands/summarize/main.md` in the AIDevTeamForge template repo and is the SSOT for the `/summarize` command. Do NOT inject project-specifics — this spec is substituted + emitted into target projects by the build. Helper paths use the installed `.devforge/lib/...` location because that's where they resolve at runtime in the target project. Reference-file paths are written author-relative (`references/<file>.md`); the emitter rewrites them to `.claude/commands/summarize/references/<file>.md` at install time.
+This file lives at `src/commands/summarize/main.md` in the AIDevTeamForge template repo and is the SSOT for the `/devforge:summarize` command. Do NOT inject project-specifics — this spec is substituted + emitted into target projects by the build. Helper paths use the installed `.devforge/lib/...` location because that's where they resolve at runtime in the target project. Reference-file paths are written author-relative (`references/<file>.md`); the emitter rewrites them to `.devforge/command-refs/summarize/<file>.md` at install time.
 
 ## Outputs of this command
 
 The only file this command writes under the repo is:
 
-- `specs/[feature]/summary.md` — the rendered feature summary (What was built / Changes / Files changed / Key decisions / Deviations / Acceptance criteria). Composed INLINE by the orchestrator in PHASE 3 and written with the Write tool in PHASE 4. Idempotent: re-running `/summarize` on the same feature OVERWRITES `summary.md`.
+- `specs/[feature]/summary.md` — the rendered feature summary (What was built / Changes / Files changed / Key decisions / Deviations / Acceptance criteria). Composed INLINE by the orchestrator in PHASE 3 and written with the Write tool in PHASE 4. Idempotent: re-running `/devforge:summarize` on the same feature OVERWRITES `summary.md`.
 
-`/summarize` makes ONE `[WIP]` commit (PHASE 4) that adds `summary.md`; it mutates no other tracked file. The WIP commit is squashed later by `/finalize`.
+`/devforge:summarize` makes ONE `[WIP]` commit (PHASE 4) that adds `summary.md`; it mutates no other tracked file. The WIP commit is squashed later by `/devforge:finalize`.
 
 ### Intermediate scratch files (orchestrator-written, helper-consumed) — all under `$WORKDIR`
 
@@ -52,9 +51,9 @@ Cheapest guards first; preflight before any feature I/O.
 Resolve the feature dir from `$ARGUMENTS`:
 
 - When `$ARGUMENTS` names a feature directory (`specs/NNN-<slug>`) or a file inside one (e.g. `specs/001-auth/spec.md`), use that feature directory (strip a trailing filename to the `specs/NNN-<slug>` dir).
-- When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/verify`).
+- When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/devforge:verify`).
 
-If no `specs/NNN-*` directory exists, tell the user there is no feature to summarize (run `/specify` → `/plan` → `/breakdown` → `/implement` → `/review` → `/verify` first) and end the turn. Carry the resolved feature dir forward as `<feature>` — the spec file inside it is `<feature>/spec.md` (the `--spec` value 0.2 needs).
+If no `specs/NNN-*` directory exists, tell the user there is no feature to summarize (run `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` → `/devforge:verify` first) and end the turn. Carry the resolved feature dir forward as `<feature>` — the spec file inside it is `<feature>/spec.md` (the `--spec` value 0.2 needs).
 
 ### 0.2 — Preflight + the spec-Complete gate
 
@@ -62,10 +61,10 @@ If no `specs/NNN-*` directory exists, tell the user there is no feature to summa
 .devforge/lib/summarize_helper preflight --workspace-root . --spec <feature>/spec.md > /tmp/summarize-preflight-check.json
 ```
 
-`preflight` checks the 4-command setup chain (`/init-forge → /generate-docs → /configure → /constitute`) AND the spec `**Status**: Complete` gate. It ALWAYS writes its JSON context block to stdout BEFORE any gate check, then exits:
+`preflight` checks the 4-command setup chain (`/devforge:init-forge → /devforge:generate-docs → /devforge:configure → /devforge:constitute`) AND the spec `**Status**: Complete` gate. It ALWAYS writes its JSON context block to stdout BEFORE any gate check, then exits:
 
 - **2** — a setup-chain artefact is missing. On exit 2, copy the helper's stderr VERBATIM as a fenced code block and end the turn — the user runs the named missing command first.
-- **3** — the spec is not `**Status**: Complete` (or the spec is absent). `/summarize` runs AFTER `/verify` flips the spec to Complete on an APPROVED verdict, so a non-Complete spec means `/verify` has not yet approved this feature. On exit 3, copy the helper's stderr VERBATIM as a fenced code block and end the turn (the message names the current spec status and instructs the user to run `/verify` first).
+- **3** — the spec is not `**Status**: Complete` (or the spec is absent). `/devforge:summarize` runs AFTER `/devforge:verify` flips the spec to Complete on an APPROVED verdict, so a non-Complete spec means `/devforge:verify` has not yet approved this feature. On exit 3, copy the helper's stderr VERBATIM as a fenced code block and end the turn (the message names the current spec status and instructs the user to run `/devforge:verify` first).
 - **0** — both gates pass. The stdout JSON carries `source_root` (the project's Source Root — `.` for a standalone install, the inner project subdir in wrapper mode), `wrapper_mode`, `framework`, `language`, `spec_status`, and `spec_complete`.
 
 (`$WORKDIR` is not established until 0.3, so this gate call captures to a fixed `/tmp` path; 0.3 re-runs `preflight` into `$WORKDIR/preflight.json` once the scratch dir exists. `preflight` is read-only and cheap, so running it twice is harmless.) Carry `source_root` AND `wrapper_mode` forward: PHASE 1 branches on `wrapper_mode` to decide whether to pass `--source-root` / `--install-root` to `gather-change-data` (standalone passes neither; wrapper mode passes both).
@@ -90,17 +89,17 @@ WORKDIR="${TMPDIR:-/tmp}/forge-summarize"
 
 ### 0.4 — Already-finalized warning (commit-state check)
 
-Check whether the feature was already finalized before summarizing. `/summarize` is meant to run on a feature whose tasks are still recorded as unsquashed `[WIP]` / `[checkpoint]` commits (the per-task history `/implement` accumulated); `/finalize` squashes those into a single clean `feat(*)` commit. If `/finalize` already ran, the task-by-task history is gone and the summary reflects only the current assembled state.
+Check whether the feature was already finalized before summarizing. `/devforge:summarize` is meant to run on a feature whose tasks are still recorded as unsquashed `[WIP]` / `[checkpoint]` commits (the per-task history `/devforge:implement` accumulated); `/devforge:finalize` squashes those into a single clean `feat(*)` commit. If `/devforge:finalize` already ran, the task-by-task history is gone and the summary reflects only the current assembled state.
 
 ```bash
 git log --oneline --grep='\[WIP\]' --grep='\[checkpoint\]'
 ```
 
-(Pass each prefix as its own `--grep` — git ORs multiple `--grep` patterns. Do NOT combine them with a `\|` alternation: that is a GNU-BRE extension BSD/macOS git does not honor, so it would match a literal `\|`, find nothing, and fire the warning on every run.) This is a branch-GLOBAL heuristic backing a non-blocking warning — it searches ALL branch commits, not just this feature's, so on a branch with several sequential features it is intentionally approximate (feature-scoping the grep would itself be unreliable, since per-task `[WIP]` messages need not carry the feature slug). If this prints no `[WIP]` / `[checkpoint]` commits AND a clean `feat(*)` commit for this feature is present, warn the user (do NOT stop): *the feature appears already finalized — no `[WIP]`/`[checkpoint]` commits remain and a clean feature commit is present, so this summary will reflect the current assembled state, not the task-by-task history. For the richest summary, run `/summarize` before `/finalize`.* The Commit Convention in `CLAUDE.md` defines the `[WIP]` / `[checkpoint]` / `feat(scope):` prefixes this check keys on. Then proceed — the summary is still useful from the current state.
+(Pass each prefix as its own `--grep` — git ORs multiple `--grep` patterns. Do NOT combine them with a `\|` alternation: that is a GNU-BRE extension BSD/macOS git does not honor, so it would match a literal `\|`, find nothing, and fire the warning on every run.) This is a branch-GLOBAL heuristic backing a non-blocking warning — it searches ALL branch commits, not just this feature's, so on a branch with several sequential features it is intentionally approximate (feature-scoping the grep would itself be unreliable, since per-task `[WIP]` messages need not carry the feature slug). If this prints no `[WIP]` / `[checkpoint]` commits AND a clean `feat(*)` commit for this feature is present, warn the user (do NOT stop): *the feature appears already finalized — no `[WIP]`/`[checkpoint]` commits remain and a clean feature commit is present, so this summary will reflect the current assembled state, not the task-by-task history. For the richest summary, run `/devforge:summarize` before `/devforge:finalize`.* The Commit Convention in `CLAUDE.md` defines the `[WIP]` / `[checkpoint]` / `feat(scope):` prefixes this check keys on. Then proceed — the summary is still useful from the current state.
 
 ## PHASE 1 — Gather change data
 
-Compute the assembled-feature change data — the union of every change the feature made across all the WIP commits `/implement` accumulated (squashed only by `/finalize`, which has not run yet). Read `wrapper_mode` and `source_root` from `$WORKDIR/preflight.json` (PHASE 0) and branch on them:
+Compute the assembled-feature change data — the union of every change the feature made across all the WIP commits `/devforge:implement` accumulated (squashed only by `/devforge:finalize`, which has not run yet). Read `wrapper_mode` and `source_root` from `$WORKDIR/preflight.json` (PHASE 0) and branch on them:
 
 - **Standalone install** (`source_root` is `"."`): pass `--feature-dir <feature>` ONLY. Omit `--source-root` and `--install-root` — the helper defaults both to `"."`, which is correct here.
 - **Wrapper mode** (`source_root` is NOT `"."` per `preflight.json`): pass `--feature-dir <feature> --source-root <source-root> --install-root <install-root>`. `--source-root` is the code repo (the inner project subdir, the `source_root` value); `--install-root` is the forge install root where `.devforge/` lives (the wrapper root — typically the cwd `.`). **Both flags are mandatory in wrapper mode.** If `--install-root` is omitted the helper defaults it to `source_root` — then `abs_source == abs_install`, the wrapper-mode guard never fires, and `source_changes` is silently `null`, dropping the source-repo change set from the summary (breaking D5). Never omit `--install-root` in wrapper mode.
@@ -117,7 +116,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-summarize"
   > "$WORKDIR/changes.json"
 ```
 
-`gather-change-data` resolves the assembled-feature diff via the shared scope resolver (the same `_shared.feature_scope` resolver `/review` and `/verify` use, with the heading label "Summary Scope"), then supplements it with a `git diff --stat <base>..HEAD` for the +/- line totals the resolver does not provide. The base ref auto-detects via `origin/HEAD → main → develop → master`; pass `--base <ref>` when auto-detection fails (the stderr message says so). In wrapper mode the `--install-root` passed above (the forge install root where `.devforge/` lives) is what makes `source_changes` non-null — see the per-mode branch above. Stdout JSON carries `files` (sorted source-relative changed paths), `files_for_finders` (the same list, source-root-prefixed in wrapper mode), `file_count`, `scope_block`, `by_directory` (files grouped by top-level directory), `insertions`, `deletions`, `stat_summary` (the raw `git diff --stat` summary line), and `source_changes`. On a non-zero exit (not a git repo, bad ref, no auto-detectable base), copy the helper's stderr VERBATIM and end the turn.
+`gather-change-data` resolves the assembled-feature diff via the shared scope resolver (the same `_shared.feature_scope` resolver `/devforge:review` and `/devforge:verify` use, with the heading label "Summary Scope"), then supplements it with a `git diff --stat <base>..HEAD` for the +/- line totals the resolver does not provide. The base ref auto-detects via `origin/HEAD → main → develop → master`; pass `--base <ref>` when auto-detection fails (the stderr message says so). In wrapper mode the `--install-root` passed above (the forge install root where `.devforge/` lives) is what makes `source_changes` non-null — see the per-mode branch above. Stdout JSON carries `files` (sorted source-relative changed paths), `files_for_finders` (the same list, source-root-prefixed in wrapper mode), `file_count`, `scope_block`, `by_directory` (files grouped by top-level directory), `insertions`, `deletions`, `stat_summary` (the raw `git diff --stat` summary line), and `source_changes`. On a non-zero exit (not a git repo, bad ref, no auto-detectable base), copy the helper's stderr VERBATIM and end the turn.
 
 **Empty-diff stop.** If `file_count` is `0` (HEAD == merge-base — the feature has no changes yet, or it is already squashed/merged), there is nothing to summarize: tell the user the feature diff is empty (no changes between the base and HEAD), clean up (`rm -rf "$WORKDIR"`), and end the turn gracefully. This is not an error — it is an empty feature.
 
@@ -134,9 +133,9 @@ WORKDIR="${TMPDIR:-/tmp}/forge-summarize"
 .devforge/lib/summarize_helper read-verification --path <feature>/verification.md > "$WORKDIR/verification.json"
 ```
 
-`read-verification` parses `/verify`'s `specs/[feature]/verification.md` into `ac_list` (one dict per AC with `id`, `status`, `evidence` — the status is the AUTHORITATIVE per-AC result `/verify` already proved) and `verdict` (`APPROVED` / `NEEDS WORK` / `REJECTED`, or `""` when none was found). **The AC status comes from `verification.md`'s table, NOT re-derived from the spec** (D3) — `/verify` already proved each AC PASS/FAIL/PARTIAL, and `/summarize` reports that result verbatim. The `verdict` is REFERENCED in the summary (it is `/verify`'s verdict — `/summarize` does not compute it).
+`read-verification` parses `/devforge:verify`'s `specs/[feature]/verification.md` into `ac_list` (one dict per AC with `id`, `status`, `evidence` — the status is the AUTHORITATIVE per-AC result `/devforge:verify` already proved) and `verdict` (`APPROVED` / `NEEDS WORK` / `REJECTED`, or `""` when none was found). **The AC status comes from `verification.md`'s table, NOT re-derived from the spec** (D3) — `/devforge:verify` already proved each AC PASS/FAIL/PARTIAL, and `/devforge:summarize` reports that result verbatim. The `verdict` is REFERENCED in the summary (it is `/devforge:verify`'s verdict — `/devforge:summarize` does not compute it).
 
-**Missing-verification warning (proceed weakened).** `read-verification` exits 2 when `verification.md` cannot be opened (it is absent). On that exit, warn the user: *no verification report was found at `<feature>/verification.md` — run `/verify` first for the authoritative AC status; proceeding with the summary but the Acceptance-criteria section will be marked unverified.* Do NOT end the turn — write an empty `$WORKDIR/verification.json` (`{"ac_list": [], "verdict": ""}`) with the Write tool, proceed, and in PHASE 3 render the Acceptance-criteria section as "_No verification report found — run `/verify` to populate AC status._" rather than fabricating statuses. (This mirrors how `/verify` proceeds weakened on a missing `/review` report rather than stopping.)
+**Missing-verification warning (proceed weakened).** `read-verification` exits 2 when `verification.md` cannot be opened (it is absent). On that exit, warn the user: *no verification report was found at `<feature>/verification.md` — run `/devforge:verify` first for the authoritative AC status; proceeding with the summary but the Acceptance-criteria section will be marked unverified.* Do NOT end the turn — write an empty `$WORKDIR/verification.json` (`{"ac_list": [], "verdict": ""}`) with the Write tool, proceed, and in PHASE 3 render the Acceptance-criteria section as "_No verification report found — run `/devforge:verify` to populate AC status._" rather than fabricating statuses. (This mirrors how `/devforge:verify` proceeds weakened on a missing `/devforge:review` report rather than stopping.)
 
 ### 2.2 — Parse the task completion notes
 
@@ -150,7 +149,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-summarize"
   > "$WORKDIR/notes.json"
 ```
 
-(Substitute the actual task filenames — one `--task-file` per task file, `README.md` excluded.) `parse-completion-notes` parses each task's `## Completion Notes` section (filled by `/implement`'s `mark-complete`) and emits a JSON ARRAY, one dict per task, with `completed_at`, `files_changed` (list), `expects_met`, `produces_met`, `notes` (the deviation / observation text, `""` when none), `has_unverified` (bool), `has_notes` (bool — `false` when the task has no `## Completion Notes` section yet), and `task_file` (the path). The orchestrator reads `files_changed` + `notes` per task for the Changes + Deviations sections. On a non-zero exit (an unreadable task file), copy the helper's stderr VERBATIM and end the turn.
+(Substitute the actual task filenames — one `--task-file` per task file, `README.md` excluded.) `parse-completion-notes` parses each task's `## Completion Notes` section (filled by `/devforge:implement`'s `mark-complete`) and emits a JSON ARRAY, one dict per task, with `completed_at`, `files_changed` (list), `expects_met`, `produces_met`, `notes` (the deviation / observation text, `""` when none), `has_unverified` (bool), `has_notes` (bool — `false` when the task has no `## Completion Notes` section yet), and `task_file` (the path). The orchestrator reads `files_changed` + `notes` per task for the Changes + Deviations sections. On a non-zero exit (an unreadable task file), copy the helper's stderr VERBATIM and end the turn.
 
 ### 2.3 — Read the plan's key decisions
 
@@ -176,15 +175,15 @@ Keep it concise: this is a summary, not a report. Deduplicate — group files by
 
 ## PHASE 4 — Write summary.md + WIP commit
 
-Write the composed summary to `specs/[feature]/summary.md` with the Write tool (idempotent overwrite — re-running `/summarize` replaces any prior `summary.md`; D6). There is NO `write-summary` helper verb — the orchestrator writes the prose directly, because the synthesis is inline (D6).
+Write the composed summary to `specs/[feature]/summary.md` with the Write tool (idempotent overwrite — re-running `/devforge:summarize` replaces any prior `summary.md`; D6). There is NO `write-summary` helper verb — the orchestrator writes the prose directly, because the synthesis is inline (D6).
 
-Then make a single `[WIP]` commit adding `summary.md`, following the Commit Convention in `CLAUDE.md` (the `[WIP] Type: description` shape; `[WIP]` commits are squashed into the final feature commit by `/finalize`):
+Then make a single `[WIP]` commit adding `summary.md`, following the Commit Convention in `CLAUDE.md` (the `[WIP] Type: description` shape; `[WIP]` commits are squashed into the final feature commit by `/devforge:finalize`):
 
 ```bash
 git add specs/<feature>/summary.md && git commit -m "[WIP] Feature summary: <NNN-slug>"
 ```
 
-Substitute `<feature>` (the full `specs/NNN-<slug>` path) and `<NNN-slug>` (the feature's numbered slug). `/summarize` stages and commits ONLY `summary.md` — it mutates no other tracked file (D4).
+Substitute `<feature>` (the full `specs/NNN-<slug>` path) and `<NNN-slug>` (the feature's numbered slug). `/devforge:summarize` stages and commits ONLY `summary.md` — it mutates no other tracked file (D4).
 
 ## PHASE 5 — Present + next step
 
@@ -193,7 +192,7 @@ Present the composed summary to the user, then point to the next pipeline step:
 ```
 Summary saved to specs/[feature]/summary.md — copy-ready for a PR description.
 
-Next: run `/finalize` to write surgical `docs/` updates via tech-writer and squash the WIP commits into a clean feature commit.
+Next: run `/devforge:finalize` to write surgical `docs/` updates via tech-writer and squash the WIP commits into a clean feature commit.
 ```
 
 Then clean up the scratch directory — nothing else needs it after the summary is written:
@@ -209,7 +208,7 @@ rm -rf "$WORKDIR"
 2. **User-facing language** — describe what was built in terms of behavior and outcomes, not implementation mechanics. "Added email validation to signup", not "Created `validateEmail` in `utils/validation.ts`".
 3. **Deduplicate** — when multiple tasks touched the same directory or area, group them in Files changed rather than listing each file.
 4. **No speculation** — include only information present in the spec, plan, task `## Completion Notes`, `verification.md`, or git data. Do not infer or guess.
-5. **Idempotent** — re-running `/summarize` overwrites `summary.md` with a fresh summary (D6).
-6. **Renders no verdict** (D1) — the verdict is `/verify`'s. `/summarize` REFERENCES the verdict it reads from `verification.md` but never computes or renders one of its own. There is no finder ensemble, no refutation pass, and no agent dispatch.
-7. **Read-only on inputs** (D4) — `/summarize` writes ONLY `specs/[feature]/summary.md` (and the one `[WIP]` commit that adds it). It never mutates the spec, plan, task files, `verification.md`, or git history. This is the deliberate contrast with `/verify`, which writes back to the spec.
+5. **Idempotent** — re-running `/devforge:summarize` overwrites `summary.md` with a fresh summary (D6).
+6. **Renders no verdict** (D1) — the verdict is `/devforge:verify`'s. `/devforge:summarize` REFERENCES the verdict it reads from `verification.md` but never computes or renders one of its own. There is no finder ensemble, no refutation pass, and no agent dispatch.
+7. **Read-only on inputs** (D4) — `/devforge:summarize` writes ONLY `specs/[feature]/summary.md` (and the one `[WIP]` commit that adds it). It never mutates the spec, plan, task files, `verification.md`, or git history. This is the deliberate contrast with `/devforge:verify`, which writes back to the spec.
 8. **Authoritative AC status** (D3) — the Acceptance-criteria section takes each AC's status VERBATIM from `verification.md`'s table; it is never re-derived from the spec.

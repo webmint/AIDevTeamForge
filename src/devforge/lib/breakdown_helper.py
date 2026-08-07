@@ -393,13 +393,13 @@ def cmd_pick_plan(args: argparse.Namespace) -> int:
     specs_dir = Path(cwd) / "specs"
     if not specs_dir.is_dir():
         return _die(
-            "pick-plan: no plan found under specs/; run /plan first"
+            "pick-plan: no plan found under specs/; run /devforge:plan first"
         )
 
     all_paths = _glob_plans(cwd)
     if not all_paths:
         return _die(
-            "pick-plan: no plan found under specs/; run /plan first"
+            "pick-plan: no plan found under specs/; run /devforge:plan first"
         )
 
     # Pick highest mtime.
@@ -1089,10 +1089,10 @@ def cmd_render_task_file(args: argparse.Namespace) -> int:
         lines.append("- [ ] {0}".format(fixed_line))
     lines.append("")
 
-    # Completion Notes — skeleton for /implement.
+    # Completion Notes — skeleton for /devforge:implement.
     lines.append("## Completion Notes")
     lines.append("")
-    lines.append("[Filled in by /implement after completion]")
+    lines.append("[Filled in by /devforge:implement after completion]")
     lines.append("**Completed**: [date/time]")
     lines.append("**Files changed**: [actual files]")
     lines.append("**Contract**: Expects [X/Y verified] | Produces [X/Y verified]")
@@ -1796,7 +1796,7 @@ def _validate_manifest_present(
             "- {ref} is present but {manifest} is absent.\n"
             "  The PHASE 2.5 design-intake gate was skipped or did not complete.\n"
             "\n"
-            "Remedy: re-run /breakdown PHASE 2.5 to produce the binding for\n"
+            "Remedy: re-run /devforge:breakdown PHASE 2.5 to produce the binding for\n"
             "  feature '{feature}' before proceeding to PHASE 3.5.\n"
             "  The binding must declare a route and at least one\n"
             "  anchor_selector/built_testid pair (the container floor) before\n"
@@ -3491,17 +3491,17 @@ def cmd_render_implement_handoff(args: argparse.Namespace) -> int:
             checkpoint_count += 1
 
     output = (
-        "## Manual next step — run /implement\n"
+        "## Manual next step — run /devforge:implement\n"
         "\n"
         "The breakdown is approved. No automated handoff exists — restart Claude Code "
         "(exit and relaunch the CLI/app so any newly-installed command is picked up), "
         "then run:\n"
         "\n"
         "```\n"
-        "/implement\n"
+        "/devforge:implement\n"
         "```\n"
         "\n"
-        "/implement will start with task {first_number}{title_suffix}.\n"
+        "/devforge:implement will start with task {first_number}{title_suffix}.\n"
         "\n"
         "**Total tasks**: {total_tasks}\n"
         "**First task**: {first_number}{title_suffix}\n"
@@ -3526,7 +3526,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="breakdown_helper",
         description=(
-            "Structural emission helper for the /breakdown slash command. "
+            "Structural emission helper for the /devforge:breakdown slash command. "
             "Helper owns shape; LLM composes values."
         ),
     )
@@ -3831,7 +3831,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser(
         "render-implement-handoff",
         help=(
-            "Emit the manual next-step block targeting /implement. "
+            "Emit the manual next-step block targeting /devforge:implement. "
             "Reads plan.md + tasks/*.md to compute task count and first task. "
             "Exit 0; exit 2 if plan.md or tasks-dir is missing or empty."
         ),

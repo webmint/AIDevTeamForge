@@ -120,6 +120,17 @@ class TestSentinelSet(unittest.TestCase):
     def test_run_constitute_to_populate_sentinel_present(self):
         self.assertIn("Run /constitute to populate", _UNPOPULATED_SENTINELS)
 
+    def test_run_constitute_to_populate_legacy_no_slash_sentinel_present(self):
+        # Pre-namespace stub literal (no slash) -- the form every existing
+        # consumer install actually carries.
+        self.assertIn("Run constitute to populate", _UNPOPULATED_SENTINELS)
+
+    def test_run_devforge_constitute_to_populate_sentinel_present(self):
+        # Post-namespace stub literal (current, plan 63 Phase 4c).
+        self.assertIn(
+            "Run /devforge:constitute to populate", _UNPOPULATED_SENTINELS
+        )
+
     def test_sentinel_parity_with_audit(self):
         """The sentinel tuple must match _audit._preflight._UNPOPULATED_SENTINELS."""
         from _audit._preflight import _UNPOPULATED_SENTINELS as audit_sentinels
@@ -262,8 +273,39 @@ class TestPreflightContext(unittest.TestCase):
         self.assertFalse(r["constitution_populated"])
 
     def test_constitution_with_populate_sentinel_unpopulated(self):
+        # Pre-namespace stub literal (no slash) -- the form every existing
+        # consumer install actually carries (src/constitution.md has always
+        # shipped this exact text).
+        self.assertEqual(
+            _UNPOPULATED_SENTINELS[2], "Run constitute to populate"
+        )
         _write(self.td, "constitution.md",
                "{0} — see instructions.".format(_UNPOPULATED_SENTINELS[2]))
+        r = preflight_context(self.td)
+        self.assertTrue(r["constitution_present"])
+        self.assertFalse(r["constitution_populated"])
+
+    def test_constitution_with_legacy_slash_sentinel_unpopulated(self):
+        # Index [2] (used by test_constitution_with_populate_sentinel_unpopulated
+        # above) is the pre-namespace NO-slash form -- the form every existing
+        # consumer install actually carries. This test covers index [3], the
+        # pre-namespace WITH-slash form, kept for back-compat.
+        self.assertEqual(
+            _UNPOPULATED_SENTINELS[3], "Run /constitute to populate"
+        )
+        _write(self.td, "constitution.md",
+               "{0} — see instructions.".format(_UNPOPULATED_SENTINELS[3]))
+        r = preflight_context(self.td)
+        self.assertTrue(r["constitution_present"])
+        self.assertFalse(r["constitution_populated"])
+
+    def test_constitution_with_devforge_namespaced_sentinel_unpopulated(self):
+        # Post-namespace stub literal (current, plan 63 Phase 4c).
+        self.assertEqual(
+            _UNPOPULATED_SENTINELS[4], "Run /devforge:constitute to populate"
+        )
+        _write(self.td, "constitution.md",
+               "{0} — see instructions.".format(_UNPOPULATED_SENTINELS[4]))
         r = preflight_context(self.td)
         self.assertTrue(r["constitution_present"])
         self.assertFalse(r["constitution_populated"])
@@ -287,28 +329,28 @@ class TestPreflightContext(unittest.TestCase):
         os.unlink(os.path.join(self.td, "constitution.md"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/constitute", r["missing_artefacts"])
+        self.assertIn("/devforge:constitute", r["missing_artefacts"])
 
     def test_missing_claude_md_flagged(self):
         _make_full_install(self.td)
         os.unlink(os.path.join(self.td, "CLAUDE.md"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/init-forge", r["missing_artefacts"])
+        self.assertIn("/devforge:init-forge", r["missing_artefacts"])
 
     def test_missing_project_config_flagged(self):
         _make_full_install(self.td)
         os.unlink(os.path.join(self.td, ".devforge", "project-config.json"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/configure", r["missing_artefacts"])
+        self.assertIn("/devforge:configure", r["missing_artefacts"])
 
     def test_missing_index_json_flagged(self):
         _make_full_install(self.td)
         os.unlink(os.path.join(self.td, ".devforge", "index.json"))
         r = preflight_context(self.td)
         self.assertFalse(r["setup_chain_ok"])
-        self.assertIn("/generate-docs", r["missing_artefacts"])
+        self.assertIn("/devforge:generate-docs", r["missing_artefacts"])
 
     def test_three_missing_artefacts_lists_three(self):
         _write(self.td, "constitution.md",

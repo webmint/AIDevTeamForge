@@ -1,8 +1,8 @@
 === EMERGENT CROSS-TASK REVIEW — SCOPE DISCIPLINE ===
 
 Every task in this feature was ALREADY reviewed in isolation before it
-reached you. `/implement` runs a per-task review PANEL of four read-only
-reviewers — code-reviewer, qa-reviewer, security-reviewer, and
+reached you. `/devforge:implement` runs a per-task review PANEL of four
+read-only reviewers — code-reviewer, qa-reviewer, security-reviewer, and
 performance-analyst — over each task's own diff, merged to a single verdict,
 behind an all-findings-fixed gate: a task is approved ONLY from a fully-clean
 panel, with every finding fixed and no unresolved finding or conflict
@@ -28,10 +28,10 @@ THE OUT-OF-SCOPE RULE:
   compose — it is IN SCOPE. This is the work nothing else in the pipeline does.
 
 THIS IS A BEHAVIORAL INSTRUCTION, NOT A MECHANICAL FILTER. There is no
-persisted list of the per-task panel's findings to dedup against — `/implement`
-drives each task's findings to clean and writes nothing to disk for this run to
-compare with. So nothing here mechanically blocks a re-flag; the discipline is
-yours. The downstream refutation pass will DISMISS any re-flag that cannot be
+persisted list of the per-task panel's findings to dedup against —
+`/devforge:implement` drives each task's findings to clean and writes nothing
+to disk for this run to compare with. So nothing here mechanically blocks a
+re-flag; the discipline is yours. The downstream refutation pass will DISMISS any re-flag that cannot be
 demonstrated as emergent at feature scope — a finding contained in a single
 task cannot survive cross-examination here, because the refuter will see it is
 a single-task concern the panel already owned. Do not waste a finding on

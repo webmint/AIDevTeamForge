@@ -256,7 +256,7 @@ class TestRenderReportUnsat(unittest.TestCase):
 
     def test_d11_scope_line_verbatim(self):
         expected = (
-            "> **Scope:** /spec-check is a consistency prover, not a "
+            "> **Scope:** /devforge:spec-check is a consistency prover, not a "
             "mind-reader. It checks whether your acceptance criteria "
             "contradict *each other* -- not whether they are what you "
             "*meant*. A single coherent-but-wrong AC will pass."
@@ -551,7 +551,7 @@ class TestRenderReportStability(unittest.TestCase):
         self.assertIn(
             "**Formalization unstable:** a contradiction appeared in some "
             "but not a majority of 1/2 passes -- NOT treated as "
-            "confirmed; re-run `/spec-check` or inspect the "
+            "confirmed; re-run `/devforge:spec-check` or inspect the "
             "formalization.",
             report,
         )

@@ -571,7 +571,7 @@ _SUBCOMMAND_REGISTRY = [
     ),
     (
         "import-handoffs",
-        "Import relevant /research + /discover handoff docs (Step 6).",
+        "Import relevant /devforge:research + /devforge:discover handoff docs (Step 6).",
         cmd_import_handoffs,
     ),
     (
@@ -602,7 +602,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pr_review_helper",
         description=(
-            "State + review helper for /pr-review. "
+            "State + review helper for /devforge:pr-review. "
             "Personal-overlay PR review of foreign repos; "
             "AI-slop + blast-radius + scope-drift detection."
         ),

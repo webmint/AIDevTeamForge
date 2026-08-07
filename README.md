@@ -12,7 +12,7 @@ Every phase transition needs your explicit approval. Automated guardrails — ty
 | **Python 3.8+** | Runtime helpers (`.devforge/lib/*`) | pre-installed on macOS + most Linux |
 | **jq** | JSON merge during install/update | pre-installed on macOS + most Linux |
 | **Node.js** (`npx`) | Context7 + Chrome DevTools MCP servers | needed for docs-fetch + AC verification |
-| **codebase-memory-mcp** | Code knowledge graph (used by `/generate-docs`, `/research`, `/implement`) | install separately — see below |
+| **codebase-memory-mcp** | Code knowledge graph (used by `/devforge:generate-docs`, `/devforge:research`, `/devforge:implement`) | install separately — see below |
 | Chrome/Chromium w/ remote debugging | Runtime AC + design-fidelity verification | optional; backend-only projects skip it |
 
 **codebase-memory-mcp** — local tree-sitter knowledge graph over 155 languages, queried via MCP (`search_graph`, `trace_path`, `get_code_snippet`, …). Install the binary from [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp):
@@ -40,53 +40,56 @@ To push template improvements to an already-installed project without clobbering
 ## Flow
 
 ```
-Setup (once):     /init-forge → /generate-docs → /configure → /constitute
+Setup (once):     /devforge:init-forge → /devforge:generate-docs → /devforge:configure → /devforge:constitute
 
-Per feature:      /research OR /discover → /specify → [/spec-check] → /plan → [/grill] → /breakdown
-                    → /implement → /review → /verify → /summarize → /finalize
+Per feature:      /devforge:research OR /devforge:discover → /devforge:specify → [/devforge:spec-check]
+                    → /devforge:plan → [/devforge:grill] → /devforge:breakdown → /devforge:implement
+                    → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 
-Standalone:       /audit   /report-bug   /fix   /pr-review
+Standalone:       /devforge:audit   /devforge:report-bug   /devforge:fix   /devforge:pr-review
 ```
 
-Each arrow is a user-approved gate. `[/spec-check]` is optional (opt-in, proves the spec's acceptance criteria don't contradict each other before planning). `[/grill]` is optional (opt-in, for high-stakes plans). `/fix` is not a linear step — it's a proposal-only remediation loop the model offers off `/review`/`/verify`.
+Every command is namespaced under `devforge:` so it never collides with a bundled or plugin skill of the same name; the `/` menu is fuzzy-searched, so typing `verify` still surfaces `/devforge:verify`. Thirteen of the twenty are model-invocable — propose one and Claude runs it once you agree. Seven are human-typed only: the four setup commands, `/devforge:grill`, `/devforge:spec-check`, and `/devforge:fix`.
+
+Each arrow is a user-approved gate. `[/devforge:spec-check]` is optional (opt-in, proves the spec's acceptance criteria don't contradict each other before planning). `[/devforge:grill]` is optional (opt-in, for high-stakes plans). `/devforge:fix` is not a linear step — it's a proposal-only remediation loop the model offers off `/devforge:review`/`/devforge:verify`.
 
 ## Commands
 
 ### Setup (run once per project)
 
-- **`/init-forge`** — Bootstrap: detect workspace mode (standalone vs wrapper), project root, default branch, project state.
-- **`/generate-docs`** — Build the `docs/` knowledge base from the indexed codebase (concern → package → project tiers). The shared context for all agents.
-- **`/configure`** — Populate the project config, prune the agent roster to the project's stacks, substitute `{{KEY}}` template placeholders.
-- **`/constitute`** — Produce `constitution.md`: non-negotiable rules, architecture decisions, patterns. Deep codebase analysis for existing projects; interview for greenfield.
+- **`/devforge:init-forge`** — Bootstrap: detect workspace mode (standalone vs wrapper), project root, default branch, project state.
+- **`/devforge:generate-docs`** — Build the `docs/` knowledge base from the indexed codebase (concern → package → project tiers). The shared context for all agents.
+- **`/devforge:configure`** — Populate the project config, prune the agent roster to the project's stacks, substitute `{{KEY}}` template placeholders.
+- **`/devforge:constitute`** — Produce `constitution.md`: non-negotiable rules, architecture decisions, patterns. Deep codebase analysis for existing projects; interview for greenfield.
 
 ### Per-feature pipeline
 
-- **`/research "topic"`** — Investigate a bug or enhancement against existing code → research handoff. Intake lane for `/specify`. On save it allocates the feature dir `specs/NNN-name/` and the `spec/NNN-name` branch, and writes its report + handoff there.
-- **`/discover "idea"`** — Survey a greenfield feature (internal prior art + web) → discovery handoff. The other intake lane for `/specify`. Allocates the feature dir + branch on save, same as `/research`.
-- **`/specify "feature"`** — Author a 9-section spec with EARS acceptance criteria → `specs/NNN-name/spec.md`, written into the feature dir intake allocated. Blocks until a pending research/discover handoff exists.
-- **`/spec-check`** *(optional)* — SMT consistency prover for the spec's acceptance criteria: formalizes each AC and proves (via Z3) whether they contradict each other → `spec-check.md`. Recommends CONSISTENT / REVISE-SPEC / DISMISS; you check the translation and own the verdict. A consistency prover, not a mind-reader. Needs `z3-solver` (opt-in pip dep, not installed by default).
-- **`/plan`** — Technical plan from the approved spec: architecture, data model, API contracts, research → `plan.md`.
-- **`/grill`** *(optional)* — Design-time adversarial review of `plan.md` before decomposition. Recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; you own the verdict.
-- **`/breakdown`** — Ordered atomic tasks with dependencies, agent assignments, and Expects/Produces contracts → `tasks/`.
-- **`/implement`** — Drain tasks one at a time: assigned agent → scope-aware verify + self-repair → four-reviewer panel → forcing-functions gate → per-task hard gate before commit.
-- **`/review`** — Feature-level emergent cross-task review over the assembled diff (the issues per-task review can't see) → findings-only `review.md`.
-- **`/verify`** — Verify ACs + assembled mechanical checks + regression gate, fold in `/review` findings → single verdict (APPROVED / NEEDS WORK / REJECTED).
-- **`/summarize`** — PR-ready feature narrative: what was built, change stats, key decisions, AC status → `summary.md`.
-- **`/finalize`** — Surgical `docs/` updates + squash WIP commits into one clean feature commit. Last step before opening a PR.
+- **`/devforge:research "topic"`** — Investigate a bug or enhancement against existing code → research handoff. Intake lane for `/devforge:specify`. On save it allocates the feature dir `specs/NNN-name/` and the `spec/NNN-name` branch, and writes its report + handoff there.
+- **`/devforge:discover "idea"`** — Survey a greenfield feature (internal prior art + web) → discovery handoff. The other intake lane for `/devforge:specify`. Allocates the feature dir + branch on save, same as `/devforge:research`.
+- **`/devforge:specify "feature"`** — Author a 9-section spec with EARS acceptance criteria → `specs/NNN-name/spec.md`, written into the feature dir intake allocated. Blocks until a pending research/discover handoff exists.
+- **`/devforge:spec-check`** *(optional)* — SMT consistency prover for the spec's acceptance criteria: formalizes each AC and proves (via Z3) whether they contradict each other → `spec-check.md`. Recommends CONSISTENT / REVISE-SPEC / DISMISS; you check the translation and own the verdict. A consistency prover, not a mind-reader. Needs `z3-solver` (opt-in pip dep, not installed by default).
+- **`/devforge:plan`** — Technical plan from the approved spec: architecture, data model, API contracts, research → `plan.md`.
+- **`/devforge:grill`** *(optional)* — Design-time adversarial review of `plan.md` before decomposition. Recommends PROCEED / REVISE-PLAN / RE-ENTER-UPSTREAM / KILL; you own the verdict.
+- **`/devforge:breakdown`** — Ordered atomic tasks with dependencies, agent assignments, and Expects/Produces contracts → `tasks/`.
+- **`/devforge:implement`** — Drain tasks one at a time: assigned agent → scope-aware verify + self-repair → four-reviewer panel → forcing-functions gate → per-task hard gate before commit.
+- **`/devforge:review`** — Feature-level emergent cross-task review over the assembled diff (the issues per-task review can't see) → findings-only `review.md`.
+- **`/devforge:verify`** — Verify ACs + assembled mechanical checks + regression gate, fold in `/devforge:review` findings → single verdict (APPROVED / NEEDS WORK / REJECTED).
+- **`/devforge:summarize`** — PR-ready feature narrative: what was built, change stats, key decisions, AC status → `summary.md`.
+- **`/devforge:finalize`** — Surgical `docs/` updates + squash WIP commits into one clean feature commit. Last step before opening a PR.
 
 ### Standalone (use anytime)
 
-- **`/audit`** — Adversarial whole-codebase quality review (mislogic + system design + best practices + duplication + constitution). Refutation-gated, grounded in verbatim code quotes.
-- **`/report-bug "desc"`** — Log a bug to `bugs/NNN-*.md` (Open → In Progress → Fixed lifecycle). Pure capture, no agent.
-- **`/fix`** — Proposal-only remediation loop off `/review`/`/verify` findings, run through `/implement`'s gates. The model offers it; you invoke it.
-- **`/pr-review <PR#>`** — Personal-overlay review of a foreign GitHub PR (AI-slop + blast-radius + scope-drift).
+- **`/devforge:audit`** — Adversarial whole-codebase quality review (mislogic + system design + best practices + duplication + constitution). Refutation-gated, grounded in verbatim code quotes.
+- **`/devforge:report-bug "desc"`** — Log a bug to `bugs/NNN-*.md` (Open → In Progress → Fixed lifecycle). Pure capture, no agent.
+- **`/devforge:fix`** — Proposal-only remediation loop off `/devforge:review`/`/devforge:verify` findings, run through `/devforge:implement`'s gates. The model offers it; you invoke it.
+- **`/devforge:pr-review <PR#>`** — Personal-overlay review of a foreign GitHub PR (AI-slop + blast-radius + scope-drift).
 
 ## Artifact layout
 
 ```
 specs/NNN-feature/                     bugs/NNN-slug.md
-  research-report.md research-handoff.json     (/research lane)
-  discovery-report.md discover-handoff.json    (/discover lane)
+  research-report.md research-handoff.json     (/devforge:research lane)
+  discovery-report.md discover-handoff.json    (/devforge:discover lane)
   spec.md plan.md tasks/ review.md verification.md summary.md
 audits/  YYYY-MM-DD-audit.md
 ```

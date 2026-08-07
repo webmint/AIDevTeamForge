@@ -197,7 +197,7 @@ def _make_skeleton_task():
         "- [ ] Type check passes\n"
         "- [ ] Tests pass\n\n"
         "## Completion Notes\n\n"
-        "[Filled in by /implement after completion]\n"
+        "[Filled in by /devforge:implement after completion]\n"
         "**Completed**: [date/time]\n"
         "**Files changed**: [actual files]\n"
         "**Contract**: Expects [X/Y verified] | Produces [X/Y verified]\n"

@@ -1,23 +1,22 @@
 ---
 name: finalize
-description: The terminal PR-prep step for a completed feature. Runs after `/summarize`. Dispatches the tech-writer agent for surgical `docs/` updates (retargeted to live `docs/<package>/` locations), then squashes the feature's accumulated `[WIP]`/`[checkpoint]` commits into one clean commit (in wrapper mode also the source repo). MUTATING: rewrites local git history and writes `docs/`. The squash is gated behind explicit user confirmation. Terminal — its next step is "create a PR".
+description: The terminal PR-prep step for a completed feature. Runs after `/devforge:summarize`. Makes surgical `docs/` updates, then squashes the feature's `[WIP]` commits into one clean commit. MUTATING — rewrites local git history; the squash is gated behind explicit user confirmation.
 argument-hint: "[spec-file]"
-disable-model-invocation: true
 ---
 
-# /finalize — Terminal PR-Prep (Surgical Docs + History Squash)
+# /devforge:finalize — Terminal PR-Prep (Surgical Docs + History Squash)
 
-`/finalize` is the LAST step in the pipeline `… /implement → /review → /verify → /summarize → /finalize`. It owns the ONE job nothing else in the pipeline owns: **the terminal PR-prep step** — surgical feature-completion docs plus git history cleanup. `/verify` owns the verdict, `/review` owns findings, `/summarize` owns the PR-ready narrative; `/finalize` owns the clean commit and the surgical docs that ship with it. State + render shape are owned by `.devforge/lib/finalize_helper`; the orchestrator dispatches the `tech-writer` agent, composes the commit subjects, gets the user's squash confirmation, and paces the phases.
+`/devforge:finalize` is the LAST step in the pipeline `… /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize`. It owns the ONE job nothing else in the pipeline owns: **the terminal PR-prep step** — surgical feature-completion docs plus git history cleanup. `/devforge:verify` owns the verdict, `/devforge:review` owns findings, `/devforge:summarize` owns the PR-ready narrative; `/devforge:finalize` owns the clean commit and the surgical docs that ship with it. State + render shape are owned by `.devforge/lib/finalize_helper`; the orchestrator dispatches the `tech-writer` agent, composes the commit subjects, gets the user's squash confirmation, and paces the phases.
 
-**`/finalize` DISPATCHES an agent AND MUTATES — the inverse of `/summarize` on both axes.** It dispatches the `tech-writer` agent (in Normal/surgical mode) and it rewrites local git history (the squash) and writes `docs/`. It does NOT verify (that is `/verify`), does NOT find issues (that is `/review`), and does NOT synthesize the PR narrative (that is `/summarize`). It runs NO finder ensemble, NO refutation pass, and renders NO verdict. The destructive squash is gated behind an explicit user confirmation.
+**`/devforge:finalize` DISPATCHES an agent AND MUTATES — the inverse of `/devforge:summarize` on both axes.** It dispatches the `tech-writer` agent (in Normal/surgical mode) and it rewrites local git history (the squash) and writes `docs/`. It does NOT verify (that is `/devforge:verify`), does NOT find issues (that is `/devforge:review`), and does NOT synthesize the PR narrative (that is `/devforge:summarize`). It runs NO finder ensemble, NO refutation pass, and renders NO verdict. The destructive squash is gated behind an explicit user confirmation.
 
-`/finalize` is TERMINAL: there is no next-pipeline-command pointer. After it runs, the user's next step is to create a PR.
+`/devforge:finalize` is TERMINAL: there is no next-pipeline-command pointer. After it runs, the user's next step is to create a PR.
 
-Usage: `/finalize` (auto-resolve the most-recently-modified `specs/NNN-*` feature) · `/finalize specs/001-auth` or `/finalize specs/001-auth/spec.md` (an explicit feature dir or a spec file inside it).
+Usage: `/devforge:finalize` (auto-resolve the most-recently-modified `specs/NNN-*` feature) · `/devforge:finalize specs/001-auth` or `/devforge:finalize specs/001-auth/spec.md` (an explicit feature dir or a spec file inside it).
 
 ## Maintainer note
 
-This file lives at `src/commands/finalize/main.md` in the AIDevTeamForge template repo and is the SSOT for the `/finalize` command. Do NOT inject project-specifics — this spec is substituted + emitted into target projects by the build. Helper paths use the installed `.devforge/lib/...` location because that's where they resolve at runtime in the target project. Reference-file paths are written author-relative (`references/<file>.md`); the emitter rewrites them to `.claude/commands/finalize/references/<file>.md` at install time.
+This file lives at `src/commands/finalize/main.md` in the AIDevTeamForge template repo and is the SSOT for the `/devforge:finalize` command. Do NOT inject project-specifics — this spec is substituted + emitted into target projects by the build. Helper paths use the installed `.devforge/lib/...` location because that's where they resolve at runtime in the target project. Reference-file paths are written author-relative (`references/<file>.md`); the emitter rewrites them to `.devforge/command-refs/finalize/<file>.md` at install time.
 
 ## Outputs of this command
 
@@ -28,7 +27,7 @@ The things this command writes under the repo are:
 - An interim `[WIP]` docs commit (PHASE 2, only when tech-writer wrote docs) — folded into the squash, so it leaves no separate commit in the final history (D8).
 - An UNCONDITIONAL artifact safety-net `[WIP]` commit (PHASE 2, after the docs branches) — commits the feature's `specs/<feature>/` planning artifacts as a redundant catch behind the per-step artifact commits (install-repo-only, fail-soft); folded into the squash, so it leaves no separate commit in the final history (37-D4).
 
-`/finalize` is STATELESS: it writes no run-state file. The squash is a single idempotent operation — re-running it on an already-finalized feature no-ops ("Nothing to finalize").
+`/devforge:finalize` is STATELESS: it writes no run-state file. The squash is a single idempotent operation — re-running it on an already-finalized feature no-ops ("Nothing to finalize").
 
 ### Intermediate scratch files (orchestrator-written, helper-consumed) — all under `$WORKDIR`
 
@@ -57,9 +56,9 @@ Cheapest guards first; preflight before any feature I/O.
 Resolve the feature dir from `$ARGUMENTS`:
 
 - When `$ARGUMENTS` names a feature directory (`specs/NNN-<slug>`) or a file inside one (e.g. `specs/001-auth/spec.md`), use that feature directory (strip a trailing filename to the `specs/NNN-<slug>` dir).
-- When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/summarize`).
+- When `$ARGUMENTS` is empty, auto-resolve the most-recently-modified `specs/NNN-*` directory (the feature most likely just finished `/devforge:summarize`).
 
-If no `specs/NNN-*` directory exists, tell the user there is no feature to finalize (run `/specify` → `/plan` → `/breakdown` → `/implement` → `/review` → `/verify` → `/summarize` first) and end the turn. Carry the resolved feature dir forward as `<feature>` — the spec file inside it is `<feature>/spec.md` (the `--spec` value 0.2 needs).
+If no `specs/NNN-*` directory exists, tell the user there is no feature to finalize (run `/devforge:specify` → `/devforge:plan` → `/devforge:breakdown` → `/devforge:implement` → `/devforge:review` → `/devforge:verify` → `/devforge:summarize` first) and end the turn. Carry the resolved feature dir forward as `<feature>` — the spec file inside it is `<feature>/spec.md` (the `--spec` value 0.2 needs).
 
 ### 0.2 — Preflight + the spec-Complete gate + the no-op signal
 
@@ -67,10 +66,10 @@ If no `specs/NNN-*` directory exists, tell the user there is no feature to final
 .devforge/lib/finalize_helper preflight --workspace-root . --spec <feature>/spec.md > /tmp/finalize-preflight-check.json
 ```
 
-`preflight` checks the 4-command setup chain (`/init-forge → /generate-docs → /configure → /constitute`) AND the spec `**Status**: Complete` gate, AND detects the `[WIP]`/`[checkpoint]` commits that back the "Nothing to finalize" no-op. It ALWAYS writes its JSON context block to stdout BEFORE any gate check, then exits:
+`preflight` checks the 4-command setup chain (`/devforge:init-forge → /devforge:generate-docs → /devforge:configure → /devforge:constitute`) AND the spec `**Status**: Complete` gate, AND detects the `[WIP]`/`[checkpoint]` commits that back the "Nothing to finalize" no-op. It ALWAYS writes its JSON context block to stdout BEFORE any gate check, then exits:
 
 - **2** — a setup-chain artefact is missing. On exit 2, copy the helper's stderr VERBATIM as a fenced code block and end the turn — the user runs the named missing command first.
-- **3** — the spec is not `**Status**: Complete` (or the spec is absent). `/finalize` runs AFTER `/verify` flips the spec to Complete on an APPROVED verdict, so a non-Complete spec means `/verify` has not yet approved this feature. On exit 3, copy the helper's stderr VERBATIM as a fenced code block and end the turn (the message names the current spec status and instructs the user to run `/verify` first).
+- **3** — the spec is not `**Status**: Complete` (or the spec is absent). `/devforge:finalize` runs AFTER `/devforge:verify` flips the spec to Complete on an APPROVED verdict, so a non-Complete spec means `/devforge:verify` has not yet approved this feature. On exit 3, copy the helper's stderr VERBATIM as a fenced code block and end the turn (the message names the current spec status and instructs the user to run `/devforge:verify` first).
 - **0** — both gates pass. The stdout JSON carries `source_root` (the project's Source Root — `.` for a standalone install, the inner project subdir in wrapper mode), `wrapper_mode`, `spec_status`, `spec_complete`, `has_wip_commits` (the no-op signal), `wip_commit_count`, `framework`, and `language`.
 
 (`$WORKDIR` is not established until 0.4, so this gate call captures to a fixed `/tmp` path; 0.4 re-runs `preflight` into `$WORKDIR/preflight.json` once the scratch dir exists. `preflight` is read-only and cheap, so running it twice is harmless.) Carry `source_root`, `wrapper_mode`, and `has_wip_commits` forward. These values are available from the 0.2 capture, OR — simpler — read them from `$WORKDIR/preflight.json` after 0.4 re-runs `preflight` (both are identical; reading from `$WORKDIR` after 0.4 is the path later phases use).
@@ -79,8 +78,8 @@ If no `specs/NNN-*` directory exists, tell the user there is no feature to final
 
 Read `has_wip_commits` from the preflight stdout (the 0.2 JSON):
 
-- **No-op gate.** If `has_wip_commits` is `false`, there are no `[WIP]`/`[checkpoint]` commits to squash. Tell the user *Nothing to finalize — no `[WIP]`/`[checkpoint]` commits remain; the feature may have already been finalized.* and end the turn. This is the idempotent no-op (re-running `/finalize` on an already-finalized feature lands here), not an error.
-- **Missing-summary soft-warn.** Check whether `specs/[feature]/summary.md` exists. If it is absent, warn the user (do NOT stop): *No `summary.md` found — run `/summarize` first for the richest feature record. Proceeding without a summary.* Then continue — `/finalize` does not require `summary.md`; its presence only means the summary's `[WIP]` commit folds into the squash. Carry the present/absent state forward for the PHASE-4 results block (`Summary: included in squash | not found`).
+- **No-op gate.** If `has_wip_commits` is `false`, there are no `[WIP]`/`[checkpoint]` commits to squash. Tell the user *Nothing to finalize — no `[WIP]`/`[checkpoint]` commits remain; the feature may have already been finalized.* and end the turn. This is the idempotent no-op (re-running `/devforge:finalize` on an already-finalized feature lands here), not an error.
+- **Missing-summary soft-warn.** Check whether `specs/[feature]/summary.md` exists. If it is absent, warn the user (do NOT stop): *No `summary.md` found — run `/devforge:summarize` first for the richest feature record. Proceeding without a summary.* Then continue — `/devforge:finalize` does not require `summary.md`; its presence only means the summary's `[WIP]` commit folds into the squash. Carry the present/absent state forward for the PHASE-4 results block (`Summary: included in squash | not found`).
 
 ### 0.4 — Establish the scratch dir + persist the context
 
@@ -102,7 +101,7 @@ WORKDIR="${TMPDIR:-/tmp}/forge-finalize"
 
 ## PHASE 1 — Gather change data
 
-Compute the assembled-feature change data — the union of every change the feature made across all the WIP commits `/implement` accumulated (squashed only by this command, below). Read `wrapper_mode` and `source_root` from `$WORKDIR/preflight.json` (PHASE 0) and branch on them:
+Compute the assembled-feature change data — the union of every change the feature made across all the WIP commits `/devforge:implement` accumulated (squashed only by this command, below). Read `wrapper_mode` and `source_root` from `$WORKDIR/preflight.json` (PHASE 0) and branch on them:
 
 - **Standalone install** (`source_root` is `"."`): pass `--feature-dir <feature>` ONLY. Omit `--source-root` and `--install-root` — the helper defaults both to `"."`, which is correct here.
 - **Wrapper mode** (`source_root` is NOT `"."` per `preflight.json`): pass `--feature-dir <feature> --source-root <source-root> --install-root <install-root>`. `--source-root` is the code repo (the inner project subdir, the `source_root` value); `--install-root` is the forge install root where `.devforge/` lives (the wrapper root — typically the cwd `.`). **Both flags are mandatory in wrapper mode.** If `--install-root` is omitted the helper defaults it to `source_root` — then `abs_source == abs_install`, the wrapper-mode guard never fires, and `source_changes` is silently `null`, dropping the source-repo change set from the tech-writer brief.
@@ -118,15 +117,15 @@ WORKDIR="${TMPDIR:-/tmp}/forge-finalize"
   > "$WORKDIR/changes.json"
 ```
 
-`gather-change-data` resolves the assembled-feature diff via the shared scope resolver (the same `_shared.feature_scope` resolver `/review`, `/verify`, and `/summarize` use, with the heading label "Finalize Scope"). The base ref auto-detects via `origin/HEAD → main → develop → master`; pass `--base <ref>` when auto-detection fails (the stderr message says so). Stdout JSON carries `files` (sorted source-relative changed paths), `files_for_finders` (the same list, source-root-prefixed in wrapper mode), `file_count`, `scope_block`, `merge_base`, and `source_changes` (non-null in wrapper mode — same keys scoped to the source repo, or `{"error": ...}` on a non-fatal source-side resolve failure). On a non-zero exit (not a git repo, bad ref, no auto-detectable base), copy the helper's stderr VERBATIM and end the turn.
+`gather-change-data` resolves the assembled-feature diff via the shared scope resolver (the same `_shared.feature_scope` resolver `/devforge:review`, `/devforge:verify`, and `/devforge:summarize` use, with the heading label "Finalize Scope"). The base ref auto-detects via `origin/HEAD → main → develop → master`; pass `--base <ref>` when auto-detection fails (the stderr message says so). Stdout JSON carries `files` (sorted source-relative changed paths), `files_for_finders` (the same list, source-root-prefixed in wrapper mode), `file_count`, `scope_block`, `merge_base`, and `source_changes` (non-null in wrapper mode — same keys scoped to the source repo, or `{"error": ...}` on a non-fatal source-side resolve failure). On a non-zero exit (not a git repo, bad ref, no auto-detectable base), copy the helper's stderr VERBATIM and end the turn.
 
 Carry the `files` list and `file_count` forward: the file list is the tech-writer brief's changed-files input (PHASE 2), and `file_count` is the PHASE-4 results-block file count. In wrapper mode, include the source-repo `files` in the brief too (so the agent sees the actual code changes, not only the wrapper-side specs/docs) — but only when `source_changes` has no `error` key (PHASE 2 carries the explicit guard; `{"error": ...}` is itself non-null, so test for the key, not for non-null).
 
 ## PHASE 2 — Surgical docs (dispatch the tech-writer agent)
 
-Dispatch the `tech-writer` agent in its Normal/surgical mode over the feature's changed files, RETARGETED to the LIVE Plan-F doc locations. `references/results-and-docs.md` documents the exact targets — `docs/<package>/<concern>/index.md` Hazards, `docs/<package>/architecture.md`, and `docs/architecture.md` — and the dropped Plan-F tiers the agent must never resurrect. **Point the agent ONLY at those three live locations**; a new concern / API surface / domain term is left to `/generate-docs`, not hand-authored here.
+Dispatch the `tech-writer` agent in its Normal/surgical mode over the feature's changed files, RETARGETED to the LIVE Plan-F doc locations. `references/results-and-docs.md` documents the exact targets — `docs/<package>/<concern>/index.md` Hazards, `docs/<package>/architecture.md`, and `docs/architecture.md` — and the dropped Plan-F tiers the agent must never resurrect. **Point the agent ONLY at those three live locations**; a new concern / API surface / domain term is left to `/devforge:generate-docs`, not hand-authored here.
 
-Compose the agent's brief from the inputs its `#### Input You Receive` section names for `/finalize` — the feature `spec.md`, the feature's task files under `<feature>/tasks/`, and the aggregated list of changed files — plus the retarget instruction and the feature's `plan.md` for architecture context:
+Compose the agent's brief from the inputs its `#### Input You Receive` section names for `/devforge:finalize` — the feature `spec.md`, the feature's task files under `<feature>/tasks/`, and the aggregated list of changed files — plus the retarget instruction and the feature's `plan.md` for architecture context:
 
 - **Feature spec** — `<feature>/spec.md` (what was built and why).
 - **Plan** — `<feature>/plan.md` (architecture decisions and data flow).
@@ -134,7 +133,7 @@ Compose the agent's brief from the inputs its `#### Input You Receive` section n
 - **Changed files** — the `files` list from `$WORKDIR/changes.json` (the assembled-feature diff). In wrapper mode, FIRST check whether `source_changes` has an `error` key; if it does, OMIT the source files from the brief and warn the user the source-repo scope could not be resolved; otherwise include the `source_changes.files` list too.
 - **Retarget instruction** — "Run in Normal/surgical mode. Update only the LIVE Plan-F doc locations: `docs/<package>/<concern>/index.md` Hazards, `docs/<package>/architecture.md`, `docs/architecture.md`. Do NOT create or write under the dropped Plan-F per-feature / per-resource / per-guide tiers (see `references/results-and-docs.md` for the exact dropped paths). Use your document-when / skip-when criteria; if no feature-level docs are warranted, say so and write nothing."
 
-Dispatch with `subagent_type: tech-writer` (this loads the agent's persona from `.claude/agents/tech-writer.md` as the subagent's system context — do NOT prepend or re-inline the persona into the brief; the brief carries only the inputs and the retarget instruction above on top of it). This is the same orchestrator-dispatches-subagent pattern `/verify` uses for `ac-verifier` — one agent dispatch inside an orchestrator that keeps running afterward (NOT a whole-command fork).
+Dispatch with `subagent_type: tech-writer` (this loads the agent's persona from `.claude/agents/tech-writer.md` as the subagent's system context — do NOT prepend or re-inline the persona into the brief; the brief carries only the inputs and the retarget instruction above on top of it). This is the same orchestrator-dispatches-subagent pattern `/devforge:verify` uses for `ac-verifier` — one agent dispatch inside an orchestrator that keeps running afterward (NOT a whole-command fork).
 
 Handle the three outcomes:
 
@@ -157,11 +156,11 @@ After the three docs outcomes above and BEFORE PHASE 3, make an UNCONDITIONAL `[
 .devforge/lib/artifact_helper commit-artifacts --paths '["specs/<feature>/", ".devforge/memory.md", ".devforge/spec-stamps.jsonl"]' --label "finalize: artifact safety-net"
 ```
 
-`commit-artifacts` stages the whole `specs/<feature>/` directory and the two named `.devforge/` files (each path passed to `git add` unchanged — never `git add -A`) in the INSTALL repo only (the verb's own `resolve_workspace` guard handles the wrapper split — do NOT add a `git -C <source-root>` here) and makes a `[WIP] finalize: artifact safety-net` commit. The call runs UNCONDITIONALLY — every feature reaching `/finalize` has a `specs/<feature>/`, so there is no skip condition. (`memory.md` and `spec-stamps.jsonl` are VERSIONED, not gitignored, so `git add` stages them normally; the EPHEMERAL `.devforge/` runtime files are gitignored and are correctly NOT staged here — plan 49.)
+`commit-artifacts` stages the whole `specs/<feature>/` directory and the two named `.devforge/` files (each path passed to `git add` unchanged — never `git add -A`) in the INSTALL repo only (the verb's own `resolve_workspace` guard handles the wrapper split — do NOT add a `git -C <source-root>` here) and makes a `[WIP] finalize: artifact safety-net` commit. The call runs UNCONDITIONALLY — every feature reaching `/devforge:finalize` has a `specs/<feature>/`, so there is no skip condition. (`memory.md` and `spec-stamps.jsonl` are VERSIONED, not gitignored, so `git add` stages them normally; the EPHEMERAL `.devforge/` runtime files are gitignored and are correctly NOT staged here — plan 49.)
 
 This call is FAIL-SOFT: a git staging or commit failure warns on stderr and exits 1 (non-fatal — proceed to PHASE 3 regardless); if SOME paths staged and others failed, the verb warns for the failing paths, commits what staged, and exits 0 (a partial success, not a failure); 'nothing to commit' exits 0 silently as a benign no-op.
 
-**This safety-net is DELIBERATELY redundant with the per-step artifact commits** each pipeline command (`/research` … `/verify`) now makes — those commit each artifact when it is written; this catches any straggler a fail-soft per-step commit skipped (or an artifact written by a path the per-step map missed). It is a belt-and-suspenders catch, NOT an oversight. Because the per-step commits already tracked most artifacts, this call is usually a benign `nothing to commit` no-op — that is expected.
+**This safety-net is DELIBERATELY redundant with the per-step artifact commits** each pipeline command (`/devforge:research` … `/devforge:verify`) now makes — those commit each artifact when it is written; this catches any straggler a fail-soft per-step commit skipped (or an artifact written by a path the per-step map missed). It is a belt-and-suspenders catch, NOT an oversight. Because the per-step commits already tracked most artifacts, this call is usually a benign `nothing to commit` no-op — that is expected.
 
 **Why the two `.devforge/` runtime files are staged here (plan 49 D3 — a scoped revisit of plan 33/37 D3).** Plan 33 / plan 37 D3 blanket-EXCLUDES `.devforge/` runtime state from the squash as global, not feature-scoped. Staging `memory.md` + `spec-stamps.jsonl` is a DELIBERATE, narrow, file-level revisit of that exclusion for exactly these two files: their per-feature delta is feature-caused (a feature's work is what appends the lesson entry and the spec stamp), so it belongs on the feature commit rather than stranded as uncommitted global state. This does NOT reopen the exclusion for `session-state.md` / `*-state.json` / the pointers — those stay EPHEMERAL and are gitignored (plan 49 D2). `commit-artifacts` stages whole-file, so it captures each file's current uncommitted content, which equals the feature delta when the prior cycle already committed its own (the steady-state case). A future reader must NOT read this as contradicting plan 33/37 D3 — it is a recorded, scoped narrowing.
 
@@ -239,16 +238,16 @@ Present the "Feature Finalized" results block (the shape is documented in `refer
 **Commit**: [short head_sha] [message_used]
 **Files**: [file_count] files changed
 **Docs**: [updated <targets> | skipped — <reason> | tech-writer failed — <error>]
-**Summary**: [included in squash | not found — /summarize was not run]
+**Summary**: [included in squash | not found — /devforge:summarize was not run]
 
 Feature is ready for PR.
 ```
 
 In wrapper mode, add a `**Source commit**:` line from the `source_repo` outcome (the `[TICKET-ID] - Description` commit, traceless per D5). When the squash was SKIPPED (already-pushed guard, 3.2) or no-op'd, report that in place of the **Commit** line — never claim a clean commit that did not happen.
 
-Then print a soft `/generate-docs` reminder for structural doc drift (OQ-3 — a soft pointer, NOT a gate): *Surgical docs are updated for this feature. If the feature added new packages, concerns, or domain terms, run `/generate-docs` to regenerate the structural docs this surgical pass does not cover.*
+Then print a soft `/devforge:generate-docs` reminder for structural doc drift (OQ-3 — a soft pointer, NOT a gate): *Surgical docs are updated for this feature. If the feature added new packages, concerns, or domain terms, run `/devforge:generate-docs` to regenerate the structural docs this surgical pass does not cover.*
 
-`/finalize` is TERMINAL — there is NO next-pipeline-command pointer. The "ready for PR" line above IS the next step (create the PR).
+`/devforge:finalize` is TERMINAL — there is NO next-pipeline-command pointer. The "ready for PR" line above IS the next step (create the PR).
 
 Clean up the scratch directory — nothing else needs it after the results are presented:
 
@@ -259,12 +258,12 @@ rm -rf "$WORKDIR"
 
 ## Important rules
 
-1. **Finalize does not verify code** — it assumes `/verify` has already approved. The PHASE-0 spec-`Complete` gate enforces this (`/verify` flips the spec to Complete on an APPROVED verdict; `/finalize` STOPS with "run `/verify` first" otherwise).
+1. **Finalize does not verify code** — it assumes `/devforge:verify` has already approved. The PHASE-0 spec-`Complete` gate enforces this (`/devforge:verify` flips the spec to Complete on an APPROVED verdict; `/devforge:finalize` STOPS with "run `/devforge:verify` first" otherwise).
 2. **Squash is the LAST operation** (D8) — the tech-writer docs are written and `[WIP]`-committed in PHASE 2, BEFORE the PHASE-3 squash, so they fold into the single clean commit. The PHASE-2 artifact safety-net `[WIP]` commit (the unconditional `specs/<feature>/` catch, 37-D4) is likewise made before the squash and folds in the same way.
-3. **The squash MUTATES — and is confirmation-gated** (D4 / OQ-1) — `/finalize` rewrites local git history. The destructive squash runs only after the user confirms the proposed commit message(s), and only via `squash --confirm`. Without `--confirm` the verb emits a dry-run preview and mutates nothing.
+3. **The squash MUTATES — and is confirmation-gated** (D4 / OQ-1) — `/devforge:finalize` rewrites local git history. The destructive squash runs only after the user confirms the proposed commit message(s), and only via `squash --confirm`. Without `--confirm` the verb emits a dry-run preview and mutates nothing.
 4. **Never rewrite shared history** — when the feature's commits are already pushed (`check-pushed` `is_pushed` true), skip the squash and warn; the `squash` verb refuses a pushed repo in-helper as a second guard.
-5. **Idempotent no-op** — when no `[WIP]`/`[checkpoint]` commits remain (PHASE-0 `has_wip_commits` false), `/finalize` no-ops gracefully ("Nothing to finalize"); re-running on an already-finalized feature lands here.
-6. **Wrapper-mode dual squash, source traceless** (D5) — in wrapper mode `/finalize` squashes BOTH repos: the install/wrapper commit is `feat(scope):` + `COMMIT_ATTRIBUTION` per config; the source commit is `[TICKET-ID] - Description` with NO `Co-Authored-By`, NO conventional prefix, and NO AI traces, regardless of config. The helper enforces the source-repo no-attribution invariant.
-7. **Docs retarget to LIVE locations** (D1) — the tech-writer dispatch updates `docs/<package>/<concern>/index.md` Hazards, `docs/<package>/architecture.md`, and `docs/architecture.md` only; the dropped Plan-F per-feature / per-resource / per-guide tiers are never resurrected (see `references/results-and-docs.md`). Structural doc drift is left to `/generate-docs` (the PHASE-4 soft reminder).
-8. **Renders no verdict, runs no finder ensemble** — `/finalize` is gate + docs + squash. It dispatches one agent (`tech-writer`); it runs no finder/refuter/verdict machinery (those belong to `/review` and `/verify`). Do not add any.
-9. **Terminal** — `/finalize` is the last pipeline step. Its "next step" is "create a PR"; there is no downstream command pointer.
+5. **Idempotent no-op** — when no `[WIP]`/`[checkpoint]` commits remain (PHASE-0 `has_wip_commits` false), `/devforge:finalize` no-ops gracefully ("Nothing to finalize"); re-running on an already-finalized feature lands here.
+6. **Wrapper-mode dual squash, source traceless** (D5) — in wrapper mode `/devforge:finalize` squashes BOTH repos: the install/wrapper commit is `feat(scope):` + `COMMIT_ATTRIBUTION` per config; the source commit is `[TICKET-ID] - Description` with NO `Co-Authored-By`, NO conventional prefix, and NO AI traces, regardless of config. The helper enforces the source-repo no-attribution invariant.
+7. **Docs retarget to LIVE locations** (D1) — the tech-writer dispatch updates `docs/<package>/<concern>/index.md` Hazards, `docs/<package>/architecture.md`, and `docs/architecture.md` only; the dropped Plan-F per-feature / per-resource / per-guide tiers are never resurrected (see `references/results-and-docs.md`). Structural doc drift is left to `/devforge:generate-docs` (the PHASE-4 soft reminder).
+8. **Renders no verdict, runs no finder ensemble** — `/devforge:finalize` is gate + docs + squash. It dispatches one agent (`tech-writer`); it runs no finder/refuter/verdict machinery (those belong to `/devforge:review` and `/devforge:verify`). Do not add any.
+9. **Terminal** — `/devforge:finalize` is the last pipeline step. Its "next step" is "create a PR"; there is no downstream command pointer.

@@ -1070,7 +1070,7 @@ class TestRenderReportNotAuditedWording(unittest.TestCase):
     def test_performance_wording_updated(self):
         # New wording: runtime profiling out of scope, idiom smells are in scope
         self.assertIn(
-            "Runtime performance profiling (out of scope — use /review); "
+            "Runtime performance profiling (out of scope — use /devforge:review); "
             "static performance-idiom smells are in scope",
             self.report,
         )

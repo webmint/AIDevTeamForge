@@ -56,7 +56,8 @@ def cmd_preflight(args):
         sys.stderr.write(
             "fix_helper preflight: setup chain incomplete. "
             "Run the 4-command setup sequence first:\n"
-            "  /init-forge → /generate-docs → /configure → /constitute\n"
+            "  /devforge:init-forge → /devforge:generate-docs → /devforge:configure → "
+            "/devforge:constitute\n"
             "Missing: {0}\n".format(", ".join(missing))
         )
         return 2
@@ -64,7 +65,7 @@ def cmd_preflight(args):
     if not result["constitution_populated"]:
         sys.stderr.write(
             "fix_helper preflight: constitution.md contains an unpopulated "
-            "sentinel. Run /constitute to populate it before running /fix.\n"
+            "sentinel. Run /devforge:constitute to populate it before running /devforge:fix.\n"
         )
         return 2
 
@@ -212,8 +213,8 @@ _SUBCOMMAND_REGISTRY = [
     (
         "in-fix-window",
         (
-            "Return whether the active feature is in the post-/implement, "
-            "pre-/summarize window (D2 condition 3c — the case-3 conversational "
+            "Return whether the active feature is in the post-/devforge:implement, "
+            "pre-/devforge:summarize window (D2 condition 3c — the case-3 conversational "
             "offer gate). Exit 0 = in-window; exit 1 = out-of-window."
         ),
         cmd_in_fix_window,
@@ -227,10 +228,10 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="fix_helper",
         description=(
-            "Helper for /fix — proposal-only gated pipeline-remediation. "
+            "Helper for /devforge:fix — proposal-only gated pipeline-remediation. "
             "Reads pipeline findings (review.md / verification.md), scopes "
-            "them to the affected files, and gates on the post-/implement / "
-            "pre-/summarize window. Back-half (verify-touched → review panel → "
+            "them to the affected files, and gates on the post-/devforge:implement / "
+            "pre-/devforge:summarize window. Back-half (verify-touched → review panel → "
             "forcing-functions gate → hard gate → wip-commit) is owned by the "
             "installed implement_helper binary."
         ),

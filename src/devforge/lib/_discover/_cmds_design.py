@@ -337,7 +337,7 @@ def cmd_set_next_step_text(args: argparse.Namespace) -> int:
     )
 
     lines = [
-        '/specify "{0}"'.format(distilled),
+        '/devforge:specify "{0}"'.format(distilled),
         "",
         "Discovery reference: {0}".format(discovery_reference),
         "Key facts:",

@@ -1,4 +1,4 @@
-# Autonomous review PANEL loop (`/implement` PHASE 6)
+# Autonomous review PANEL loop (`/devforge:implement` PHASE 6)
 
 This reference defines the bounded autonomous review-panel loop run in PHASE 6 of `main.md`. The loop mirrors the framework's own engineer→reviewer discipline: NO human sits between rounds. It runs a PANEL of FOUR read-only reviewers (`code-reviewer`, `qa-reviewer`, `security-reviewer`, `performance-analyst`) over the touched code, converges it to a panel-clean verdict (every reviewer clean) AND records each judgment-level call it made on the user's behalf as a structured decision item, which PHASE 7 Stage A surfaces one at a time. Most tasks record zero decision items — the panel clears findings mechanically and the hard gate is just the Stage B code read.
 

@@ -539,7 +539,7 @@ def render_report(
     out.append(
         "headline, flagged `[CONTESTED]`, never buried. This report is findings only —"
     )
-    out.append("the verdict is `/verify`'s.")
+    out.append("the verdict is `/devforge:verify`'s.")
 
     # -- Optional verbatim sections (entirely outside the refutation partition) -
     # Both Design Fidelity and Accessibility are appended AFTER ## Methodology
@@ -668,7 +668,7 @@ def render_inline_summary(partition, feature, finders_skipped=None):
     )
     out.append("")
     out.append(
-        "NOTE: /review is findings only — no verdict. The verdict is `/verify`'s."
+        "NOTE: /devforge:review is findings only — no verdict. The verdict is `/devforge:verify`'s."
     )
 
     return "\n".join(out) + "\n"

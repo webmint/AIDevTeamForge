@@ -504,7 +504,7 @@ def cmd_render_agent_brief(args: argparse.Namespace) -> int:
     source_root = getattr(args, "source_root", ".") or "."
     references_dir = (
         getattr(args, "references_dir", None)
-        or ".claude/commands/audit/references"
+        or ".devforge/command-refs/audit"
     )
 
     extra_context = ""
@@ -1146,7 +1146,7 @@ def cmd_render_verify_brief(args: argparse.Namespace) -> int:
 
     findings_path = getattr(args, "findings", None)
     refuter = getattr(args, "refuter", None)
-    references_dir = getattr(args, "references_dir", None) or ".claude/commands/audit/references"
+    references_dir = getattr(args, "references_dir", None) or ".devforge/command-refs/audit"
     scope_path = getattr(args, "scope", None)
     source_root = getattr(args, "source_root", ".") or "."
     tmp_path = getattr(args, "tmp_path", None)
@@ -1497,7 +1497,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="audit_helper",
         description=(
-            "Session state + preflight helper for /audit. "
+            "Session state + preflight helper for /devforge:audit. "
             "Adversarial whole-codebase audit: mislogic hunt + agent ensemble."
         ),
     )
@@ -1668,13 +1668,13 @@ def _register_subcommands(subparsers) -> None:
             )
             sp.add_argument(
                 "--references-dir",
-                default=".claude/commands/audit/references",
+                default=".devforge/command-refs/audit",
                 dest="references_dir",
                 metavar="DIR",
                 help=(
                     "Directory containing adversarial-preamble.md and "
                     "mislogic-checklist.md "
-                    "(default: .claude/commands/audit/references)."
+                    "(default: .devforge/command-refs/audit)."
                 ),
             )
             sp.add_argument(
@@ -1944,12 +1944,12 @@ def _register_subcommands(subparsers) -> None:
             )
             sp.add_argument(
                 "--references-dir",
-                default=".claude/commands/audit/references",
+                default=".devforge/command-refs/audit",
                 dest="references_dir",
                 metavar="DIR",
                 help=(
                     "Directory containing refutation-preamble.md "
-                    "(default: .claude/commands/audit/references)."
+                    "(default: .devforge/command-refs/audit)."
                 ),
             )
             sp.add_argument(
