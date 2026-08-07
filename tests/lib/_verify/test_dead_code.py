@@ -53,6 +53,14 @@ Coverage:
     - stderr names the --dead-code flag
     - valid --dead-code JSON still works
     - omitted --dead-code still works (backward-compatible)
+
+  compute-verdict CLI --review-findings / --hygiene / --regression
+  sentinel guard (maintainer-approved standalone bugfix — the same
+  pre-existing "ERROR" sentinel crash the --dead-code fix above addressed,
+  present at these three older call sites too):
+    - each flag pointing at malformed JSON → clean exit 2 (no traceback,
+      no AttributeError), flag named in stderr
+    - each flag with valid JSON still works (APPROVED on clean inputs)
 """
 
 from __future__ import annotations
@@ -664,6 +672,133 @@ class TestComputeVerdictDeadCodeSentinel(unittest.TestCase):
         out, _, rc = _capture([
             "compute-verdict",
             "--ac-results", self.ac_results_path,
+        ])
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        self.assertEqual(data["verdict"], "APPROVED")
+
+
+# ---------------------------------------------------------------------------
+# Tests: compute-verdict CLI --review-findings / --hygiene / --regression
+# malformed-JSON sentinel guard (maintainer-approved standalone bugfix —
+# the same "ERROR" sentinel crash the --dead-code fix above addressed,
+# applied to the three remaining unchecked call sites in cmd_compute_verdict)
+# ---------------------------------------------------------------------------
+
+
+class TestComputeVerdictPreExistingSentinelGuards(unittest.TestCase):
+    """--review-findings / --hygiene / --regression pointing at malformed
+    JSON must exit 2 cleanly (not crash with AttributeError on .get(...))."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp_dir = tempfile.mkdtemp()
+
+        cls.ac_results_path = os.path.join(cls.tmp_dir, "ac-results.json")
+        with open(cls.ac_results_path, "w", encoding="utf-8") as fh:
+            json.dump([], fh)
+
+        cls.malformed = os.path.join(cls.tmp_dir, "malformed.json")
+        with open(cls.malformed, "w", encoding="utf-8") as fh:
+            fh.write("{not valid json")
+
+        cls.review_findings_valid = os.path.join(cls.tmp_dir, "review-findings-valid.json")
+        with open(cls.review_findings_valid, "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "missing": False,
+                    "confirmed": [],
+                    "contested": [],
+                    "summary": {
+                        "critical": 0, "high": 0, "medium": 0, "info": 0,
+                        "confirmed_count": 0, "contested_count": 0,
+                        "dismissed_count": 0, "uncertain_count": 0,
+                    },
+                },
+                fh,
+            )
+
+        cls.hygiene_valid = os.path.join(cls.tmp_dir, "hygiene-valid.json")
+        with open(cls.hygiene_valid, "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "scope_creep": [],
+                    "leftover_artifacts": [],
+                    "scope_creep_checked": False,
+                    "files_checked": 0,
+                    "files_unreadable": [],
+                    "files_skipped": 0,
+                },
+                fh,
+            )
+
+        cls.regression_valid = os.path.join(cls.tmp_dir, "regression-valid.json")
+        with open(cls.regression_valid, "w", encoding="utf-8") as fh:
+            json.dump({"status": "clean", "regression": False}, fh)
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.tmp_dir, ignore_errors=True)
+
+    def test_malformed_review_findings_json_exits_2_cleanly(self):
+        out, err, rc = _capture([
+            "compute-verdict",
+            "--ac-results", self.ac_results_path,
+            "--review-findings", self.malformed,
+        ])
+        self.assertEqual(rc, 2)
+        self.assertNotIn("Traceback", err)
+        self.assertNotIn("AttributeError", err)
+        self.assertIn("--review-findings", err)
+
+    def test_malformed_hygiene_json_exits_2_cleanly(self):
+        out, err, rc = _capture([
+            "compute-verdict",
+            "--ac-results", self.ac_results_path,
+            "--hygiene", self.malformed,
+        ])
+        self.assertEqual(rc, 2)
+        self.assertNotIn("Traceback", err)
+        self.assertNotIn("AttributeError", err)
+        self.assertIn("--hygiene", err)
+
+    def test_malformed_regression_json_exits_2_cleanly(self):
+        out, err, rc = _capture([
+            "compute-verdict",
+            "--ac-results", self.ac_results_path,
+            "--regression", self.malformed,
+        ])
+        self.assertEqual(rc, 2)
+        self.assertNotIn("Traceback", err)
+        self.assertNotIn("AttributeError", err)
+        self.assertIn("--regression", err)
+
+    def test_valid_review_findings_json_still_works(self):
+        out, _, rc = _capture([
+            "compute-verdict",
+            "--ac-results", self.ac_results_path,
+            "--review-findings", self.review_findings_valid,
+        ])
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        self.assertEqual(data["verdict"], "APPROVED")
+
+    def test_valid_hygiene_json_still_works(self):
+        out, _, rc = _capture([
+            "compute-verdict",
+            "--ac-results", self.ac_results_path,
+            "--hygiene", self.hygiene_valid,
+        ])
+        self.assertEqual(rc, 0)
+        data = json.loads(out)
+        self.assertEqual(data["verdict"], "APPROVED")
+
+    def test_valid_regression_json_still_works(self):
+        out, _, rc = _capture([
+            "compute-verdict",
+            "--ac-results", self.ac_results_path,
+            "--regression", self.regression_valid,
         ])
         self.assertEqual(rc, 0)
         data = json.loads(out)

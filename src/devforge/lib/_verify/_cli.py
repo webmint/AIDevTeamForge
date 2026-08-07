@@ -699,6 +699,13 @@ def cmd_compute_verdict(args):
         ac_results = []
 
     review_findings = _load_json(review_path, "--review-findings", allow_missing=True)
+    if review_findings == "ERROR":
+        # allow_missing=True never returns the sentinel for a missing/unreadable
+        # path (both degrade to None); "ERROR" here can only come from the
+        # malformed-JSON branch, which _load_json always treats as fatal
+        # regardless of allow_missing. Without this check, the string "ERROR"
+        # would reach compute_verdict and crash on review_findings.get(...).
+        return 2
     if review_findings is None:
         review_findings = {
             "missing": True,
@@ -717,6 +724,13 @@ def cmd_compute_verdict(args):
         }
 
     hygiene = _load_json(hygiene_path, "--hygiene", allow_missing=True)
+    if hygiene == "ERROR":
+        # allow_missing=True never returns the sentinel for a missing/unreadable
+        # path (both degrade to None); "ERROR" here can only come from the
+        # malformed-JSON branch, which _load_json always treats as fatal
+        # regardless of allow_missing. Without this check, the string "ERROR"
+        # would reach compute_verdict and crash on hygiene.get(...).
+        return 2
     if hygiene is None:
         hygiene = {
             "scope_creep": [],
@@ -730,6 +744,13 @@ def cmd_compute_verdict(args):
     # Regression gate result (optional — allow_missing=True so the existing
     # 15-subcommand callers that omit --regression are byte-identical).
     regression = _load_json(regression_path, "--regression", allow_missing=True)
+    if regression == "ERROR":
+        # allow_missing=True never returns the sentinel for a missing/unreadable
+        # path (both degrade to None); "ERROR" here can only come from the
+        # malformed-JSON branch, which _load_json always treats as fatal
+        # regardless of allow_missing. Without this check, the string "ERROR"
+        # would reach compute_verdict and crash on regression.get(...).
+        return 2
 
     # Dead-code removal check result (plan 71 D4/OQ-2(a); optional —
     # allow_missing=True so existing callers that omit --dead-code are
