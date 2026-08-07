@@ -381,7 +381,7 @@ class TestDeadCodeRowValid(unittest.TestCase):
     def test_valid_row(self):
         r = DeadCodeRow(
             file="src/widgets/widget_filter.ts",
-            anchor_token=": 'primaryShipToCity'",
+            anchor_token=": 'legacyRegionCode'",
             kind="arm",
             why_dead="Superseded by the generic query-param filter",
         )
@@ -513,7 +513,7 @@ class TestBreakdownValid(unittest.TestCase):
     def test_with_dead_code_rows(self):
         row = DeadCodeRow(
             file="src/widgets/widget_filter.ts",
-            anchor_token=": 'primaryShipToCity'",
+            anchor_token=": 'legacyRegionCode'",
             kind="arm",
             why_dead="Superseded by the generic filter",
         )
@@ -1933,7 +1933,7 @@ class RenderTaskFileTests(_CwdIsolationBH):
         verbatim (stripped)."""
         result = _run_bh(
             self.tmp_path, "render-task-file",
-            "--dead-code-removal", "primaryShipTo* arms removed",
+            "--dead-code-removal", "legacyRegion* arms removed",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         lines = result.stdout.splitlines()
@@ -1942,7 +1942,7 @@ class RenderTaskFileTests(_CwdIsolationBH):
         )
         self.assertEqual(
             lines[context_idx + 1],
-            "**Dead code removal**: primaryShipTo* arms removed",
+            "**Dead code removal**: legacyRegion* arms removed",
         )
 
     def test_dead_code_removal_line_present_after_property_targets(self):
@@ -1951,7 +1951,7 @@ class RenderTaskFileTests(_CwdIsolationBH):
         result = _run_bh(
             self.tmp_path, "render-task-file",
             "--property-targets", "filterWidgetsByQuery",
-            "--dead-code-removal", "primaryShipTo* arms removed",
+            "--dead-code-removal", "legacyRegion* arms removed",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         lines = result.stdout.splitlines()
@@ -1964,7 +1964,7 @@ class RenderTaskFileTests(_CwdIsolationBH):
         )
         self.assertEqual(
             lines[context_idx + 2],
-            "**Dead code removal**: primaryShipTo* arms removed",
+            "**Dead code removal**: legacyRegion* arms removed",
         )
 
     def test_dead_code_removal_value_stripped(self):
@@ -3605,19 +3605,19 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         handoff = _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         td = self._tasks_dir()
         _write_full_task_file(
             td, "001", "Remove dead arm", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity",
+            dead_code_removal="legacyRegionCode",
         )
 
         declared, offenders, duplicates, covering, error = _validate_dead_code_coverage(
             str(td), str(handoff)
         )
         self.assertIsNone(error)
-        self.assertEqual(declared, [("primaryShipToCity", "src/widgets/widget_filter.ts")])
+        self.assertEqual(declared, [("legacyRegionCode", "src/widgets/widget_filter.ts")])
         self.assertEqual(offenders, [])
         self.assertEqual(duplicates, [])
         self.assertEqual(covering, 1)
@@ -3629,7 +3629,7 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         handoff = _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         td = self._tasks_dir()
         _write_full_task_file(td, "001", "Unrelated task", "feat", agent="backend-engineer")
@@ -3640,7 +3640,7 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         self.assertIsNone(error)
         self.assertEqual(len(declared), 1)
         self.assertEqual(
-            offenders, [("primaryShipToCity", "src/widgets/widget_filter.ts")]
+            offenders, [("legacyRegionCode", "src/widgets/widget_filter.ts")]
         )
         self.assertEqual(duplicates, [])
         self.assertEqual(covering, 0)
@@ -3653,16 +3653,16 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         handoff = _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         td = self._tasks_dir()
         _write_full_task_file(
             td, "001", "First claim", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity",
+            dead_code_removal="legacyRegionCode",
         )
         _write_full_task_file(
             td, "002", "Second claim", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity", depends_on="001",
+            dead_code_removal="legacyRegionCode", depends_on="001",
         )
 
         declared, offenders, duplicates, covering, error = _validate_dead_code_coverage(
@@ -3672,7 +3672,7 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         self.assertEqual(offenders, [])
         self.assertEqual(len(duplicates), 1)
         token, file_val, task_names = duplicates[0]
-        self.assertEqual(token, "primaryShipToCity")
+        self.assertEqual(token, "legacyRegionCode")
         self.assertEqual(file_val, "src/widgets/widget_filter.ts")
         self.assertEqual(
             sorted(task_names),
@@ -3688,14 +3688,14 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         handoff = _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
             [
-                ("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded"),
+                ("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded"),
                 ("src/widgets/legacy_filter.ts", "applyLegacyTagFilter", "function", "Replaced"),
             ],
         )
         td = self._tasks_dir()
         _write_full_task_file(
             td, "001", "Cover both", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity; applyLegacyTagFilter",
+            dead_code_removal="legacyRegionCode; applyLegacyTagFilter",
         )
 
         declared, offenders, duplicates, covering, error = _validate_dead_code_coverage(
@@ -3716,12 +3716,12 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         handoff = _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         td = self._tasks_dir()
         _write_full_task_file(
             td, "001", "Repeats itself", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity; primaryShipToCity",
+            dead_code_removal="legacyRegionCode; legacyRegionCode",
         )
 
         declared, offenders, duplicates, covering, error = _validate_dead_code_coverage(
@@ -3811,7 +3811,7 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         this hardening exists to make unambiguous)."""
         from breakdown_helper import _validate_dead_code_coverage  # type: ignore[import]
 
-        token = ": 'primaryShipToCity'"
+        token = ": 'legacyRegionCode'"
         plan_path = self.tmp_path / "plan.md"
         handoff = _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
@@ -3865,8 +3865,8 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         handoff = _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
             [
-                ("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "First row"),
-                ("src/widgets/other_file.ts", "primaryShipToCity", "arm", "Second row"),
+                ("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "First row"),
+                ("src/widgets/other_file.ts", "legacyRegionCode", "arm", "Second row"),
             ],
         )
         td = self._tasks_dir()
@@ -3877,10 +3877,10 @@ class ValidateDeadCodeCoverageFnTests(_CwdIsolationBH):
         )
         self.assertIsNone(error)
         self.assertEqual(
-            declared, [("primaryShipToCity", "src/widgets/widget_filter.ts")]
+            declared, [("legacyRegionCode", "src/widgets/widget_filter.ts")]
         )
         self.assertEqual(
-            offenders, [("primaryShipToCity", "src/widgets/widget_filter.ts")]
+            offenders, [("legacyRegionCode", "src/widgets/widget_filter.ts")]
         )
 
     def test_handoff_missing_returns_error(self):
@@ -3965,12 +3965,12 @@ class RenderDeadCodeCoverageFindingsFnTests(unittest.TestCase):
     def test_single_offender_exact_text(self):
         from breakdown_helper import _render_dead_code_coverage_findings  # type: ignore[import]
         result = _render_dead_code_coverage_findings(
-            [("primaryShipToCity", "src/widgets/widget_filter.ts")], []
+            [("legacyRegionCode", "src/widgets/widget_filter.ts")], []
         )
         self.assertEqual(
             result,
             "## Dead-code coverage findings\n\n"
-            "- anchor 'primaryShipToCity' (src/widgets/widget_filter.ts): "
+            "- anchor 'legacyRegionCode' (src/widgets/widget_filter.ts): "
             "no task's '**Dead code removal**:' field covers it\n"
             "\nDeclared in plan-handoff.json breakdown_seeds.dead_code_rows; "
             "fold each uncovered/duplicated anchor into exactly one task's "
@@ -3981,11 +3981,11 @@ class RenderDeadCodeCoverageFindingsFnTests(unittest.TestCase):
     def test_single_duplicate_exact_text(self):
         from breakdown_helper import _render_dead_code_coverage_findings  # type: ignore[import]
         result = _render_dead_code_coverage_findings(
-            [], [("primaryShipToCity", "src/widgets/widget_filter.ts",
+            [], [("legacyRegionCode", "src/widgets/widget_filter.ts",
                   ["001-a.md", "002-b.md"])]
         )
         self.assertIn(
-            "- anchor 'primaryShipToCity' (src/widgets/widget_filter.ts): "
+            "- anchor 'legacyRegionCode' (src/widgets/widget_filter.ts): "
             "claimed by 2 tasks (001-a.md, 002-b.md) -- must be folded "
             "into exactly ONE owning task\n",
             result,
@@ -4038,12 +4038,12 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         td = self._tasks_dir()
         _write_full_task_file(
             td, "001", "Remove dead arm", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity",
+            dead_code_removal="legacyRegionCode",
         )
 
         result = _run_bh(
@@ -4065,7 +4065,7 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         td = self._tasks_dir()
         _write_full_task_file(td, "001", "Unrelated", "feat", agent="backend-engineer")
@@ -4079,7 +4079,7 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         self.assertEqual(
             result.stdout,
             _render_dead_code_coverage_findings(
-                [("primaryShipToCity", "src/widgets/widget_filter.ts")], []
+                [("legacyRegionCode", "src/widgets/widget_filter.ts")], []
             ),
         )
 
@@ -4088,16 +4088,16 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         td = self._tasks_dir()
         _write_full_task_file(
             td, "001", "First claim", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity",
+            dead_code_removal="legacyRegionCode",
         )
         _write_full_task_file(
             td, "002", "Second claim", "feat", agent="backend-engineer",
-            dead_code_removal="primaryShipToCity", depends_on="001",
+            dead_code_removal="legacyRegionCode", depends_on="001",
         )
 
         result = _run_bh(
@@ -4117,7 +4117,7 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         plan_md_path = self.tmp_path / "plan.md"
         _write_plan_with_dead_code_rows(
             plan_md_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
 
         result = _run_bh(
@@ -4191,7 +4191,7 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         plan_md_path = self.tmp_path / "plan.md"
         _write_plan_with_dead_code_rows(
             plan_md_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
 
         result = _run_bh(
@@ -4211,7 +4211,7 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         plan_path = self.tmp_path / "plan.md"
         _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         empty_tasks_dir = self.tmp_path / "empty-tasks"
 
@@ -4232,14 +4232,14 @@ class VerifyDeadCodeCoverageVerbTests(_CwdIsolationBH):
         plan_path = feature_dir / "plan.md"
         _produce_plan_handoff_with_dead_code_rows(
             self.tmp_path, plan_path,
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
         )
         tasks_dir = feature_dir / "tasks"
         tasks_dir.mkdir()
         _write_full_task_file(
             tasks_dir, "001", "Remove dead arm", "001-default-path",
             agent="backend-engineer",
-            dead_code_removal="primaryShipToCity",
+            dead_code_removal="legacyRegionCode",
         )
 
         result = _run_bh(self.tmp_path, "verify-dead-code-coverage", str(tasks_dir))
@@ -4352,8 +4352,8 @@ class FinalizeHandoffDeadCodeCoverageGateTests(_CwdIsolationBH):
         """A declared row covered by task 001 -> exit 0, handoff written."""
         feature_dir, plan_path, _ = self._setup_feature_with_rows(
             "dcc001-covered",
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
-            dead_code_removal="primaryShipToCity",
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
+            dead_code_removal="legacyRegionCode",
         )
 
         result = _run_bh(
@@ -4368,7 +4368,7 @@ class FinalizeHandoffDeadCodeCoverageGateTests(_CwdIsolationBH):
         breakdown-handoff.json written."""
         feature_dir, plan_path, _ = self._setup_feature_with_rows(
             "dcc002-uncovered",
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
             dead_code_removal=None,
         )
 
@@ -4378,7 +4378,7 @@ class FinalizeHandoffDeadCodeCoverageGateTests(_CwdIsolationBH):
         )
         self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
         self.assertIn("## Dead-code coverage findings", result.stdout)
-        self.assertIn("primaryShipToCity", result.stdout)
+        self.assertIn("legacyRegionCode", result.stdout)
         self.assertFalse(
             (feature_dir / "breakdown-handoff.json").exists(),
             "breakdown-handoff.json must NOT be written when uncovered",
@@ -4389,9 +4389,9 @@ class FinalizeHandoffDeadCodeCoverageGateTests(_CwdIsolationBH):
         NO breakdown-handoff.json written."""
         feature_dir, plan_path, _ = self._setup_feature_with_rows(
             "dcc003-duplicate",
-            [("src/widgets/widget_filter.ts", "primaryShipToCity", "arm", "Superseded")],
-            dead_code_removal="primaryShipToCity",
-            second_task_dead_code_removal="primaryShipToCity",
+            [("src/widgets/widget_filter.ts", "legacyRegionCode", "arm", "Superseded")],
+            dead_code_removal="legacyRegionCode",
+            second_task_dead_code_removal="legacyRegionCode",
         )
 
         result = _run_bh(
@@ -4445,11 +4445,11 @@ class RenderTaskFileDeadCodeRemovalTighteningTests(_CwdIsolationBH):
         result = _run_bh(
             self.tmp_path, "render-task-file",
             "--dead-code-removal",
-            "primaryShipToCity; primaryShipToState",
+            "legacyRegionCode; legacyDistrictCode",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            "**Dead code removal**: primaryShipToCity; primaryShipToState",
+            "**Dead code removal**: legacyRegionCode; legacyDistrictCode",
             result.stdout,
         )
 
@@ -5833,7 +5833,7 @@ class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
             rows=[
                 (
                     "src/widgets/widget_filter.ts",
-                    ": 'primaryShipToCity'",
+                    ": 'legacyRegionCode'",
                     "arm",
                     "Superseded by the generic query-param filter",
                 ),
@@ -5844,7 +5844,7 @@ class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
                     "Fully replaced",
                 ),
             ],
-            dead_code_removal="applyLegacyTagFilter; : 'primaryShipToCity'",
+            dead_code_removal="applyLegacyTagFilter; : 'legacyRegionCode'",
         )
 
         result = _run_bh(
@@ -5859,10 +5859,10 @@ class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
         rows = written["dead_code_rows"]
         self.assertEqual(len(rows), 2)
         anchors = [r["anchor_token"] for r in rows]
-        self.assertIn(": 'primaryShipToCity'", anchors)
+        self.assertIn(": 'legacyRegionCode'", anchors)
         self.assertIn("applyLegacyTagFilter", anchors)
         kinds = {r["anchor_token"]: r["kind"] for r in rows}
-        self.assertEqual(kinds[": 'primaryShipToCity'"], "arm")
+        self.assertEqual(kinds[": 'legacyRegionCode'"], "arm")
         self.assertEqual(kinds["applyLegacyTagFilter"], "function")
 
     def test_no_dead_code_section_in_plan_empty_passthrough(self):
@@ -5940,7 +5940,7 @@ class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
             [
                 (
                     "src/widgets/widget_filter.ts",
-                    ": 'primaryShipToCity'",
+                    ": 'legacyRegionCode'",
                     "arm",
                     "Superseded by the generic query-param filter",
                 ),
@@ -5984,7 +5984,7 @@ class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
         NOT need to cover 'someToken' at all -- it was never declared."""
         feature_dir, plan_path, _ = self._setup_feature(
             "dc006-mixed-rows", produce_sibling=False,
-            dead_code_removal=": 'primaryShipToCity'",
+            dead_code_removal=": 'legacyRegionCode'",
         )
         (feature_dir / "plan-handoff.json").write_text(
             json.dumps({
@@ -5992,7 +5992,7 @@ class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
                     "dead_code_rows": [
                         {
                             "file": "src/widgets/widget_filter.ts",
-                            "anchor_token": ": 'primaryShipToCity'",
+                            "anchor_token": ": 'legacyRegionCode'",
                             "kind": "arm",
                             "why_dead": "Superseded by the generic filter",
                         },
@@ -6021,7 +6021,7 @@ class FinalizeHandoffDeadCodeRowsPassthroughTests(_CwdIsolationBH):
         )
         rows = written["dead_code_rows"]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["anchor_token"], ": 'primaryShipToCity'")
+        self.assertEqual(rows[0]["anchor_token"], ": 'legacyRegionCode'")
         self.assertEqual(rows[0]["kind"], "arm")
 
 

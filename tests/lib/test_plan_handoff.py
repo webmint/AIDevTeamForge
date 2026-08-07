@@ -387,7 +387,7 @@ class DeadCodeRowTests(unittest.TestCase):
     def test_valid_row(self):
         r = DeadCodeRow(
             file="src/widgets/widget_filter.ts",
-            anchor_token=": 'primaryShipToCity'",
+            anchor_token=": 'legacyRegionCode'",
             kind="arm",
             why_dead="Superseded by the generic query-param filter",
         )
@@ -608,7 +608,7 @@ class HandoffSchemaTests(unittest.TestCase):
         """dead_code_rows accepts a list of DeadCodeRow."""
         row = DeadCodeRow(
             file="src/widgets/widget_filter.ts",
-            anchor_token=": 'primaryShipToCity'",
+            anchor_token=": 'legacyRegionCode'",
             kind="arm",
             why_dead="Superseded by the generic filter",
         )
@@ -871,7 +871,7 @@ class FinalizeHandoffHappyPathTests(unittest.TestCase):
         # Fixture has 2 real rows + 1 [file] placeholder row.
         self.assertEqual(len(h.breakdown_seeds.dead_code_rows), 2)
         anchors = [r.anchor_token for r in h.breakdown_seeds.dead_code_rows]
-        self.assertIn(": 'primaryShipToCity'", anchors)
+        self.assertIn(": 'legacyRegionCode'", anchors)
         self.assertIn("applyLegacyTagFilter", anchors)
         for row in h.breakdown_seeds.dead_code_rows:
             self.assertTrue(row.file.strip(), "file must be non-empty")
@@ -1350,7 +1350,7 @@ class ParseDeadCodeRowsTests(unittest.TestCase):
             "### Change-Induced Dead Code\n\n"
             "| File | Anchor token | Kind | Why dead |\n"
             "| --- | --- | --- | --- |\n"
-            "| src/widgets/widget_filter.ts | : 'primaryShipToCity' | arm | Superseded |\n"
+            "| src/widgets/widget_filter.ts | : 'legacyRegionCode' | arm | Superseded |\n"
             "| src/widgets/legacy_filter.ts | applyLegacyTagFilter | function | Replaced |\n"
             "| [file] | [anchor] | [kind] | [why] |\n"
         )

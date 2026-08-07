@@ -245,7 +245,7 @@ class TestExtractTicketIdImport(unittest.TestCase):
         """Verify the imported function extracts PROJ-123 from branch names."""
         self.assertEqual(_extract_ticket_id("spec/PROJ-123-slugify"), "PROJ-123")
         self.assertEqual(_extract_ticket_id("feature/ABC-99-do-thing"), "ABC-99")
-        self.assertEqual(_extract_ticket_id("MIG-42"), "MIG-42")
+        self.assertEqual(_extract_ticket_id("ABC-42"), "ABC-42")
 
     def test_fallback_when_no_ticket(self):
         """When no [A-Z]+-[0-9]+ token exists, returns the full branch name."""

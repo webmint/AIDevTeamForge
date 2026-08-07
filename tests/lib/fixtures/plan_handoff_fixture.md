@@ -88,7 +88,7 @@ Typing filters the rendered widget list by name and tag; clearing restores the f
 
 | File | Anchor token | Kind | Why dead |
 |------|--------------|------|----------|
-| src/widgets/widget_filter.ts | : 'primaryShipToCity' | arm | Superseded by the generic query-param filter; this branch can never be reached after the parametrization |
+| src/widgets/widget_filter.ts | : 'legacyRegionCode' | arm | Superseded by the generic query-param filter; this branch can never be reached after the parametrization |
 | src/widgets/legacy_filter.ts | applyLegacyTagFilter | function | Legacy tag-matching function fully replaced by filterWidgetsByQuery |
 | [file] | [anchor] | [kind] | [why] |
 

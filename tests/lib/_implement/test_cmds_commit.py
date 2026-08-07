@@ -324,14 +324,14 @@ class TestComposeMessage(unittest.TestCase):
         self.assertEqual(msg, "[WIP] fix: null guard" + attr)
 
     def test_fix_mode_wrapper_no_task_suffix(self):
-        msg = _compose_message(True, "MIG-99", "null guard", "", "", fix_mode=True)
-        self.assertEqual(msg, "[MIG-99] - null guard")
+        msg = _compose_message(True, "ABC-99", "null guard", "", "", fix_mode=True)
+        self.assertEqual(msg, "[ABC-99] - null guard")
         self.assertNotIn("Task", msg)
 
     def test_fix_mode_wrapper_with_attribution(self):
         attr = "\n\nCo-Authored-By: X <x@x.com>"
-        msg = _compose_message(True, "MIG-99", "null guard", "", attr, fix_mode=True)
-        self.assertEqual(msg, "[MIG-99] - null guard" + attr)
+        msg = _compose_message(True, "ABC-99", "null guard", "", attr, fix_mode=True)
+        self.assertEqual(msg, "[ABC-99] - null guard" + attr)
 
     def test_task_mode_unchanged_by_fix_mode_flag_false(self):
         """Explicitly passing fix_mode=False must produce the same result as default."""
@@ -889,7 +889,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         import shutil
         shutil.rmtree(self.install_tmpdir, ignore_errors=True)
 
-    def _setup_wrapper(self, source_branch="bugfix/MIG-123", attribution=""):
+    def _setup_wrapper(self, source_branch="bugfix/ABC-123", attribution=""):
         """Set up the full two-repo wrapper fixture.
 
         Returns (source_dir, task_file_relpath, index_relpath).
@@ -938,7 +938,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
 
     def test_wrapper_commit_lands_in_source_repo(self):
         """Wrapper mode: the source file commit lands in the SOURCE repo."""
-        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/MIG-123")
+        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/ABC-123")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         args = _make_fake_args(
@@ -960,7 +960,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
 
     def test_wrapper_commit_message_uses_source_branch_ticket(self):
         """Wrapper mode: commit message ticket-id comes from the SOURCE branch."""
-        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/MIG-123")
+        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/ABC-123")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         args = _make_fake_args(
@@ -975,8 +975,8 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         self.assertEqual(rc, EXIT_OK)
 
         msg = _git_last_message(source_dir)
-        # bugfix/MIG-123 → MIG-123
-        self.assertEqual(msg, "[MIG-123] - Define types (Task 001)")
+        # bugfix/ABC-123 → ABC-123
+        self.assertEqual(msg, "[ABC-123] - Define types (Task 001)")
 
     def test_wrapper_task_file_not_in_source_commit(self):
         """Wrapper mode: task_file (wrapper artifact) is NOT staged in the source repo.
@@ -984,7 +984,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         Critical D1 assertion: after wip-commit, the task file must NOT appear
         in the source repo's latest commit.
         """
-        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/MIG-123")
+        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/ABC-123")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         args = _make_fake_args(
@@ -1015,7 +1015,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         The 'uncommitted' / not-in-source-commit contract is enforced by
         test_wrapper_task_file_not_in_source_commit.
         """
-        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/MIG-123")
+        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/ABC-123")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         # Confirm task_file + index are NOT tracked by any git repo at the
@@ -1040,7 +1040,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
 
     def test_wrapper_wip_md_cleared_in_install_root(self):
         """Wrapper mode: wip.md in the INSTALL root is cleared after source commit."""
-        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/MIG-123")
+        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/ABC-123")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         wip_path = self.install_root / ".devforge" / "wip.md"
@@ -1060,7 +1060,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
 
     def test_wrapper_emits_source_head_sha(self):
         """Wrapper mode: emitted head_sha is the SOURCE repo's new HEAD."""
-        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/MIG-123")
+        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/ABC-123")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         import io as _io
@@ -1098,7 +1098,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         (The install root has no git repo in this fixture; this test confirms
         the source commit only contains the explicitly listed source files.)
         """
-        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/MIG-123")
+        source_dir, task_rel, index_rel = self._setup_wrapper("bugfix/ABC-123")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         # Create an unrelated install-root file (e.g. an audit report).
@@ -1136,7 +1136,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         """
         attribution = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
         source_dir, task_rel, index_rel = self._setup_wrapper(
-            "bugfix/MIG-123", attribution=attribution
+            "bugfix/ABC-123", attribution=attribution
         )
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
@@ -1159,7 +1159,7 @@ class TestCmdWipCommitWrapper(unittest.TestCase):
         self.assertNotIn("Co-Author", msg,
                          "Source WIP commit must not contain any Co-Author trailer (D5)")
         # The subject line itself must be intact.
-        self.assertIn("[MIG-123] - Define types (Task 001)", msg)
+        self.assertIn("[ABC-123] - Define types (Task 001)", msg)
 
     def test_wrapper_source_commit_traceless_real_git_fixture(self):
         """Phase 6 D5: real two-repo git fixture — wrapper source commit has NO attribution.
@@ -1489,7 +1489,7 @@ class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
         import shutil
         shutil.rmtree(self.install_tmpdir, ignore_errors=True)
 
-    def _setup_wrapper_fix(self, source_branch="bugfix/MIG-123", attribution=""):
+    def _setup_wrapper_fix(self, source_branch="bugfix/ABC-123", attribution=""):
         """Set up wrapper fixture for fix mode (no task file / index needed)."""
         source_dir = _init_source_repo(
             self.install_root, self.source_name, source_branch
@@ -1516,7 +1516,7 @@ class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
 
     def test_fix_mode_wrapper_message_format(self):
         """Wrapper fix mode: message is '[TICKET-ID] - <title>' (no Task suffix)."""
-        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        source_dir = self._setup_wrapper_fix("bugfix/ABC-456")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         args = _make_fake_args(
@@ -1530,11 +1530,11 @@ class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
         rc = cmd_wip_commit(args)
         self.assertEqual(rc, EXIT_OK)
         msg = _git_last_message(source_dir)
-        self.assertEqual(msg, "[MIG-456] - null guard")
+        self.assertEqual(msg, "[ABC-456] - null guard")
 
     def test_fix_mode_wrapper_no_task_suffix(self):
         """Wrapper fix mode: message must NOT contain '(Task NNN)'."""
-        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        source_dir = self._setup_wrapper_fix("bugfix/ABC-456")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         args = _make_fake_args(
@@ -1552,7 +1552,7 @@ class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
 
     def test_fix_mode_wrapper_stages_only_source_files(self):
         """Wrapper fix mode: only source touched_files are in the source repo commit."""
-        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        source_dir = self._setup_wrapper_fix("bugfix/ABC-456")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         args = _make_fake_args(
@@ -1574,7 +1574,7 @@ class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
 
     def test_fix_mode_wrapper_commit_lands_in_source_repo(self):
         """Wrapper fix mode: commit lands in the SOURCE repo, not install root."""
-        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        source_dir = self._setup_wrapper_fix("bugfix/ABC-456")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         import io
@@ -1603,7 +1603,7 @@ class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
     def test_fix_mode_wrapper_no_attribution_d5(self):
         """Wrapper fix mode: D5 — source commit carries NO Co-Authored-By even when configured."""
         attr = "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
-        source_dir = self._setup_wrapper_fix("bugfix/MIG-456", attribution=attr)
+        source_dir = self._setup_wrapper_fix("bugfix/ABC-456", attribution=attr)
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         args = _make_fake_args(
@@ -1621,11 +1621,11 @@ class TestCmdWipCommitFixModeWrapper(unittest.TestCase):
                          "Wrapper fix commit must be traceless (D5)")
         self.assertNotIn("Co-Author", msg)
         # Subject must be exact.
-        self.assertEqual(msg, "[MIG-456] - null guard")
+        self.assertEqual(msg, "[ABC-456] - null guard")
 
     def test_fix_mode_wrapper_wip_cleared_in_install_root(self):
         """Wrapper fix mode: wip.md in the INSTALL root is cleared."""
-        source_dir = self._setup_wrapper_fix("bugfix/MIG-456")
+        source_dir = self._setup_wrapper_fix("bugfix/ABC-456")
         src_file = self._stage_source_file(source_dir, "src/widget.ts")
 
         wip_path = self.install_root / ".devforge" / "wip.md"

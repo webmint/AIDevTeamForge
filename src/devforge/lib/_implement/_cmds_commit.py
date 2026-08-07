@@ -29,7 +29,7 @@ Algorithm
 4. Derive TICKET-ID:
    - WRAPPER mode: run `git -C <source_root> rev-parse --abbrev-ref HEAD`
      to get the SOURCE repo branch; extract [A-Z]+-[0-9]+ ticket token
-     (e.g. `bugfix/MIG-123` → `MIG-123`); fall back to full branch name.
+     (e.g. `bugfix/ABC-123` → `ABC-123`); fall back to full branch name.
    - STANDALONE mode: ticket-id is unused (non-wrapper message format).
 5. Compose message per mode (see Two modes above).
 6. Append COMMIT_ATTRIBUTION: in STANDALONE mode, append verbatim when non-empty
@@ -79,7 +79,7 @@ Design notes:
   is irrelevant to the source repo commit message.
 - TICKET-ID pattern [A-Z]+-[0-9]+: industry-standard Jira-style ticket pattern.
   Applied after stripping path prefixes:
-    bugfix/MIG-123-desc → MIG-123
+    bugfix/ABC-123-desc → ABC-123
     PROJ-42-do-thing    → PROJ-42
     develop-no-ticket   → fallback = full branch name
 - WORKSPACE_MODE key: project-config.json stores workspace mode as

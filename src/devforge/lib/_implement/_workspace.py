@@ -7,7 +7,7 @@ standalone install (single repo, source == install).
 The canonical config field is PROJECT_ROOT inside
 <install_root>/.devforge/project-config.json:
   - Standalone: PROJECT_ROOT == "." (or absent/empty — treated as ".")
-  - Wrapper:    PROJECT_ROOT == "db-cse-ui-strata" (a non-trivial relative path)
+  - Wrapper:    PROJECT_ROOT == "acme-product-app" (a non-trivial relative path)
 
 This module is the single source of truth for repo targeting in
 _implement.  Every helper that needs to distinguish the install root from

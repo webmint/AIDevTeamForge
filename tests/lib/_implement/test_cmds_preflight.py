@@ -874,7 +874,7 @@ def _init_wrapper_install(install_dir, source_repo_name="src-repo"):
     # Create the nested source git repo on a feature branch.
     source_dir = install_dir / source_repo_name
     source_dir.mkdir(parents=True, exist_ok=True)
-    _init_git_repo(source_dir, branch="bugfix/MIG-123")
+    _init_git_repo(source_dir, branch="bugfix/ABC-123")
 
     # Get the source repo HEAD SHA.
     sha_result = subprocess.run(
@@ -911,7 +911,7 @@ class TestCmdPreflightWrapperHappyPath(unittest.TestCase):
         return code, buf.getvalue(), errbuf.getvalue()
 
     def test_wrapper_exits_0_on_feature_branch(self):
-        """Source repo on feature branch (bugfix/MIG-123) → preflight passes."""
+        """Source repo on feature branch (bugfix/ABC-123) → preflight passes."""
         code, stdout, stderr = self._run_preflight()
         self.assertEqual(code, 0,
                          "Expected exit 0; stderr={0!r}".format(stderr))
@@ -932,15 +932,15 @@ class TestCmdPreflightWrapperHappyPath(unittest.TestCase):
         self.assertEqual(code, 0)
         data = json.loads(stdout)
         self.assertIn("source_branch", data, "source_branch field must be present")
-        self.assertEqual(data["source_branch"], "bugfix/MIG-123")
+        self.assertEqual(data["source_branch"], "bugfix/ABC-123")
 
     def test_wrapper_branch_field_matches_source_branch(self):
         """branch and source_branch are both the source repo branch."""
         code, stdout, stderr = self._run_preflight()
         self.assertEqual(code, 0)
         data = json.loads(stdout)
-        self.assertEqual(data["branch"], "bugfix/MIG-123")
-        self.assertEqual(data["source_branch"], "bugfix/MIG-123")
+        self.assertEqual(data["branch"], "bugfix/ABC-123")
+        self.assertEqual(data["source_branch"], "bugfix/ABC-123")
 
     def test_wrapper_source_dirty_warning_null_when_clean(self):
         """source_dirty_warning is null when the source repo is clean."""
@@ -993,7 +993,7 @@ class TestCmdPreflightWrapperSourceOnMain(unittest.TestCase):
         # Rename the source repo branch to 'main'.
         source_dir = str(self.tmp / "src-repo")
         subprocess.run(
-            ["git", "branch", "-m", "bugfix/MIG-123", "main"],
+            ["git", "branch", "-m", "bugfix/ABC-123", "main"],
             cwd=source_dir, capture_output=True,
         )
 

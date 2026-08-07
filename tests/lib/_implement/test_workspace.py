@@ -5,9 +5,9 @@ Coverage:
   resolve_workspace:
     Happy paths:
     - standalone: PROJECT_ROOT "." → source_root == install_root, is_wrapper False.
-    - wrapper: PROJECT_ROOT "db-cse-ui-strata" → source_root == install/db-cse-ui-strata,
+    - wrapper: PROJECT_ROOT "acme-product-app" → source_root == install/acme-product-app,
       is_wrapper True.
-    - PROJECT_ROOT with surrounding whitespace ("  db-cse-ui-strata  ") → trimmed,
+    - PROJECT_ROOT with surrounding whitespace ("  acme-product-app  ") → trimmed,
       treated as wrapper.
 
     Fail-soft (all return standalone, never raise):
@@ -128,30 +128,30 @@ class TestResolveWorkspaceWrapper(unittest.TestCase):
         # Create the nested source directory so resolve() works correctly
         # on symlink-free systems (resolve() on a non-existent dir still works
         # on CPython, but create it to be unambiguous).
-        (self.install / "db-cse-ui-strata").mkdir(parents=True, exist_ok=True)
+        (self.install / "acme-product-app").mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_wrapper_project_root(self):
-        """PROJECT_ROOT 'db-cse-ui-strata' → source_root points at nested dir."""
-        _write_config(self.install, {"PROJECT_ROOT": "db-cse-ui-strata"})
+        """PROJECT_ROOT 'acme-product-app' → source_root points at nested dir."""
+        _write_config(self.install, {"PROJECT_ROOT": "acme-product-app"})
         ws = resolve_workspace(self.install)
         self.assertEqual(ws.install_root, self.install)
-        self.assertEqual(ws.source_root, self.install / "db-cse-ui-strata")
+        self.assertEqual(ws.source_root, self.install / "acme-product-app")
         self.assertTrue(ws.is_wrapper)
 
     def test_wrapper_source_root_is_absolute(self):
-        _write_config(self.install, {"PROJECT_ROOT": "db-cse-ui-strata"})
+        _write_config(self.install, {"PROJECT_ROOT": "acme-product-app"})
         ws = resolve_workspace(self.install)
         self.assertTrue(ws.source_root.is_absolute())
 
     def test_wrapper_project_root_with_surrounding_whitespace(self):
-        """PROJECT_ROOT '  db-cse-ui-strata  ' → stripped, treated as wrapper."""
-        _write_config(self.install, {"PROJECT_ROOT": "  db-cse-ui-strata  "})
+        """PROJECT_ROOT '  acme-product-app  ' → stripped, treated as wrapper."""
+        _write_config(self.install, {"PROJECT_ROOT": "  acme-product-app  "})
         ws = resolve_workspace(self.install)
-        self.assertEqual(ws.source_root, self.install / "db-cse-ui-strata")
+        self.assertEqual(ws.source_root, self.install / "acme-product-app")
         self.assertTrue(ws.is_wrapper)
 
 
@@ -236,7 +236,7 @@ class TestResolveWorkspaceFailSoft(unittest.TestCase):
     )
     def test_unreadable_config_file(self):
         """Unreadable config file (permission denied) → standalone fail-soft."""
-        config = _write_config(self.install, {"PROJECT_ROOT": "db-cse-ui-strata"})
+        config = _write_config(self.install, {"PROJECT_ROOT": "acme-product-app"})
         # Remove read permission.
         config.chmod(0o000)
         try:

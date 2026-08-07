@@ -113,7 +113,7 @@ def _write_tmp(tmp_dir, filename, content):
     return path
 
 
-def _row(file, anchor_token="primaryShipToCity", kind="arm", why_dead="superseded"):
+def _row(file, anchor_token="legacyRegionCode", kind="arm", why_dead="superseded"):
     return {
         "file": file,
         "anchor_token": anchor_token,
@@ -148,7 +148,7 @@ class TestCheckDeadCodeRemovalFunction(unittest.TestCase):
         """anchor_token still present in the file → guard-and-leave violation."""
         f = _write_tmp(
             self.tmp_dir, "dirty.js",
-            "if (x) { return 'primaryShipToCity'; }\n",
+            "if (x) { return 'legacyRegionCode'; }\n",
         )
         rows = [_row(f)]
         result = check_dead_code_removal(rows, self.tmp_dir)
@@ -186,11 +186,11 @@ class TestCheckDeadCodeRemovalFunction(unittest.TestCase):
         """Multiple rows: one clean removal, one guard-and-leave → correct counts."""
         clean_f = _write_tmp(self.tmp_dir, "clean2.js", "ok()\n")
         dirty_f = _write_tmp(
-            self.tmp_dir, "dirty2.js", "case 'primaryShipToState':\n"
+            self.tmp_dir, "dirty2.js", "case 'legacyDistrictCode':\n"
         )
         rows = [
-            _row(clean_f, anchor_token="primaryShipToCity"),
-            _row(dirty_f, anchor_token="primaryShipToState"),
+            _row(clean_f, anchor_token="legacyRegionCode"),
+            _row(dirty_f, anchor_token="legacyDistrictCode"),
         ]
         result = check_dead_code_removal(rows, self.tmp_dir)
         self.assertEqual(result["status"], "violation")
@@ -217,7 +217,7 @@ class TestCheckDeadCodeRemovalFunction(unittest.TestCase):
         self.assertEqual(result["rows"][0]["status"], "pass")
 
     def test_relative_path_resolved_against_source_root(self):
-        f = _write_tmp(self.tmp_dir, "relcheck.js", "still 'primaryShipToCity' here\n")
+        f = _write_tmp(self.tmp_dir, "relcheck.js", "still 'legacyRegionCode' here\n")
         rows = [_row("relcheck.js")]
         result = check_dead_code_removal(rows, self.tmp_dir)
         self.assertEqual(result["rows"][0]["status"], "violation")
@@ -262,7 +262,7 @@ class TestCheckDeadCodeRemovalCLI(unittest.TestCase):
 
         # A file that still contains the declared dead-code anchor.
         cls.dirty_file = _write_tmp(
-            cls.tmp_dir, "dirty.js", "case 'primaryShipToCity':\n"
+            cls.tmp_dir, "dirty.js", "case 'legacyRegionCode':\n"
         )
         # A file where the anchor has been removed.
         cls.clean_file = _write_tmp(cls.tmp_dir, "clean.js", "buildFilters(q)\n")

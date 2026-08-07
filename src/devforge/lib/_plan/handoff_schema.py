@@ -272,7 +272,7 @@ class DeadCodeRow:
     renders unreachable. file is a repo-relative path. anchor_token is a
     literal string whose ABSENCE in the post-change file is the /verify
     removal-confirmation pass condition (plan 71 OQ-1) -- e.g. the literal
-    "'primaryShipToCity'" for a dead switch/match arm. kind classifies what
+    "'legacyRegionCode'" for a dead switch/match arm. kind classifies what
     the anchor names -- "arm" is a switch/match/case arm; "branch" is an
     if/else (or ternary) conditional branch; the two are distinct kinds
     even though both are conditional-dispatch shapes. why_dead is required
