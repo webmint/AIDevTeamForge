@@ -106,7 +106,7 @@ _PROJECT_ARCHITECTURE_REQUIRED_SECTIONS = (
 )
 
 # Bullet length cap (Concerns/Layers/Patterns/Cross-Cuts).
-# Bumped 200 → 300 (2026-05-08) after V5 smoke on pkg-cse-client surfaced
+# Bumped 200 → 300 (2026-05-08) after a V5 smoke run on a large real-consumer package surfaced
 # Patterns bullets at 219-332 chars where the content was REAL (Vite dual-
 # bundle build, AppSync subscription transport subclass override, etc.),
 # not LLM rambling. 200 was Hazards-calibrated (smoke #5); Patterns/Layers

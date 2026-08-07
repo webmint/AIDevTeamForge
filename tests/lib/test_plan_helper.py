@@ -2573,9 +2573,9 @@ class CallerEnumerationRenderTests(unittest.TestCase):
             "inbound_callers": [
                 {
                     "helper_qn": "config.load",
-                    "caller_qn": "AccountsBLoC.fetchPassportAccountsWithV2",
+                    "caller_qn": "WidgetListBLoC.fetchArchivedWidgetsWithV2",
                     "file_line": "src/bloc/accounts_bloc.ts:80",
-                    "surface": "DealerToAccountNumberModal.vue",
+                    "surface": "WidgetPickerModal.vue",
                     "scope": "in",
                     "justification": "Drives the same Customer search flow.",
                 },
@@ -2588,10 +2588,10 @@ class CallerEnumerationRenderTests(unittest.TestCase):
         )
         caller_line = next(
             line for line in output.splitlines()
-            if "AccountsBLoC.fetchPassportAccountsWithV2" in line
+            if "WidgetListBLoC.fetchArchivedWidgetsWithV2" in line
         )
         self.assertIn("src/bloc/accounts_bloc.ts:80", caller_line)
-        self.assertIn("surface: DealerToAccountNumberModal.vue", caller_line)
+        self.assertIn("surface: WidgetPickerModal.vue", caller_line)
         self.assertIn("scope: in", caller_line)
         self.assertIn("Drives the same Customer search flow.", caller_line)
 

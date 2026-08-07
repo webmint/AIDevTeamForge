@@ -312,14 +312,14 @@ class CmdSetDocCrossCutsTests(unittest.TestCase):
             self.devforge,
             "project-architecture",
             cross_cuts=json.dumps(
-                [{"name": "auth", "role": "Okta + identity span", "cite": "pkg-cse-identity/"}]
+                [{"name": "auth", "role": "Okta + identity span", "cite": "pkg-acme-identity/"}]
             ),
         )
         code, _, _ = _run(cmd_set_doc_cross_cuts, args)
         self.assertEqual(code, 0)
         content = (self.root / "docs" / "architecture.md.skeleton").read_text(encoding="utf-8")
         self.assertNotIn("<!-- TODO: cross-cuts -->", content)
-        self.assertIn("- auth — Okta + identity span; pkg-cse-identity/", content)
+        self.assertIn("- auth — Okta + identity span; pkg-acme-identity/", content)
 
     def test_rejects_other_tier(self):
         args = _ns(
@@ -1780,7 +1780,7 @@ class CmdSetArchitectureCrossCutsDetailedTests(unittest.TestCase):
                     "description": "Okta + Apollo singleton",
                     "language": "typescript",
                     "code_snippet": "const TOKEN = getToken();",
-                    "cite": "pkg-cse-client/src/x.ts:29",
+                    "cite": "pkg-acme-client/src/x.ts:29",
                 },
             ]),
         )
@@ -1790,7 +1790,7 @@ class CmdSetArchitectureCrossCutsDetailedTests(unittest.TestCase):
         self.assertNotIn("<!-- TODO: cross-cuts -->", content)
         self.assertIn("### Authentication", content)
         self.assertIn("Okta + Apollo singleton", content)
-        self.assertIn("<!-- pkg-cse-client/src/x.ts:29 -->", content)
+        self.assertIn("<!-- pkg-acme-client/src/x.ts:29 -->", content)
         self.assertIn("```typescript\nconst TOKEN = getToken();\n```", content)
 
     def test_replaces_phase0_bullet_list(self):

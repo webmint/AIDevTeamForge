@@ -781,10 +781,10 @@ class WalkNavGuardFilesTests(unittest.TestCase):
 
 class ClassifyPackagesTests(unittest.TestCase):
     def test_infrastructure_bucket(self):
-        result = _classify_packages(["pkg-cse-common", "foo-types", "pkg-cse-client", "pkg-cse-notifications"])
+        result = _classify_packages(["pkg-acme-common", "foo-types", "pkg-acme-client", "pkg-acme-notifications"])
         self.assertEqual(
             result["infrastructure"],
-            sorted(["pkg-cse-common", "foo-types", "pkg-cse-client", "pkg-cse-notifications"]),
+            sorted(["pkg-acme-common", "foo-types", "pkg-acme-client", "pkg-acme-notifications"]),
         )
         self.assertEqual(result["core"], [])
         self.assertEqual(result["domain"], [])
@@ -794,17 +794,17 @@ class ClassifyPackagesTests(unittest.TestCase):
         self.assertEqual(result["core"], ["foo-core"])
 
     def test_domain_residual(self):
-        result = _classify_packages(["pkg-cse-quote", "pkg-cse-order", "pkg-cse-catalog"])
+        result = _classify_packages(["pkg-acme-quote", "pkg-acme-order", "pkg-acme-catalog"])
         self.assertEqual(
             result["domain"],
-            sorted(["pkg-cse-quote", "pkg-cse-order", "pkg-cse-catalog"]),
+            sorted(["pkg-acme-quote", "pkg-acme-order", "pkg-acme-catalog"]),
         )
 
     def test_first_match_wins(self):
-        # `pkg-cse-common-test` matches both `common` (infra) and `test` (infra)
+        # `pkg-acme-common-test` matches both `common` (infra) and `test` (infra)
         # — both rules same bucket, first match wins is fine.
-        result = _classify_packages(["pkg-cse-common-test"])
-        self.assertEqual(result["infrastructure"], ["pkg-cse-common-test"])
+        result = _classify_packages(["pkg-acme-common-test"])
+        self.assertEqual(result["infrastructure"], ["pkg-acme-common-test"])
 
     def test_empty_input(self):
         result = _classify_packages([])

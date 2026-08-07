@@ -2910,7 +2910,7 @@ class TestStep4CitationValidity(unittest.TestCase):
             install_root = Path(tmp)
             # Wrapper layout: install_root/module/packages/.../BLoC.ts
             inner_project = install_root / "module"
-            pkg_dir = inner_project / "packages" / "pkg-cse-common" / "src" / "classes"
+            pkg_dir = inner_project / "packages" / "pkg-acme-common" / "src" / "classes"
             pkg_dir.mkdir(parents=True)
             (pkg_dir / "BLoC.ts").write_text("export class BLoC {}", encoding="utf-8")
 

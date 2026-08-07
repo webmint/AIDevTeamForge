@@ -123,14 +123,14 @@ class TestAllRulesPresent(unittest.TestCase):
 
 
 class TestOneRuleMissing(unittest.TestCase):
-    """Exit 2 when exactly one schema rule is absent — the mintEnvoy reproduction."""
+    """Exit 2 when exactly one schema rule is absent — the real-consumer reproduction."""
 
     def setUp(self):
         self._td = tempfile.mkdtemp()
         self.devforge_dir = Path(self._td) / ".devforge"
         self.devforge_dir.mkdir()
         config_path = _write_all_rules(self.devforge_dir)
-        # Drop design_token_provenance — the exact rule the mintEnvoy scenario lacked.
+        # Drop design_token_provenance — the exact rule the consumer scenario lacked.
         _drop_rule_from_config(config_path, "design_token_provenance")
         self.consumer_root = Path(self._td)
 
