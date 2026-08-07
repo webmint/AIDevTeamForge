@@ -1,5 +1,7 @@
 # 28 — /generate-docs INCREMENTAL MODE
 
+> **CLOSED 2026-08-07 — OUTDATED (maintainer disposition, not built).** The core cost this plan targeted is substantially addressed by shipped machinery: the cbm_sync preamble routes drift through `detect_changes` (not a full `index_repository`), and the `source_stamp` skip already gates the LLM compose. The remaining delta (skipping the whole-tree stamp scan) is not worth a build. Do not build; retained as rationale record.
+
 **Status**: DEFERRED — decision recorded 2026-06-19, not started, no code yet. This file is a DECISION RECORD, not an active execution plan: it captures the chosen design so a future session does not re-litigate it. There is no per-phase task breakdown and no per-step `## Verify` — those get authored when this is promoted to a full plan (see `## When resuming work`).
 
 ## Problem

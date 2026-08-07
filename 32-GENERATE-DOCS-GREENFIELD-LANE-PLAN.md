@@ -1,5 +1,7 @@
 # 32 — /generate-docs GREENFIELD LANE
 
+> **CLOSED 2026-08-07 — OUTDATED (maintainer disposition, never ratified, no code).** The stub-passes-the-gate behavior it documents remains the accepted greenfield workaround; no short-circuit will be built. Retained as rationale record.
+
 **DRAFT — decision record, not started, no code.** Awaiting maintainer ratification of the recommended option. Recorded 2026-06-23 on `develop-2.0-init`. This file is a DECISION RECORD, not an active execution plan: it lays out a framework asymmetry + a decision space and recommends one option, but picks no winner unilaterally — the maintainer ratifies. The per-phase steps below carry `## Verify` criteria scoped to "ratify option N" / "verify signal availability", NOT code-landing criteria; the build phases get authored once an option is ratified (see `## When resuming work`).
 
 ## Problem — the greenfield asymmetry in the 4-command setup chain
