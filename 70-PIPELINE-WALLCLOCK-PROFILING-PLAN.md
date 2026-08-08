@@ -1,6 +1,6 @@
 # 70 — Pipeline Wall-Clock Profiling Plan
 
-**Status:** Phases 0–1b DONE 2026-08-07 (ratified; probe answers recorded; `_profile/` + `profile_helper` built, 130 tests, python-reviewer two-pass clean, install-ride verified). REMAINING: Phase 2 (real-run diagnosis — user-driven: release, run pipeline, hand over `.devforge/profile/`), then Phase 3 (follow-on plan from the numbers).
+**Status:** ✅ DONE (build) 2026-08-08 — maintainer disposition. Phases 0–1b shipped 2026-08-07 (ratified; probe answers recorded; `_profile/` + `profile_helper` built, 130 tests, python-reviewer two-pass clean, install-ride verified). **Phase 2 (real-run diagnosis) DEFERRED by maintainer to post-release — not blocking**; its recipe + precondition (post-63 marker confirm) stand below for when release-install runs produce `.devforge/profile/` data. Phase 3 opens only from those numbers.
 **Branch:** `develop-2.0-init`
 **Date:** 2026-08-05
 **Updated:** 2026-08-07 — reconciled with plan 63 (`/devforge:` namespace + model-invocable commands) throughout.
