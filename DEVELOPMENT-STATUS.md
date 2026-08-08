@@ -65,6 +65,7 @@ Opt-in adversarial commands: `devils-advocate` (`/devforge:grill`, plan 23), `sp
 - `specs/` — Empty specs directory with .gitkeep
 - `bugs/` — Empty bugs directory with .gitkeep (bug backlog for `/devforge:report-bug` and `/devforge:verify` triage)
 - `research/`, `discover/` — RETIRED by plan 68 (intake owns the feature dir). `/devforge:research` and `/devforge:discover` now write their report + handoff into `specs/NNN-slug/`, which they allocate themselves at save. Existing top-level dirs in already-installed projects are grandfathered as inert history — no reader, no migration, no deletion.
+- `.devforge/lib/profile_helper` + `_profile/` (plan 70) — diagnostic wall-clock profiler over Claude Code session transcripts: per-pipeline-command split into LLM / Bash / agent-dispatch / human-answer time (+ subagent busy time), `run` + `aggregate` verbs, per-run reports under gitignored `.devforge/profile/`. Measurement only — no pass/fail semantics; not invoked by any command (maintainer-run).
 
 ### Wrapper Mode
 - `/devforge:init-forge` detects nested git repos at depth 1 and resolves the workspace mode (standalone vs wrapper)
