@@ -7,6 +7,7 @@
     "files": [
       { "source": "src/manifest.json",                      "target": ".claude/template-manifest.json" },
       { "source": "src/devforge/lib/**",                    "target": ".devforge/lib/**" },
+      { "source": "src/devforge/bin/**",                    "target": ".devforge/bin/**" },
       { "source": "src/devforge/storage-rules.md",          "target": ".devforge/storage-rules.md" },
       { "source": "src/git-hooks/**",                       "target": ".devforge/templates/git-hooks/**" },
       { "source": "src/hooks/**",                           "target": ".claude/hooks/**" }

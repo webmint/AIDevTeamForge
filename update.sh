@@ -54,6 +54,9 @@ if [ -z "$TARGET_DIR" ]; then
   echo "Flags:"
   echo "  --dry-run   Show what would change without making modifications"
   echo "  --force     Skip confirmation prompt"
+  echo ""
+  echo "An incomplete install (missing .devforge/lib helpers) is repaired"
+  echo "automatically, regardless of version — no flag needed."
   exit 1
 fi
 
@@ -242,9 +245,40 @@ info "Target path:      $TARGET_DIR"
 # still caught. WARN-ONLY + fail-soft; never blocks the update.
 forge_check_constitution_drift "$TARGET_DIR" "$TEMPLATE_DIR"
 
+# ── Repair guard (plan 72 D1) ───────────────────────────────────────────────
+# Auto-detect a broken/incomplete install and force through both confirmation
+# gates below, regardless of how the versions compare. Sentinel: .devforge/lib
+# present AND at least one top-level executable *_helper launcher file (both
+# -f and -x are required — -x alone is true for a directory). errexit-safe:
+# the test lives inside an `if` condition, which set -e always exempts, so a
+# no-match glob or a false test cannot abort the script (mirrors the glob
+# idiom at update.sh:702, not its `&&` form).
+INSTALL_INCOMPLETE=true
+if [ -d "$TARGET_DIR/.devforge/lib" ]; then
+  for _hf in "$TARGET_DIR/.devforge/lib/"*_helper; do
+    if [ -f "$_hf" ] && [ -x "$_hf" ]; then
+      INSTALL_INCOMPLETE=false
+      break
+    fi
+  done
+fi
+if [ "$INSTALL_INCOMPLETE" = true ]; then
+  warn "Install incomplete — .devforge/lib has no executable *_helper launcher."
+  warn "Skipping confirmation prompts and repairing the install now (REPAIR MODE)."
+  FORCE=true
+fi
+
 if [ "$TEMPLATE_VERSION" = "$TARGET_VERSION" ]; then
   warn "Target is already on version $TEMPLATE_VERSION."
   if [ "$FORCE" != true ]; then
+    # plan 72 D2: a healthy, up-to-date, non-interactive run should be a clean
+    # no-op, not a crash at the prompt. Reachable only when FORCE is still
+    # false — i.e. the repair guard above did NOT fire — so the install is
+    # structurally complete on this path.
+    if [ ! -t 0 ]; then
+      info "Target is already on version $TEMPLATE_VERSION and the install is complete — nothing to do."
+      exit 0
+    fi
     echo ""
     printf "Continue anyway? [y/N] "
     read -r confirm
@@ -650,6 +684,15 @@ fi
 
 # ── Confirmation ───────────────────────────────────────────────────────────
 if [ "$FORCE" != true ]; then
+  # plan 72 OQ-1(b): a non-interactive run without --force would otherwise die
+  # at `read` on EOF (set -euo pipefail) — exit 1 with a dangling prompt and no
+  # explanation. Make the refusal legible before the read can fail; must
+  # precede the read, since nothing can print after a failing read under
+  # set -euo pipefail.
+  if [ ! -t 0 ]; then
+    err "Non-interactive run without --force — refusing to apply; re-run with --force (or answer the prompt in a terminal)."
+    exit 1
+  fi
   printf "Apply these changes? [y/N] "
   read -r confirm
   case "$confirm" in [Yy]*) ;; *) info "Aborted."; exit 0 ;; esac
@@ -677,6 +720,17 @@ fi
 if [ -d "$TARGET_DIR/.devforge/templates/git-hooks" ]; then
   for _gh in "$TARGET_DIR/.devforge/templates/git-hooks/"*.sh; do
     [ -f "$_gh" ] && chmod +x "$_gh"
+  done
+fi
+# .devforge/bin/ (plan 72 OQ-2) — restorable via the manifest pair added
+# alongside this change (src/devforge/bin/** → .devforge/bin/**); cp drops the
+# executable bit the same way it does for the git-hooks templates above.
+# bin/ is .sh-only by convention today; a non-.sh file added to
+# src/devforge/bin/ would be copied by the templateOwned loop but NOT
+# re-chmodded here — extend the glob if that convention ever changes.
+if [ -d "$TARGET_DIR/.devforge/bin" ]; then
+  for _bn in "$TARGET_DIR/.devforge/bin/"*.sh; do
+    [ -f "$_bn" ] && chmod +x "$_bn"
   done
 fi
 
