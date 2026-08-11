@@ -386,6 +386,25 @@ mkdir -p "$TARGET_DIR/.devforge/templates/git-hooks"
 cp -R "$TEMPLATE_DIR/src/git-hooks/." "$TARGET_DIR/.devforge/templates/git-hooks/"
 chmod +x "$TARGET_DIR/.devforge/templates/git-hooks/"*.sh
 
+# ── Stamp .claude/template-version (D3, plan 72) ───────────────────────────
+# update.sh reads this marker to report the installed template version and,
+# via its repair-mode guard, install completeness. Without it a fresh
+# install reports "Target version: (unknown)" to update.sh — benign for the
+# equal-version bail, but it silently suppresses the changelog-excerpt block
+# gated on a known version (update.sh:257). Read via $PY_CMD (already
+# preflight-gated above), not jq — install.sh has no jq dependency and this
+# one-line read is not worth adding one. Fail-soft: install.sh has no
+# `set -e`, so a failed/empty read must not be left to silently do nothing —
+# warn explicitly and skip the stamp; a successful install must never be
+# turned into a failure over the marker.
+_tv="$($PY_CMD -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "$TEMPLATE_DIR/src/manifest.json" 2>/dev/null)"
+if [ -n "$_tv" ]; then
+  printf '%s\n' "$_tv" > "$TARGET_DIR/.claude/template-version"
+  echo "  version marker: .claude/template-version → $_tv"
+else
+  echo "  warning: could not read template version from src/manifest.json — .claude/template-version not written"
+fi
+
 echo ""
 echo "Done. AIDevTeamForge installed."
 echo "CBM sync: SessionStart hook (cbm-sync-session-start) compares .devforge/cbm-last-indexed-sha to parent HEAD on every session boot and prompts Claude to call detect_changes / index_repository when stale."
