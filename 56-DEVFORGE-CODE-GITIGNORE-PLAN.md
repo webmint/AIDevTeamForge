@@ -86,7 +86,7 @@ Present this plan. The maintainer confirms: (a) the core mechanism D1 (gitignore
 ## Ratified (2026-07-10)
 
 - **D1 ACCEPTED** — the node_modules model (gitignore + untrack the install-reproducible code dirs).
-- **OQ-1 → assumed install step.** No missing-helpers guard is built; the node_modules convention (clone → run forge install/update to restore `.devforge/lib`) is documented in Phase 4. Docs-only.
+- **OQ-1 → assumed install step.** No missing-helpers guard is built; the node_modules convention (clone → run forge install/update to restore `.devforge/lib`) is documented in Phase 4. Docs-only. [2026-08-12: plan 72 subsequently built the guard on the `update.sh` path — an install whose `.devforge/lib` holds no executable `*_helper` now auto-enters repair mode. The decision above stands as recorded; a clone that runs neither installer still has no helpers.]
 - **OQ-2 → EXCLUDE `.devforge/template/`.** Untrack ONLY `.devforge/lib`, `.devforge/bin`, `.devforge/templates` (three dirs). `.devforge/template/` stays FULLY tracked (no ignore line, no untrack) — preserving `update.sh`'s agent three-way-merge baseline + NEW/REMOVED enumeration. Untracks all of `lib`/`bin`/`templates` (316 of the 335 git-tracked `.devforge/` code-dir files — `lib` alone is 314); only `.devforge/template/`'s 19 files stay tracked and CBM-indexed by design.
 
 ---

@@ -391,7 +391,7 @@ chmod +x "$TARGET_DIR/.devforge/templates/git-hooks/"*.sh
 # via its repair-mode guard, install completeness. Without it a fresh
 # install reports "Target version: (unknown)" to update.sh — benign for the
 # equal-version bail, but it silently suppresses the changelog-excerpt block
-# gated on a known version (update.sh:257). Read via $PY_CMD (already
+# gated on a known version (update.sh's changelog-excerpt block). Read via $PY_CMD (already
 # preflight-gated above), not jq — install.sh has no jq dependency and this
 # one-line read is not worth adding one. Fail-soft: install.sh has no
 # `set -e`, so a failed/empty read must not be left to silently do nothing —
