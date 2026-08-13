@@ -268,7 +268,44 @@ for _stray in init.yaml configure.yaml configure.yaml.lock constitute.json const
 done
 
 mkdir -p "$TARGET_DIR/.devforge"
+
+# Preserve accumulated project memory across re-installs. memory.md IS a
+# framework-shipped template (unlike the stray-user-state files guarded
+# above, which must never exist in the source tree at all) — the stub must
+# still be delivered on a fresh install. But on a re-install the target's
+# own memory.md holds real cross-session lessons that the bulk `cp -R`
+# below would otherwise silently overwrite with the 13-line stub. Copy it
+# aside before the copy and copy it back after (cp, never mv, in either
+# direction, so the original is never absent from a recoverable location),
+# and treat an already-present backup as a pending restore from a prior
+# interrupted run rather than re-deriving it — that ordering is what keeps
+# the aside step idempotent across a crash between the aside-copy and the
+# bulk `cp -R`, and across a crash between the bulk `cp -R` and the
+# restore. The `[ -f ... ]` checks and the `if`/`elif` condition positions
+# below are errexit-safe (errexit exempts a command used as a
+# compound-command condition), so a failure in them can never abort an
+# otherwise-working install even if `set -e` is ever added to this script
+# later — but the `cp -R` immediately below is NOT similarly guarded (it
+# predates this preservation logic) and WOULD abort a `set -e` script if
+# it ever failed.
+_mem_tgt="$TARGET_DIR/.devforge/memory.md"
+_mem_backup="$TARGET_DIR/.devforge/.memory.md.preserve"
+if [ -f "$_mem_backup" ]; then
+  : # a prior interrupted run left a pending restore — reuse it, never overwrite it
+elif [ -f "$_mem_tgt" ]; then
+  cp -p "$_mem_tgt" "$_mem_backup" 2>/dev/null || _mem_backup=""
+fi
+
 cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
+
+if [ -n "$_mem_backup" ] && [ -f "$_mem_backup" ]; then
+  if cp -pf "$_mem_backup" "$_mem_tgt" 2>/dev/null; then
+    rm -f "$_mem_backup"
+    echo "  existing .devforge/memory.md detected — preserved (not overwritten)"
+  else
+    echo "  warning: could not restore existing memory.md from backup at $_mem_backup" >&2
+  fi
+fi
 
 # ── .gitignore: ensure .devforge/ runtime-state rules present ──────────────
 # install.sh does NOT run the manifest mergeFiles machinery (that lives only in
