@@ -272,6 +272,15 @@ def _build_minimal_bug_state(devforge):
         "--timing-dependent", "false",
         "--is-test-code", "false",
     ])
+    # Plan 73 D7: declaration-exists guard requires set-evidence-lanes to
+    # have been called before finalize-handoff.
+    _run([
+        "--devforge-dir", str(devforge), "set-evidence-lanes",
+        "--static-graph", "false",
+        "--text-search", "false",
+        "--runtime-probe", "false",
+        "--history", "false",
+    ])
 
 
 class TestFinalizeHandoffCarriesDesignAnchor(unittest.TestCase):

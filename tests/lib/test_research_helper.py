@@ -1096,12 +1096,14 @@ def _build_bug_state(devforge):
         "--surface", "products list component",
         "--file-line", "src/admin/Products.vue:201",
         "--relevance", "inline .sort() call inside watch body",
+        "--rests-on-literal", "none",
     ])
     _run([
         "--devforge-dir", str(devforge), "record-finding",
         "--surface", "list helper",
         "--file-line", "src/admin/helpers.ts:45",
         "--relevance", "shared comparator unused here",
+        "--rests-on-literal", "none",
     ])
 
     _run([
@@ -1221,6 +1223,7 @@ def _build_bug_state(devforge):
         "--surface", "shared sort helper",
         "--file-line", "pkg-shared/sort.ts:10",
         "--relevance", "canonical comparator used by other packages — cross-layer fix candidate",
+        "--rests-on-literal", "none",
     ])
     _run([
         "--devforge-dir", str(devforge), "record-fix-path-helper",
@@ -1281,6 +1284,7 @@ def _build_bug_state(devforge):
         "--file-line", "src/admin/Products.vue:180",
         "--relevance", "fetch can complete while watch still iterating — runner-up probe",
         "--framing", "runner-up",
+        "--rests-on-literal", "none",
     ])
 
     # Patch 6 — satisfy check 15: bug mode + presentation-layer primary symptom
@@ -1330,12 +1334,14 @@ def _build_enhancement_state(devforge):
         "--surface", "ExportService",
         "--file-line", "services/export.ts:88",
         "--relevance", "synchronous fetch + serialize on the request thread",
+        "--rests-on-literal", "none",
     ])
     _run([
         "--devforge-dir", str(devforge), "record-finding",
         "--surface", "JobsQueue",
         "--file-line", "services/jobs.ts:12",
         "--relevance", "available but unused for exports",
+        "--rests-on-literal", "none",
     ])
 
     _run([
@@ -1435,6 +1441,7 @@ def _build_enhancement_state(devforge):
         "--file-line", "services/network.ts:54",
         "--relevance", "egress buffer saturates before serializer completes — runner-up probe",
         "--framing", "runner-up",
+        "--rests-on-literal", "none",
     ])
 
 
@@ -2376,6 +2383,483 @@ class TestVerifyCheck19(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
 
 
+class TestClassifyFindingLiteral(unittest.TestCase):
+    """classify-finding-literal (plan 73 HIGH-finding fix) -- sibling
+    setter to record-finding, mirroring classify-caller-scope's
+    append-then-classify shape. Repairs rests_on_literal on an
+    already-recorded finding without reset-report."""
+
+    def _fresh_with_finding(self, rests_on_literal=None):
+        """Fresh report state with one recorded finding. Omitting
+        rests_on_literal (the default) is the CLI-reachable equivalent
+        of a pre-plan-73 report.json whose findings predate the field --
+        cmd_record_finding writes no key at all either way, so the two
+        states are byte-identical (see its docstring)."""
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        cmd = [
+            "--devforge-dir", str(devforge), "record-finding",
+            "--surface", "flag check",
+            "--file-line", "src/admin/Flag.vue:12",
+            "--relevance", "hardcoded false suppresses the feature",
+        ]
+        if rests_on_literal is not None:
+            cmd += ["--rests-on-literal", rests_on_literal]
+        r = _run(cmd)
+        assert r.returncode == 0, r.stderr
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_repairs_finding_recorded_with_flag_omitted(self):
+        """The reviewer's exact repro: a finding recorded without
+        --rests-on-literal (the reachable equivalent of a pre-plan-73
+        report.json -- both produce a finding dict with the key entirely
+        absent) is repairable via classify-finding-literal WITHOUT
+        reset-report, and updates the row IN PLACE (no duplicate
+        finding appended)."""
+        tmp, devforge = self._fresh_with_finding(rests_on_literal=None)
+        try:
+            rep = self._read_report(devforge)
+            self.assertNotIn("rests_on_literal", rep["findings"][0])
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["findings"]), 1)
+            self.assertEqual(rep["findings"][0]["rests_on_literal"], "none")
+        finally:
+            tmp.cleanup()
+
+    def test_repair_makes_verify_pass_on_full_bug_state_without_reset_report(self):
+        """End-to-end: a full, otherwise-passing bug-mode report gains one
+        finding recorded without --rests-on-literal (simulating a
+        report.json upgraded mid-investigation, per the reviewer's
+        empirical repro); verify fails citing check 20; the repair setter
+        fixes it WITHOUT reset-report; verify passes -- no Phase 2/3 state
+        is lost."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "legacy pre-upgrade finding",
+                "--file-line", "src/legacy.ts:1",
+                "--relevance", "recorded before check 20 shipped",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(v.returncode, 2)
+            self.assertIn("check 20", v.stderr)
+            self.assertIn("classify-finding-literal", v.stderr)
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "legacy pre-upgrade finding",
+                "--file-line", "src/legacy.ts:1",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(v.returncode, 0, v.stderr)
+
+    def test_repair_is_idempotent(self):
+        """Re-calling with the same arguments re-applies the same value:
+        no duplicate rows, no change in report.findings length."""
+        tmp, devforge = self._fresh_with_finding(rests_on_literal=None)
+        try:
+            for _ in range(2):
+                r = _run([
+                    "--devforge-dir", str(devforge), "classify-finding-literal",
+                    "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                    "--rests-on-literal", "none",
+                ])
+                self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["findings"]), 1)
+            self.assertEqual(rep["findings"][0]["rests_on_literal"], "none")
+        finally:
+            tmp.cleanup()
+
+    def test_all_flag_repairs_all_duplicate_surface_file_line_rows(self):
+        """record-finding has no dedup on (surface, file_line) -- two
+        distinct rows sharing the pair CAN both legitimately want the
+        same repair, and --all is the opt-in that performs it across
+        both, not just the first, mirroring classify-caller-scope's
+        duplicate handling (the (surface, file_line) pair is not
+        guaranteed unique in practice). Without --all this now rejects
+        (see test_rejects_multiple_matches_without_all_flag) -- --all is
+        the confirmation that the blanket update is intentional here."""
+        tmp, devforge = self._fresh_with_finding(rests_on_literal=None)
+        try:
+            r0 = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance", "recorded a second time -- duplicate pair",
+            ])
+            self.assertEqual(r0.returncode, 0, r0.stderr)
+            rep_before = self._read_report(devforge)
+            self.assertEqual(len(rep_before["findings"]), 2)
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "none",
+                "--all",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["findings"]), 2)
+            for row in rep["findings"]:
+                self.assertEqual(row["rests_on_literal"], "none")
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 20", v.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_multiple_matches_without_all_flag(self):
+        """The reviewer's exact repro (MEDIUM finding on plan 73's
+        classify-finding-literal): two findings share (surface,
+        file_line) but rest on DIFFERENT literals -- one call without
+        --all must not blanket-update both, or it silently fabricates an
+        answer for whichever row did not actually supply it. Exits 2,
+        mutates NEITHER row, and the message names both rows
+        distinguishably (surface/file_line are identical across them by
+        definition, so relevance + current rests_on_literal is what
+        tells them apart)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r1 = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance", "first pass: false suppresses row",
+            ])
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance",
+                "second pass: reasons from a DIFFERENT literal at src/y.ts:9",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "src/x.ts:5",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("first pass: false suppresses row", r.stderr)
+            self.assertIn(
+                "second pass: reasons from a DIFFERENT literal at src/y.ts:9",
+                r.stderr,
+            )
+            self.assertIn("--all", r.stderr)
+
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["findings"]), 2)
+            for row in rep["findings"]:
+                self.assertNotIn("rests_on_literal", row)
+
+    def test_all_flag_updates_divergent_duplicate_rows_on_confirmation(self):
+        """Same fixture as test_rejects_multiple_matches_without_all_flag,
+        with --all: today's original every-match behaviour, now opt-in
+        and explicit rather than the unconditional default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance", "first pass: false suppresses row",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance",
+                "second pass: reasons from a DIFFERENT literal at src/y.ts:9",
+            ])
+
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "src/x.ts:5",
+                "--all",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            rep = self._read_report(devforge)
+            self.assertEqual(len(rep["findings"]), 2)
+            for row in rep["findings"]:
+                self.assertEqual(row["rests_on_literal"], "src/x.ts:5")
+
+    def test_rejects_unknown_surface_file_line_pair(self):
+        """No matching findings row -> rejected, and the existing row is
+        left unchanged (no phantom answer manufactured)."""
+        tmp, devforge = self._fresh_with_finding(rests_on_literal="none")
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/nowhere.ts:1",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("no recorded findings row", r.stderr)
+            self.assertIn("record-finding", r.stderr)
+            rep = self._read_report(devforge)
+            self.assertEqual(rep["findings"][0]["rests_on_literal"], "none")
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_empty_surface(self):
+        tmp, devforge = self._fresh_with_finding(rests_on_literal="none")
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "   ", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(r.returncode, 2)
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_malformed_rests_on_literal(self):
+        """Malformed --rests-on-literal is rejected at the setter
+        boundary (same validator record-finding uses) -- the existing
+        row's unanswered state is left untouched, not silently
+        half-updated."""
+        tmp, devforge = self._fresh_with_finding(rests_on_literal=None)
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "not-a-file-line",
+            ])
+            self.assertEqual(r.returncode, 2)
+            rep = self._read_report(devforge)
+            self.assertNotIn("rests_on_literal", rep["findings"][0])
+        finally:
+            tmp.cleanup()
+
+    def test_rejects_parenthesized_none_sentinel(self):
+        tmp, devforge = self._fresh_with_finding(rests_on_literal=None)
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "(none)",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("(none)", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_file_line_answer_without_archaeology_row_still_fails_check20(self):
+        """classify-finding-literal does not eagerly cross-check the
+        file:line answer against literal_archaeology -- that stays check
+        20's job at verify time (plan 73 D4: optional-at-record /
+        mandatory-at-verify), so this setter cannot let a finding
+        silently acquire a wrong answer that skips the mechanical
+        cross-check."""
+        tmp, devforge = self._fresh_with_finding(rests_on_literal=None)
+        try:
+            r = _run([
+                "--devforge-dir", str(devforge), "classify-finding-literal",
+                "--surface", "flag check", "--file-line", "src/admin/Flag.vue:12",
+                "--rests-on-literal", "src/admin/Flag.vue:12",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(v.returncode, 2)
+            self.assertIn("check 20", v.stderr)
+            self.assertIn("no literal_archaeology record exists", v.stderr)
+        finally:
+            tmp.cleanup()
+
+
+class TestVerifyCheck20(unittest.TestCase):
+    """Check 20 (plan 73 D2/D4, Gap 2 -- literal-as-evidence trigger): every
+    finding must answer rests_on_literal; a file:line answer requires a
+    matching literal_archaeology row at that file_line."""
+
+    def test_check20_passes_with_matching_archaeology_row(self):
+        """rests_on_literal set to a file:line + a literal_archaeology row
+        recorded at that file_line (real setter round-trip) -> check 20 does
+        not fire."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance", "hardcoded false suppresses the feature",
+                "--rests-on-literal", "src/admin/Flag.vue:12",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-literal-archaeology",
+                "--literal", "false",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--introduced-by", "bd47a12",
+                "--introduced-when", "2023-12-12",
+                "--commit-subject", "TICKET-1695 drop parent flag plumbing",
+                "--intent", "inherited-refactor",
+                "--use", "evidence",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 20", v.stderr)
+
+    def test_check20_fires_with_no_matching_archaeology_row(self):
+        """rests_on_literal set to a file:line + no literal_archaeology row
+        anywhere -> check 20 fires and names the file_line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance", "hardcoded false suppresses the feature",
+                "--rests-on-literal", "src/admin/Flag.vue:12",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(v.returncode, 2)
+            self.assertIn("check 20", v.stderr)
+            self.assertIn("src/admin/Flag.vue:12", v.stderr)
+
+    def test_check20_fires_when_field_omitted_at_record_time(self):
+        """record-finding with NO --rests-on-literal flag at all -> the field
+        is unanswered (missing key, not an empty explicit answer) and check
+        20 fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "unanswered finding",
+                "--file-line", "src/admin/Other.vue:5",
+                "--relevance", "no --rests-on-literal flag passed at all",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertEqual(v.returncode, 2)
+            self.assertIn("check 20", v.stderr)
+            self.assertIn("has not answered rests_on_literal", v.stderr)
+
+    def test_check20_passes_when_explicit_none(self):
+        """rests_on_literal explicitly 'none' -> check 20 is vacuous for that
+        finding (no matching archaeology row required)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "unrelated finding",
+                "--file-line", "src/admin/Other.vue:5",
+                "--relevance", "not resting on a literal's value",
+                "--rests-on-literal", "none",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 20", v.stderr)
+
+    def test_check20_none_answer_is_case_insensitive_and_canonicalized(self):
+        """'--rests-on-literal None' (mixed case) is accepted and stored
+        canonicalized to lowercase 'none' -- matches _validate_enum's
+        case-insensitive convention elsewhere in this module."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "unrelated finding",
+                "--file-line", "src/admin/Other.vue:5",
+                "--relevance", "not resting on a literal's value",
+                "--rests-on-literal", "None",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads((devforge / "research-report.json").read_text())
+            self.assertEqual(data["findings"][-1]["rests_on_literal"], "none")
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 20", v.stderr)
+
+    def test_record_finding_rejects_parenthesized_none_sentinel(self):
+        """--rests-on-literal '(none)' is rejected -- that sentinel belongs
+        to --file-line (a different field answering a different question);
+        the explicit not-resting-on-a-literal answer is the bare word
+        'none'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "s", "--file-line", "src/x.ts:1", "--relevance", "r",
+                "--rests-on-literal", "(none)",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("(none)", r.stderr)
+
+    def test_record_finding_rejects_malformed_rests_on_literal(self):
+        """--rests-on-literal with no colon separator and not 'none' ->
+        rejected at record time (validated at the setter boundary, not
+        deferred to verify)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "s", "--file-line", "src/x.ts:1", "--relevance", "r",
+                "--rests-on-literal", "not-a-file-line",
+            ])
+            self.assertEqual(r.returncode, 2)
+
+    def test_check20_matches_on_file_line_only_not_literal_token(self):
+        """Check 20 clause (a) matches on file_line alone -- an archaeology
+        row recorded for a DIFFERENT literal token at the SAME file_line
+        still satisfies it (check 20 does not cross-check the literal text;
+        check 17 is the literal-token-matching check, a different lane)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_bug_state(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "flag check",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--relevance", "hardcoded false suppresses the feature",
+                "--rests-on-literal", "src/admin/Flag.vue:12",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
+                "--devforge-dir", str(devforge), "record-literal-archaeology",
+                "--literal", "0",
+                "--file-line", "src/admin/Flag.vue:12",
+                "--introduced-by", "bd47a12",
+                "--introduced-when", "2023-12-12",
+                "--commit-subject", "unrelated literal at the same site",
+                "--intent", "deliberate",
+                "--use", "evidence",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 20", v.stderr)
+
+
 class TestRecordNoSharedCallersJustification(unittest.TestCase):
     """record-no-shared-callers-justification — plan 67's check-8 escape."""
 
@@ -2529,6 +3013,7 @@ class TestVerifyCheck8(unittest.TestCase):
                 "--surface", "some helper",
                 "--file-line", "lib/helpers/some.ts:10",
                 "--relevance", "cross-layer helper definition",
+                "--rests-on-literal", "none",
             ])
             # Add a fix_path_helper and a matching inbound_caller.
             # --file-line gives the helper's definition location (cross-layer from src/admin).
@@ -2694,7 +3179,7 @@ class TestVerifyCheck9(unittest.TestCase):
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
             "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-            "relevance": "cross-layer helper candidate", "framing": "primary",
+            "relevance": "cross-layer helper candidate", "framing": "primary", "rests_on_literal": "none",
         })
         # Single-layer helpers (lib/blocs) — add justification + cites to satisfy check 13.
         data["consumer_chain"] = [
@@ -2805,7 +3290,7 @@ class TestVerifyCheck10(unittest.TestCase):
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
             "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-            "relevance": "cross-layer helper candidate", "framing": "primary",
+            "relevance": "cross-layer helper candidate", "framing": "primary", "rests_on_literal": "none",
         })
         # Set value_semantics with invariant + consumer_chain.
         data["consumer_chain"] = [
@@ -2879,7 +3364,7 @@ class TestVerifyCheck10(unittest.TestCase):
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
                 "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                "relevance": "cross-layer helper candidate", "framing": "primary",
+                "relevance": "cross-layer helper candidate", "framing": "primary", "rests_on_literal": "none",
             })
             # Invariant but no dead siblings.
             data["consumer_chain"] = [
@@ -2919,7 +3404,7 @@ class TestVerifyCheck11(unittest.TestCase):
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
             "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-            "relevance": "cross-layer helper candidate", "framing": "primary",
+            "relevance": "cross-layer helper candidate", "framing": "primary", "rests_on_literal": "none",
         })
         data["consumer_chain"] = [
             {"value": "flag", "consumer_qn": "OrderCreationUseCase.execute",
@@ -2987,7 +3472,7 @@ class TestVerifyCheck11(unittest.TestCase):
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
                 "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                "relevance": "cross-layer helper candidate", "framing": "primary",
+                "relevance": "cross-layer helper candidate", "framing": "primary", "rests_on_literal": "none",
             })
             # Preference only, no invariant.
             data["consumer_chain"] = [
@@ -3215,9 +3700,11 @@ class TestVerifyCheck11EmptyTokenList(unittest.TestCase):
             # an explicit finding at :10. lib/blocs/order_bloc.dart:42 is new.
             data.setdefault("findings", []).extend([
                 {"surface": "helpers entry", "file_line": "src/admin/helpers.ts:10",
-                 "relevance": "anchor for ProductsHelper.sort", "framing": "primary"},
+                 "relevance": "anchor for ProductsHelper.sort", "framing": "primary",
+                 "rests_on_literal": "none"},
                 {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                 "relevance": "anchor for Service.loadData", "framing": "primary"},
+                 "relevance": "anchor for Service.loadData", "framing": "primary",
+                 "rests_on_literal": "none"},
             ])
             # Invariant entry: empty evidence, no consumer_chain, no dead_siblings.
             # Hand-authored to bypass the setter's consumer_chain prerequisite.
@@ -3259,7 +3746,7 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
         # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
         data.setdefault("findings", []).append({
             "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-            "relevance": "cross-layer helper candidate", "framing": "primary",
+            "relevance": "cross-layer helper candidate", "framing": "primary", "rests_on_literal": "none",
         })
         data["consumer_chain"] = [
             {"value": "flag", "consumer_qn": "OrderCreationUseCase.execute",
@@ -3319,7 +3806,7 @@ class TestVerifyCheck10NameInHaystack(unittest.TestCase):
             # Patch 5: add finding anchoring the helper's file_line (check 14 requires it).
             data.setdefault("findings", []).append({
                 "surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                "relevance": "cross-layer helper candidate", "framing": "primary",
+                "relevance": "cross-layer helper candidate", "framing": "primary", "rests_on_literal": "none",
             })
             data["consumer_chain"] = [
                 {"value": "X", "consumer_qn": "SomeUseCase.run",
@@ -3906,12 +4393,14 @@ def _build_bug_state_same_package(devforge):
         "--surface", "products list component",
         "--file-line", "src/admin/Products.vue:201",
         "--relevance", "inline .sort() call inside watch body",
+        "--rests-on-literal", "none",
     ])
     _run([
         "--devforge-dir", str(devforge), "record-finding",
         "--surface", "list helper",
         "--file-line", "src/admin/helpers.ts:45",
         "--relevance", "shared comparator unused here",
+        "--rests-on-literal", "none",
     ])
 
     _run([
@@ -4049,6 +4538,7 @@ def _build_bug_state_same_package(devforge):
         "--file-line", "src/admin/Products.vue:180",
         "--relevance", "race probe — runner-up",
         "--framing", "runner-up",
+        "--rests-on-literal", "none",
     ])
 
 
@@ -4071,12 +4561,14 @@ class TestVerifyCheck8b(unittest.TestCase):
                     "file_line": "foo/utils.ts:10",
                     "relevance": "comparison logic",
                     "framing": "primary",
+                    "rests_on_literal": "none",
                 },
                 {
                     "surface": "race probe",
                     "file_line": "foo/utils.ts:20",
                     "relevance": "runner-up probe",
                     "framing": "runner-up",
+                    "rests_on_literal": "none",
                 },
             ]
             # All helpers also in foo — would trigger 8b for presentation
@@ -4622,6 +5114,7 @@ def _build_domain_single_layer_bug_state(devforge):
         "--surface", "BLoC dispatch",
         "--file-line", "lib/blocs/order_bloc.dart:42",
         "--relevance", "primary symptom site",
+        "--rests-on-literal", "none",
     ])
     _run([
         "--devforge-dir", str(devforge), "record-finding",
@@ -4629,6 +5122,7 @@ def _build_domain_single_layer_bug_state(devforge):
         "--file-line", "lib/blocs/order_bloc.dart:99",
         "--relevance", "runner-up probe",
         "--framing", "runner-up",
+        "--rests-on-literal", "none",
     ])
 
     _run([
@@ -5067,9 +5561,11 @@ class TestVerifyCheck13(unittest.TestCase):
             data = json.loads(rep_path.read_text())
             data["findings"] = [
                 {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                 "relevance": "primary symptom site", "framing": "primary"},
+                 "relevance": "primary symptom site", "framing": "primary",
+                 "rests_on_literal": "none"},
                 {"surface": "race probe", "file_line": "lib/blocs/order_bloc.dart:99",
-                 "relevance": "runner-up", "framing": "runner-up"},
+                 "relevance": "runner-up", "framing": "runner-up",
+                 "rests_on_literal": "none"},
             ]
             data["fix_path_helpers"] = [
                 {"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"},
@@ -5100,9 +5596,11 @@ class TestVerifyCheck13(unittest.TestCase):
             data["mode"] = "enhancement"
             data["findings"] = [
                 {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                 "relevance": "primary symptom site", "framing": "primary"},
+                 "relevance": "primary symptom site", "framing": "primary",
+                 "rests_on_literal": "none"},
                 {"surface": "race probe", "file_line": "lib/blocs/order_bloc.dart:99",
-                 "relevance": "runner-up", "framing": "runner-up"},
+                 "relevance": "runner-up", "framing": "runner-up",
+                 "rests_on_literal": "none"},
             ]
             data["fix_path_helpers"] = [
                 {"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"},
@@ -5242,9 +5740,11 @@ class TestVerifyCheck13(unittest.TestCase):
             data = json.loads(rep_path.read_text())
             data["findings"] = [
                 {"surface": "BLoC dispatch", "file_line": "lib/blocs/order_bloc.dart:42",
-                 "relevance": "primary symptom site", "framing": "primary"},
+                 "relevance": "primary symptom site", "framing": "primary",
+                 "rests_on_literal": "none"},
                 {"surface": "race probe", "file_line": "lib/blocs/order_bloc.dart:99",
-                 "relevance": "runner-up", "framing": "runner-up"},
+                 "relevance": "runner-up", "framing": "runner-up",
+                 "rests_on_literal": "none"},
             ]
             data["fix_path_helpers"] = [
                 {"qn": "Service.loadData", "file_line": "lib/blocs/order_bloc.dart:42"},
@@ -6679,11 +7179,12 @@ class TestRecordLiteralArchaeology(unittest.TestCase):
         """Convenience wrapper: call record-literal-archaeology with given kwargs."""
         defaults = {
             "literal": "false",
-            "file_line": "OrderViewer.vue:290",
-            "introduced_by": "cca3514",
+            "file_line": "InvoiceSummaryPanel.vue:290",
+            "introduced_by": "bd47a12",
             "introduced_when": "2023-12-12",
-            "commit_subject": "DEAL-292 refactor inline call into wrapper",
+            "commit_subject": "TICKET-2044 refactor inline call into wrapper",
             "intent": "inherited-refactor",
+            "use": "fix-layer",
         }
         defaults.update(kwargs)
         return _run([
@@ -6695,10 +7196,11 @@ class TestRecordLiteralArchaeology(unittest.TestCase):
             "--introduced-when", defaults["introduced_when"],
             "--commit-subject", defaults["commit_subject"],
             "--intent", defaults["intent"],
+            "--use", defaults["use"],
         ])
 
     def test_record_literal_archaeology_happy_path(self):
-        """Basic call with all 6 args, intent=inherited-refactor. Row present + return 0."""
+        """Basic call with all 7 args, intent=inherited-refactor, use=fix-layer. Row present + return 0."""
         tmp, devforge = self._fresh()
         try:
             r = self._record(devforge)
@@ -6708,11 +7210,34 @@ class TestRecordLiteralArchaeology(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             row = rows[0]
             self.assertEqual(row["literal"], "false")
-            self.assertEqual(row["file_line"], "OrderViewer.vue:290")
-            self.assertEqual(row["introduced_by"], "cca3514")
+            self.assertEqual(row["file_line"], "InvoiceSummaryPanel.vue:290")
+            self.assertEqual(row["introduced_by"], "bd47a12")
             self.assertEqual(row["introduced_when"], "2023-12-12")
-            self.assertEqual(row["commit_subject"], "DEAL-292 refactor inline call into wrapper")
+            self.assertEqual(row["commit_subject"], "TICKET-2044 refactor inline call into wrapper")
             self.assertEqual(row["intent"], "inherited-refactor")
+            self.assertEqual(row["use"], "fix-layer")
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_stores_evidence_use(self):
+        """--use evidence is stored verbatim (plan 73 OQ-5 discriminator)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, use="evidence")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            rows = data.get("literal_archaeology", [])
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["use"], "evidence")
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_rejects_invalid_use(self):
+        """--use bogus (not fix-layer/evidence) → argparse rejects, exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, use="bogus")
+            self.assertEqual(r.returncode, 2)
         finally:
             tmp.cleanup()
 
@@ -6735,13 +7260,13 @@ class TestRecordLiteralArchaeology(unittest.TestCase):
         """Same literal, different file_line → 2 rows appended."""
         tmp, devforge = self._fresh()
         try:
-            self._record(devforge, file_line="OrderViewer.vue:290")
-            self._record(devforge, file_line="OrderViewer.vue:310")
+            self._record(devforge, file_line="InvoiceSummaryPanel.vue:290")
+            self._record(devforge, file_line="InvoiceSummaryPanel.vue:310")
             data = self._read_report(devforge)
             rows = data.get("literal_archaeology", [])
             self.assertEqual(len(rows), 2)
             file_lines = {r["file_line"] for r in rows}
-            self.assertEqual(file_lines, {"OrderViewer.vue:290", "OrderViewer.vue:310"})
+            self.assertEqual(file_lines, {"InvoiceSummaryPanel.vue:290", "InvoiceSummaryPanel.vue:310"})
         finally:
             tmp.cleanup()
 
@@ -6888,12 +7413,13 @@ class TestVerifyCheck17(unittest.TestCase):
         rep_path = devforge / "research-report.json"
         data = json.loads(rep_path.read_text())
 
-        # Ensure there's a finding at OrderViewer.vue:290 (anchor for archaeology).
+        # Ensure there's a finding at InvoiceSummaryPanel.vue:290 (anchor for archaeology).
         data["findings"].append({
-            "surface": "OrderViewer component",
-            "file_line": "OrderViewer.vue:290",
+            "surface": "InvoiceSummaryPanel component",
+            "file_line": "InvoiceSummaryPanel.vue:290",
             "relevance": "hardcoded false literal for flag",
             "framing": "primary",
+            "rests_on_literal": "none",
         })
 
         # Set approach with the given description.
@@ -6941,51 +7467,101 @@ class TestVerifyCheck17(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "record-literal-archaeology",
                 "--literal", "false",
-                "--file-line", "OrderViewer.vue:290",
-                "--introduced-by", "cca3514",
+                "--file-line", "InvoiceSummaryPanel.vue:290",
+                "--introduced-by", "bd47a12",
                 "--introduced-when", "2023-12-12",
-                "--commit-subject", "DEAL-292 refactor inline call into wrapper",
+                "--commit-subject", "TICKET-2044 refactor inline call into wrapper",
                 "--intent", "inherited-refactor",
+                "--use", "fix-layer",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             r_verify = _run(["--devforge-dir", str(devforge), "verify"])
             self.assertNotIn("check 17", r_verify.stderr)
 
-    def test_verify_check_17_silent_in_enhancement_mode(self):
-        """Enhancement mode + same literal-replacement prose → check 17 does NOT fire."""
+    def _build_enhancement_check17_fixture(self, devforge):
+        """Shared enhancement-mode fixture: literal-replacement prose, no archaeology row.
+
+        Factored out of the (now two) enhancement-mode check-17 tests below —
+        the missing-archaeology REJECT case and the recorded-archaeology PASS
+        case share everything up to the record-literal-archaeology call.
+        """
+        _build_enhancement_state(devforge)
+        rep_path = devforge / "research-report.json"
+        data = json.loads(rep_path.read_text())
+        # Add approach + recommended_approach with literal-replacement rationale.
+        data["findings"].append({
+            "surface": "some file",
+            "file_line": "src/foo.ts:42",
+            "relevance": "literal false here",
+            "framing": "primary",
+            "rests_on_literal": "none",
+        })
+        data["approaches"] = [
+            {
+                "name": "Fix literal",
+                "description": "change false to isExternalUser.value",
+                "addresses_hypotheses": ["export speed"],
+                "does_not_cover": [],
+                "pros": [],
+                "cons": [],
+                "complexity": "Low",
+            }
+        ]
+        data["recommended_approach"] = {
+            "name": "Fix literal",
+            "rationale": "change false to isExternalUser.value",
+            "hypotheses_addressed": ["export speed"],
+            "hypotheses_not_covered": [],
+        }
+        rep_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    def test_verify_check_17_fires_in_enhancement_mode(self):
+        """Enhancement mode + literal-replacement prose + no archaeology row → check 17 fires.
+
+        Plan 73 D1 decoupled check 17 from bug mode (mirrors plan 67's
+        check-8 decouple). This is the headline regression test: dead-code /
+        cleanup tickets are typically enhancement-classified, and those are
+        precisely the tickets where literal provenance is load-bearing — the
+        lane must not go silently inert just because the ticket wasn't
+        classified as a bug. Supersedes the old
+        test_verify_check_17_silent_in_enhancement_mode, whose asserted
+        behavior (check 17 does NOT fire in enhancement mode) is the bug
+        this plan fixes.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             devforge = Path(tmp) / ".devforge"
-            _build_enhancement_state(devforge)
-            rep_path = devforge / "research-report.json"
-            data = json.loads(rep_path.read_text())
-            # Add approach + recommended_approach with literal-replacement rationale.
-            data["findings"].append({
-                "surface": "some file",
-                "file_line": "src/foo.ts:42",
-                "relevance": "literal false here",
-                "framing": "primary",
-            })
-            data["approaches"] = [
-                {
-                    "name": "Fix literal",
-                    "description": "change false to isExternalUser.value",
-                    "addresses_hypotheses": ["export speed"],
-                    "does_not_cover": [],
-                    "pros": [],
-                    "cons": [],
-                    "complexity": "Low",
-                }
-            ]
-            data["recommended_approach"] = {
-                "name": "Fix literal",
-                "rationale": "change false to isExternalUser.value",
-                "hypotheses_addressed": ["export speed"],
-                "hypotheses_not_covered": [],
-            }
-            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            self._build_enhancement_check17_fixture(devforge)
             r = _run(["--devforge-dir", str(devforge), "verify"])
-            # Enhancement mode → check 17 must NOT fire.
-            self.assertNotIn("check 17", r.stderr)
+            # Mode-independent (plan 73 D1) → check 17 fires in enhancement mode too.
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("check 17", r.stderr)
+
+    def test_verify_check_17_passes_when_archaeology_recorded_in_enhancement_mode(self):
+        """Same enhancement-mode fixture, archaeology row recorded via the real
+        setter → check 17 absent. Round-trips through the real
+        record-literal-archaeology setter, mirroring the bug-mode happy-path
+        pair (test_verify_check_17_fires_when_archaeology_missing /
+        test_verify_check_17_passes_when_archaeology_recorded above) so the
+        satisfying path is proven mode-independent too, not just the
+        rejecting path.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            self._build_enhancement_check17_fixture(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-literal-archaeology",
+                "--literal", "false",
+                "--file-line", "src/foo.ts:42",
+                "--introduced-by", "bd47a12",
+                "--introduced-when", "2023-12-12",
+                "--commit-subject", "cleanup: drop legacy flag path",
+                "--intent", "deliberate",
+                "--use", "fix-layer",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r_verify = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 17", r_verify.stderr)
 
     def test_verify_check_17_uses_linked_approach_description_too(self):
         """Rationale has no literal-replacement, but linked approach.description does → check 17 fires."""
@@ -7033,6 +7609,7 @@ class TestVerifyCheck17(unittest.TestCase):
                 "--introduced-when", "2024-01-15",
                 "--commit-subject", "unrelated commit",
                 "--intent", "deliberate",
+                "--use", "fix-layer",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             r_verify = _run(["--devforge-dir", str(devforge), "verify"])
@@ -7058,17 +7635,18 @@ class TestRenderPatch8(unittest.TestCase):
                 "--devforge-dir", str(devforge),
                 "record-literal-archaeology",
                 "--literal", "false",
-                "--file-line", "OrderViewer.vue:290",
-                "--introduced-by", "cca3514",
+                "--file-line", "InvoiceSummaryPanel.vue:290",
+                "--introduced-by", "bd47a12",
                 "--introduced-when", "2023-12-12",
-                "--commit-subject", "DEAL-292 refactor inline call into wrapper",
+                "--commit-subject", "TICKET-2044 refactor inline call into wrapper",
                 "--intent", "inherited-refactor",
+                "--use", "fix-layer",
             ])
             self.assertEqual(r.returncode, 0, r.stderr)
             output = self._render(devforge)
             self.assertIn("## Literal Archaeology", output)
             self.assertIn("false", output)
-            self.assertIn("OrderViewer.vue:290", output)
+            self.assertIn("InvoiceSummaryPanel.vue:290", output)
             self.assertIn("inherited-refactor", output)
 
     def test_render_omits_literal_archaeology_section_when_empty(self):
@@ -7079,6 +7657,54 @@ class TestRenderPatch8(unittest.TestCase):
             _run(["--devforge-dir", str(devforge), "reset-report"])
             output = self._render(devforge)
             self.assertNotIn("Literal Archaeology", output)
+
+    def test_render_includes_use_column_and_distinguishes_rows(self):
+        """Plan 73 Phase 2a (OQ-5 build review, finding 3): the table gains a
+        Use column, and a fix-layer row and an evidence row render their
+        distinct use values -- a human reading research-report.md can tell
+        them apart without opening the raw JSON."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-literal-archaeology",
+                "--literal", "false",
+                "--file-line", "InvoiceSummaryPanel.vue:290",
+                "--introduced-by", "bd47a12",
+                "--introduced-when", "2023-12-12",
+                "--commit-subject", "TICKET-2044 refactor inline call into wrapper",
+                "--intent", "inherited-refactor",
+                "--use", "fix-layer",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "record-literal-archaeology",
+                "--literal", "true",
+                "--file-line", "WidgetPanelCollapse.vue:12",
+                "--introduced-by", "ff93f35dd",
+                "--introduced-when", "2025-09-16",
+                "--commit-subject", "TICKET-1695 restructure catalog parent",
+                "--intent", "inherited-refactor",
+                "--use", "evidence",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn("| Literal | File:line | Introduced by | When | Commit subject | Intent | Use |", output)
+            # Row-level table lines are pipe-delimited; assert both use
+            # values appear as their OWN cell, not merely somewhere in the
+            # output (both rows also share "inherited-refactor" in Intent).
+            table_lines = [
+                line for line in output.splitlines()
+                if line.startswith("| ") and ("InvoiceSummaryPanel.vue:290" in line or "WidgetPanelCollapse.vue:12" in line)
+            ]
+            self.assertEqual(len(table_lines), 2)
+            fix_layer_row = next(l for l in table_lines if "InvoiceSummaryPanel.vue:290" in l)
+            evidence_row = next(l for l in table_lines if "WidgetPanelCollapse.vue:12" in l)
+            self.assertTrue(fix_layer_row.rstrip().endswith("| fix-layer |"))
+            self.assertTrue(evidence_row.rstrip().endswith("| evidence |"))
 
 
 # ---------------------------------------------------------------------------
@@ -7746,6 +8372,16 @@ def _build_minimal_bug_state_for_handoff(devforge):
         "--timing-dependent", "false",
         "--is-test-code", "false",
     ])
+    # Plan 73 D7: set-evidence-lanes is now required before finalize-handoff
+    # (the declaration-exists guard) -- all False is a valid declaration
+    # (the guard only requires the setter be CALLED, never any lane=true).
+    _run([
+        "--devforge-dir", str(devforge), "set-evidence-lanes",
+        "--static-graph", "false",
+        "--text-search", "false",
+        "--runtime-probe", "false",
+        "--history", "false",
+    ])
 
 
 def _run_finalize(devforge, emit_path, research_md_path=None):
@@ -7901,7 +8537,10 @@ class TestFinalizeHandoff(unittest.TestCase):
                         "mode", "intent", "spec_seeds", "plan_seeds",
                         "probe", "downstream_links"):
                 self.assertIn(key, data, "missing top-level key: {0}".format(key))
-            self.assertEqual(data["schema_version"], "1.1")
+            # Plan 73 OQ-5: SCHEMA_VERSION bumped 1.1 -> 1.2 (literal_archaeology
+            # presence gate became mode-independent for handoffs stamped at
+            # this version — see handoff_schema.py's SCHEMA_VERSION comment).
+            self.assertEqual(data["schema_version"], "1.2")
             self.assertEqual(data["mode"], "bug")
             self.assertIsInstance(data["intent"], dict)
             self.assertIsInstance(data["spec_seeds"], dict)
@@ -7973,6 +8612,15 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--network-dependent", "false",
                 "--timing-dependent", "false",
                 "--is-test-code", "false",
+            ])
+            # Plan 73 D7: declaration-exists guard requires set-evidence-lanes
+            # to have been called before finalize-handoff.
+            _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "false",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "false",
             ])
             out = Path(tmp) / "handoff.json"
             r = _run_finalize(devforge, out)
@@ -8269,6 +8917,7 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--introduced-when", "2024-01-15",
                 "--commit-subject", "add config loader",
                 "--intent", "deliberate",
+                "--use", "fix-layer",
             ])
             out = Path(tmp) / "handoff.json"
             r = _run_finalize(devforge, out)
@@ -8279,6 +8928,279 @@ class TestFinalizeHandoff(unittest.TestCase):
             self.assertEqual(la[0]["literal"], "42")
             self.assertEqual(la[0]["intent"], "deliberate")
             self.assertEqual(la[0]["introduced_by"], "abc1234")
+            self.assertEqual(la[0]["use"], "fix-layer")
+
+    def test_finalize_handoff_evidence_use_swap_idiom_succeeds_enhancement_mode(self):
+        """Plan 73 OQ-5 Finding-1 CLI regression, reproduced end-to-end through the
+        real CLI to finalize-handoff: enhancement mode + a 'swap'-idiom
+        recommended-approach summary (matches check 17's BROAD shared detector,
+        _shared/literal_call_shape.py — NOT this schema's own narrower regex,
+        confirmed: _has_literal_replacement returns False for this exact text)
+        + an inherited-refactor archaeology row recorded with --use evidence ->
+        finalize-handoff now SUCCEEDS.
+
+        Before the use-scoped fix, the escalation-cite loop (mode-independent,
+        unconditional on either detector — it iterates every recorded row
+        regardless of whether the presence-gate's narrow regex matched) demanded
+        fix-layer-escalation prose ('default' / 'wrapper' / 'caller' / 'escalat')
+        in a summary whose whole point is deletion, not replacement — a
+        deletion-shaped summary has no reason to contain those tokens.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "enhancement"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "remove-dead-legacy-widget"])
+            _run([
+                "--devforge-dir", str(devforge), "set-verbatim-prompt",
+                "--value", "Remove dead legacy-widget code that is no longer reachable.",
+            ])
+            _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-08-12"])
+            # Archaeology row: use=evidence -- the literal's value was cited as
+            # grounds for a scope call (dead/live), not something being replaced.
+            r_arch = _run([
+                "--devforge-dir", str(devforge), "record-literal-archaeology",
+                "--literal", "true",
+                "--file-line", "src/components/WidgetPanelCollapse.vue:12",
+                "--introduced-by", "ff93f35dd",
+                "--introduced-when", "2025-09-16",
+                "--commit-subject", "TICKET-1695 restructure catalog parent; strip isLegacyItems",
+                "--intent", "inherited-refactor",
+                "--use", "evidence",
+            ])
+            self.assertEqual(r_arch.returncode, 0, r_arch.stderr)
+            _run([
+                "--devforge-dir", str(devforge), "set-approach",
+                "--name", "Remove dead legacy-widget prop",
+                "--description", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
+                "--addresses-hypotheses", "[]",
+                "--does-not-cover", "[]",
+                "--pros", "[]",
+                "--cons", "[]",
+                "--complexity", "Low",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Remove dead legacy-widget prop",
+                "--rationale", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
+                "--hypotheses-addressed", "[]",
+                "--hypotheses-not-covered", "[]",
+                # Patch 9 (V3) setter-side gate (_cmds_approach.py, mode-
+                # independent per plan 69 D6/WI-F) requires this whenever the
+                # rationale matches the broad literal-replacement detector,
+                # which "swap ... with" does — unrelated to plan 73 OQ-5,
+                # just a pre-existing sibling gate this fixture must satisfy.
+                "--proposed-call-shape", "renderRow(item)",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-complexity",
+                "--codebase-changes", "Low", "--codebase-notes", "1 file",
+                "--risk", "Low", "--risk-notes", "narrow",
+                "--verify-cost", "Low", "--verify-notes", "unit test",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # Plan 73 D7: declaration-exists guard requires
+            # set-evidence-lanes to have been called before finalize-handoff.
+            _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "false",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            la = data["spec_seeds"]["literal_archaeology"]
+            self.assertEqual(len(la), 1)
+            self.assertEqual(la[0]["use"], "evidence")
+            self.assertEqual(la[0]["intent"], "inherited-refactor")
+
+    def test_finalize_handoff_evidence_arm_finding_reaches_handoff_clean(self):
+        """Plan 73 Phase 2a: a finding recorded with --rests-on-literal
+        pointing at the SAME file_line as an --use evidence archaeology row
+        reaches finalize-handoff without tripping check 20 (verify) or the
+        escalation-cite validator (finalize-handoff) -- proving Phase 2a's
+        new producer flow (record-finding --rests-on-literal ->
+        record-literal-archaeology --use evidence) composes cleanly with
+        Phase 1's evidence-use scoping. Does NOT duplicate Phase 1's
+        use-scoping test above (that one carries no findings at all, so
+        check 20 is vacuous for it) or its fix-layer counterpart.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "enhancement"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "remove-dead-legacy-widget"])
+            _run([
+                "--devforge-dir", str(devforge), "set-verbatim-prompt",
+                "--value", "Remove dead legacy-widget code that is no longer reachable.",
+            ])
+            _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-08-12"])
+            # The evidence-arm finding: its grounds rest on the CURRENT value
+            # of the literal at this file_line (used as evidence for a scope
+            # call), not something being replaced.
+            r_finding = _run([
+                "--devforge-dir", str(devforge), "record-finding",
+                "--surface", "WidgetPanelCollapse isLegacyItems prop",
+                "--file-line", "src/components/WidgetPanelCollapse.vue:12",
+                "--relevance", "only caller passes true; cited as evidence the prop is live",
+                "--rests-on-literal", "src/components/WidgetPanelCollapse.vue:12",
+            ])
+            self.assertEqual(r_finding.returncode, 0, r_finding.stderr)
+            r_arch = _run([
+                "--devforge-dir", str(devforge), "record-literal-archaeology",
+                "--literal", "true",
+                "--file-line", "src/components/WidgetPanelCollapse.vue:12",
+                "--introduced-by", "ff93f35dd",
+                "--introduced-when", "2025-09-16",
+                "--commit-subject", "TICKET-1695 restructure catalog parent; strip isLegacyItems",
+                "--intent", "inherited-refactor",
+                "--use", "evidence",
+            ])
+            self.assertEqual(r_arch.returncode, 0, r_arch.stderr)
+            # Check 20 is satisfied by the matching archaeology row (other
+            # checks still fire on this minimal fixture -- hypotheses,
+            # approaches, etc. -- so overall rc is not asserted here).
+            v = _run(["--devforge-dir", str(devforge), "verify"])
+            self.assertNotIn("check 20", v.stderr)
+            _run([
+                "--devforge-dir", str(devforge), "set-approach",
+                "--name", "Remove dead legacy-widget prop",
+                "--description", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
+                "--addresses-hypotheses", "[]",
+                "--does-not-cover", "[]",
+                "--pros", "[]",
+                "--cons", "[]",
+                "--complexity", "Low",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Remove dead legacy-widget prop",
+                "--rationale", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
+                "--hypotheses-addressed", "[]",
+                "--hypotheses-not-covered", "[]",
+                "--proposed-call-shape", "renderRow(item)",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-complexity",
+                "--codebase-changes", "Low", "--codebase-notes", "1 file",
+                "--risk", "Low", "--risk-notes", "narrow",
+                "--verify-cost", "Low", "--verify-notes", "unit test",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # Plan 73 D7: declaration-exists guard requires
+            # set-evidence-lanes to have been called before finalize-handoff.
+            _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "false",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(out.read_text())
+            la = data["spec_seeds"]["literal_archaeology"]
+            self.assertEqual(len(la), 1)
+            self.assertEqual(la[0]["use"], "evidence")
+
+    def test_finalize_handoff_fix_layer_use_swap_idiom_still_demands_escalation_enhancement_mode(self):
+        """The fix-layer counterpart of the above still FAILS finalize-handoff —
+        proves Finding 1's fix SCOPES the escalation-cite validator to
+        evidence-use rows, it does not disable it for the fix-layer case it
+        was built for.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run(["--devforge-dir", str(devforge), "detect-mode", "--override", "enhancement"])
+            _run(["--devforge-dir", str(devforge), "set-topic", "--value", "remove-dead-legacy-widget"])
+            _run([
+                "--devforge-dir", str(devforge), "set-verbatim-prompt",
+                "--value", "Remove dead legacy-widget code that is no longer reachable.",
+            ])
+            _run(["--devforge-dir", str(devforge), "set-date", "--value", "2026-08-12"])
+            r_arch = _run([
+                "--devforge-dir", str(devforge), "record-literal-archaeology",
+                "--literal", "true",
+                "--file-line", "src/components/WidgetPanelCollapse.vue:12",
+                "--introduced-by", "ff93f35dd",
+                "--introduced-when", "2025-09-16",
+                "--commit-subject", "TICKET-1695 restructure catalog parent; strip isLegacyItems",
+                "--intent", "inherited-refactor",
+                "--use", "fix-layer",
+            ])
+            self.assertEqual(r_arch.returncode, 0, r_arch.stderr)
+            _run([
+                "--devforge-dir", str(devforge), "set-approach",
+                "--name", "Remove dead legacy-widget prop",
+                "--description", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
+                "--addresses-hypotheses", "[]",
+                "--does-not-cover", "[]",
+                "--pros", "[]",
+                "--cons", "[]",
+                "--complexity", "Low",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-recommended-approach",
+                "--name", "Remove dead legacy-widget prop",
+                "--rationale", "Swap the literal `true` with removing the dead isLegacyItems prop entirely",
+                "--hypotheses-addressed", "[]",
+                "--hypotheses-not-covered", "[]",
+                # Patch 9 (V3) setter-side gate (_cmds_approach.py, mode-
+                # independent per plan 69 D6/WI-F) requires this whenever the
+                # rationale matches the broad literal-replacement detector,
+                # which "swap ... with" does — unrelated to plan 73 OQ-5,
+                # just a pre-existing sibling gate this fixture must satisfy.
+                "--proposed-call-shape", "renderRow(item)",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-complexity",
+                "--codebase-changes", "Low", "--codebase-notes", "1 file",
+                "--risk", "Low", "--risk-notes", "narrow",
+                "--verify-cost", "Low", "--verify-notes", "unit test",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "set-probe-feasibility",
+                "--data-shape-only", "false",
+                "--auth-required", "false",
+                "--network-dependent", "false",
+                "--timing-dependent", "false",
+                "--is-test-code", "false",
+            ])
+            # Plan 73 D7: declaration-exists guard requires
+            # set-evidence-lanes to have been called before finalize-handoff.
+            _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "false",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "false",
+            ])
+            out = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, out)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("escalation", r.stderr)
 
     def test_finalize_handoff_production_site_check_when_unstable(self):
         """value_production_sites with is_stable=False → probe.discriminator.production_site_check non-null."""
@@ -8404,6 +9326,15 @@ class TestFinalizeHandoff(unittest.TestCase):
                 "--network-dependent", "false",
                 "--timing-dependent", "false",
                 "--is-test-code", "false",
+            ])
+            # Plan 73 D7: declaration-exists guard requires
+            # set-evidence-lanes to have been called before finalize-handoff.
+            _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "false",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "false",
             ])
 
             out = Path(tmp) / "handoff.json"
@@ -8630,6 +9561,15 @@ def _build_minimal_enhancement_state_no_callers(devforge):
         "--network-dependent", "false",
         "--timing-dependent", "false",
         "--is-test-code", "false",
+    ])
+    # Plan 73 D7: declaration-exists guard requires set-evidence-lanes to
+    # have been called before finalize-handoff.
+    _run([
+        "--devforge-dir", str(devforge), "set-evidence-lanes",
+        "--static-graph", "false",
+        "--text-search", "false",
+        "--runtime-probe", "false",
+        "--history", "false",
     ])
 
 
@@ -10249,6 +11189,15 @@ def _build_minimal_discover_handoff_for_check_outcome(tmp_root):
         "--buy", "Third-party audit library",
         "--reasoning", "ORM already in place",
     ])
+    # plan 73 D6: Build + zero internal prior-art hits is an absence-founded
+    # conclusion -- finalize-handoff's declaration-exists guard requires a
+    # record-absence-probe call before it will emit.
+    _run_discover([
+        "--devforge-dir", df, "record-absence-probe",
+        "--claim", "no existing internal audit-log implementation",
+        "--symbol", "AuditLogPersistence", "--path", "none",
+        "--found", "false",
+    ])
     _run_discover([
         "--devforge-dir", df, "set-derisk-plan",
         "--items", '["Spike: write load test against ORM layer before committing"]',
@@ -11380,6 +12329,300 @@ class TestRenderBranchCommandCli(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(memo_path.read_text(), memo_before)
             self.assertEqual(report_path.read_text(), report_before)
+
+
+# ---------------------------------------------------------------------------
+# Plan 73 D7 — not-covered evidence-lane declaration.
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultReportStateEvidenceLanes(unittest.TestCase):
+    """default_report_state() has evidence_lanes with all 4 lanes None (unset).
+
+    None, not False: finalize-handoff's declaration-exists guard needs to
+    tell "never declared" apart from "explicitly declared false" -- a
+    plain False default would make the two indistinguishable.
+    """
+
+    def test_default_report_state_has_evidence_lanes_all_none(self):
+        state = research_helper.default_report_state()
+        lanes = state.get("evidence_lanes")
+        self.assertIsInstance(lanes, dict)
+        for key in ("static_graph", "text_search", "runtime_probe", "history"):
+            self.assertIn(key, lanes)
+            self.assertIsNone(lanes[key])
+
+
+class TestSetEvidenceLanes(unittest.TestCase):
+    """Plan 73 D7 — set-evidence-lanes subcommand tests."""
+
+    def test_set_evidence_lanes_round_trip(self):
+        """All four flags accepted, state populated correctly as Python bools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "true",
+                "--text-search", "true",
+                "--runtime-probe", "false",
+                "--history", "true",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r2 = _run(["--devforge-dir", str(devforge), "read-report"])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            data = json.loads(r2.stdout)
+            lanes = data["evidence_lanes"]
+            self.assertIs(lanes["static_graph"], True)
+            self.assertIs(lanes["text_search"], True)
+            self.assertIs(lanes["runtime_probe"], False)
+            self.assertIs(lanes["history"], True)
+
+    def test_set_evidence_lanes_rejects_non_boolean_string(self):
+        """--history maybe → exit 2 + enum cite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "false",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "maybe",
+            ])
+            self.assertNotEqual(r.returncode, 0, "should have failed")
+            self.assertTrue(
+                "maybe" in r.stderr or "invalid choice" in r.stderr,
+                "stderr: {0}".format(r.stderr)
+            )
+
+    def test_set_evidence_lanes_accepts_lowercase_canonical(self):
+        """Argparse choices are exact match; only lowercase 'true' / 'false' accepted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "False",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "false",
+            ])
+            # argparse choices are exact match; "False" won't match "false".
+            self.assertNotEqual(r.returncode, 0, "should have failed on capitalized value")
+
+    def test_set_evidence_lanes_last_call_wins(self):
+        """Re-calling overwrites each field (contrast record-literal-archaeology's dedupe)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "true",
+                "--text-search", "true",
+                "--runtime-probe", "true",
+                "--history", "true",
+            ])
+            r2 = _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "false",
+                "--text-search", "false",
+                "--runtime-probe", "false",
+                "--history", "false",
+            ])
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            r3 = _run(["--devforge-dir", str(devforge), "read-report"])
+            data = json.loads(r3.stdout)
+            lanes = data["evidence_lanes"]
+            for key in ("static_graph", "text_search", "runtime_probe", "history"):
+                self.assertIs(lanes[key], False, "field {0} should be overwritten to False".format(key))
+
+
+class TestRenderEvidenceLanes(unittest.TestCase):
+    """Plan 73 D7 — the report render's UNCONDITIONAL Evidence Lanes Consulted section."""
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        return r.stdout
+
+    def test_render_includes_section_on_fresh_report_never_declared(self):
+        """A run that never called set-evidence-lanes still gets the section
+        (never omitted) with every lane explicitly 'not consulted' — the
+        distinguishing behaviour D7 exists for: a reader can tell a run
+        SAID NOTHING was consulted, as opposed to the section vanishing.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            output = self._render(devforge)
+            self.assertIn("## Evidence Lanes Consulted", output)
+            self.assertIn("| Static graph | not consulted |", output)
+            self.assertIn("| Text search | not consulted |", output)
+            self.assertIn("| Runtime probe | not consulted |", output)
+            self.assertIn("| History | not consulted |", output)
+
+    def test_render_no_history_lane_says_so_explicitly_alongside_others_consulted(self):
+        """Every lane BUT history declared consulted -- history still renders
+        its own explicit 'not consulted' row rather than the section (or
+        just that row) disappearing. Pins the exact behaviour Phase 3's
+        Verify names: 'a run with no history lane says so explicitly
+        rather than omitting the section.'
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "true",
+                "--text-search", "true",
+                "--runtime-probe", "true",
+                "--history", "false",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn("## Evidence Lanes Consulted", output)
+            self.assertIn("| Static graph | consulted |", output)
+            self.assertIn("| Text search | consulted |", output)
+            self.assertIn("| Runtime probe | consulted |", output)
+            self.assertIn("| History | not consulted |", output)
+
+    def test_render_all_four_consulted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            r = _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "true",
+                "--text-search", "true",
+                "--runtime-probe", "true",
+                "--history", "true",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            for label in ("Static graph", "Text search", "Runtime probe", "History"):
+                self.assertIn("| {0} | consulted |".format(label), output)
+
+    def test_render_section_placement_after_literal_archaeology_before_open_uncertainties(self):
+        """Section order: Literal Archaeology, then Evidence Lanes Consulted,
+        then Open Uncertainties (when both are present)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _run(["--devforge-dir", str(devforge), "reset-memo"])
+            _run(["--devforge-dir", str(devforge), "reset-report"])
+            _run([
+                "--devforge-dir", str(devforge),
+                "record-literal-archaeology",
+                "--literal", "false",
+                "--file-line", "InvoiceSummaryPanel.vue:290",
+                "--introduced-by", "bd47a12",
+                "--introduced-when", "2023-12-12",
+                "--commit-subject", "TICKET-2044 refactor inline call into wrapper",
+                "--intent", "inherited-refactor",
+                "--use", "fix-layer",
+            ])
+            _run([
+                "--devforge-dir", str(devforge), "record-gap",
+                "--dimension", "symptom", "--description", "unclear repro",
+            ])
+            output = self._render(devforge)
+            idx_archaeology = output.index("## Literal Archaeology")
+            idx_evidence = output.index("## Evidence Lanes Consulted")
+            idx_open = output.index("## Open Uncertainties")
+            self.assertLess(idx_archaeology, idx_evidence)
+            self.assertLess(idx_evidence, idx_open)
+
+
+class TestFinalizeHandoffEvidenceLanes(unittest.TestCase):
+    """Plan 73 D7 — finalize-handoff round-trip for evidence_lanes."""
+
+    def test_finalize_handoff_carries_declared_evidence_lanes(self):
+        """Real setter -> finalize-handoff -> emitted JSON carries evidence_lanes verbatim."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            r = _run([
+                "--devforge-dir", str(devforge), "set-evidence-lanes",
+                "--static-graph", "true",
+                "--text-search", "true",
+                "--runtime-probe", "false",
+                "--history", "true",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            emit_path = Path(tmp) / "handoff.json"
+            r2 = _run_finalize(devforge, emit_path)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            data = json.loads(emit_path.read_text())
+            self.assertEqual(data["evidence_lanes"], {
+                "static_graph": True,
+                "text_search": True,
+                "runtime_probe": False,
+                "history": True,
+            })
+
+    def test_finalize_handoff_rejects_when_evidence_lanes_never_declared(self):
+        """Declaration-exists guard: finalize-handoff REJECTS when
+        set-evidence-lanes was never called (all four fields still None) --
+        reversed from the earlier design where the field silently defaulted
+        to all-False, making "never declared" indistinguishable from
+        "declared not-consulted". static_graph in particular would have
+        been an ACTIVELY FALSE claim on essentially every real
+        investigation (CBM-first discovery is mandatory in this command),
+        not merely an uninformative one -- exactly the "structural
+        confidence implying completeness" failure D7 exists to kill.
+
+        Mirrors test_finalize_rejects_when_probe_feasibility_missing's
+        state-corruption pattern: _build_minimal_bug_state_for_handoff now
+        calls set-evidence-lanes internally (with all-False, a valid
+        declaration), so this test corrupts evidence_lanes back to all-None
+        afterward to simulate a run that genuinely never called the setter.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            report_path = devforge / "research-report.json"
+            data = json.loads(report_path.read_text())
+            data["evidence_lanes"] = {
+                "static_graph": None,
+                "text_search": None,
+                "runtime_probe": None,
+                "history": None,
+            }
+            report_path.write_text(json.dumps(data))
+            emit_path = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, emit_path)
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("evidence_lanes not declared", r.stderr)
+            self.assertIn("set-evidence-lanes", r.stderr)
+            self.assertFalse(emit_path.exists())
+
+    def test_finalize_handoff_succeeds_once_evidence_lanes_declared_all_false(self):
+        """Complement of the rejection test: the guard is satisfied once
+        set-evidence-lanes has been called at least once, EVEN WHEN every
+        lane is declared false -- proving the guard is a call-happened
+        check, not a per-lane-value check (it never inspects which lane
+        values were recorded; it would pass identically whether every lane
+        was declared true or every lane was declared false). Uses
+        _build_minimal_bug_state_for_handoff's own internal
+        set-evidence-lanes call (all-False) with no extra setter call and
+        no state corruption -- the ordinary happy path.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            emit_path = Path(tmp) / "handoff.json"
+            r = _run_finalize(devforge, emit_path)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(emit_path.read_text())
+            self.assertIn("evidence_lanes", data)
+            self.assertEqual(data["evidence_lanes"], {
+                "static_graph": False,
+                "text_search": False,
+                "runtime_probe": False,
+                "history": False,
+            })
 
 
 if __name__ == "__main__":

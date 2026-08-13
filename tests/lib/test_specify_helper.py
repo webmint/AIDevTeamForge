@@ -5040,6 +5040,16 @@ def _build_minimal_handoff(
         "--timing-dependent", "false",
         "--is-test-code", "false",
     ])
+    # Plan 73 D7: declaration-exists guard requires set-evidence-lanes to
+    # have been called before finalize-handoff (any true/false combination
+    # is accepted -- all False is a valid declaration).
+    _run_research([
+        "--devforge-dir", df, "set-evidence-lanes",
+        "--static-graph", "false",
+        "--text-search", "false",
+        "--runtime-probe", "false",
+        "--history", "false",
+    ])
 
     if design_anchor_value is not None and design_anchor_selectors is not None:
         _run_research([
@@ -5217,6 +5227,79 @@ class TestImportHandoff(unittest.TestCase):
             r = self._run_import(devforge, bad_path)
             self.assertEqual(r.returncode, 2, r.stderr)
             self.assertIn("schema validation failed", r.stderr)
+
+    def test_import_handoff_accepts_legacy_schema_version_enhancement_empty_archaeology(self):
+        """Plan 73 OQ-5 Finding-2 fix: reconstruct a pre-plan-73-shaped handoff
+        dict through the real import-handoff read path (_dict_to_dataclass
+        under the hood, same call site _import_handoff_research uses) and
+        assert it imports cleanly.
+
+        Base handoff built via the real research_helper producer
+        (_build_minimal_handoff — enhancement/feature_addition mode, empty
+        literal_archaeology), then mutated to the EXACT Finding-2 shape:
+        schema_version downgraded to "1.1" (predates plan 73 D1) +
+        recommended_approach_summary rewritten to a replacement-shaped string
+        matching the schema's own narrow presence-gate regex
+        (_has_literal_replacement). Before the Finding-2 fix, reconstructing
+        this via _dict_to_dataclass (which re-runs Handoff.__post_init__ on
+        already-persisted JSON) would raise — even though the file was
+        legally valid when research_helper's own finalize-handoff produced
+        it under the pre-plan-73 rules (presence was bug-mode-gated then).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df_legacy"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "legacy_handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            self.assertEqual(handoff_data["mode"], "feature_addition")
+            self.assertEqual(handoff_data["spec_seeds"]["literal_archaeology"], [])
+            # Simulate a handoff.json written before plan 73 shipped.
+            handoff_data["schema_version"] = "1.1"
+            handoff_data["plan_seeds"]["recommended_approach_summary"] = (
+                "Replace `false` with `isExternal` in loadData call"
+            )
+            handoff_out.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("imported:", r2.stdout)
+
+    def test_import_handoff_rejects_current_schema_version_enhancement_empty_archaeology(self):
+        """Same mutation, but schema_version LEFT at the CURRENT (post-plan-73)
+        value — import-handoff still REJECTS it. Proves the Finding-2 fix
+        does not weaken the presence gate for a handoff produced under the
+        new (mode-independent) regime — only a handoff stamped with a
+        version predating plan 73 D1 is exempted.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df_current"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "current_handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            current_schema_version = handoff_data["schema_version"]
+            # Sanity: confirms this handoff really was stamped with the
+            # current (post-plan-73) schema_version, not accidentally the
+            # legacy one the sibling test downgrades to.
+            self.assertNotEqual(current_schema_version, "1.1")
+            handoff_data["plan_seeds"]["recommended_approach_summary"] = (
+                "Replace `false` with `isExternal` in loadData call"
+            )
+            handoff_out.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 2, r2.stderr)
+            self.assertIn("schema validation failed", r2.stderr)
+            self.assertIn("literal_archaeology", r2.stderr)
 
     def test_import_handoff_idempotent_re_import_overwrites_pre_seeds(self):
         """Second import succeeds + pre-seed blocks overwritten."""
@@ -5693,6 +5776,82 @@ class TestFindHandoffs(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(r.stdout.strip(), "")
 
+    def test_find_handoffs_surfaces_legacy_schema_version_enhancement_empty_archaeology(self):
+        """Plan 73 Phase 1 LOW review finding: find-handoffs' read path
+        (_try_research_hit -> _dict_to_dataclass, the second call site to
+        _import_handoff_research's, at _cmds_handoff.py's cmd_find_handoffs
+        helper) must honor the same schema_version carve-out as
+        import-handoff -- a legacy (pre-plan-73) enhancement-mode handoff
+        with empty literal_archaeology and a replacement-shaped
+        recommended_approach_summary must surface as a hit, not be
+        silently dropped by _try_research_hit's bare
+        `except Exception: return None`.
+
+        Same fixture shape as
+        TestImportHandoff.test_import_handoff_accepts_legacy_schema_version_enhancement_empty_archaeology
+        (built via the real research_helper producer, then mutated
+        on-disk to schema_version="1.1" + a replacement-shaped summary),
+        but driven through find-handoffs instead of import-handoff so the
+        _try_research_hit call site gets its own coverage.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+
+            df_legacy = tmp_path / "df_legacy"
+            df_legacy.mkdir()
+            handoff_out = self._build_handoff_at(tmp_path, df_legacy, "001-legacy-handoff")
+
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            self.assertEqual(handoff_data["mode"], "feature_addition")
+            self.assertEqual(handoff_data["spec_seeds"]["literal_archaeology"], [])
+            # Simulate a research-handoff.json written before plan 73 shipped.
+            handoff_data["schema_version"] = "1.1"
+            handoff_data["plan_seeds"]["recommended_approach_summary"] = (
+                "Replace `false` with `isExternal` in loadData call"
+            )
+            handoff_out.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+            r = self._run_find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            lines = [l for l in r.stdout.strip().split("\n") if l.strip()]
+            self.assertEqual(len(lines), 1, "Expected 1 hit, got: " + r.stdout)
+            self.assertIn("kind=research", lines[0])
+            self.assertIn("mode=feature_addition", lines[0])
+
+    def test_find_handoffs_skips_current_schema_version_enhancement_empty_archaeology(self):
+        """Negative counterpart: the SAME mutation, but schema_version LEFT
+        at the CURRENT (post-plan-73) value -- reconstruction fails schema
+        validation, and _try_research_hit's bare
+        `except Exception: return None` skips the file SILENTLY (exit 0,
+        zero hits) rather than surfacing or erroring on it. Confirms the
+        Finding-2 carve-out is version-gated on the find-handoffs path too
+        -- not a blanket loosening of _try_research_hit's schema check.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+
+            df_current = tmp_path / "df_current"
+            df_current.mkdir()
+            handoff_out = self._build_handoff_at(tmp_path, df_current, "001-current-handoff")
+
+            handoff_data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            current_schema_version = handoff_data["schema_version"]
+            # Sanity: confirms this handoff really was stamped with the
+            # current (post-plan-73) schema_version, not accidentally the
+            # legacy one the sibling test downgrades to.
+            self.assertNotEqual(current_schema_version, "1.1")
+            handoff_data["plan_seeds"]["recommended_approach_summary"] = (
+                "Replace `false` with `isExternal` in loadData call"
+            )
+            handoff_out.write_text(json.dumps(handoff_data, indent=2), encoding="utf-8")
+
+            r = self._run_find(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "")
+
 
 # ---------------------------------------------------------------------------
 # Discover handoff integration tests — import-handoff (discover kind) +
@@ -5811,6 +5970,15 @@ def _build_minimal_discover_handoff(
         "--build", "Extend ORM with new table",
         "--buy", "Third-party audit library",
         "--reasoning", "ORM already in place; avoid external dependency",
+    ])
+    # plan 73 D6: Build + zero internal prior-art hits is an absence-founded
+    # conclusion -- finalize-handoff's declaration-exists guard requires a
+    # record-absence-probe call before it will emit.
+    _run_discover([
+        "--devforge-dir", df, "record-absence-probe",
+        "--claim", "no existing internal audit-log implementation",
+        "--symbol", "AuditLogPersistence", "--path", "none",
+        "--found", "false",
     ])
     # Set derisk plan (must be a JSON array of strings).
     _run_discover([
@@ -7235,6 +7403,85 @@ class TestImportHandoffDedupe(unittest.TestCase):
                 "dropped and surviving repr must differ for a whitespace-variant dup; "
                 "got identical text — raw field values are not being logged: " + oq_line,
             )
+
+
+# ---------------------------------------------------------------------------
+# Plan 73 D7 — evidence_lanes read-path back-compat (import-handoff consumes
+# a Handoff carrying the new top-level field via _dict_to_dataclass — the
+# SAME reconstruction call site the design_anchor back-compat tests above
+# exercise).
+# ---------------------------------------------------------------------------
+
+
+class TestImportHandoffEvidenceLanes(unittest.TestCase):
+    """import-handoff tolerates evidence_lanes present, and absent (pre-plan-73-D7 shape)."""
+
+    def _make_devforge(self, tmp: str) -> Path:
+        """Create a minimal .devforge dir inside tmp (mirrors TestImportHandoff)."""
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_import(self, devforge: Path, handoff_path: Path, extra: list = None):
+        argv = [
+            "--devforge-dir", str(devforge),
+            "import-handoff",
+            "--handoff-path", str(handoff_path),
+        ]
+        if extra:
+            argv += extra
+        return _run(argv)
+
+    def test_import_handoff_current_shape_round_trips(self):
+        """A freshly-produced handoff.json (evidence_lanes present, all-False
+        default since the fixture builder never calls set-evidence-lanes)
+        imports cleanly via the real read path.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            self.assertIn("evidence_lanes", data)
+            self.assertEqual(data["evidence_lanes"], {
+                "static_graph": False,
+                "text_search": False,
+                "runtime_probe": False,
+                "history": False,
+            })
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("imported:", r2.stdout)
+
+    def test_import_handoff_backcompat_missing_evidence_lanes_key(self):
+        """Real handoff.json with the top-level evidence_lanes key deleted
+        entirely (the pre-plan-73-D7 shape) -> still imports cleanly through
+        the real _dict_to_dataclass read path (same call site the
+        design_anchor back-compat test above exercises) -- axis (a) of
+        Build discipline's back-compat proof, at the actual consumer read
+        site, not just the schema constructor.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_df"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            del data["evidence_lanes"]
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("imported:", r2.stdout)
 
 
 if __name__ == "__main__":

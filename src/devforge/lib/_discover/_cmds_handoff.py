@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from . import handoff_schema
+from ._cmds_absence import requires_absence_probe
 from ._handoff_build import _asdict_handoff, _build_handoff_from_state
 from ._state import _atomic_write_json, _load_memo, _load_report
 from ._validators import _die, _validate_enum
@@ -152,6 +153,32 @@ def cmd_finalize_handoff(args):
         return _die(
             "finalize-handoff: memo.verbatim_prompt not set "
             "(run set-verbatim-prompt first)",
+            code=2,
+        )
+
+    # Plan 73 D6 -- absence-claim provenance DECLARATION-EXISTS guard. Fires
+    # only when this report's build_vs_buy conclusion is absence-founded
+    # (requires_absence_probe: recommendation == "Build" with zero internal
+    # prior-art hits recorded -- "nothing exists internally for this ->
+    # build new"). This checks that a record-absence-probe call HAPPENED
+    # (report.absence_probes is non-empty) -- it never inspects what any
+    # probe FOUND. A survey that probed, found a prior deletion, and still
+    # recommends Build is legitimate (the author may have good reason); a
+    # survey that probed and found nothing is equally legitimate (a
+    # genuine, now-verified absence). The guard fires identically in both
+    # cases -- and identically whether every probe's --found is true or
+    # false -- because it is a call-happened check, never a value check.
+    if requires_absence_probe(report) and not report.get("absence_probes"):
+        return _die(
+            "finalize-handoff: report.build_vs_buy.recommendation is "
+            "'Build' with zero internal prior-art hits recorded -- an "
+            "absence-founded build-new conclusion requires at least one "
+            "record-absence-probe call (run `git log -S \"<symbol>\"` "
+            "and/or `git log --diff-filter=D -- <path>` and record the "
+            "outcome with `discover_helper record-absence-probe`; "
+            "--found false is a valid, sufficient outcome -- this guard "
+            "does not require a deletion to have been found, only that "
+            "the probe ran)",
             code=2,
         )
 

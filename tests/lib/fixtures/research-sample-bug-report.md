@@ -100,6 +100,15 @@ Inline sort in reactive body is unstable; recommended fix is a derived computed 
 | Risk | Low | pagination preserved |
 | Verify cost | Med | needs e2e for paginate-while-mutating |
 
+## Evidence Lanes Consulted
+
+| Lane | Status |
+|---|---|
+| Static graph | not consulted |
+| Text search | not consulted |
+| Runtime probe | not consulted |
+| History | not consulted |
+
 ## Next step
 
 Copy the block below into a new `/devforge:specify` session manually. No automation — user controls when (or if) `/devforge:specify` runs.

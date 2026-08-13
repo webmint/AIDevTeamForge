@@ -197,7 +197,12 @@ def _build_literal_archaeology(la_rows):
     # type: (List[dict]) -> List[handoff_schema.LiteralArchaeology]
     """Map report.literal_archaeology rows to LiteralArchaeology dataclass list.
 
-    Passes through directly; schema validates each row.
+    Passes through directly; schema validates each row. `use` (plan 73
+    OQ-5) defaults to "fix-layer" when absent from the row -- every row
+    recorded by a research_helper build that predates the --use argparse
+    arg is unambiguously fix-layer. A freshly-recorded row always carries
+    "use" (the CLI arg is required), so `.get("use") or "fix-layer"` is a
+    defensive fallback, not the normal path.
     """
     result = []
     for row in la_rows:
@@ -208,6 +213,7 @@ def _build_literal_archaeology(la_rows):
             introduced_when=row.get("introduced_when") or "",
             commit_subject=row.get("commit_subject") or "",
             intent=row.get("intent") or "",
+            use=row.get("use") or "fix-layer",
         ))
     return result
 
@@ -244,6 +250,30 @@ def _build_design_anchor(memo):
     selectors_raw = val.get("selectors") or []
     selectors = [s for s in selectors_raw if isinstance(s, str)]
     return handoff_schema.DesignAnchor(kind=kind, file=file_, selectors=selectors)
+
+
+def _build_evidence_lanes(report):
+    # type: (dict) -> handoff_schema.EvidenceLanes
+    """Map report.evidence_lanes dict to EvidenceLanes dataclass (plan 73 D7).
+
+    By the time cmd_finalize_handoff reaches this call, its own
+    declaration-exists guard has already rejected a report whose
+    evidence_lanes fields are all still None (unset) -- see
+    _cmds_handoff.py. So on the normal path every field here is a real
+    True/False the LLM declared via set-evidence-lanes. The `bool(...)`
+    coercion is a defensive back-compat fallback for the two paths that
+    bypass that guard: a report.json predating this field entirely (no
+    'evidence_lanes' key -> {} -> every bool(None) is False), and a
+    directly-constructed report dict in a test. Neither is the normal
+    production path.
+    """
+    rec = report.get("evidence_lanes") or {}
+    return handoff_schema.EvidenceLanes(
+        static_graph=bool(rec.get("static_graph")),
+        text_search=bool(rec.get("text_search")),
+        runtime_probe=bool(rec.get("runtime_probe")),
+        history=bool(rec.get("history")),
+    )
 
 
 def _build_open_questions(open_uncertainties):
@@ -628,4 +658,5 @@ def _build_handoff_from_state(memo, report, research_md_path, devforge_dir=None)
         probe=probe,
         downstream_links=downstream_links,
         outcome=None,
+        evidence_lanes=_build_evidence_lanes(report),
     )

@@ -102,10 +102,11 @@ def _value_production_site(value="bqItemId", file_line="src/adapter.ts:5", is_st
 def _literal_archaeology(
     literal="false",
     file_line="src/foo.vue:42",
-    introduced_by="cca3514",
+    introduced_by="bd47a12",
     introduced_when="2023-12-12",
     commit_subject="add gate",
     intent="placeholder",
+    use="fix-layer",
 ):
     return hs.LiteralArchaeology(
         literal=literal,
@@ -114,6 +115,7 @@ def _literal_archaeology(
         introduced_when=introduced_when,
         commit_subject=commit_subject,
         intent=intent,
+        use=use,
     )
 
 
@@ -283,6 +285,15 @@ def _downstream_links():
     return hs.DownstreamLinks()
 
 
+def _evidence_lanes(static_graph=False, text_search=False, runtime_probe=False, history=False):
+    return hs.EvidenceLanes(
+        static_graph=static_graph,
+        text_search=text_search,
+        runtime_probe=runtime_probe,
+        history=history,
+    )
+
+
 def _handoff(
     mode="bug",
     spec_seeds=None,
@@ -317,6 +328,7 @@ def _handoff(
         probe=probe,
         downstream_links=overrides.get("downstream_links", _downstream_links()),
         outcome=outcome,
+        evidence_lanes=overrides.get("evidence_lanes", _evidence_lanes()),
     )
 
 
@@ -409,7 +421,7 @@ class TestV2DataFlow(unittest.TestCase):
     def test_valid_handoff_with_data_flow_chain(self):
         """Populated DataFlowChain with all fields accepts without error."""
         chain = _data_flow_chain(
-            handler_qn="OrderViewer.handleSubmit",
+            handler_qn="InvoiceSummaryPanel.handleSubmit",
             write_boundary_qn="OrderRepo.save",
             intermediate_qns=["OrderService.process", "OrderMapper.toEntity"],
             trace_mode="data_flow",
@@ -554,10 +566,10 @@ class TestV3LiteralArchaeology(unittest.TestCase):
         """
         la = _literal_archaeology(
             literal="false",
-            file_line="src/OrderViewer.vue:290",
-            introduced_by="cca3514a1b2c3d4",
+            file_line="src/InvoiceSummaryPanel.vue:290",
+            introduced_by="bd47a12e5f6a9c3",
             introduced_when="2023-12-12",
-            commit_subject="DEAL-292 extract loadData wrapper",
+            commit_subject="TICKET-2044 extract loadData wrapper",
             intent="placeholder",
         )
         # For placeholder intent, escalation required in summary.
@@ -573,7 +585,13 @@ class TestV3LiteralArchaeology(unittest.TestCase):
         self.assertEqual(h.spec_seeds.literal_archaeology[0].intent, "placeholder")
 
     def test_require_literal_archaeology_when_bug_with_literal_replacement(self):
-        """mode=bug + 'Replace `false` with `isExternal`' summary + empty literal_archaeology → ValueError."""
+        """mode=bug + 'Replace `false` with `isExternal`' summary + empty literal_archaeology → ValueError.
+
+        Bug-mode path is unchanged by plan 73 D1 (which widened the check to
+        also fire outside bug mode — see
+        test_require_literal_archaeology_when_enhancement_with_literal_replacement
+        below).
+        """
         ps = _plan_seeds(
             recommended_approach_summary="Replace `false` with `isExternal` in loadData call"
         )
@@ -585,6 +603,48 @@ class TestV3LiteralArchaeology(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps)
         self.assertIn("literal_archaeology", str(ctx.exception))
+
+    def test_require_literal_archaeology_when_enhancement_with_literal_replacement(self):
+        """mode=feature_addition (enhancement) + literal-replacement summary +
+        empty literal_archaeology → ValueError.
+
+        Plan 73 D1 widened PlanSeeds._validate_cross_field's literal_archaeology
+        presence check from `mode == "bug" and is_literal_replacement` to
+        `is_literal_replacement` alone — the finalize-handoff chokepoint mirror
+        of the mode-decoupled verify check 17. "feature_addition" is the
+        handoff-schema mode _handoff_build.py maps research_helper's
+        "enhancement" onto (MODE_TRANSLATE, _handoff_build.py:63).
+        """
+        ps = _plan_seeds(
+            recommended_approach_summary="Replace `false` with `isExternal` in loadData call"
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            literal_archaeology=[],  # empty — should be rejected
+        )
+        with self.assertRaises(ValueError) as ctx:
+            _handoff(mode="feature_addition", spec_seeds=ss, plan_seeds=ps)
+        self.assertIn("literal_archaeology", str(ctx.exception))
+
+    def test_literal_archaeology_present_passes_in_enhancement_mode(self):
+        """mode=feature_addition + literal-replacement summary + a matching
+        literal_archaeology row → no ValueError (back-compat proof: the
+        widened check accepts a satisfied row exactly like bug mode does).
+        """
+        la = _literal_archaeology(
+            literal="false",
+            file_line="src/foo.vue:10",
+            intent="deliberate",
+        )
+        ps = _plan_seeds(
+            recommended_approach_summary="Replace `false` with `isExternal` in loadData call"
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            literal_archaeology=[la],
+        )
+        h = _handoff(mode="feature_addition", spec_seeds=ss, plan_seeds=ps)
+        self.assertEqual(h.mode, "feature_addition")
 
     def test_reject_invalid_intent_enum_value(self):
         """intent='random_word' raises ValueError at LiteralArchaeology construction."""
@@ -787,6 +847,128 @@ class TestV3CallShape(unittest.TestCase):
         )
         h = _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps)
         self.assertIsNotNone(h)
+
+
+# ---------------------------------------------------------------------------
+# Plan 73 OQ-5 — `use` discriminator + schema_version-scoped presence gate.
+# ---------------------------------------------------------------------------
+
+
+class TestV3LiteralArchaeologyUse(unittest.TestCase):
+    """Plan 73 OQ-5: LiteralArchaeology.use discriminator + Finding-1/Finding-2 fixes."""
+
+    def test_use_defaults_to_fix_layer_when_omitted(self):
+        """Constructing LiteralArchaeology without `use=` defaults to 'fix-layer'."""
+        la = hs.LiteralArchaeology(
+            literal="false",
+            file_line="src/foo.vue:42",
+            introduced_by="bd47a12",
+            introduced_when="2023-12-12",
+            commit_subject="add gate",
+            intent="placeholder",
+        )
+        self.assertEqual(la.use, "fix-layer")
+
+    def test_reject_invalid_use_enum_value(self):
+        """use='bogus' raises ValueError mentioning 'use'."""
+        with self.assertRaises(ValueError) as ctx:
+            _literal_archaeology(use="bogus")
+        self.assertIn("use", str(ctx.exception))
+
+    def test_evidence_use_row_exempt_from_escalation_cite(self):
+        """Finding 1 fix: use='evidence' + intent='inherited-refactor' + a deletion-shaped
+        summary (no escalation tokens) → accepted, no ValueError.
+
+        Mirrors test_require_escalation_cite_when_intent_inherited_refactor but with
+        use='evidence' instead of the default 'fix-layer' — the escalation-cite loop
+        must not fire for an evidence-use row, since nothing is being replaced.
+        """
+        la = _literal_archaeology(intent="inherited-refactor", use="evidence")
+        ps = _plan_seeds(
+            recommended_approach_summary="Swap the literal `true` with removing the dead branch entirely",
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            data_flow_chain=_data_flow_chain(),
+            literal_archaeology=[la],
+        )
+        h = _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps)
+        self.assertIsNotNone(h)
+        self.assertEqual(h.spec_seeds.literal_archaeology[0].use, "evidence")
+
+    def test_fix_layer_use_row_still_requires_escalation_cite(self):
+        """The fix-layer counterpart of the above still DEMANDS escalation prose —
+        Finding 1's fix must not gut the validator for the case it was built for.
+        """
+        la = _literal_archaeology(intent="inherited-refactor", use="fix-layer")
+        ps = _plan_seeds(
+            recommended_approach_summary="Swap the literal `true` with removing the dead branch entirely",
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            data_flow_chain=_data_flow_chain(),
+            literal_archaeology=[la],
+        )
+        with self.assertRaises(ValueError) as ctx:
+            _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps)
+        msg = str(ctx.exception)
+        self.assertIn("escalation", msg)
+        self.assertIn("inherited-refactor", msg)
+
+    def test_presence_gate_exempts_old_schema_version_enhancement_empty_archaeology(self):
+        """Finding 2 fix: schema_version='1.1' (predates plan 73 D1) + mode='feature_addition'
+        + a replacement-shaped summary + EMPTY literal_archaeology → accepted, no ValueError.
+
+        This is exactly Finding 2's shape: a handoff.json legally written before plan 73
+        D1 shipped (presence was bug-mode-gated then) must not newly fail reconstruction
+        after the code upgrades and re-validates it (e.g. specify's import-handoff, via
+        _dict_to_dataclass, re-runs Handoff.__post_init__ on already-persisted JSON).
+        """
+        ps = _plan_seeds(
+            recommended_approach_summary="Replace `false` with `isExternal` in loadData call"
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            literal_archaeology=[],
+        )
+        h = _handoff(mode="feature_addition", spec_seeds=ss, plan_seeds=ps, schema_version="1.1")
+        self.assertIsNotNone(h)
+        self.assertEqual(h.schema_version, "1.1")
+
+    def test_presence_gate_still_fires_for_current_schema_version_enhancement_empty_archaeology(self):
+        """Same shape at the CURRENT (post-plan-73) schema_version → still raises.
+
+        Proves the Finding-2 fix does not weaken the gate for a NEWLY-written handoff —
+        only a handoff stamped with a version predating plan 73 D1 is exempted.
+        """
+        ps = _plan_seeds(
+            recommended_approach_summary="Replace `false` with `isExternal` in loadData call"
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            literal_archaeology=[],
+        )
+        with self.assertRaises(ValueError) as ctx:
+            _handoff(mode="feature_addition", spec_seeds=ss, plan_seeds=ps, schema_version=hs.SCHEMA_VERSION)
+        self.assertIn("literal_archaeology", str(ctx.exception))
+
+    def test_presence_gate_old_schema_version_bug_mode_empty_archaeology_still_rejects(self):
+        """schema_version='1.1' + mode='bug' + empty archaeology + replacement summary →
+        still raises — byte-identical to pre-plan-73 bug-mode behavior. The schema_version
+        carve-out only relaxes the mode-independent WIDENING; it does not touch the
+        original bug-mode requirement that existed before plan 73.
+        """
+        ps = _plan_seeds(
+            recommended_approach_summary="Replace `false` with `isExternal` in loadData call"
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            data_flow_chain=_data_flow_chain(),
+            literal_archaeology=[],
+        )
+        with self.assertRaises(ValueError) as ctx:
+            _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps, schema_version="1.1")
+        self.assertIn("literal_archaeology", str(ctx.exception))
 
 
 # ---------------------------------------------------------------------------
@@ -1462,6 +1644,143 @@ class TestPlanSeedsCallerEnumeration(unittest.TestCase):
             "inbound_callers": [],
             "no_shared_callers_justification": None,
         })
+
+
+# ---------------------------------------------------------------------------
+# EvidenceLanes tests (plan 73 D7 — not-covered evidence-lane declaration).
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceLanes(unittest.TestCase):
+    """Tests for the EvidenceLanes dataclass in isolation."""
+
+    def test_default_construction_all_false(self):
+        """Bare hs.EvidenceLanes() -- every lane defaults False."""
+        el = hs.EvidenceLanes()
+        self.assertFalse(el.static_graph)
+        self.assertFalse(el.text_search)
+        self.assertFalse(el.runtime_probe)
+        self.assertFalse(el.history)
+
+    def test_explicit_construction_round_trips(self):
+        el = _evidence_lanes(static_graph=True, history=True)
+        self.assertTrue(el.static_graph)
+        self.assertFalse(el.text_search)
+        self.assertFalse(el.runtime_probe)
+        self.assertTrue(el.history)
+
+    def test_all_four_true(self):
+        el = _evidence_lanes(static_graph=True, text_search=True, runtime_probe=True, history=True)
+        self.assertTrue(el.static_graph)
+        self.assertTrue(el.text_search)
+        self.assertTrue(el.runtime_probe)
+        self.assertTrue(el.history)
+
+    def test_reject_non_bool_static_graph(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.EvidenceLanes(static_graph="true")
+        self.assertIn("EvidenceLanes.static_graph", str(ctx.exception))
+        self.assertIn("must be a bool", str(ctx.exception))
+
+    def test_reject_non_bool_text_search(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.EvidenceLanes(text_search=1)
+        self.assertIn("EvidenceLanes.text_search", str(ctx.exception))
+
+    def test_reject_non_bool_runtime_probe(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.EvidenceLanes(runtime_probe=None)
+        self.assertIn("EvidenceLanes.runtime_probe", str(ctx.exception))
+
+    def test_reject_non_bool_history(self):
+        with self.assertRaises(ValueError) as ctx:
+            hs.EvidenceLanes(history="yes")
+        self.assertIn("EvidenceLanes.history", str(ctx.exception))
+
+
+class TestHandoffEvidenceLanes(unittest.TestCase):
+    """Tests for Handoff.evidence_lanes -- the field wiring on the top-level record."""
+
+    def test_handoff_default_evidence_lanes_is_empty(self):
+        """Handoff constructed WITHOUT an evidence_lanes kwarg (the shape you
+        get reconstructing from an old handoff.json dict missing the key)
+        gets an all-False EvidenceLanes via the dataclass default_factory —
+        proves back-compat deserialization for handoff.json predating plan
+        73 D7. Builds hs.Handoff(...) directly (bypassing the _handoff()
+        test builder, which supplies an explicit default) so the dataclass
+        default itself is what is under test.
+        """
+        h = hs.Handoff(
+            schema_version=hs.SCHEMA_VERSION,
+            research_path="research/2026-05-19-test.md",
+            research_completed_at="2026-05-19T10:00:00Z",
+            mode="bug",
+            intent=_intent(),
+            spec_seeds=_spec_seeds(
+                affected_areas=[_affected_area_py()],
+            ),
+            plan_seeds=_plan_seeds(),
+            probe=_probe(),
+            downstream_links=_downstream_links(),
+            # evidence_lanes intentionally omitted.
+        )
+        self.assertIsInstance(h.evidence_lanes, hs.EvidenceLanes)
+        self.assertFalse(h.evidence_lanes.static_graph)
+        self.assertFalse(h.evidence_lanes.text_search)
+        self.assertFalse(h.evidence_lanes.runtime_probe)
+        self.assertFalse(h.evidence_lanes.history)
+
+    def test_handoff_carries_populated_evidence_lanes(self):
+        el = _evidence_lanes(text_search=True, history=True)
+        h = _handoff(evidence_lanes=el)
+        self.assertIs(h.evidence_lanes, el)
+        self.assertTrue(h.evidence_lanes.text_search)
+        self.assertTrue(h.evidence_lanes.history)
+        self.assertFalse(h.evidence_lanes.static_graph)
+
+    def test_reject_wrong_type(self):
+        with self.assertRaises(ValueError) as ctx:
+            _handoff(evidence_lanes={"static_graph": True})
+        self.assertIn("evidence_lanes", str(ctx.exception))
+
+    def test_asdict_includes_evidence_lanes(self):
+        import dataclasses
+        el = _evidence_lanes(runtime_probe=True)
+        h = _handoff(evidence_lanes=el)
+        d = dataclasses.asdict(h)
+        self.assertIn("evidence_lanes", d)
+        self.assertEqual(d["evidence_lanes"], {
+            "static_graph": False,
+            "text_search": False,
+            "runtime_probe": True,
+            "history": False,
+        })
+
+    def test_asdict_default_emits_all_false_evidence_lanes(self):
+        import dataclasses
+        h = _handoff()  # default evidence_lanes via the test builder's own default
+        d = dataclasses.asdict(h)
+        self.assertEqual(d["evidence_lanes"], {
+            "static_graph": False,
+            "text_search": False,
+            "runtime_probe": False,
+            "history": False,
+        })
+
+    def test_evidence_lanes_does_not_interact_with_schema_version(self):
+        """A populated evidence_lanes combined with a LEGACY schema_version
+        ("1.0"/"1.1", predating plan 73 D1) still constructs cleanly --
+        evidence_lanes carries no cross-field validation and is therefore
+        immune to the schema_version-scoped requiredness rule that governs
+        literal_archaeology (Build discipline axis (b): no previously-valid
+        combination is put at risk by this purely additive field).
+        """
+        for version in ("1.0", "1.1", "1.2"):
+            el = _evidence_lanes(static_graph=True, history=True)
+            h = _handoff(schema_version=version, evidence_lanes=el)
+            self.assertEqual(h.schema_version, version)
+            self.assertTrue(h.evidence_lanes.static_graph)
+            self.assertTrue(h.evidence_lanes.history)
 
 
 if __name__ == "__main__":

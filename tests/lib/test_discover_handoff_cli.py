@@ -25,6 +25,7 @@ sys.path.insert(0, str(_LIB / "_discover"))
 sys.path.insert(0, str(_LIB))
 
 from _discover import handoff_schema as hs  # noqa: E402
+from _discover._cmds_absence import requires_absence_probe  # noqa: E402
 from _discover._cmds_handoff import (  # noqa: E402
     cmd_finalize_handoff,
     cmd_append_outcome,
@@ -86,6 +87,7 @@ def _make_report(
     fit_assessments=None,
     recommendation=None,
     next_step_text=None,
+    absence_probes=None,
 ):
     if design_options is None:
         design_options = [
@@ -101,12 +103,41 @@ def _make_report(
     # Default derisk_plan with 1 entry so cmd_verify Rule F passes by default.
     if derisk_plan is None and verdict in ("Worth pursuing", "Promising with caveats"):
         derisk_plan = [{"risk": "DB unavailable during write", "mitigation": "Queue and retry with exponential back-off"}]
+    prior_art_val = prior_art or []
+    build_vs_buy_val = build_vs_buy or {
+        "recommendation": "Build",
+        "build": "Extend ORM",
+        "buy": "Third-party library",
+        "reasoning": "ORM already in place",
+    }
+    # Default absence_probes so plan 73 D6's finalize-handoff guard passes
+    # by default (the default build_vs_buy above is an absence-founded
+    # "Build" -- Build + no internal prior-art hit -- so a caller-untouched
+    # default would otherwise trip the new guard on every existing test
+    # that never mentions absence_probes). Tests exercising the guard pass
+    # absence_probes=[] explicitly to reconstruct the untouched case. Uses
+    # the real production predicate rather than re-deriving the trigger
+    # condition, so this default can't silently drift from the guard it
+    # exists to satisfy.
+    if absence_probes is None:
+        probe_report = {"build_vs_buy": build_vs_buy_val, "prior_art": prior_art_val}
+        if requires_absence_probe(probe_report):
+            absence_probes = [{
+                "claim": "no existing internal audit-log persistence implementation found",
+                "symbol": "AuditLogPersistence",
+                "path": "none",
+                "found": False,
+                "deleted_commit_sha": None,
+                "deleted_commit_subject": None,
+            }]
+        else:
+            absence_probes = []
     return {
         "topic": "Audit Log Persistence",
         "date": date,
         "topic_slug": topic_slug,
         "summary": summary,
-        "prior_art": prior_art or [],
+        "prior_art": prior_art_val,
         "integration_touchpoints": integration_touchpoints or [
             {"name": "ORM layer", "module_path": "src/db/orm.py", "reason": "Audit writes through ORM"}
         ],
@@ -116,18 +147,14 @@ def _make_report(
         "fit_rationale": fit_rationale,
         "design_options": design_options,
         "recommended_option": recommended_option,
-        "build_vs_buy": build_vs_buy or {
-            "recommendation": "Build",
-            "build": "Extend ORM",
-            "buy": "Third-party library",
-            "reasoning": "ORM already in place",
-        },
+        "build_vs_buy": build_vs_buy_val,
         "derisk_plan": derisk_plan or [],
         "constitution_constraints": constitution_constraints or [],
         "verdict": verdict,
         "recommendation": recommendation,
         "next_step_text": next_step_text,
         "open_uncertainties": open_uncertainties or [],
+        "absence_probes": absence_probes,
     }
 
 

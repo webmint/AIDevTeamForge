@@ -496,13 +496,50 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
        --reasoning "<reasoning text>"
    ```
 
-5. **Derisk plan** — at least 1 item; each item is a one-line action that reduces uncertainty before commitment (e.g., spike, prototype, contract test, vendor benchmark):
+5. **Absence probe** — run this setter when setter 4's `--recommendation` is `Build` AND Step 2.0 recorded no `internal:` prior-art entry (the run whose gate message read `Internal canonical-pattern search found 0 existing implementations.`). Those two together are a bare absence claim — nothing internal covers this, so build it — and git history is the one source that can refute it: the capability may be missing because someone deliberately deleted it.
+
+   Probe the plausible name and location the capability would have occupied, using either query or both:
+
+   ```bash
+   git log -S "<symbol the capability would have been named>"
+   git log --diff-filter=D -- <path the capability would have lived under>
+   ```
+
+   Run both queries against the repository that holds the project's source code — in a wrapper-mode install that is the nested Source Root, not the install root. Querying the wrong root returns an empty history indistinguishable from a genuine absence, and the `--found false` you would record from it satisfies the guard exactly as a real one does — so confirm which repository you are querying before recording, since no step in this command resolves that root for you.
+
+   Then record what the probe found — one call per claim probed:
+
+   ```bash
+   .devforge/lib/discover_helper record-absence-probe \
+       --claim "<one-line: what is claimed absent>" \
+       --symbol "<the -S token, or none>" \
+       --path "<the --diff-filter=D path, or none>" \
+       --found false
+   ```
+
+   When the probe DID surface a prior deletion, `--found true` requires both commit flags; `--found false` forbids them:
+
+   ```bash
+   .devforge/lib/discover_helper record-absence-probe \
+       --claim "<one-line: what is claimed absent>" \
+       --symbol "<the -S token, or none>" \
+       --path "<the --diff-filter=D path, or none>" \
+       --found true \
+       --deleted-commit-sha "<7-40 char hex sha of the deleting commit>" \
+       --deleted-commit-subject "<one-line subject of that commit>"
+   ```
+
+   Pass the literal `none` for whichever query this probe did not run; the helper rejects a call where BOTH are `none`, since such a row names no target.
+
+   Phase 4's `finalize-handoff` rejects a save whose report is absence-founded and carries no probe — the guard asks only whether a probe was recorded, never what it found. Run the probe here, in Phase 3, rather than meeting that rejection at the save flow's step 5, where the report is already on disk and only the handoff fails. Finding a prior deletion does NOT overturn the Build recommendation: the author may have good reason to rebuild, but a deletion you found and left unexplained is what the reader most needs — say in setter 4's `--reasoning` WHY the recommendation stands despite it. The SHA and subject already render in the report's `## Absence Probes` section, so do not re-type them there: the structured row carries what the history showed, the prose carries what you concluded from it — the same split `/devforge:research` draws between its archaeology row and its recommended-approach rationale. Finding nothing is an equally valid and sufficient outcome: `--found false` records a real, now-verified absence and satisfies the guard exactly as `--found true` does.
+
+6. **Derisk plan** — at least 1 item; each item is a one-line action that reduces uncertainty before commitment (e.g., spike, prototype, contract test, vendor benchmark):
 
    ```bash
    .devforge/lib/discover_helper set-derisk-plan --items '["item-1","item-2","item-3"]'
    ```
 
-6. **Constitution constraints** — read `constitution.md` for rules that bear on the recommended option + integration touchpoints. For each rule that constrains or enables the design, call the setter (call 0..N times — omit entirely when no rule applies):
+7. **Constitution constraints** — read `constitution.md` for rules that bear on the recommended option + integration touchpoints. For each rule that constrains or enables the design, call the setter (call 0..N times — omit entirely when no rule applies):
 
    ```bash
    .devforge/lib/discover_helper set-constitution-constraints \
@@ -510,13 +547,13 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
        --impact "<how it constrains or enables the recommended option>"
    ```
 
-7. **Verdict** — one of `Worth pursuing` / `Promising with caveats` / `Reconsider`. Apply the verdict-flip rule (invariant D): when `overall_fit ∈ {Strained, Misfit}` OR `effort_estimate = "Major refactor required"`, the verdict MUST be `Reconsider`, UNLESS the Phase 1 finalize set `memo.override_recorded = True` (via `scope-finalize --accept-gaps`):
+8. **Verdict** — one of `Worth pursuing` / `Promising with caveats` / `Reconsider`. Apply the verdict-flip rule (invariant D): when `overall_fit ∈ {Strained, Misfit}` OR `effort_estimate = "Major refactor required"`, the verdict MUST be `Reconsider`, UNLESS the Phase 1 finalize set `memo.override_recorded = True` (via `scope-finalize --accept-gaps`):
 
    ```bash
    .devforge/lib/discover_helper set-verdict --value "<verdict>"
    ```
 
-8. **Recommendation** — concrete next action + one-line "what happens next":
+9. **Recommendation** — concrete next action + one-line "what happens next":
 
    ```bash
    .devforge/lib/discover_helper set-recommendation \
@@ -524,7 +561,7 @@ Phase 3 is orchestrator-direct compose (NO subagent dispatch). Read memo + repor
        --next "<one-line description of the immediate next step>"
    ```
 
-9. **Next-step text** — composed by the helper from `memo.functional_scope` + `memo.users` + `memo.success_criteria` + `report.verdict` + `report.recommended_option`. Call the subcommand on every verdict — on `Worth pursuing` / `Promising with caveats` the helper composes a copy-pasteable handoff block; on `Reconsider` the helper clears `next_step_text` to `None` so the rendered report omits the Next-Step section (invariant E enforces this in `verify`).
+10. **Next-step text** — composed by the helper from `memo.functional_scope` + `memo.users` + `memo.success_criteria` + `report.verdict` + `report.recommended_option`. Call the subcommand on every verdict — on `Worth pursuing` / `Promising with caveats` the helper composes a copy-pasteable handoff block; on `Reconsider` the helper clears `next_step_text` to `None` so the rendered report omits the Next-Step section (invariant E enforces this in `verify`).
 
    Pass an LLM-distilled 1-2 sentence topic via `--topic`. Compose the topic yourself from `memo.functional_scope` + `memo.users` + `memo.success_criteria` — keep it ≤2 sentences and ≤200 characters; never copy the entire `functional_scope` value verbatim. The distilled topic becomes the argument inside `/devforge:specify "..."` at the top of the handoff block (that literal invocation string is composed by the helper — it is the helper's string, not this spec's, so do not rewrite it here). The helper strips literal `\n` escape sequences from the topic and from the embedded key-fact values; do not rely on that as a license to pass multi-paragraph junk — the cleanup is defensive, not stylistic.
 
@@ -642,7 +679,7 @@ Stdout is exactly one line. When it is a `git checkout -b spec/NNN-<feature-name
 
 **3 — Re-render the report against the real feature directory.**
 
-Re-run the EXACT `set-next-step-text` call Phase 3's setter 9 made — same `--topic` value, or no `--topic` at all when the verdict is `Reconsider` — with `--feature-dir` added, then re-render:
+Re-run the EXACT `set-next-step-text` call Phase 3's setter 10 made — same `--topic` value, or no `--topic` at all when the verdict is `Reconsider` — with `--feature-dir` added, then re-render:
 
 ```bash
 .devforge/lib/discover_helper set-next-step-text \

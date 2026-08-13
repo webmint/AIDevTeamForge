@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from ._constants import RESTS_ON_LITERAL_NONE
 from ._probe_tier import _probe_scratch_dir
 
 
@@ -121,6 +122,64 @@ def _validate_file_line(value: str, field_name: str) -> str:
     if colon_idx <= 0:
         raise ValueError(
             "{0}: must be '<path>:<line>' or '(none)', got {1!r}".format(field_name, stripped)
+        )
+    path_part = stripped[:colon_idx]
+    line_part = stripped[colon_idx + 1:]
+    if not path_part:
+        raise ValueError(
+            "{0}: path portion is empty in {1!r}".format(field_name, stripped)
+        )
+    try:
+        line_num = int(line_part)
+    except ValueError:
+        raise ValueError(
+            "{0}: line portion {2!r} is not an integer in {1!r}".format(
+                field_name, stripped, line_part
+            )
+        )
+    if line_num <= 0:
+        raise ValueError(
+            "{0}: line number must be positive, got {1} in {2!r}".format(
+                field_name, line_num, stripped
+            )
+        )
+    return stripped
+
+
+def _validate_rests_on_literal(value: str, field_name: str) -> str:
+    """Validate path:line format OR the literal sentinel 'none' (plan 73 D4).
+
+    Accepted forms:
+      - The literal string "none" (case-insensitive; canonicalized to
+        lowercase) -- the explicit "this finding's grounds do NOT rest on
+        a primitive literal's value" answer.
+      - "<non-empty-path>:<positive-integer>" -- e.g. "src/foo.ts:42".
+
+    Rejects the "(none)" sentinel _validate_file_line accepts -- that form
+    means "no anchor available" for a finding's OWN file_line; it answers
+    a different question than rests_on_literal, so it is not accepted
+    here (a caller reaching for the wrong sentinel gets a clear error
+    naming the right one, not a silent misclassification).
+
+    Raises ValueError on any other form.
+    """
+    stripped = value.strip()
+    if stripped.lower() == RESTS_ON_LITERAL_NONE:
+        return RESTS_ON_LITERAL_NONE
+    if stripped == "(none)":
+        raise ValueError(
+            "{0}: '(none)' is not accepted here -- the explicit "
+            "not-resting-on-a-literal answer is the bare word 'none' "
+            "(no parens); '(none)' is --file-line's own sentinel".format(
+                field_name
+            )
+        )
+    colon_idx = stripped.rfind(":")
+    if colon_idx <= 0:
+        raise ValueError(
+            "{0}: must be '<path>:<line>' or 'none', got {1!r}".format(
+                field_name, stripped
+            )
         )
     path_part = stripped[:colon_idx]
     line_part = stripped[colon_idx + 1:]

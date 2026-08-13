@@ -259,6 +259,15 @@ def _build_research_handoff(devforge: Path, feature_dir: Path) -> Path:
         "--timing-dependent", "false",
         "--is-test-code", "false",
     ])
+    # Plan 73 D7: declaration-exists guard requires set-evidence-lanes to
+    # have been called before finalize-handoff.
+    _run_research([
+        "--devforge-dir", df, "set-evidence-lanes",
+        "--static-graph", "false",
+        "--text-search", "false",
+        "--runtime-probe", "false",
+        "--history", "false",
+    ])
 
     r = _run_research([
         "--devforge-dir", df,
@@ -334,6 +343,15 @@ def _build_discover_handoff(devforge: Path, feature_dir: Path) -> Path:
         "--build", "Extend ORM with new table",
         "--buy", "Third-party audit library",
         "--reasoning", "ORM already in place; avoid external dependency",
+    ])
+    # plan 73 D6: Build + zero internal prior-art hits is an absence-founded
+    # conclusion -- finalize-handoff's declaration-exists guard requires a
+    # record-absence-probe call before it will emit.
+    _run_discover([
+        "--devforge-dir", df, "record-absence-probe",
+        "--claim", "no existing internal audit-log implementation",
+        "--symbol", "AuditLogPersistence", "--path", "none",
+        "--found", "false",
     ])
     _run_discover([
         "--devforge-dir", df, "set-derisk-plan",

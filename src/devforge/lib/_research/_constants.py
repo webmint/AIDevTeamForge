@@ -74,6 +74,14 @@ CONFIDENCE_VS_PRIMARY_ENUM = ("lower", "comparable", "higher")
 # Framing tag enum for findings.
 FRAMING_ENUM = ("primary", "runner-up")
 
+# Explicit-empty-answer sentinel for finding.rests_on_literal (plan 73 D4):
+# a finding's grounds rest on a primitive literal's VALUE at the given
+# file_line, or explicitly do not (this sentinel). Distinct from
+# _validate_file_line's "(none)" sentinel (which means "no anchor
+# available" for the finding's OWN file_line) -- rests_on_literal answers
+# a different question, so it gets its own literal, unparenthesized.
+RESTS_ON_LITERAL_NONE = "none"
+
 # Conflict type enum (Phase 0 misalignment detection).
 CONFLICT_TYPE_ENUM = ("direct", "drift", "refinement", "mode-flip")
 

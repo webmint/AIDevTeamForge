@@ -41,6 +41,7 @@ from ._cmds_phase0 import (
     cmd_symptom_finalize,
 )
 from ._cmds_phase1 import (
+    cmd_classify_finding_literal,
     cmd_record_contributing_factor,
     cmd_record_finding,
     cmd_record_hypothesis,
@@ -86,6 +87,7 @@ from ._cmds_handoff import (
     cmd_set_probe_feasibility,
 )
 from ._cmds_design_anchor import cmd_set_design_anchor
+from ._cmds_evidence_lanes import cmd_set_evidence_lanes
 from ._cmds_feature_alloc import (
     cmd_allocate_feature_dir,
     cmd_render_branch_command,
@@ -314,6 +316,30 @@ def _register_subcommands(subparsers) -> None:
         sp.add_argument(_flag, required=True, choices=("true", "false"))
     sp.set_defaults(func=cmd_set_probe_feasibility)
 
+    # Plan 73 D7 — self-declared evidence-lane record (not-covered
+    # evidence-lane declaration). Gate on the declaration EXISTING, never
+    # per-lane: all four flags are required on THIS call so the record is
+    # atomic, and finalize-handoff (_cmds_handoff.py) refuses to run until
+    # this setter has been called at least once (a call-happened check, not
+    # a per-lane-value check — see _cmds_evidence_lanes.py module
+    # docstring).
+    sp = subparsers.add_parser(
+        "set-evidence-lanes",
+        help=(
+            "Record which evidence lanes this run consulted (4 booleans: "
+            "static graph / text search / runtime probe / history) before "
+            "finalize-handoff."
+        ),
+    )
+    for _flag in (
+        "--static-graph",
+        "--text-search",
+        "--runtime-probe",
+        "--history",
+    ):
+        sp.add_argument(_flag, required=True, choices=("true", "false"))
+    sp.set_defaults(func=cmd_set_evidence_lanes)
+
     sp = subparsers.add_parser(
         "record-gap",
         help="Record a [NEEDS CLARIFICATION] gap for a dimension and accept exit.",
@@ -377,7 +403,73 @@ def _register_subcommands(subparsers) -> None:
         dest="framing",
         help="Which framing this finding supports (default: primary).",
     )
+    sp.add_argument(
+        "--rests-on-literal",
+        default=None,
+        dest="rests_on_literal",
+        help=(
+            "Optional (plan 73 D4): '<file:line>' when this finding's "
+            "grounds rest on a primitive literal's VALUE as evidence for a "
+            "scope call (dead/live, keep/delete) -- the file:line where "
+            "that literal lives -- or the literal 'none' when they do not. "
+            "Not required here (record-finding's 74 subprocess call sites "
+            "predate this flag); verify's check 20 forces every finding to "
+            "answer it, and any file:line answer requires a matching "
+            "record-literal-archaeology row at that file_line. To answer "
+            "this on a finding already recorded (this flag omitted, or a "
+            "pre-plan-73 report), use classify-finding-literal instead of "
+            "re-calling record-finding, which would append a duplicate."
+        ),
+    )
     sp.set_defaults(func=cmd_record_finding)
+
+    sp = subparsers.add_parser(
+        "classify-finding-literal",
+        help=(
+            "Update rests_on_literal on an already-recorded Finding, "
+            "identified by (--surface, --file-line) (plan 73 HIGH-finding "
+            "fix). Sibling setter to record-finding, mirroring "
+            "classify-caller-scope: record-finding is pure-append with no "
+            "update path, so this is the repair route for a finding "
+            "recorded before --rests-on-literal existed (a pre-upgrade "
+            "report.json) or one recorded with the flag omitted -- without "
+            "reset-report, which would wipe all Phase 2/3 state."
+        ),
+    )
+    sp.add_argument(
+        "--surface", required=True,
+        help="Must match an existing report.findings[].surface for the same row.",
+    )
+    sp.add_argument(
+        "--file-line", required=True, dest="file_line",
+        help="Must match an existing report.findings[].file_line for the same row.",
+    )
+    sp.add_argument(
+        "--rests-on-literal",
+        required=True,
+        dest="rests_on_literal",
+        help=(
+            "'<file:line>' when this finding's grounds rest on a primitive "
+            "literal's VALUE as evidence for a scope call (dead/live, "
+            "keep/delete) -- the file:line where that literal lives -- or "
+            "the literal 'none' when they do not. Same validation as "
+            "record-finding's own --rests-on-literal."
+        ),
+    )
+    sp.add_argument(
+        "--all",
+        action="store_true",
+        help=(
+            "(surface, file_line) is not a unique key -- more than one "
+            "recorded finding can share it while resting on DIFFERENT "
+            "literals. When more than one row matches, this call REJECTS "
+            "(exit 2) unless --all is passed to confirm the SAME "
+            "--rests-on-literal answer genuinely applies to every "
+            "matching row, and update them all. A single matching row "
+            "always updates without --all."
+        ),
+    )
+    sp.set_defaults(func=cmd_classify_finding_literal)
 
     sp = subparsers.add_parser(
         "record-runner-up-framing",
@@ -865,6 +957,20 @@ def _register_subcommands(subparsers) -> None:
         required=True,
         choices=("placeholder", "migrated", "deliberate", "forgotten", "inherited-refactor", "generated"),
         help="Classification of the literal's historical intent.",
+    )
+    sp.add_argument(
+        "--use",
+        required=True,
+        choices=("fix-layer", "evidence"),
+        help=(
+            "Why this row is being recorded (plan 73 OQ-5): 'fix-layer' -- the "
+            "literal IS the thing the recommended approach replaces (the "
+            "original use case; requires an escalation cite in the summary "
+            "for placeholder/forgotten/inherited-refactor intent). 'evidence' "
+            "-- the literal's current value was cited as grounds for a scope "
+            "call (dead/live, keep/delete); nothing is being replaced, so no "
+            "escalation cite is required."
+        ),
     )
     sp.set_defaults(func=cmd_record_literal_archaeology)
 

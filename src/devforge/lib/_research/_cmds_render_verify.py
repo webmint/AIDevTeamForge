@@ -1,7 +1,7 @@
 """Render + verify command handlers.
 
 cmd_render emits the report markdown via _render_report_md. cmd_verify
-runs the 19-check cross-state validator. Each check enumerated in the
+runs the 20-check cross-state validator. Each check enumerated in the
 cmd_verify docstring; violations accumulate then emit to stderr.
 cmd_verify_hypothesis_suppression is a dedicated gate that ensures an
 unverified suspected-cause hypothesis (probe tier 2 or 3, or feasibility
@@ -16,7 +16,7 @@ import re
 import sys
 from typing import List, Optional
 
-from ._constants import VERDICT_ENUM
+from ._constants import RESTS_ON_LITERAL_NONE, VERDICT_ENUM
 from ._layer_package import (
     _compute_check_8b_would_fire,
     _extract_package,
@@ -161,11 +161,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
          runtime-symptom-specific).
      17. Literal-archaeology required when recommended-approach prose contains
          a literal-replacement pattern ("replace <X> with <Y>" / "<X> -> <Y>"
-         / etc.) and <X> is a primitive literal. Gated on bug mode. Fires when
-         no literal_archaeology row exists whose literal == <X> AND whose
+         / etc.) and <X> is a primitive literal. Mode-independent (plan 73
+         D1 — corrects plan 69 D6's for-the-record assumption that this check
+         stays bug-gated; that clause was never a ratification item. Checks
+         15/16 are unaffected and remain bug-mode-gated). Fires when no
+         literal_archaeology row exists whose literal == <X> AND whose
          file_line matches a recorded finding's file_line. Closes Gap 8 (V3)
          — forces git-blame archaeology before recommending literal replacement
-         (Patch 8). Stays bug-mode-gated (plan 69 OQ-A — runtime-symptom-specific).
+         (Patch 8).
      18. Argument-duplication shape check (Patch 9 / Gap 9): when
          recommended_approach.proposed_call_shape is set, it must not
          contain the same identifier more than once. Mirrors the setter
@@ -179,6 +182,26 @@ def cmd_verify(args: argparse.Namespace) -> int:
          auditable justification for every recorded caller; it cannot
          force the classification to be CORRECT (LLM judgment, audited
          downstream at /plan sub-question 7 + human review).
+     20. Literal-as-evidence trigger (plan 73 D2/D4/Gap 2). Every finding
+         must answer rests_on_literal, set at record time via
+         record-finding --rests-on-literal or, for an already-recorded
+         finding (e.g. one written before this field existed, or a
+         record-finding call that omitted it), repaired in place via
+         classify-finding-literal (plan 73 HIGH-finding fix; NOT a
+         re-call of record-finding, which would append a duplicate
+         rather than answer the existing row): a finding may leave the
+         field unanswered (missing key or empty value) NEVER -- the
+         mandatory explicit answer is either 'none' or a file:line. (a)
+         When the answer is a file:line, a literal_archaeology row must
+         exist at that file_line (recorded via record-literal-
+         archaeology, ordinarily with --use evidence, though check 20
+         itself matches on file_line only and does not inspect use). (b)
+         When the answer is 'none', the field is satisfied and check 20
+         is vacuous for that finding. Mode-independent, mirroring check
+         17's plan 73 D1 decouple. Like check 19, this forces the ANSWER
+         to exist and, for a file:line answer, forces a matching
+         archaeology row to exist -- it cannot force either answer to be
+         CORRECT (same honesty bound as check 19, main.md:518).
 
     Exit 0 = all pass. Exit 2 = at least one violation. Exit 1 = state
     files unreadable.
@@ -631,14 +654,19 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     )
                 )
 
-    # Patch 8 (V3) — Gap 8: literal-archaeology requirement on bug-mode
+    # Patch 8 (V3) — Gap 8: literal-archaeology requirement on the
     # recommended approach. When the recommended approach's rationale OR the
     # linked approach.description contains a literal-replacement pattern
     # ("replace <X> with <Y>" / "<X> -> <Y>" / etc.) where <X> is a primitive
-    # literal, require a matching literal_archaeology row.
-    bug_mode_17 = (report.get("mode") == "bug" or memo.get("mode") == "bug")
+    # literal, require a matching literal_archaeology row. Mode-independent
+    # (plan 73 D1 — mirrors plan 67's check-8 decouple: the auto-classifier
+    # returns None for removal/cleanup tickets, the human answers
+    # "enhancement", and this lane silently went inert — exactly the ticket
+    # shape where literal provenance is load-bearing). Previously gated on
+    # bug_mode_17 = (report.get("mode") == "bug" or memo.get("mode") ==
+    # "bug"); that conjunct is dropped.
     rec_approach = report.get("recommended_approach") or {}
-    if bug_mode_17 and rec_approach:
+    if rec_approach:
         # Pull prose from BOTH the rationale AND the linked approach's description.
         rationale_text = rec_approach.get("rationale") or ""
         linked_name = rec_approach.get("name")
@@ -725,6 +753,55 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 "{2}; call classify-caller-scope --helper-qn {0!r} --caller-qn "
                 "{1!r} --surface <...> --scope in|out --justification <...>".format(
                     r.get("helper_qn"), r.get("caller_qn"), " + ".join(missing)
+                )
+            )
+
+    # Check 20: every finding must answer rests_on_literal (plan 73 D2/D4,
+    # Gap 2 -- the literal-as-evidence trigger). Mode-independent, like
+    # check 19. (a) A file:line answer requires a matching
+    # literal_archaeology row at that file_line. (b) The explicit 'none'
+    # answer is vacuous. An absent key and an empty value are both
+    # "unanswered" -- old findings recorded before this field existed and
+    # a fresh record-finding call that omits --rests-on-literal look
+    # identical, and both are violations here.
+    #
+    # Remedy: classify-finding-literal, NOT a re-call of record-finding.
+    # Every finding this loop inspects is already recorded -- record-
+    # finding is pure-append (see _cmds_phase1.py), so "re-call
+    # record-finding" would APPEND A DUPLICATE finding rather than
+    # answer this one, leaving the original row a permanent violation.
+    # classify-finding-literal (plan 73 HIGH-finding fix) updates the
+    # existing row in place, identified by the same (surface, file_line)
+    # pair this message names.
+    archaeology_20 = report.get("literal_archaeology") or []
+    archaeology_file_lines_20 = {
+        row.get("file_line") for row in archaeology_20 if row.get("file_line")
+    }
+    for f in report.get("findings") or []:
+        rests_on = (f.get("rests_on_literal") or "").strip()
+        if not rests_on:
+            violations.append(
+                "check 20: finding (surface={0!r}, file_line={1!r}) has not "
+                "answered rests_on_literal; call classify-finding-literal "
+                "--surface {0!r} --file-line {1!r} --rests-on-literal "
+                "'<file:line>' (when this finding's grounds rest on a "
+                "literal's value) or --rests-on-literal none (when they do "
+                "not)".format(
+                    f.get("surface"), f.get("file_line")
+                )
+            )
+            continue
+        if rests_on.lower() == RESTS_ON_LITERAL_NONE:
+            continue
+        if rests_on not in archaeology_file_lines_20:
+            violations.append(
+                "check 20: finding (surface={0!r}, file_line={1!r}) rests on "
+                "the literal at {2!r} but no literal_archaeology record "
+                "exists at that file_line. Run `git log -S <literal> -- "
+                "<file>` + `git blame -L <start>,<end> <file>`; classify "
+                "intent; then call record-literal-archaeology --file-line "
+                "{2!r} --use evidence before re-running verify.".format(
+                    f.get("surface"), f.get("file_line"), rests_on
                 )
             )
 

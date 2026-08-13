@@ -257,6 +257,15 @@ def _build_minimal_worth_pursuing_state(devforge):
         "--build", "build in-house", "--buy", "no vendor fits",
         "--recommendation", "Build", "--reasoning", "small scope",
     ])
+    # plan 73 D6: Build + zero internal prior-art hits is an absence-founded
+    # conclusion -- finalize-handoff's declaration-exists guard requires a
+    # record-absence-probe call before it will emit.
+    _run([
+        "--devforge-dir", str(devforge), "record-absence-probe",
+        "--claim", "no existing internal badge widget component",
+        "--symbol", "BadgeWidget", "--path", "none",
+        "--found", "false",
+    ])
     _run(["--devforge-dir", str(devforge), "set-overall-fit", "--value", "Good"])
     _run(["--devforge-dir", str(devforge), "set-effort-estimate", "--value", "Low"])
     _run(["--devforge-dir", str(devforge), "set-fit-rationale", "--value", "straightforward component"])

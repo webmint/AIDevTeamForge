@@ -1479,6 +1479,17 @@ def _make_discover_report(verdict="Worth pursuing", overall_fit="Good",
         "recommendation": "Use the in-memory filter approach as a starting point.",
         "next_step_text": "Run /specify widget-search-feature",
         "open_uncertainties": [],
+        # plan 73 D6: build_vs_buy.recommendation == "Build" above + empty
+        # prior_art is an absence-founded conclusion -- finalize-handoff's
+        # declaration-exists guard requires >=1 absence_probes row.
+        "absence_probes": [{
+            "claim": "no existing internal full-text search implementation",
+            "symbol": "WidgetSearch",
+            "path": "none",
+            "found": False,
+            "deleted_commit_sha": None,
+            "deleted_commit_subject": None,
+        }],
     }
 
 
@@ -1637,6 +1648,14 @@ def _run_research_setup(devforge, research_helper_py):
           "--network-dependent", "false",
           "--timing-dependent", "false",
           "--is-test-code", "false")
+
+    # Plan 73 D7: declaration-exists guard requires set-evidence-lanes to
+    # have been called before finalize-handoff.
+    _rrun("--devforge-dir", str(devforge), "set-evidence-lanes",
+          "--static-graph", "false",
+          "--text-search", "false",
+          "--runtime-probe", "false",
+          "--history", "false")
 
 
 # ---------------------------------------------------------------------------
@@ -2078,6 +2097,156 @@ class RenderPlanSeedsTests(unittest.TestCase):
         result = self._run("render-plan-seeds", str(specify_emit))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Upstream plan-seeds (research handoff:", result.stdout)
+
+    def test_zero_literal_archaeology_rows_render_nothing(self):
+        """Plan 73 Phase 5 -- a research handoff with no literal-archaeology
+        rows renders NO 'Literal provenance' section at all (silent, judged
+        zero-rows behaviour: mirrors the caller_enumeration empty-carry
+        branch, since verify checks 17/20 already mechanically force a row
+        to exist whenever a literal is genuinely load-bearing -- an empty
+        list reaching /plan is a verified 'nothing load-bearing', not an
+        unverified silence).
+
+        Uses the same real-producer chain as
+        test_research_upstream_renders_research_block (_run_research_setup's
+        fixture proposes no literal replacement, so no archaeology row is
+        ever recorded or required).
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        research_emit = self.tmp / "research" / "2026-05-22-widget-stale-results.handoff.json"
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path",
+                "research/2026-05-22-widget-stale-results.md",
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+
+        # Precondition: the producer really did emit zero archaeology rows.
+        data = json.loads(research_emit.read_text(encoding="utf-8"))
+        self.assertEqual(data["spec_seeds"]["literal_archaeology"], [])
+
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=str(research_emit),
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Literal provenance", result.stdout)
+
+    def test_literal_archaeology_rows_render_mixed_use(self):
+        """Plan 73 Phase 5 -- fix-layer and evidence rows both carried and
+        render distinguishably, with intent + use + SHA + subject per row.
+
+        Real chain, no hand-authored handoff JSON: two
+        record-literal-archaeology calls (one --use fix-layer, one --use
+        evidence) on top of _run_research_setup's fixture, through the real
+        finalize-handoff producer and the real render-plan-seeds consumer.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        def _rrun(*argv):
+            return subprocess.run(
+                [sys.executable, str(RESEARCH_HELPER_PY)] + list(argv),
+                capture_output=True, text=True,
+            )
+
+        r = _rrun(
+            "--devforge-dir", str(devforge), "record-literal-archaeology",
+            "--literal", "false",
+            "--file-line", "src/services/widget_flags.py:14",
+            "--introduced-by", "1a2b3c4",
+            "--introduced-when", "2024-03-01",
+            "--commit-subject", "Add feature flag for widget preview",
+            "--intent", "deliberate",
+            "--use", "fix-layer",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = _rrun(
+            "--devforge-dir", str(devforge), "record-literal-archaeology",
+            "--literal", "true",
+            "--file-line", "src/services/widget_flags.py:22",
+            "--introduced-by", "9f8e7d6c5",
+            "--introduced-when", "2023-11-15",
+            "--commit-subject", "Restructure parent widget state handling",
+            "--intent", "inherited-refactor",
+            "--use", "evidence",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        research_emit = self.tmp / "research" / "2026-05-22-widget-stale-results.handoff.json"
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path",
+                "research/2026-05-22-widget-stale-results.md",
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+
+        # Precondition: the producer really did emit both rows with distinct use.
+        data = json.loads(research_emit.read_text(encoding="utf-8"))
+        rows = data["spec_seeds"]["literal_archaeology"]
+        self.assertEqual(len(rows), 2)
+        uses = sorted(row["use"] for row in rows)
+        self.assertEqual(uses, ["evidence", "fix-layer"])
+
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=str(research_emit),
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+
+        self.assertIn("**Literal provenance** (recorded at /devforge:research):", output)
+        # Row 1 -- fix-layer, deliberate.
+        self.assertIn("`false`", output)
+        self.assertIn("src/services/widget_flags.py:14", output)
+        self.assertIn("intent: deliberate", output)
+        self.assertIn("use: fix-layer", output)
+        self.assertIn("SHA: 1a2b3c4", output)
+        self.assertIn("Add feature flag for widget preview", output)
+        # Row 2 -- evidence, inherited-refactor.
+        self.assertIn("`true`", output)
+        self.assertIn("src/services/widget_flags.py:22", output)
+        self.assertIn("intent: inherited-refactor", output)
+        self.assertIn("use: evidence", output)
+        self.assertIn("SHA: 9f8e7d6c5", output)
+        self.assertIn("Restructure parent widget state handling", output)
+        # Distinguishable: the two use labels appear on separate lines, not merged.
+        self.assertNotIn("use: fix-layerevidence", output)
+        fix_layer_line = [ln for ln in output.splitlines() if "use: fix-layer" in ln]
+        evidence_line = [ln for ln in output.splitlines() if "use: evidence" in ln]
+        self.assertEqual(len(fix_layer_line), 1)
+        self.assertEqual(len(evidence_line), 1)
+        self.assertNotEqual(fix_layer_line[0], evidence_line[0])
 
 
 # ---------------------------------------------------------------------------
@@ -2727,6 +2896,107 @@ class CallerEnumerationRenderTests(unittest.TestCase):
             "  - caller: main.startup (services/api/main.py:15)\n", output,
         )
         self.assertNotIn("surface:", output)
+
+
+# ---------------------------------------------------------------------------
+# Tests: literal_archaeology carry rendering in render-plan-seeds
+# (plan 73 Phase 5, OQ-2/OQ-3).
+# ---------------------------------------------------------------------------
+
+
+class LiteralArchaeologyRenderTests(unittest.TestCase):
+    """Tests for the literal-archaeology block rendered by
+    _render_research_plan_seeds, for shapes the CURRENT producer cannot
+    emit (a pre-plan-73 row without a `use` key; a handoff entirely missing
+    `spec_seeds`) -- mirrors CallerEnumerationRenderTests' rationale for
+    calling the private render function directly with a hand-built dict:
+    the current record-literal-archaeology CLI always writes `--use`, so a
+    genuinely legacy row shape cannot be produced by the real chain.
+    Round-trip coverage for the reachable (current-producer) shapes lives in
+    RenderPlanSeedsTests.test_literal_archaeology_rows_render_mixed_use and
+    .test_zero_literal_archaeology_rows_render_nothing above.
+
+    Unlike caller_enumeration, `d.get("spec_seeds")` is the carrier -- NOT
+    `d.get("plan_seeds")` -- so these fixtures build a `spec_seeds` key
+    sibling to `plan_seeds`, not nested inside it.
+    """
+
+    def _ps_dict(self, **kwargs):
+        """Return a minimal plan_seeds dict (unrelated to literal_archaeology,
+        included only because _render_research_plan_seeds reads other
+        plan_seeds fields unconditionally)."""
+        base = {
+            "recommended_approach_id": "fix_cache",
+            "recommended_approach_summary": "Clear the cache on every catalog write",
+            "layer_destination": "service",
+            "layer_justification": "Service-layer only change",
+            "complexity": {"changes": "Low", "risk": "Low", "verify_cost": "Low"},
+            "cited_canonical_patterns": [],
+            "alternatives_considered": [],
+            "proposed_call_shape": None,
+            "correctness_vetted": True,  # suppress the unrelated Seam-E caveat
+        }
+        base.update(kwargs)
+        return base
+
+    def test_absent_spec_seeds_key_renders_nothing(self):
+        """A handoff dict with no `spec_seeds` key at all (older than the
+        literal_archaeology carrier itself) -> no 'Literal provenance'
+        section. Byte-identical to today for a dict shape that never had
+        the concept.
+        """
+        d = {"plan_seeds": self._ps_dict()}  # no spec_seeds key
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertNotIn("Literal provenance", output)
+
+    def test_empty_literal_archaeology_list_renders_nothing(self):
+        """spec_seeds present but literal_archaeology is an empty list ->
+        renders nothing (same silent branch as an absent key)."""
+        d = {
+            "plan_seeds": self._ps_dict(),
+            "spec_seeds": {"literal_archaeology": []},
+        }
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertNotIn("Literal provenance", output)
+
+    def test_pre_plan73_row_without_use_key_defaults_fix_layer(self):
+        """A literal_archaeology row shaped like a handoff written before
+        plan 73 OQ-5 (no `use` key on the row at all -- the real CLI cannot
+        produce this today, since --use is required) still renders, with
+        `use` defaulting to fix-layer -- matching the schema-level default
+        (LiteralArchaeology.use) so the render never crashes or drops a
+        legacy row silently.
+        """
+        d = {
+            "plan_seeds": self._ps_dict(),
+            "spec_seeds": {
+                "literal_archaeology": [
+                    {
+                        "literal": "0",
+                        "file_line": "src/legacy/OldFlag.py:9",
+                        "introduced_by": "cafe123",
+                        "introduced_when": "2022-06-01",
+                        "commit_subject": "Initial flag plumbing",
+                        "intent": "migrated",
+                        # no "use" key -- the pre-plan-73 shape.
+                    },
+                ],
+            },
+        }
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("**Literal provenance** (recorded at /devforge:research):", output)
+        self.assertIn("`0`", output)
+        self.assertIn("src/legacy/OldFlag.py:9", output)
+        self.assertIn("intent: migrated", output)
+        self.assertIn("use: fix-layer", output)
+        self.assertIn("SHA: cafe123", output)
+        self.assertIn("Initial flag plumbing", output)
 
 
 class CorrectnessVettedBackCompatTests(unittest.TestCase):

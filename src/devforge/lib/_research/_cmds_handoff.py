@@ -162,6 +162,34 @@ def cmd_finalize_handoff(args):
             code=2,
         )
 
+    # Plan 73 D7: evidence_lanes DECLARATION-EXISTS guard, mirroring the
+    # probe_feasibility completeness guard immediately above. This asks
+    # ONLY "was set-evidence-lanes called at least once" (every field
+    # still None means it never was) -- it never inspects which lane
+    # values were declared, so it is a call-happened check, not a
+    # per-lane-value check: Phase 3's Verify criterion ("no per-lane gate
+    # exists anywhere in the diff") still holds, because this guard would
+    # pass identically whether every lane was declared true or every lane
+    # was declared false. The guard exists because the report render's
+    # "not consulted" wording is indistinguishable between "declared
+    # false" and "never declared" (by design, D7) -- so without this
+    # guard a run could silently skip the declaration and still emit a
+    # report that reads as a truthful "nothing was consulted", which for
+    # static_graph (CBM-first discovery is mandatory in this command) is
+    # actively false, not merely uninformative, on essentially every run.
+    evidence_lanes = report.get("evidence_lanes") or {}
+    required_lanes = ["static_graph", "text_search", "runtime_probe", "history"]
+    if all(evidence_lanes.get(k) is None for k in required_lanes):
+        return _die(
+            "finalize-handoff: evidence_lanes not declared. "
+            "Run `research_helper set-evidence-lanes --static-graph ... "
+            "--text-search ... --runtime-probe ... --history ...` before "
+            "finalize (declare which evidence lanes this run actually "
+            "consulted -- any combination of true/false is accepted, the "
+            "declaration itself is what's required).",
+            code=2,
+        )
+
     try:
         handoff = _build_handoff_from_state(
             memo, report, research_md_path, devforge_dir=args.devforge_dir

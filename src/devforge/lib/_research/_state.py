@@ -166,6 +166,26 @@ def default_report_state() -> dict:
         # Append-only; deduped by script_path (same path is no-op).
         # finalize-handoff uses probe_scripts[-1]["script_path"] when tier=1.5.
         "probe_scripts": [],
+        # Plan 73 D7 — self-declared record of which evidence lanes this run
+        # consulted (static_graph / text_search / runtime_probe / history).
+        # All None (unset) until set-evidence-lanes fires; last-call-wins
+        # per field on re-call (mirrors probe_feasibility's per-flag
+        # overwrite convention -- same None-tri-state shape, for the same
+        # reason: finalize-handoff's declaration-exists guard (below in
+        # _cmds_handoff.py) needs to tell "never declared" (None) apart
+        # from "explicitly declared false" (False). A plain False default
+        # would make the two indistinguishable, which is exactly the
+        # "structural confidence implying completeness" failure D7 exists
+        # to kill -- CBM-first discovery is mandatory in this command, so
+        # static_graph is true for essentially every real investigation,
+        # and a report that silently defaults it to "not consulted" would
+        # be actively false, not merely uninformative.
+        "evidence_lanes": {
+            "static_graph": None,
+            "text_search": None,
+            "runtime_probe": None,
+            "history": None,
+        },
     }
 
 

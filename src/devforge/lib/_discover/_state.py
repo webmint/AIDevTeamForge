@@ -131,6 +131,11 @@ def default_report_state() -> dict:
         "recommendation": None,
         "next_step_text": None,
         "open_uncertainties": [],
+        # Plan 73 D6 -- absence-claim provenance rows (record-absence-probe,
+        # _cmds_absence.py). Append-only; empty is the valid default for
+        # any run whose build_vs_buy conclusion isn't an absence-founded
+        # "Build" (requires_absence_probe() names the trigger).
+        "absence_probes": [],
     }
 
 

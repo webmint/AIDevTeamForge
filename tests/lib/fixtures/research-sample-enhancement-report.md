@@ -91,6 +91,15 @@ Async via JobsQueue moves export off the request thread; preserves small-dataset
 | Risk | Med | queue saturation if backlog |
 | Verify cost | Med | load test on 100K-row dataset |
 
+## Evidence Lanes Consulted
+
+| Lane | Status |
+|---|---|
+| Static graph | not consulted |
+| Text search | not consulted |
+| Runtime probe | not consulted |
+| History | not consulted |
+
 ## Next step
 
 Copy the block below into a new `/devforge:specify` session manually. No automation — user controls when (or if) `/devforge:specify` runs.

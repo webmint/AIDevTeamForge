@@ -29,8 +29,11 @@ def _render_report_md(memo: dict, report: dict) -> str:
       12. Value Semantics (when present)
       13. Value Production Sites (when present)
       14. Literal Archaeology (when present)
-      15. Open Uncertainties (when gaps present)
-      16. Next step (when verdict proceeds)
+      15. Evidence Lanes Consulted (plan 73 D7 — ALWAYS renders, never
+          omitted; the one section in this list not gated on non-empty
+          state, by design — see the section's own code comment)
+      16. Open Uncertainties (when gaps present)
+      17. Next step (when verdict proceeds)
     """
     out = []  # type: List[str]
     topic = report.get("topic") or _derive_topic_for_render(memo, report)
@@ -291,23 +294,57 @@ def _render_report_md(memo: dict, report: dict) -> str:
         out.append("")
 
     # Literal Archaeology (Patch 8 V3: historical-intent classification for
-    # hardcoded literals the recommended approach proposes to replace).
+    # hardcoded literals the recommended approach proposes to replace, OR
+    # (plan 73 D2/OQ-5) cited as evidence for a scope call -- the `use`
+    # column distinguishes the two; every row producible before plan 73's
+    # evidence arm was "fix-layer", so the column was harmless to omit
+    # until the evidence arm made "evidence" rows real (OQ-5 build review,
+    # finding 3)).
     literal_archaeology = report.get("literal_archaeology") or []
     if literal_archaeology:
         out.append("## Literal Archaeology")
         out.append("")
-        out.append("| Literal | File:line | Introduced by | When | Commit subject | Intent |")
-        out.append("|---|---|---|---|---|---|")
+        out.append("| Literal | File:line | Introduced by | When | Commit subject | Intent | Use |")
+        out.append("|---|---|---|---|---|---|---|")
         for row in literal_archaeology:
-            out.append("| {0} | {1} | {2} | {3} | {4} | {5} |".format(
+            out.append("| {0} | {1} | {2} | {3} | {4} | {5} | {6} |".format(
                 _md_escape_cell(row.get("literal") or ""),
                 _md_escape_cell(row.get("file_line") or ""),
                 _md_escape_cell(row.get("introduced_by") or ""),
                 _md_escape_cell(row.get("introduced_when") or ""),
                 _md_escape_cell(row.get("commit_subject") or ""),
                 _md_escape_cell(row.get("intent") or ""),
+                _md_escape_cell(row.get("use") or ""),
             ))
         out.append("")
+
+    # Evidence Lanes Consulted (plan 73 D7 — the not-covered evidence-lane
+    # declaration). UNCONDITIONAL: unlike every other section above, this
+    # one renders even when every lane is unset (report.evidence_lanes'
+    # fields default to None, see _state.py) rather than being omitted —
+    # a run that consulted no history lane must SAY SO explicitly, not
+    # silently omit the section. "not consulted" renders for both a
+    # None (never called set-evidence-lanes) and an explicit False value —
+    # `render` can run at any point in an in-progress investigation, before
+    # finalize-handoff's declaration-exists guard (_cmds_handoff.py) has
+    # had a chance to fire, so the render layer stays permissive by design
+    # and does not itself distinguish the two (see handoff_schema.
+    # EvidenceLanes for the fuller rationale, including where the
+    # existence guard actually lives).
+    out.append("## Evidence Lanes Consulted")
+    out.append("")
+    out.append("| Lane | Status |")
+    out.append("|---|---|")
+    evidence_lanes = report.get("evidence_lanes") or {}
+    for key, label in (
+        ("static_graph", "Static graph"),
+        ("text_search", "Text search"),
+        ("runtime_probe", "Runtime probe"),
+        ("history", "History"),
+    ):
+        status = "consulted" if evidence_lanes.get(key) else "not consulted"
+        out.append("| {0} | {1} |".format(label, status))
+    out.append("")
 
     gaps = memo.get("gaps") or []
     if gaps:

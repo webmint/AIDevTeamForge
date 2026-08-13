@@ -366,6 +366,41 @@ def cmd_render(args: argparse.Namespace) -> int:
         lines.append("*(build vs buy not set)*")
     lines.append("")
 
+    # Absence Probes (plan 73 D6) -- git-history provenance for an
+    # absence-founded "Build" conclusion (requires_absence_probe in
+    # _cmds_absence.py: build_vs_buy.recommendation == "Build" with zero
+    # internal prior-art hits). CONDITIONAL on non-empty, mirroring the
+    # research lane's "## Literal Archaeology" pattern (_research/
+    # _render.py) rather than plan 73 D7's UNCONDITIONAL "## Evidence
+    # Lanes Consulted" shape: these rows populate only when that trigger
+    # actually fires, so an unconditional empty section would render on
+    # every survey that never made an absence-founded claim -- saying
+    # nothing, unlike D7's every-run declaration. Placed immediately
+    # after Build vs Buy: these rows are the provenance trail FOR that
+    # section's conclusion, so a reader meets the claim, then the
+    # evidence grounding it, in that order.
+    absence_probes = report.get("absence_probes") or []
+    if absence_probes:
+        lines.append("## Absence Probes")
+        lines.append("")
+        rows = [
+            [
+                ap.get("claim", ""),
+                ap.get("symbol", ""),
+                ap.get("path", ""),
+                "Yes" if ap.get("found") else "No",
+                ap.get("deleted_commit_sha") or "",
+                ap.get("deleted_commit_subject") or "",
+            ]
+            for ap in absence_probes
+        ]
+        lines.append(_md_table(
+            ["Claim", "Symbol (`git log -S`)", "Path (`--diff-filter=D`)",
+             "Deletion found", "Commit", "Subject"],
+            rows,
+        ))
+        lines.append("")
+
     # Derisk Plan.
     lines.append("## Derisk Plan")
     lines.append("")

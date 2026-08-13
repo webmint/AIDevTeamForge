@@ -641,12 +641,13 @@ def cmd_record_data_flow_chain(args: argparse.Namespace) -> int:
 
 
 def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
-    """Append a {literal, file_line, introduced_by, introduced_when, commit_subject, intent}
+    """Append a {literal, file_line, introduced_by, introduced_when, commit_subject, intent, use}
     record to literal_archaeology.
 
     Dedupes by (literal, file_line) pair: re-recording the same pair is a no-op
-    (original intent is retained; no error emitted — matches record-value-production-site
-    behavior). Multiple file_lines for the same literal are all appended.
+    (original intent AND original use are retained; no error emitted — matches
+    record-value-production-site behavior). Multiple file_lines for the same
+    literal are all appended.
 
     Validates:
       - --literal: non-empty + must fully match LITERAL_TOKEN_RE (primitive only).
@@ -655,6 +656,12 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
       - --introduced-when: ISO date YYYY-MM-DD.
       - --commit-subject: non-empty.
       - --intent: enforced by argparse choices.
+      - --use: enforced by argparse choices ("fix-layer" / "evidence", plan
+        73 OQ-5). Required — every caller (a fresh /research run or a test
+        fixture) must state which use it is recording; there is no default
+        at THIS setter boundary (the "fix-layer" default lives only at the
+        schema field level, for back-compat deserialization of a row that
+        predates this argument's existence).
     """
     # Validate --literal: non-empty, then fullmatch against LITERAL_TOKEN_RE.
     literal_raw = args.literal
@@ -717,8 +724,9 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
     except ValueError as err:
         return _die(str(err), code=2)
 
-    # --intent is enforced by argparse choices.
+    # --intent and --use are enforced by argparse choices.
     intent = args.intent
+    use = args.use
 
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
@@ -734,6 +742,7 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
                 "introduced_when": introduced_when,
                 "commit_subject": commit_subject,
                 "intent": intent,
+                "use": use,
             })
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-literal-archaeology: {0}".format(err))

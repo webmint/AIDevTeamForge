@@ -1117,6 +1117,13 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
 
     All plan_seeds fields are represented. Lists render as bullet entries
     (one line each). Empty lists render as '- (none)'.
+
+    Plan 73 Phase 5 (OQ-2/OQ-3): the literal-archaeology rows recorded at
+    /devforge:research ride Handoff.spec_seeds.literal_archaeology, NOT
+    plan_seeds -- a different carrier than caller_enumeration below, which
+    rides plan_seeds. `d` is the full upstream research-handoff dict (not
+    just its plan_seeds sub-object), so both carriers are read directly off
+    `d` in this one function.
     """
     ps = d.get("plan_seeds", {}) or {}
 
@@ -1247,6 +1254,57 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
     else:
         caller_block = ""
 
+    # Literal provenance (plan 73 Phase 5 -- OQ-2/OQ-3): git-archaeology rows
+    # recorded at /devforge:research via record-literal-archaeology, carried
+    # on Handoff.spec_seeds.literal_archaeology (SpecSeeds, not PlanSeeds --
+    # see the docstring note above). Absent spec_seeds key, absent
+    # literal_archaeology key, or an empty list (a handoff predating plan 73,
+    # or a run where no literal was load-bearing) renders NOTHING -- silent,
+    # matching the caller_enumeration precedent's empty-carry branch above.
+    # This is a deliberate choice, not an oversight: unlike caller
+    # enumeration (checks 8/9 MANDATE a caller-enumeration attempt on every
+    # touched helper, so an unqualified empty carry is ambiguous between
+    # "checked, none found" and "never checked" -- hence
+    # no_shared_callers_justification exists to disambiguate), literal
+    # archaeology is CONDITIONALLY triggered and, as of plan 73 Phases 1-2,
+    # its presence is mechanically forced whenever a literal is genuinely
+    # load-bearing (verify checks 17 and 20, both mode-independent) before
+    # this handoff is ever finalized -- so an empty list reaching /plan is a
+    # verified "no literal was load-bearing this run", not an unverified
+    # silence, and a permanent "(none)" line on every ordinary plan render
+    # would be exactly the reflexive-answer noise D4's counter-argument
+    # warns about. Each row renders literal + file_line (identity) plus
+    # intent, use, SHA (introduced_by), and subject (commit_subject) -- `use`
+    # is rendered even though the Phase 5 Verify names only "intent + SHA +
+    # subject" because the /research-side report already carries a Use
+    # column (Phase 2a); omitting it here would make the two renders
+    # disagree about what a row IS (fix-layer vs evidence changes the row's
+    # meaning, not just its metadata).
+    spec_seeds = d.get("spec_seeds", {}) or {}
+    archaeology_rows = spec_seeds.get("literal_archaeology") or []
+    if archaeology_rows:
+        arch_lines = []
+        for la in archaeology_rows:
+            if not isinstance(la, dict):
+                continue
+            arch_lines.append(
+                "- `{literal}` ({file_line}) — intent: {intent}, use: {use}, "
+                "SHA: {sha}, subject: \"{subject}\"".format(
+                    literal=la.get("literal", "?"),
+                    file_line=la.get("file_line", "?"),
+                    intent=la.get("intent", "?"),
+                    use=la.get("use", "fix-layer"),
+                    sha=la.get("introduced_by", "?"),
+                    subject=la.get("commit_subject", "?"),
+                )
+            )
+        archaeology_block = (
+            "\n**Literal provenance** (recorded at /devforge:research):\n"
+            + "\n".join(arch_lines) + "\n"
+        )
+    else:
+        archaeology_block = ""
+
     return (
         "## Upstream plan-seeds (research handoff: {upstream_path})\n"
         "\n"
@@ -1262,6 +1320,7 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
         "**Cited canonical patterns**:\n"
         "{patterns_block}\n"
         "{caller_block}"
+        "{archaeology_block}"
     ).format(
         upstream_path=upstream_path,
         rec_id=rec_id,
@@ -1274,6 +1333,7 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
         alts_block=alts_block,
         patterns_block=patterns_block,
         caller_block=caller_block,
+        archaeology_block=archaeology_block,
     )
 
 

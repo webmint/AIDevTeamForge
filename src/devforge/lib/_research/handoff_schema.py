@@ -24,16 +24,41 @@ Design notes:
   a matching production site row.
 
 - V3 fields: `LiteralArchaeology`, `proposed_call_shape`.
-  literal_archaeology required when bug mode + literal-replacement
-  recommended approach. proposed_call_shape required when bug mode +
-  single-layer or literal-replacement approach -- that REQUIREDNESS rule
-  is bug-mode-gated and unchanged. The value's PRESENCE is not: plan 69
-  D6/WI-F widened `research_helper set-recommended-approach`'s storage of
-  proposed_call_shape (and the mirroring verify check 18) to
-  mode-independent, so an enhancement-mode handoff MAY legitimately carry
-  a populated proposed_call_shape even though bug mode is the only mode
-  that requires one. Argument-duplication detection with
-  optional-chaining support; fail-soft on nested calls.
+  literal_archaeology PRESENCE (a non-empty list) is required when the
+  recommended approach is a literal-replacement approach as detected by
+  THIS module's own narrow `_has_literal_replacement` (`_LITERAL_REPLACEMENT_RE`
+  -- "replace X with Y" / "change X to Y" / "X -> Y", single-token X/Y
+  only). That detector is DELIBERATELY NARROWER than, and independent of,
+  the shared detector `_shared/literal_call_shape.py:_detect_literal_replacement`
+  that governs verify check 17 (`_cmds_render_verify.py`) -- check 17's
+  detector also matches "swap <X> with/for <Y>" prose that this module's
+  regex does not. The two can and do diverge on real prose: check 17 can
+  compel `record-literal-archaeology` on a summary this module's own
+  presence gate never fires on. This is not a bug to reconcile here --
+  check 17 is the MANDATORY-at-verify-time forcing function; this gate is
+  a narrower, independent finalize-handoff-time backstop using its own
+  regex on purpose (defense-in-depth, not a mirror). The escalation-cite
+  loop below (`PlanSeeds._validate_cross_field`, plan 73 D2/OQ-5) is
+  independent of BOTH detectors -- it iterates every recorded
+  literal_archaeology row regardless of whether either replacement regex
+  matched, and is scoped by each row's `use` field (`fix-layer` vs
+  `evidence`), not by prose.
+  Presence REQUIREDNESS is mode-independent (plan 73 D1; widened from
+  bug-mode-gated, mirroring plan 67's check-8 decouple) for handoffs
+  produced under the new regime -- see `_requires_literal_archaeology_presence`
+  for the schema_version-scoped carve-out that keeps a handoff.json written
+  BEFORE plan 73 shipped readable under the RULES IT WAS WRITTEN UNDER
+  (finding 2 of the plan-73 OQ-5 build: `_dict_to_dataclass`-driven
+  reconstruction on read, e.g. specify's import-handoff, re-runs this same
+  validator against already-persisted JSON). proposed_call_shape
+  required when bug mode + single-layer or literal-replacement approach --
+  that REQUIREDNESS rule is bug-mode-gated and unchanged. The value's
+  PRESENCE is not: plan 69 D6/WI-F widened `research_helper
+  set-recommended-approach`'s storage of proposed_call_shape (and the
+  mirroring verify check 18) to mode-independent, so an enhancement-mode
+  handoff MAY legitimately carry a populated proposed_call_shape even
+  though bug mode is the only mode that requires one. Argument-duplication
+  detection with optional-chaining support; fail-soft on nested calls.
 
 - Type-hint convention: explicit `typing.Optional` / `List` / `Dict`
   (no PEP 604 `X | None`, no PEP 585 `list[str]`). Targets Python 3.8+.
@@ -53,7 +78,20 @@ from typing import Dict, List, Optional, Tuple
 # Schema version constant.
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
+
+# Plan 73 OQ-5 Finding-2 fix: 1.1 -> 1.2 bump marks the point at which the
+# literal_archaeology presence gate in PlanSeeds._validate_cross_field became
+# mode-independent (plan 73 D1). See _requires_literal_archaeology_presence
+# and _VERSIONS_PREDATING_LITERAL_ARCHAEOLOGY_MODE_INDEPENDENCE below for why
+# this is a *behavioral* version, not just a field-vocabulary one: V2 and V3
+# both added fields WITHOUT a version bump (field-level Optional/default
+# defaulting was sufficient for additive fields), but a REQUIREDNESS change on
+# an already-existing field cannot be back-compat-guarded by a field default
+# -- reconstructing an old handoff.json via _dict_to_dataclass (specify's
+# import-handoff read path) re-runs this same validator against
+# already-persisted JSON, so the validator must know which regime produced
+# the artifact it is checking.
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +115,22 @@ _VALID_STABLE_ACROSS_CALLS = frozenset({"true", "false", "unknown"})
 _VALID_LITERAL_INTENT = frozenset({
     "placeholder", "migrated", "deliberate", "forgotten", "inherited-refactor", "generated"
 })
+# Plan 73 OQ-5 -- discriminates why a literal_archaeology row was recorded:
+# "fix-layer" = the literal IS the thing being replaced (the original V3
+# Patch 8 use case; the escalation-cite loop in
+# PlanSeeds._validate_cross_field applies to these rows).
+# "evidence" = the literal's CURRENT value was cited as grounds for a scope
+# call (dead/live, keep/delete) and nothing is being replaced -- D3's
+# recovery rule applies instead, and the escalation-cite loop is scoped
+# OFF these rows (demanding fix-layer-escalation prose when nothing is
+# being replaced is meaningless -- see the escalation-cite loop below).
+# Absent on a pre-plan-73 handoff.json (no such row could have been
+# anything but fix-layer before the evidence arm existed) -> defaults to
+# "fix-layer" at the LiteralArchaeology field level (see the `use` field
+# default below), independent of the schema_version-scoped presence-gate
+# carve-out (_requires_literal_archaeology_presence), which is a SEPARATE
+# back-compat mechanism for a different validator.
+_VALID_LITERAL_ARCHAEOLOGY_USE = frozenset({"fix-layer", "evidence"})
 _VALID_PROBE_TIER = frozenset({"1", "1.5", "2", "3"})
 _VALID_PROBE_ACTOR = frozenset({"llm", "user"})
 _VALID_TEST_FRAMEWORK = frozenset({"vitest", "jest", "pytest", "go-test", "cargo-test", "rspec"})
@@ -89,8 +143,18 @@ _VALID_CONFIDENCE_GRADE = frozenset({"HIGH", "MEDIUM", "LOW"})
 # third scope value alongside "in"/"out".
 _VALID_CALLER_SCOPE = frozenset({"", "in", "out"})
 
-# V3 Patch 8 literal-replacement detector regex.
-# Matches: "Replace X with Y" / "change X to Y" / "X -> Y" patterns.
+# V3 Patch 8 literal-replacement detector regex -- THIS MODULE'S OWN, narrow
+# detector for the literal_archaeology PRESENCE gate below
+# (PlanSeeds._validate_cross_field). Matches ONLY: "Replace X with Y" /
+# "change X to Y" / "X -> Y", single-token X/Y. This is NOT the same
+# detector that governs verify check 17 (`_cmds_render_verify.py`, via
+# `_shared/literal_call_shape.py:_detect_literal_replacement`) -- that
+# shared detector is BROADER (also matches "swap X with/for Y" and
+# multi-token prose) and is the one that actually forces
+# `record-literal-archaeology` to be called at verify time. The two
+# detectors are independent by design (defense-in-depth backstops at two
+# different chokepoints, not a mirrored pair) and can diverge on real
+# prose -- do not assume a match on one implies a match on the other.
 _LITERAL_REPLACEMENT_RE = re.compile(
     r'(?:replace|change)\s+\S+\s+(?:with|to)\s+\S+|^\S+\s*->\s*\S+$',
     re.IGNORECASE | re.MULTILINE,
@@ -157,6 +221,49 @@ def _has_escalation_cite(summary):
     """Return True if the summary contains any escalation-direction token."""
     lower = summary.lower()
     return any(token in lower for token in _ESCALATION_TOKENS)
+
+
+# Plan 73 OQ-5 Finding-2 fix -- schema_version values that predate the
+# mode-independent literal_archaeology presence gate (plan 73 D1). A
+# handoff.json stamped with one of these versions was produced when the
+# presence requirement was bug-mode-gated ("mode == 'bug' and
+# is_literal_replacement"); reconstructing one via _dict_to_dataclass
+# (specify's import-handoff read path re-runs Handoff.__post_init__, which
+# re-runs this same validator against already-persisted JSON) must honor the
+# rules it was WRITTEN under, or an enhancement-mode handoff with a
+# replacement-shaped summary and an empty literal_archaeology list --
+# legally valid before plan 73 D1 shipped, since only bug mode required
+# populating the list -- would newly fail on read after an upgrade, even
+# though the user did nothing wrong producing it. A schema_version NOT in
+# this set (i.e. SCHEMA_VERSION and any future bump) is written under the
+# NEW regime and must satisfy the mode-independent rule unconditionally --
+# this set never grows going forward; only the schema_version threshold at
+# which handoffs stop predating the new regime is what's being encoded.
+_VERSIONS_PREDATING_LITERAL_ARCHAEOLOGY_MODE_INDEPENDENCE = frozenset({"1.0", "1.1"})
+
+
+def _requires_literal_archaeology_presence(mode, schema_version):
+    """True when the literal_archaeology presence gate must fire for this handoff.
+
+    schema_version is guaranteed to be a member of _ACCEPTED_SCHEMA_VERSIONS
+    by the time this runs (Handoff.__post_init__ validates schema_version
+    before calling into PlanSeeds._validate_cross_field), so a plain
+    membership check against the closed predating-set is sufficient --
+    no numeric version-tuple parsing is needed for a 3-member accepted set.
+
+    - schema_version predates plan 73 D1 (written under the old regime):
+      presence required only when mode == "bug" -- BYTE-IDENTICAL to the
+      rule that handoff was validated against when it was first written
+      (research_helper's own finalize-handoff also runs this validator).
+    - schema_version is current or newer (written under the new regime):
+      presence required unconditionally (plan 73 D1's mode-independent
+      widening) -- this is the ONLY branch that governs a freshly-produced
+      handoff, since research_helper's finalize-handoff always stamps the
+      live SCHEMA_VERSION constant.
+    """
+    if schema_version in _VERSIONS_PREDATING_LITERAL_ARCHAEOLOGY_MODE_INDEPENDENCE:
+        return mode == "bug"
+    return True
 
 
 def _is_single_layer_fix(layer_justification):
@@ -471,12 +578,22 @@ class ValueProductionSite:
 
 @dataclass
 class LiteralArchaeology:
-    """V3 Patch 8 — git-archaeology record for one hardcoded literal proposed for replacement.
+    """V3 Patch 8 — git-archaeology record for one hardcoded literal proposed for
+    replacement, OR (plan 73 D2) cited as evidence for a scope call.
 
     introduced_by must be a 7-40 char hex commit SHA.
     introduced_when must parse as an ISO date (YYYY-MM-DD).
     file_line rejects the '(none)' sentinel.
     intent must be one of the 6-value locked enum.
+
+    use (plan 73 OQ-5, added last with a default so a pre-plan-73
+    handoff.json without the key deserializes cleanly): "fix-layer" (the
+    literal IS the thing being replaced -- the original V3 Patch 8 use case)
+    or "evidence" (the literal's CURRENT value was cited as grounds for a
+    scope call; nothing is being replaced). Every row recorded before this
+    field existed is unambiguously "fix-layer" -- that is the back-compat
+    default. See PlanSeeds._validate_cross_field for how `use` scopes the
+    escalation-cite requirement.
     """
 
     literal: str
@@ -485,6 +602,7 @@ class LiteralArchaeology:
     introduced_when: str   # ISO date string YYYY-MM-DD
     commit_subject: str
     intent: str            # one of _VALID_LITERAL_INTENT
+    use: str = "fix-layer"  # one of _VALID_LITERAL_ARCHAEOLOGY_USE
 
     def __post_init__(self):
         _require_nonempty(self.literal, "LiteralArchaeology.literal")
@@ -510,6 +628,7 @@ class LiteralArchaeology:
             )
         _require_nonempty(self.commit_subject, "LiteralArchaeology.commit_subject")
         _require_in_enum(self.intent, _VALID_LITERAL_INTENT, "LiteralArchaeology.intent")
+        _require_in_enum(self.use, _VALID_LITERAL_ARCHAEOLOGY_USE, "LiteralArchaeology.use")
 
 
 # ---------------------------------------------------------------------------
@@ -579,8 +698,12 @@ class SpecSeeds:
     - stable_across_calls required when invariant + presentation-layer symptom.
     - stable_across_calls="false" requires at least one matching value_production_sites row.
     - value_production_sites distinct (value, file_line) pairs.
-    - literal_archaeology required when mode=bug + literal-replacement approach
-      (checked at Handoff level since it needs plan_seeds context).
+    - literal_archaeology required when the recommended approach is a
+      literal-replacement approach (mode-independent for handoffs written
+      under the new regime, plan 73 D1; checked at Handoff level since it
+      needs plan_seeds AND schema_version context -- schema_version-scoped
+      for a handoff.json written before plan 73 shipped, see
+      _requires_literal_archaeology_presence).
     - literal_archaeology distinct (literal, file_line) pairs.
 
     Note: mode is passed in from the Handoff constructor for cross-field checks.
@@ -920,32 +1043,64 @@ class PlanSeeds:
                     f"{duplicate!r} across argument positions"
                 )
 
-    def _validate_cross_field(self, mode, spec_seeds):
-        # type: (str, SpecSeeds) -> None
-        """Cross-field validators that need mode + spec_seeds from Handoff.
+    def _validate_cross_field(self, mode, spec_seeds, schema_version):
+        # type: (str, SpecSeeds, str) -> None
+        """Cross-field validators that need mode + spec_seeds + schema_version from Handoff.
 
         Called by Handoff.__post_init__. Checks are ordered so that the
         most-fundamental missing-data errors fire before secondary derived errors:
         1. literal_archaeology presence (required before we can check its rows).
-        2. escalation cite per intent (requires non-empty literal_archaeology).
+        2. escalation cite per intent, scoped to `use="fix-layer"` rows only
+           (requires non-empty literal_archaeology).
         3. proposed_call_shape presence (requires literal-replacement confirmed).
+
+        schema_version (plan 73 OQ-5 Finding-2 fix) scopes check 1 ONLY --
+        see _requires_literal_archaeology_presence. It does not affect check
+        2 or 3: check 2 was already mode-independent before plan 73 (no
+        regression to guard there), and check 3 is bug-mode-gated by a rule
+        plan 69 left untouched.
         """
         summary = self.recommended_approach_summary
         is_literal_replacement = _has_literal_replacement(summary)
         is_single_layer = _is_single_layer_fix(self.layer_justification)
 
-        # V3: literal_archaeology required when bug + literal-replacement approach.
-        # Check this FIRST so the error names the missing collection, not the
-        # secondary requirement (proposed_call_shape) that depends on it.
-        if mode == "bug" and is_literal_replacement:
-            if not spec_seeds.literal_archaeology:
+        # V3: literal_archaeology required when the recommended approach
+        # proposes a literal replacement, per THIS module's own narrow
+        # detector (_has_literal_replacement -- see its definition for how
+        # this differs from verify check 17's broader shared detector).
+        # Requiredness is mode-independent (plan 73 D1) for handoffs written
+        # under the new regime, and schema_version-scoped for one written
+        # under the old regime (plan 73 OQ-5 Finding-2 fix) -- see
+        # _requires_literal_archaeology_presence for the full rule and why
+        # this can't be a plain field default. Check this FIRST so the
+        # error names the missing collection, not the secondary requirement
+        # (proposed_call_shape) that depends on it.
+        if is_literal_replacement:
+            if (
+                _requires_literal_archaeology_presence(mode, schema_version)
+                and not spec_seeds.literal_archaeology
+            ):
                 raise ValueError(
-                    "SpecSeeds.literal_archaeology must be non-empty when mode='bug' "
-                    "and recommended_approach_summary matches a literal-replacement pattern"
+                    "SpecSeeds.literal_archaeology must be non-empty when "
+                    "recommended_approach_summary matches a literal-replacement pattern"
                 )
 
-        # V3: escalation cite required for certain literal_archaeology intents.
+        # V3: escalation cite required for certain literal_archaeology
+        # intents, scoped to `use="fix-layer"` rows only (plan 73 D2/OQ-5).
+        # An `evidence`-use row (the literal's value was cited as grounds
+        # for a scope call, nothing is being replaced) has no fix-layer to
+        # escalate -- demanding escalation prose for it is meaningless and
+        # was Finding 1 of the plan-73 OQ-5 build. This loop is independent
+        # of is_literal_replacement above and of schema_version: it was
+        # already mode-independent before plan 73 D1 (no regression to
+        # guard for schema_version), and a pre-plan-73 row has no `use`
+        # field, which defaults to "fix-layer" (LiteralArchaeology.use) --
+        # every row recorded before the evidence arm existed was
+        # unambiguously fix-layer, so this loop's behavior on old rows is
+        # byte-identical to before.
         for la in spec_seeds.literal_archaeology:
+            if la.use != "fix-layer":
+                continue
             if la.intent in _INTENTS_REQUIRING_ESCALATION:
                 if not _has_escalation_cite(summary):
                     raise ValueError(
@@ -1169,6 +1324,70 @@ class DownstreamLinks:
 
 
 # ---------------------------------------------------------------------------
+# Evidence lanes — plan 73 D7.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class EvidenceLanes:
+    """Plan 73 D7 -- self-declared record of which evidence lanes this
+    research run consulted: static graph (CBM) / text search / runtime
+    probe / history (git archaeology, Phase 2.5b).
+
+    This is the "not-covered evidence-lane declaration": the report must
+    say which lanes it consulted so structural confidence stops implying
+    completeness. The plan-73 incident's laundering half was that a
+    report's mandatory runner-up-framing / falsifier machinery can fire
+    correctly while zero history-lane evidence backs any of it, and
+    nothing in a structurally-complete report said so -- a reader could
+    not tell "the history lane found nothing" from "the history lane
+    never ran". Precedents: plan 53's NOT-COVERED coverage verdict, plan
+    62's honest-scope strings.
+
+    Gate on the DECLARATION existing, never on any lane's VALUE (D7): no
+    field here is Optional, so every Handoff carries a complete 4-lane
+    record -- a lane is either declared consulted or declared
+    not-consulted, never simply absent from the artefact -- but no field
+    is required to be True. A run legitimately consults a subset of the
+    four lanes; what it must not do is leave that fact unrecorded.
+    finalize-handoff (_cmds_handoff.py) enforces this at the REPORT-STATE
+    layer with a call-happened guard mirroring probe_feasibility's
+    completeness guard -- it asks only whether set-evidence-lanes was
+    called at least once (report.evidence_lanes' four fields default to
+    None/unset, not False, precisely so "never declared" is distinguishable
+    from "declared false" at that layer); it never inspects which lane
+    values were recorded, so it stays a call-happened check, not a
+    per-lane-value check. THIS schema layer stays simpler on purpose: by
+    the time a report reaches _build_evidence_lanes() (which the guard
+    above has already required to be non-empty-of-None), every field is
+    coerced `bool(...)`, so the persisted EvidenceLanes itself only ever
+    needs to represent the two states a fully-declared record can be in --
+    consulted or not-consulted -- never "undeclared". A hand-constructed
+    or reconstructed (_dict_to_dataclass) Handoff that never passed through
+    that guard (e.g. a legacy handoff.json) still gets an all-False default
+    here, which is the correct back-compat reading for an artefact that
+    predates this field entirely.
+
+    Back-compat: all four fields default False so a handoff.json
+    predating plan 73 D7 (no evidence_lanes key at all) deserializes
+    cleanly.
+    """
+
+    static_graph: bool = False
+    text_search: bool = False
+    runtime_probe: bool = False
+    history: bool = False
+
+    def __post_init__(self):
+        for fname in ("static_graph", "text_search", "runtime_probe", "history"):
+            v = getattr(self, fname)
+            if not isinstance(v, bool):
+                raise ValueError(
+                    f"EvidenceLanes.{fname} must be a bool, got {type(v).__name__}"
+                )
+
+
+# ---------------------------------------------------------------------------
 # Top-level Handoff record.
 # ---------------------------------------------------------------------------
 
@@ -1182,7 +1401,18 @@ class Handoff:
     - All sub-record cross-field checks (data_flow_chain, stable_across_calls,
       literal_archaeology, proposed_call_shape, production_site_check,
       confidence_grade) are delegated to sub-record _validate_cross_field()
-      methods with the mode context they need.
+      methods with the mode context they need. plan_seeds' also needs
+      schema_version (plan 73 OQ-5 Finding-2 fix — see
+      _requires_literal_archaeology_presence), since reconstructing an
+      already-persisted handoff.json (e.g. specify's import-handoff, via
+      _dict_to_dataclass) re-runs this same validation and must honor the
+      rules the artifact was WRITTEN under, not the rules live in the code
+      doing the reading.
+
+    evidence_lanes (plan 73 D7) is appended LAST with a default so an old
+    handoff.json (pre-plan-73-D7) without the key deserializes cleanly —
+    same convention as design_anchor on SpecSeeds and caller_enumeration
+    on PlanSeeds.
     """
 
     schema_version: str
@@ -1195,11 +1425,15 @@ class Handoff:
     probe: Probe
     downstream_links: DownstreamLinks
     outcome: Optional[Outcome] = None
+    evidence_lanes: EvidenceLanes = field(default_factory=EvidenceLanes)
 
     def __post_init__(self):
         # schema_version check: accept all shipped versions:
-        # 1.0 (original) and 1.1 (added verbatim_prompt).
-        _ACCEPTED_SCHEMA_VERSIONS = frozenset({"1.0", "1.1"})
+        # 1.0 (original), 1.1 (added verbatim_prompt), 1.2 (plan 73 D1 —
+        # literal_archaeology presence gate became mode-independent for
+        # handoffs stamped at this version or later; see
+        # _requires_literal_archaeology_presence).
+        _ACCEPTED_SCHEMA_VERSIONS = frozenset({"1.0", "1.1", "1.2"})
         if self.schema_version not in _ACCEPTED_SCHEMA_VERSIONS:
             raise ValueError(
                 f"Handoff.schema_version must be one of {sorted(_ACCEPTED_SCHEMA_VERSIONS)!r}, "
@@ -1223,10 +1457,15 @@ class Handoff:
                 f"Handoff.downstream_links must be a DownstreamLinks, "
                 f"got {type(self.downstream_links).__name__}"
             )
+        if not isinstance(self.evidence_lanes, EvidenceLanes):
+            raise ValueError(
+                f"Handoff.evidence_lanes must be an EvidenceLanes, "
+                f"got {type(self.evidence_lanes).__name__}"
+            )
 
         # Cross-field validation requiring mode context.
         self.spec_seeds._validate_cross_field(self.mode)
-        self.plan_seeds._validate_cross_field(self.mode, self.spec_seeds)
+        self.plan_seeds._validate_cross_field(self.mode, self.spec_seeds, self.schema_version)
 
         # V2: probe.discriminator.production_site_check required when any is_stable=False.
         has_unstable = any(

@@ -102,6 +102,7 @@ from ._cmds_feature_alloc import (  # noqa: E402
     cmd_render_branch_command,
 )
 from ._cmds_design_anchor import cmd_set_scope_design_anchor  # noqa: E402
+from ._cmds_absence import cmd_record_absence_probe  # noqa: E402
 from ._cmds_intake import (  # noqa: E402
     INTAKE_KIND_ENUM,
     cmd_record_intake_classification,
@@ -459,6 +460,54 @@ def _register_subcommands(subparsers) -> None:
     )
     sp.add_argument("--reasoning", required=True, help="Reasoning text (non-empty).")
     sp.set_defaults(func=cmd_set_build_vs_buy)
+
+    # Plan 73 D6 -- absence-claim provenance lane. Records the outcome of a
+    # `git log -S "<symbol>"` / `git log --diff-filter=D -- <path>` probe
+    # against one absence claim (append-only; call once per claim probed).
+    sp = subparsers.add_parser(
+        "record-absence-probe",
+        help=(
+            "Record git-history provenance for one absence claim (plan 73 "
+            "D6): whether `git log -S`/`git log --diff-filter=D` found a "
+            "prior deletion. Required before finalize-handoff when "
+            "build_vs_buy.recommendation is 'Build' with zero internal "
+            "prior-art hits recorded."
+        ),
+    )
+    sp.add_argument(
+        "--claim",
+        required=True,
+        help="What is claimed absent (one-line description, e.g. an integration-touchpoint or gap it grounds).",
+    )
+    sp.add_argument(
+        "--symbol",
+        required=True,
+        help='Search string passed to `git log -S`, or the literal "none" when this probe is path-only.',
+    )
+    sp.add_argument(
+        "--path",
+        required=True,
+        help='Path passed to `git log --diff-filter=D --`, or the literal "none" when this probe is symbol-only. Not both "none".',
+    )
+    sp.add_argument(
+        "--found",
+        required=True,
+        choices=("true", "false"),
+        help="Whether either query surfaced a prior deletion. 'false' is a first-class outcome, not an absent record.",
+    )
+    sp.add_argument(
+        "--deleted-commit-sha",
+        default=None,
+        dest="deleted_commit_sha",
+        help="7-40 char hex commit SHA of the deleting commit. Required iff --found true; forbidden iff --found false.",
+    )
+    sp.add_argument(
+        "--deleted-commit-subject",
+        default=None,
+        dest="deleted_commit_subject",
+        help="One-line subject of the deleting commit. Required iff --found true; forbidden iff --found false.",
+    )
+    sp.set_defaults(func=cmd_record_absence_probe)
 
     sp = subparsers.add_parser(
         "set-derisk-plan",
