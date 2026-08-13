@@ -43,6 +43,17 @@ Helper checks four artefacts under `<install_root>`:
 
 Exit 0 → all present + non-empty; proceed. Exit 2 → at least one missing or empty; helper emits a `BLOCKED:` message on stderr naming each missing artefact + producer command. On exit 2: copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The user must run the missing predecessor command(s) and re-invoke `/devforge:research`.
 
+**Memory read (same call).** The same `preflight` call also reads `.devforge/memory.md` — the project's persistent cross-session lessons file — and writes a JSON object to stdout ahead of the exit-code branch above, so the object is there on the pass and on the `BLOCKED` path alike. Capture that stdout and take `memory_state` from it; the object also carries `memory_excerpt` (the file's first 40 raw lines) and `memory_present`. This changes nothing about the exit-2 handling above: on that path the JSON is extra output to ignore, and copying the stderr verbatim and ending the turn is still the whole response. If stdout carries no JSON object at all, treat it as `absent` and take the no-op branch below — the memory read never stops the run.
+
+Branch on `memory_state`:
+
+- `absent` or `stub` → no-op. Say nothing to the user about memory, raise no warning, add no step. A memory file that is missing, or still the stub the installer ships, records no lessons yet; on a new project that is the correct state, not a fault to remedy.
+- `populated` → read `memory_excerpt` and pick out the entries that bear on this run's topic. Hold those in working memory now (so they are not lost during the rubric) and carry them into Phase 1's `affected_area` + `scope` questions and Phase 2's investigation. Arriving there is the point: an entry can name a place to look — a related repository that is readable locally, a file to read before scoping — and one that surfaces only after Phase 1 has committed the scope is too late to change what this run searches.
+
+The excerpt is the first 40 lines, not the whole file. An entry's absence from it means "not in the first 40 lines", never "never recorded" — do not conflate these.
+
+**Honesty bound.** A carried memory entry is an UNVERIFIED prior-session assertion, not evidence for this run: it is a candidate evidence source and a constraint to check, never a finding and never grounds for a conclusion on its own. A past session wrote it, and the code it describes may have changed since — or the entry may have been wrong when it was written. Re-ground what it points at through the Phase 2 chain before any of it reaches `record-finding`, which takes its `file:line` from the Phase 2.3 grounding rule and never from prose.
+
 ### Phase 0.2 — CBM index refresh
 
 ```bash

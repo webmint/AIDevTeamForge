@@ -332,6 +332,154 @@ class TestPreflight(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# 8b. preflight — memory read (plan 74 item 1: /discover had zero memory
+# refs, same as /research).
+# ---------------------------------------------------------------------------
+
+
+class TestPreflightMemory(unittest.TestCase):
+    """preflight now always emits a JSON object carrying the memory read.
+
+    Covers: absent / real-shipped-stub / populated states, plus a
+    regression that every pre-existing preflight behaviour (exit codes,
+    BLOCKED stderr shape) is untouched by this addition.
+    """
+
+    _ALL_PREREQS = [rel for rel, _ in discover_helper.PREFLIGHT_PREREQS]
+
+    def test_memory_absent_reports_absent_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _make_prereq_tree(Path(tmp), self._ALL_PREREQS)
+            devforge = install / ".devforge"
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "--install-root", str(install),
+                "preflight",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertFalse(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "absent")
+            self.assertEqual(payload["memory_excerpt"], "")
+
+    def test_memory_real_shipped_stub_reports_stub_state(self):
+        # Real-producer round-trip: the ACTUAL bytes of src/devforge/memory.md,
+        # not a hand-authored approximation.
+        stub_path = _REPO_ROOT / "src" / "devforge" / "memory.md"
+        self.assertTrue(stub_path.is_file(), "src/devforge/memory.md must exist")
+        stub_text = stub_path.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _make_prereq_tree(Path(tmp), self._ALL_PREREQS)
+            devforge = install / ".devforge"
+            mem_path = devforge / "memory.md"
+            mem_path.parent.mkdir(parents=True, exist_ok=True)
+            mem_path.write_text(stub_text, encoding="utf-8")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "--install-root", str(install),
+                "preflight",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertTrue(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "stub")
+            self.assertEqual(payload["memory_excerpt"], stub_text)
+
+    def test_memory_populated_reports_populated_state_and_excerpt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _make_prereq_tree(Path(tmp), self._ALL_PREREQS)
+            devforge = install / ".devforge"
+            mem_path = devforge / "memory.md"
+            mem_path.parent.mkdir(parents=True, exist_ok=True)
+            content = (
+                "# Project Memory\n"
+                "## Known Pitfalls\n"
+                "- The related backend repo is locally readable -- check "
+                "it before assuming greenfield.\n"
+            )
+            mem_path.write_text(content, encoding="utf-8")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "--install-root", str(install),
+                "preflight",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertTrue(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "populated")
+            self.assertIn(
+                "check it before assuming greenfield", payload["memory_excerpt"]
+            )
+
+    def test_memory_json_still_emitted_when_blocked(self):
+        # Memory context is reported even on the BLOCKED path (matches the
+        # "always emit JSON before a non-zero exit" convention used by
+        # review_helper/grill_helper's preflight verbs).
+        with tempfile.TemporaryDirectory() as tmp:
+            install = Path(tmp) / "empty-install"
+            install.mkdir()
+            devforge = install / ".devforge"
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "--install-root", str(install),
+                "preflight",
+            ])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("BLOCKED", r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertFalse(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "absent")
+
+    def test_memory_populated_combined_with_blocked_path(self):
+        # Fix 2: a populated .devforge/memory.md combined with missing
+        # PREFLIGHT_PREREQS artefacts -- the memory read and the gate
+        # outcome are independent axes; test both non-default at once
+        # rather than only ever pairing "populated" with a passing gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            install = Path(tmp) / "empty-install"
+            install.mkdir()
+            devforge = install / ".devforge"
+            mem_path = devforge / "memory.md"
+            mem_path.parent.mkdir(parents=True, exist_ok=True)
+            content = (
+                "# Project Memory\n"
+                "## Known Pitfalls\n"
+                "- The related backend repo is locally readable -- check "
+                "it before assuming greenfield.\n"
+            )
+            mem_path.write_text(content, encoding="utf-8")
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "--install-root", str(install),
+                "preflight",
+            ])
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("BLOCKED", r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertTrue(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "populated")
+            self.assertIn(
+                "check it before assuming greenfield", payload["memory_excerpt"]
+            )
+
+    def test_regression_hard_gate_unaffected_by_memory_absence(self):
+        # Constraint: a memory-less install must still run /discover
+        # end-to-end with no block and no spurious warning caused by
+        # memory absence -- only the 4 PREFLIGHT_PREREQS artefacts gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _make_prereq_tree(Path(tmp), self._ALL_PREREQS)
+            devforge = install / ".devforge"
+            # No .devforge/memory.md written at all.
+            r = _run([
+                "--devforge-dir", str(devforge),
+                "--install-root", str(install),
+                "preflight",
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stderr, "")
+
+
+# ---------------------------------------------------------------------------
 # 9. State-file atomicity.
 # ---------------------------------------------------------------------------
 

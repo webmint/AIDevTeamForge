@@ -432,6 +432,160 @@ class TestPreflight(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Preflight — memory read (plan 74 item 1: /research had zero memory refs).
+# ---------------------------------------------------------------------------
+
+
+class TestPreflightMemory(unittest.TestCase):
+    """preflight now always emits a JSON object carrying the memory read.
+
+    Covers: absent / real-shipped-stub / populated states, plus a
+    regression that every pre-existing preflight behaviour (exit codes,
+    BLOCKED stderr shape) is untouched by this addition.
+    """
+
+    def _populate(self, root, paths):
+        for rel in paths:
+            p = root / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x\n")
+
+    def test_memory_absent_reports_absent_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._populate(root, [rel for rel, _ in research_helper.PREFLIGHT_PREREQS])
+            r = _run(
+                [
+                    "--devforge-dir", str(root / ".devforge"),
+                    "--install-root", tmp,
+                    "preflight",
+                ]
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertFalse(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "absent")
+            self.assertEqual(payload["memory_excerpt"], "")
+
+    def test_memory_real_shipped_stub_reports_stub_state(self):
+        # Real-producer round-trip: the ACTUAL bytes of src/devforge/memory.md,
+        # not a hand-authored approximation.
+        stub_path = _REPO_ROOT / "src" / "devforge" / "memory.md"
+        self.assertTrue(stub_path.is_file(), "src/devforge/memory.md must exist")
+        stub_text = stub_path.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._populate(root, [rel for rel, _ in research_helper.PREFLIGHT_PREREQS])
+            mem_path = root / ".devforge" / "memory.md"
+            mem_path.parent.mkdir(parents=True, exist_ok=True)
+            mem_path.write_text(stub_text, encoding="utf-8")
+            r = _run(
+                [
+                    "--devforge-dir", str(root / ".devforge"),
+                    "--install-root", tmp,
+                    "preflight",
+                ]
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertTrue(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "stub")
+            self.assertEqual(payload["memory_excerpt"], stub_text)
+
+    def test_memory_populated_reports_populated_state_and_excerpt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._populate(root, [rel for rel, _ in research_helper.PREFLIGHT_PREREQS])
+            mem_path = root / ".devforge" / "memory.md"
+            mem_path.parent.mkdir(parents=True, exist_ok=True)
+            content = (
+                "# Project Memory\n"
+                "## Known Pitfalls\n"
+                "- Read the mapper BEFORE scoping; half the ticket may "
+                "already be done or belong to the other repo.\n"
+            )
+            mem_path.write_text(content, encoding="utf-8")
+            r = _run(
+                [
+                    "--devforge-dir", str(root / ".devforge"),
+                    "--install-root", tmp,
+                    "preflight",
+                ]
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertTrue(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "populated")
+            self.assertIn("Read the mapper BEFORE scoping", payload["memory_excerpt"])
+
+    def test_memory_json_still_emitted_when_blocked(self):
+        # Memory context is reported even on the BLOCKED path (matches the
+        # "always emit JSON before a non-zero exit" convention used by
+        # review_helper/grill_helper's preflight verbs).
+        with tempfile.TemporaryDirectory() as tmp:
+            r = _run(
+                [
+                    "--devforge-dir", str(Path(tmp) / ".devforge"),
+                    "--install-root", tmp,
+                    "preflight",
+                ]
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("BLOCKED", r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertFalse(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "absent")
+
+    def test_memory_populated_combined_with_blocked_path(self):
+        # Fix 2: a populated .devforge/memory.md combined with missing
+        # PREFLIGHT_PREREQS artefacts -- the memory read and the gate
+        # outcome are independent axes; test both non-default at once
+        # rather than only ever pairing "populated" with a passing gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mem_path = root / ".devforge" / "memory.md"
+            mem_path.parent.mkdir(parents=True, exist_ok=True)
+            content = (
+                "# Project Memory\n"
+                "## Known Pitfalls\n"
+                "- Read the mapper BEFORE scoping; half the ticket may "
+                "already be done or belong to the other repo.\n"
+            )
+            mem_path.write_text(content, encoding="utf-8")
+            r = _run(
+                [
+                    "--devforge-dir", str(root / ".devforge"),
+                    "--install-root", tmp,
+                    "preflight",
+                ]
+            )
+            self.assertEqual(r.returncode, 2, r.stderr)
+            self.assertIn("BLOCKED", r.stderr)
+            payload = json.loads(r.stdout)
+            self.assertTrue(payload["memory_present"])
+            self.assertEqual(payload["memory_state"], "populated")
+            self.assertIn("Read the mapper BEFORE scoping", payload["memory_excerpt"])
+
+    def test_regression_hard_gate_unaffected_by_memory_absence(self):
+        # Constraint: a memory-less install must still run /research
+        # end-to-end with no block and no spurious warning caused by
+        # memory absence -- only the 4 PREFLIGHT_PREREQS artefacts gate.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._populate(root, [rel for rel, _ in research_helper.PREFLIGHT_PREREQS])
+            # No .devforge/memory.md written at all.
+            r = _run(
+                [
+                    "--devforge-dir", str(root / ".devforge"),
+                    "--install-root", tmp,
+                    "preflight",
+                ]
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stderr, "")
+
+
+# ---------------------------------------------------------------------------
 # Phase 0 setters.
 # ---------------------------------------------------------------------------
 

@@ -32,6 +32,7 @@ from ._state import (
 )
 from ._topic_conflicts import _compute_coverage, derive_topic_slug
 from ._validators import _die, _validate_scalar
+from _shared.memory import MEMORY_STATE_KEY, read_memory_context
 
 
 def cmd_reset_memo(args: argparse.Namespace) -> int:
@@ -75,7 +76,7 @@ def cmd_read_report(args: argparse.Namespace) -> int:
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:
-    """4-artefact hard gate. Non-zero exit 2 + BLOCKED message on missing.
+    """4-artefact hard gate + memory read. Non-zero exit 2 + BLOCKED on missing.
 
     Checks each PREFLIGHT_PREREQS path relative to --install-root for
     existence + non-empty (size > 0). On any failure, emits a single
@@ -85,6 +86,44 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     Distinct from generate_docs_helper preflight (which refreshes the
     CBM index stamp). This gate enforces that the 4-command setup chain
     is complete before /research runs.
+
+    Emits a JSON object to stdout on both branches this docstring
+    documents -- the pass (exit 0) and BLOCKED (exit 2) paths --
+    mirroring the "always emit JSON before a non-zero exit" convention
+    review_helper/grill_helper's own `preflight` verbs already use, for
+    those two branches. That convention is not universal here: the
+    pre-existing `stat()`-failure path below (an OSError mid-loop over
+    PREFLIGHT_PREREQS) exits 1 via `_die()` before reaching the memory
+    read and emits no stdout at all. That branch predates this change
+    and is untouched by it -- review_helper/grill_helper's own preflight
+    wraps every file read in `try/except OSError: pass`, a guarantee
+    this verb does not share, which is what makes their "always" airtight
+    and this one's conditional. This verb previously emitted nothing at
+    all on the success path; the JSON object is new and carries exactly:
+
+      memory_present   bool -- .devforge/memory.md exists and is readable
+      memory_excerpt   str  -- first 40 raw lines of memory.md ("" if absent)
+      memory_state     str  -- one of "absent" / "stub" / "populated"
+                               (MEMORY_STATE_KEY from _shared/memory.py)
+
+    .devforge/ is install-root-scoped even in wrapper mode, so the read is
+    keyed on --install-root (the same root PREFLIGHT_PREREQS resolves
+    against above), matching the convention every other memory-reading
+    preflight in this repo already uses -- no second root convention is
+    introduced here.
+
+    NOTE on memory_state -- a DELIBERATE divergence, not an inconsistency:
+    every other preflight in this repo that reads memory (_audit, _review,
+    _grill, _finalize, _fix, _summarize, _verify) emits ONLY
+    memory_present + memory_excerpt. This verb (and discover_helper's
+    sibling) also emits memory_state because the downstream /research
+    prose must be able to no-op cleanly when memory is absent/stub rather
+    than populated, and a later mechanical gate keys on this exact token.
+    A future session must not "harmonise" this away to match the other
+    seven preflights.
+
+    Memory absence/stub is never itself a gate failure -- only the 4
+    PREFLIGHT_PREREQS artefacts above can BLOCK this verb.
     """
     install_root = Path(args.install_root)
     missing = []  # type: List[Tuple[str, str]]
@@ -98,6 +137,14 @@ def cmd_preflight(args: argparse.Namespace) -> int:
                 missing.append((rel_path, producer))
         except OSError as err:
             return _die("preflight: stat failed on {0}: {1}".format(p, err))
+
+    mem_ctx = read_memory_context(str(install_root))
+    result = {
+        "memory_present": mem_ctx["present"],
+        "memory_excerpt": mem_ctx["excerpt"],
+        MEMORY_STATE_KEY: mem_ctx[MEMORY_STATE_KEY],
+    }
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
 
     if missing:
         sys.stderr.write(
