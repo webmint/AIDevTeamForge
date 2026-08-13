@@ -22,10 +22,9 @@ a strictly stronger precondition than a populated constitution at this pipeline
 stage.  The setup-chain EXISTENCE check still includes constitution.md (artefact
 #1 above), ensuring the command was run.
 
-NOTE: this module reads .devforge/memory.md — the live path per
-src/CLAUDE.md References block ("Memory: .devforge/memory.md").
-Do NOT change the memory path without verifying the current convention in
-src/CLAUDE.md.
+NOTE: memory.md path/read logic is centralized in _shared.memory — see that
+module for the path literal and the bounded-read shapes; do not re-introduce
+a locally hardcoded path here.
 """
 
 from __future__ import annotations
@@ -33,6 +32,8 @@ from __future__ import annotations
 import os
 import re
 from typing import Dict, List, Optional
+
+from _shared.memory import read_memory_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -192,15 +193,8 @@ def preflight_context(workspace_root, spec_path=None):
         pass
 
     # --- .devforge/memory.md ---
-    # Reads .devforge/memory.md — the live path per src/CLAUDE.md
-    # References block ("Memory: .devforge/memory.md").
-    memory_path = os.path.join(workspace_root, ".devforge", "memory.md")
-    try:
-        with open(memory_path, "r", encoding="utf-8") as fh:
-            mem_lines = fh.readlines()
-        result["memory_present"] = True
-        result["memory_excerpt"] = "".join(mem_lines[:40])
-    except OSError:
-        pass
+    mem_ctx = read_memory_context(workspace_root)
+    result["memory_present"] = mem_ctx["present"]
+    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     return result

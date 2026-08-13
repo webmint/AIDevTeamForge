@@ -175,12 +175,12 @@ Read the full file. Phase 0.1 already enforced the populate-guard check; the fil
 .devforge/lib/specify_helper record-input-read --path "constitution.md"
 ```
 
-### 1.2 `.claude/memory/MEMORY.md` — past lessons and known pitfalls
+### 1.2 `.devforge/memory.md` — past lessons and known pitfalls
 
 If the file exists, read it. Record:
 
 ```bash
-.devforge/lib/specify_helper record-input-read --path ".claude/memory/MEMORY.md"
+.devforge/lib/specify_helper record-input-read --path ".devforge/memory.md"
 ```
 
 ### 1.3 `CLAUDE.md` — project structure and commands
@@ -240,7 +240,7 @@ After every read has been recorded:
 .devforge/lib/specify_helper phase1-finalize
 ```
 
-The helper gates Phase 1 → Phase 1.5: all four mandatory base reads (`constitution.md`, `.claude/memory/MEMORY.md`, `CLAUDE.md`, `docs/architecture.md`) must be recorded. Exit 0 → advance. Exit 2 → stderr enumerates missing reads. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), perform the missing read(s) + `record-input-read` calls, then re-run `phase1-finalize`.
+The helper gates Phase 1 → Phase 1.5: all four mandatory base reads (`constitution.md`, `.devforge/memory.md`, `CLAUDE.md`, `docs/architecture.md`) must be recorded. Exit 0 → advance. Exit 2 → stderr enumerates missing reads. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), perform the missing read(s) + `record-input-read` calls, then re-run `phase1-finalize`.
 
 ## Phase 1.5 — Findings enumeration (REQUIRED INTERMEDIATE OUTPUT)
 
@@ -467,7 +467,7 @@ The per-type slot tables (helper-owned, walked in order):
 - **`feature_addition`**: `__entry__` (root component / entry files — router, store, app init) · `__similar_feature__` (most-similar existing feature via grep) · `__type_defs__` (type defs for affected entities) · `__api_ops__` (API / GraphQL ops for affected resources) · `__test_files__` (test files for affected area).
 - **`bug_fix`**: `__buggy_files__` (the buggy file(s) named in the request) · `__direct_deps__` (direct deps of buggy file) · `__direct_callers__` (direct callers via grep) · `__recent_git_log__` (recent git log on buggy file — `git log -5 -- path/to/file`).
 - **`refactor`**: `__refactored_files__` (the file(s) being refactored) · `__all_callers__` (all callers via grep) · `__all_tests__` (all tests for refactored code).
-- **`greenfield_feature`**: `constitution.md#scaffolding-guide` (Constitution Section 7) · `__framework_docs__` (framework docs via WebSearch for the feature pattern) · `.claude/memory/MEMORY.md` (prior-feature lessons) · `specs/*/discovery-report.md` (the `/devforge:discover` reference md, if Phase 1 loaded one).
+- **`greenfield_feature`**: `constitution.md#scaffolding-guide` (Constitution Section 7) · `__framework_docs__` (framework docs via WebSearch for the feature pattern) · `.devforge/memory.md` (prior-feature lessons) · `specs/*/discovery-report.md` (the `/devforge:discover` reference md, if Phase 1 loaded one).
 
 Gate:
 
@@ -494,7 +494,7 @@ Confidence calibration: 0 hits at `search_graph` alone means "no NAMED implement
 
 ### Step 4 — Cross-reference
 
-- Cross-reference findings with `.claude/memory/MEMORY.md` for known issues in this area.
+- Cross-reference findings with `.devforge/memory.md` for known issues in this area.
 - Verify docs accuracy if Phase 1 read docs files — flag discrepancies between docs and actual code as Phase 1.5 findings (re-enter Phase 1.5 to record them) before Phase 4 begins.
 - Note any patterns from the most-similar existing feature that this spec should follow.
 
@@ -928,7 +928,7 @@ After the verbatim manual-next-step block from `render-plan-handoff` lands in th
 2. **Be exhaustive on "out of scope"** — this prevents the most common problem (scope creep).
 3. **Every AC must be testable** — "improved UX" is not testable; "modal closes after successful save" is.
 4. **Reference specific files** — use `path/to/file.ts:line` format for existing code. For greenfield, reference constitution Section 7 for where files should be created.
-5. **Check MEMORY.md** — if similar work was done before, reference what went right/wrong.
+5. **Check `.devforge/memory.md`** — if similar work was done before, reference what went right/wrong.
 6. **Don't propose solutions** — the spec describes WHAT, not HOW. Solutions come in `/devforge:plan`.
 7. **Greenfield: include scaffolding needs** — if the feature requires creating directory structure, types, or foundational modules that don't exist yet, list them in `Affected Areas` with Impact = "Create new".
 8. **Verify numerical claims** — for every count, size, version number, or line number you write into the spec, verify by direct Bash enumeration before writing. If a number appears in multiple places, use the same verified value throughout. Inconsistent numbers in the same spec are a hard error — `verify-numerical-consistency` blocks the render until reconciled.

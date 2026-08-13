@@ -611,6 +611,6 @@ After the block lands in the user-facing message, end the turn with one short co
 3. **Reference existing code** — for existing codebases, always reference actual file paths and existing patterns. Don't propose new patterns when existing ones work.
 4. **Greenfield: follow the scaffolding guide** — the constitution's Section 7 defines where things go. Follow it.
 5. **Minimal supporting docs** — only create research.md, data-model.md, contracts.md if they're actually needed. Don't create empty files.
-6. **Memory check** — consult MEMORY.md for lessons about similar technical decisions.
+6. **Memory check** — consult `.devforge/memory.md` for lessons about similar technical decisions.
 7. **Keep it scannable** — tables over paragraphs, decisions over discussions.
 8. **Docs context comes from the spec** — the spec already incorporates `docs/` knowledge. Do not re-read docs; use the spec's "Current State" and "Affected Areas" sections. If the spec notes stale or missing docs, carry that forward as a plan risk.

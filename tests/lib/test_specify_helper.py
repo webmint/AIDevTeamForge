@@ -240,7 +240,7 @@ class TestSchemaConstants(unittest.TestCase):
             specify_helper.PHASE1_MANDATORY_READS,
             (
                 "constitution.md",
-                ".claude/memory/MEMORY.md",
+                ".devforge/memory.md",
                 "CLAUDE.md",
                 "docs/architecture.md",
             ),
@@ -384,7 +384,7 @@ class TestSourceOriginForPath(unittest.TestCase):
     def test_context_memory(self):
         self.assertEqual(
             specify_helper.source_origin_for_path(
-                ".claude/memory/MEMORY.md"
+                ".devforge/memory.md"
             ),
             "context",
         )
@@ -729,7 +729,7 @@ class TestRecordInputRead(unittest.TestCase):
     def test_auto_tag_context(self):
         with tempfile.TemporaryDirectory() as td:
             dev = self._setup(Path(td))
-            for path in ("constitution.md", ".claude/memory/MEMORY.md",
+            for path in ("constitution.md", ".devforge/memory.md",
                          "CLAUDE.md", "docs/architecture.md"):
                 _run([
                     "--devforge-dir", str(dev), "record-input-read",
@@ -1061,7 +1061,7 @@ class TestVerifyFindings(unittest.TestCase):
             dev = Path(td) / ".devforge"
             self._seed(dev, {
                 "constitution.md": 3,
-                ".claude/memory/MEMORY.md": 4,
+                ".devforge/memory.md": 4,
                 "CLAUDE.md": 3,
                 "docs/architecture.md": 5,
             })
@@ -1205,7 +1205,7 @@ class TestRenderFindings(unittest.TestCase):
                 "CLAUDE.md",
                 "discover/2026-05-14-x.md",
                 "research/2026-05-14-y.md",
-                ".claude/memory/MEMORY.md",
+                ".devforge/memory.md",
                 "constitution.md",
             ]
             for p in paths_in_random_order:
@@ -1228,7 +1228,7 @@ class TestRenderFindings(unittest.TestCase):
             # Locked order — every later section's heading position > prior.
             order = [
                 "constitution.md",
-                ".claude/memory/MEMORY.md",
+                ".devforge/memory.md",
                 "research/2026-05-14-y.md",
                 "discover/2026-05-14-x.md",
                 "CLAUDE.md",
@@ -2291,7 +2291,7 @@ class TestMandatoryReadsTable(unittest.TestCase):
             specify_helper.MANDATORY_READS_BY_TYPE["greenfield_feature"]
         )
         self.assertIn("constitution.md#scaffolding-guide", slots)
-        self.assertIn(".claude/memory/MEMORY.md", slots)
+        self.assertIn(".devforge/memory.md", slots)
 
     def test_greenfield_discover_slot_moved_under_specs(self):
         """68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: the discover-
@@ -4150,7 +4150,7 @@ def _build_migration_fixture_state(td_path: Path) -> Path:
 
     # Phase 1
     for path in (
-        "constitution.md", ".claude/memory/MEMORY.md",
+        "constitution.md", ".devforge/memory.md",
         "CLAUDE.md", "docs/architecture.md",
     ):
         _run([
@@ -4174,7 +4174,7 @@ def _build_migration_fixture_state(td_path: Path) -> Path:
             "--source-path", path, "--content", content,
             "--landed-in", landed,
         ])
-    for path in (".claude/memory/MEMORY.md", "CLAUDE.md"):
+    for path in (".devforge/memory.md", "CLAUDE.md"):
         _run([
             "--devforge-dir", str(dev),
             "mark-source-no-items-relevant",
@@ -4388,7 +4388,7 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
 
     # Phase 1 — include discover/ companion as auto-mode pre-seed source.
     for path in (
-        "constitution.md", ".claude/memory/MEMORY.md",
+        "constitution.md", ".devforge/memory.md",
         "CLAUDE.md", "docs/architecture.md",
         "discover/2026-05-14-scheduled-export-jobs.md",
     ):
@@ -4425,7 +4425,7 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
             "--landed-in", landed,
         ])
     for path in (
-        ".claude/memory/MEMORY.md", "CLAUDE.md",
+        ".devforge/memory.md", "CLAUDE.md",
         "docs/architecture.md",
     ):
         _run([
@@ -4494,7 +4494,7 @@ def _build_greenfield_fixture_state(td_path: Path) -> Path:
     ])
     _run([
         "--devforge-dir", str(dev), "record-mandatory-read",
-        "--read-path", ".claude/memory/MEMORY.md",
+        "--read-path", ".devforge/memory.md",
     ])
     _run([
         # 68-INTAKE-OWNS-FEATURE-DIR-PLAN.md Phase 4: the greenfield slot

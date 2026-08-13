@@ -24,10 +24,9 @@ stage.  The setup-chain EXISTENCE check still includes constitution.md (artefact
 #1 above), ensuring the command was run.
 Rationale is identical to _summarize/_preflight.py's documented omission.
 
-NOTE: this module reads .devforge/memory.md — the live path per
-src/CLAUDE.md References block ("Memory: .devforge/memory.md").
-Do NOT change the memory path without verifying the current convention in
-src/CLAUDE.md.
+NOTE: memory.md path/read logic is centralized in _shared.memory — see that
+module for the path literal and the bounded-read shapes; do not re-introduce
+a locally hardcoded path here.
 
 WIP/checkpoint detection:
   Uses the BSD-safe two-flag --grep form: each pattern passed as its own
@@ -46,6 +45,8 @@ import os
 import re
 import subprocess
 from typing import Dict, List, Optional
+
+from _shared.memory import read_memory_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -342,16 +343,9 @@ def preflight_context(workspace_root, spec_path=None, base_ref=None):
         pass
 
     # --- .devforge/memory.md ---
-    # Reads .devforge/memory.md — the live path per src/CLAUDE.md
-    # References block ("Memory: .devforge/memory.md").
-    memory_path = os.path.join(workspace_root, ".devforge", "memory.md")
-    try:
-        with open(memory_path, "r", encoding="utf-8") as fh:
-            mem_lines = fh.readlines()
-        result["memory_present"] = True
-        result["memory_excerpt"] = "".join(mem_lines[:40])
-    except OSError:
-        pass
+    mem_ctx = read_memory_context(workspace_root)
+    result["memory_present"] = mem_ctx["present"]
+    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     # --- WIP / checkpoint detection ---
     # Runs in source_root (resolved against workspace_root when relative).

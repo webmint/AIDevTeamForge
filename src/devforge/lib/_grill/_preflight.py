@@ -27,6 +27,8 @@ Feature-level artefacts checked (specific to /grill):
 import os
 from typing import Dict, List, Optional
 
+from _shared.memory import read_memory_context
+
 # ---------------------------------------------------------------------------
 # Constants (identical to _audit/_preflight.py and _review/_preflight.py —
 # must stay in sync with both)
@@ -188,17 +190,9 @@ def preflight_context(
         pass
 
     # --- .devforge/memory.md ---
-    # NOTE: the correct forge memory path is .devforge/memory.md.
-    # _review/_preflight.py carries a bug where it checks .claude/memory/MEMORY.md
-    # instead; this implementation uses the correct path.
-    memory_path = os.path.join(workspace_root, ".devforge", "memory.md")
-    try:
-        with open(memory_path, "r", encoding="utf-8") as fh:
-            mem_lines = fh.readlines()
-        result["memory_present"] = True
-        result["memory_excerpt"] = "".join(mem_lines[:40])
-    except OSError:
-        pass
+    mem_ctx = read_memory_context(workspace_root)
+    result["memory_present"] = mem_ctx["present"]
+    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     # --- Feature-level gate: spec.md + plan.md ---
     # /grill runs between /plan and /breakdown; both spec.md (/specify output)

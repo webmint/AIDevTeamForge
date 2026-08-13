@@ -1696,7 +1696,7 @@ def _register_subcommands(subparsers) -> None:
                 metavar="PATH",
                 help=(
                     "Optional file whose contents are appended to the scope "
-                    "section (constitution excerpts, MEMORY.md, recurring issues)."
+                    "section (constitution excerpts, memory.md, recurring issues)."
                 ),
             )
             sp.add_argument(

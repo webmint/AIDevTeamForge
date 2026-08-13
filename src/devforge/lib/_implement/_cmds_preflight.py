@@ -71,6 +71,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from _implement._workspace import resolve_workspace
+from _shared.memory import read_memory_digest
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -417,8 +418,7 @@ def cmd_preflight(args):
     constitution_path = root / "constitution.md"
     constitution_digest = _read_first_n_lines(constitution_path, DIGEST_LINES)
 
-    memory_path = root / ".devforge" / "memory.md"
-    memory_digest = _read_first_n_lines(memory_path, DIGEST_LINES)
+    memory_digest = read_memory_digest(str(root), n=DIGEST_LINES)
     # memory.md absence is NOT an error; null digest is valid.
 
     result = {

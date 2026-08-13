@@ -101,7 +101,7 @@ Read these in order:
 2. `plan.md` (the resolved path) — the layer map, file impact, key design decisions, and risk assessment. If Phase 0a.5 surfaced a `## Upstream plan seeds` block, that block is the authoritative seed; `plan.md` is the full source.
 3. The feature's supporting docs if present: `research.md`, `data-model.md`, `contracts.md` (same directory).
 4. `constitution.md` — architecture rules and constraints.
-5. `MEMORY.md` — past lessons about similar decompositions.
+5. `.devforge/memory.md` — past lessons about similar decompositions.
 6. `CLAUDE.md` — project structure, the `## Architecture` section, and the `## Packages` table for multi-stack projects.
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path. Claude artifact paths (`specs/`, `docs/`) remain at the workspace root.

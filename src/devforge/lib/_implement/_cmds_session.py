@@ -80,6 +80,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from _shared.memory import MEMORY_RELATIVE_PATH
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -490,7 +492,7 @@ def cmd_update_session_state(args):
 
     # --- Append to memory.md (if we have a completed task to record) ---
     if last_task_number and last_task_title:
-        memory_path = devforge_dir / "memory.md"
+        memory_path = root / MEMORY_RELATIVE_PATH
         entry = _build_memory_entry(feature, last_task_number, last_task_title)
         try:
             _append_under_section(memory_path, "## Task Outcomes", entry)

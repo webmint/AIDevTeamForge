@@ -21,6 +21,8 @@ from __future__ import annotations
 import os
 from typing import Dict, List
 
+from _shared.memory import read_memory_context
+
 # ---------------------------------------------------------------------------
 # Constants (identical to _audit/_preflight.py — must stay in sync)
 # ---------------------------------------------------------------------------
@@ -73,8 +75,8 @@ def preflight_context(workspace_root: str) -> Dict:
       framework                 str   — value of **Frameworks**: line in CLAUDE.md
       language                  str   — value of **Languages**: line in CLAUDE.md
       claude_md_present         bool  — CLAUDE.md exists
-      memory_present            bool  — .claude/memory/MEMORY.md exists
-      memory_excerpt            str   — first 40 lines of MEMORY.md (empty if absent)
+      memory_present            bool  — .devforge/memory.md exists
+      memory_excerpt            str   — first 40 lines of memory.md (empty if absent)
     """
     result = {
         "constitution_present": False,
@@ -168,14 +170,9 @@ def preflight_context(workspace_root: str) -> Dict:
     except OSError:
         pass
 
-    # --- .claude/memory/MEMORY.md ---
-    memory_path = os.path.join(workspace_root, ".claude", "memory", "MEMORY.md")
-    try:
-        with open(memory_path, "r", encoding="utf-8") as fh:
-            mem_lines = fh.readlines()
-        result["memory_present"] = True
-        result["memory_excerpt"] = "".join(mem_lines[:40])
-    except OSError:
-        pass
+    # --- .devforge/memory.md ---
+    mem_ctx = read_memory_context(workspace_root)
+    result["memory_present"] = mem_ctx["present"]
+    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     return result

@@ -545,7 +545,7 @@ def render_agent_brief(agent, references_dir, scope_block, source_root, extra_co
         scope_block:    Pre-rendered scope summary string (from render_scope_block).
         source_root:    Workspace / repo root label shown in the scope section.
         extra_context:  Optional orchestrator-supplied context (constitution /
-                        MEMORY.md excerpts, recurring issues, etc.).
+                        memory.md excerpts, recurring issues, etc.).
         finding_cap:    Maximum findings the agent should report (default: 30).
                         Substituted for the ``__FINDING_CAP__`` token in the brief.
                         Non-positive values fall back to 30.

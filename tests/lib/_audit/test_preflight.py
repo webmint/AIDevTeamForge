@@ -4,7 +4,7 @@ Coverage:
   resolve_mode — all documented argument shapes
   check_agents — 0 / partial / all agent files present
   preflight_context — no files, sentinel constitution, real constitution,
-                      CLAUDE.md source-root extraction, MEMORY.md present
+                      CLAUDE.md source-root extraction, memory.md present
 """
 
 import os
@@ -486,7 +486,7 @@ class TestPreflightContext(unittest.TestCase):
         mem_content = "\n".join(
             ["Line {0}".format(i) for i in range(60)]
         ) + "\n"
-        self._write(".claude/memory/MEMORY.md", mem_content)
+        self._write(".devforge/memory.md", mem_content)
         r = preflight_context(self.td)
         self.assertTrue(r["memory_present"])
         self.assertNotEqual(r["memory_excerpt"], "")

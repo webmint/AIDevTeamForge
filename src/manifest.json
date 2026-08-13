@@ -35,7 +35,7 @@
     "patterns": [
       "constitution.md",
       ".claude/project-config.json",
-      ".claude/memory/**",
+      ".devforge/memory.md",
       ".claude/settings.json",
       ".claude/settings.local.json",
       ".devforge/session-state.md",

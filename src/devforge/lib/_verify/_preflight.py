@@ -16,16 +16,17 @@ Setup-chain artefacts checked (same as /audit's and /review's preflight):
   3. .devforge/project-config.json present  (/configure output)
   4. .devforge/index.json present           (/generate-docs output)
 
-NOTE: this module reads .devforge/memory.md — the live path per
-src/CLAUDE.md References block ("Memory: .devforge/memory.md").
-The pre-pivot memory path is stale; do not change this without
-verifying the current convention.
+NOTE: memory.md path/read logic is centralized in _shared.memory — see that
+module for the path literal and the bounded-read shapes; do not re-introduce
+a locally hardcoded path here.
 """
 
 from __future__ import annotations
 
 import os
 from typing import Dict, List
+
+from _shared.memory import read_memory_context
 
 # ---------------------------------------------------------------------------
 # Constants (identical to _audit/_preflight.py and _review/_preflight.py —
@@ -178,15 +179,8 @@ def preflight_context(workspace_root: str) -> Dict:
         pass
 
     # --- .devforge/memory.md ---
-    # Reads .devforge/memory.md — the live path per src/CLAUDE.md
-    # References block ("Memory: .devforge/memory.md").
-    memory_path = os.path.join(workspace_root, ".devforge", "memory.md")
-    try:
-        with open(memory_path, "r", encoding="utf-8") as fh:
-            mem_lines = fh.readlines()
-        result["memory_present"] = True
-        result["memory_excerpt"] = "".join(mem_lines[:40])
-    except OSError:
-        pass
+    mem_ctx = read_memory_context(workspace_root)
+    result["memory_present"] = mem_ctx["present"]
+    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     return result

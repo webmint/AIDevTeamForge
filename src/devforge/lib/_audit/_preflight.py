@@ -5,7 +5,12 @@ No filesystem writes; no subprocess calls.
 
 resolve_mode  — parse raw $ARGUMENTS string into mode + knobs
 check_agents  — check which audit-capable agent .md files are present
-preflight_context — best-effort read of constitution.md, CLAUDE.md, MEMORY.md
+preflight_context — best-effort read of constitution.md, CLAUDE.md,
+                    .devforge/memory.md
+
+NOTE: memory.md path/read logic is centralized in _shared.memory — see that
+module for the path literal and the bounded-read shapes; do not re-introduce
+a locally hardcoded path here.
 """
 
 from __future__ import annotations
@@ -13,6 +18,8 @@ from __future__ import annotations
 import os
 import re
 from typing import Dict, List, Optional
+
+from _shared.memory import read_memory_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -306,7 +313,7 @@ def check_agents(agents_dir: str) -> Dict:
 # ---------------------------------------------------------------------------
 
 def preflight_context(workspace_root: str) -> Dict:
-    """Best-effort read of constitution.md, CLAUDE.md, and .claude/memory/MEMORY.md.
+    """Best-effort read of constitution.md, CLAUDE.md, and .devforge/memory.md.
 
     Never raises on a missing file — returns sane defaults for absent files.
     Returns a dict with keys always present:
@@ -378,15 +385,9 @@ def preflight_context(workspace_root: str) -> Dict:
     except OSError:
         pass
 
-    # --- .claude/memory/MEMORY.md ---
-    memory_path = os.path.join(workspace_root, ".claude", "memory", "MEMORY.md")
-    try:
-        with open(memory_path, "r", encoding="utf-8") as fh:
-            mem_lines = fh.readlines()
-        result["memory_present"] = True
-        excerpt_lines = mem_lines[:40]
-        result["memory_excerpt"] = "".join(excerpt_lines)
-    except OSError:
-        pass
+    # --- .devforge/memory.md ---
+    mem_ctx = read_memory_context(workspace_root)
+    result["memory_present"] = mem_ctx["present"]
+    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     return result

@@ -4,7 +4,7 @@ Coverage:
   preflight_context — all-files-absent defaults, each setup-chain artefact
                       missing individually, sentinel constitution, real
                       populated constitution, Source-Root extraction,
-                      wrapper-mode detection, MEMORY.md excerpt, and the
+                      wrapper-mode detection, memory.md excerpt, and the
                       CLI gate (exit 2 on unpopulated/missing constitution
                       or incomplete setup chain) via cmd_preflight.
 
@@ -50,7 +50,7 @@ def _make_full_install(td: str) -> None:
       CLAUDE.md                     — minimal CLAUDE.md with Source Root
       .devforge/project-config.json — /configure output stub
       .devforge/index.json          — /generate-docs output stub
-      .claude/memory/MEMORY.md      — memory file
+      .devforge/memory.md           — memory file (live path)
 
     All paths are exactly what the real commands produce (no invented names).
     """
@@ -67,7 +67,7 @@ def _make_full_install(td: str) -> None:
            json.dumps({"configure_version": 1}))
     _write(td, ".devforge/index.json",
            json.dumps({"version": 1, "packages": []}))
-    _write(td, ".claude/memory/MEMORY.md",
+    _write(td, ".devforge/memory.md",
            "- [Lesson 1](lesson_1.md)\n- [Lesson 2](lesson_2.md)\n")
 
 
@@ -375,13 +375,13 @@ class TestPreflightContext(unittest.TestCase):
         r = preflight_context(self.td)
         self.assertTrue(r["wrapper_mode"])
 
-    # --- MEMORY.md ---
+    # --- memory.md ---
 
     def test_memory_present_and_excerpt_capped_at_40_lines(self):
         mem_content = "\n".join(
             ["Line {0}".format(i) for i in range(60)]
         ) + "\n"
-        _write(self.td, ".claude/memory/MEMORY.md", mem_content)
+        _write(self.td, ".devforge/memory.md", mem_content)
         r = preflight_context(self.td)
         self.assertTrue(r["memory_present"])
         lines = r["memory_excerpt"].splitlines()

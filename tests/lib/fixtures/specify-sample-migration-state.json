@@ -10,6 +10,11 @@
   "spec_type_seeded_by_upstream": false,
   "status": "Draft",
   "design_source": "none",
+  "design_anchor": {
+    "kind": "",
+    "file": "",
+    "selectors": []
+  },
   "current_branch": "main",
   "default_branch": "main",
   "branch_decision": "create",
@@ -18,22 +23,22 @@
     {
       "path": "constitution.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:35:54Z"
+      "read_timestamp": "2026-08-13T10:02:30Z"
     },
     {
-      "path": ".claude/memory/MEMORY.md",
+      "path": ".devforge/memory.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:35:54Z"
+      "read_timestamp": "2026-08-13T10:02:30Z"
     },
     {
       "path": "CLAUDE.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:35:54Z"
+      "read_timestamp": "2026-08-13T10:02:30Z"
     },
     {
       "path": "docs/architecture.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:35:54Z"
+      "read_timestamp": "2026-08-13T10:02:30Z"
     }
   ],
   "phase1_finalized": true,
@@ -88,7 +93,7 @@
     }
   ],
   "source_no_items_relevant": {
-    ".claude/memory/MEMORY.md": true,
+    ".devforge/memory.md": true,
     "CLAUDE.md": true
   },
   "findings_finalized": true,

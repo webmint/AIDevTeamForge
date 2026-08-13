@@ -227,7 +227,7 @@ RESOLUTION_PHASE_ENUM: Tuple[str, ...] = ("plan", "breakdown")
 # Mandatory base reads — every project must have these regardless of topic.
 PHASE1_MANDATORY_READS: Tuple[str, ...] = (
     "constitution.md",
-    ".claude/memory/MEMORY.md",
+    ".devforge/memory.md",
     "CLAUDE.md",
     "docs/architecture.md",
 )
@@ -288,8 +288,8 @@ MANDATORY_READS_BY_TYPE: Dict[str, Tuple[Tuple[str, str], ...]] = {
          "Constitution Section 7 (Scaffolding Guide)"),
         ("__framework_docs__",
          "Framework docs via WebSearch for feature pattern"),
-        (".claude/memory/MEMORY.md",
-         "MEMORY.md prior-feature lessons"),
+        (".devforge/memory.md",
+         "memory.md prior-feature lessons"),
         ("specs/*/discovery-report.md",
          "/devforge:discover reference md (if Phase 1 adapter loaded one) -- "
          "68-INTAKE-OWNS-FEATURE-DIR-PLAN.md moved this inside "
@@ -306,7 +306,7 @@ MANDATORY_READS_BY_TYPE: Dict[str, Tuple[Tuple[str, str], ...]] = {
 # prefix matching, so it still only ever emits the keys listed here.
 _RENDER_SECTION_ORDER: Tuple[str, ...] = (
     "constitution.md",
-    ".claude/memory/MEMORY.md",
+    ".devforge/memory.md",
     "research/",
     "discover/",
     "CLAUDE.md",

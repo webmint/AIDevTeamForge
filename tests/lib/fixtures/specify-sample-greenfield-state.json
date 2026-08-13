@@ -10,6 +10,11 @@
   "spec_type_seeded_by_upstream": true,
   "status": "Draft",
   "design_source": "none",
+  "design_anchor": {
+    "kind": "",
+    "file": "",
+    "selectors": []
+  },
   "current_branch": "main",
   "default_branch": "main",
   "branch_decision": "create",
@@ -18,27 +23,27 @@
     {
       "path": "constitution.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:36:02Z"
+      "read_timestamp": "2026-08-13T10:02:37Z"
     },
     {
-      "path": ".claude/memory/MEMORY.md",
+      "path": ".devforge/memory.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:36:02Z"
+      "read_timestamp": "2026-08-13T10:02:37Z"
     },
     {
       "path": "CLAUDE.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:36:02Z"
+      "read_timestamp": "2026-08-13T10:02:37Z"
     },
     {
       "path": "docs/architecture.md",
       "source_origin": "context",
-      "read_timestamp": "2026-06-25T15:36:02Z"
+      "read_timestamp": "2026-08-13T10:02:37Z"
     },
     {
       "path": "discover/2026-05-14-scheduled-export-jobs.md",
       "source_origin": "discover",
-      "read_timestamp": "2026-06-25T15:36:02Z"
+      "read_timestamp": "2026-08-13T10:02:37Z"
     }
   ],
   "phase1_finalized": true,
@@ -93,7 +98,7 @@
     }
   ],
   "source_no_items_relevant": {
-    ".claude/memory/MEMORY.md": true,
+    ".devforge/memory.md": true,
     "CLAUDE.md": true,
     "docs/architecture.md": true
   },
@@ -201,13 +206,13 @@
     },
     {
       "spec_type": "greenfield_feature",
-      "read_path": ".claude/memory/MEMORY.md",
+      "read_path": ".devforge/memory.md",
       "slot_pattern": "",
       "n_a_reason": ""
     },
     {
       "spec_type": "greenfield_feature",
-      "read_path": "discover/2026-05-14-scheduled-export-jobs.md",
+      "read_path": "specs/001-scheduled-export-jobs/discovery-report.md",
       "slot_pattern": "",
       "n_a_reason": ""
     }

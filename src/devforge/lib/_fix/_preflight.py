@@ -4,9 +4,9 @@ preflight_context — read and validate the 4-command setup chain artefacts
                     and report source_root / wrapper_mode from CLAUDE.md.
 
 Mirrors _verify/_preflight.py exactly in structure and setup-chain contract.
-Reads .devforge/ paths ONLY — does NOT read .claude/memory/MEMORY.md (the
-stale path that plan-22 "finding F" flagged as a bug in _review/_preflight.py;
-that path is never reproduced here).
+Reads .devforge/ paths ONLY. memory.md path/read logic is centralized in
+_shared.memory — see that module for the path literal and the bounded-read
+shapes; do not re-introduce a locally hardcoded path here.
 
 Setup-chain artefacts checked (same 4 as /verify's and /review's preflight):
   1. constitution.md present + populated (no unpopulated sentinels)
@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import os
 from typing import Dict, List
+
+from _shared.memory import read_memory_context
 
 # ---------------------------------------------------------------------------
 # Constants — identical to _verify/_preflight.py (must stay in sync)
@@ -174,16 +176,8 @@ def preflight_context(workspace_root):
         pass
 
     # --- .devforge/memory.md ---
-    # Reads .devforge/memory.md — the live path per src/CLAUDE.md References
-    # block ("Memory: .devforge/memory.md").
-    # DO NOT change to .claude/memory/MEMORY.md (plan-22 finding F).
-    memory_path = os.path.join(workspace_root, ".devforge", "memory.md")
-    try:
-        with open(memory_path, "r", encoding="utf-8") as fh:
-            mem_lines = fh.readlines()
-        result["memory_present"] = True
-        result["memory_excerpt"] = "".join(mem_lines[:40])
-    except OSError:
-        pass
+    mem_ctx = read_memory_context(workspace_root)
+    result["memory_present"] = mem_ctx["present"]
+    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     return result
