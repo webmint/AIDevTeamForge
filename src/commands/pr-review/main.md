@@ -26,12 +26,13 @@ Usage: `/devforge:pr-review $pr_number` — e.g. `/devforge:pr-review 304`. The 
 
 ## Overview
 
-The command orchestrates 11 helper verbs in fixed order, interleaving four LLM-side responsibilities:
+The command orchestrates 12 helper verbs in fixed order, interleaving five LLM-side responsibilities:
 
 1. Acting on `ensure-cbm-index`'s `mcp_tool_hint` to refresh the CBM graph when stale or absent.
 2. Filling unfilled blast-radius probe specs via `mcp__codebase-memory-mcp__trace_path` after Phase 3.
 3. Dispatching `cavecrew-reviewer` via the Task tool after Phase 6, parsing its findings, and appending them to `state.findings`. The orchestrator also fills `state.drift.coverage_matrix` + `state.drift.scope_creep_files` from cavecrew's scope-drift analysis at the same step.
 4. Surfacing cost estimates + confidentiality reminders to the reviewer before any spend-heavy operation runs.
+5. Branching on Phase 0's `memory_state` and carrying the `memory_excerpt` entries that bear on this diff into the Phase 6.5 cavecrew dispatch prompt.
 
 The four output artefacts (per PR) live under `.devforge/pr-reviews/<PR#>/`:
 
@@ -106,6 +107,21 @@ Helper performs a pure-filesystem scan and emits JSON with `tier` (one of `full`
 - **`full`** → "Forge tier: full (constitute.json + constitution.md + concern docs). Phase 4 bundle will include every overlay source."
 - **`partial`** → "Forge tier: partial (at least one of constitute.json or constitution.md present, but not the full set). Phase 4 bundle will include what exists."
 - **`none`** → "Forge tier: none (no forge overlay detected on this target). Phase 4 bundle will be constitution-less; reviewer dispatch falls back to PR-only context."
+
+**Memory read.** The overlay this phase surveys also carries `.devforge/memory.md`, the persistent cross-session lessons file. Read it here, while the overlay is being surveyed and long before any finding is formed:
+
+```bash
+.devforge/lib/pr_review_helper read-memory
+```
+
+The verb takes no arguments and always exits 0. It writes a JSON object to stdout carrying `memory_state`, `memory_excerpt` (the first 40 raw lines of `.devforge/memory.md`), and `memory_present`. Capture that stdout and branch on `memory_state`:
+
+- `absent` or `stub` → no-op. Say nothing to the reviewer about memory, raise no warning, add no step. A memory file that is missing, or still the stub the installer ships, records no lessons yet; on a fresh install that is the correct state, not a fault to remedy.
+- `populated` → read `memory_excerpt` and hold the entries that bear on the area this PR touches. They are carried into the Phase 6.5 cavecrew dispatch, which is where findings are formed.
+
+`memory_excerpt` is the file's first 40 raw lines, not the whole file — an entry's absence from it means "not in the first 40 lines", never "never recorded".
+
+**Honesty bound.** A carried memory entry is an UNVERIFIED prior-session assertion, not evidence about this PR: it is a lead to check against the diff, never a finding and never grounds for a review comment on its own. A past session wrote it locally, and the code it describes may have changed since — or the entry may have been wrong when it was written. The diff under review is the PR author's code, and a stale local lesson repeated to that author as a defect is a false review comment. Every finding still comes from Phase 2's heuristics or Phase 6.5's cavecrew pass, grounded in the diff.
 
 Continue to Phase 1 regardless of tier — `none` is not a hard stop, just a signal that the brief will be thinner.
 
@@ -217,6 +233,8 @@ Stdout is a summary JSON with keys `brief_path`, `brief_size_chars`, `sections_i
 ### Phase 6.5 — Dispatch cavecrew-reviewer + append findings (LLM-side)
 
 Read `brief.md` from `.devforge/pr-reviews/$pr_number/brief.md` in full. Then dispatch `cavecrew-reviewer` via the Task tool with the brief contents as the agent's prompt. Brief framing (encoded in the brief's `Reviewer instructions` section by `dispatch-review`): the PR author is unaware of forge standards; flag slop + drift + blast; cite source per finding (constitution / overlay / plan / ADR / smells-heuristic / blast-data); skip nits unless meaning-changing.
+
+When Phase 0's `memory_state` was `populated`, append the entries you held from `memory_excerpt` to that dispatch prompt, labelled as prior-session leads to check against this diff — not as findings, and not as claims about the author's code. They are helper stdout, not part of the helper-assembled `brief.md`, so the dispatch prompt is the only place they can reach cavecrew. When `memory_state` was `absent` or `stub`, append nothing and say nothing about memory.
 
 After cavecrew returns, parse its findings. Each finding has the schema `{severity, location, category, evidence, fix_hint, source_heuristic}` — declared in the brief's `Reviewer instructions` section and locked by the helper's `_dispatch.py`. The orchestrator's job is to:
 

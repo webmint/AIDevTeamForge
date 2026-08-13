@@ -101,8 +101,23 @@ Read these in order:
 2. `plan.md` (the resolved path) — the layer map, file impact, key design decisions, and risk assessment. If Phase 0a.5 surfaced a `## Upstream plan seeds` block, that block is the authoritative seed; `plan.md` is the full source.
 3. The feature's supporting docs if present: `research.md`, `data-model.md`, `contracts.md` (same directory).
 4. `constitution.md` — architecture rules and constraints.
-5. `.devforge/memory.md` — past lessons about similar decompositions.
+5. `.devforge/memory.md` — past lessons about similar decompositions. Read it through the **Memory check** step below rather than by opening the file directly.
 6. `CLAUDE.md` — project structure, the `## Architecture` section, and the `## Packages` table for multi-stack projects.
+
+**Memory check.** Read item 5's lessons file through the helper:
+
+```bash
+.devforge/lib/breakdown_helper read-memory
+```
+
+The verb takes no arguments and always exits 0. It writes a JSON object to stdout carrying `memory_state`, `memory_excerpt` (the first 40 raw lines of `.devforge/memory.md`), and `memory_present`. Capture that stdout and branch on `memory_state`:
+
+- `absent` or `stub` → no-op. Say nothing to the user about memory, raise no warning, add no step. A memory file that is missing, or still the stub the installer ships, records no lessons yet; on a new project that is the correct state, not a fault to remedy.
+- `populated` → read `memory_excerpt` and pick out the entries bearing on how a feature like this one was split before — a task boundary that proved wrong, an ordering that had to be redone, a contract that was missed. Carry them into Phase 1's file analysis and into Phase 2, where the draft task set is built and the architect validates it; include the bearing entries inline in that architect brief, since they are helper stdout rather than one of the files the brief's path list carries. An entry that surfaces after Phase 2 has fixed the task boundaries is too late to change them.
+
+`memory_excerpt` is the file's first 40 raw lines, not the whole file — an entry's absence from it means "not in the first 40 lines", never "never recorded".
+
+**Honesty bound.** A carried memory entry is an UNVERIFIED prior-session assertion, not evidence for this decomposition: it is a constraint to respect and a candidate to check against the plan and the code, never grounds on its own for splitting, bundling, or ordering a task. A past session wrote it, and the code it describes may have changed since — or the entry may have been wrong when it was written.
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path. Claude artifact paths (`specs/`, `docs/`) remain at the workspace root.
 

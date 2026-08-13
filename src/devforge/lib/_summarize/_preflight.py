@@ -22,9 +22,15 @@ a strictly stronger precondition than a populated constitution at this pipeline
 stage.  The setup-chain EXISTENCE check still includes constitution.md (artefact
 #1 above), ensuring the command was run.
 
-NOTE: memory.md path/read logic is centralized in _shared.memory — see that
-module for the path literal and the bounded-read shapes; do not re-introduce
-a locally hardcoded path here.
+NOTE: /summarize is classified N/A in the framework's per-command memory
+disposition table — it is pure synthesis over artefacts other commands
+produced (renders no verdict, dispatches no agent, consumes only feature
+artefacts). Global project lessons are not a feature artefact, so this
+module deliberately does NOT read the persistent memory file and carries
+no memory-related field in its result dict. Do not re-introduce a memory
+read here — the shared reader other (READS-classified) command preflights
+use lives in a sibling package under the framework's shared helper
+subpackage.
 """
 
 from __future__ import annotations
@@ -32,8 +38,6 @@ from __future__ import annotations
 import os
 import re
 from typing import Dict, List, Optional
-
-from _shared.memory import read_memory_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -97,8 +101,6 @@ def preflight_context(workspace_root, spec_path=None):
       framework                 str   — value of **Frameworks**: line in CLAUDE.md
       language                  str   — value of **Languages**: line in CLAUDE.md
       claude_md_present         bool  — CLAUDE.md exists
-      memory_present            bool  — .devforge/memory.md exists
-      memory_excerpt            str   — first 40 lines of memory.md (empty if absent)
     """
     result = {
         "setup_chain_ok": False,
@@ -112,8 +114,6 @@ def preflight_context(workspace_root, spec_path=None):
         "framework": "",
         "language": "",
         "claude_md_present": False,
-        "memory_present": False,
-        "memory_excerpt": "",
     }  # type: Dict
 
     # --- Check all setup-chain artefacts ---
@@ -191,10 +191,5 @@ def preflight_context(workspace_root, spec_path=None):
                         result["language"] = val
     except OSError:
         pass
-
-    # --- .devforge/memory.md ---
-    mem_ctx = read_memory_context(workspace_root)
-    result["memory_present"] = mem_ctx["present"]
-    result["memory_excerpt"] = mem_ctx["excerpt"]
 
     return result

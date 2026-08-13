@@ -3518,6 +3518,45 @@ def cmd_render_implement_handoff(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: read-memory
+# ---------------------------------------------------------------------------
+
+
+def cmd_read_memory(args: argparse.Namespace) -> int:
+    """Read .devforge/memory.md under cwd and emit a JSON object.
+
+    Workspace root is cwd -- the convention every other breakdown_helper
+    subcommand already uses (no --workspace-root/--install-root flag exists
+    in this file). .devforge/ is install-root-scoped, and cwd IS the install
+    root for /devforge:breakdown, wrapper mode included.
+
+    Emits exactly:
+      memory_present   bool -- .devforge/memory.md exists and is readable
+      memory_excerpt   str  -- first 40 raw lines of memory.md ("" if absent)
+      memory_state     str  -- one of "absent" / "stub" / "populated"
+        (MEMORY_STATE_KEY from _shared/memory.py)
+
+    Absent/stub is never a fault -- a memory-less project is the correct
+    state on a fresh install. Takes no arguments and always exits 0;
+    read_memory_context() never raises on a missing or unreadable file.
+    """
+    _lib_dir = Path(__file__).resolve().parent
+    if str(_lib_dir) not in sys.path:
+        sys.path.insert(0, str(_lib_dir))
+
+    from _shared.memory import MEMORY_STATE_KEY, read_memory_context
+
+    mem_ctx = read_memory_context(str(Path.cwd()))
+    result = {
+        "memory_present": mem_ctx["present"],
+        "memory_excerpt": mem_ctx["excerpt"],
+        MEMORY_STATE_KEY: mem_ctx[MEMORY_STATE_KEY],
+    }
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
 
@@ -3838,6 +3877,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("plan_path", help="Path to plan.md.")
     sp.set_defaults(func=cmd_render_implement_handoff)
+
+    sp = sub.add_parser(
+        "read-memory",
+        help=(
+            "Read .devforge/memory.md under CWD and emit JSON: memory_present, "
+            "memory_excerpt (first 40 raw lines), memory_state "
+            "(absent/stub/populated). Takes no arguments; always exits 0. "
+            "Absent/stub is the correct state on a fresh install, not a fault."
+        ),
+    )
+    sp.set_defaults(func=cmd_read_memory)
 
     return parser
 

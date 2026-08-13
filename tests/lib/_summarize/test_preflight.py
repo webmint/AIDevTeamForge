@@ -4,9 +4,8 @@ Coverage:
   preflight_context — all-files-absent defaults, each setup-chain artefact
                       missing individually, real populated spec in both
                       Complete/not-Complete states, source_root / wrapper_mode
-                      extraction, memory.md excerpt, and the CLI gate (exit 2
-                      on missing setup chain, exit 3 on not-Complete spec)
-                      via cmd_preflight.
+                      extraction, and the CLI gate (exit 2 on missing setup
+                      chain, exit 3 on not-Complete spec) via cmd_preflight.
 
 Real-producer round-trip:
   - A real CLAUDE.md built the same way tests/lib/_verify/test_preflight.py
@@ -19,9 +18,12 @@ Real-producer round-trip:
     copy of that fixture with no tasks/ dir (so the task cross-check passes).
     NOT hand-authored.
 
-CRITICAL: the preflight reads .devforge/memory.md (the live path per
-src/CLAUDE.md References block), NOT .claude/memory/MEMORY.md.
-Tests explicitly verify this invariant.
+NOTE: /summarize is N/A in the framework's per-command memory disposition
+table (pure synthesis over other commands' artefacts) — this module carries
+no memory read and no memory-related field. A source-scan guard below still
+confirms the module does not reference the stale .claude/memory path (a
+distinct, still-live defect class this file guards against independently of
+whether the module reads memory at all).
 
 NOTE: /summarize deliberately OMITS the constitution-populated sentinel guard
 (_UNPOPULATED_SENTINELS) that /verify and /review carry.  These tests confirm
@@ -74,7 +76,6 @@ def _make_full_install(td):
       CLAUDE.md                     — minimal CLAUDE.md with Source Root
       .devforge/project-config.json — /configure output stub
       .devforge/index.json          — /generate-docs output stub
-      .devforge/memory.md           — memory file (live path, NOT .claude/memory/)
     """
     _write(td, "constitution.md",
            "# Architecture Rules\n\n1. Use dependency injection.\n2. No globals.\n")
@@ -89,8 +90,6 @@ def _make_full_install(td):
            json.dumps({"configure_version": 1}))
     _write(td, ".devforge/index.json",
            json.dumps({"version": 1, "packages": []}))
-    _write(td, ".devforge/memory.md",
-           "- [Lesson 1](lesson_1.md)\n- [Lesson 2](lesson_2.md)\n")
 
 
 def _make_complete_spec(td):
@@ -190,8 +189,6 @@ class TestPreflightContext(unittest.TestCase):
         self.assertEqual(r["framework"], "")
         self.assertEqual(r["language"], "")
         self.assertFalse(r["claude_md_present"])
-        self.assertFalse(r["memory_present"])
-        self.assertEqual(r["memory_excerpt"], "")
 
     def test_no_files_spec_gate_defaults(self):
         r = preflight_context(self.td)
@@ -215,7 +212,7 @@ class TestPreflightContext(unittest.TestCase):
             "spec_path", "spec_status", "spec_complete",
             "source_root", "wrapper_mode",
             "project_type", "framework", "language",
-            "claude_md_present", "memory_present", "memory_excerpt",
+            "claude_md_present",
         }
         self.assertEqual(set(r.keys()), expected_keys)
 
@@ -400,49 +397,6 @@ class TestPreflightContext(unittest.TestCase):
         self.assertFalse(r["setup_chain_ok"])
         self.assertIn("/devforge:generate-docs", r["missing_artefacts"])
 
-    # --- Memory: .devforge/memory.md (live path) ---
-
-    def test_full_install_memory_present(self):
-        """Reads .devforge/memory.md — the live path."""
-        _make_full_install(self.td)
-        r = preflight_context(self.td)
-        self.assertTrue(r["memory_present"])
-        self.assertIn("Lesson 1", r["memory_excerpt"])
-
-    def test_devforge_memory_md_is_read(self):
-        """Explicit test: .devforge/memory.md present → memory_present=True."""
-        _write(self.td, ".devforge/memory.md", "- Session note.\n")
-        r = preflight_context(self.td)
-        self.assertTrue(r["memory_present"])
-        self.assertIn("Session note", r["memory_excerpt"])
-
-    def test_stale_claude_memory_path_is_NOT_consulted(self):
-        """Only .devforge/memory.md is the live path.
-
-        The stale path (.claude/memory/MEMORY.md) must NOT be read even if
-        present.
-        """
-        _write(self.td, ".claude/memory/MEMORY.md",
-               "- Stale memory entry.\n")
-        r = preflight_context(self.td)
-        self.assertFalse(r["memory_present"])
-        self.assertEqual(r["memory_excerpt"], "")
-
-    def test_memory_excerpt_capped_at_40_lines(self):
-        mem_content = "\n".join(
-            ["Line {0}".format(i) for i in range(60)]
-        ) + "\n"
-        _write(self.td, ".devforge/memory.md", mem_content)
-        r = preflight_context(self.td)
-        self.assertTrue(r["memory_present"])
-        lines = r["memory_excerpt"].splitlines()
-        self.assertLessEqual(len(lines), 40)
-
-    def test_memory_absent(self):
-        r = preflight_context(self.td)
-        self.assertFalse(r["memory_present"])
-        self.assertEqual(r["memory_excerpt"], "")
-
     # --- CLAUDE.md: source_root + wrapper-mode ---
 
     def test_source_root_extraction_project_root(self):
@@ -487,17 +441,13 @@ class TestPreflightContext(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestMemoryPathInvariant(unittest.TestCase):
-    """Verify the preflight module reads .devforge/memory.md, not .claude/memory."""
+    """Anti-regression guards on the module source.
 
-    def test_preflight_module_contains_devforge_memory_path(self):
-        """The source of _preflight.py must reference .devforge/memory.md."""
-        preflight_path = (
-            _REPO_ROOT / "src" / "devforge" / "lib" / "_summarize" / "_preflight.py"
-        )
-        with open(str(preflight_path), "r", encoding="utf-8") as fh:
-            source = fh.read()
-        self.assertIn(".devforge/memory.md", source,
-                      "preflight must read .devforge/memory.md")
+    /summarize is N/A in the memory disposition table and does not read
+    memory at all (see the module docstring), but this class still guards
+    against the stale .claude/memory path ever being reintroduced — a
+    distinct defect class independent of whether memory is read.
+    """
 
     def test_preflight_module_does_not_contain_stale_claude_memory_path(self):
         """The source of _preflight.py must NOT reference .claude/memory/MEMORY.md."""

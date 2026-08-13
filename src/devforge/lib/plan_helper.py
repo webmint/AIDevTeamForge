@@ -114,6 +114,19 @@ Subcommands:
       unreadable/malformed handoff CONTENT (including a handoff missing
       breakdown_seeds) degrades to silent no-op, not an error.
 
+  read-memory
+      Read .devforge/memory.md and emit a JSON object to stdout:
+        memory_present   bool -- .devforge/memory.md exists and is readable
+        memory_excerpt   str  -- first 40 raw lines ("" if absent)
+        memory_state     str  -- one of "absent" / "stub" / "populated"
+      Workspace root is cwd -- plan_helper resolves every path off cwd
+      already (no --workspace-root/--install-root flag exists anywhere in
+      this file); .devforge/ is install-root-scoped, and cwd IS the install
+      root for every /devforge:plan invocation, wrapper mode included, so
+      no second root convention is introduced here.
+      Absent/stub is the correct state on a fresh install, not a fault to
+      report -- takes no arguments and always exits 0.
+
 Exit codes:
   0 — success
   1 — reserved for I/O failures (write errors)
@@ -2260,6 +2273,47 @@ def cmd_stakes_hint(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: read-memory
+# ---------------------------------------------------------------------------
+
+
+def cmd_read_memory(args: argparse.Namespace) -> int:
+    """Read .devforge/memory.md under cwd and emit a JSON object.
+
+    Workspace root is cwd -- the same convention every other plan_helper
+    subcommand already uses (there is no --workspace-root/--install-root
+    flag anywhere in this file; .devforge/ is install-root-scoped, and cwd
+    IS the install root for /devforge:plan, wrapper mode included).
+
+    Emits exactly:
+      memory_present   bool -- .devforge/memory.md exists and is readable
+      memory_excerpt   str  -- first 40 raw lines of memory.md ("" if absent)
+      memory_state     str  -- one of "absent" / "stub" / "populated"
+        (MEMORY_STATE_KEY from _shared/memory.py)
+
+    Absent/stub is never a fault -- a memory-less project is the correct
+    state on a fresh install. This verb takes no arguments and always
+    exits 0; read_memory_context() itself never raises on a missing or
+    unreadable file (see _shared/memory.py).
+    """
+    _lib_dir = Path(__file__).resolve().parent
+    if str(_lib_dir) not in sys.path:
+        sys.path.insert(0, str(_lib_dir))
+
+    from _shared.memory import MEMORY_STATE_KEY, read_memory_context
+
+    workspace_root = str(Path.cwd())
+    mem_ctx = read_memory_context(workspace_root)
+    result = {
+        "memory_present": mem_ctx["present"],
+        "memory_excerpt": mem_ctx["excerpt"],
+        MEMORY_STATE_KEY: mem_ctx[MEMORY_STATE_KEY],
+    }
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
 
@@ -2401,6 +2455,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to plan-handoff.json (specs/NNN-slug/plan-handoff.json).",
     )
     sp.set_defaults(func=cmd_stakes_hint)
+
+    sp = sub.add_parser(
+        "read-memory",
+        help=(
+            "Read .devforge/memory.md under CWD and emit JSON: memory_present, "
+            "memory_excerpt (first 40 raw lines), memory_state "
+            "(absent/stub/populated). Takes no arguments; always exits 0. "
+            "Absent/stub is the correct state on a fresh install, not a fault."
+        ),
+    )
+    sp.set_defaults(func=cmd_read_memory)
 
     return parser
 

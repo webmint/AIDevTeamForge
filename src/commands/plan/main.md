@@ -137,6 +137,21 @@ Exit 2 means the spec is malformed (neither Date nor Status frontmatter line). E
 
 **Source Root**: If `CLAUDE.md` specifies a Source Root other than `.`, resolve all source file references relative to that path.
 
+**Memory check.** Read the project's persistent cross-session lessons file before the codebase research below and before any design decision is drafted:
+
+```bash
+.devforge/lib/plan_helper read-memory
+```
+
+The verb takes no arguments and always exits 0. It writes a JSON object to stdout carrying `memory_state`, `memory_excerpt` (the first 40 raw lines of `.devforge/memory.md`), and `memory_present`. Capture that stdout and branch on `memory_state`:
+
+- `absent` or `stub` → no-op. Say nothing to the user about memory, raise no warning, add no step. A memory file that is missing, or still the stub the installer ships, records no lessons yet; on a new project that is the correct state, not a fault to remedy.
+- `populated` → read `memory_excerpt` and pick out the entries bearing on this feature's technical area. Carry them into Step 1's codebase research (an entry can name a file or a pattern worth reading), Step 2's signal scan, and — the reason for reading them at this phase rather than later — the Phase 1.3 architect brief, where the Key Design Decisions are actually made. Include the bearing entries in that brief inline: they are helper stdout, not one of the files the brief's path list carries, so nothing else in the brief conveys them. An entry that surfaces after Phase 1.3 has settled a decision is too late to change it.
+
+`memory_excerpt` is the file's first 40 raw lines, not the whole file — an entry's absence from it means "not in the first 40 lines", never "never recorded".
+
+**Honesty bound.** A carried memory entry is an UNVERIFIED prior-session assertion, not evidence for this plan: it is a constraint to respect and a candidate to check against the code, never a finding and never grounds for a design decision on its own. A past session wrote it, and the code it describes may have changed since — or the entry may have been wrong when it was written. It licenses nothing here: a Key Design Decision's `Why` column rests on the spec, the constitution, or the code read in Step 1, never on the memory entry alone.
+
 ### Step 1: Codebase Research (always)
 
 - Read relevant source files to understand current patterns.
@@ -611,6 +626,6 @@ After the block lands in the user-facing message, end the turn with one short co
 3. **Reference existing code** — for existing codebases, always reference actual file paths and existing patterns. Don't propose new patterns when existing ones work.
 4. **Greenfield: follow the scaffolding guide** — the constitution's Section 7 defines where things go. Follow it.
 5. **Minimal supporting docs** — only create research.md, data-model.md, contracts.md if they're actually needed. Don't create empty files.
-6. **Memory check** — consult `.devforge/memory.md` for lessons about similar technical decisions.
+6. **Memory check** — Phase 0's `read-memory` step is this command's only memory read; when `memory_state` is `populated`, its lessons ride into the Phase 1.3 architect brief. Do not add a second orchestrator-side read of `.devforge/memory.md` elsewhere in this command.
 7. **Keep it scannable** — tables over paragraphs, decisions over discussions.
 8. **Docs context comes from the spec** — the spec already incorporates `docs/` knowledge. Do not re-read docs; use the spec's "Current State" and "Affected Areas" sections. If the spec notes stale or missing docs, carry that forward as a plan risk.

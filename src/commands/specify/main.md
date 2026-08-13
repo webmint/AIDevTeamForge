@@ -183,7 +183,14 @@ If the file exists, read it. Record the slot either way — this call is uncondi
 .devforge/lib/specify_helper record-input-read --path ".devforge/memory.md"
 ```
 
-For this one path the helper does more than store the string it was handed: it probes the file itself and records the state it observed — one of `absent` / `stub` / `populated`. No CLI flag carries that value; the caller cannot supply it. All three states pass Phase 1 finalize. `stub` is the ordinary reading on a fresh install, which ships that stub with nothing recorded in it yet, and `absent` is equally fine — neither is a fault to fix or report. A recorded state establishes only that the helper consulted the file: it is not evidence that the file held content, and not evidence that you read or absorbed anything in it. Reading the content for context when it is present stays your job, unchanged.
+For this one path the helper does more than store the string it was handed: it probes the file itself and records the state it observed — one of `absent` / `stub` / `populated`, stored under the key `memory_state`. No CLI flag carries that value; the caller cannot supply it. All three states pass Phase 1 finalize. `stub` is the ordinary reading on a fresh install, which ships that stub with nothing recorded in it yet, and `absent` is equally fine — neither is a fault to fix or report. A recorded state establishes only that the helper consulted the file: it is not evidence that the file held content, and not evidence that you read or absorbed anything in it. Reading the content for context when it is present stays your job, unchanged.
+
+Branch on the recorded `memory_state` for what that content feeds:
+
+- `absent` or `stub` → nothing has been recorded yet, so this source carries nothing forward. Say nothing to the user about memory, raise no warning, add no step; take §1.5's `mark-source-no-items-relevant` path for this source. A memory file that is missing, or still the stub the installer ships, is the correct state on a new project, not a fault to remedy.
+- `populated` → pick out the entries naming a known pitfall in the area this feature touches — the topic this phase opened with, plus the packages and concerns §1.4 surfaced — and carry each one into §1.5 as its own `record-finding` bullet. Enumerating them there is the point: a pitfall that stays in working memory is one Phase 2 can silently design past, and Phase 4's acceptance criteria are written from the §1.5 findings, not from recall.
+
+**Honesty bound.** A carried memory entry is an UNVERIFIED prior-session assertion, not a fact about the code as it stands: it is a pitfall to check for and a constraint to respect, never an acceptance criterion on its own and never grounds for a claim about current behavior. A past session wrote it, and the code it describes may have changed since — or the entry may have been wrong when it was written. Re-ground what it points at against the actual code (§1.4's docs reads and the codebase-memory-mcp graph) before any of it shapes an acceptance criterion.
 
 ### 1.3 `CLAUDE.md` — project structure and commands
 

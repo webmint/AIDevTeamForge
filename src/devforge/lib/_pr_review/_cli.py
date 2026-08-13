@@ -533,6 +533,48 @@ def cmd_append_to_replay_corpus(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# read-memory handler.
+# ---------------------------------------------------------------------------
+
+
+def cmd_read_memory(args: argparse.Namespace) -> int:
+    """Read .devforge/memory.md and emit a JSON object to stdout.
+
+    Workspace root is derived from --devforge-dir (the convention every
+    other handler in this module uses via
+    `getattr(args, "devforge_dir", ".devforge")`), NOT from cwd -- unlike
+    plan_helper/breakdown_helper, which expose no such flag. Do not
+    "unify" these; each file follows its own established resolution.
+
+    Emits exactly:
+      memory_present   bool -- .devforge/memory.md exists and is readable
+      memory_excerpt   str  -- first 40 raw lines of memory.md ("" if absent)
+      memory_state     str  -- one of "absent" / "stub" / "populated"
+        (MEMORY_STATE_KEY from _shared/memory.py)
+
+    Absent/stub is never a fault -- a memory-less project is the correct
+    state on a fresh install. Takes no extra arguments and always exits 0;
+    read_memory_context() never raises on a missing or unreadable file.
+    """
+    _lib_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _lib_dir not in sys.path:
+        sys.path.insert(0, _lib_dir)
+
+    from _shared.memory import MEMORY_STATE_KEY, read_memory_context
+
+    devforge_dir = getattr(args, "devforge_dir", ".devforge")
+    workspace_root = os.path.dirname(os.path.abspath(devforge_dir))
+    mem_ctx = read_memory_context(workspace_root)
+    result = {
+        "memory_present": mem_ctx["present"],
+        "memory_excerpt": mem_ctx["excerpt"],
+        MEMORY_STATE_KEY: mem_ctx[MEMORY_STATE_KEY],
+    }
+    sys.stdout.write(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Parser construction.
 # ---------------------------------------------------------------------------
 
@@ -593,6 +635,13 @@ _SUBCOMMAND_REGISTRY = [
         "append-to-replay-corpus",
         "Append this PR review to the replay corpus for regression tests (Step 9).",
         cmd_append_to_replay_corpus,
+    ),
+    (
+        "read-memory",
+        "Read .devforge/memory.md and emit JSON: memory_present, memory_excerpt "
+        "(first 40 raw lines), memory_state (absent/stub/populated). Always exits 0; "
+        "absent/stub is the correct state on a fresh install, not a fault.",
+        cmd_read_memory,
     ),
 ]
 
