@@ -1255,7 +1255,23 @@ class StateConcurrencyTests(_EnvIsolationMixin, unittest.TestCase):
 
 
 class ExtractPackageScriptsTests(unittest.TestCase):
-    """`extract-package-scripts` is read-only — no DEVFORGE_DIR needed.
+    """`extract-package-scripts` reads a package manifest and needs no
+    PRE-EXISTING devforge state — but it is not write-free.
+
+    Every subcommand appends an entry to
+    `<DEVFORGE_DIR>/.generate-docs-trace.log`, and `DEVFORGE_DIR` falls
+    back to the helper module's own parent when unset — which, running
+    from this repo, is `src/devforge/`.  This class previously POPPED
+    `DEVFORGE_DIR` on the premise that a read-only subcommand did not need
+    it, so every one of these tests wrote a trace entry into the framework's
+    own source tree.  `install.sh` then aborted on its stray-user-state
+    guard (`error: stray user-state file in framework source`), which meant
+    running the test suite made `install.sh` refuse to start.
+
+    So each test now points `DEVFORGE_DIR` at a throwaway directory rather
+    than unsetting it.  That keeps the original intent — no real devforge
+    state is required — while the trace lands somewhere disposable.  Do NOT
+    "restore" the pop: unset is what sends the write into `src/`.
 
     We point each test at a `tempfile.TemporaryDirectory` and write a
     minimal manifest into it, then invoke the subcommand with `--path
@@ -1265,17 +1281,24 @@ class ExtractPackageScriptsTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.pkg_dir = Path(self._tmp.name)
+        self._state_tmp = tempfile.TemporaryDirectory(prefix="devforge-state-")
+        self.state_dir = Path(self._state_tmp.name)
 
     def tearDown(self):
         self._tmp.cleanup()
+        self._state_tmp.cleanup()
+
+    def _env(self):
+        """Env with DEVFORGE_DIR pointed at a throwaway dir (never unset)."""
+        env = os.environ.copy()
+        env["DEVFORGE_DIR"] = str(self.state_dir)
+        return env
 
     def _run(self, *extra):
-        env = os.environ.copy()
-        env.pop("DEVFORGE_DIR", None)
         return subprocess.run(
             [sys.executable, str(_HELPER_PY), "extract-package-scripts",
              "--path", str(self.pkg_dir), *extra],
-            env=env,
+            env=self._env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -1286,12 +1309,10 @@ class ExtractPackageScriptsTests(unittest.TestCase):
         self.assertIn(b"no manifest found", proc.stderr)
 
     def test_invalid_path_errors(self):
-        env = os.environ.copy()
-        env.pop("DEVFORGE_DIR", None)
         proc = subprocess.run(
             [sys.executable, str(_HELPER_PY), "extract-package-scripts",
              "--path", "/nonexistent/path/here"],
-            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=self._env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         self.assertEqual(proc.returncode, 2)
 

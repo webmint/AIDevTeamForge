@@ -288,24 +288,53 @@ mkdir -p "$TARGET_DIR/.devforge"
 # later — but the `cp -R` immediately below is NOT similarly guarded (it
 # predates this preservation logic) and WOULD abort a `set -e` script if
 # it ever failed.
-_mem_tgt="$TARGET_DIR/.devforge/memory.md"
-_mem_backup="$TARGET_DIR/.devforge/.memory.md.preserve"
-if [ -f "$_mem_backup" ]; then
-  : # a prior interrupted run left a pending restore — reuse it, never overwrite it
-elif [ -f "$_mem_tgt" ]; then
-  cp -p "$_mem_tgt" "$_mem_backup" 2>/dev/null || _mem_backup=""
-fi
+# The same reasoning applies to every framework-shipped file the TARGET
+# then populates with real state. Two qualify today and both ship as inert
+# stubs in src/devforge/, so neither can join the stray-user-state loop
+# above (that loop asserts a file must NOT exist in the framework source
+# tree; these must, so a fresh install receives them):
+#   memory.md           — the 13-line lessons stub; the target's copy holds
+#                         accumulated cross-session lessons.
+#   project-config.json — a 35-key ALL-NULL stub; /devforge:configure fills
+#                         it with PACKAGE_STACKS, WORKSPACE_MODE and every
+#                         build/lint/test command. Overwriting it silently
+#                         breaks scope-aware verification, wrapper-mode
+#                         detection and every PACKAGE_STACKS-dependent
+#                         command until the user notices and re-runs
+#                         /devforge:configure. update.sh can rebuild it from
+#                         configure.yaml; install.sh has no such path, which
+#                         is exactly why it must not clobber it here.
+# Add a filename to _PRESERVE and it is protected — do NOT copy-paste the
+# block.
+_PRESERVE="memory.md project-config.json"
+_preserved=""
+for _pf in $_PRESERVE; do
+  _pf_tgt="$TARGET_DIR/.devforge/$_pf"
+  _pf_backup="$TARGET_DIR/.devforge/.$_pf.preserve"
+  if [ -f "$_pf_backup" ]; then
+    : # a prior interrupted run left a pending restore — reuse it, never overwrite it
+    _preserved="$_preserved $_pf"
+  elif [ -f "$_pf_tgt" ]; then
+    if cp -p "$_pf_tgt" "$_pf_backup" 2>/dev/null; then
+      _preserved="$_preserved $_pf"
+    fi
+  fi
+done
 
 cp -R "$TEMPLATE_DIR/src/devforge/." "$TARGET_DIR/.devforge/"
 
-if [ -n "$_mem_backup" ] && [ -f "$_mem_backup" ]; then
-  if cp -pf "$_mem_backup" "$_mem_tgt" 2>/dev/null; then
-    rm -f "$_mem_backup"
-    echo "  existing .devforge/memory.md detected — preserved (not overwritten)"
-  else
-    echo "  warning: could not restore existing memory.md from backup at $_mem_backup" >&2
+for _pf in $_preserved; do
+  _pf_tgt="$TARGET_DIR/.devforge/$_pf"
+  _pf_backup="$TARGET_DIR/.devforge/.$_pf.preserve"
+  if [ -f "$_pf_backup" ]; then
+    if cp -pf "$_pf_backup" "$_pf_tgt" 2>/dev/null; then
+      rm -f "$_pf_backup"
+      echo "  existing .devforge/$_pf detected — preserved (not overwritten)"
+    else
+      echo "  warning: could not restore existing $_pf from backup at $_pf_backup" >&2
+    fi
   fi
-fi
+done
 
 # ── .gitignore: ensure .devforge/ runtime-state rules present ──────────────
 # install.sh does NOT run the manifest mergeFiles machinery (that lives only in
