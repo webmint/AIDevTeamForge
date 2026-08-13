@@ -177,11 +177,13 @@ Read the full file. Phase 0.1 already enforced the populate-guard check; the fil
 
 ### 1.2 `.devforge/memory.md` — past lessons and known pitfalls
 
-If the file exists, read it. Record:
+If the file exists, read it. Record the slot either way — this call is unconditional, since Phase 1 finalize counts `.devforge/memory.md` among its four mandatory base reads whether or not the file is there:
 
 ```bash
 .devforge/lib/specify_helper record-input-read --path ".devforge/memory.md"
 ```
+
+For this one path the helper does more than store the string it was handed: it probes the file itself and records the state it observed — one of `absent` / `stub` / `populated`. No CLI flag carries that value; the caller cannot supply it. All three states pass Phase 1 finalize. `stub` is the ordinary reading on a fresh install, which ships that stub with nothing recorded in it yet, and `absent` is equally fine — neither is a fault to fix or report. A recorded state establishes only that the helper consulted the file: it is not evidence that the file held content, and not evidence that you read or absorbed anything in it. Reading the content for context when it is present stays your job, unchanged.
 
 ### 1.3 `CLAUDE.md` — project structure and commands
 
@@ -240,7 +242,7 @@ After every read has been recorded:
 .devforge/lib/specify_helper phase1-finalize
 ```
 
-The helper gates Phase 1 → Phase 1.5: all four mandatory base reads (`constitution.md`, `.devforge/memory.md`, `CLAUDE.md`, `docs/architecture.md`) must be recorded. Exit 0 → advance. Exit 2 → stderr enumerates missing reads. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), perform the missing read(s) + `record-input-read` calls, then re-run `phase1-finalize`.
+The helper gates Phase 1 → Phase 1.5: all four mandatory base reads (`constitution.md`, `.devforge/memory.md`, `CLAUDE.md`, `docs/architecture.md`) must be recorded, and the `.devforge/memory.md` record must additionally carry the state §1.2's probe observed. Exit 0 → advance. Exit 2 → stderr enumerates the shortfall: reads that were never recorded, or — with all four paths already present — a memory record carrying no probed state at all, which means a read was claimed that the probe never performed (a hand-edited state file, or one written before this check existed). The state's VALUE never gates: `absent` and `stub` pass exactly like `populated`, and only the absence of an observed state is rejected. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), perform the missing read(s) + `record-input-read` calls, then re-run `phase1-finalize`.
 
 ## Phase 1.5 — Findings enumeration (REQUIRED INTERMEDIATE OUTPUT)
 

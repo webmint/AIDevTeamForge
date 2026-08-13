@@ -25,6 +25,7 @@ LIB = ROOT / "src" / "devforge" / "lib"
 sys.path.insert(0, str(LIB))
 
 import specify_helper  # noqa: E402
+from _shared.memory import MEMORY_RELATIVE_PATH  # noqa: E402
 
 HELPER = LIB / "specify_helper.py"
 
@@ -836,6 +837,262 @@ class TestPhase1Finalize(unittest.TestCase):
                 "--devforge-dir", str(dev), "record-input-read",
                 "--path", "research/2026-05-14-bug.md",
             ])
+            r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+
+# ---------------------------------------------------------------------------
+# record-input-read / phase1-finalize -- memory probe gate.
+#
+# Before this fix, record-input-read recorded a bare path string with no
+# existence/state check, and phase1-finalize only checked path presence --
+# so a claimed read of a memory file that never existed always passed
+# (verified: the recorded path used to be ".claude/memory/MEMORY.md", which
+# exists in no consumer install, and the gate went green on it every time).
+# These tests exercise the real record-input-read -> phase1-finalize
+# producer/consumer pair via subprocess -- round-tripped through the real
+# helper, not hand-authored state JSON -- EXCEPT the three tests that
+# deliberately synthesise a pre-fix-shaped / tampered record on purpose,
+# which is the one place that discipline does not apply:
+#   - test_legacy_record_without_probe_rejected
+#   - test_tampered_memory_state_value_rejected
+#   - test_re_recording_after_rejection_fixes_it (its SETUP fabricates the
+#     same pre-fix record before exercising the real recovery flow)
+# Naming the three explicitly, rather than a bare count, so the next test
+# added to this class cannot silently invalidate an un-enumerated number.
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryProbeGate(unittest.TestCase):
+    _MEMORY_PATH = ".devforge/memory.md"
+
+    def _record_other_three(self, dev: Path) -> None:
+        for p in specify_helper.PHASE1_MANDATORY_READS:
+            if p == self._MEMORY_PATH:
+                continue
+            r = _run([
+                "--devforge-dir", str(dev),
+                "record-input-read", "--path", p,
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+    def _memory_entry(self, dev: Path) -> dict:
+        state = json.loads((dev / "specify-state.json").read_text())
+        return next(
+            e for e in state["input_reads"] if e["path"] == self._MEMORY_PATH
+        )
+
+    def test_memory_relative_path_matches_mandatory_read_literal(self):
+        """Pins the CLASS of bug, not just the one instance already fixed.
+
+        cmd_record_input_read's probe trigger (`_shared.memory`'s
+        MEMORY_RELATIVE_PATH) and cmd_phase1_finalize's mandatory-reads
+        gate (`_specify._schema.PHASE1_MANDATORY_READS`, re-exported here
+        as specify_helper.PHASE1_MANDATORY_READS) are two independent
+        representations of the SAME path, defined in two different
+        modules. If they ever diverge again -- e.g. one becomes
+        os.path.join-derived (platform-dependent) while the other stays a
+        forward-slash literal, as happened once already on native Windows
+        -- no single `--path` value can satisfy both gates at once, and
+        phase1-finalize exits 2 unconditionally. This test fails loudly on
+        that divergence instead of only being caught on a Windows machine.
+        """
+        self.assertEqual(MEMORY_RELATIVE_PATH, self._MEMORY_PATH)
+        self.assertIn(MEMORY_RELATIVE_PATH, specify_helper.PHASE1_MANDATORY_READS)
+        self.assertNotIn("\\", MEMORY_RELATIVE_PATH)
+
+    def test_absent_memory_passes_gate(self):
+        """No memory.md anywhere -> probed "absent" -> gate PASSES.
+
+        A fresh/wrong-root install with no memory file at all is a
+        legitimate state, not a violation -- nothing has been learned yet.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            self._record_other_three(dev)
+            r = _run([
+                "--devforge-dir", str(dev),
+                "record-input-read", "--path", self._MEMORY_PATH,
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._memory_entry(dev)["memory_state"], "absent")
+
+            r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertTrue(state["phase1_finalized"])
+
+    def test_shipped_stub_memory_passes_gate_as_stub(self):
+        """The REAL installer stub (src/devforge/memory.md bytes) -> "stub"
+        -> gate PASSES.
+
+        install.sh ships this exact stub into every consumer install, so
+        this is the near-universal case: present, zero real lessons yet.
+        A blanket existence requirement would be near-vacuous against it
+        (see _shared/memory.py's module docstring) -- this test proves the
+        gate does NOT regress to that.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            dev = root / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            self._record_other_three(dev)
+            stub_bytes = (ROOT / "src" / "devforge" / "memory.md").read_bytes()
+            (dev / "memory.md").write_bytes(stub_bytes)
+
+            r = _run([
+                "--devforge-dir", str(dev),
+                "record-input-read", "--path", self._MEMORY_PATH,
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._memory_entry(dev)["memory_state"], "stub")
+
+            r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertTrue(state["phase1_finalized"])
+
+    def test_populated_memory_passes_gate_as_populated(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            dev = root / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            self._record_other_three(dev)
+            dev.mkdir(parents=True, exist_ok=True)
+            (dev / "memory.md").write_text(
+                "# Project Memory\n\n"
+                "## Known Pitfalls\n"
+                "- Retrying the flaky webhook without backoff caused a "
+                "thundering herd in prod.\n",
+                encoding="utf-8",
+            )
+
+            r = _run([
+                "--devforge-dir", str(dev),
+                "record-input-read", "--path", self._MEMORY_PATH,
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(
+                self._memory_entry(dev)["memory_state"], "populated",
+            )
+
+            r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertTrue(state["phase1_finalized"])
+
+    def test_other_three_reads_keep_current_shape(self):
+        """Regression: constitution.md/CLAUDE.md/docs/architecture.md
+        records are byte-shape-unchanged -- no memory_state key leaks onto
+        a non-memory record."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            self._record_other_three(dev)
+            state = json.loads((dev / "specify-state.json").read_text())
+            self.assertEqual(len(state["input_reads"]), 3)
+            for entry in state["input_reads"]:
+                self.assertEqual(
+                    set(entry.keys()),
+                    {"path", "source_origin", "read_timestamp"},
+                )
+
+    def test_legacy_record_without_probe_rejected(self):
+        """Back-compat decision: REJECT, do not grandfather.
+
+        A state file whose memory record predates this fix (bare path +
+        source_origin + read_timestamp, no memory_state key) is the exact
+        shape of the bug this phase closes: it claims a read the probe
+        never performed. phase1-finalize must reject it (exit 2) rather
+        than silently pass it -- tolerating it would keep the gate green,
+        for any /devforge:specify run already in flight when the fix
+        ships, on precisely the condition this phase exists to catch.
+
+        This is also the test that proves the gate CAN fail: before this
+        phase, no input to phase1-finalize made it exit non-zero once all
+        4 paths were present.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            self._record_other_three(dev)
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            # Deliberately hand-crafted to the PRE-FIX shape -- the one
+            # place this file does not round-trip through the real
+            # producer, because the point is to simulate a record from
+            # before the probe existed.
+            state["input_reads"].append({
+                "path": self._MEMORY_PATH,
+                "source_origin": "context",
+                "read_timestamp": "2020-01-01T00:00:00Z",
+            })
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
+            self.assertEqual(r.returncode, 2)
+            self.assertIn(self._MEMORY_PATH, r.stderr)
+            self.assertIn("memory_state", r.stderr)
+            state = json.loads(state_path.read_text())
+            self.assertFalse(state["phase1_finalized"])
+
+    def test_tampered_memory_state_value_rejected(self):
+        """A memory_state value outside the 3-state enum is rejected too --
+        not just an absent key. Guards against a hand-edit that supplies
+        SOME string in the field without it having come from the probe."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            self._record_other_three(dev)
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            state["input_reads"].append({
+                "path": self._MEMORY_PATH,
+                "source_origin": "context",
+                "read_timestamp": "2020-01-01T00:00:00Z",
+                "memory_state": "definitely-populated-trust-me",
+            })
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
+            self.assertEqual(r.returncode, 2)
+            state = json.loads(state_path.read_text())
+            self.assertFalse(state["phase1_finalized"])
+
+    def test_re_recording_after_rejection_fixes_it(self):
+        """Recovery path: re-running record-input-read (the prescribed
+        fix in the stderr message) replaces the bad record with a
+        probed one and the gate then passes.
+
+        Setup fabricates the same pre-fix-shaped record used by
+        test_legacy_record_without_probe_rejected -- it is NOT a
+        purely-real-CLI test end to end; only the recovery half (the
+        re-recording and the second phase1-finalize) exercises the real
+        producer/consumer pair."""
+        with tempfile.TemporaryDirectory() as td:
+            dev = Path(td) / ".devforge"
+            _run(["--devforge-dir", str(dev), "reset-state"])
+            self._record_other_three(dev)
+            state_path = dev / "specify-state.json"
+            state = json.loads(state_path.read_text())
+            state["input_reads"].append({
+                "path": self._MEMORY_PATH,
+                "source_origin": "context",
+                "read_timestamp": "2020-01-01T00:00:00Z",
+            })
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
+            self.assertEqual(r.returncode, 2)
+
+            r = _run([
+                "--devforge-dir", str(dev),
+                "record-input-read", "--path", self._MEMORY_PATH,
+            ])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self._memory_entry(dev)["memory_state"], "absent")
+
             r = _run(["--devforge-dir", str(dev), "phase1-finalize"])
             self.assertEqual(r.returncode, 0, r.stderr)
 

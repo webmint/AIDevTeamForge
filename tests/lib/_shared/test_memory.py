@@ -89,18 +89,43 @@ def _write(root, relpath, content):
 
 class TestMemoryPath(unittest.TestCase):
     def test_joins_relative_path_onto_root(self):
+        # Expected value built via MEMORY_RELATIVE_PATH (memory_path()'s own
+        # join input), NOT via a separately-reconstructed 3-piece
+        # os.path.join -- reconstructing "root", ".devforge", "memory.md"
+        # piecewise and MEMORY_RELATIVE_PATH's now-hardcoded forward-slash
+        # literal are joined via different code paths and can diverge on a
+        # backslash-separator platform (os.path.join(root, ".devforge/memory.md")
+        # yields a MIXED-separator string there, distinct from
+        # os.path.join(root, ".devforge", "memory.md")'s pure-backslash one).
+        # This test's job is "memory_path() joins root onto
+        # MEMORY_RELATIVE_PATH", not "MEMORY_RELATIVE_PATH looks like a
+        # 3-piece join" -- that invariant is pinned separately below.
         self.assertEqual(
             memory_path("/work/install"),
-            os.path.join("/work/install", ".devforge", "memory.md"),
+            os.path.join("/work/install", MEMORY_RELATIVE_PATH),
         )
 
-    def test_relative_path_constant_shape(self):
-        self.assertEqual(MEMORY_RELATIVE_PATH, os.path.join(".devforge", "memory.md"))
+    def test_relative_path_constant_is_forward_slash_literal(self):
+        # Regression pin (not just an instance check): MEMORY_RELATIVE_PATH
+        # must be a hardcoded forward-slash literal, matching the
+        # forward-slash convention every other path literal in this
+        # framework uses -- NOT os.path.join(".devforge", "memory.md"),
+        # which is platform-dependent (backslash-joined on native Windows).
+        # At least one consumer (_specify/_cmds_phase01.py's
+        # cmd_record_input_read) does an EXACT STRING COMPARISON against
+        # this constant, which a platform-derived value cannot satisfy on
+        # every platform at once. See also
+        # tests/lib/test_specify_helper.py's
+        # test_memory_relative_path_matches_mandatory_read_literal, which
+        # pins the cross-module half of this same invariant (this constant
+        # vs. _specify's PHASE1_MANDATORY_READS entry).
+        self.assertEqual(MEMORY_RELATIVE_PATH, ".devforge/memory.md")
+        self.assertNotIn("\\", MEMORY_RELATIVE_PATH)
 
     def test_relative_workspace_root(self):
         self.assertEqual(
             memory_path("relative/root"),
-            os.path.join("relative/root", ".devforge", "memory.md"),
+            os.path.join("relative/root", MEMORY_RELATIVE_PATH),
         )
 
 

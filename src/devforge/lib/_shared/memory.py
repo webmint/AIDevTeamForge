@@ -114,7 +114,20 @@ from typing import List, Optional
 # a workspace_root (the install root -- .devforge/ always lives there, even
 # in wrapper mode, since it is install-root-scoped runtime state). This is
 # the ONLY place this literal should live once callers are re-pointed here.
-MEMORY_RELATIVE_PATH = os.path.join(".devforge", "memory.md")
+#
+# Hardcoded forward-slash literal -- NOT os.path.join(".devforge", "memory.md").
+# Every other path literal in this framework (command specs, schema constants
+# like _specify/_schema.py's PHASE1_MANDATORY_READS, storage-rules.md, ...)
+# uses the forward-slash convention, and at least one consumer of this
+# constant does an EXACT STRING COMPARISON against it (not just a path join)
+# to detect the memory-file slot. os.path.join is platform-dependent --
+# on native Windows it would silently produce ".devforge\\memory.md", which
+# no longer equals the forward-slash literal every comparison site expects.
+# A pure join consumer (memory_path() below, or a pathlib Path / os.path.join
+# caller) tolerates either separator, so this change is behavior-preserving
+# for those; an exact-string-equality consumer is not, which is exactly why
+# the literal must be pinned rather than platform-derived.
+MEMORY_RELATIVE_PATH = ".devforge/memory.md"
 
 
 def memory_path(workspace_root):

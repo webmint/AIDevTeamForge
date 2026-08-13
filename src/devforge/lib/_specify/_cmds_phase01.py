@@ -33,6 +33,12 @@ from ._topic import (
     source_origin_for_path,
 )
 from ._validators import _die, _utc_timestamp, _validate_enum, _validate_scalar
+from _shared.memory import (  # type: ignore[import]
+    MEMORY_RELATIVE_PATH,
+    MEMORY_STATE_ENUM,
+    MEMORY_STATE_KEY,
+    probe_memory_state,
+)
 
 
 def cmd_reset_state(args: argparse.Namespace) -> int:
@@ -112,29 +118,56 @@ def cmd_record_input_read(args: argparse.Namespace) -> int:
     """Record one Phase 1 input read; auto-tag source_origin from path.
 
     Idempotent: re-recording the same path overwrites the prior entry.
+
+    When `path` is the persistent-memory path (MEMORY_RELATIVE_PATH), the
+    helper PROBES the file itself via probe_memory_state() and records the
+    OBSERVED three-state result under MEMORY_STATE_KEY. This is a value the
+    caller cannot supply -- there is no CLI flag for it -- because the
+    entire point is that the recorded state is a fact the helper produced
+    by touching the filesystem, not an assertion an LLM caller could pass
+    without having read anything. cmd_phase1_finalize below relies on this
+    field's presence to distinguish "declared absent/stub" (fine) from
+    "claimed a read that never happened" (rejected). Every other path
+    keeps the record's existing 3-key shape unchanged.
     """
     try:
         path = _validate_scalar(args.path, "record-input-read.path")
     except ValueError as err:
         return _die(str(err), code=2)
     origin = source_origin_for_path(path)
+    entry: Dict[str, Any] = {
+        "path": path,
+        "source_origin": origin,
+        "read_timestamp": _utc_timestamp(),
+    }
+    if path == MEMORY_RELATIVE_PATH:
+        workspace_root = Path(args.devforge_dir).resolve().parent
+        entry[MEMORY_STATE_KEY] = probe_memory_state(str(workspace_root))
     try:
         with _state_transaction(args.devforge_dir) as state:
             state["input_reads"] = [
                 r for r in state["input_reads"] if r.get("path") != path
             ]
-            state["input_reads"].append({
-                "path": path,
-                "source_origin": origin,
-                "read_timestamp": _utc_timestamp(),
-            })
+            state["input_reads"].append(entry)
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-input-read: {0}".format(err))
     return 0
 
 
 def cmd_phase1_finalize(args: argparse.Namespace) -> int:
-    """Gate Phase 1 → Phase 1.5. All 4 mandatory base reads required."""
+    """Gate Phase 1 → Phase 1.5. All 4 mandatory base reads required.
+
+    The memory slot (MEMORY_RELATIVE_PATH) carries one extra requirement
+    on top of mere presence: its record must also carry a
+    probe-produced MEMORY_STATE_KEY value. A record with the path but no
+    (or an invalid) state value means record-input-read never actually
+    probed the file for it -- e.g. a specify-state.json written before
+    this check existed, or any other way a bare path landed in
+    input_reads without going through the probe. absent and stub are
+    both LEGITIMATE observed states (most fresh installs ship the stub,
+    zero lessons learned yet) and pass exactly like populated does --
+    only the ABSENCE of an observed state is rejected.
+    """
     try:
         with _state_transaction(args.devforge_dir) as state:
             read_paths = {r.get("path") for r in state["input_reads"]}
@@ -148,6 +181,34 @@ def cmd_phase1_finalize(args: argparse.Namespace) -> int:
                 for m in missing:
                     sys.stderr.write("  - {0}\n".format(m))
                 return 2
+
+            memory_record = next(
+                (
+                    r for r in state["input_reads"]
+                    if r.get("path") == MEMORY_RELATIVE_PATH
+                ),
+                None,
+            )
+            memory_state = (memory_record or {}).get(MEMORY_STATE_KEY)
+            if memory_state not in MEMORY_STATE_ENUM:
+                sys.stderr.write(
+                    "phase1-finalize: memory record carries no "
+                    "probe-produced state:\n"
+                )
+                sys.stderr.write(
+                    "  - {0}: no valid {1!r} recorded (claimed a read "
+                    "the probe never performed)\n".format(
+                        MEMORY_RELATIVE_PATH, MEMORY_STATE_KEY,
+                    )
+                )
+                sys.stderr.write(
+                    "  Fix: re-run `record-input-read --path {0}` so "
+                    "the helper probes the file itself -- a hand-edited "
+                    "or pre-upgrade state record cannot satisfy this "
+                    "gate.\n".format(MEMORY_RELATIVE_PATH)
+                )
+                return 2
+
             state["phase1_finalized"] = True
     except (OSError, json.JSONDecodeError) as err:
         return _die("phase1-finalize: {0}".format(err))
