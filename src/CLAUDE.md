@@ -292,7 +292,7 @@ At the start of each session, read `.devforge/session-state.md` if it exists. It
 This file is:
 - **Fixed-size** — always fully overwritten, never appended, max ~40 lines
 - **A sliding window** — only tracks the last 3 tasks' modifications and last 3 decisions
-- **Not a history log** — history lives in task completion notes (`specs/`) and `MEMORY.md`
+- **Not a history log** — history lives in task completion notes (`specs/`) and `.devforge/memory.md`
 - **Updated automatically** by `/devforge:implement` (Phase 7)
 
 If context is compacted or a new session starts, session-state.md ensures the next `/devforge:implement` can bootstrap without re-discovering state.

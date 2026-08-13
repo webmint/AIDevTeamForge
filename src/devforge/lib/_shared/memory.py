@@ -152,12 +152,14 @@ MEMORY_STATE_ENUM = (MEMORY_STATE_ABSENT, MEMORY_STATE_STUB, MEMORY_STATE_POPULA
 
 # Canonical key/token this value is carried under. This name is designed to
 # be the stable key that downstream command specs and a maintainer-side gate
-# will key on -- treat it as a stable public name, not an implementation
-# detail, even though nothing keys on it yet.
+# keys on -- treat it as a stable public name, not an implementation
+# detail. Live consumers: scripts/lib/memory_lane.py (the maintainer
+# coverage gate scans for this exact token), the /plan, /breakdown and
+# /pr-review read-memory verbs, and the /research + /discover preflights.
 MEMORY_STATE_KEY = "memory_state"
 
 # Matches a line that is a whole-line HTML comment, e.g.
-#   <!-- Populated during constitute -- records WHY decisions were made -->
+#   <!-- Populated as decisions are made -- records WHY, not just what -->
 _HTML_COMMENT_RE = re.compile(r"^<!--.*-->$")
 
 
