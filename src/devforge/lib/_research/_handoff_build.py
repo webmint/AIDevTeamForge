@@ -193,6 +193,34 @@ def _build_value_production_sites(vps_rows):
     return result
 
 
+def _build_supply_changing_commits(raw):
+    # type: (object) -> Optional[List[handoff_schema.SupplyChangingCommit]]
+    """Map a report.literal_archaeology row's supply_changing_commits value
+    to Optional[List[SupplyChangingCommit]] (plan 73 Phase 1), preserving
+    the three-state distinction end to end:
+
+      - `raw` is None (key absent from the row, OR present with a JSON
+        `null` value -- report.get() cannot and need not tell these apart,
+        since both mean "the widened sweep was not run") -> returns None.
+      - `raw` is `[]` -> returns `[]` ("the sweep ran, found nothing").
+      - `raw` is a non-empty list of {sha, subject} dicts (as stored by
+        cmd_record_literal_archaeology, already shape-validated at set
+        time) -> returns the matching list of SupplyChangingCommit rows.
+
+    Collapsing None into [] here would destroy the distinction the field
+    exists to carry -- do not "simplify" this to `raw or []`.
+    """
+    if raw is None:
+        return None
+    return [
+        handoff_schema.SupplyChangingCommit(
+            sha=commit.get("sha") or "",
+            subject=commit.get("subject") or "",
+        )
+        for commit in raw
+    ]
+
+
 def _build_literal_archaeology(la_rows):
     # type: (List[dict]) -> List[handoff_schema.LiteralArchaeology]
     """Map report.literal_archaeology rows to LiteralArchaeology dataclass list.
@@ -203,6 +231,14 @@ def _build_literal_archaeology(la_rows):
     arg is unambiguously fix-layer. A freshly-recorded row always carries
     "use" (the CLI arg is required), so `.get("use") or "fix-layer"` is a
     defensive fallback, not the normal path.
+
+    supply_changing_commits (plan 73 Phase 1) is mapped via
+    _build_supply_changing_commits, which preserves None distinctly from
+    `[]` -- see that function's docstring. A row that predates this field
+    (recorded before cmd_record_literal_archaeology gained
+    --supply-changing-commits) has no such key, so `.get(...)` returns
+    None -- the correct back-compat reading ("this row's sweep status was
+    never even askable").
     """
     result = []
     for row in la_rows:
@@ -214,6 +250,9 @@ def _build_literal_archaeology(la_rows):
             commit_subject=row.get("commit_subject") or "",
             intent=row.get("intent") or "",
             use=row.get("use") or "fix-layer",
+            supply_changing_commits=_build_supply_changing_commits(
+                row.get("supply_changing_commits")
+            ),
         ))
     return result
 

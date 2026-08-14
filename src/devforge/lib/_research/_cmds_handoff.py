@@ -318,6 +318,24 @@ def cmd_append_outcome(args):
         has_production_site_check=has_production_site_check,
     )
 
+    # Normalize on store: lowercase the sha before it reaches schema
+    # validation / is written to handoff.json. Git itself never emits
+    # uppercase hex, but the stronger reason is that a sha is an IDENTITY
+    # field -- accepting both cases and storing verbatim would make
+    # "ABCDEF1" and "abcdef1" two distinct strings for the same commit,
+    # and anything comparing/deduping on this value would treat them as
+    # different commits. Canonicalizing here matches
+    # handoff_schema._COMMIT_SHA_RE (lowercase-only), so a mixed-case
+    # value no longer passes this setter and then fails schema
+    # validation at a disconnected downstream step (the twin of the
+    # supply_changing_commits sha fix in
+    # _validators.py:_validate_supply_changing_commits_json and the
+    # literal-archaeology introduced_by fix in
+    # _cmds_dataflow.py:cmd_record_literal_archaeology).
+    confirmed_commit_sha = args.confirmed_commit_sha
+    if confirmed_commit_sha is not None:
+        confirmed_commit_sha = confirmed_commit_sha.lower()
+
     # Build outcome dict.
     confirmed_date = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     outcome_dict = {
@@ -327,7 +345,7 @@ def cmd_append_outcome(args):
         "actual_fix_path": args.actual_fix_path,
         "delta_from_recommendation": args.delta_from_recommendation,
         "confirmed_date": confirmed_date,
-        "confirmed_commit_sha": args.confirmed_commit_sha,
+        "confirmed_commit_sha": confirmed_commit_sha,
         "confidence_grade": confidence_grade,
     }
 

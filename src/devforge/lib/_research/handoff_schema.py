@@ -577,6 +577,34 @@ class ValueProductionSite:
 
 
 @dataclass
+class SupplyChangingCommit:
+    """One commit that changed HOW a literal's value is SUPPLIED (a prop
+    removed from a parent, a default relocated, a flag stripped from a
+    caller) -- found by the plan-73-Phase-1 widened sweep over
+    `git log <introducing-sha>..HEAD` on the literal's file AND its
+    already-enumerated inbound callers. This dataclass is only the
+    CARRIER for that sweep's output; the sweep itself is orchestrator
+    prose in a later step, not built here.
+
+    sha / subject are validated the same way LiteralArchaeology's own
+    introduced_by / commit_subject are: sha is a 7-40 char hex commit SHA,
+    subject is a non-empty one-line commit subject.
+    """
+
+    sha: str
+    subject: str
+
+    def __post_init__(self):
+        _require_nonempty(self.sha, "SupplyChangingCommit.sha")
+        if not _COMMIT_SHA_RE.match(self.sha):
+            raise ValueError(
+                f"SupplyChangingCommit.sha must be a 7-40 char hex commit SHA, "
+                f"got {self.sha!r}"
+            )
+        _require_nonempty(self.subject, "SupplyChangingCommit.subject")
+
+
+@dataclass
 class LiteralArchaeology:
     """V3 Patch 8 — git-archaeology record for one hardcoded literal proposed for
     replacement, OR (plan 73 D2) cited as evidence for a scope call.
@@ -594,6 +622,26 @@ class LiteralArchaeology:
     field existed is unambiguously "fix-layer" -- that is the back-compat
     default. See PlanSeeds._validate_cross_field for how `use` scopes the
     escalation-cite requirement.
+
+    supply_changing_commits (plan 73 Phase 1, the widened-window sweep;
+    appended LAST, after `use`, so a handoff.json predating this field
+    deserializes unchanged) is a SEARCH-STEP carrier,
+    not a gate: this field's presence, absence, or content MUST NOT be
+    validated as a requirement anywhere (no __post_init__ raise keyed on
+    it beyond shape-checking the type of a value that IS supplied; no
+    finalize-handoff exit code keyed on it; no verify check numbered or
+    otherwise). Its THREE states are load-bearing and must stay
+    distinguishable end to end:
+      - None  -- the widened sweep was NOT RUN for this literal.
+      - []    -- the sweep RAN and found nothing since introduced_by.
+      - [SupplyChangingCommit, ...] -- the sweep ran and found these.
+    This deliberately mirrors EvidenceLanes' None-vs-False reasoning
+    elsewhere in this module (see that class's docstring): collapsing
+    None into [] would destroy the distinction between "never looked"
+    and "looked, found nothing" that this field exists to preserve. DO
+    NOT default this to `field(default_factory=list)` -- that collapses
+    the not-run state into the found-nothing state and defeats the
+    field's entire purpose.
     """
 
     literal: str
@@ -603,6 +651,7 @@ class LiteralArchaeology:
     commit_subject: str
     intent: str            # one of _VALID_LITERAL_INTENT
     use: str = "fix-layer"  # one of _VALID_LITERAL_ARCHAEOLOGY_USE
+    supply_changing_commits: Optional[List["SupplyChangingCommit"]] = None
 
     def __post_init__(self):
         _require_nonempty(self.literal, "LiteralArchaeology.literal")
@@ -629,6 +678,24 @@ class LiteralArchaeology:
         _require_nonempty(self.commit_subject, "LiteralArchaeology.commit_subject")
         _require_in_enum(self.intent, _VALID_LITERAL_INTENT, "LiteralArchaeology.intent")
         _require_in_enum(self.use, _VALID_LITERAL_ARCHAEOLOGY_USE, "LiteralArchaeology.use")
+        # supply_changing_commits (plan 73 Phase 1): SHAPE-only check of a
+        # value that IS supplied -- None is always valid (sweep not run) and
+        # is deliberately NOT coerced to []. This is not a requiredness gate
+        # (nothing here raises on None or on an empty list); it only rejects
+        # a malformed non-None value (wrong container type, or an element
+        # that is not a SupplyChangingCommit).
+        if self.supply_changing_commits is not None:
+            if not isinstance(self.supply_changing_commits, list):
+                raise ValueError(
+                    "LiteralArchaeology.supply_changing_commits must be a list or "
+                    f"None, got {type(self.supply_changing_commits).__name__}"
+                )
+            for commit in self.supply_changing_commits:
+                if not isinstance(commit, SupplyChangingCommit):
+                    raise ValueError(
+                        "LiteralArchaeology.supply_changing_commits elements must be "
+                        f"SupplyChangingCommit, got {type(commit).__name__}"
+                    )
 
 
 # ---------------------------------------------------------------------------

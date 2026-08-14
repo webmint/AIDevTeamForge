@@ -108,6 +108,13 @@ def _run(argv, cwd=None):
     )
 
 
+# Sentinel distinguishing "kwarg not passed" from "kwarg passed as None" in
+# test helper wrappers below (plan 73 Phase 1's supply_changing_commits
+# tests need this: the CLI flag's OMISSION is itself a meaningful state,
+# not interchangeable with passing an empty/None value).
+_UNSET = object()
+
+
 # ---------------------------------------------------------------------------
 # Schemas + plumbing.
 # ---------------------------------------------------------------------------
@@ -7471,6 +7478,37 @@ class TestRecordLiteralArchaeology(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    def test_record_literal_archaeology_normalizes_mixed_case_introduced_by(self):
+        """--introduced-by with mixed-case hex digits is ACCEPTED (unlike
+        the non-hex/too-short cases above) and the STORED value is
+        lowercased -- a sha is an identity field, so storing both cases
+        verbatim would make 'BD47A12' and 'bd47a12' look like two
+        different commits to any later comparison/dedupe."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, introduced_by="BD47A12")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            rows = data.get("literal_archaeology", [])
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["introduced_by"], "bd47a12")
+        finally:
+            tmp.cleanup()
+
+    def test_record_literal_archaeology_already_lowercase_introduced_by_unchanged(self):
+        """An already-lowercase --introduced-by is stored byte-identical
+        (the normalization is a no-op on input that is already
+        canonical)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, introduced_by="bd47a12")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            rows = data.get("literal_archaeology", [])
+            self.assertEqual(rows[0]["introduced_by"], "bd47a12")
+        finally:
+            tmp.cleanup()
+
     def test_record_literal_archaeology_rejects_invalid_date(self):
         """--introduced-when with wrong format or invalid date → exit 2."""
         tmp, devforge = self._fresh()
@@ -7502,6 +7540,471 @@ class TestRecordLiteralArchaeology(unittest.TestCase):
             self.assertEqual(r.returncode, 2)
         finally:
             tmp.cleanup()
+
+
+class TestRecordLiteralArchaeologySupplyChangingCommits(unittest.TestCase):
+    """Tests for record-literal-archaeology's OPTIONAL --supply-changing-commits
+    (plan 73 Phase 1 — the widened-window sweep carrier).
+
+    THE GOVERNING CONSTRAINT under test throughout this class: the flag's
+    three states (omitted → None / "[]" → [] / populated → rows) are a
+    SEARCH-STEP carrier, never a gate — none of these tests expect a
+    non-zero exit for an omitted or empty-result sweep, only for a
+    malformed --supply-changing-commits VALUE that was actually supplied.
+    """
+
+    def _fresh(self):
+        tmp = tempfile.TemporaryDirectory()
+        devforge = Path(tmp.name) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-memo"])
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return tmp, devforge
+
+    def _read_report(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "read-report"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def _record(self, devforge, supply_changing_commits=_UNSET, **kwargs):
+        """Convenience wrapper mirroring TestRecordLiteralArchaeology._record.
+
+        supply_changing_commits defaults to the _UNSET sentinel (module-
+        level, not None) so "the kwarg was not passed" (omit the CLI flag
+        entirely) stays distinguishable from "the kwarg was passed as the
+        Python value None" — the latter is never exercised by these tests,
+        since the CLI surface has no way to pass a JSON null through
+        --supply-changing-commits (the flag's absence IS the None state).
+        """
+        defaults = {
+            "literal": "false",
+            "file_line": "InvoiceSummaryPanel.vue:290",
+            "introduced_by": "bd47a12",
+            "introduced_when": "2023-12-12",
+            "commit_subject": "TICKET-2044 refactor inline call into wrapper",
+            "intent": "inherited-refactor",
+            "use": "fix-layer",
+        }
+        defaults.update(kwargs)
+        argv = [
+            "--devforge-dir", str(devforge),
+            "record-literal-archaeology",
+            "--literal", defaults["literal"],
+            "--file-line", defaults["file_line"],
+            "--introduced-by", defaults["introduced_by"],
+            "--introduced-when", defaults["introduced_when"],
+            "--commit-subject", defaults["commit_subject"],
+            "--intent", defaults["intent"],
+            "--use", defaults["use"],
+        ]
+        if supply_changing_commits is not _UNSET:
+            argv += ["--supply-changing-commits", supply_changing_commits]
+        return _run(argv)
+
+    # --- Case 1/2: omitted vs "[]" — the load-bearing None-vs-[] distinction ---
+
+    def test_flag_omitted_stores_none_not_empty_list(self):
+        """Flag entirely omitted → stored value is None, NOT []."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            row = data["literal_archaeology"][0]
+            self.assertIn("supply_changing_commits", row)
+            self.assertIsNone(row["supply_changing_commits"])
+        finally:
+            tmp.cleanup()
+
+    def test_flag_empty_array_stores_empty_list_distinct_from_none(self):
+        """Flag '[]' → stored value is [], and [] is not None (case 1 vs case 2)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, supply_changing_commits="[]")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            row = data["literal_archaeology"][0]
+            self.assertEqual(row["supply_changing_commits"], [])
+            self.assertIsNotNone(row["supply_changing_commits"])
+        finally:
+            tmp.cleanup()
+
+    # --- Case 3/4: populated — one row, then ordering across multiple rows ---
+
+    def test_flag_single_commit_preserves_sha_and_subject_verbatim(self):
+        """One {sha, subject} object → parsed + stored verbatim."""
+        tmp, devforge = self._fresh()
+        try:
+            payload = json.dumps([
+                {"sha": "abc1234", "subject": "drop prop passthrough in parent wrapper"},
+            ])
+            r = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            commits = data["literal_archaeology"][0]["supply_changing_commits"]
+            self.assertEqual(len(commits), 1)
+            self.assertEqual(commits[0]["sha"], "abc1234")
+            self.assertEqual(
+                commits[0]["subject"], "drop prop passthrough in parent wrapper"
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_flag_multiple_commits_preserve_order(self):
+        """Multiple commits → order preserved exactly as supplied."""
+        tmp, devforge = self._fresh()
+        try:
+            payload = json.dumps([
+                {"sha": "abc1234", "subject": "first: relocate default"},
+                {"sha": "def5678", "subject": "second: strip flag from caller"},
+                {"sha": "9998888", "subject": "third: remove prop from parent"},
+            ])
+            r = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            commits = data["literal_archaeology"][0]["supply_changing_commits"]
+            self.assertEqual(
+                [c["sha"] for c in commits], ["abc1234", "def5678", "9998888"]
+            )
+            self.assertEqual(
+                [c["subject"] for c in commits],
+                [
+                    "first: relocate default",
+                    "second: strip flag from caller",
+                    "third: remove prop from parent",
+                ],
+            )
+        finally:
+            tmp.cleanup()
+
+    # --- Case 5: malformed inputs → exit 2, no partial state write ---
+
+    def test_flag_invalid_json_rejected(self):
+        """Malformed JSON → exit 2, useful message, no row written."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(devforge, supply_changing_commits="not json")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("supply_changing_commits", r.stderr)
+            data = self._read_report(devforge)
+            self.assertEqual(data["literal_archaeology"], [])
+        finally:
+            tmp.cleanup()
+
+    def test_flag_json_object_instead_of_array_rejected(self):
+        """A JSON object (not array) → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge,
+                supply_changing_commits=json.dumps({"sha": "abc1234", "subject": "x"}),
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("must decode to a list", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_flag_element_not_object_rejected(self):
+        """An array element that is not an object → exit 2."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge, supply_changing_commits=json.dumps(["abc1234"])
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("must be an object", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_flag_element_with_extra_key_rejected(self):
+        """An element carrying a key beyond 'sha'/'subject' → exit 2,
+        message names the unrecognized key (_validators.py:141-146)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge,
+                supply_changing_commits=json.dumps(
+                    [{"sha": "abc1234", "subject": "x", "extra": "y"}]
+                ),
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("unrecognized key", r.stderr)
+            self.assertIn("extra", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_flag_element_missing_required_key_rejected(self):
+        """An element missing 'subject' (only 'sha' present) → exit 2,
+        message says both keys are required (_validators.py:148-152)."""
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge,
+                supply_changing_commits=json.dumps([{"sha": "abc1234"}]),
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("must have both 'sha' and 'subject' keys", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_flag_bad_sha_too_short_rejected(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge,
+                supply_changing_commits=json.dumps([{"sha": "abc", "subject": "x"}]),
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("7-40 char hex commit SHA", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_flag_bad_sha_non_hex_rejected(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge,
+                supply_changing_commits=json.dumps(
+                    [{"sha": "zzzzzzz", "subject": "x"}]
+                ),
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("7-40 char hex commit SHA", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_flag_bad_sha_too_long_rejected(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge,
+                supply_changing_commits=json.dumps(
+                    [{"sha": "a" * 41, "subject": "x"}]
+                ),
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("7-40 char hex commit SHA", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_flag_empty_subject_rejected(self):
+        tmp, devforge = self._fresh()
+        try:
+            r = self._record(
+                devforge,
+                supply_changing_commits=json.dumps(
+                    [{"sha": "abc1234", "subject": "  "}]
+                ),
+            )
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("cannot be empty", r.stderr)
+        finally:
+            tmp.cleanup()
+
+    # --- Case 6/7: sha case normalization — identity-field canonicalization ---
+
+    def test_flag_mixed_case_sha_normalized_to_lowercase(self):
+        """A mixed-case sha in --supply-changing-commits is ACCEPTED and
+        stored lowercase -- a sha is an identity field; storing it
+        verbatim would let 'ABC1234' and 'abc1234' diverge as if they
+        were different commits to any later comparison/dedupe."""
+        tmp, devforge = self._fresh()
+        try:
+            payload = json.dumps([
+                {"sha": "ABC1234", "subject": "moved default into wrapper"},
+            ])
+            r = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            commits = data["literal_archaeology"][0]["supply_changing_commits"]
+            self.assertEqual(commits[0]["sha"], "abc1234")
+        finally:
+            tmp.cleanup()
+
+    def test_flag_already_lowercase_sha_unchanged(self):
+        """An already-lowercase sha is stored byte-identical (the
+        normalization is a no-op on input that is already canonical)."""
+        tmp, devforge = self._fresh()
+        try:
+            payload = json.dumps([
+                {"sha": "abc1234", "subject": "moved default into wrapper"},
+            ])
+            r = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = self._read_report(devforge)
+            commits = data["literal_archaeology"][0]["supply_changing_commits"]
+            self.assertEqual(commits[0]["sha"], "abc1234")
+        finally:
+            tmp.cleanup()
+
+    # --- Case 8: dedupe interaction — first-write-wins extends to the new field ---
+
+    def test_dedupe_first_write_wins_on_supply_changing_commits(self):
+        """Re-recording the same (literal, file_line) with a DIFFERENT
+        --supply-changing-commits is a no-op at exit 0; the FIRST value
+        wins — matching existing first-write-wins behavior on every other
+        field (test_record_literal_archaeology_dedupes_same_literal_and_file_line)."""
+        tmp, devforge = self._fresh()
+        try:
+            first_payload = json.dumps([{"sha": "abc1234", "subject": "first call"}])
+            r1 = self._record(devforge, supply_changing_commits=first_payload)
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+
+            second_payload = json.dumps([{"sha": "def5678", "subject": "second call"}])
+            r2 = self._record(devforge, supply_changing_commits=second_payload)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            data = self._read_report(devforge)
+            rows = data["literal_archaeology"]
+            self.assertEqual(len(rows), 1, "expected 1 row (deduped)")
+            self.assertEqual(
+                rows[0]["supply_changing_commits"],
+                [{"sha": "abc1234", "subject": "first call"}],
+                "first-recorded value must be retained on dedupe",
+            )
+        finally:
+            tmp.cleanup()
+
+    def test_dedupe_first_write_wins_when_first_omits_and_second_supplies(self):
+        """First call omits the flag (None), second supplies rows → dedupe
+        retains the FIRST (None) value, not the second's rows."""
+        tmp, devforge = self._fresh()
+        try:
+            r1 = self._record(devforge)
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+
+            payload = json.dumps([{"sha": "abc1234", "subject": "should not win"}])
+            r2 = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            data = self._read_report(devforge)
+            rows = data["literal_archaeology"]
+            self.assertEqual(len(rows), 1)
+            self.assertIsNone(rows[0]["supply_changing_commits"])
+        finally:
+            tmp.cleanup()
+
+
+class TestFinalizeHandoffSupplyChangingCommits(unittest.TestCase):
+    """finalize-handoff round-trip: supply_changing_commits' three states
+    survive report state → handoff.json's spec_seeds.literal_archaeology[]
+    unchanged (plan 73 Phase 1)."""
+
+    def _finalize_with_archaeology_row(self, tmp, supply_changing_commits=_UNSET, introduced_by="bd47a12"):
+        devforge = Path(tmp) / ".devforge"
+        _build_minimal_bug_state_for_handoff(devforge)
+        argv = [
+            "--devforge-dir", str(devforge),
+            "record-literal-archaeology",
+            "--literal", "false",
+            "--file-line", "services/api/config.py:42",
+            "--introduced-by", introduced_by,
+            "--introduced-when", "2023-12-12",
+            "--commit-subject", "TICKET-2044 refactor inline call into wrapper",
+            "--intent", "inherited-refactor",
+            "--use", "evidence",
+        ]
+        if supply_changing_commits is not _UNSET:
+            argv += ["--supply-changing-commits", supply_changing_commits]
+        r = _run(argv)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = Path(tmp) / "handoff.json"
+        r_final = _run_finalize(devforge, out)
+        self.assertEqual(r_final.returncode, 0, r_final.stderr)
+        return json.loads(out.read_text())
+
+    def test_finalize_handoff_carries_none_when_sweep_not_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = self._finalize_with_archaeology_row(tmp)
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertIn("supply_changing_commits", row)
+            self.assertIsNone(row["supply_changing_commits"])
+
+    def test_finalize_handoff_carries_empty_list_when_sweep_found_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data = self._finalize_with_archaeology_row(tmp, supply_changing_commits="[]")
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertEqual(row["supply_changing_commits"], [])
+
+    def test_finalize_handoff_carries_populated_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = json.dumps([
+                {"sha": "abc1234", "subject": "moved default into wrapper"},
+                {"sha": "def5678", "subject": "stripped flag from caller"},
+            ])
+            data = self._finalize_with_archaeology_row(
+                tmp, supply_changing_commits=payload
+            )
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertEqual(
+                row["supply_changing_commits"],
+                [
+                    {"sha": "abc1234", "subject": "moved default into wrapper"},
+                    {"sha": "def5678", "subject": "stripped flag from caller"},
+                ],
+            )
+
+    def test_finalize_handoff_back_compat_row_without_key_yields_none(self):
+        """A report.literal_archaeology row written directly (simulating a
+        pre-Phase-1 report state with no supply_changing_commits key at
+        all, not even null) → finalize-handoff emits None for that row,
+        the correct back-compat reading ('this row's sweep status was
+        never even askable')."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            _build_minimal_bug_state_for_handoff(devforge)
+            rep_path = devforge / "research-report.json"
+            data = json.loads(rep_path.read_text())
+            data["literal_archaeology"].append({
+                "literal": "false",
+                "file_line": "services/api/config.py:42",
+                "introduced_by": "bd47a12",
+                "introduced_when": "2023-12-12",
+                "commit_subject": "pre-Phase-1 row",
+                "intent": "inherited-refactor",
+                "use": "evidence",
+                # supply_changing_commits key intentionally absent.
+            })
+            rep_path.write_text(json.dumps(data, indent=2) + "\n")
+            out = Path(tmp) / "handoff.json"
+            r_final = _run_finalize(devforge, out)
+            self.assertEqual(r_final.returncode, 0, r_final.stderr)
+            emitted = json.loads(out.read_text())
+            row = emitted["spec_seeds"]["literal_archaeology"][0]
+            self.assertIsNone(row["supply_changing_commits"])
+
+    # --- sha case normalization must survive the finalize-handoff round-trip ---
+
+    def test_finalize_handoff_succeeds_with_mixed_case_supply_changing_commit_sha(self):
+        """A mixed-case --supply-changing-commits sha (normalized lowercase
+        at record-literal-archaeology's setter boundary) round-trips
+        through finalize-handoff at exit 0 -- before the fix, the setter
+        accepted the mixed-case value verbatim and finalize-handoff's
+        schema validation (handoff_schema._COMMIT_SHA_RE, lowercase-only)
+        rejected it at exit 2, a delayed failure disconnected from the
+        setter call that produced the bad value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = json.dumps([
+                {"sha": "ABC1234", "subject": "moved default into wrapper"},
+            ])
+            data = self._finalize_with_archaeology_row(
+                tmp, supply_changing_commits=payload
+            )
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertEqual(
+                row["supply_changing_commits"],
+                [{"sha": "abc1234", "subject": "moved default into wrapper"}],
+            )
+
+    def test_finalize_handoff_succeeds_with_mixed_case_introduced_by(self):
+        """A mixed-case --introduced-by sha (normalized lowercase at
+        record-literal-archaeology's setter boundary) round-trips through
+        finalize-handoff at exit 0 -- the twin of the
+        supply_changing_commits case above, for the pre-existing
+        introduced_by field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            data = self._finalize_with_archaeology_row(tmp, introduced_by="BD47A12")
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertEqual(row["introduced_by"], "bd47a12")
 
 
 class TestDetectLiteralReplacement(unittest.TestCase):
@@ -7859,6 +8362,244 @@ class TestRenderPatch8(unittest.TestCase):
             evidence_row = next(l for l in table_lines if "WidgetPanelCollapse.vue:12" in l)
             self.assertTrue(fix_layer_row.rstrip().endswith("| fix-layer |"))
             self.assertTrue(evidence_row.rstrip().endswith("| evidence |"))
+
+
+class TestRenderSupplyChangingCommits(unittest.TestCase):
+    """Tests for the render layer's 'Supply-changing commits since
+    introduction' sub-section (plan 73 Phase 2b/D5) — renders
+    LiteralArchaeology.supply_changing_commits' three load-bearing
+    states (None / [] / populated) for a human reading
+    research-report.md. This is a SEARCH-STEP render only: nothing here
+    exercises a gate, a check number, or a non-zero exit keyed on this
+    field — that would violate the plan's own "search steps, not gates"
+    constraint.
+    """
+
+    def _fresh(self, tmp):
+        devforge = Path(tmp) / ".devforge"
+        _run(["--devforge-dir", str(devforge), "reset-memo"])
+        _run(["--devforge-dir", str(devforge), "reset-report"])
+        return devforge
+
+    def _render(self, devforge):
+        r = _run(["--devforge-dir", str(devforge), "render"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def _record(self, devforge, supply_changing_commits=_UNSET, **kwargs):
+        """Convenience wrapper mirroring
+        TestRecordLiteralArchaeologySupplyChangingCommits._record — round-trips
+        through the real record-literal-archaeology setter rather than
+        hand-authoring report JSON."""
+        defaults = {
+            "literal": "false",
+            "file_line": "InvoiceSummaryPanel.vue:290",
+            "introduced_by": "bd47a12",
+            "introduced_when": "2023-12-12",
+            "commit_subject": "TICKET-2044 refactor inline call into wrapper",
+            "intent": "inherited-refactor",
+            "use": "fix-layer",
+        }
+        defaults.update(kwargs)
+        argv = [
+            "--devforge-dir", str(devforge),
+            "record-literal-archaeology",
+            "--literal", defaults["literal"],
+            "--file-line", defaults["file_line"],
+            "--introduced-by", defaults["introduced_by"],
+            "--introduced-when", defaults["introduced_when"],
+            "--commit-subject", defaults["commit_subject"],
+            "--intent", defaults["intent"],
+            "--use", defaults["use"],
+        ]
+        if supply_changing_commits is not _UNSET:
+            argv += ["--supply-changing-commits", supply_changing_commits]
+        return _run(argv)
+
+    # --- Case 1/2: None vs [] — the load-bearing distinction ---
+
+    def test_none_row_renders_not_swept_only(self):
+        """--supply-changing-commits omitted (None) -> the row renders
+        'not swept'; the 'no supply-changing commits since...' wording
+        must be ABSENT from output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            r = self._record(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn(
+                "- `false` (InvoiceSummaryPanel.vue:290): not swept", output
+            )
+            self.assertNotIn(
+                "no supply-changing commits since the introducing commit",
+                output,
+            )
+
+    def test_empty_list_row_renders_no_supply_changing_commits_only(self):
+        """--supply-changing-commits '[]' -> the row renders 'no
+        supply-changing commits since the introducing commit'; 'not swept'
+        must be ABSENT from output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            r = self._record(devforge, supply_changing_commits="[]")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn(
+                "- `false` (InvoiceSummaryPanel.vue:290): "
+                "no supply-changing commits since the introducing commit",
+                output,
+            )
+            self.assertNotIn("not swept", output)
+
+    # --- Case 3/4: populated — one commit, then ordering across several ---
+
+    def test_single_commit_renders_sha_and_subject_verbatim(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            payload = json.dumps([
+                {"sha": "6cba0dbdf", "subject": "MIG-1695: strip prop from parent"},
+            ])
+            r = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn("- `false` (InvoiceSummaryPanel.vue:290):", output)
+            self.assertIn("  - 6cba0dbdf — MIG-1695: strip prop from parent", output)
+
+    def test_multiple_commits_render_all_and_preserve_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            payload = json.dumps([
+                {"sha": "6cba0dbdf", "subject": "first: strip prop from parent"},
+                {"sha": "1a2b3c4d", "subject": "second: relocate default"},
+                {"sha": "9998888", "subject": "third: remove prop from parent"},
+            ])
+            r = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            for line in (
+                "  - 6cba0dbdf — first: strip prop from parent",
+                "  - 1a2b3c4d — second: relocate default",
+                "  - 9998888 — third: remove prop from parent",
+            ):
+                self.assertIn(line, output)
+            idx1 = output.index("6cba0dbdf — first: strip prop from parent")
+            idx2 = output.index("1a2b3c4d — second: relocate default")
+            idx3 = output.index("9998888 — third: remove prop from parent")
+            self.assertLess(idx1, idx2)
+            self.assertLess(idx2, idx3)
+
+    # --- Case 5: a mix of all three states across several rows ---
+
+    def test_mixed_states_across_rows_render_independently(self):
+        """Three rows in one report -- None, [], and populated -- each
+        renders its own state without leaking into the others."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            r1 = self._record(devforge, literal="false", file_line="Foo.vue:42")
+            self.assertEqual(r1.returncode, 0, r1.stderr)
+            r2 = self._record(
+                devforge,
+                literal="true",
+                file_line="Bar.ts:203",
+                supply_changing_commits="[]",
+            )
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            payload = json.dumps([
+                {"sha": "abc1234", "subject": "strip default from caller"},
+            ])
+            r3 = self._record(
+                devforge,
+                literal="'catalogId'",
+                file_line="Baz.py:88",
+                supply_changing_commits=payload,
+            )
+            self.assertEqual(r3.returncode, 0, r3.stderr)
+            output = self._render(devforge)
+            self.assertIn("- `false` (Foo.vue:42): not swept", output)
+            self.assertIn(
+                "- `true` (Bar.ts:203): no supply-changing commits since "
+                "the introducing commit",
+                output,
+            )
+            self.assertIn("- `'catalogId'` (Baz.py:88):", output)
+            self.assertIn("  - abc1234 — strip default from caller", output)
+
+    # --- Case 6: the pre-existing table stays byte-unchanged ---
+
+    def test_existing_table_byte_unchanged(self):
+        """The pre-existing 7-column Literal Archaeology table renders
+        EXACTLY as it did before this sub-section was added -- pins the
+        table header + row text verbatim (this is the regression net
+        for the "table stays byte-unchanged" requirement)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            r = self._record(devforge)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            expected_table = (
+                "## Literal Archaeology\n"
+                "\n"
+                "| Literal | File:line | Introduced by | When | Commit subject | Intent | Use |\n"
+                "|---|---|---|---|---|---|---|\n"
+                "| false | InvoiceSummaryPanel.vue:290 | bd47a12 | 2023-12-12 "
+                "| TICKET-2044 refactor inline call into wrapper | inherited-refactor | fix-layer |"
+            )
+            self.assertIn(expected_table, output)
+
+    # --- Case 7: no archaeology rows at all — neither section renders ---
+
+    def test_no_archaeology_rows_renders_neither_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            output = self._render(devforge)
+            self.assertNotIn("## Literal Archaeology", output)
+            self.assertNotIn("### Supply-changing commits since introduction", output)
+
+    # --- Case 8: hazardous characters must not break the structure ---
+
+    def test_subject_with_hazardous_chars_does_not_break_structure(self):
+        """A commit subject containing backticks, underscores, asterisks,
+        a pipe, and a leading '-' renders escaped and intact -- and the
+        section immediately after (Evidence Lanes Consulted) still
+        starts cleanly on its own heading line, proving the hazardous
+        subject did not leak formatting into the surrounding markdown."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            hazardous_subject = "fix `foo` and _bar_ * baz | qux - leading dash"
+            payload = json.dumps([
+                {"sha": "abc1234", "subject": hazardous_subject},
+            ])
+            r = self._record(devforge, supply_changing_commits=payload)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            expected_escaped = (
+                "fix \\`foo\\` and \\_bar\\_ \\* baz \\| qux - leading dash"
+            )
+            self.assertIn(
+                "  - abc1234 — {0}".format(expected_escaped), output
+            )
+            # Unescaped hazardous form must NOT appear (proves escaping
+            # actually happened, not just that some text is present).
+            self.assertNotIn(hazardous_subject, output)
+            # The next section still parses as a clean, standalone heading
+            # -- the hazardous text did not spill past its own line.
+            self.assertIn("\n## Evidence Lanes Consulted", output)
+
+    def test_literal_containing_backtick_uses_widened_code_span_fence(self):
+        """A literal that is itself a double-quoted string containing a
+        raw backtick (LITERAL_TOKEN_RE's quoted-string form allows an
+        embedded backtick inside double/single quotes) must not
+        truncate the code span it is wrapped in -- the fence widens to
+        two backticks so the single embedded backtick cannot terminate
+        it early. This is a robustness case beyond the mandatory 8;
+        included because the literal is deliberately fenced with a
+        code span (unlike file_line, which is plain escaped text)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._fresh(tmp)
+            r = self._record(devforge, literal='"a`b"', file_line="Weird.ts:1")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            output = self._render(devforge)
+            self.assertIn('- ``"a`b"`` (Weird.ts:1): not swept', output)
 
 
 # ---------------------------------------------------------------------------
@@ -10984,6 +11725,48 @@ class TestAppendOutcome(unittest.TestCase):
             self.assertEqual(r.returncode, 2, "expected exit 2, got {0}: {1}".format(
                 r.returncode, r.stderr))
             self.assertIn("sha", r.stderr.lower())
+
+    def test_append_outcome_normalizes_mixed_case_commit_sha_to_lowercase(self):
+        """Mixed-case --confirmed-commit-sha is accepted (exit 0) and stored lowercase.
+
+        Pre-fix, the schema's __post_init__ regex (_COMMIT_SHA_RE) is
+        lowercase-only, so a mixed-case sha was accepted verbatim by the CLI
+        and only rejected later, at schema validation inside this same call
+        (exit 2, 'schema validation failed'). Post-fix, the setter
+        normalizes to lowercase before the schema check runs, so a
+        mixed-case hex sha round-trips through what used to be a rejection.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="Verified manually",
+                actual_fix_path="services/api/config.py",
+                commit_sha="ABCDEF1",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(handoff_path.read_text())
+            self.assertEqual(data["outcome"]["confirmed_commit_sha"], "abcdef1")
+
+    def test_append_outcome_lowercase_commit_sha_unchanged(self):
+        """An already-lowercase --confirmed-commit-sha is stored unchanged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = Path(tmp) / ".devforge"
+            handoff_path = _build_tier3_handoff(devforge, tmp)
+            r = _run_append_outcome(
+                str(handoff_path),
+                hypothesis_confirmed="primary",
+                evidence_source="user-observation",
+                evidence_cite="Verified manually",
+                actual_fix_path="services/api/config.py",
+                commit_sha="abcdef1",
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            data = json.loads(handoff_path.read_text())
+            self.assertEqual(data["outcome"]["confirmed_commit_sha"], "abcdef1")
 
     def test_append_outcome_writes_confirmed_date_iso_utc(self):
         """outcome.confirmed_date is a parseable ISO-8601 datetime."""

@@ -1286,13 +1286,35 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
     # verified "no literal was load-bearing this run", not an unverified
     # silence, and a permanent "(none)" line on every ordinary plan render
     # would be exactly the reflexive-answer noise D4's counter-argument
-    # warns about. Each row renders literal + file_line (identity) plus
-    # intent, use, SHA (introduced_by), and subject (commit_subject) -- `use`
-    # is rendered even though the Phase 5 Verify names only "intent + SHA +
-    # subject" because the /research-side report already carries a Use
-    # column (Phase 2a); omitting it here would make the two renders
-    # disagree about what a row IS (fix-layer vs evidence changes the row's
-    # meaning, not just its metadata).
+    # warns about. Each row renders ALL SEVEN LiteralArchaeology fields --
+    # literal + file_line (identity), intent, use, SHA (introduced_by),
+    # introduced_when, and subject (commit_subject) -- `use` is rendered
+    # even though the Phase 5 Verify names only "intent + SHA + subject"
+    # because the /research-side report already carries a Use column
+    # (Phase 2a); omitting it here would make the two renders disagree
+    # about what a row IS (fix-layer vs evidence changes the row's
+    # meaning, not just its metadata). `introduced_when` was previously
+    # missing here even though the /research-side table renders it (a
+    # bug -- the two renders of the same row disagreeing about which
+    # fields exist); now fixed to match.
+    #
+    # supply_changing_commits (plan 73 Phase 1 widened sweep, added to
+    # the schema after this render already existed) renders as a nested
+    # sub-bullet under each row, matching the /research-side wording in
+    # _research/_render.py's "Supply-changing commits since introduction"
+    # sub-section EXACTLY so the two surfaces never disagree on
+    # vocabulary. THREE states, and the distinction is the entire reason
+    # this field exists -- collapsing any two together defeats it:
+    #   None  -- the sweep was NOT RUN for this literal ("not swept").
+    #   []    -- the sweep RAN and found nothing ("no supply-changing
+    #            commits since the introducing commit").
+    #   [...] -- the sweep ran and found these commits, rendered one per
+    #            line as "<sha> — <subject>", order preserved.
+    # A row dict with no `supply_changing_commits` key at all (a handoff
+    # persisted before this field existed) is indistinguishable from an
+    # explicit None via .get() -- it renders "not swept", never crashes.
+    # This is a render, not a gate: no branch here raises or exits
+    # non-zero on any of the three states.
     spec_seeds = d.get("spec_seeds", {}) or {}
     archaeology_rows = spec_seeds.get("literal_archaeology") or []
     if archaeology_rows:
@@ -1302,15 +1324,34 @@ def _render_research_plan_seeds(upstream_path: str, d: Dict[str, Any]) -> str:
                 continue
             arch_lines.append(
                 "- `{literal}` ({file_line}) — intent: {intent}, use: {use}, "
-                "SHA: {sha}, subject: \"{subject}\"".format(
+                "SHA: {sha}, when: {when}, subject: \"{subject}\"".format(
                     literal=la.get("literal", "?"),
                     file_line=la.get("file_line", "?"),
                     intent=la.get("intent", "?"),
                     use=la.get("use", "fix-layer"),
                     sha=la.get("introduced_by", "?"),
+                    when=la.get("introduced_when", "?"),
                     subject=la.get("commit_subject", "?"),
                 )
             )
+            commits = la.get("supply_changing_commits")
+            if commits is None:
+                arch_lines.append("  - supply-changing commits: not swept")
+            elif not commits:
+                arch_lines.append(
+                    "  - supply-changing commits: no supply-changing "
+                    "commits since the introducing commit"
+                )
+            else:
+                arch_lines.append("  - supply-changing commits:")
+                for commit in commits:
+                    if not isinstance(commit, dict):
+                        continue
+                    arch_lines.append(
+                        "    - {0} — {1}".format(
+                            commit.get("sha", "?"), commit.get("subject", "?")
+                        )
+                    )
         archaeology_block = (
             "\n**Literal provenance** (recorded at /devforge:research):\n"
             + "\n".join(arch_lines) + "\n"

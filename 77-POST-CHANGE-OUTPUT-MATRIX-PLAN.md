@@ -1,10 +1,12 @@
 # 77 — Post-Change Output Matrix: closing the discovery→action gap
 
 **Status:** **NOT STARTED — decisions drafted, awaiting Phase-0 ratification.** No code, no `src/` edit, no `main.md` edit, no `src/agents/` edit has been made for this plan. Every decision below is a recommendation carrying its counter-argument.
+**2026-08-13 amendment:** maintainer pre-ratification inputs **R1–R3** and one recorded follow-on are recorded in *Amendment 2026-08-13* below; they decide the production stage, the acceptance criteria and one added rule. **Phase 0 is still required** for D1–D6 and OQ-1–OQ-6 **as amended**. Still NOT STARTED: no `src/` file has been edited, and none may be before Phase 1 runs.
 **Type:** DESIGN + BUILD plan, with a **measurement arm that gates the build** (Phase 1) and a **measurement arm that decides whether the build survives** (Phase 3). The phase order is deliberately inverted relative to this repo's norm — see D5.
 **Branch:** `develop-2.0-init`
 **Created:** 2026-08-12.
 **Privacy constraint governing this file:** the originating evidence is a benchmark against a private client codebase. This file is **mechanism-only**. It contains no ticket ID, commit SHA, branch name, company or product name, feature name, source symbol, function name, parameter name, component name, file path or enum value from that codebase, and none may be added. Where an example is needed, it is invented and neutral. `CHANGELOG.md:32` records that plan docs are exempt from the identifier scrub; that exemption covers pre-existing historical references in other files and licenses nothing new here. Any identifier introduced into this file is a hard error, not a style nit.
+**Evidence provenance (added 2026-08-13):** the amendment section below restates a maintainer-delivered handoff document, `77-EVIDENCE-DISCOVERY-TO-LOCK-INVERSION.md` (present at repo root, verified 2026-08-13). **That file is UNTRACKED, it carries private-client identifiers, and it must never be quoted, excerpted, or committed into this file or any other tracked file** — it stays untracked for the same reason plans 73, 74 and 75 do, and it is cited here by filename only. Everything the amendment restates from it is sanitized; where a fact cannot be stated without an identifier, it is not stated rather than paraphrased around.
 
 ---
 
@@ -27,6 +29,8 @@ Ten runs, four harnesses, one brownfield maintenance ticket. The ticket's defini
 | A reference run using the same commands | 1 | pass | pass |
 
 **So this framework is the only harness that finds the hidden coupling, and it still designs as if it hadn't.** That sentence is the entire opportunity and the plan is built on it exactly as written: **the gap is discovery→action, not discovery.** Any phase that proposes to improve discovery is out of scope by construction — discovery already scores 2/2 and there is no headroom there.
+
+**[Amended 2026-08-13 — see *Amendment 2026-08-13* → *A fuller evidence set*.]** The table above stands as recorded and no figure in it is withdrawn. A larger sample of the same frozen ticket — **16 runs across 6 harnesses** — is recorded in the amendment below, together with the mechanism behind the handling column, the ordering of the harmful artifacts it produced, and the null results that bound what any fix here may claim. The two records are **not** re-mapped run by run.
 
 ### The universal reflex
 
@@ -72,6 +76,134 @@ The matrix's **filled rows** clear the bar for one specific reason: **a wrongly-
 
 ---
 
+## Amendment 2026-08-13 — maintainer pre-ratification inputs (R1–R3) and a fuller evidence set
+
+**What this section is.** Three maintainer inputs — **R1**, **R2**, **R3** — ratified 2026-08-13 ahead of Phase 0; one follow-on recorded as deliberately out of scope; and a larger evidence set for the Problem section above. **Nothing above or below is withdrawn, reworded or renumbered.** Each section these inputs amend carries a one-line pointer back here.
+
+**What this section is NOT.** It is not Phase 0. R1–R3 decide the production stage, the acceptance criteria and one added rule; **D2, D3, D5, D6, OQ-2, OQ-5, OQ-6 and the rest of D1 remain unratified**, and no `src/` file has been edited.
+
+**Placement.** It sits after the Problem section because it supplies a larger evidence set for it, and before *The proposed change*, *Decisions*, *Open questions* and the phases because it amends all four.
+
+### A fuller evidence set — 16 runs, 6 harnesses
+
+A maintainer-delivered 2026-08-13 handoff reports the **same frozen brownfield ticket** at larger scale: **16 runs across 6 harnesses**. The ticket's property is unchanged from the Problem section — it removes some emitted values from one named surface, a second and unnamed surface reaches the same shared builder, and a frozen probe asserts the second surface stops emitting the removed values.
+
+- **Discovery.** Competing harnesses named the hidden surface's file in **1/10 runs**, and that single hit was one passing mention. This framework's v1 named it in **6/6**.
+- **Handling.** **5 of 6** v1 runs then produced *actively harmful* lock artifacts. In ascending order of harm: (1) an "explicitly NOT modified" list containing the hidden surface's exact file; (2) a hard spec constraint forbidding the one discriminator that would have covered both surfaces; (3) an acceptance criterion asserting the removed values are still present on the hidden path; (4) a review whose top-priority action item was to **add** a spec pinning the removed values as still present.
+
+**The framing this evidence adds, and the reason the amendment exists:**
+
+> An unseen coupling is a bug someone finds later. A coupling that has been examined, named, constrained by a written rule, and covered by a passing regression test is a bug the audit trail has made permanent. The frameworks that never looked left the defect **discoverable**; v1 left it **defended**.
+
+**The one passing run** made the same blast-radius finding as the others and framed it differently: *both paths need the change for consistent behavior*. It pre-empted the "that path is defensive-only in practice" objection and kept the path in scope, keyed the guard on a state value the shared function already receives, and **fixed the hidden surface without editing the hidden surface's file at all**.
+
+**The mechanism, in one sentence:** v1's blast-radius analysis has exactly one exit — **protect** — and no path to **include**; "shared code" resolves to "risk" and never to "consistency".
+
+**Null results, which bound what any fix here may claim:**
+
+- Planning-artifact volume varied **24×** across runs with **zero** effect on the probe.
+- Test volume varied **14×** with **zero** effect.
+- Investigation depth **inverted** the expected relationship — deeper investigation produced the harm escalation, not the fix.
+- **15/16** runs added a caller-side opt-out parameter to the shared function.
+- The **only** axis that predicted the probe outcome was **guard shape**, reported at **17/17**.
+
+**Counts caveat — read the mechanism, not the arithmetic.** The **arm** totals reconcile — 10 competitor runs plus 6 v1 runs is the 16 — and the repo-root `CLAUDE.md` index entry for this plan records that reading. Two finer figures do not: the per-**harness** split as delivered does not sum to those arm totals, and guard shape is reported at **17/17** against a 16-run total. Neither is reconciled here and neither is invented around, so the composition is restated only at the level that is unambiguous — competing harnesses run one to three times each, this framework's v1 run six times across two template sets. **Treat every per-run count in this subsection as approximate.** The mechanism findings — the single exit, the lock-artifact ordering, the passing run's guard shape — are the load-bearing content and none of them depends on an exact denominator.
+
+**A known internal tension, recorded rather than smoothed.** The handoff's own summary table scores this framework "fixed: 0/6" while its mechanism section describes one of those six runs as passing. The maintainer was asked and did not resolve it. The full form of the tension is recorded in the untracked evidence file; it is not resolved here, and no figure above is adjusted to conceal it.
+
+**Relationship to the Problem section's table — NOT re-mapped run by run.** That table records ten runs across four harnesses; this is a larger sample of the same ticket. The repo-root `CLAUDE.md` index entry for this plan records the reconciliation as an **enlargement of the same arms** — 2 v1 runs → 6, 9 competitor runs → 10 — and records one wording difference that matters: the newer figures are stated in terms of **naming the hidden surface's file**, which is not word-for-word the earlier probe's *discovering the hidden coupling*. That difference is the likeliest reason the competitor arm reads 0/9 there and 1/10 here on one passing mention. **It is not resolved in this file, and neither figure is withdrawn** — a session needing the exact run-by-run mapping goes to the untracked handoff, not to this file and not to the index.
+
+**What the larger set changes above, and what it does not.** It strengthens *Why a taste instruction would NOT have worked* and *Why MORE RULES and MORE ARTIFACTS would not have worked either* — the volume null results reproduce at larger scale, and the harm ordering shows the failure is not merely inaction. It **does not** change the visibility bar, the artifact's shape, or the non-goal on discovery: discovery scores 6/6 here, which is the same finding with a bigger denominator.
+
+### R1 — Production stage moves to `/devforge:research` (RATIFIED 2026-08-13)
+
+**The matrix is produced at `/devforge:research`, not at `/devforge:plan`.**
+
+**Why.** `/devforge:specify` writes acceptance criteria, so a matrix produced at `/devforge:plan` arrives **after** the lock artifact can already have been written — harm artifact (3) is an AC. Two supporting facts:
+
+- **(a) The lock artifacts in the evidence are research-time and spec-time artifacts, not plan-time ones.** A mechanism landing downstream of them is measured against a decision already recorded.
+- **(b) The row source is native to `/devforge:research`.** The plan-67/69 caller-enumeration machinery already lives there — `record-fix-path-helper`, `record-inbound-caller`, `classify-caller-scope` and `declare-caller-total` are all invoked from `src/commands/research/main.md` (verified 2026-08-13 by grep of that file), all mode-independent since plan 67. And `/devforge:research` already produces a **recommended approach** (`set-recommended-approach`, same file), which is the "proposed change" the matrix's *emits after the change* column is evaluated against. Nothing new has to be paid for to fill the rows.
+
+*Counter-argument, recorded:* this plan's most-verified section is *Verified state*, and every anchor in it is at `/devforge:plan`. R1 moves production to a site this file has verified almost nothing about, so the plan's evidentiary base now covers the consumption half and not the production half — a real, knowingly-accepted cost, flagged in that section and paid at drafting time by reading `src/commands/research/main.md` first. *A second counter:* a matrix produced at research is produced against the recommended approach, and the approach can change at `/devforge:plan`, so a carried matrix can go stale. The mitigation is the consumption role below — sub-question 7's already-mandated fresh inbound trace is what re-checks it — and that mitigation is an instruction, not a check.
+
+**Four consequences, each annotated on the section it affects:**
+
+1. **OQ-1 is SUPERSEDED IN FRAME, not answered.** It asked which `/devforge:plan` sub-question hosts the matrix; that question no longer has a subject. New frame: the production home is `/devforge:research`'s recommended-approach phase, and **the trigger stays fact-keyed** — "the recommended approach removes or suppresses an emitted value". OQ-1's belief-vs-fact argument is **not** withdrawn: it survives intact and now supports the research-side trigger, since a trigger keyed on a property of the change is exactly what does not depend on the author's belief about caller count.
+2. **`/devforge:plan` becomes CONSUMER and VERIFIER.** Sub-question 7's already-mandated fresh inbound trace verifies the carried matrix is still current, and the matrix's `dead` rows populate sub-question 9's `### Change-Induced Dead Code` table. **D2(b)'s transform analysis stands unchanged** — it now reads from a carried matrix instead of a locally-authored one. **D2 and D3 remain Phase-0 ratification items**, with their existing analysis intact on the consumption side.
+3. **The OQ-3 / D4 interlock resolves in favour of cheap deletion.** The carrier is a **required section of `research-report.md`** — a document artifact inside the feature dir `/devforge:research` allocates at intake finalize (plan 68) — **read in place downstream**, following plan 53's park-once/read-in-place precedent. It is **not** a handoff schema field. `/devforge:specify` and `/devforge:plan` are directed to read that section, instruction-only. No Python, no schema change, no new verb; deletion stays a markdown revert, which is the property D4 and D6 both depend on. **OQ-3's existing counter carries over unchanged and is not softened by this resolution:** a document section is unverifiable downstream, and nothing mechanical prevents a short matrix.
+4. **Phase 2's file set re-scopes** to `src/commands/research/main.md` (production), `src/commands/specify/main.md` (R3's read directive), `src/commands/plan/main.md` (consumption, verification, dead-row population). Whether `src/agents/architect.md` still needs an edit is the drafting session's call, and would be consumption-side only. **The accumulation tripwire binds unchanged across every one of those files** — see *What this does to the accumulation tripwire* below.
+
+**Phase 1 also gains a research-side item:** the baseline reading records whether the baseline run's research artifacts contain any emits-after-style analysis at all, and whether the hidden surface's classification survives from research into the plan — alongside the three plan-side facts Phase 1 already names.
+
+**For a resuming session:** read `src/commands/research/main.md` in full before drafting Phase 2. This file names five verbs and one document from it and nothing else; that file's phase numbers, section names and rubric structure are **unverified here** and must not be guessed.
+
+### R2 — Stricter acceptance criteria (RATIFIED 2026-08-13)
+
+Amends the probes in *The measurement design*, Phase 1 and Phase 3. **Both arms are scored under these criteria**, or the before/after is not like-for-like.
+
+**1. The handling probe passes only if the hidden surface stops emitting the removed values WITHOUT its file appearing in the diff.** Correct coverage is a predicate change inside the shared function, not a call-site sweep. This is the criterion the passing run met and the criterion the opt-out-parameter reflex structurally cannot meet.
+
+**A named partial outcome: *discovered-and-swept*.** A run that fixes the hidden surface by editing that surface's file directly is recorded under this label. **It is not a pass.** The label exists so the result is described accurately in the record — **it is not a third path around D6**, and a session reading a swept result as a partial success is precisely the behaviour D6's counter-argument names.
+
+*Counter-argument, recorded:* a diff-shaped criterion is a **proxy** for the design property and can be wrong in both directions. A legitimate design might touch the second surface's file for an unrelated reason (an import, a rename, a formatting pass), and a run could avoid that file while hard-coding a per-caller condition inside the shared function that is morally a sweep. The proxy is accepted because it is cheap, mechanical, and reads identically for both arms; it is read **alongside** the guard-shape observation, which this evidence set reports as the only predictive axis, and the partial label exists so a file-touching fix is recorded rather than forced into a binary it does not fit.
+
+**2. A secondary signature check, on both arms.** Grep the run's own pipeline artifacts for **any assertion that a value the ticket removes is still present, or still emitted, on some path**. In the evidence, that assertion shape is the signature of the lock reflex — it is what harm artifacts (3) and (4) are made of. Its presence or absence is recorded whichever branch the arm lands in. It is an **observation, not a probe**: it does not by itself pass or fail an arm.
+
+*Bound:* this check is stated as a shape rather than as a pattern, because no field name, symbol or literal from the source codebase exists in this file and none may be invented to make the grep look concrete. The session running it composes the pattern from the frozen ticket's own vocabulary at run time and does not write that pattern back into this file.
+
+### R3 — Rule 6, derived exclusions (RATIFIED 2026-08-13)
+
+**Added to D1's rule set. The set is now six rules; rules 1–5 are unchanged and unrenumbered.**
+
+> **6. Derived exclusions.** Any "explicitly not modified" or out-of-scope entry for a **caller of the changed function** is valid **only** when that caller's matrix row shows the intersection of the values it still emits and the values the ticket removes is **empty**, stated in the row. A non-empty intersection **invalidates the entry** and escalates as a **product question**. It may not be resolved by inferring intent from the ticket's silence.
+
+**Why it clears the visibility bar.** Like rules 2, 3 and 5, it clears on **content** grounds: a row declaring a caller out of scope while its own cells show that caller still emits a value being removed **reads wrong on its face**, with no design principle needed. It is aimed at harm artifact (1) — the "explicitly NOT modified" list naming the hidden surface — which the evidence ranks as the **lowest-harm** of the four and which is the first point at which the exclusion becomes written record. *No claim is made here that the other three were derived from it; the evidence orders them by harm, not by causation.*
+
+**Companion `/devforge:specify` directive — same Phase-2 edit set, instruction-only.** When writing acceptance criteria, read the matrix section. **An AC asserting the continued presence of a value the ticket removes may not be written from inferred intent; it requires quoted product intent.** This is aimed at harm artifact (3).
+
+**Explicitly out of scope: anything MECHANICAL for that class.** A solver check, a grep-shaped verifier, or any other automated detector of the inferred-intent AC is **not** in this plan. That possibility is recorded as a **file-less finding in repo-root `CLAUDE.md`**, not here, so this plan's measurement stays a measurement of one instruction-only mechanism.
+
+**Artifact (2) is tracked as well, and deliberately not here.** The hard spec constraint forbidding the one discriminator that covered both surfaces is owned by a **second file-less finding in repo-root `CLAUDE.md`**, recorded 2026-08-13, whose subject is that *a hard constraint that eliminates a candidate discriminator is not required to record what that candidate would have achieved* — so the eliminated candidate leaves no trace a reviewer can weigh. Two things about it belong here and not only there. **First, it must not be folded into Phase 2**: that finding's own text says so, for this plan's reason — Phase 2 is measurement-locked, and a Phase 3 measuring two mechanisms attributes nothing. **Second, its caution is stated in this file's own vocabulary and should be read before anyone drafts it:** the naive form of that rule likely **fails the visibility bar**, because an absent or perfunctory cost note does not read wrong on its face — the same defect for which *The bar* records "enumerate the consumers" and a completeness count as rejected candidates.
+
+**With that, every lock artifact in the evidence has a recorded owner:** **(1)** → rule 6 above; **(2)** → the hard-constraint file-less finding just named; **(3)** → the `/devforge:specify` directive above, with any mechanical detector for it carved out to its own file-less finding (recorded the same day, subject: *an AC that pins a value the same spec removes is a conflict flag, not a regression pin*); **(4)** → the *Recorded follow-on* below. **Only (1) and (3) are owned by this plan, and only in their instruction-only halves** — a reading of this amendment as covering the lock reflex end-to-end is wrong.
+
+*Counter-argument, recorded:* rule 6 is the first rule binding the matrix to a document the matrix does not own — the out-of-scope list — and the companion directive is a **second command's edit** justified by one evidence class, which is exactly the shape the accumulation tripwire warns about. The defence is that both are single instruction-only sentences with no mechanism behind them, and that the tripwire's own test is *"Phase 3 cannot be read without it"*: three of the four lock artifacts are written at or after spec time, so a Phase 2 confined to the production site would be measured against the artifact that defeats it. That is a measurement justification rather than a completeness one — but it is an argument, and Phase 3 is what tests it.
+
+### Recorded follow-on — the review-side question (NOT in scope; conditional on Phase 3 passing)
+
+**The candidate:** one review-side question that reads the **emission matrix** rather than the ACs — the one question capable of invalidating an AC.
+
+**Why it is a candidate at all:** the evidence shows this framework's review stage is **structurally unable** to catch this class, because it grades against the spec's ACs. It asks *"did we do what we said"* and never *"was the invariant right"*. Harm artifact (4) is that stage working correctly and producing the most harmful artifact in the set.
+
+**Why it is EXCLUDED from Phase 2**, on two stated grounds:
+
+1. **The plan's own non-goal** on the review/verify commands, which a good idea does not suspend.
+2. **Measurement attribution.** A Phase 3 that measures two changes attributes nothing — the same reasoning that produced D5's baseline arm.
+
+**If and only if Phase 3 passes**, this becomes a **separate plan with its own measurement**. It is recorded here so it is neither re-derived from scratch later nor quietly folded into Phase 2 now.
+
+### OQ-4 — recorded input, and the decision not to edit `src/constitution.md` now
+
+**The larger evidence set strengthens BOTH sides of OQ-4, and must not be reported as settling it.**
+
+- **For "no constitution change" (OQ-4's recommendation):** the null results. Guidance volume and artifact volume had **zero** measured effect on the probe. A rule added to the constitution is guidance, and this set is the strongest evidence yet that guidance volume is not the constraint.
+- **Sharpening the counter:** guard shape was the **only** predictive axis. The constitution's Narrowing rule **prefers** the caller-scoped opt-in — "a parameter, option, or wrapper the affected caller passes" (`src/constitution.md:122`, as quoted by the FALSE BINARY finding in repo-root `CLAUDE.md`) — and that is structurally the **opt-out-parameter shape 15/16 runs produced and the probe rejected**, while the intrinsic form that won sits in the disfavoured fallback arm at `:123`. So the rule may not merely fail to help; it may point at the losing shape. *Bound:* "structurally the same shape" is an argument about form, not a measurement — no run was scored against the constitution's text, and the v1 arm does not carry the v2 Narrowing rule at all.
+
+**Decision recorded 2026-08-13: `src/constitution.md` is NOT edited now.** The reason is measurement, not merit: **any `src/` edit before Phase 1 contaminates the blind baseline**, which must run against v2 exactly as it stands. This binds the constitution the same way Phase 1 already binds `src/` generally.
+
+**OQ-4's recommendation still stands for Phase-0 ratification** and is not pre-decided by this note. The escalated evidence is **also** recorded in the repo-root `CLAUDE.md` FALSE BINARY entry — a parallel edit made separately from this file; if that entry does not carry it, the two records have drifted and this one is the later.
+
+### What this does to the accumulation tripwire
+
+**R1–R3 enlarge Phase 2's file set from two files to three** — four if the drafting session takes the architect edit — **without adding a mechanism.** That is stated plainly rather than assumed to be free. *(This sentence records the delta at the moment of the amendment; it is not a criterion. The edit set Phase 2 names as amended is the single authority for which files that phase touches, and a later re-scope updates it there, not here.)*
+
+- **The tripwire's second clause is untouched and still binds:** no new mechanical check, helper verb, schema field or exit code is introduced by Phase 2. R1's carrier is a document section; R3's two additions are sentences. The Phase-2 Verify criterion enforcing that clause is unchanged.
+- **The first clause is met by a measurement argument, not a completeness one:** the lock artifacts are written at research time and spec time, so a Phase 2 confined to one station would be measured against artifacts written before it exists. That is *"Phase 3 cannot be read without it"*, which is the justification the tripwire asks for.
+
+*Counter-argument, recorded, because this is the plan's own named risk:* three files under one measurement is still more surface than the design that was drafted, and every added file widens what a flip — or a null result — is attributing. The mitigation claim is that R1–R3 are **one mechanism at three stations** (produce at research; do not re-lock at specify; verify and consume at plan), not three mechanisms. **That claim is testable and should be tested at drafting:** if the three edits cannot be written as one artifact's produce/consume path, the enlargement was accumulation after all and it returns to Phase 0.
+
+---
+
 ## The proposed change
 
 ### The artifact
@@ -96,6 +228,8 @@ The decision table's `Why` column then **cites matrix rows** rather than restati
 
 Rule 5 is the direct answer to the one-line unfalsifiable rejection described above. Rule 4 is already built (see Verified state) and this plan reuses it rather than rebuilding it.
 
+**[Amended 2026-08-13 — see Amendment R3.]** A **sixth rule — derived exclusions** was ratified on 2026-08-13 and is stated in full in the amendment above. Rules 1–5 are unchanged and unrenumbered. Rule 6 clears the visibility bar on **content** grounds, joining rules 2, 3 and 5 in the enumeration at *The bar* — that enumeration is not exhaustive of the rule set from this date. Every "five rules" phrasing elsewhere in this file — the heading above, D1's heading and body, Phase 0 item (a), and OQ-5's closing sentence — reads as **six** from 2026-08-13. **The five-COLUMN shape is unchanged:** rule 6 is filled from cells the matrix already has and adds no column.
+
 **Rule 1's honest bound — an accepted residual, not a solved problem.** Rules 2, 3 and 5 clear the visibility bar on **content** grounds: a cell that is filled wrongly reads wrong. Rule 1 cannot clear it that way, because it is an enumeration-completeness rule — the same shape as the "enumerate the consumers" candidate rejected above. **A silently missing row is indistinguishable from a complete matrix to a human at the approval gate:** when the mandated inbound trace fails to surface a call site (graph incompleteness, dynamic dispatch, reflection, an indirect call pattern), nothing in the artifact reads wrong. So rule 1's completeness is bounded by the completeness of the mechanical enumeration it rests on, and it is **not independently checkable by the reader**. *This is distinct from D4's counter,* which is that nothing mechanically checks the matrix against a known call-site count; this bound holds even when the matrix faithfully transcribes a trace that looked complete. **Rule 1 stays as written** — a mechanically-sourced enumeration is strictly better than none, and it is the floor the other rules stand on — but it is a floor, not a self-verifying artifact, and this bound is accepted rather than closed. OQ-5 records the one narrower, named instance of it.
 
 ### Why this yields the right design without naming it
@@ -109,6 +243,8 @@ This is why the plan proposes **no new preference rule**. The preference is a co
 ## Verified state (2026-08-12)
 
 Verified against the working tree this session by reading the files, not by trusting the originating brief or any plan's Status line. **Line numbers drift — grep the quoted tokens.** This repo has documented anchor rot (plan 75 records plan 73 re-keying its own anchors six times), so every `:NNN` below is a dated hint and the quoted string is the real anchor.
+
+**[Amended 2026-08-13 — see Amendment R1.]** Everything verified below is at the **consumption** site (`/devforge:plan`) and stays valid there. **The production site is now `/devforge:research`, and nothing about it is verified in this section.** Its phase numbers, section names and rubric structure are unverified as of this amendment and must be read from `src/commands/research/main.md` before drafting, not guessed. Only the following was spot-checked on 2026-08-13, and it is the whole of what this file asserts about that site: `src/commands/research/main.md` exists, it names `research-report.md`, and it invokes `record-fix-path-helper`, `record-inbound-caller`, `classify-caller-scope`, `declare-caller-total` and `set-recommended-approach`. Treat every other research-side statement as an open item.
 
 ### Rule 4 is BUILT — and it is the only one of the five that is
 
@@ -147,6 +283,8 @@ The matrix sits at the **join of two existing sub-questions**: its **row source*
 
 **Do not treat "it's only a rewiring" as a reason to skip Phase 1.** The rewiring claim describes build cost. It says nothing about whether the artifact changes the outcome, and the measurement warning below is about exactly that.
 
+**[Amended 2026-08-13 — see Amendment R1.]** **"Row source" above describes the pre-amendment framing, in which the matrix was produced at `/devforge:plan`.** Under R1 the production row source is `/devforge:research`'s own caller-enumeration machinery, and sub-question 7's inbound trace takes a **verification** role instead — it re-checks that a carried matrix is still current against the code as it stands, which is a different job from supplying the rows. **The dead-rows half of the join is unchanged:** those rows still feed sub-question 9's shipped machinery, still not column-for-column, and the transform is still Phase 2's to state. **The rewiring reading survives the move**, and so does the warning under it — it is a claim about build cost and still not a reason to skip Phase 1.
+
 ---
 
 ## The measurement design — the plan's spine, not an appendix
@@ -169,6 +307,8 @@ Four outcomes, all four of which must be readable as results:
 
 The baseline arm is a **gating phase**, not a suggestion. Its honest bound is OQ-6.
 
+**[Amended 2026-08-13 — see Amendment R2.]** The handling probe is scored more strictly from this date: it passes **only** if the hidden surface stops emitting the removed values **without its file appearing in the diff**. A run that fixes the hidden surface by editing that surface's file is labelled **discovered-and-swept** and scores as **not a pass** — so it does not satisfy the first of the four outcomes above. A secondary signature check runs on both arms as an observation, not a probe. **Both arms are scored under the same amended criteria**, or the before/after is not like-for-like. The four outcomes above are unchanged in kind.
+
 ---
 
 ## Decisions (ratify at Phase 0 — each carries its counter-argument)
@@ -178,6 +318,8 @@ The baseline arm is a **gating phase**, not a suggestion. Its honest bound is OQ
 What is being ratified is the **shape**: five columns, one row per call site, five rules, `Why` cites rows.
 
 *Counter-argument, recorded:* a five-column table is more structure than any other single sub-question in PHASE 1.3 produces, and the repo's own evidence (the nine-artifact harness scoring 0/3) is that structure volume does not buy outcomes. The defence is that this artifact is selected against the visibility bar and the nine were not — but that defence is an argument, not a measurement, which is why Phase 3 exists.
+
+**[Amended 2026-08-13 — see Amendment R1 and R3.]** The ratified rule set is now **six**, the added rule being derived exclusions; the column shape is unchanged. R1 also moves production off `/devforge:plan`, so the counter-argument's comparison to PHASE 1.3 sub-questions now describes the **consumption** site — the volume-versus-outcome objection it makes survives the move intact and is strengthened by the amendment's null results (24× artifact volume, zero probe effect).
 
 ### D2 — Relationship to sub-question 9
 
@@ -201,6 +343,8 @@ Under D2(b) + OQ-3's recommended answer, the entire change is **two markdown fil
 
 *Counter:* an instruction-only artifact cannot be mechanically checked for completeness — nothing stops a three-row matrix on a five-caller function. The bar's own reasoning absorbs most of this (a completeness count fails the bar anyway), but not all of it, and the residual is real. If OQ-3 flips to a carrier, Python enters via `_plan/handoff_schema.py` + `plan_helper finalize-handoff`, and the loop becomes python-engineer → python-reviewer as well.
 
+**[Amended 2026-08-13 — see Amendment R1.]** The **instruction-only property this decision exists to protect is preserved and strengthened**: R1 resolves OQ-3 to a required section of `research-report.md` read in place, so no schema field and no verb enters, and deletion is still a markdown revert. What changes is the file set — "two markdown files" reads as R1's re-scoped set (`src/commands/research/main.md`, `src/commands/specify/main.md`, `src/commands/plan/main.md`, and `src/agents/architect.md` only if the drafting session takes it). More files is a larger revert but not a harder one, and the counter above is unaffected by the move. **On the count specifically:** "two markdown files" above — and "Two markdown reverts" in *Why it matters* — are now wrong as **numbers**, not only as lists. The authority for how many files and which is **the edit set Phase 2 names as amended** — not those sentences, and not this pointer's parenthetical, which is a convenience restatement and is not a second source of truth. What D4 ratifies is **instruction-only**, a property of the change that carries no count at all, and *Why it matters*' argument (markdown reverts are cheap, a schema field with back-compat tests is not) holds at any set size.
+
 ### D5 — Measure before building; the baseline arm gates
 
 Phase 1 is a measurement phase that runs **before** any `src/` edit. This inverts this repo's near-universal convention, in which the consumer/testForge20 e2e is the LAST phase and the build precedes it.
@@ -214,6 +358,8 @@ Phase 1 is a measurement phase that runs **before** any `src/` edit. This invert
 If Phase 3's probe does not flip, Phase 2's two edits are reverted and this plan closes as a **measured negative**. A measured negative about a plausible mechanism is a durable output: it removes a candidate from the survey permanently and tells the next plan where not to look.
 
 *Counter:* none on the merits. The risk is not intellectual, it is behavioural — a session that has just built something will look for a reading of the result that keeps it. That is why the delete branch is written into Phase 3's Verify rather than left as a sentiment.
+
+**[Amended 2026-08-13 — see Amendment R1.]** "Phase 2's two edits" names a count R1's re-scope makes wrong. Read it as **the edit set Phase 2 names as amended**, whatever its size — that set is stated in one place on purpose, and a count restated here would only drift again. **The point that must survive does not depend on the number:** every file in that set is markdown, no schema field and no verb enters, so the revert stays a set of markdown reverts done in one session. A larger set is a longer revert, not a harder one.
 
 ---
 
@@ -231,6 +377,8 @@ If Phase 3's probe does not flip, Phase 2's two edits are reverted and this plan
 
   Under **all three** options, D3 holds: 7's output filtering is widened regardless.
 
+  **[Amended 2026-08-13 — see Amendment R1. SUPERSEDED IN FRAME, not answered.]** Production moved to `/devforge:research`, so "which `/devforge:plan` sub-question hosts the matrix" no longer has a subject as posed, and none of the three options above is selected. **The reasoning is not withdrawn:** the belief-versus-fact distinction survives intact and now grounds the research-side trigger, which stays keyed on the fact — "the recommended approach removes or suppresses an emitted value". **D3 still holds** on the `/devforge:plan` consumption side and remains a Phase-0 item. What is left for the maintainer at Phase 0 item (g) is confirming the research-side trigger wording, not choosing between (a), (b) and (c).
+
 - **OQ-2 — Cardinality. What bounds a row, and what bounds "relevant state"?** Callers × relevant states explodes for a widely-used helper, and **an unfillable artifact gets waived or filled reflexively** — which is the visibility bar failing in a new way rather than a new mechanism working.
 
   Two separate bounds are needed and they are not the same question:
@@ -241,11 +389,15 @@ If Phase 3's probe does not flip, Phase 2's two edits are reverted and this plan
 
 - **OQ-3 — Carrier.** Does the matrix ride the plan→breakdown handoff, or is it a plan-document artifact the human reads at the approval gate? *Recommendation: **plan-document only for v1**.* The `dead` rows continue to carry through the **existing** `DeadCodeRow` / `BreakdownSeeds.dead_code_rows` path with no schema change. Reasons: nothing at `/devforge:breakdown` or `/devforge:verify` consumes a **live** row, so carrying one creates the same shape plan 41 named for agents, steps and findings, applied here to a schema field; and it keeps D4's cheap-deletion property, which the measurement design depends on. *Counter:* a document-only artifact is unverifiable downstream, so no mechanism prevents a short matrix. Partially absorbed by the bar (a completeness count fails it anyway) and partially real. If a downstream consumer ever appears, the carrier is a later, separable change.
 
+  **[Amended 2026-08-13 — see Amendment R1. RESOLVED.]** The carrier is a **required section of `research-report.md`**, inside the feature dir `/devforge:research` allocates at intake finalize (plan 68), **read in place** by `/devforge:specify` and `/devforge:plan` — plan 53's park-once/read-in-place precedent — and it is **not** a handoff schema field. The recommendation's substance is unchanged (document artifact, no schema change, cheap deletion); only the document it lives in moves, because production moved. The `dead` rows still carry through the **existing** `DeadCodeRow` / `BreakdownSeeds.dead_code_rows` path with no schema change. **The counter above carries over unchanged and is not softened by the resolution.**
+
 - **OQ-4 — Does the constitution need changing at all?** Repo-root `CLAUDE.md` records a live, explicitly-unsettled finding that the constitution's Narrowing rule may present a **FALSE BINARY**: `src/constitution.md:122` names a **caller-scoped opt-in** and `:124` a **layer-wide policy change**, and does not name **deriving the restricting condition inside the shared function from arguments it already receives** as a first-class third form. The enumeration-independent form surfaces only inside the fallback arm at `:123` — reachable only when the needing-caller set cannot be established — and then inherits `:124`'s obligation to name every current caller. **That third form is exactly what won the benchmark.**
 
   The obvious response is to add it as a third form. *Recommendation: **no constitution change**,* on the grounds that this plan's own central evidence is that taste instructions lose against one confident sentence, and the matrix makes the right form self-evident without naming it. **If that holds, this plan CLOSES the FALSE BINARY finding by making it moot rather than by answering it** — and that closure is **conditional on Phase 3 passing**. If Phase 3 fails and D6's delete branch fires, the finding is untouched and still open; nothing in this plan may be read as having settled it.
 
   *Counter, which is not weak:* §3.6's rules are not purely taste — they are cited by `plan/main.md:348`, by `plan/main.md:517`'s PHASE-2.5 backstop and by `architect.md:153`'s Narrowing forcing step, so a rule naming only two forms **actively steers** toward one of them at three enforcement sites. "No change" is therefore not costless. Maintainer decision.
+
+  **[Amended 2026-08-13 — see Amendment *OQ-4 — recorded input*.]** The larger evidence set strengthens **both** sides — the null results support "no change", while guard shape being the only predictive axis sharpens the counter, since the preferred caller-scoped opt-in is structurally the opt-out-parameter shape 15/16 runs produced and the probe rejected. **A dated decision was recorded: `src/constitution.md` is NOT edited now**, on measurement grounds — any `src/` edit before Phase 1 contaminates the blind baseline. **The recommendation above still stands for Phase-0 ratification and is not pre-decided by that decision**, which is about timing, not merit.
 
 - **OQ-5 — Row-source reliability, inherited whole.** `69-CALLER-ENUM-RESIDUAL-HARDENING-PLAN.md:50` records the live-probe finding that `trace_path` **keys on the bare function name**, and for a name shared by two functions it silently returned the OTHER symbol's callers — "a wrong-symbol trace yields a confidently wrong declared total." Its mitigation was prose-side: verify the result rows' qualified names against the recorded helper QN before counting.
 
@@ -271,6 +423,8 @@ Prompt budget spent here is subtracted from the change. On every quality axis th
 - **Any new agent.** The roster is 19 (plan 62).
 - **Re-running or migrating the benchmark's source material** — it is the evidence record.
 - **Settling the FALSE BINARY finding** (OQ-4). This plan may moot it, conditionally, and may not answer it.
+- **[Added 2026-08-13.]** **A review-side question that reads the emission matrix rather than the ACs.** It is recorded as a follow-on and stays out of scope here, under the review/verify non-goal above **and** for measurement attribution — see *Recorded follow-on — the review-side question* in the amendment. It becomes a separate, separately-measured decision only if Phase 3 passes.
+- **[Added 2026-08-13.]** **Any MECHANICAL detector of the inferred-intent AC** that R3's `/devforge:specify` directive addresses in prose — a solver check, a grep-shaped verifier, or equivalent. That possibility is recorded as a file-less finding in repo-root `CLAUDE.md`, not built here. **R3's directive itself is not covered by the review/verify non-goal:** `/devforge:specify` is not one of the four review/verify commands, and the directive adds no mechanism.
 
 ---
 
@@ -288,6 +442,8 @@ This repo's plans have a documented tendency to accumulate phases. The index in 
 
 A second tripwire, in the same spirit as plan 75's unnumbered-validator criterion: **no new mechanical check, verb, schema field or exit code is introduced by Phase 2** under the D4/OQ-3 recommended picks. If a build session finds itself needing one, it stops and returns to Phase 0 — because that is a different plan with a different measurement.
 
+**[Amended 2026-08-13 — see Amendment *What this does to the accumulation tripwire*.]** R1–R3 enlarge Phase 2's file set from two files to three (four if the architect edit is taken) **without adding a mechanism**. Both tripwires above stand exactly as written and neither is relaxed: the second is untouched, and the first is met by a measurement argument — three of the four lock artifacts in the evidence are written at or after spec time — rather than by a completeness one. The amendment states that argument together with its counter, and names the test that falsifies it: **if the three edits cannot be written as one artifact's produce/consume path, the enlargement was accumulation and it returns to Phase 0.** *(The counts in this pointer record the delta at the moment of the amendment and are not criteria; the edit set Phase 2 names as amended is the single authority for which files that phase touches, and the falsification test applies to that set whatever its size.)*
+
 ---
 
 ## Build discipline
@@ -298,12 +454,15 @@ A second tripwire, in the same spirit as plan 75's unnumbered-validator criterio
 - **The privacy constraint at the top of this file binds every phase, not just drafting.** No identifier from the benchmark's source codebase enters this file, any `src/` file, any commit message, or any test fixture. If an example is needed in emitted spec text, invent a neutral one — and verify the sentence still works: **if a sentence only works with a real identifier, rewrite the sentence.**
 - Every load-bearing claim added during execution carries a `file:line` anchor **or** is marked an open item. Do not invent verb names, check numbers, counts or line numbers.
 - **Re-verify every anchor in Verified state at use time.** They were correct on 2026-08-12 against an uncommitted working tree. A build-state claim about another in-flight plan in this repo has a half-life measured in hours (plan 75 records two of its own `[VERIFIED]` build-state claims going stale within a day).
+- **[Added 2026-08-13 — see Amendment R1.]** `src/commands/research/main.md` and `src/commands/specify/main.md` ship into a consumer's `.claude/commands/devforge/` on the same terms as `src/commands/plan/main.md`, so **the instruction-author → instruction-reviewer + claude-code-guide loop binds every file in R1's re-scoped set** — with no exception for the single-sentence `/devforge:specify` directive, since size is not an exemption anywhere else in this list either.
 
 ---
 
 ## Phase 0 — Maintainer ratification (decision gate, no code)
 
 Present this plan. The maintainer confirms, or overrides with a recorded reason:
+
+**[Amended 2026-08-13 — see the amendment section.]** **R1, R2 and R3 are already ratified and are not re-opened here.** Their effect on the list below: **(a)** now covers **six** rules, R3 having added derived exclusions; **(g)** is **superseded in frame** — OQ-1's `/devforge:plan` sub-question home no longer has a subject, and what remains is confirming the research-side trigger wording; **(i)** is **resolved** to the `research-report.md` document section, with its counter carried unchanged. **(j)** carries the dated decision not to edit `src/constitution.md` before Phase 1, which is about timing and leaves OQ-4's recommendation itself still to ratify. Items **(b)–(f)**, **(h)**, **(k)** and **(l)** are unchanged and still require a recorded confirm-or-override, **as does the remainder of (a), (g), (i) and (j)**.
 
 (a) **D1** — the artifact shape and its five rules, including the five-column form and the rule-5 checkable-rejection requirement;
 (b) **D2** — the relationship to sub-question 9: replace-and-widen (a), supersede-on-trigger (b, recommended), or two independent questions (c). **Ratifying (a) without also ratifying a widened matrix trigger ratifies a coverage loss** — the pick and its consequence go together. **Ratifying (b) also ratifies the population mechanism**, not only the trigger relationship: how a matrix `dead` row becomes a `### Change-Induced Dead Code` row (`file` from the row's `Call site` cell; `anchor_token`, `kind` and `why_dead` derived from that row's own trace evidence, per Phase 2). (b)'s whole claim is that the shipped chain is fed unchanged, and the two shapes do not map column-for-column, so the transform is part of what is being ratified;
@@ -326,6 +485,7 @@ Until ratification, no build phase is authored and Phase 1 does not run.
 - The D2 pick is recorded **together with its coverage consequence** — a bare "(b)" without the residual noted at D2(b) leaves the accepted gap unstated.
 - The OQ-1 divergence is recorded as decided, not as noted.
 - No `src/` file has been edited.
+- **[Added 2026-08-13.]** R1–R3 count as recorded ratifications for what they decide, so the first criterion above is **satisfied by the amendment for those items and unsatisfied for every other one**. A Phase 0 that records only "R1–R3 confirmed" has not run.
 
 ---
 
@@ -339,6 +499,11 @@ Record the result against the four outcomes named in the measurement design. The
 
 **Read the plan's own machinery as part of the baseline**, since it is the subject: whether the run's plan carries a `### Change-Induced Dead Code` subsection or the literal `renders nothing unreachable`; whether its Key Design Decisions record a caller-scoped or layer-wide Narrowing classification; and which callers its enumeration names. Those three facts, not just the probes, are what tell a later session whether the discovery→action framing survives contact with v2.
 
+**[Amended 2026-08-13 — see Amendment R1 and R2.]** Two additions. Neither replaces anything above.
+
+- **Score both probes under R2's criteria.** The handling probe passes only if the hidden surface stops emitting the removed values **without its file appearing in the diff**; a fix made by editing that file is recorded as **discovered-and-swept** and is **not a pass**, which means it does **not** satisfy the first of the four outcomes. Run the secondary signature check on this arm too — grep the run's own pipeline artifacts for any assertion that a value the ticket removes is still present or still emitted on some path — and record its result whichever way the arm lands. **Scoring the baseline under the same criteria as Phase 3 is what makes the before/after like-for-like**, so a baseline scored loosely invalidates the comparison rather than merely weakening it.
+- **Read the research artifacts, not only the plan's.** Record whether the baseline run's research artifacts contain any emits-after-style analysis at all, and whether the hidden surface's classification survives from research into the plan. Under R1 the matrix is produced at `/devforge:research`, so those two facts are the baseline for the **production** site; the three plan-side facts above remain the baseline for the **consumption** site.
+
 ### Verify
 
 - Both probes are scored, independently, with the run's artifacts kept as evidence.
@@ -346,6 +511,7 @@ Record the result against the four outcomes named in the measurement design. The
 - **If the baseline handles the hidden surface, this plan STOPS.** Record the negative, close the plan, do not author Phase 2. The mechanism was unnecessary and that is the measurement working.
 - **If the baseline neither discovers nor acts, this plan STOPS** and a sibling plan opens for the discovery regression. Phase 2 does not start.
 - No `src/` file was edited during this phase.
+- **[Added 2026-08-13 — R1/R2.]** The handling probe's score states explicitly **whether the hidden surface's file appears in the diff**, the secondary signature check's result is recorded, and the two research-side facts are recorded alongside the three plan-side ones. A **discovered-and-swept** result is recorded under that label rather than as a pass.
 
 ---
 
@@ -353,7 +519,19 @@ Record the result against the four outcomes named in the measurement design. The
 
 Authored **only** after Phase 0 ratifies and Phase 1 confirms the gap. Both files ship into `.claude/`, so both take the full loop.
 
+**[Amended 2026-08-13 — see Amendment R1 and R3. The file set is re-scoped and everything below moves to the consumption side.]** Production is at `/devforge:research`, so the edit set is:
+
+- **`src/commands/research/main.md`** — **production.** The matrix section and its six rules, triggered when the recommended approach removes or suppresses an emitted value, written as a required section of `research-report.md`. Its row source is the caller enumeration already performed there.
+- **`src/commands/specify/main.md`** — **R3's companion directive.** Read the matrix section when writing acceptance criteria; an AC asserting continued presence of a value the ticket removes requires quoted product intent and may not be written from inferred intent.
+- **`src/commands/plan/main.md`** — **consumption and verification.** Sub-question 7's already-mandated fresh inbound trace verifies the carried matrix is still current, and the matrix's `dead` rows populate sub-question 9's `### Change-Induced Dead Code` table by the transform stated below.
+- **`src/agents/architect.md`** — the drafting session's call, and consumption-side only if taken.
+
+**Everything below remains the specification of the consumption side**, including the population mechanism and rule 5's landing site. What changes is that the matrix **arrives carried** rather than being authored at `/devforge:plan`. **"Both files … so both take the full loop" above is superseded on its count only:** every file in this set takes the full loop (see Build discipline), and **this list is the single authority for which files Phase 2 touches** — every other count in this plan defers to it.
+
+**Read the first bullet below accordingly.** Its "the sub-question carrying the matrix, at the home OQ-1 ratified" now describes the consumption-side sub-question that **reads and verifies** a carried matrix; OQ-1's home question is superseded in frame. **Whether the plan template still carries a matrix subsection of its own, or only cites the carried one, is a Phase-2 drafting question this amendment does not settle** — while D3's widening of sub-question 7's output, the PHASE-2.5 backstop step, the approval-summary line and the population mechanism below all stand as written.
+
 - **`src/commands/plan/main.md`** — the sub-question carrying the matrix, at the home OQ-1 ratified, **appended** per the repo's append-never-renumber convention; a conditional plan-template subsection for the matrix, mirroring the shape and omit-condition of the existing conditional subsections (`### Pure-Builder Targets` at `:432`, `### Change-Induced Dead Code` at `:442`); a PHASE-2.5 read-side backstop step appended after step 7, mirroring step 7's shape (`:517`); a conditional line in the PHASE-3 approval summary, mirroring the existing conditional lines (`:536`–`:539`); and, per D3, the widening of sub-question 7's output so the full inbound-trace result survives to a table.
+  - **[Amended 2026-08-13 — anchors re-verified, digits above are stale.]** On 2026-08-13, `### Pure-Builder Targets` is at `src/commands/plan/main.md:447` and `### Change-Induced Dead Code` at `:457` — not `:432` and `:442`. Per this file's own convention the **quoted heading is the real anchor and the digits are a dated hint**, which is why the stale pair is annotated rather than silently swapped: a corrected number leaves no trace that the anchors moved. **Only those two were re-verified.** Every other `:NNN` in this phase — `:517`, `:536`–`:539`, `:153`, `:418`–`:420`, `:350`, `:288`–`:291`, `:55` — carries its original 2026-08-12 date and must be re-grepped at use time.
 - **`src/agents/architect.md`** — a forcing step inside Rule 9 (`:153`), sitting beside the existing Narrowing and Consequence forcing steps and using their vocabulary. Under D2(b) it also states that a decision suppressing an emitted value answers sub-question 9 **from the matrix's dead rows**, not from a bare empty string.
   - **The population mechanism is stated explicitly, because the two shapes do not map column-for-column.** The matrix's columns are `Call site | Inputs it passes | Emits after the change | Verdict | Note`, while `DeadCodeRow` requires `file`, `anchor_token`, `kind` and `why_dead` (`src/devforge/lib/_plan/handoff_schema.py:288`–`:291`) — and **`anchor_token` and `kind` are derivable from no matrix column.** So the instruction must say: for every matrix row whose verdict is `dead`, the architect additionally records one `### Change-Induced Dead Code` row, taking `file` from that row's `Call site` cell and deriving `anchor_token`, `kind` and `why_dead` from the **same trace evidence already gathered to fill the row** — the `Note` cell, already required on a `dead` row, being the natural source for `why_dead`. `kind` stays the `arm | function | param | import | branch` enum sub-question 9 already defines (`plan/main.md:350`; `handoff_schema.py:55`): no new value, no new field, no new check. **Without this, Phase 2 can ship a matrix whose `dead` rows reach nothing** and still pass every other criterion below — the hollow-execution shape this plan exists to prevent.
   - **A formatting judgment for the drafting session, not a ratification item and not a defect in this plan:** Rule 9 at `:153` already carries five distinct forcing concerns in one dense paragraph — minimal scope, out-of-scope respect, state cardinality, Narrowing, Consequence — and this adds a sixth. Whether the sixth warrants restructuring Rule 9 into sub-bullets is the instruction-author's call at drafting time, weighed against the repo's consistency-over-invention stance; it does not return to Phase 0 and it changes nothing above.
@@ -369,6 +547,9 @@ Authored **only** after Phase 0 ratifies and Phase 1 confirms the gap. Both file
 - **The emitted text tells the architect how to POPULATE that unchanged shape**, not merely that it feeds it: the landed instruction states, for a matrix row whose verdict is `dead`, where `file`, `anchor_token`, `kind` and `why_dead` each come from. The criterion above checks the chain was not broken; this one checks it was actually connected — a matrix whose `dead` rows reach nothing fails this phase even when every other criterion passes.
 - Cross-check sweep per this repo's discipline: every identifier, path and section number the edit touches is grepped repo-wide and no dangling reference or contradiction remains in another file.
 - **No identifier from the benchmark's source codebase appears anywhere in the diff.**
+- **[Added 2026-08-13 — R1. SUPERSEDES the bare count in the criterion above.]** **A correct R1-scoped Phase 2 would FAIL "exactly two files under `src/`", so that count is void as a criterion.** Replacement, still mechanical and still checkable: **`git diff --name-only` returns exactly the files named in the amended edit set at the head of this phase — no more and no fewer** — with `src/agents/architect.md` present if and only if the drafting session took that optional edit. Any file outside that set fails the phase regardless of how many files the diff touches. **No number is restated here, deliberately:** the edit set is stated once, at the head of this phase, and a count copied into a criterion is exactly what went stale the first time. The clause the original criterion carries — **no new mechanical check, helper verb, schema field or exit code in the diff** — binds unchanged and is what actually enforces the tripwire.
+- **[Added 2026-08-13 — R3.]** The `/devforge:specify` directive is present and instruction-only: an AC asserting the continued presence of a value the ticket removes is refused unless product intent is quoted, and **no mechanical detector for that class appears in the diff**.
+- **[Added 2026-08-13 — R1.]** The matrix's landing section in `research-report.md` is named identically in all three command files, and `grep -rn "<the section heading as landed>" src/` returns the production site and each consumer with no third spelling.
 
 ---
 
@@ -378,9 +559,13 @@ Re-run the same benchmark arm, blind, on the **same frozen prompt**, with **only
 
 **Read the result against Phase 1's baseline, not against v1.28's numbers.** The v1.28 figures are a different harness generation and are context, not control.
 
+**[Amended 2026-08-13 — see Amendment R2.]** Both probes are scored under R2's criteria, identically to Phase 1's baseline. A handling-probe **pass** requires the hidden surface to stop emitting the removed values **without its file appearing in the diff**. A run that fixes it by editing that file is **discovered-and-swept**: it scores as **not a pass**, so it lands in the second branch below and **the revert fires**. The label exists to describe the result in the record — **not to open a third path around D6**. A partial outcome is exactly the shape a session reaches for to keep work alive, which is what D6's counter-argument already names. Run the secondary signature check on this arm as well and record its result whichever branch lands.
+
 - **The handling probe flips (baseline fails it, matrix run passes it)** → the rule works, with a measured before/after on identical everything else. Proceed to Phase 4.
 - **The handling probe does not flip** → **it is bloat. Revert Phase 2's two files.** Record the negative result in this file with the artifacts that show what the matrix contained and why it did not change the design. Close the plan. Under D6 this is an outcome, not a failure, and the plan is not to be kept alive by a reading of the result that preserves the work.
 - **The matrix was not produced at all** (the sub-question fired and the artifact is absent or vacuous) → this is a **third result**, distinct from both: the instruction did not run. It says nothing about whether the artifact works, and it must not be read as either branch. The correct response is to establish why it did not run before re-running, and a failure to run twice is evidence about instruction placement, which is an OQ-1 question and returns to Phase 0.
+
+**[Amended 2026-08-13 — see Amendment R1.]** "Revert Phase 2's two files" in the second branch names a count R1's re-scope makes wrong. Read it as **revert every file in the edit set Phase 2 names as amended** — all of it, in the same session as the reading, per the Verify criterion below. **The count is not what makes the branch cheap; instruction-only is** (D4), and that property is unchanged by the re-scope.
 
 **One honest bound, recorded with whichever result lands:** a single run per arm cannot separate "the rule worked" from "this sample landed differently" (OQ-6). If the arms disagree, re-run the disagreeing arm once.
 
@@ -390,6 +575,7 @@ Re-run the same benchmark arm, blind, on the **same frozen prompt**, with **only
 - The result is mapped to one of the three branches above **explicitly**, and the OQ-6 bound is recorded alongside it.
 - **If the probe did not flip, the revert is done in the same session as the reading** — not deferred, not left in the tree pending a second opinion.
 - If the probe flipped, the run's matrix is quoted in this file (mechanism-only, identifiers stripped) as the record of what a filled matrix looks like.
+- **[Added 2026-08-13 — R2.]** The handling probe's score states explicitly **whether the hidden surface's file appears in the diff**; a **discovered-and-swept** result is recorded under that label and treated as the no-flip branch; and the secondary signature check's result is recorded alongside the branch that landed.
 
 ---
 
@@ -401,6 +587,7 @@ Runs only on a flip.
 - `src/CLAUDE.md`'s `/devforge:plan` one-liner **only if** the command's user-visible contract changed; if the matrix is an internal planning artifact with no change to what the user is asked at the approval gate, this file is untouched and that is recorded as a deliberate no-op.
 - **OQ-4's conditional closure is written down here or nowhere:** if Phase 3 flipped and the maintainer ratified "no constitution change", the repo-root `CLAUDE.md` FALSE BINARY entry gains a pointer recording that this plan mooted it **without answering it** — the distinction is the whole content of that note.
 - Cross-ref sweep: grep the new subsection heading, the sub-question number and any new vocabulary across `src/` and `tests/`; zero dangling.
+- **[Added 2026-08-13 — R1.]** The `src/CLAUDE.md` bullet above reads across **R1's re-scoped set**, not `/devforge:plan` alone: the command whose user-visible contract is most likely to have changed is `/devforge:research`, since that is where the matrix is produced and where a user is asked for it. The same only-if-the-contract-changed test applies, and a deliberate no-op is still recorded as one.
 
 ### Verify
 
@@ -421,10 +608,14 @@ Runs only on a flip.
 - **Plan 41** (`41-AGENT-EXECUTOR-REACHABILITY-PLAN.md`) — the orphan class OQ-3's recommendation avoids: a payload carried and consumed by nothing.
 - **Plan 48** (`48-REVIEW-MANDATORY-GATE-PLAN.md`) — the shelving precedent D6's delete branch resembles: a real gap, written up in full, deliberately not built. The difference is that D6 deletes **after** a measurement rather than before a build, which is the stronger form.
 - **The undrafted intake-rubric escape-flag finding** recorded in repo-root `CLAUDE.md` — cited by OQ-2 only for the **shape** of a justified escape versus a boolean one. That finding has no file and this plan does not take it up.
+- **[Added 2026-08-13 — R1.]** **Plan 68** (`68-INTAKE-OWNS-FEATURE-DIR-PLAN.md`) — `/devforge:research` allocates `specs/NNN-<slug>/` at intake finalize and writes `research-report.md` inside it, which is what makes a research-side document carrier a per-feature artifact rather than a dated scratch report. **Plan 53** (`53-DESIGN-ANCHOR-FIRST-CLASS-PLAN.md`) — the **park-once, read-in-place** precedent R1's carrier pick follows: an artifact persisted once at intake and read in place downstream rather than re-carried through every handoff. And **plans 67 and 69 move from context to direct dependency** — their caller-enumeration machinery is the matrix's row source at the production site, not merely a reason a v2 baseline is needed.
+- **[Added 2026-08-13.]** `77-EVIDENCE-DISCOVERY-TO-LOCK-INVERSION.md` — the maintainer-delivered handoff behind the amendment. **UNTRACKED, carries private-client identifiers, cited by filename only, never quoted into a tracked file.**
 
 ---
 
 ## Context for next session
+
+**[Amended 2026-08-13 — read *Amendment 2026-08-13* before this section; it re-scopes the phases below and supersedes one of the two divergences recorded further down.]** The governing sentence is unchanged, and the larger evidence set sharpens it into a mechanism: **this framework's blast-radius analysis has exactly one exit — protect — and no path to include; "shared code" resolves to "risk" and never to "consistency".** That is why the gap is discovery→action. It is also why the failure is not neutral: the harnesses that never looked left the defect **discoverable**, while this one left it **defended** — named in an out-of-scope list, pinned by a spec constraint, asserted by an acceptance criterion, and recommended for further pinning by a review.
 
 **The one sentence that governs everything here:** this framework is the only harness that finds the hidden coupling, and it still designs as if it hadn't. **The gap is discovery→action, not discovery.** Any phase, sub-question or artifact proposed here that improves discovery is aimed at a probe that already scores 2/2 and is out of scope by construction.
 
@@ -438,6 +629,8 @@ Runs only on a flip.
 
 **Two things in this file diverge from the originating brief and must not be silently re-merged.** First, **OQ-1**: the brief leaned toward folding the matrix into sub-question 7; this plan recommends its own trigger, because sub-question 7's trigger is keyed on a **belief** about caller count and the matrix's is keyed on a **fact** about the change — and a wrong belief about caller count is the failure mode. Second, **D2**: the brief read the change as *replacing* sub-question 9, but sub-question 9's trigger is every Key Design Decision while the matrix's is value suppression, so a straight replace narrows the dead-code lane and orphans shipped machinery for kills that are not suppressions. Both are presented as forks for Phase 0, not as corrections.
 
+**[Amended 2026-08-13 — see Amendment R1.]** Read that paragraph with R1 in hand. **OQ-1's fork is no longer live:** production moved to `/devforge:research`, so "own trigger versus fold into sub-question 7" has no subject as posed — though its belief-versus-fact reasoning survives and now grounds the research-side trigger. **D2's fork is still live** and still goes to Phase 0. More generally, **the whole file above was written against a `/devforge:plan` production site**; wherever it reads that way, the amendment is the correction, and no sentence above has been withdrawn to make it so.
+
 **On what a passing Phase 3 would and would not settle.** It would show the artifact changed the design on one ticket, in one harness generation, on one run per arm. It would **not** show that it generalizes, and under OQ-4 it would moot the FALSE BINARY finding without answering it. Write the result in those terms; the repo's index already carries entries whose over-claimed status cost a later session real time.
 
 **The working tree is uncommitted throughout** — several plans this file cites are working-tree state, so any "shipped" claim about them means reviewed-but-uncommitted, not released. Re-check each one from the code, separately, rather than from a Status line.
@@ -449,6 +642,6 @@ Runs only on a flip.
 1. Read this file in full, then **plan 71** (whose sub-question 9 and dead-code chain this plan rewires and must not break), then **plan 69** (whose wrong-symbol hazard OQ-5 inherits and whose honesty stance rule 3 borrows).
 2. Re-verify every anchor in **Verified state** against the working tree. Line numbers drift and this repo has documented anchor rot; grep the quoted strings — `renders nothing unreachable`, `Change-Induced Dead Code`, `direction=inbound`, `anchor token`, `No dead code` — never the `:NNN`.
 3. **Re-confirm the sub-question count before drafting.** `plan/main.md` carried sub-questions 1–10 on 2026-08-12 and the convention is **append, never renumber** (plan 73 appended 10 for exactly this reason). If another in-flight plan appended one first, this plan's lands after it — and any phase text naming a number is re-checked against the file as landed, not against this file.
-4. Start at **Phase 0**. Items (b), (g), (i) and (j) each decide the shape of a phase below; leaving any of them to executor discretion re-opens it mid-build.
+4. Start at **Phase 0**. Items (b), (g), (i) and (j) each decide the shape of a phase below; leaving any of them to executor discretion re-opens it mid-build. **[Amended 2026-08-13.]** **R1, R2 and R3 are already decided** — read *Amendment 2026-08-13* first, since R1 moves production to `/devforge:research` and re-scopes Phase 2's file set, which changes what (b), (g) and (i) are even about. **(g)** and **(i)** are settled there, **(a)** now covers six rules, and **(j)** carries only a timing decision; **Phase 0 confirms the remainder** — (b)–(f), (h), (k), (l) and the unsettled part of (a), (g), (i) and (j). Before drafting Phase 2, read `src/commands/research/main.md` in full: this file verifies nothing about that site beyond five verb names and one document name.
 5. **Do not start Phase 2 before Phase 1 has run and been read.** Two of Phase 1's four outcomes close this plan without any `src/` edit at all, and both of those are successes of the method.
 6. Re-read the privacy constraint at the top before writing a single sentence into this file or into any `src/` file. It binds execution, not just drafting.

@@ -723,15 +723,29 @@ When the recommendation REPLACES the literal, the LLM treats it as "the bug" and
 
 **Trigger.** Run Phase 2.5b when ANY of the following hold: (1) Phase 2.4d's data-flow chain trace reveals a hardcoded primitive literal at a finding's `file_line` (one of the intermediate functions passes or assigns the literal rather than a variable) — this arm presupposes Phase 2.4d ran, and that phase's own Gate restricts it to bug mode with a presentation-layer symptom, so arm (1) cannot fire in an enhancement run; (2) the Phase 3 recommended approach you are about to draft will replace a primitive literal with a different value; (3) a finding's or a conclusion's grounds cite the VALUE of a primitive literal as the basis for a scope call — dead vs live, in vs out of scope, keep vs delete — where the plan is to delete or to keep the surrounding code, never to replace that value. Arms (2) and (3) carry no mode condition: both fire in bug and enhancement runs alike, and only arm (1)'s upstream trace is mode-restricted. When in doubt, run Phase 2.5b — check 17 fires at verify if the approach replaces a literal and archaeology was skipped, and check 20 fires if a finding names a literal its conclusion rests on and archaeology was skipped. "Primitive literal" = JS/TS `true|false`, Python `True|False`, `null|undefined|None`, decimal / hex / BigInt / scientific number, single-quoted / double-quoted / backtick-template string. Array / object / regex / function literals are OUT OF SCOPE — record them as ordinary findings instead.
 
-**Steps.** Run the git commands below against the repository that holds the code under investigation — in a wrapper-mode install that is the nested Source Root, not the install root, and querying the wrong root returns an empty history indistinguishable from a literal that genuinely has no prior life. Confirm which repository you are querying before trusting a result; no step in this command resolves that root for you.
+**Steps.** Run the git commands below against the repository that holds the code under investigation — in a wrapper-mode install that is the nested Source Root, not the install root, and querying the wrong root returns an empty history indistinguishable from a literal that genuinely has no prior life. Confirm which repository you are querying before trusting a result; no step in this command resolves that root for you. Step 4's forward sweep runs one such query per path and is exposed the same way, more sharply: its clean result — nothing found since the introducing commit — is character-for-character what the wrong root returns for every path handed to it, and it is a result you would otherwise read as reassuring. Settle the root once, before the first git command below, and treat every empty result in this phase as unread until you have.
 
-1. **Find the introducing commit.** Run `git log -S "<literal>" -- <file>` with `<literal>` quoted (escape shell metacharacters). The introducing commit is the OLDEST commit whose diff added the literal (last entry in the log output). Multi-commit history is OUT OF SCOPE; anchor on the oldest.
+1. **Find the introducing commit.** Run `git log -S "<literal>" -- <file>` with `<literal>` quoted (escape shell metacharacters). The introducing commit is the OLDEST commit whose diff added the literal (last entry in the log output); anchor on it. That anchor is where the history window STARTS, not where it ends — step 4 sweeps forward from it to `HEAD`. Any newer entry in this same log already falls inside that forward window, so do not re-anchor on one.
 
 2. **Read the commit subject.** Run `git show --stat <introducing-commit-sha>` to see the commit's subject line and which files it touched.
 
 3. **Confirm author + date via blame.** Run `git blame -L <start>,<end> <file>` around the literal's line; the blame entry's author + date confirm the introducing-commit fingerprint.
 
-4. **Classify intent.** Pick ONE of the 6 enum values:
+4. **Sweep forward for commits that changed how the value is supplied.** Steps 1-3 establish how the literal got there. They cannot establish that it still means what it meant then. Sweep the window the anchor opened — for the literal's own file, AND for the file of EACH inbound caller enumerated at Phase 2.4c Step 2, run:
+
+   ```bash
+   git log <introducing-commit-sha>..HEAD -- <path>
+   ```
+
+   Read the subjects for commits that changed how this value is SUPPLIED: a prop removed from a parent, a default relocated to another layer, a flag stripped from a caller, a wrapper that stopped forwarding the argument. Open the diff (`git show <sha>`) for any subject that reads that way — the subject line is a filter, not the answer.
+
+   Sweep the caller paths with the same attention as the literal's own file, and expect the caller paths to be where this pays: the commit that turns a literal into a leftover frequently never touches the literal, its line, or its file at all. It removes whatever used to supply a different value, one layer up, and the literal it strands still reads exactly as considered as it did the day it was written. A sweep confined to the literal's own file reproduces the blind spot steps 1-3 already have.
+
+   When Phase 2.4c recorded no inbound callers — the no-shared-callers justification is the sanctioned route to that state, and not the only way a report reaches it — the sweep covers the literal's own file alone. That is a narrower sweep than a caller-bearing one and the carrier below cannot express the difference — an `[]` from a one-path sweep is indistinguishable from an `[]` that cleared five caller files — so note the narrowing in the recommended-approach `--rationale`, the one free-text field that exists on every run. When step 1 could not identify an introducing commit at all (the fallback at the end of this phase), there is no anchor to sweep forward from and the sweep does not run; that is the "not swept" state described in step 6, not a clean one.
+
+   Record the outcome in step 6 and nothing more. This sweep gates nothing: finding a supply-changing commit does not stop the investigation, and finding none does not clear the literal — a value can be stranded by a commit whose subject reads like anything at all, or by one in a file nobody enumerated. No check forces this sweep to run, and none can tell a thorough sweep from a cursory one. What it produces is evidence for step 5's classification and for the scope call the report will carry, and a record of how far you actually looked.
+
+5. **Classify intent.** Pick ONE of the 6 enum values:
 
    | Intent | When it applies |
    |---|---|
@@ -742,7 +756,7 @@ When the recommendation REPLACES the literal, the LLM treats it as "the bug" and
    | `inherited-refactor` | A later refactor preserved the literal verbatim while restructuring around it (commit msg describes structural change, not value change). |
    | `generated` | Literal lives in a generated file (path matches `**/generated/**` or `**/node_modules/**`, OR file header has an `AUTO-GENERATED` marker). |
 
-5. **Record the archaeology.** Call:
+6. **Record the archaeology.** Call:
 
    ```bash
    .devforge/lib/research_helper record-literal-archaeology \
@@ -752,8 +766,11 @@ When the recommendation REPLACES the literal, the LLM treats it as "the bug" and
        --introduced-when "<YYYY-MM-DD>" \
        --commit-subject "<one-line subject from the commit>" \
        --intent <placeholder|migrated|deliberate|forgotten|inherited-refactor|generated> \
-       --use <fix-layer|evidence>
+       --use <fix-layer|evidence> \
+       --supply-changing-commits '[{"sha": "<7-40 hex>", "subject": "<one-line subject>"}]'
    ```
+
+   The last line is the OPTIONAL step-4 carrier — omit that line entirely when the sweep did not run, pass `'[]'` when it ran and found nothing, and read the three-state rule below before choosing between those two.
 
    **`--use` (why this row is being recorded).** Pick the value from what the recommended approach DOES to the literal, never from how its summary is worded:
 
@@ -764,7 +781,17 @@ When the recommendation REPLACES the literal, the LLM treats it as "the bug" and
 
    Both values are reachable on a run today, and each has a gate that compels the call. Check 17 matches the recommended approach's PROSE (`replace` / `change` / `swap` leading to `with` / `to` / `for`), not what the change actually does, so a deletion-shaped approach narrated with replacement idiom (`swap the literal true with removing the dead flag prop entirely`) reaches this setter and takes `--use evidence`. Check 20 compels the call from the other side: a finding that answered `--rests-on-literal` with a `file:line` (Phase 2.6) demands a row at that `file_line`, and such a row takes `--use evidence` whenever the approach deletes or keeps the code instead of replacing the value. Mis-tagging such a row as `fix-layer` re-arms the escalation-cite requirement above, and on a `placeholder` / `forgotten` / `inherited-refactor` intent `finalize-handoff` then fails at Phase 4 Step 4.6 — after the report is already written. No check downstream will catch a wrong `--use` value — check 17 matches on the literal and its `file_line`, check 20 on a row existing at the `file_line` the finding named, and neither reads the field. Get it right when you make the call; nothing after this point will.
 
-   The setter dedupes on `(literal, file_line)` — re-recording the same pair is a no-op (first write wins on both the `--intent` and `--use` values). The setter rejects the `(none)` sentinel and unrecognized literal tokens. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
+   The setter dedupes on `(literal, file_line)` — re-recording the same pair is a no-op (first write wins on the `--intent`, `--use`, and `--supply-changing-commits` values alike). The setter rejects the `(none)` sentinel and unrecognized literal tokens. On exit 2, copy stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase).
+
+   **`--supply-changing-commits` (what step 4's sweep returned).** Optional, and its three states are NOT interchangeable:
+
+   - **Flag omitted entirely** — the sweep did not run for this literal. A normal outcome; nothing penalizes it, and it is the honest answer whenever step 4 had no anchor to sweep from or you did not get to it.
+   - **`'[]'`** — the sweep RAN, over the literal's file and every caller file it covered, and found no commit that changed how the value is supplied.
+   - **Populated** — a JSON array of `{"sha": "...", "subject": "..."}` objects, one per commit the sweep found. `sha` is 7-40 hex characters, `subject` is that commit's one-line subject, and no other key is accepted in an element.
+
+   Omitting the flag and passing `'[]'` are different claims and must never be conflated: "nobody looked" is not "somebody looked and it was clean". The rendered report keeps them visibly apart — `not swept` against `no supply-changing commits since the introducing commit` — under its own `### Supply-changing commits since introduction` heading, and that line is what a human reviewer reads to tell an unexamined literal from an examined one. Collapsing the two costs a reader the only signal that distinction carries.
+
+   Pass this flag on the SAME `record-literal-archaeology` call that carries the intent. The dedupe rule above means a second call for the same `(literal, file_line)` returns 0 and writes nothing, with no message on stderr — so a sweep result sent in a follow-up call is discarded, silently, and the row keeps reading `not swept` forever. There is no amend and no repair verb for this field: if step 4 is still outstanding when you reach this step, finish it before making the call rather than recording the row now and intending to correct it.
 
 **Per-intent recovery rule — `--use fix-layer` rows (drives Phase 3's recommended-approach drafting).**
 
@@ -776,7 +803,7 @@ When the recommendation REPLACES the literal, the LLM treats it as "the bug" and
 **Per-intent evidence rule — `--use evidence` rows (drives what a scope conclusion may rest on).** This block answers a different question from the fix-layer rules above — not "where does the fix belong?" but "is this literal evidence of anything?" — so read it separately. Neither block substitutes for the other, and an `evidence` row takes only the rules here.
 
 - `intent ∈ {placeholder, forgotten, inherited-refactor}` → the literal's current value is NOT evidence of intent. Any scope call resting on it must be RE-DERIVED from another source — the helper's inbound callers (Phase 2.4c Step 2), the surrounding code's own history, or a runtime probe — or DOWNGRADED in confidence in the report, naming the archaeology row as the reason for the downgrade. A literal a later refactor preserved verbatim describes what the code did BEFORE that refactor, not what it does now.
-- `intent == deliberate` → the scope call may stand, but Phase 3's rationale MUST cite the introducing commit by SHA + subject — the same evidentiary bar the `deliberate` fix-layer rule imposes on overriding one.
+- `intent == deliberate` → what stands depends on what step 4's sweep returned, because a considered choice at introduction is a claim about the moment it was made and not about what the value means now. **Sweep found nothing (`[]`)** → the scope call may stand, but Phase 3's rationale MUST cite the introducing commit by SHA + subject — the same evidentiary bar the `deliberate` fix-layer rule imposes on overriding one. **Sweep found a supply-changing commit** → that later commit, not the introducing one, is what decides whether the literal still describes anything live, and a deliberate introduction is exactly what a stranded value looks like; the classification no longer carries the scope call, so RE-DERIVE it as the first bullet requires or DOWNGRADE it in the report, citing the supply-changing commit by SHA + subject as the reason. **Sweep not run** → the row supports neither reading; run step 4, or record the scope call as resting on an unswept literal and downgrade it accordingly.
 - `intent ∈ {migrated, generated}` → no evidence rule applies. The fix-layer rules above are the only ones written for these two intents, and they are inert when nothing is being replaced; record the row and proceed.
 
 **Honesty bound.** Check 20 forces the archaeology row to EXIST for a literal a finding rests on; it cannot force the scope call drawn from that row to be CORRECT. Correctness stays your judgment, and the row is what lets a human audit it — the rendered report carries a Literal Archaeology section for exactly that reason.

@@ -31,6 +31,7 @@ from ._validators import (
     _validate_scalar,
     _validate_script_within_probe_scratch_dir,
     _validate_string_array_json,
+    _validate_supply_changing_commits_json,
 )
 
 
@@ -641,8 +642,8 @@ def cmd_record_data_flow_chain(args: argparse.Namespace) -> int:
 
 
 def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
-    """Append a {literal, file_line, introduced_by, introduced_when, commit_subject, intent, use}
-    record to literal_archaeology.
+    """Append a {literal, file_line, introduced_by, introduced_when, commit_subject,
+    intent, use, supply_changing_commits} record to literal_archaeology.
 
     Dedupes by (literal, file_line) pair: re-recording the same pair is a no-op
     (original intent AND original use are retained; no error emitted — matches
@@ -662,6 +663,15 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
         at THIS setter boundary (the "fix-layer" default lives only at the
         schema field level, for back-compat deserialization of a row that
         predates this argument's existence).
+      - --supply-changing-commits: OPTIONAL (plan 73 Phase 1 — the widened
+        window sweep is a search step, not a mandatory input). Omitted →
+        stored as None ("sweep not run"). Passed as a JSON array string →
+        parsed via _validate_supply_changing_commits_json and stored as
+        that list, including the empty list `[]` ("sweep ran, found
+        nothing") — distinct from omission all the way through to the
+        handoff.json. This is SHAPE validation of a value that IS
+        supplied, not a requiredness gate: a run that never passes this
+        flag records nothing about the sweep and is not rejected for it.
     """
     # Validate --literal: non-empty, then fullmatch against LITERAL_TOKEN_RE.
     literal_raw = args.literal
@@ -700,6 +710,18 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
             "commit SHA.".format(introduced_by),
             code=2,
         )
+    # Normalize on store: lowercase the sha before it is written to report
+    # state. Git itself never emits uppercase hex, but the stronger reason
+    # is that a sha is an IDENTITY field -- accepting both cases and
+    # storing verbatim would make "ABCDEF1" and "abcdef1" two distinct
+    # strings for the same commit, and anything comparing/deduping on this
+    # value would treat them as different commits. Canonicalizing here
+    # matches handoff_schema._COMMIT_SHA_RE (lowercase-only), so a
+    # mixed-case value can no longer pass this setter at exit 0 and then
+    # fail schema validation at the disconnected later finalize-handoff
+    # step (the twin of the supply_changing_commits sha fix in
+    # _validators.py:_validate_supply_changing_commits_json).
+    introduced_by = introduced_by.lower()
 
     # Validate --introduced-when: ISO date YYYY-MM-DD.
     introduced_when = args.introduced_when.strip()
@@ -728,6 +750,22 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
     intent = args.intent
     use = args.use
 
+    # Validate --supply-changing-commits (OPTIONAL — plan 73 Phase 1). The
+    # argparse default is None; when the flag is omitted entirely, args
+    # carries None and this stays None ("sweep not run"). When passed, it
+    # is a JSON-array string that decodes to (possibly empty) SHA/subject
+    # rows — "sweep ran, found nothing" for `[]`. Shape-validated here
+    # (malformed JSON, bad sha, empty subject → exit 2); never a
+    # requiredness gate on whether the flag was passed at all.
+    supply_changing_commits = getattr(args, "supply_changing_commits", None)
+    if supply_changing_commits is not None:
+        try:
+            supply_changing_commits = _validate_supply_changing_commits_json(
+                supply_changing_commits, "literal_archaeology.supply_changing_commits"
+            )
+        except ValueError as err:
+            return _die("record-literal-archaeology: {0}".format(err), code=2)
+
     try:
         with _state_transaction(args.devforge_dir, "report") as report:
             rows = report.setdefault("literal_archaeology", [])
@@ -743,6 +781,7 @@ def cmd_record_literal_archaeology(args: argparse.Namespace) -> int:
                 "commit_subject": commit_subject,
                 "intent": intent,
                 "use": use,
+                "supply_changing_commits": supply_changing_commits,
             })
     except (OSError, json.JSONDecodeError) as err:
         return _die("record-literal-archaeology: {0}".format(err))

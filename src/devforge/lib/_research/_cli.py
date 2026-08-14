@@ -972,6 +972,24 @@ def _register_subcommands(subparsers) -> None:
             "escalation cite is required."
         ),
     )
+    sp.add_argument(
+        "--supply-changing-commits",
+        default=None,
+        dest="supply_changing_commits",
+        help=(
+            "OPTIONAL (plan 73 Phase 1): JSON array of {sha, subject} objects "
+            "-- commits found by the widened `git log <introduced-by>..HEAD` "
+            "sweep over this literal's file AND its already-enumerated "
+            "inbound callers that changed HOW the value is SUPPLIED (a prop "
+            "removed from a parent, a default relocated, a flag stripped "
+            "from a caller). Omit this flag entirely when the sweep was not "
+            "run for this literal -- that is a normal, unpenalized outcome, "
+            "recorded as None end to end. Pass '[]' when the sweep ran and "
+            "found nothing since --introduced-by. This is a SEARCH-STEP "
+            "carrier, never a gate: no run fails because this flag was "
+            "omitted or resolved empty."
+        ),
+    )
     sp.set_defaults(func=cmd_record_literal_archaeology)
 
     sp = subparsers.add_parser(

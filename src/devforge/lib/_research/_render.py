@@ -28,7 +28,11 @@ def _render_report_md(memo: dict, report: dict) -> str:
       11. Complexity Assessment
       12. Value Semantics (when present)
       13. Value Production Sites (when present)
-      14. Literal Archaeology (when present)
+      14. Literal Archaeology (when present), followed immediately by its
+          "Supply-changing commits since introduction" sub-section (plan
+          73 Phase 2b — same gate as the table, so it always accompanies
+          it; renders the widened-sweep result the table's 7 columns
+          have no room for)
       15. Evidence Lanes Consulted (plan 73 D7 — ALWAYS renders, never
           omitted; the one section in this list not gated on non-empty
           state, by design — see the section's own code comment)
@@ -318,6 +322,60 @@ def _render_report_md(memo: dict, report: dict) -> str:
             ))
         out.append("")
 
+        # Supply-changing commits since introduction (plan 73 Phase 2b/D5):
+        # a NEW sub-section, gated on the SAME `if literal_archaeology:`
+        # condition as the table just above so it always accompanies it.
+        # This is deliberately a bullet list, NOT an eighth table column
+        # and NOT a sub-list nested inside a table cell -- the ratified
+        # rendering decision -- because a single literal's widened sweep
+        # can return dozens of commits, and neither of those alternate
+        # shapes survives that: a markdown table cell cannot hold a
+        # multi-line nested list, and an eighth column would force one
+        # row per commit, duplicating the other six columns for every
+        # commit found.
+        #
+        # supply_changing_commits (handoff_schema.LiteralArchaeology) has
+        # THREE states, and this sub-section is the ONLY place a human
+        # sees the distinction between them -- the typed carrier holds
+        # it but never renders it on its own. Rendering must keep all
+        # three visibly DIFFERENT, one line per archaeology row:
+        #   None  -- the widened sweep was NEVER RUN for this literal.
+        #   []    -- the sweep RAN and found nothing since introduced_by.
+        #   [...] -- the sweep ran and found these commits.
+        # Collapsing None and [] into the same wording would destroy
+        # exactly the distinction this field exists to preserve -- this
+        # mirrors the Evidence Lanes Consulted section's None-vs-False
+        # reasoning a few lines below, and for the same reason: a
+        # literal nobody ever swept ("not swept") is precisely what a
+        # human reviewer must be able to notice, and it must never read
+        # the same as "swept, and clean" ("no supply-changing commits
+        # since the introducing commit"). Do not merge these two
+        # branches or their wording.
+        out.append("### Supply-changing commits since introduction")
+        out.append("")
+        for row in literal_archaeology:
+            # Only the literal is wrapped in a code span (the ratified
+            # format); file_line renders as plain escaped text in
+            # parens, matching the format example exactly.
+            literal_span = _md_code_span(row.get("literal") or "")
+            file_line_text = _md_escape_list_text(row.get("file_line") or "")
+            commits = row.get("supply_changing_commits")
+            if commits is None:
+                out.append("- {0} ({1}): not swept".format(literal_span, file_line_text))
+            elif not commits:
+                out.append(
+                    "- {0} ({1}): no supply-changing commits since the "
+                    "introducing commit".format(literal_span, file_line_text)
+                )
+            else:
+                out.append("- {0} ({1}):".format(literal_span, file_line_text))
+                for commit in commits:
+                    out.append("  - {0} — {1}".format(
+                        _md_escape_list_text(commit.get("sha") or ""),
+                        _md_escape_list_text(commit.get("subject") or ""),
+                    ))
+        out.append("")
+
     # Evidence Lanes Consulted (plan 73 D7 — the not-covered evidence-lane
     # declaration). UNCONDITIONAL: unlike every other section above, this
     # one renders even when every lane is unset (report.evidence_lanes'
@@ -369,6 +427,80 @@ def _md_escape_cell(text: str) -> str:
     if text is None:
         return ""
     return text.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
+def _md_collapse_newlines(text: str) -> str:
+    """Collapse embedded newlines/CR to a single space.
+
+    Shared by the two bullet-list escapers below. A raw newline inside
+    list content would split one bullet across physical lines and could
+    surface a line-starting '-'/'*'/digit '.' that markdown would parse
+    as a NEW list marker rather than a continuation of the same bullet
+    -- so every value placed on a bullet-list line goes through this
+    first, matching how _md_escape_cell already neutralizes newlines
+    for the table-cell case.
+    """
+    if text is None:
+        return ""
+    return text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
+
+def _md_code_span(text: str) -> str:
+    """Wrap ``text`` in a markdown code span, safe against embedded backticks.
+
+    Used for the Literal Archaeology "Supply-changing commits" sub-section,
+    where the literal + file_line pair are rendered as `` `literal` ``
+    (file:line) per the ratified bullet-list format. _md_escape_cell is
+    NOT reused here: a table cell only needs protecting from '|' and
+    newlines, but a code span has a DIFFERENT hazard and NO escape
+    mechanism at all -- CommonMark takes everything between two runs of
+    N backticks verbatim, so a backslash in front of an inner backtick
+    does nothing to hide it (it would just terminate the span early
+    instead). The correct fix, per CommonMark's own rule, is to fence
+    with a longer backtick run than the longest one already present in
+    the content, padding with a single space on each side when the
+    content starts or ends with a backtick (or is empty) so the fence
+    can never be swallowed by the content it wraps.
+    """
+    text = _md_collapse_newlines(text)
+    longest_run = 0
+    current_run = 0
+    for ch in text:
+        if ch == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    fence = "`" * (longest_run + 1)
+    body = text
+    if body == "" or body.startswith("`") or body.endswith("`"):
+        body = " {0} ".format(body)
+    return "{0}{1}{0}".format(fence, body)
+
+
+def _md_escape_list_text(text: str) -> str:
+    """Escape free-form prose (e.g. a commit subject) for a bullet-list line.
+
+    This is NOT the same job as _md_escape_cell: a table cell's only
+    hazards are '|' and embedded newlines, but bullet-list prose is not
+    wrapped in a code span (there is no single fixed value to fence --
+    a commit subject is free text, so _md_code_span's fencing trick
+    does not apply), so any inline markdown-active character left
+    unescaped -- a backtick, an underscore/asterisk that could open
+    emphasis -- would leak formatting into the surrounding list.
+    Backslash-escaping (with the backslash itself escaped first, so this
+    function does not double-escape its own output) is the right tool
+    for prose; embedded newlines are still collapsed first, same as the
+    code-span path, so a leading '-'/'*'/digit '.' inside the text can
+    never land at the start of a physical line either.
+    """
+    if text is None:
+        return ""
+    text = _md_collapse_newlines(text)
+    text = text.replace("\\", "\\\\")
+    for ch in ("`", "*", "_", "|"):
+        text = text.replace(ch, "\\" + ch)
+    return text
 
 
 def _derive_topic_for_render(memo: dict, report: dict) -> str:

@@ -2248,6 +2248,167 @@ class RenderPlanSeedsTests(unittest.TestCase):
         self.assertEqual(len(evidence_line), 1)
         self.assertNotEqual(fix_layer_line[0], evidence_line[0])
 
+    def test_literal_archaeology_supply_changing_commits_three_states(self):
+        """Defect 1/2 fix -- introduced_when now renders, and
+        supply_changing_commits' three states (not run / run-and-clean /
+        run-and-found) render distinguishably per row.
+
+        Real chain, no hand-authored handoff JSON: three
+        record-literal-archaeology calls covering all three
+        --supply-changing-commits states (flag omitted entirely / passed
+        as '[]' / passed as a populated JSON array), through the real
+        finalize-handoff producer and the real render-plan-seeds consumer.
+        Fast, hand-built-dict coverage of each state in isolation (the
+        paired not-swept-vs-clean assertions) lives in
+        LiteralArchaeologySupplyChangingCommitsRenderTests below -- this
+        test is the end-to-end proof that the real CLI chain agrees with
+        that render.
+        """
+        devforge = self.tmp / ".devforge"
+        devforge.mkdir(parents=True, exist_ok=True)
+        _run_research_setup(devforge, RESEARCH_HELPER_PY)
+
+        def _rrun(*argv):
+            return subprocess.run(
+                [sys.executable, str(RESEARCH_HELPER_PY)] + list(argv),
+                capture_output=True, text=True,
+            )
+
+        # Row 1 -- --supply-changing-commits omitted entirely -> None
+        # ("the sweep was not run for this literal").
+        r = _rrun(
+            "--devforge-dir", str(devforge), "record-literal-archaeology",
+            "--literal", "10",
+            "--file-line", "src/services/widget_flags.py:30",
+            "--introduced-by", "aaaaaaa",
+            "--introduced-when", "2021-01-15",
+            "--commit-subject", "Introduce widget cap constant",
+            "--intent", "deliberate",
+            "--use", "fix-layer",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        # Row 2 -- --supply-changing-commits '[]' -> swept, found nothing.
+        r = _rrun(
+            "--devforge-dir", str(devforge), "record-literal-archaeology",
+            "--literal", "20",
+            "--file-line", "src/services/widget_flags.py:31",
+            "--introduced-by", "bbbbbbb",
+            "--introduced-when", "2021-02-20",
+            "--commit-subject", "Introduce widget retry count",
+            "--intent", "deliberate",
+            "--use", "fix-layer",
+            "--supply-changing-commits", "[]",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        # Row 3 -- --supply-changing-commits with TWO commits -> populated;
+        # order must be preserved end to end.
+        r = _rrun(
+            "--devforge-dir", str(devforge), "record-literal-archaeology",
+            "--literal", "30",
+            "--file-line", "src/services/widget_flags.py:32",
+            "--introduced-by", "ccccccc",
+            "--introduced-when", "2021-03-25",
+            "--commit-subject", "Introduce widget timeout",
+            "--intent", "deliberate",
+            "--use", "fix-layer",
+            "--supply-changing-commits",
+            json.dumps([
+                {"sha": "1111111", "subject": "Relocate default to config"},
+                {"sha": "2222222", "subject": "Strip override flag from caller"},
+            ]),
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        research_emit = self.tmp / "research" / "2026-05-22-widget-stale-results.handoff.json"
+        research_emit.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(
+            [
+                sys.executable, str(RESEARCH_HELPER_PY),
+                "--devforge-dir", str(devforge),
+                "finalize-handoff",
+                "--emit-handoff-json", str(research_emit),
+                "--research-md-path",
+                "research/2026-05-22-widget-stale-results.md",
+            ],
+            cwd=str(self.tmp),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, "research finalize-handoff failed: " + proc.stderr)
+
+        # Precondition: the producer really recorded all three states distinctly.
+        data = json.loads(research_emit.read_text(encoding="utf-8"))
+        rows_by_literal = {
+            row["literal"]: row for row in data["spec_seeds"]["literal_archaeology"]
+        }
+        self.assertIsNone(rows_by_literal["10"]["supply_changing_commits"])
+        self.assertEqual(rows_by_literal["20"]["supply_changing_commits"], [])
+        self.assertEqual(len(rows_by_literal["30"]["supply_changing_commits"]), 2)
+
+        specify_emit = _produce_specify_handoff(
+            self.tmp,
+            handoff_path=str(research_emit),
+            handoff_kind="research",
+            research_completed_at="2026-05-22T08:00:00Z",
+        )
+
+        result = self._run("render-plan-seeds", str(specify_emit))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout
+
+        def _row_block(text, literal):
+            """Isolate one archaeology row's rendered text -- its top-level
+            bullet plus every nested (indented) line directly beneath it,
+            stopping at the next top-level line. Needed because the three
+            rows share the section wording pool ("not swept" is a substring
+            match target for one row and must be absent from the others)."""
+            lines = text.splitlines()
+            marker = "- `{0}`".format(literal)
+            start = None
+            for i, ln in enumerate(lines):
+                if ln.startswith(marker):
+                    start = i
+                    break
+            self.assertIsNotNone(
+                start, "row for literal {0!r} not found in output".format(literal)
+            )
+            end = start + 1
+            while end < len(lines) and lines[end].startswith("  "):
+                end += 1
+            return "\n".join(lines[start:end])
+
+        # introduced_when renders (defect 2 regression pin).
+        block_10 = _row_block(output, "10")
+        self.assertIn("when: 2021-01-15", block_10)
+
+        # Not-run state: "not swept" present, clean-state wording absent.
+        self.assertIn("not swept", block_10)
+        self.assertNotIn("no supply-changing commits", block_10)
+
+        # Swept-and-clean state: clean wording present, "not swept" absent.
+        block_20 = _row_block(output, "20")
+        self.assertIn("when: 2021-02-20", block_20)
+        self.assertIn(
+            "no supply-changing commits since the introducing commit", block_20
+        )
+        self.assertNotIn("not swept", block_20)
+
+        # Populated state: both commits present verbatim, order preserved,
+        # neither of the other two states' wording leaks in.
+        block_30 = _row_block(output, "30")
+        self.assertIn("when: 2021-03-25", block_30)
+        self.assertNotIn("not swept", block_30)
+        self.assertNotIn("no supply-changing commits", block_30)
+        self.assertIn("1111111", block_30)
+        self.assertIn("Relocate default to config", block_30)
+        self.assertIn("2222222", block_30)
+        self.assertIn("Strip override flag from caller", block_30)
+        pos_1 = block_30.index("1111111")
+        pos_2 = block_30.index("2222222")
+        self.assertLess(pos_1, pos_2, "commit order must be preserved")
+
 
 # ---------------------------------------------------------------------------
 # Tests: render-consultation-block
@@ -2997,6 +3158,227 @@ class LiteralArchaeologyRenderTests(unittest.TestCase):
         self.assertIn("use: fix-layer", output)
         self.assertIn("SHA: cafe123", output)
         self.assertIn("Initial flag plumbing", output)
+
+
+# ---------------------------------------------------------------------------
+# Tests: supply_changing_commits (three-state render) + introduced_when
+# (defects 1/2 in the /plan-side literal-provenance render).
+# ---------------------------------------------------------------------------
+
+
+class LiteralArchaeologySupplyChangingCommitsRenderTests(unittest.TestCase):
+    """Fast, hand-built-dict tests for the supply_changing_commits
+    three-state branch and the introduced_when field, both rendered by
+    _render_research_plan_seeds's Literal provenance block.
+
+    Mirrors LiteralArchaeologyRenderTests' rationale for calling the
+    private render function directly with a hand-built dict: it isolates
+    each of the three supply_changing_commits states (and the back-compat
+    no-key shape unreachable by the current CLI, since
+    dataclasses.asdict always writes the key, null or not) without the
+    subprocess overhead of the full record-literal-archaeology ->
+    finalize-handoff -> render-plan-seeds chain. That real-chain proof
+    lives in RenderPlanSeedsTests.
+    test_literal_archaeology_supply_changing_commits_three_states above.
+    """
+
+    def _ps_dict(self, **kwargs):
+        """Return a minimal plan_seeds dict (unrelated to literal_archaeology,
+        included only because _render_research_plan_seeds reads other
+        plan_seeds fields unconditionally)."""
+        base = {
+            "recommended_approach_id": "fix_cache",
+            "recommended_approach_summary": "Clear the cache on every catalog write",
+            "layer_destination": "service",
+            "layer_justification": "Service-layer only change",
+            "complexity": {"changes": "Low", "risk": "Low", "verify_cost": "Low"},
+            "cited_canonical_patterns": [],
+            "alternatives_considered": [],
+            "proposed_call_shape": None,
+            "correctness_vetted": True,  # suppress the unrelated Seam-E caveat
+        }
+        base.update(kwargs)
+        return base
+
+    def _row(self, literal, file_line, when, supply_changing_commits):
+        """Return a full 8-field literal_archaeology row dict (the current
+        producer shape -- supply_changing_commits key always present)."""
+        return {
+            "literal": literal,
+            "file_line": file_line,
+            "introduced_by": "abc1234",
+            "introduced_when": when,
+            "commit_subject": "Introduce {0}".format(literal),
+            "intent": "deliberate",
+            "use": "fix-layer",
+            "supply_changing_commits": supply_changing_commits,
+        }
+
+    def _row_block(self, text, literal):
+        """Isolate one archaeology row's rendered text -- its top-level
+        bullet plus every nested (indented) line directly beneath it,
+        stopping at the next top-level line."""
+        lines = text.splitlines()
+        marker = "- `{0}`".format(literal)
+        start = None
+        for i, ln in enumerate(lines):
+            if ln.startswith(marker):
+                start = i
+                break
+        self.assertIsNotNone(
+            start, "row for literal {0!r} not found in output".format(literal)
+        )
+        end = start + 1
+        while end < len(lines) and lines[end].startswith("  "):
+            end += 1
+        return "\n".join(lines[start:end])
+
+    # -- Case 1: None -- the sweep was not run. ----------------------------
+
+    def test_supply_changing_commits_none_renders_not_swept(self):
+        row = self._row("100", "src/services/widget_flags.py:10", "2022-01-01", None)
+        d = {"plan_seeds": self._ps_dict(), "spec_seeds": {"literal_archaeology": [row]}}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("supply-changing commits: not swept", output)
+        # Paired assertion: the sibling (swept-and-clean) state's wording
+        # must NOT appear -- this is what stops the test passing vacuously.
+        self.assertNotIn("no supply-changing commits", output)
+
+    # -- Case 2: [] -- the sweep ran and found nothing. ---------------------
+
+    def test_supply_changing_commits_empty_list_renders_clean(self):
+        row = self._row("200", "src/services/widget_flags.py:20", "2022-02-02", [])
+        d = {"plan_seeds": self._ps_dict(), "spec_seeds": {"literal_archaeology": [row]}}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn(
+            "supply-changing commits: no supply-changing commits since the "
+            "introducing commit",
+            output,
+        )
+        # Paired assertion: the sibling (not-run) state's wording must NOT
+        # appear.
+        self.assertNotIn("not swept", output)
+
+    # -- Case 3: one commit found. -------------------------------------------
+
+    def test_supply_changing_commits_one_commit_renders_sha_and_subject(self):
+        row = self._row(
+            "300", "src/services/widget_flags.py:30", "2022-03-03",
+            [{"sha": "1111111", "subject": "Relocate default to config"}],
+        )
+        d = {"plan_seeds": self._ps_dict(), "spec_seeds": {"literal_archaeology": [row]}}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("1111111", output)
+        self.assertIn("Relocate default to config", output)
+        self.assertNotIn("not swept", output)
+        self.assertNotIn("no supply-changing commits", output)
+
+    # -- Case 4: multiple commits found, order preserved. --------------------
+
+    def test_supply_changing_commits_multiple_commits_order_preserved(self):
+        row = self._row(
+            "400", "src/services/widget_flags.py:40", "2022-04-04",
+            [
+                {"sha": "1111111", "subject": "Relocate default to config"},
+                {"sha": "2222222", "subject": "Strip override flag from caller"},
+                {"sha": "3333333", "subject": "Reintroduce override via env var"},
+            ],
+        )
+        d = {"plan_seeds": self._ps_dict(), "spec_seeds": {"literal_archaeology": [row]}}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        for sha, subject in (
+            ("1111111", "Relocate default to config"),
+            ("2222222", "Strip override flag from caller"),
+            ("3333333", "Reintroduce override via env var"),
+        ):
+            self.assertIn(sha, output)
+            self.assertIn(subject, output)
+        pos_1 = output.index("1111111")
+        pos_2 = output.index("2222222")
+        pos_3 = output.index("3333333")
+        self.assertLess(pos_1, pos_2, "commit order must be preserved")
+        self.assertLess(pos_2, pos_3, "commit order must be preserved")
+
+    # -- Case 5: all three states in one brief, rendered independently. ------
+
+    def test_mixed_states_across_several_rows_render_independently(self):
+        rows = [
+            self._row("100", "src/services/widget_flags.py:10", "2022-01-01", None),
+            self._row("200", "src/services/widget_flags.py:20", "2022-02-02", []),
+            self._row(
+                "300", "src/services/widget_flags.py:30", "2022-03-03",
+                [{"sha": "1111111", "subject": "Relocate default to config"}],
+            ),
+        ]
+        d = {"plan_seeds": self._ps_dict(), "spec_seeds": {"literal_archaeology": rows}}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+
+        block_100 = self._row_block(output, "100")
+        self.assertIn("not swept", block_100)
+        self.assertNotIn("no supply-changing commits", block_100)
+
+        block_200 = self._row_block(output, "200")
+        self.assertIn(
+            "no supply-changing commits since the introducing commit", block_200
+        )
+        self.assertNotIn("not swept", block_200)
+
+        block_300 = self._row_block(output, "300")
+        self.assertIn("1111111", block_300)
+        self.assertIn("Relocate default to config", block_300)
+        self.assertNotIn("not swept", block_300)
+        self.assertNotIn("no supply-changing commits", block_300)
+
+    # -- Case 6: introduced_when renders (defect 2 regression pin). ----------
+
+    def test_introduced_when_renders(self):
+        """Before this fix, introduced_when was never rendered on any row
+        despite being one of LiteralArchaeology's seven fields -- this
+        test would have failed against the pre-fix render."""
+        row = self._row("500", "src/services/widget_flags.py:50", "2019-12-25", None)
+        d = {"plan_seeds": self._ps_dict(), "spec_seeds": {"literal_archaeology": [row]}}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("when: 2019-12-25", output)
+
+    # -- Case 7: back-compat -- no supply_changing_commits key at all. -------
+
+    def test_back_compat_row_with_no_supply_changing_commits_key(self):
+        """A row dict persisted before supply_changing_commits existed has
+        no key at all -- must render 'not swept', never crash. The real
+        producer always writes the key (possibly null) via
+        dataclasses.asdict, so this exact shape is unreachable by the
+        current CLI chain -- mirrors LiteralArchaeologyRenderTests'
+        test_pre_plan73_row_without_use_key_defaults_fix_layer rationale
+        for hand-building this dict directly.
+        """
+        row = {
+            "literal": "600",
+            "file_line": "src/legacy/OldFlag.py:9",
+            "introduced_by": "cafe123",
+            "introduced_when": "2022-06-01",
+            "commit_subject": "Initial flag plumbing",
+            "intent": "migrated",
+            "use": "fix-layer",
+            # no "supply_changing_commits" key at all.
+        }
+        d = {"plan_seeds": self._ps_dict(), "spec_seeds": {"literal_archaeology": [row]}}
+        output = plan_helper._render_research_plan_seeds(
+            "research/2026-01-01-test.handoff.json", d
+        )
+        self.assertIn("supply-changing commits: not swept", output)
+        self.assertNotIn("no supply-changing commits", output)
 
 
 class CorrectnessVettedBackCompatTests(unittest.TestCase):

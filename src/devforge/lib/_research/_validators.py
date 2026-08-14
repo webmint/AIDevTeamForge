@@ -94,6 +94,106 @@ def _validate_string_array_json(value: str, field_name: str) -> List[str]:
     return out
 
 
+_SUPPLY_CHANGING_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
+
+def _validate_supply_changing_commits_json(value: str, field_name: str) -> List[dict]:
+    """Parse --supply-changing-commits as a JSON array of {sha, subject}
+    objects (plan 73 Phase 1 — the widened supply-changing-commit sweep
+    carrier for record-literal-archaeology).
+
+    This validates the SHAPE of a value that IS supplied — it is called
+    only when the caller passed --supply-changing-commits at all (an
+    omitted flag never reaches this function; that is the "sweep was not
+    run" state and stays None all the way through). Empty array `[]` IS
+    accepted here — it is the "sweep ran, found nothing" state, distinct
+    from omission.
+
+    Raises ValueError on:
+      - malformed JSON
+      - a decoded value that is not a list
+      - a list element that is not an object
+      - an element missing 'sha' or 'subject', or carrying extra keys
+      - sha not a 7-40 char hex commit SHA
+      - subject empty (after strip)
+
+    Returns a list of {"sha": <stripped>, "subject": <stripped>} dicts —
+    JSON-serializable; the caller stores these verbatim in report state.
+    """
+    try:
+        decoded = json.loads(value)
+    except ValueError as err:
+        raise ValueError(
+            "{0}: JSON-array form is malformed: {1}".format(field_name, err)
+        )
+    if not isinstance(decoded, list):
+        raise ValueError(
+            "{0}: must decode to a list, got {1}".format(
+                field_name, type(decoded).__name__
+            )
+        )
+    out = []
+    for idx, item in enumerate(decoded):
+        if not isinstance(item, dict):
+            raise ValueError(
+                "{0}: element {1} must be an object, got {2}".format(
+                    field_name, idx, type(item).__name__
+                )
+            )
+        extra_keys = set(item.keys()) - {"sha", "subject"}
+        if extra_keys:
+            raise ValueError(
+                "{0}: element {1} has unrecognized key(s) {2}; only 'sha' "
+                "and 'subject' are accepted".format(
+                    field_name, idx, sorted(extra_keys)
+                )
+            )
+        if "sha" not in item or "subject" not in item:
+            raise ValueError(
+                "{0}: element {1} must have both 'sha' and 'subject' keys, "
+                "got {2}".format(field_name, idx, sorted(item.keys()))
+            )
+        sha = item["sha"]
+        if not isinstance(sha, str):
+            raise ValueError(
+                "{0}: element {1} 'sha' must be a string, got {2}".format(
+                    field_name, idx, type(sha).__name__
+                )
+            )
+        sha = sha.strip()
+        if not _SUPPLY_CHANGING_COMMIT_SHA_RE.match(sha):
+            raise ValueError(
+                "{0}: element {1} 'sha' {2!r} must be a 7-40 char hex commit "
+                "SHA".format(field_name, idx, sha)
+            )
+        # Normalize on store: lowercase the sha before it leaves this
+        # validator. Git itself never emits uppercase hex, but the
+        # stronger reason is that a sha is an IDENTITY field -- accepting
+        # both cases and storing them verbatim would make "ABCDEF1" and
+        # "abcdef1" two distinct strings for the same commit, and any
+        # later comparison/dedupe on this value would treat them as
+        # different commits. Canonicalizing here makes that impossible
+        # rather than merely unlikely. This also keeps the stored value
+        # accepted by handoff_schema._COMMIT_SHA_RE (lowercase-only),
+        # instead of passing a mixed-case value through to fail schema
+        # validation at a disconnected later step (finalize-handoff).
+        sha = sha.lower()
+        subject = item["subject"]
+        if not isinstance(subject, str):
+            raise ValueError(
+                "{0}: element {1} 'subject' must be a string, got {2}".format(
+                    field_name, idx, type(subject).__name__
+                )
+            )
+        subject = subject.strip()
+        if not subject:
+            raise ValueError(
+                "{0}: element {1} 'subject' cannot be empty".format(field_name, idx)
+            )
+        out.append({"sha": sha, "subject": subject})
+    return out
+
+
 def _validate_verbatim(value: str, field_name: str) -> str:
     """Reject all-whitespace; preserve internal whitespace verbatim.
 

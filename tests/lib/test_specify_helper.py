@@ -5145,11 +5145,24 @@ def _run_research(argv, cwd=None):
     )
 
 
+# Sentinel distinguishing "no literal_archaeology row at all" (the default —
+# byte-identical to _build_minimal_handoff's behavior before the
+# literal_archaeology_supply_changing_commits parameter existed) from an
+# explicit `None` (meaning: record a literal_archaeology row but omit
+# --supply-changing-commits, producing "supply_changing_commits": null in
+# the real handoff.json output). A bare `None` default could not carry
+# that distinction — omitting the kwarg and passing None explicitly need
+# to mean different things here.
+_NO_LITERAL_ARCHAEOLOGY = object()
+
+
 def _build_minimal_handoff(
     devforge: Path,
     handoff_out: Path,
     design_anchor_value: str = None,
     design_anchor_selectors: str = None,
+    literal_archaeology_supply_changing_commits=_NO_LITERAL_ARCHAEOLOGY,
+    include_data_flow_chain: bool = False,
 ) -> subprocess.CompletedProcess:
     """Build a minimal feature_addition handoff.json via real research_helper setters.
 
@@ -5162,6 +5175,36 @@ def _build_minimal_handoff(
     finalize-handoff so the emitted handoff.json carries a captured
     spec_seeds.design_anchor. Omitted (default None) → no anchor captured,
     matching every pre-existing call site's behavior unchanged.
+
+    literal_archaeology_supply_changing_commits (_dict_to_dataclass
+    Optional[List[<dataclass>]] reconstruction fix — real-producer test
+    support): three states, driving one real `record-literal-archaeology`
+    call through the actual research_helper CLI (never hand-authored JSON):
+      - omitted (default _NO_LITERAL_ARCHAEOLOGY sentinel) → no
+        record-literal-archaeology call at all; every pre-existing caller
+        of this function is unaffected.
+      - explicit None → record-literal-archaeology is called WITHOUT
+        --supply-changing-commits, so the real emitted handoff.json carries
+        "supply_changing_commits": null for that row (the "sweep not run"
+        state).
+      - a JSON-array string (e.g. "[]" or a populated array) → passed
+        verbatim as --supply-changing-commits, so the real producer emits
+        exactly that shape ("sweep ran" states, empty or populated).
+    intent="deliberate" avoids the escalation-cite requirement that
+    "placeholder"/"forgotten"/"inherited-refactor" intents would otherwise
+    impose on the fixture's recommended-approach summary.
+
+    include_data_flow_chain (real-producer regression-test support for the
+    Optional[<dataclass>]-singular reconstruction branch, independent of
+    the literal_archaeology_supply_changing_commits param above): when
+    True, calls the real record-data-flow-chain setter with an empty
+    --intermediate-qns ("[]", a direct handler→write-boundary chain, which
+    needs no prior record-finding rows) before finalize-handoff, so the
+    emitted handoff.json carries a non-null spec_seeds.data_flow_chain.
+    Legal in any mode — DataFlowChain presence is only ever REQUIRED
+    (never forbidden) by SpecSeeds cross-field validation, and this
+    fixture's mode/affected-areas never trigger that requirement. Default
+    False → no call, matching every pre-existing caller unchanged.
     """
     df = str(devforge)
     _run_research(["--devforge-dir", df, "reset-memo"])
@@ -5315,6 +5358,38 @@ def _build_minimal_handoff(
             "--selectors", design_anchor_selectors,
             "--state", "Clear",
         ])
+
+    if include_data_flow_chain:
+        r_dfc = _run_research([
+            "--devforge-dir", df, "record-data-flow-chain",
+            "--handler-qn", "auth.handlers.refresh_token",
+            "--write-boundary-qn", "auth.storage.persist_token",
+            "--intermediate-qns", "[]",
+        ])
+        assert r_dfc.returncode == 0, (
+            "record-data-flow-chain fixture setup failed: " + r_dfc.stderr
+        )
+
+    if literal_archaeology_supply_changing_commits is not _NO_LITERAL_ARCHAEOLOGY:
+        la_argv = [
+            "--devforge-dir", df, "record-literal-archaeology",
+            "--literal", "false",
+            "--file-line", "services/auth/token_manager.py:99",
+            "--introduced-by", "abc1234",
+            "--introduced-when", "2026-01-01",
+            "--commit-subject", "Add default timeout flag",
+            "--intent", "deliberate",
+            "--use", "fix-layer",
+        ]
+        if literal_archaeology_supply_changing_commits is not None:
+            la_argv += [
+                "--supply-changing-commits",
+                literal_archaeology_supply_changing_commits,
+            ]
+        r_la = _run_research(la_argv)
+        assert r_la.returncode == 0, (
+            "record-literal-archaeology fixture setup failed: " + r_la.stderr
+        )
 
     # Finalize handoff.
     return _run_research([
@@ -7739,6 +7814,393 @@ class TestImportHandoffEvidenceLanes(unittest.TestCase):
             r2 = self._run_import(devforge, handoff_out)
             self.assertEqual(r2.returncode, 0, r2.stderr)
             self.assertIn("imported:", r2.stdout)
+
+
+# ---------------------------------------------------------------------------
+# _dict_to_dataclass Optional[List[<dataclass>]] reconstruction fix.
+#
+# LiteralArchaeology.supply_changing_commits is the only
+# Optional[List[<dataclass>]]-shaped field across all three handoff schemas
+# (research/discover/specify) -- and its quoted forward-reference annotation
+# (Optional[List["SupplyChangingCommit"]]) exposed a reconstructor gap:
+# unwrapping Optional[X] produced `inner` as a typing.List[...] generic, and
+# recursing into _dict_to_dataclass(inner, raw) hit the top-of-function
+# dataclasses.is_dataclass(cls) guard (never true for a bare List[...]
+# generic) and returned the raw list of dicts unreconstructed -- so
+# LiteralArchaeology.__post_init__'s isinstance(commit, SupplyChangingCommit)
+# check raised on any populated row, making import-handoff fail precisely
+# when a widened-window sweep found something.
+#
+# Every fixture below is produced by the REAL research_helper CLI
+# (record-literal-archaeology / record-data-flow-chain / finalize-handoff)
+# and read back through the REAL specify_helper import-handoff path -- no
+# hand-authored handoff.json. literal_archaeology (and therefore
+# supply_changing_commits) is never carried into specify-state.json --
+# import-handoff only reconstructs it for schema validation -- so asserting
+# the reconstructed *type* (not just JSON-visible values) requires calling
+# _dict_to_dataclass directly on the same real, on-disk JSON
+# cmd_import_handoff itself reads; this is the real function on real
+# persisted JSON, not a hand-authored dataclass construction.
+# ---------------------------------------------------------------------------
+
+
+class TestImportHandoffSupplyChangingCommits(unittest.TestCase):
+    """Three-state (None / [] / populated) reconstruction of
+    LiteralArchaeology.supply_changing_commits, plus additive-fix
+    regression proof for the pre-existing Optional[<dataclass>]-singular
+    and plain-List[<dataclass>] branches, plus a discover-lane check.
+    """
+
+    def _make_devforge(self, tmp: str) -> Path:
+        d = Path(tmp) / ".devforge"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _run_import(self, devforge: Path, handoff_path: Path):
+        return _run([
+            "--devforge-dir", str(devforge),
+            "import-handoff",
+            "--handoff-path", str(handoff_path),
+        ])
+
+    def _reconstruct_research(self, handoff_path: Path):
+        """Call the REAL _dict_to_dataclass reconstructor -- the same
+        function and call site cmd_import_handoff itself uses at
+        _cmds_handoff.py:511 -- directly on JSON loaded from disk.
+
+        Needed because import-handoff's specify-state.json output does not
+        surface literal_archaeology at all (it is read only for schema
+        validation during reconstruction, never carried into specify
+        state), so a subprocess-only test cannot observe the reconstructed
+        Python types. Returns (handoff, research_handoff_schema_module).
+        """
+        lib = str(ROOT / "src" / "devforge" / "lib")
+        if lib not in sys.path:
+            sys.path.insert(0, lib)
+        from _specify._cmds_handoff import _dict_to_dataclass
+        from _research import handoff_schema as rhs
+        raw = json.loads(handoff_path.read_text(encoding="utf-8"))
+        return _dict_to_dataclass(rhs.Handoff, raw), rhs
+
+    # ------------------------------------------------------------------
+    # Three-state reconstruction.
+    # ------------------------------------------------------------------
+
+    def test_key_absent_from_row_reconstructs_to_none(self):
+        """Pre-plan-73-Phase-1 shape: the key never existed on the row at
+        all (not even as null). Simulated by deleting the key from a real
+        producer's output, matching this file's established
+        backcompat-simulation convention (see
+        TestImportHandoffEvidenceLanes.test_import_handoff_backcompat_missing_evidence_lanes_key).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(
+                research_df, handoff_out,
+                literal_archaeology_supply_changing_commits=None,
+            )
+            self.assertEqual(r.returncode, 0, "fixture build failed: " + r.stderr)
+
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertIn("supply_changing_commits", row,
+                          "precondition: real producer must emit the key before we delete it")
+            del row["supply_changing_commits"]
+            handoff_out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, "import-handoff failed: " + r2.stderr)
+
+            handoff, _rhs = self._reconstruct_research(handoff_out)
+            la = handoff.spec_seeds.literal_archaeology[0]
+            self.assertIsNone(la.supply_changing_commits)
+
+    def test_explicit_null_reconstructs_to_none(self):
+        """record-literal-archaeology called without --supply-changing-commits
+        -> the real producer emits a JSON null (not an absent key).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(
+                research_df, handoff_out,
+                literal_archaeology_supply_changing_commits=None,
+            )
+            self.assertEqual(r.returncode, 0, "fixture build failed: " + r.stderr)
+
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertIn("supply_changing_commits", row)
+            self.assertIsNone(row["supply_changing_commits"],
+                              "fixture must produce a real JSON null, not an absent key")
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, "import-handoff failed: " + r2.stderr)
+
+            handoff, _rhs = self._reconstruct_research(handoff_out)
+            la = handoff.spec_seeds.literal_archaeology[0]
+            self.assertIsNone(la.supply_changing_commits)
+
+    def test_empty_list_reconstructs_to_empty_list_distinct_from_none(self):
+        """record-literal-archaeology --supply-changing-commits '[]' -> the
+        real producer emits an empty JSON array, and reconstruction must
+        keep it distinct from None (is not None, ==[]), not collapse it.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(
+                research_df, handoff_out,
+                literal_archaeology_supply_changing_commits="[]",
+            )
+            self.assertEqual(r.returncode, 0, "fixture build failed: " + r.stderr)
+
+            data = json.loads(handoff_out.read_text(encoding="utf-8"))
+            row = data["spec_seeds"]["literal_archaeology"][0]
+            self.assertEqual(row["supply_changing_commits"], [])
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, "import-handoff failed: " + r2.stderr)
+
+            handoff, _rhs = self._reconstruct_research(handoff_out)
+            la = handoff.spec_seeds.literal_archaeology[0]
+            self.assertIsNotNone(la.supply_changing_commits)
+            self.assertEqual(la.supply_changing_commits, [])
+
+    def test_populated_list_reconstructs_to_dataclass_instances_order_preserved(self):
+        """THE LIVE BUG: before the fix, this exact shape made import-handoff
+        RAISE -- LiteralArchaeology.__post_init__'s
+        isinstance(commit, SupplyChangingCommit) check fails on a plain
+        dict, so cmd_import_handoff's schema-validation catch turned it
+        into an exit-2 "schema validation failed" error. This proves the
+        run that records a populated sweep now succeeds, and that the
+        elements are real SupplyChangingCommit instances (not dicts) with
+        sha/subject preserved verbatim and order preserved.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            payload = json.dumps([
+                {"sha": "1111111", "subject": "Remove prop from parent component"},
+                {"sha": "2222222abc", "subject": "Relocate default to caller wrapper"},
+            ])
+            r = _build_minimal_handoff(
+                research_df, handoff_out,
+                literal_archaeology_supply_changing_commits=payload,
+            )
+            self.assertEqual(r.returncode, 0, "fixture build failed: " + r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(
+                r2.returncode, 0,
+                "import-handoff must succeed on a populated supply_changing_commits "
+                "list -- it raised a schema-validation error before this fix: "
+                + r2.stderr,
+            )
+            self.assertIn("imported:", r2.stdout)
+
+            handoff, rhs = self._reconstruct_research(handoff_out)
+            la = handoff.spec_seeds.literal_archaeology[0]
+            commits = la.supply_changing_commits
+            self.assertIsInstance(commits, list)
+            self.assertEqual(len(commits), 2)
+            for c in commits:
+                self.assertIsInstance(
+                    c, rhs.SupplyChangingCommit,
+                    "elements must be reconstructed SupplyChangingCommit instances, "
+                    "not plain dicts -- got {0}".format(type(c).__name__),
+                )
+            self.assertEqual(commits[0].sha, "1111111")
+            self.assertEqual(commits[0].subject, "Remove prop from parent component")
+            self.assertEqual(commits[1].sha, "2222222abc")
+            self.assertEqual(commits[1].subject, "Relocate default to caller wrapper")
+
+    # ------------------------------------------------------------------
+    # Regression: the fix must be purely additive.
+    # ------------------------------------------------------------------
+
+    def test_regression_plain_list_of_dataclass_field_unaffected(self):
+        """constraints: List[Constraint] (no Optional wrapper -- an existing,
+        UNCHANGED branch) still reconstructs correctly after the fix.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+
+            handoff, rhs = self._reconstruct_research(handoff_out)
+            constraints = handoff.spec_seeds.constraints
+            self.assertEqual(len(constraints), 1)
+            self.assertIsInstance(constraints[0], rhs.Constraint)
+            self.assertEqual(constraints[0].kind, "follow")
+            self.assertEqual(constraints[0].content, "Auth must be deterministic")
+
+    def test_regression_optional_dataclass_singular_field_unaffected(self):
+        """data_flow_chain: Optional[DataFlowChain] -- the pre-existing
+        Optional[<dataclass>]-singular branch (untouched by this fix: it is
+        only reached when the unwrapped inner type is NOT itself a
+        List[...]) -- both arms, None (default fixture) and populated.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge_none"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff_none.json"
+
+            r = _build_minimal_handoff(research_df, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            handoff, _rhs = self._reconstruct_research(handoff_out)
+            self.assertIsNone(handoff.spec_seeds.data_flow_chain)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            devforge = self._make_devforge(tmp)
+            research_df = Path(tmp) / "research_devforge_populated"
+            research_df.mkdir()
+            handoff_out = Path(tmp) / "handoff_populated.json"
+
+            r = _build_minimal_handoff(
+                research_df, handoff_out, include_data_flow_chain=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            handoff, rhs = self._reconstruct_research(handoff_out)
+            dfc = handoff.spec_seeds.data_flow_chain
+            self.assertIsInstance(dfc, rhs.DataFlowChain)
+            self.assertEqual(dfc.handler_qn, "auth.handlers.refresh_token")
+            self.assertEqual(dfc.write_boundary_qn, "auth.storage.persist_token")
+            self.assertEqual(dfc.intermediate_qns, [])
+            self.assertEqual(dfc.trace_mode, "calls")
+
+    # ------------------------------------------------------------------
+    # Both lanes: discover_handoff_schema.Handoff reconstruction unaffected.
+    # ------------------------------------------------------------------
+
+    def test_discover_lane_reconstruction_unaffected(self):
+        """discover_handoff_schema has zero Optional[List[<dataclass>]]
+        fields (verified: only research's LiteralArchaeology.
+        supply_changing_commits has that shape across all three handoff
+        schemas), so the new branch is never reached for this lane -- this
+        proves the shared reconstructor's discover-lane behavior (plain
+        List[<dataclass>] fields, e.g. constraints) is unaffected.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            devforge = self._make_devforge(tmp)
+            devforge_d = tmp_path / "discover_df"
+            devforge_d.mkdir()
+            discover_dir = tmp_path / "discover"
+            discover_dir.mkdir()
+            handoff_out = discover_dir / "2026-05-20-audit-log-persistence.handoff.json"
+
+            r = _build_minimal_discover_handoff(devforge_d, handoff_out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+
+            r2 = self._run_import(devforge, handoff_out)
+            self.assertEqual(r2.returncode, 0, r2.stderr)
+            self.assertIn("kind=discover", r2.stdout)
+
+            lib = str(ROOT / "src" / "devforge" / "lib")
+            if lib not in sys.path:
+                sys.path.insert(0, lib)
+            from _specify._cmds_handoff import _dict_to_dataclass
+            from _discover import handoff_schema as dhs
+            raw = json.loads(handoff_out.read_text(encoding="utf-8"))
+            handoff = _dict_to_dataclass(dhs.Handoff, raw)
+
+            constraints = handoff.spec_seeds.constraints
+            self.assertGreaterEqual(len(constraints), 1)
+            self.assertIsInstance(constraints[0], dhs.Constraint)
+            self.assertEqual(constraints[0].kind, "nfr")
+            self.assertEqual(constraints[0].content, "100ms p99 write latency")
+
+
+class TestDictToDataclassOptionalListNonDataclass(unittest.TestCase):
+    """Synthetic three-state check for _dict_to_dataclass's
+    Optional[List[<non-dataclass>]] else-arm (_cmds_handoff.py:257-261).
+
+    Verified unreachable from any real schema field today:
+    LiteralArchaeology.supply_changing_commits is the only
+    Optional[List[...]]-shaped field across all three handoff schemas
+    (research/discover/specify), and its element type is always a
+    dataclass (SupplyChangingCommit) -- so this branch has no real
+    fixture to exercise it. An ad-hoc Optional[List[str]] dataclass
+    gives it documentation-level coverage before some future field's
+    first real exercise happens in production.
+
+    What this test DOES establish: the three-state contract survives
+    for this arm -- `None` stays `None`, `[]` stays `[]`, and a
+    populated list passes through unchanged -- so it catches a
+    dropped `field_map[f.name]` assignment (silently falling back to
+    the dataclass default) or a value-mangling regression.
+
+    What it does NOT establish: it does not uniquely discriminate the
+    explicit else-arm from _dict_to_dataclass's other fallback paths.
+    For a non-dataclass element type such as `str`,
+    `dataclasses.is_dataclass` is False at every candidate check
+    point, so several structurally different implementations pass raw
+    lists through unchanged too -- e.g. deleting the else-arm entirely
+    and falling through to the "Recurse with inner type" branch
+    (line 266) would hit the top-of-function `is_dataclass(cls)` guard
+    (line 185, `cls` = the `typing.List[str]` generic) and return the
+    raw list unmodified, same as today. This test would not catch that
+    change, or others like it. That weaker-than-a-dedicated-net
+    coverage is an accepted tradeoff, not an oversight: the arm is
+    currently unreachable from any real schema field (see above), so
+    building a test that uniquely discriminates it from its
+    neighboring fallback paths is not worth the added complexity for
+    what is presently dead code.
+
+    Uses dataclasses.make_dataclass rather than a plain `@dataclass`
+    class body: this test module has `from __future__ import
+    annotations` (see the top of this file), which stringifies
+    source-level annotations -- a plain class body would make
+    field.type a string, never reaching the __origin__/__args__
+    unwrapping _dict_to_dataclass depends on. make_dataclass assigns
+    the actual typing.Optional[typing.List[str]] object directly,
+    bypassing that string-ification, so the real code path is
+    exercised.
+    """
+
+    def test_optional_list_of_str_three_states(self):
+        import dataclasses as _dc
+        from typing import List, Optional
+
+        from _specify._cmds_handoff import _dict_to_dataclass
+
+        synthetic_cls = _dc.make_dataclass(
+            "_Synthetic",
+            [("tags", Optional[List[str]], _dc.field(default=None))],
+        )
+
+        self.assertIsNone(_dict_to_dataclass(synthetic_cls, {"tags": None}).tags)
+        self.assertEqual(_dict_to_dataclass(synthetic_cls, {"tags": []}).tags, [])
+        self.assertEqual(
+            _dict_to_dataclass(synthetic_cls, {"tags": ["a", "b"]}).tags,
+            ["a", "b"],
+        )
 
 
 if __name__ == "__main__":

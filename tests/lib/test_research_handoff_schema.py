@@ -34,6 +34,13 @@ hs = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(hs)
 
 
+# Sentinel distinguishing "kwarg not passed" (use the dataclass field
+# default) from "kwarg passed as None" in builder helpers below — needed
+# for LiteralArchaeology.supply_changing_commits, whose None-vs-omitted
+# states must both be independently constructible by tests (plan 73 Phase 1).
+_UNSET = object()
+
+
 # ---------------------------------------------------------------------------
 # Builder helpers — each returns a valid default; tests override one field.
 # ---------------------------------------------------------------------------
@@ -107,8 +114,9 @@ def _literal_archaeology(
     commit_subject="add gate",
     intent="placeholder",
     use="fix-layer",
+    supply_changing_commits=_UNSET,
 ):
-    return hs.LiteralArchaeology(
+    kwargs = dict(
         literal=literal,
         file_line=file_line,
         introduced_by=introduced_by,
@@ -117,6 +125,13 @@ def _literal_archaeology(
         intent=intent,
         use=use,
     )
+    if supply_changing_commits is not _UNSET:
+        kwargs["supply_changing_commits"] = supply_changing_commits
+    return hs.LiteralArchaeology(**kwargs)
+
+
+def _supply_changing_commit(sha="abc1234", subject="moved default into wrapper"):
+    return hs.SupplyChangingCommit(sha=sha, subject=subject)
 
 
 def _complexity(changes="Low", risk="Low", verify_cost="Low"):
@@ -969,6 +984,213 @@ class TestV3LiteralArchaeologyUse(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps, schema_version="1.1")
         self.assertIn("literal_archaeology", str(ctx.exception))
+
+
+# ---------------------------------------------------------------------------
+# Plan 73 Phase 1 — SupplyChangingCommit + LiteralArchaeology.supply_changing_commits.
+#
+# THE GOVERNING CONSTRAINT under test throughout this class: this field is a
+# SEARCH-STEP carrier, never a gate. No test here expects a ValueError for
+# None or [] — those are both always-valid states. The only ValueErrors
+# exercised are SHAPE violations on a value that IS supplied (wrong
+# container type, wrong element type, or a malformed SupplyChangingCommit
+# constructed directly).
+# ---------------------------------------------------------------------------
+
+
+class TestSupplyChangingCommit(unittest.TestCase):
+    """Tests for the SupplyChangingCommit record dataclass itself."""
+
+    def test_valid_commit_constructs(self):
+        c = _supply_changing_commit(sha="abc1234", subject="moved default into wrapper")
+        self.assertEqual(c.sha, "abc1234")
+        self.assertEqual(c.subject, "moved default into wrapper")
+
+    def test_rejects_empty_sha(self):
+        with self.assertRaises(ValueError) as ctx:
+            _supply_changing_commit(sha="")
+        self.assertIn("sha", str(ctx.exception))
+
+    def test_rejects_too_short_sha(self):
+        with self.assertRaises(ValueError) as ctx:
+            _supply_changing_commit(sha="abc")
+        self.assertIn("7-40 char hex commit SHA", str(ctx.exception))
+
+    def test_rejects_non_hex_sha(self):
+        with self.assertRaises(ValueError) as ctx:
+            _supply_changing_commit(sha="zzzzzzz")
+        self.assertIn("7-40 char hex commit SHA", str(ctx.exception))
+
+    def test_rejects_too_long_sha(self):
+        with self.assertRaises(ValueError) as ctx:
+            _supply_changing_commit(sha="a" * 41)
+        self.assertIn("7-40 char hex commit SHA", str(ctx.exception))
+
+    def test_accepts_40_char_sha(self):
+        """Full 40-char SHA (upper bound) is accepted."""
+        c = _supply_changing_commit(sha="a" * 40)
+        self.assertEqual(c.sha, "a" * 40)
+
+    def test_rejects_empty_subject(self):
+        with self.assertRaises(ValueError) as ctx:
+            _supply_changing_commit(subject="")
+        self.assertIn("subject", str(ctx.exception))
+
+    def test_rejects_whitespace_only_subject(self):
+        with self.assertRaises(ValueError) as ctx:
+            _supply_changing_commit(subject="   ")
+        self.assertIn("subject", str(ctx.exception))
+
+
+class TestLiteralArchaeologySupplyChangingCommits(unittest.TestCase):
+    """Tests for LiteralArchaeology.supply_changing_commits — the three-state
+    (None / [] / populated) field itself, at the schema layer."""
+
+    # --- The load-bearing None-vs-[] distinction. ---
+
+    def test_defaults_to_none_when_omitted(self):
+        """Constructing LiteralArchaeology without the kwarg → None, not []."""
+        la = _literal_archaeology()
+        self.assertIsNone(la.supply_changing_commits)
+
+    def test_explicit_none_accepted(self):
+        la = _literal_archaeology(supply_changing_commits=None)
+        self.assertIsNone(la.supply_changing_commits)
+
+    def test_explicit_empty_list_accepted_and_distinct_from_none(self):
+        la = _literal_archaeology(supply_changing_commits=[])
+        self.assertEqual(la.supply_changing_commits, [])
+        self.assertIsNotNone(la.supply_changing_commits)
+
+    def test_populated_list_accepted(self):
+        commits = [
+            _supply_changing_commit(sha="abc1234", subject="first"),
+            _supply_changing_commit(sha="def5678", subject="second"),
+        ]
+        la = _literal_archaeology(supply_changing_commits=commits)
+        self.assertEqual(len(la.supply_changing_commits), 2)
+        self.assertEqual(la.supply_changing_commits[0].sha, "abc1234")
+        self.assertEqual(la.supply_changing_commits[1].sha, "def5678")
+
+    # --- Shape validation of a value that IS supplied. ---
+
+    def test_rejects_non_list_non_none_value(self):
+        with self.assertRaises(ValueError) as ctx:
+            _literal_archaeology(supply_changing_commits="not a list")
+        self.assertIn("supply_changing_commits", str(ctx.exception))
+
+    def test_rejects_list_with_non_supply_changing_commit_element(self):
+        with self.assertRaises(ValueError) as ctx:
+            _literal_archaeology(
+                supply_changing_commits=[{"sha": "abc1234", "subject": "x"}]
+            )
+        self.assertIn("supply_changing_commits", str(ctx.exception))
+
+    # --- No requiredness / gating behavior — the governing constraint. ---
+
+    def test_handoff_construction_accepts_none_supply_changing_commits(self):
+        """A full Handoff constructs successfully with supply_changing_commits=None —
+        proves nothing in the cross-field validators gates on this field."""
+        la = _literal_archaeology(supply_changing_commits=None, use="evidence")
+        ps = _plan_seeds(
+            recommended_approach_summary="Fix the bug by updating the call site",
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            data_flow_chain=_data_flow_chain(),
+            literal_archaeology=[la],
+        )
+        h = _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps)
+        self.assertIsNotNone(h)
+        self.assertIsNone(h.spec_seeds.literal_archaeology[0].supply_changing_commits)
+
+    def test_handoff_construction_accepts_empty_list_supply_changing_commits(self):
+        """A full Handoff constructs successfully with supply_changing_commits=[] —
+        an empty sweep result never gates a run."""
+        la = _literal_archaeology(supply_changing_commits=[], use="evidence")
+        ps = _plan_seeds(
+            recommended_approach_summary="Fix the bug by updating the call site",
+        )
+        ss = _spec_seeds(
+            affected_areas=[_affected_area()],
+            data_flow_chain=_data_flow_chain(),
+            literal_archaeology=[la],
+        )
+        h = _handoff(mode="bug", spec_seeds=ss, plan_seeds=ps)
+        self.assertIsNotNone(h)
+        self.assertEqual(h.spec_seeds.literal_archaeology[0].supply_changing_commits, [])
+
+    # --- Back-compat: a handoff dict/row predating this field. ---
+
+    def test_dict_without_key_constructs_with_default_none(self):
+        """Simulates _dict_to_dataclass reconstructing a pre-Phase-1 row: the
+        kwarg is simply never passed, matching the field's declared default."""
+        la = hs.LiteralArchaeology(
+            literal="false",
+            file_line="src/foo.vue:42",
+            introduced_by="bd47a12",
+            introduced_when="2023-12-12",
+            commit_subject="add gate",
+            intent="placeholder",
+            use="fix-layer",
+            # supply_changing_commits intentionally omitted.
+        )
+        self.assertIsNone(la.supply_changing_commits)
+
+    def test_asdict_round_trip_preserves_none(self):
+        """dataclasses.asdict → reconstruct → None survives the round trip."""
+        import dataclasses
+        la = _literal_archaeology(supply_changing_commits=None)
+        d = dataclasses.asdict(la)
+        self.assertIn("supply_changing_commits", d)
+        self.assertIsNone(d["supply_changing_commits"])
+        la2 = hs.LiteralArchaeology(**d)
+        self.assertIsNone(la2.supply_changing_commits)
+
+    def test_asdict_round_trip_preserves_empty_list(self):
+        """dataclasses.asdict → reconstruct → [] survives the round trip
+        (distinct from the None round trip immediately above)."""
+        import dataclasses
+        la = _literal_archaeology(supply_changing_commits=[])
+        d = dataclasses.asdict(la)
+        self.assertEqual(d["supply_changing_commits"], [])
+        la2 = hs.LiteralArchaeology(**d)
+        self.assertEqual(la2.supply_changing_commits, [])
+
+    def test_asdict_round_trip_preserves_populated_list_as_dicts(self):
+        """dataclasses.asdict recursively converts SupplyChangingCommit rows to
+        plain dicts (stdlib dataclasses.asdict behavior) — reconstructing
+        LiteralArchaeology(**d) directly from those raw dicts must be done
+        via SupplyChangingCommit(**c) per element (mirrors how
+        _handoff_build.py's _build_supply_changing_commits does it), NOT by
+        passing the dicts straight through (the schema's own __post_init__
+        type-check would reject that — see
+        test_rejects_list_with_non_supply_changing_commit_element)."""
+        import dataclasses
+        la = _literal_archaeology(
+            supply_changing_commits=[
+                _supply_changing_commit(sha="abc1234", subject="first"),
+                _supply_changing_commit(sha="def5678", subject="second"),
+            ]
+        )
+        d = dataclasses.asdict(la)
+        self.assertEqual(
+            d["supply_changing_commits"],
+            [
+                {"sha": "abc1234", "subject": "first"},
+                {"sha": "def5678", "subject": "second"},
+            ],
+        )
+        la2 = hs.LiteralArchaeology(
+            **{
+                **d,
+                "supply_changing_commits": [
+                    hs.SupplyChangingCommit(**c) for c in d["supply_changing_commits"]
+                ],
+            }
+        )
+        self.assertEqual(len(la2.supply_changing_commits), 2)
+        self.assertEqual(la2.supply_changing_commits[0].sha, "abc1234")
 
 
 # ---------------------------------------------------------------------------

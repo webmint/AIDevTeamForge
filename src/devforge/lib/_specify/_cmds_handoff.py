@@ -116,6 +116,58 @@ def _parse_since_seconds(since: str) -> Optional[int]:
     return n * seconds
 
 
+def _resolve_forward_ref(type_ref: Any, owner_cls: Any) -> Any:
+    """Resolve a typing.ForwardRef embedded in a field's type args to the
+    real class it names, using owner_cls's defining module namespace.
+
+    A quoted type-hint element such as List["SupplyChangingCommit"] is
+    wrapped by `typing` in a ForwardRef unconditionally — even when the
+    referenced class is already defined earlier in the same module
+    (verified empirically: quoting changes the runtime shape of __args__
+    regardless of definition order). dataclasses.is_dataclass() on a bare
+    ForwardRef is always False, so leaving it unresolved would make a
+    dataclass-element list look like a non-dataclass one and skip
+    reconstruction silently.
+
+    Duck-types on the `__forward_arg__` attribute (stable across Python
+    3.8-3.13+) rather than `isinstance(type_ref, typing.ForwardRef)`, to
+    avoid depending on that class's exact public/private status across
+    versions.
+
+    Returns type_ref unchanged for anything that is not a ForwardRef —
+    i.e. a no-op for every already-resolved class or scalar type this
+    reconstructor handled before this function existed. Also returns
+    type_ref unchanged (never raises) when the name cannot be found in
+    the owning module's namespace, so a genuinely-unresolvable forward
+    reference degrades to the pre-existing raw-passthrough behavior
+    instead of crashing.
+
+    Live precondition (not a bug, but worth recording): resolution reads
+    owner_cls's module from sys.modules by name. That lookup returns None
+    for a module loaded via importlib.util.module_from_spec WITHOUT the
+    loader also doing sys.modules[name] = module — a real, in-repo idiom:
+    tests/lib/test_research_handoff_schema.py loads handoff_schema.py that
+    way. That test file never calls _dict_to_dataclass today, so this is
+    not currently hit, but a future test author combining that
+    module-loading idiom with this reconstructor would silently land on
+    the degraded path below: `module` is None, `globalns` is `{}`,
+    `resolved` stays None, and the ForwardRef is returned unresolved —
+    reconstruction quietly doesn't happen, and a later isinstance check
+    (e.g. LiteralArchaeology.__post_init__) then raises a schema-validation
+    error that looks like a data problem rather than a module-registration
+    one.
+    """
+    forward_arg = getattr(type_ref, '__forward_arg__', None)
+    if forward_arg is None:
+        return type_ref
+    module = sys.modules.get(getattr(owner_cls, '__module__', None))
+    globalns = getattr(module, '__dict__', {})
+    resolved = globalns.get(forward_arg)
+    if resolved is not None:
+        return resolved
+    return type_ref
+
+
 def _dict_to_dataclass(cls: Any, d: Any) -> Any:
     """Recursively construct a dataclass instance from a plain dict.
 
@@ -173,7 +225,44 @@ def _dict_to_dataclass(cls: Any, d: Any) -> Any:
             if raw is None:
                 field_map[f.name] = None
                 continue
-            # Recurse with inner type.
+
+            # Optional[List[<dataclass>]] (e.g.
+            # LiteralArchaeology.supply_changing_commits). Handled here,
+            # separately from the plain List[X] branch below, because
+            # unwrapping Optional[X] already produced `inner` as a
+            # typing.List[...] generic — recursing into
+            # _dict_to_dataclass(inner, raw) would hit the top-of-function
+            # is_dataclass(cls) guard (a List[...] generic is never itself
+            # a dataclass) and silently pass the raw list of dicts through
+            # unreconstructed. The element type may also be a
+            # typing.ForwardRef (a quoted annotation such as
+            # List["SupplyChangingCommit"] wraps the name in a ForwardRef
+            # even when the class is already defined earlier in the same
+            # module) — _resolve_forward_ref looks it up by name in the
+            # owning dataclass's defining module namespace.
+            #
+            # Three-state semantics preserved: None already returned above
+            # (raw is never None past this point); raw == [] produces
+            # field_map[f.name] = [] via the empty list comprehension,
+            # staying distinguishable from the None case; a populated raw
+            # list reconstructs each element into the dataclass.
+            inner_origin = getattr(inner, '__origin__', None)
+            inner_args = getattr(inner, '__args__', ())
+            if inner_origin is list and inner_args:
+                elem_cls = _resolve_forward_ref(inner_args[0], cls)
+                if dataclasses.is_dataclass(elem_cls):
+                    field_map[f.name] = [
+                        _dict_to_dataclass(elem_cls, item) for item in raw
+                    ]
+                else:
+                    # Optional[List[<non-dataclass>]] (e.g.
+                    # Optional[List[str]]) — pass the list through
+                    # unchanged; nothing to reconstruct.
+                    field_map[f.name] = raw
+                continue
+
+            # Recurse with inner type (Optional[<dataclass>] or
+            # Optional[<scalar>]).
             field_map[f.name] = _dict_to_dataclass(inner, raw)
             continue
 
