@@ -6,7 +6,7 @@ argument-hint: "<feature description>"
 
 # /devforge:specify — Feature Specification
 
-`/devforge:specify` is repeatable per feature. It reads the seven mandatory Phase 1 input sources, enumerates structured findings into the conversation, surfaces every decision point across seven categories, classifies the spec into one of five types, then renders a deterministic 9-section spec to `specs/NNN-<feature-name>/spec.md` via `.devforge/lib/specify_helper` setters. State + render shape are owned by the helper; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any spec work fires. Phase 0.4's gate then RESOLVES the feature directory `/devforge:research` or `/devforge:discover` already allocated at intake — `/devforge:specify` writes `spec.md` into that existing directory instead of allocating a new one.
+`/devforge:specify` is repeatable per feature. It reads the eight mandatory Phase 1 input sources, enumerates structured findings into the conversation, surfaces every decision point across seven categories, classifies the spec into one of five types, then renders a deterministic 9-section spec to `specs/NNN-<feature-name>/spec.md` via `.devforge/lib/specify_helper` setters. State + render shape are owned by the helper; the orchestrator composes values via setter subcommands. No subagent dispatch — every phase runs in the main thread. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any spec work fires. Phase 0.4's gate then RESOLVES the feature directory `/devforge:research` or `/devforge:discover` already allocated at intake — `/devforge:specify` writes `spec.md` into that existing directory instead of allocating a new one.
 
 Usage: `/devforge:specify "<feature description>"` (e.g. `/devforge:specify "migrate the monorepo from lerna to pnpm workspaces"` or `/devforge:specify "add scheduled export jobs for tenant data"`). If `$ARGUMENTS` is empty, ask the user to describe the feature before calling any helper subcommand.
 
@@ -120,7 +120,7 @@ On zero hits (exit 2): copy the helper's stderr VERBATIM into your next user-fac
 
 On one or more hits: count R research and D discover handoffs from the output lines (one feature dir contributes two lines when both lanes ran for it). AskUserQuestion: `"Found handoff(s) — R research, D discover. Pre-seed spec from one?"` (substitute actual counts for R and D) with options `["yes-most-recent", "pick-other", "cold"]`. Single-line question text. End the turn. The user's reply opens the next turn.
 
-Every arm resolves a feature directory: it is the PARENT directory of the handoff path on the chosen stdout line. Hold it in working memory as the **resolved feature dir** — Phase 1's §1.5/§1.6 corpus reads, Step 4.1's header assignment, and Step 4.11's spec write all use it, and `spec.md` is written into it in every arm (created on a first pass, overwritten on a `re-entry` revision) — except Step 4.1's genuine-fallback path, which allocates a fresh directory instead; see Step 4.1. Also carry whether the chosen line ended in ` | re-entry`, so Phase 0.5 knows to expect a seed in that dir. Intake always names the directory `<NNN>-<slug>`; the helper also lists any other `specs/` subdirectory that happens to carry an intake handoff, and Step 4.1's genuine-fallback path covers that shape.
+Every arm resolves a feature directory: it is the PARENT directory of the handoff path on the chosen stdout line. Hold it in working memory as the **resolved feature dir** — Phase 1's §1.5/§1.6/§1.8 corpus reads, Step 4.1's header assignment, and Step 4.11's spec write all use it, and `spec.md` is written into it in every arm (created on a first pass, overwritten on a `re-entry` revision) — except Step 4.1's genuine-fallback path, which allocates a fresh directory instead; see Step 4.1. Also carry whether the chosen line ended in ` | re-entry`, so Phase 0.5 knows to expect a seed in that dir. Intake always names the directory `<NNN>-<slug>`; the helper also lists any other `specs/` subdirectory that happens to carry an intake handoff, and Step 4.1's genuine-fallback path covers that shape.
 
 - **`yes-most-recent`** → invoke `.devforge/lib/specify_helper import-handoff --handoff-path <newest path>` using the second field (the handoff path) from the first line of the `find-handoffs` stdout (most-recent-first ordering). Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1. The resolved feature dir is that path's parent.
 - **`pick-other`** → in the next user-facing message, print the full `find-handoffs` stdout as a fenced code block with a 1-based index prefix per line. Each line is prefixed with `[research]` or `[discover]` as the kind tag (derived from the `kind=<kind>` field in the output line); print each line's trailing ` | re-entry` marker unchanged where present, and state in one line of prose above the block that a `re-entry` line revises an already-specified feature. Ask the user `"Reply with the index of the handoff to import."` as plain prose. End the turn. The user's numeric reply opens the next turn; invoke `import-handoff --handoff-path <path at that index>`. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). Continue to Phase 1. The resolved feature dir is the picked path's parent.
@@ -153,9 +153,9 @@ This block only READS the seed's directive. It does not delete the seed or mutat
 
 When no `specs/<resolved-feature-dir>/*-seed.json` file matches `target_stage == "spec"` (the normal case — both `/devforge:grill` and `/devforge:spec-check` are opt-in, and no seed is ever produced unless a `/devforge:grill` run reaches a RE-ENTER-UPSTREAM verdict or a `/devforge:spec-check` run reaches a REVISE-SPEC verdict), this block is a no-op: proceed directly to Phase 1.
 
-## Phase 1 — Input reads (7 sources)
+## Phase 1 — Input reads (8 sources)
 
-Read the feature description from `$ARGUMENTS` and hold it in working memory as the **topic** used for filename-overlap matching against prior spec directories under `specs/` (§1.7). This feature's own intake reports (§1.5 / §1.6) are NOT topic-matched — they sit at fixed paths inside the feature dir resolved in Phase 0.4.
+Read the feature description from `$ARGUMENTS` and hold it in working memory as the **topic** used for filename-overlap matching against prior spec directories under `specs/` (§1.7). This feature's own intake reports (§1.5 / §1.6 / §1.8) are NOT topic-matched — they sit at fixed paths inside the feature dir resolved in Phase 0.4.
 
 Before any analysis, read these inputs for context. **All bullets are required if the file/directory exists. Do not skip discretionarily — every applicable input must be read.**
 
@@ -240,6 +240,18 @@ The literal `/devforge:specify "<distilled topic>"` line that may appear at the 
 Enumerate via `ls specs/` and read the `spec.md` of any prior spec directory whose name has ≥1 topic-token overlap with the feature description. Record one `record-input-read --path "specs/<dir-name>/spec.md"` per file consumed. Auto-tagged `source_origin = "prior_spec"`.
 
 On a re-entry run (Phase 0.5 fired), the resolved feature dir's own `spec.md` — the version this run supersedes — is read here too, under the same call and the same `prior_spec` tag. Read it so the material worth keeping survives into the Phase 1.5 findings; the seed's directive still governs what must change.
+
+### 1.8 `specs/<NNN>-<slug>/emission-matrix.md` (if the file exists) — this feature's `/devforge:research` post-change emission matrix
+
+Same shape as §1.5, at a third fixed path in the same resolved feature dir. `/devforge:research` writes this file only when the approach it recommended REMOVES or SUPPRESSES a value the changed code emits, so most feature dirs do not carry one — its absence is the normal state, not a gap to fill, and `/devforge:specify` never authors it. Read the file in full when it exists, then record it:
+
+```bash
+.devforge/lib/specify_helper record-input-read --path "specs/<NNN>-<slug>/emission-matrix.md"
+```
+
+Auto-tagged `source_origin = "prior_spec"`: the filename dispatch recognizes `research-report.md` and `discovery-report.md` only, so every other `specs/` path falls through to that tag. The tag is a corpus label and carries no consequence here — `prior_spec` origins do not pre-seed `spec_type` (Phase 3 Step 1), and this path is not among Phase 1 finalize's four mandatory base reads.
+
+The matrix names the change under evaluation, names the values that change removes or suppresses, then carries one row per call site under the columns `Call site` | `Emits today` | `Intersection with the removed set` | `Verdict` | `Note`. `Verdict` is `affected` or `unaffected` and nothing else: the matrix reports what each call site still emits and makes NO reachability claim, so an `affected` row does not assert that any code is dead. Feed its rows into Phase 1.5 like any other source — every row whose `Intersection with the removed set` is non-empty is task-relevant by construction, and a row that stays in working memory is one Step 4.4's acceptance criteria can silently contradict.
 
 ### Phase 1 finalize
 
@@ -603,6 +615,8 @@ For greenfield, list scaffolding needs explicitly (Impact = "Create new") so `/d
 ### Step 4.4 — §5 Acceptance Criteria (7 categorized subsections, EARS notation)
 
 Each AC must be testable and unambiguous. **Cover each category that applies. Mark non-applicable categories with "N/A — [reason]".**
+
+**When `specs/<NNN>-<slug>/emission-matrix.md` exists (§1.8), re-read it before writing any AC in this step.** An acceptance criterion asserting that a value this change removes is still present — or still emitted — on some path may NOT be written from inferred intent; it requires product intent, quoted. "We did not intend to touch that file" is inferred intent and is not sufficient. Where the matrix shows a call site whose `Intersection with the removed set` is non-empty, that is a product question about what should happen on that path: surface it to the user as plain prose and record it under §8 Open Questions (Step 4.7), landing its Phase 1.5 finding in §9 Risks (Step 4.8), since §8 is not one of the four buckets `verify-coverage` accepts. Pinning it as an AC instead converts an assumption into a contract that `/devforge:verify` will enforce.
 
 Every AC `statement` uses EARS notation (Easy Approach to Requirements Syntax, IEEE 29148-2018 / Kiro convention). Choose one of 5 variants; helper validates the statement matches the declared variant via regex. Malformed statements are rejected.
 

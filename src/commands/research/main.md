@@ -20,6 +20,7 @@ Usage: `/devforge:research "<topic>"` (e.g. `/devforge:research "items not sorte
 - `<install_root>/specs/NNN-<feature-slug>/research-report.md` — rendered report. Helper's `render` writes to stdout; Phase 4 saves those bytes into the allocated directory.
 - `<install_root>/specs/NNN-<feature-slug>/research-handoff.json` — the specify-bound handoff, written by Phase 4's `finalize-handoff --feature-dir` on save (sibling to the report).
 - `<install_root>/specs/NNN-<feature-slug>/probe-script.<ext>` — CONDITIONAL: present only when Phase 2.6 recorded a tier-1.5 probe script; Phase 4 copies it out of scratch on save.
+- `<install_root>/specs/NNN-<feature-slug>/emission-matrix.md` — CONDITIONAL: present only when the recommended approach removes or suppresses a value the changed code emits; composed by the orchestrator in Phase 3 and written by Phase 4 on save. Its absence means that trigger did not fire — see Phase 3's Emission matrix step.
 - Branch `spec/NNN-<feature-slug>` — created by Phase 4 on a freshly allocated directory when the run is on the repository's default branch. On any other branch, and on every `/devforge:grill` re-entry run, no checkout is emitted and the current branch is kept.
 
 On save, Phase 4 `[WIP]`-commits the artifacts it wrote into the install repo via `.devforge/lib/artifact_helper commit-artifacts` (install-repo-only, fail-soft) so the work is git-safe the moment it is written; the commit folds into `/devforge:finalize`'s squash.
@@ -1119,9 +1120,60 @@ This render is a PREVIEW, not the saved file. Nothing is written to disk in Phas
 
 The LLM does NOT edit the rendered report via Write or Edit at any point — Phase 4 writes the helper's rendered bytes verbatim and never reshapes them. The helper's `render` is the only composer of this markdown; any post-render fix is applied by re-calling the relevant setter + `render` + `verify` in a new turn.
 
+### Emission matrix (CONDITIONAL — fires when the recommended approach removes or suppresses an emitted value)
+
+**Trigger.** Run this step when the recommended approach you just recorded REMOVES or SUPPRESSES a value the changed code emits today — a value that code returns, renders, passes as an argument, writes into a payload, or publishes on an event, and that after the change it no longer does. Read the trigger off what the approach DOES to the code (the linked approach's `--description` plus the `--rationale` you passed to `set-recommended-approach`), never off how the summary happens to be worded.
+
+**The trigger is a fact about the change, never a belief about the callers.** Do not condition it on how many call sites you think exist, or on a judgment that the only caller is the one the topic names. A confident caller count is precisely the claim this matrix tests, so it can never be what decides whether to build one: when the approach removes or suppresses an emitted value, compose the matrix even when you are certain a single call site exists.
+
+**Skip clause.** When the approach removes and suppresses nothing the changed code emits — it adds behavior, swaps one value for another, or restructures without dropping an emission — no matrix is composed here and none is written in Phase 4. That is the complete and correct outcome for such a run: an absent `emission-matrix.md` in a feature directory means the trigger did not fire, not that a step was skipped. State which of the two cases this run is in, in one line, in the same message that carries the rendered report, so the user can tell "not applicable" from "not done".
+
+**No helper owns this file.** `render` composes `research-report.md` and nothing else; no verb emits this matrix and no verb checks it. You compose the markdown directly, in the message — Phase 4's invariant holds, so nothing goes to disk here (nothing outside `.devforge/` scratch exists before the user's confirmation in Step 4.1). The rules at the end of this step are therefore the only thing standing between a wrong row and the plan built on it: no gate downstream will catch a cell you asserted instead of traced.
+
+Compose it in this shape:
+
+```
+# Emission Matrix
+
+**Change under evaluation**: <the recommended approach's name>
+**Values this change removes or suppresses**: <listed once — a per-run constant, never a column>
+
+| Call site | Emits today | Intersection with the removed set | Verdict | Note |
+|---|---|---|---|---|
+| <file:line> | <what this caller emits> | <traced, not asserted; `none` when empty> | affected / unaffected | <required when the verdict is `affected`, or when a cell reads `varies`> |
+```
+
+1. **Take the rows from the enumeration you already ran.** `read-report` at the top of Phase 3 already printed the state they come from: the rows are the `inbound_callers` entries recorded against the `fix_path_helpers` this approach changes (Phase 2.4c Steps 1-2b). One matrix row per recorded caller. The `Call site` cell copies that row's `file_line` verbatim — the Phase 2.3 grounding rule holds here as everywhere: never re-derive a line number, and never take one from `get_code_snippet` output. Do NOT re-run the inbound traces to build this table. Check 9 already pinned the recorded caller count to the declared total and check 19 already forced every recorded caller to carry a surface, a scope, and a justification, so the enumeration behind these rows is complete by construction; a second trace here would only produce a second count that nothing reconciles against the first.
+
+   Read each caller's recorded `surface`, `scope`, and `justification` as context for its Note — but decide the verdict from the intersection, not from that `scope` value. `in` / `out` was your judgment about where the fix goes; `affected` / `unaffected` is a traced fact about what the site emits, and the two can legitimately disagree on the same row.
+
+   **A fired trigger with no rows is a contradiction.** A change that removes an emitted value has at least one path emitting it today, so an empty row set means the enumeration is incomplete or the trigger was read off the wrong thing — it does not mean the code has no callers. Settle that before composing: return to Phase 2.4c and enumerate the callers of the symbol this approach changes, or re-read what the approach actually removes. A recorded no-shared-callers justification does not settle it either — that escape is for a change with no existing shared symbol to call into, which is not a change that removes something existing callers emit.
+
+2. **Fill the two header lines.** `**Change under evaluation**` is the recommended approach's `--name`, exactly as `set-recommended-approach` recorded it. `**Values this change removes or suppresses**` lists those values once, there. They are a per-run constant — identical for every row — so they never become a column, and every row's cells are read against that one list.
+
+3. **Trace each row's two evidence cells against the code.** For every call site, read what it emits at that `file:line` through the CBM chain — `get_code_snippet` on the recorded row, plus `search_code` for a literal from it when the snippet leaves the emitted set unclear. Raw `Read` / `Grep` / `Glob` / `grep` / `cat` over source files stay forbidden (Phase 2.3). `Emits today` is what THIS site emits, as read. `Intersection with the removed set` is which members of the header's removed set appear in that emitted set, and reads `none` when empty.
+
+4. **Verdict — `affected` or `unaffected`, and nothing else.** `affected` when the intersection is non-empty; `unaffected` when it reads `none`. Those two words are the whole vocabulary of that column. Whether a path becomes unreachable is a consequence of a guard the design does not have yet — `/devforge:plan` is where one gets chosen — so this matrix makes no reachability claim of its own and produces no unreachable-path rows.
+
+5. **`varies` when the emitted set is not statically determinable.** When a call site assembles what it emits at runtime, sits behind a dispatch you cannot resolve from the code, or cannot be read at all, write `varies` in that cell, state in the Note which values you considered and what blocked the trace, and record the verdict as `affected`. The conservative reading is the recorded one: an undeterminable set is never `unaffected`.
+
+6. **Collapse rows only on identical emitted sets.** Call sites that emit an IDENTICAL set may share one row, and that row must still enumerate every collapsed call site's `file:line` in the `Call site` cell. Any difference between them — one extra value, one different value — forces separate rows. Collapsing is a formatting economy, never a way to stop enumerating.
+
+**The rules this matrix must satisfy.** Five of the six are the composer's, and they are obligations on how you fill the table — not text to copy into the file. Their numbering is shared with the stage that consumes the matrix, which is why it is not contiguous here.
+
+- **Rule 1 — every call site appears.** Found mechanically and cited by file and line. No sampling, no representative subset, no row dropped because it looked obviously unaffected: an `unaffected` row is a result, and omitting it is indistinguishable from never having looked.
+- **Rule 2 — the evidence cells are traced, never asserted.** `Emits today` and `Intersection with the removed set` are read out of the code at that call site. A cell filled in from the caller's name, from what the topic implies, or from what you expect that caller to do, is an assertion wearing a trace's clothes.
+- **Rule 3 — a non-empty intersection is justified in one sentence.** Every `affected` row's Note says why that call site emits a value this change removes. If you cannot write that sentence, the design is wrong — not the row.
+- **Rule 4 — an `affected` verdict is an obligation, not a warning.** It obliges the architect to account for that call site at `/devforge:plan`. Where the change made there renders a path unreachable, the constitution's **No dead code** rule applies — delete it, do not guard it. That call belongs to `/devforge:plan`; this matrix makes no reachability claim of its own.
+- **Rule 6 — derived exclusions.** An "explicitly not modified" or out-of-scope entry for a caller of the changed code is valid ONLY when that caller's row shows an EMPTY intersection, and the row is what states it. A non-empty intersection invalidates the entry: escalate it as a product question — does that surface keep emitting the value, or not? — and never resolve it by inferring intent from the topic's silence.
+
+There is no rule 5 in this step. Rule 5 governs how `/devforge:plan` CONSUMES the matrix, not how you produce it, so it is stated there and nothing in this command applies it. Do not close the gap by renumbering rule 6 — the numbers are the shared vocabulary between the two sites.
+
+Surface the composed matrix in the same user-facing message as the rendered report, below it, as a fenced block. Step 4.5b writes those exact bytes once the user confirms the save; on the don't-save arm they stay in the message and nothing else in this command reads them.
+
 ## Phase 4 — Save + recommend
 
-Phase 4 runs in one fixed order: confirm the save + the feature name → resolve the feature directory (allocate, or attach) → create the branch → write the report → copy the probe script → write the handoff → commit. Nothing outside `.devforge/` scratch is created before the user's confirmation in Step 4.1, and no step below runs on the don't-save arm.
+Phase 4 runs in one fixed order: confirm the save + the feature name → resolve the feature directory (allocate, or attach) → create the branch → write the report → copy the probe script → write the emission matrix → write the handoff → commit. Nothing outside `.devforge/` scratch is created before the user's confirmation in Step 4.1, and no step below runs on the don't-save arm.
 
 ### Step 4.1 — Ask to save (one question, feature name included)
 
@@ -1212,6 +1264,14 @@ cp "${TMPDIR:-/tmp}/forge-research/probe-script.<ext>" "specs/<dirname>/probe-sc
 
 When no probe script was recorded, skip this step and leave the probe-script path out of Step 4.6's commit.
 
+### Step 4.5b — Write the emission matrix (conditional)
+
+Run this step ONLY when Phase 3's Emission matrix step composed a matrix. Write those bytes — the ones the user already saw below the rendered report — to `specs/<dirname>/emission-matrix.md`.
+
+Do not re-compose the table here and do not reshape it: its content was settled in Phase 3, and nothing between there and here changes the recommended approach it was composed against. Unlike `research-report.md`, whose bytes come from the helper's `render`, these bytes are yours — no helper renders this file and none validates it. In attach mode this overwrites the previous `emission-matrix.md`, which is the intent.
+
+When Phase 3 composed no matrix — its skip clause fired because the recommended approach removes and suppresses nothing the changed code emits — skip this step and leave the matrix path out of Step 4.6's commit. No file is written, and that absence is the correct record of such a run.
+
 ### Step 4.6 — Write the handoff, then commit
 
 ```bash
@@ -1223,11 +1283,13 @@ The helper writes `specs/<dirname>/research-handoff.json` and records the siblin
 
 If the helper exits non-zero, tell the user `"Research report saved at specs/<dirname>/research-report.md but research-handoff.json failed: <stderr>. Re-run finalize-handoff manually after fixing the missing state."` and end the turn. If it exits 0, capture the stdout `wrote: <abs path>` for the closing message.
 
-Then `[WIP]`-commit everything this run wrote, so the work is git-safe immediately. `--paths` carries the report and the handoff, plus `specs/<dirname>/probe-script.<ext>` when Step 4.5 copied one; the label uses the topic slug:
+Then `[WIP]`-commit everything this run wrote, so the work is git-safe immediately. `--paths` carries the report and the handoff, plus `specs/<dirname>/probe-script.<ext>` when Step 4.5 copied one and `specs/<dirname>/emission-matrix.md` when Step 4.5b wrote one; the two extras are independent — either, both, or neither may be present. The label uses the topic slug:
 
 ```bash
-# Two paths normally; add the third element ONLY when Step 4.5 copied a probe script:
-#   '["specs/<dirname>/research-report.md", "specs/<dirname>/research-handoff.json", "specs/<dirname>/probe-script.<ext>"]'
+# Two paths normally; append each extra element ONLY when its own step produced it:
+#   "specs/<dirname>/probe-script.<ext>"  — ONLY when Step 4.5 copied a probe script
+#   "specs/<dirname>/emission-matrix.md"  — ONLY when Step 4.5b wrote the emission matrix
+# With both: '["specs/<dirname>/research-report.md", "specs/<dirname>/research-handoff.json", "specs/<dirname>/probe-script.<ext>", "specs/<dirname>/emission-matrix.md"]'
 .devforge/lib/artifact_helper commit-artifacts \
     --paths '["specs/<dirname>/research-report.md", "specs/<dirname>/research-handoff.json"]' \
     --label "research: <topic-slug>"

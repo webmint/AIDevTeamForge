@@ -250,6 +250,7 @@ specs/
     research-report.md         # /devforge:research report — bug/enhancement lane
     research-handoff.json      # /devforge:research → /devforge:specify handoff
     probe-script.<ext>         # /devforge:research tier-1.5 probe (optional)
+    emission-matrix.md         # /devforge:research caller emission matrix (optional)
     discovery-report.md        # /devforge:discover report — greenfield lane
     discover-handoff.json      # /devforge:discover → /devforge:specify handoff
     spec.md                    # /devforge:specify output
