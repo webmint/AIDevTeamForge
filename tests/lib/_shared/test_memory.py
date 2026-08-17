@@ -1028,6 +1028,17 @@ class TestSectionAwareRealFixtures(unittest.TestCase):
         # EXCLUDED from the excerpt too (ratified D3 Option A: exclusion
         # is by section membership, not by line content). State still
         # reports "populated".
+        #
+        # Superseded-scope note: under plan 79 Phase 4.5's YES arm
+        # (ratified 2026-08-17), /devforge:verify's memory write no longer
+        # appends a NEW lesson at bare EOF -- it inserts under a named
+        # "## " bucket (What Failed / What Worked / Known Pitfalls)
+        # instead. This fixture therefore no longer models any write
+        # path a current /devforge:verify can produce; it now covers the
+        # HISTORICAL case only -- memory.md files written by an older
+        # /devforge:verify before Phase 4.5 landed, which legacy installs
+        # may still hold. The fixture and assertions below are kept
+        # unchanged to pin that historical-file behavior.
         content = self._RECEIPTS_ONLY_PINNED + self._LESSON_LINES
         with tempfile.TemporaryDirectory() as root:
             _write(root, MEMORY_RELATIVE_PATH, content)

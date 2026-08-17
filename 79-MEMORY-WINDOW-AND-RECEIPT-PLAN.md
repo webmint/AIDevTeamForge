@@ -1,6 +1,6 @@
 # 79 — Memory Window And Receipt Plan
 
-**Status: IN PROGRESS — Phase 0 CLOSED 2026-08-17. D1–D7 and OQ-1–OQ-5 all maintainer-ratified 2026-08-17; dispositions recorded inline below. Build phases 1–5 underway.**
+**Status: IN PROGRESS — Phase 0 CLOSED 2026-08-17. D1–D7 and OQ-1–OQ-5 all maintainer-ratified 2026-08-17; dispositions recorded inline below. Phases 1–4.5 BUILT 2026-08-18 — Phase 4.5 ran its YES arm, per OQ-3's ratified `yes`. Phase 5 (`/devforge:implement` digest → context) in progress. Phase 6 (consumer e2e) PENDING — user-driven.**
 
 Branch: `develop-2.0-init`.
 
@@ -1184,10 +1184,6 @@ question either way. **5** is an improvement on top; **6** is the proof.
   verb is a larger decision and is not on the table here. Phase 4.5's YES arm
   respects this — it has the orchestrator reproduce the placement rule in prose,
   not call `_append_under_section`, which Phase 2 may have deleted.
-- *(Added by Phase 4.5's NO arm, if OQ-3 is ratified `no`: the two-part accepted
-  limitation that arm specifies — mis-bucketing on fresh installs, and permanent
-  invisibility of `/devforge:verify` lessons on installs that ran tasks. Under a
-  `yes` this bullet is deleted rather than left as a dangling conditional.)*
 - A retrospective/follow-through mechanism. That is the *other* half of the
   finding this plan came from — BMAD's `bmad-retrospective` carries a
   per-item follow-through record checking whether the previous cycle's action
