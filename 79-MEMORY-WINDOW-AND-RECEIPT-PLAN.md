@@ -377,9 +377,10 @@ task's `touched_files`), and only the now-false digest-emptiness sentence inside
 it is removed.
 
 Once the excerpt carries real lessons, `/devforge:implement` should consume it
-like the other eleven, and `agent-brief.md:12`'s direct-file-read workaround —
-written to route around the digest's emptiness — can be deleted along with the
-`read_memory_digest` call site.
+like the other eleven. Per the ratified Disposition, `agent-brief.md:12`'s
+direct-file-read workaround paragraph is KEPT for its selection rationale; only
+the now-false digest-emptiness sentence inside it is removed, alongside deleting
+the `read_memory_digest` call site itself (OQ-2).
 
 *Counter-argument, recorded:* the workaround is not purely a digest artifact.
 Its stated reason is SELECTION — the orchestrator holds the task contract and
@@ -1053,7 +1054,11 @@ with the migration; the third is D7's own subject:
   key to `memory_excerpt` and the `agent-brief.md:12` paragraph is deleted,
   confirm `grep -rn "memory_excerpt\|memory_digest\|memory_state"
   src/commands/implement/` still returns at least one hit — a green gate here is
-  not automatic.
+  not automatic. *(D7's ratified disposition KEEPS that paragraph, so the
+  paragraph-deleted half of this condition is a dead branch. Run the grep after
+  the key rename regardless: Phase 5 edits BOTH surfaces that carry a token
+  today — `main.md:103`'s key and `agent-brief.md:12`'s digest sentence — so a
+  hit is still not automatic.)*
 - `python -m pytest tests/lib/_implement/` passes.
 - **Under OQ-2 "delete":** `grep -rn "read_memory_digest" src/ tests/ scripts/`
   returns zero lines, including `_shared/memory.py:26`'s public-surface list and
