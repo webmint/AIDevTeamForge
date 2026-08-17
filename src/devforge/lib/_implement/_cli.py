@@ -164,7 +164,7 @@ _SUBCOMMAND_REGISTRY = [
         (
             "Fully overwrite .devforge/session-state.md (<=40 lines, sliding "
             "window: feature, N-of-M progress, last 3 task mods, last 3 decisions). "
-            "Append one task-outcome line to .devforge/memory.md. "
+            "Does not touch .devforge/memory.md. "
             "Emits {updated: true}."
         ),
         cmd_update_session_state,

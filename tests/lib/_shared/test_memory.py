@@ -35,11 +35,14 @@ Coverage:
                                    budget allocation, newest-lines-survive
                                    truncation with a declared marker,
                                    real-fixture stub/receipts/lesson cases
-                                   (receipts fixture round-tripped through
-                                   the real _implement/_cmds_session.py
-                                   writer), unknown-section inclusion,
-                                   budget<=0, and the two functions'
-                                   agreement on identical fixtures
+                                   (receipts fixture is a pinned literal
+                                   proven, prior to plan 79 Phase 2's writer
+                                   deletion, against the real
+                                   _implement/_cmds_session.py writer's live
+                                   output -- see _RECEIPTS_ONLY_PINNED),
+                                   unknown-section inclusion, budget<=0, and
+                                   the two functions' agreement on identical
+                                   fixtures
 """
 
 from __future__ import annotations
@@ -61,10 +64,6 @@ _LIB_DIR = _REPO_ROOT / "src" / "devforge" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from _implement._cmds_session import (  # noqa: E402
-    _append_under_section,
-    _build_memory_entry,
-)
 from _shared import memory as memory_module  # noqa: E402
 from _shared.memory import (  # noqa: E402
     DEFAULT_DIGEST_LINES,
@@ -901,13 +900,16 @@ class TestRenderExcerpt(unittest.TestCase):
 
 # ---------------------------------------------------------------------------
 # Real-fixture section-aware excerpt cases (plan 79 Phase 1, mandatory
-# groups 1/2/3a/3b/5). The receipts fixture is round-tripped through the
-# REAL memory.md writer (_implement/_cmds_session.py's _build_memory_entry
-# + _append_under_section), not hand-authored -- the repo's real-fixture
-# discipline. That writer is deleted by plan 79 Phase 2; the resulting
-# bytes are pinned as a string literal in this same test (proven
-# production-shaped here, while the writer still exists, so the pin
-# survives the writer's removal).
+# groups 1/2/3a/3b/5). The receipts fixture (_RECEIPTS_ONLY_PINNED below) was
+# originally round-tripped through the REAL memory.md writer
+# (_implement/_cmds_session.py's _build_memory_entry + _append_under_section)
+# rather than hand-authored, per the repo's real-fixture discipline, and
+# proven equal to that writer's live output in a same-test round trip. Plan
+# 79 Phase 2 deleted that writer (the "## Task Outcomes" section it wrote to
+# is excluded from every memory read, per Phase 1, so the write was a dead
+# end); the pinned literal below is what survives -- it was proven
+# production-shaped while the writer still existed (commit c5766a5 holds the
+# proving version of this test, including the now-removed round trip).
 # ---------------------------------------------------------------------------
 
 
@@ -932,13 +934,13 @@ class TestSectionAwareRealFixtures(unittest.TestCase):
             self.assertEqual(read_memory_excerpt(root), "")
             self.assertEqual(probe_memory_state(root), MEMORY_STATE_STUB)
 
-    # The exact bytes _append_under_section() produces for 3 receipts
-    # (tasks 001-003, feature 001-widget-catalog) appended onto the real
-    # stub via cmd_update_session_state's own entry format. Proven equal
-    # to the real writer's live output in
-    # test_receipts_only_pinned_fixture_matches_real_writer below, in the
-    # SAME test, so this pin is proven production-shaped while the writer
-    # (deleted by plan 79 Phase 2) still exists.
+    # The exact bytes the real writer (_build_memory_entry +
+    # _append_under_section, deleted by plan 79 Phase 2) produced for 3
+    # receipts (tasks 001-003, feature 001-widget-catalog) appended onto the
+    # real stub. Proven equal to that writer's live output by a same-test
+    # round trip that existed prior to the deletion (commit c5766a5 holds
+    # the proving version of this test) -- this literal is the surviving
+    # pin.
     _RECEIPTS_ONLY_PINNED = (
         "# Project Memory\n"
         "\n"
@@ -959,32 +961,6 @@ class TestSectionAwareRealFixtures(unittest.TestCase):
         "- **[Task 002 / 001-widget-catalog]**: Create repo — completed. _(Task 002)_\n"
         "- **[Task 003 / 001-widget-catalog]**: Build component — completed. _(Task 003)_\n"
     )
-
-    def _build_receipts_only_fixture(self, target_path):
-        # type: (Path) -> None
-        """Apply 3 receipts to target_path via the REAL writer functions."""
-        feature = "001-widget-catalog"
-        titles = {
-            "001": "Define types",
-            "002": "Create repo",
-            "003": "Build component",
-        }
-        for number in ("001", "002", "003"):
-            entry = _build_memory_entry(feature, number, titles[number])
-            _append_under_section(target_path, "## Task Outcomes", entry)
-
-    def test_receipts_only_pinned_fixture_matches_real_writer(self):
-        # Real-producer round trip: build the fixture with the actual
-        # writer, then prove it equals the pinned literal above -- in the
-        # SAME test, so the pin is verified production-shaped before it is
-        # relied on by any other test.
-        with tempfile.TemporaryDirectory() as root:
-            target = Path(root) / MEMORY_RELATIVE_PATH
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(_REAL_STUB_PATH.read_text(encoding="utf-8"), encoding="utf-8")
-            self._build_receipts_only_fixture(target)
-            produced = target.read_text(encoding="utf-8")
-            self.assertEqual(produced, self._RECEIPTS_ONLY_PINNED)
 
     def test_receipts_only_excerpt_empty_but_state_populated(self):
         # Mandatory group 2: the ONLY populated content in this fixture

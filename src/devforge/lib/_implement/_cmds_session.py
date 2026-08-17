@@ -1,7 +1,6 @@
 """_cmds_session -- update-session-state verb for implement_helper.
 
-Fully overwrite .devforge/session-state.md and append one line to
-.devforge/memory.md after each approved task.
+Fully overwrite .devforge/session-state.md after each approved task.
 
 Algorithm (update-session-state)
 ---------------------------------
@@ -24,20 +23,11 @@ Algorithm (update-session-state)
    guarantee this: the fixed header is 6 lines, 2 section headings = 2 lines,
    3 task lines = 3 lines, 3 decision lines = 3 lines → max ~18 lines.
 4. Atomically overwrite .devforge/session-state.md.
-5. Insert ONE line into .devforge/memory.md under the "## Task Outcomes"
-   section:
-     - **[Task NNN / Feature <feature>]**: <title> — completed. _(Task NNN)_
-   Uses the memory.md entry convention from the plan:
-     `- **[AREA]**: ... _(Task N / Feature NNN)_`
-   The section is created if absent (never lands under ## What Failed or any
-   other section). The file is created on first insert if it does not exist.
 
 Arguments (argparse):
   --feature             <str>   Required. Current feature name/dir.
   --completed-count     <int>   Required. Tasks completed so far.
   --total-count         <int>   Required. Total tasks in the feature.
-  --last-task-number    <str>   Optional. Task number just completed.
-  --last-task-title     <str>   Optional. Task title just completed.
   --recent-tasks        <json>  Optional. JSON array of {number, title, status}.
                                 Default: [].
   --recent-decisions    <json>  Optional. JSON array of decision strings.
@@ -58,16 +48,13 @@ Design notes:
 - The ≤40-line cap is enforced by counting lines before write and truncating
   the "Recent Decisions" window further if needed (in practice the hard-coded
   3-item cap already keeps the file under 40 lines).
-- memory.md receives one new entry per approved task, always under the
-  "## Task Outcomes" section (created if absent). Other sections (e.g.
-  ## What Failed) are never disturbed.
 - Atomic write for session-state.md (tempfile.mkstemp + os.replace).
-- memory.md write uses _append_under_section: read + insert + atomic replace.
-  If the file is missing we create it fresh.
-- Memory entry format follows the convention in the plan:
-    - **[AREA]**: ... _(Task N / Feature NNN)_
-  For /implement tasks:
-    - **[Task <number> / <feature>]**: <title> — completed. _(Task <number>)_
+- This command does not touch .devforge/memory.md. Prior to plan 79 Phase 2
+  it also appended a per-task receipt line under memory.md's "## Task
+  Outcomes" section; that write was removed because plan 79 Phase 1 excludes
+  "## Task Outcomes" from every memory read, so the section was a write-only
+  dead end. .devforge/session-state.md (this file) already tracks the last 3
+  tasks.
 
 Stdlib only. Python 3.8+.
 """
@@ -79,8 +66,6 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-
-from _shared.memory import MEMORY_RELATIVE_PATH
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -119,112 +104,6 @@ def _atomic_write(target_path, content):
         except OSError:
             pass
         raise
-
-
-def _append_under_section(target_path, section_heading, line):
-    # type: (Path, str, str) -> None
-    """Atomically insert line at the end of section_heading in target_path.
-
-    Rules:
-    - If the file does not exist, it is created containing the section heading
-      followed by the line.
-    - If section_heading is not found in the file, it is appended at EOF (with a
-      blank separator line when the file is non-empty), followed by the line.
-    - If section_heading IS found, the line is inserted immediately before the
-      next ``## `` heading at the same depth, or before EOF if the section is
-      last.  Existing content in other sections is byte-preserved.
-
-    Atomic write: tempfile.mkstemp + os.replace. Temp file is unlinked on error.
-    """
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-
-    existing = ""
-    if target_path.exists():
-        try:
-            existing = target_path.read_text(encoding="utf-8")
-        except OSError:
-            existing = ""
-
-    new_content = _insert_line_under_section(existing, section_heading, line)
-
-    fd, tmp_path = tempfile.mkstemp(
-        prefix="memory-",
-        suffix=".tmp",
-        dir=str(target_path.parent),
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(new_content)
-        os.replace(tmp_path, str(target_path))
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
-
-
-def _insert_line_under_section(existing, section_heading, line):
-    # type: (str, str, str) -> str
-    """Pure function: compute new file content with line inserted under section.
-
-    Separated from I/O so it can be unit-tested without touching the filesystem.
-
-    Fenced code blocks (delimited by lines whose stripped form starts with ```)
-    are tracked with an in_fence boolean. Lines inside a fence are never treated
-    as section headings, preventing mis-detection of ``## `` lines that appear
-    inside code examples.
-    """
-    # Normalise: work on a list of raw lines (preserving line endings).
-    raw_lines = existing.splitlines(keepends=True)
-
-    # Locate the section heading line, skipping content inside fenced blocks.
-    heading_idx = None
-    in_fence = False
-    for i, raw in enumerate(raw_lines):
-        stripped = raw.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if not in_fence and stripped == section_heading.strip():
-            heading_idx = i
-            break
-
-    if heading_idx is None:
-        # Section absent: append it at EOF.
-        # Ensure existing content ends with a newline separator.
-        if existing and not existing.endswith("\n"):
-            existing += "\n"
-        if existing:
-            # Blank line before the new section.
-            new_content = existing + "\n" + section_heading + "\n" + line + "\n"
-        else:
-            new_content = section_heading + "\n" + line + "\n"
-        return new_content
-
-    # Section found: find where it ends (next ## heading at the same depth,
-    # or EOF). Respect fenced code blocks — ## lines inside fences are not
-    # section boundaries.
-    insert_idx = len(raw_lines)  # default: EOF
-    in_fence = False
-    for i in range(heading_idx + 1, len(raw_lines)):
-        stripped = raw_lines[i].strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if not in_fence and raw_lines[i].startswith("## "):
-            insert_idx = i
-            break
-
-    # Insert the line just before insert_idx.
-    # The new line must be followed by a newline.
-    new_line_raw = line + "\n"
-
-    # If the character immediately before the insertion point is not a newline
-    # (can happen if EOF has no trailing newline), we still produce correct
-    # output because we work line-by-line.
-    result_lines = raw_lines[:insert_idx] + [new_line_raw] + raw_lines[insert_idx:]
-    return "".join(result_lines)
 
 
 # ---------------------------------------------------------------------------
@@ -300,24 +179,6 @@ def _build_session_state(
     return content
 
 
-def _build_memory_entry(feature, number, title):
-    # type: (str, str, str) -> str
-    """Build a one-line memory.md entry for the completed task.
-
-    Convention: `- **[AREA]**: ... _(Task N / Feature NNN)_`
-
-    For /implement tasks the AREA is "Task <number> / <feature>" and the
-    description is "<title> — completed."
-
-    Example:
-      - **[Task 001 / 001-widget-catalog]**: Define types — completed. _(Task 001)_
-    """
-    return (
-        "- **[Task {number} / {feature}]**: {title} — completed."
-        " _(Task {number})_"
-    ).format(number=number, feature=feature, title=title)
-
-
 # ---------------------------------------------------------------------------
 # argparse setup
 # ---------------------------------------------------------------------------
@@ -344,18 +205,6 @@ def add_args_update_session_state(parser):
         dest="total_count",
         type=int,
         help="Total number of tasks in this feature.",
-    )
-    parser.add_argument(
-        "--last-task-number",
-        default="",
-        dest="last_task_number",
-        help="Task number just completed (for memory.md entry). E.g. '001'.",
-    )
-    parser.add_argument(
-        "--last-task-title",
-        default="",
-        dest="last_task_title",
-        help="Task title just completed (for memory.md entry).",
     )
     parser.add_argument(
         "--recent-tasks",
@@ -397,7 +246,7 @@ def add_args_update_session_state(parser):
 
 def cmd_update_session_state(args):
     # type: (object) -> int
-    """Overwrite session-state.md and append a line to memory.md.
+    """Overwrite session-state.md.
 
     Parameters
     ----------
@@ -432,9 +281,6 @@ def cmd_update_session_state(args):
             "update-session-state: --total-count must be an integer\n"
         )
         return EXIT_ERR
-
-    last_task_number = (getattr(args, "last_task_number", "") or "").strip()
-    last_task_title = (getattr(args, "last_task_title", "") or "").strip()
 
     # --- Parse --recent-tasks ---
     recent_tasks_json = getattr(args, "recent_tasks", "[]")
@@ -489,18 +335,6 @@ def cmd_update_session_state(args):
             "update-session-state: cannot write session-state.md: {0}\n".format(exc)
         )
         return EXIT_ERR
-
-    # --- Append to memory.md (if we have a completed task to record) ---
-    if last_task_number and last_task_title:
-        memory_path = root / MEMORY_RELATIVE_PATH
-        entry = _build_memory_entry(feature, last_task_number, last_task_title)
-        try:
-            _append_under_section(memory_path, "## Task Outcomes", entry)
-        except OSError as exc:
-            sys.stderr.write(
-                "update-session-state: cannot write to memory.md: {0}\n".format(exc)
-            )
-            return EXIT_ERR
 
     sys.stdout.write(json.dumps({"updated": True}) + "\n")
     return EXIT_OK

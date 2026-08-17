@@ -35,7 +35,7 @@ Usage: `/devforge:implement` — no arguments. The command resolves the lowest-n
 - A per-task WIP commit per approved task (`[WIP] task: <title> (Task NNN)` in non-wrapper mode; `[TICKET-ID] - <title> (Task NNN)` in wrapper mode). WIP commits are squashed by `/devforge:finalize`.
 - Updated `tasks/<NNN>-<title>.md` (Status `Complete`, ticked Done-When boxes, filled Completion Notes) + `tasks/README.md` index row per approved task. When verification was scoped (PHASE 5 `tooling_unavailable` → `scope-and-approve`), the type-check / lint / test Done-When boxes are left unticked and annotated `_(unverified — see Completion Notes)_` instead of ticked.
 - A pre-task `[checkpoint] pre-task NNN` empty commit + `.devforge/wip.md` marker per task (the crash-recovery affordance; `wip.md` is cleared on commit, skip, or rollback).
-- Refreshed `.devforge/session-state.md` + an appended `.devforge/memory.md` line per approved task.
+- Refreshed `.devforge/session-state.md` per approved task.
 
 ## Context in the Workflow
 
@@ -276,13 +276,13 @@ End the turn. The user's reply opens the next turn.
      ```
 
      `detect_changes` targets the **source** code (the indexed project), since that is what the just-committed change touched. Subprocess helpers cannot reach MCP, so the `detect_changes` call is the orchestrator's responsibility; `cbm_sync_helper write` then advances the stamp, which stays in the install root at `.devforge/cbm-last-indexed-sha`. (Standalone: source code and install root are the one repo, so this is a single index refresh as today.)
-  4. Update session-state + memory:
+  4. Update session-state:
 
      ```bash
-     .devforge/lib/implement_helper update-session-state --feature <feature-dir-name> --completed-count <completed_count + 1> --total-count <total_count> --last-task-number NNN --last-task-title "<task-title>" --recent-tasks '<json>' --recent-decisions '<json>'
+     .devforge/lib/implement_helper update-session-state --feature <feature-dir-name> --completed-count <completed_count + 1> --total-count <total_count> --recent-tasks '<json>' --recent-decisions '<json>'
      ```
 
-     Pass `--total-count` as the `total_count` PHASE 1 emitted (completion does not change the task total). The `completed_count` PHASE 1 emitted is the **pre-completion** snapshot, so pass `--completed-count` as that value **plus 1** to account for the task just marked complete in step 1 — this is correct and cheaper than re-running `resolve-next-task` to re-scan disk. The helper overwrites `.devforge/session-state.md` (≤40 lines, sliding window of the last 3 task mods + last 3 decisions) and appends one outcome line to `.devforge/memory.md` (exit 0 → `{"updated": true}`).
+     Pass `--total-count` as the `total_count` PHASE 1 emitted (completion does not change the task total). The `completed_count` PHASE 1 emitted is the **pre-completion** snapshot, so pass `--completed-count` as that value **plus 1** to account for the task just marked complete in step 1 — this is correct and cheaper than re-running `resolve-next-task` to re-scan disk. The helper overwrites `.devforge/session-state.md` (≤40 lines, sliding window of the last 3 task mods + last 3 decisions; exit 0 → `{"updated": true}`).
   5. Loop: return to PHASE 1 (`resolve-next-task`) to pick the next task. The loop auto-advances — there is no per-task continue prompt; `stop` at this gate is the only loop exit besides `all-complete`.
 - **`repair`** → ask the user via free-text follow-up for the repair direction, relaunch the implementing agent with those notes, then re-run PHASE 4 (capture-touched-files) → PHASE 5 (verify) → PHASE 6 (review panel + forcing-functions gate) → return to this hard gate.
 - **`skip`** → discard the task's edits and advance:
