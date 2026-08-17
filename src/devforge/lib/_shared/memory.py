@@ -22,7 +22,11 @@ Public surface
   MEMORY_STATE_ENUM                  -- (ABSENT, STUB, POPULATED) in that order
   probe_memory_state(workspace_root) -- -> one of MEMORY_STATE_ENUM
   memory_present(workspace_root)     -- -> bool
-  read_memory_excerpt(workspace_root, n=DEFAULT_EXCERPT_LINES) -- -> str
+  EXCLUDED_MEMORY_SECTIONS           -- "## " section headings dropped from
+                                         the excerpt outright (plan 79 D3)
+  read_memory_excerpt(workspace_root, n=DEFAULT_EXCERPT_LINES)
+                                      -- -> str, section-aware (plan 79 --
+                                         see "Bounded reads" below)
   read_memory_digest(workspace_root, n=DEFAULT_DIGEST_LINES)   -- -> Optional[str]
   read_memory_context(workspace_root, excerpt_lines=DEFAULT_EXCERPT_LINES)
                                       -- -> dict with "present" / MEMORY_STATE_KEY
@@ -69,20 +73,42 @@ module's purpose -- unlike a false POSITIVE, it never causes a structurally
 empty file to be trusted as populated. This module does not parse markdown
 code-fence context; this is an accepted limitation, not a defect.
 
-Bounded reads -- byte-identical to existing callers
------------------------------------------------------
-Two shapes are already in use across existing preflights and must not
-diverge when those callers are later re-pointed at this module:
-
-  excerpt: first N RAW lines (line terminators preserved) joined with "",
-           i.e. "".join(fh.readlines()[:N]), default N=40.
-           Absent/unreadable -> "".
-
+Bounded reads
+--------------
   digest:  first N NON-BLANK lines (terminators stripped) joined with
            "\\n", default N=5. Absent/unreadable -> None.
            Present-but-no-non-blank-lines -> "".
            Blank lines interleaved between real lines are SKIPPED, not
-           counted toward N.
+           counted toward N. Unchanged by plan 79 -- digest stays the
+           flat "first N non-blank lines" shape; only the excerpt below
+           became section-aware.
+
+  excerpt: SECTION-AWARE (plan 79 Phase 1) -- no longer a positional
+           "first N raw lines" slice (that shape froze the readable
+           window on the shipped stub headings once memory.md grew past
+           ~25 lines, so no lesson written later was ever visible).
+           memory.md is parsed into "## " sections; text before the
+           first such heading (the installer-shipped title) is dropped,
+           and "### "-or-deeper subheadings are section CONTENT, not
+           boundaries. A section on EXCLUDED_MEMORY_SECTIONS, or with
+           no populated content (_scan_lines() False on its content
+           lines), is dropped entirely -- heading included, before it
+           ever reaches the budget. Retained sections share
+           DEFAULT_EXCERPT_LINES CONTENT lines (headings, blank
+           section separators, and truncation markers are overhead
+           outside that budget) via an equal per-section share, with
+           any unused share redistributed once, in file order, to
+           sections that could still use more (OQ-1). Within a section
+           the NEWEST (last-appended) lines survive a truncation (both
+           writers append -- D5); a truncated section gets a marker
+           line right after its heading declaring how many earlier
+           lines were omitted, so truncation is ALWAYS declared, never
+           silent (D4). See _render_excerpt() for the exact algorithm.
+           Absent/unreadable -> "". A POPULATED file can still render
+           an empty excerpt when every populated line sits in an
+           excluded section -- an accepted divergence from
+           probe_memory_state() (D6); see
+           tests/lib/_shared/test_memory.py for the case that pins it.
 
 Single-scan combined accessor
 ------------------------------
@@ -307,21 +333,172 @@ def memory_present(workspace_root):
 # Bounded reads
 # ---------------------------------------------------------------------------
 
-DEFAULT_EXCERPT_LINES = 40
+DEFAULT_EXCERPT_LINES = 120
 DEFAULT_DIGEST_LINES = 5
+
+# Section headings excluded from the excerpt outright, regardless of budget.
+# A DENYLIST, not an allowlist: an unknown "## " heading is INCLUDED by
+# default, so a future memory-file writer's content is never silently
+# dropped just because this module does not yet know its heading (plan 79
+# D3 Option A). The one entry here holds the machine-written per-task
+# receipts that _implement/_cmds_session.py's cmd_update_session_state
+# appends ("- **[Task NNN / feature]**: ... _(Task NNN)_") -- high-volume,
+# low-narrative-value lines that would otherwise crowd out the prose
+# lessons an excerpt exists to surface. Plan 79 Phase 2 deletes that
+# writer entirely; this entry becomes vestigial at that point, not wrong.
+EXCLUDED_MEMORY_SECTIONS = ("## Task Outcomes",)
+
+# Inserted immediately after a truncated section's heading (plan 79 D4):
+# truncation must always be DECLARED, never silent. "{dropped}" is the
+# count of earliest content lines omitted from that section.
+_EXCERPT_TRUNCATION_MARKER = (
+    "[... {dropped} earlier line(s) in this section omitted by the excerpt"
+    " budget -- recorded in .devforge/memory.md, not shown ...]"
+)
+
+
+def _render_excerpt(lines, budget):
+    # type: (List[str], int) -> str
+    """Render a section-aware excerpt of memory.md content (plan 79 Phase 1).
+
+    `lines` is raw readlines() output (terminators preserved); `budget` is
+    the maximum number of CONTENT lines the excerpt may carry in total,
+    counted across all retained sections -- section headings, the blank
+    line between rendered sections, and truncation markers are overhead
+    and do not count against `budget`. `budget <= 0` -> "".
+
+    Algorithm (plan 79 D1/D3/D4/D5, OQ-1):
+      1. Split `lines` into ("## "-heading, content-lines) sections in
+         file order. A line's SECTION-BOUNDARY test is
+         `line.strip().startswith("## ")` -- "### " and deeper headings
+         fail that test and are therefore section CONTENT, not
+         boundaries. Text before the first "## " heading (the
+         installer-shipped "# Project Memory" title) is PREAMBLE and is
+         dropped -- it belongs to no section and carries no lesson.
+         Fenced code blocks are NOT tracked by this split, inheriting the
+         same accepted scope boundary the module docstring's "Known,
+         accepted scope boundary" section already records for
+         _scan_lines() -- a "## " line inside a code fence is (rarely)
+         misread as a real section boundary; this is a pre-existing,
+         accepted limitation, not new to this function.
+      2. Drop a section outright when its heading strip()s to exactly an
+         entry of EXCLUDED_MEMORY_SECTIONS -- before the empty check, so
+         it never contributes a truncation marker either.
+      3. Drop a section whose content lines are empty per _scan_lines()
+         (the module's single comment-aware content scan -- reused, not
+         re-implemented, per the module docstring's "single scan
+         implementation" rule). Comment-open state does not carry across
+         a section boundary; resetting it at each section is an accepted
+         consequence of scanning per-section rather than whole-file.
+         Both drops remove the heading too.
+      4. Normalize each retained section's content: strip leading and
+         trailing ALL-BLANK lines; interior blank lines stay and COUNT
+         toward the budget (they can be part of a multi-line entry).
+      5. Allocate `budget` across the k retained sections: an equal
+         `share = budget // k` per section (capped at that section's own
+         length), then ONE pass in file order granting each
+         still-truncated section whatever budget is left over, up to
+         its own remaining length (OQ-1 -- not a repeated
+         redistribution loop).
+      6. Within a section, a truncation keeps the LAST `alloc` content
+         lines -- both memory.md writers append, so the newest lines are
+         the trailing ones (D5). When lines are dropped, a marker line
+         naming the count is inserted right after the heading (D4);
+         `alloc == 0` still renders heading + marker (content recorded,
+         none shown -- distinguishable from "nothing recorded").
+      7. Render retained sections in file order, exactly one blank line
+         between them. Non-empty output ends with exactly one "\\n";
+         empty output is "", never "\\n".
+    """
+    if budget <= 0:
+        return ""
+
+    # Terminator-stripped working copies; output is rebuilt with "\n"
+    # terminators below, which also normalizes a no-trailing-newline last
+    # line deterministically.
+    working = [ln.rstrip("\n").rstrip("\r") for ln in lines]
+
+    # ---- Step 1: split into (heading, content_lines) sections. ----
+    sections = []  # type: List[List]
+    heading = None  # type: Optional[str]
+    content = []  # type: List[str]
+    for line in working:
+        if line.strip().startswith("## "):
+            if heading is not None:
+                sections.append([heading, content])
+            heading = line
+            content = []
+        elif heading is not None:
+            content.append(line)
+    if heading is not None:
+        sections.append([heading, content])
+
+    # ---- Steps 2-3: drop excluded, then drop empty (heading included). ----
+    kept = []  # type: List[List]
+    for section_heading, section_content in sections:
+        if section_heading.strip() in EXCLUDED_MEMORY_SECTIONS:
+            continue
+        if not _scan_lines(section_content):
+            continue
+        kept.append([section_heading, section_content])
+
+    if not kept:
+        return ""
+
+    # ---- Step 4: normalize -- strip leading/trailing blank-only lines. ----
+    normalized = []  # type: List[List]
+    for section_heading, section_content in kept:
+        start = 0
+        end = len(section_content)
+        while start < end and not section_content[start].strip():
+            start += 1
+        while end > start and not section_content[end - 1].strip():
+            end -= 1
+        normalized.append([section_heading, section_content[start:end]])
+
+    # ---- Step 5: budget allocation -- equal share, one redistribution
+    # pass in file order. ----
+    section_count = len(normalized)
+    share = budget // section_count
+    alloc = [min(len(sc), share) for _sh, sc in normalized]
+    leftover = budget - sum(alloc)
+    for i in range(section_count):
+        if leftover <= 0:
+            break
+        room = len(normalized[i][1]) - alloc[i]
+        if room <= 0:
+            continue
+        extra = min(room, leftover)
+        alloc[i] += extra
+        leftover -= extra
+
+    # ---- Steps 6-7: truncate (keep the newest lines) and render. ----
+    blocks = []  # type: List[str]
+    for i, (section_heading, section_content) in enumerate(normalized):
+        dropped = len(section_content) - alloc[i]
+        block_lines = [section_heading]
+        if dropped > 0:
+            block_lines.append(_EXCERPT_TRUNCATION_MARKER.format(dropped=dropped))
+        if alloc[i] > 0:
+            block_lines.extend(section_content[len(section_content) - alloc[i] :])
+        blocks.append("\n".join(block_lines))
+
+    return "\n\n".join(blocks) + "\n"
 
 
 def read_memory_excerpt(workspace_root, n=DEFAULT_EXCERPT_LINES):
     # type: (str, int) -> str
-    """Return the first n RAW lines of memory.md, terminators preserved.
+    """Return a section-aware excerpt of memory.md, bounded to n CONTENT
+    lines total across its retained sections (plan 79 Phase 1).
 
-    Equivalent to "".join(fh.readlines()[:n]) on the file object.
-    Absent/unreadable -> "".
+    See _render_excerpt() for the exact algorithm and the module
+    docstring's "Bounded reads" section for the summary. Absent/unreadable
+    -> "".
     """
     lines = _read_lines(memory_path(workspace_root))
     if lines is None:
         return ""
-    return "".join(lines[:n])
+    return _render_excerpt(lines, n)
 
 
 def read_memory_digest(workspace_root, n=DEFAULT_DIGEST_LINES):
@@ -360,7 +537,12 @@ def read_memory_context(workspace_root, excerpt_lines=DEFAULT_EXCERPT_LINES):
       "present"        -- bool
       MEMORY_STATE_KEY  -- one of MEMORY_STATE_ENUM (the literal string
                            "memory_state")
-      "excerpt"         -- str, same shape as read_memory_excerpt()
+      "excerpt"         -- str, same section-aware shape as
+                           read_memory_excerpt() (plan 79 Phase 1) --
+                           derived from this function's single
+                           _read_lines() call via _render_excerpt(), the
+                           same shared renderer read_memory_excerpt()
+                           calls, so the two cannot diverge.
 
     Absent/unreadable -> {"present": False, MEMORY_STATE_KEY: MEMORY_STATE_ABSENT, "excerpt": ""}.
     """
@@ -376,5 +558,5 @@ def read_memory_context(workspace_root, excerpt_lines=DEFAULT_EXCERPT_LINES):
     return {
         "present": True,
         MEMORY_STATE_KEY: state,
-        "excerpt": "".join(lines[:excerpt_lines]),
+        "excerpt": _render_excerpt(lines, excerpt_lines),
     }

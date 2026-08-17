@@ -94,6 +94,11 @@ from _fix._findings import read_findings  # noqa: E402
 from _fix._scope import resolve_scope  # noqa: E402
 from _fix._window import in_fix_window  # noqa: E402
 
+# The real shipped installer stub -- used to build production-shaped
+# memory.md fixtures (real "## " sections) rather than headingless ones
+# (plan 79 Phase 1: a headingless file is 100% preamble and excerpts "").
+_REAL_STUB_PATH = _REPO_ROOT / "src" / "devforge" / "memory.md"
+
 
 # ---------------------------------------------------------------------------
 # Real-producer fixture helpers
@@ -290,8 +295,18 @@ def _make_full_install(td):
            json.dumps({"configure_version": 1}))
     _write(td, ".devforge/index.json",
            json.dumps({"version": 1, "packages": []}))
-    _write(td, ".devforge/memory.md",
-           "- [Lesson 1](lesson_1.md)\n- [Lesson 2](lesson_2.md)\n")
+    # plan 79 Phase 1: production-shaped memory.md -- the real shipped
+    # stub's "## " sections, with the lesson links placed under a real
+    # (non-excluded) heading so a section-aware excerpt surfaces them.
+    real_stub_text = _REAL_STUB_PATH.read_text(encoding="utf-8")
+    mem_content = real_stub_text.replace(
+        "## Known Pitfalls\n"
+        "<!-- Populated during work as mistakes are discovered -->\n",
+        "## Known Pitfalls\n"
+        "<!-- Populated during work as mistakes are discovered -->\n"
+        "- [Lesson 1](lesson_1.md)\n- [Lesson 2](lesson_2.md)\n",
+    )
+    _write(td, ".devforge/memory.md", mem_content)
 
 
 def _capture(argv):
@@ -422,7 +437,13 @@ class TestPreflightContext(unittest.TestCase):
             self.assertFalse(result["wrapper_mode"])
 
     def test_memory_read_from_devforge_not_claude(self):
-        """Verify that memory is read from .devforge/memory.md, NOT .claude/memory/MEMORY.md."""
+        """Verify that memory is read from .devforge/memory.md, NOT .claude/memory/MEMORY.md.
+
+        plan 79 Phase 1: _make_full_install()'s memory.md is now
+        production-shaped (real "## " sections), with the lesson links
+        under "## Known Pitfalls" -- a section-aware excerpt surfaces
+        them.
+        """
         with tempfile.TemporaryDirectory() as td:
             _make_full_install(td)
             # .devforge/memory.md exists (written by _make_full_install).

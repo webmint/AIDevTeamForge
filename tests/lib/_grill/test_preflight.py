@@ -38,6 +38,12 @@ from _grill._preflight import (  # noqa: E402
     _UNPOPULATED_SENTINELS,
     preflight_context,
 )
+from _shared.memory import DEFAULT_EXCERPT_LINES  # noqa: E402
+
+# The real shipped installer stub -- used to build production-shaped
+# memory.md fixtures (real "## " sections) rather than headingless ones
+# (plan 79 Phase 1: a headingless file is 100% preamble and excerpts "").
+_REAL_STUB_PATH = _REPO_ROOT / "src" / "devforge" / "memory.md"
 
 
 # ---------------------------------------------------------------------------
@@ -70,8 +76,18 @@ def _make_full_install(td):
            json.dumps({"configure_version": 1}))
     _write(td, ".devforge/index.json",
            json.dumps({"version": 1, "packages": []}))
-    _write(td, ".devforge/memory.md",
-           "- [Lesson 1](lesson_1.md)\n- [Lesson 2](lesson_2.md)\n")
+    # plan 79 Phase 1: production-shaped memory.md -- the real shipped
+    # stub's "## " sections, with the lesson links placed under a real
+    # (non-excluded) heading so a section-aware excerpt surfaces them.
+    real_stub_text = _REAL_STUB_PATH.read_text(encoding="utf-8")
+    mem_content = real_stub_text.replace(
+        "## Known Pitfalls\n"
+        "<!-- Populated during work as mistakes are discovered -->\n",
+        "## Known Pitfalls\n"
+        "<!-- Populated during work as mistakes are discovered -->\n"
+        "- [Lesson 1](lesson_1.md)\n- [Lesson 2](lesson_2.md)\n",
+    )
+    _write(td, ".devforge/memory.md", mem_content)
 
 
 def _make_feature(td, slug="001-auth", with_spec=True, with_plan=True):
@@ -251,6 +267,10 @@ class TestPreflightContext(unittest.TestCase):
         self.assertEqual(r["language"], "Python")
 
     def test_full_install_memory_present(self):
+        # plan 79 Phase 1: _make_full_install()'s memory.md is now
+        # production-shaped (real "## " sections), with the lesson links
+        # under "## Known Pitfalls" -- a section-aware excerpt surfaces
+        # them.
         _make_full_install(self.td)
         r = preflight_context(self.td)
         self.assertTrue(r["memory_present"])
@@ -407,9 +427,20 @@ class TestPreflightContext(unittest.TestCase):
     # --- .devforge/memory.md (correct path, NOT .claude/memory/MEMORY.md) ---
 
     def test_memory_present_at_devforge_path(self):
-        """Memory is read from .devforge/memory.md (the correct forge path)."""
-        _write(self.td, ".devforge/memory.md",
-               "- [Session 1](s1.md)\n- [Session 2](s2.md)\n")
+        """Memory is read from .devforge/memory.md (the correct forge path).
+
+        plan 79 Phase 1: re-fixtured with a real "## " heading -- a
+        headingless fixture is 100% preamble and excerpts "".
+        """
+        real_stub_text = _REAL_STUB_PATH.read_text(encoding="utf-8")
+        mem_content = real_stub_text.replace(
+            "## Known Pitfalls\n"
+            "<!-- Populated during work as mistakes are discovered -->\n",
+            "## Known Pitfalls\n"
+            "<!-- Populated during work as mistakes are discovered -->\n"
+            "- [Session 1](s1.md)\n- [Session 2](s2.md)\n",
+        )
+        _write(self.td, ".devforge/memory.md", mem_content)
         r = preflight_context(self.td)
         self.assertTrue(r["memory_present"])
         self.assertIn("Session 1", r["memory_excerpt"])
@@ -419,15 +450,26 @@ class TestPreflightContext(unittest.TestCase):
         self.assertFalse(r["memory_present"])
         self.assertEqual(r["memory_excerpt"], "")
 
-    def test_memory_excerpt_capped_at_40_lines(self):
-        mem_content = "\n".join(
-            ["Line {0}".format(i) for i in range(60)]
+    def test_memory_excerpt_capped_at_default_excerpt_lines(self):
+        # RENAMED (was test_memory_excerpt_capped_at_40_lines): plan 79
+        # Phase 1 raises the excerpt budget to DEFAULT_EXCERPT_LINES (120)
+        # CONTENT lines and makes it section-aware. The old headingless
+        # 60-line fixture is 100% preamble under the new algorithm and
+        # renders "" -- the old assertLessEqual(len(lines), 40) still
+        # "passed" on that empty result, but vacuously: it no longer
+        # exercised a cap at all. Re-fixtured with a single real "## "
+        # section carrying more lines than the budget, so the cap is
+        # genuinely tested again.
+        mem_content = "## Lessons\n" + "\n".join(
+            ["Line {0}".format(i) for i in range(200)]
         ) + "\n"
         _write(self.td, ".devforge/memory.md", mem_content)
         r = preflight_context(self.td)
         self.assertTrue(r["memory_present"])
         lines = r["memory_excerpt"].splitlines()
-        self.assertLessEqual(len(lines), 40)
+        self.assertEqual(len(lines), 2 + DEFAULT_EXCERPT_LINES)
+        self.assertIn("Line 199", r["memory_excerpt"])
+        self.assertNotIn("Line 0\n", r["memory_excerpt"])
 
     def test_stale_claude_memory_path_not_read(self):
         """Files at .claude/memory/MEMORY.md are NOT the memory source for /grill."""

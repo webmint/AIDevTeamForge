@@ -19,6 +19,11 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from _audit._preflight import check_agents, preflight_context, resolve_mode  # noqa: E402
+from _shared.memory import DEFAULT_EXCERPT_LINES  # noqa: E402
+
+# The real shipped installer stub -- used to build a production-shaped
+# memory.md fixture (real "## " sections) rather than a headingless one.
+_REAL_STUB_PATH = _REPO_ROOT / "src" / "devforge" / "memory.md"
 
 
 # ---------------------------------------------------------------------------
@@ -483,16 +488,31 @@ class TestPreflightContext(unittest.TestCase):
         self.assertEqual(r["language"], "TypeScript")
 
     def test_memory_present_and_excerpt(self):
-        mem_content = "\n".join(
-            ["Line {0}".format(i) for i in range(60)]
-        ) + "\n"
+        # plan 79 Phase 1: the excerpt is section-aware -- a 60-line file
+        # with NO "## " heading is 100% preamble and renders "". Re-
+        # fixtured with production-shaped content (the real shipped stub's
+        # "## " sections) with a lesson line placed under a non-excluded
+        # heading, so the excerpt is genuinely non-empty and this
+        # assertion stays meaningful.
+        real_stub_text = _REAL_STUB_PATH.read_text(encoding="utf-8")
+        mem_content = real_stub_text.replace(
+            "## Known Pitfalls\n"
+            "<!-- Populated during work as mistakes are discovered -->\n",
+            "## Known Pitfalls\n"
+            "<!-- Populated during work as mistakes are discovered -->\n"
+            "- Always validate input at the API boundary.\n",
+        )
+        self.assertNotEqual(mem_content, real_stub_text)  # sanity: replaced
         self._write(".devforge/memory.md", mem_content)
         r = preflight_context(self.td)
         self.assertTrue(r["memory_present"])
         self.assertNotEqual(r["memory_excerpt"], "")
-        # Excerpt should be at most 40 lines.
+        self.assertIn("Always validate input at the API boundary.", r["memory_excerpt"])
+        # Excerpt is bounded: DEFAULT_EXCERPT_LINES CONTENT lines, plus a
+        # small constant of heading/blank-separator overhead (this fixture
+        # has 4 sections -- at most 4 headings + 3 blank separators).
         lines = r["memory_excerpt"].splitlines()
-        self.assertLessEqual(len(lines), 40)
+        self.assertLessEqual(len(lines), DEFAULT_EXCERPT_LINES + 10)
 
     def test_memory_absent(self):
         r = preflight_context(self.td)

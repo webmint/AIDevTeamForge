@@ -477,6 +477,11 @@ class TestPreflightMemory(unittest.TestCase):
     def test_memory_real_shipped_stub_reports_stub_state(self):
         # Real-producer round-trip: the ACTUAL bytes of src/devforge/memory.md,
         # not a hand-authored approximation.
+        # plan 79 Phase 1: the excerpt is section-aware -- every one of the
+        # stub's four "## " sections holds only a whole-line HTML comment
+        # (no populated content), so all four are dropped as empty and the
+        # excerpt is "" (a deliberate change from the old positional
+        # first-N-raw-lines shape, which used to render the whole stub).
         stub_path = _REPO_ROOT / "src" / "devforge" / "memory.md"
         self.assertTrue(stub_path.is_file(), "src/devforge/memory.md must exist")
         stub_text = stub_path.read_text(encoding="utf-8")
@@ -497,7 +502,7 @@ class TestPreflightMemory(unittest.TestCase):
             payload = json.loads(r.stdout)
             self.assertTrue(payload["memory_present"])
             self.assertEqual(payload["memory_state"], "stub")
-            self.assertEqual(payload["memory_excerpt"], stub_text)
+            self.assertEqual(payload["memory_excerpt"], "")
 
     def test_memory_populated_reports_populated_state_and_excerpt(self):
         with tempfile.TemporaryDirectory() as tmp:
