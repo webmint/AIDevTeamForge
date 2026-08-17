@@ -117,7 +117,10 @@ Subcommands:
   read-memory
       Read .devforge/memory.md and emit a JSON object to stdout:
         memory_present   bool -- .devforge/memory.md exists and is readable
-        memory_excerpt   str  -- first 40 raw lines ("" if absent)
+        memory_excerpt   str  -- the populated `## ` sections of memory.md
+                                 (Task Outcomes excluded, empty sections
+                                 dropped, truncation declared inline;
+                                 "" if absent)
         memory_state     str  -- one of "absent" / "stub" / "populated"
       Workspace root is cwd -- plan_helper resolves every path off cwd
       already (no --workspace-root/--install-root flag exists anywhere in
@@ -2328,7 +2331,9 @@ def cmd_read_memory(args: argparse.Namespace) -> int:
 
     Emits exactly:
       memory_present   bool -- .devforge/memory.md exists and is readable
-      memory_excerpt   str  -- first 40 raw lines of memory.md ("" if absent)
+      memory_excerpt   str  -- the populated `## ` sections of memory.md
+        (Task Outcomes excluded, empty sections dropped, truncation
+        declared inline; "" if absent)
       memory_state     str  -- one of "absent" / "stub" / "populated"
         (MEMORY_STATE_KEY from _shared/memory.py)
 
@@ -2501,7 +2506,8 @@ def build_parser() -> argparse.ArgumentParser:
         "read-memory",
         help=(
             "Read .devforge/memory.md under CWD and emit JSON: memory_present, "
-            "memory_excerpt (first 40 raw lines), memory_state "
+            "memory_excerpt (the populated `## ` sections, Task Outcomes "
+            "excluded), memory_state "
             "(absent/stub/populated). Takes no arguments; always exits 0. "
             "Absent/stub is the correct state on a fresh install, not a fault."
         ),

@@ -89,7 +89,10 @@ def cmd_preflight(args: argparse.Namespace) -> int:
     all on the success path; the JSON object is new and carries exactly:
 
       memory_present   bool -- .devforge/memory.md exists and is readable
-      memory_excerpt   str  -- first 40 raw lines of memory.md ("" if absent)
+      memory_excerpt   str  -- the populated `## ` sections of memory.md
+                               (Task Outcomes excluded, empty sections
+                               dropped, truncation declared inline;
+                               "" if absent)
       memory_state     str  -- one of "absent" / "stub" / "populated"
                                (MEMORY_STATE_KEY from _shared/memory.py)
 

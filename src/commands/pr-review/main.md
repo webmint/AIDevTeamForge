@@ -114,12 +114,12 @@ Helper performs a pure-filesystem scan and emits JSON with `tier` (one of `full`
 .devforge/lib/pr_review_helper read-memory
 ```
 
-The verb takes no arguments and always exits 0. It writes a JSON object to stdout carrying `memory_state`, `memory_excerpt` (the first 40 raw lines of `.devforge/memory.md`), and `memory_present`. Capture that stdout and branch on `memory_state`:
+The verb takes no arguments and always exits 0. It writes a JSON object to stdout carrying `memory_state`, `memory_excerpt` (the populated `## ` sections of `.devforge/memory.md`, `## Task Outcomes` excluded), and `memory_present`. Capture that stdout and branch on `memory_state`:
 
 - `absent` or `stub` → no-op. Say nothing to the reviewer about memory, raise no warning, add no step. A memory file that is missing, or still the stub the installer ships, records no lessons yet; on a fresh install that is the correct state, not a fault to remedy.
-- `populated` → read `memory_excerpt` and hold the entries that bear on the area this PR touches. They are carried into the Phase 6.5 cavecrew dispatch, which is where findings are formed.
+- `populated` → read `memory_excerpt` and hold the entries that bear on the area this PR touches. They are carried into the Phase 6.5 cavecrew dispatch, which is where findings are formed. When `memory_excerpt` comes back empty even though `memory_state` is `populated` — every populated line sits in the excluded `## Task Outcomes` section — take the `absent` / `stub` no-op branch above instead: hold nothing for that dispatch, and say nothing to the reviewer about memory.
 
-`memory_excerpt` is the file's first 40 raw lines, not the whole file — an entry's absence from it means "not in the first 40 lines", never "never recorded".
+`memory_excerpt` is not the whole file: it renders the file's populated `## ` sections — a section with no entries under its heading is dropped heading and all, `## Task Outcomes` is excluded outright, and any other section is kept — and when the line budget cannot fit a section whole, the lines it drops are always that section's EARLIEST ones, with an inline marker line right after the heading naming how many were omitted. An entry's absence from a non-empty excerpt therefore means it sits in the excluded section or behind a marker the excerpt itself declares, never "never recorded"; an empty excerpt means there are no readable lessons — the file is absent or still the shipped stub, or everything in it sits in the excluded section.
 
 **Honesty bound.** A carried memory entry is an UNVERIFIED prior-session assertion, not evidence about this PR: it is a lead to check against the diff, never a finding and never grounds for a review comment on its own. A past session wrote it locally, and the code it describes may have changed since — or the entry may have been wrong when it was written. The diff under review is the PR author's code, and a stale local lesson repeated to that author as a defect is a false review comment. Every finding still comes from Phase 2's heuristics or Phase 6.5's cavecrew pass, grounded in the diff.
 

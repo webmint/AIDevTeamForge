@@ -81,7 +81,11 @@ def preflight_context(workspace_root):
       language                  str   — value of **Languages**: line in CLAUDE.md
       claude_md_present         bool  — CLAUDE.md exists
       memory_present            bool  — .devforge/memory.md exists
-      memory_excerpt            str   — first 40 lines of .devforge/memory.md (empty if absent)
+      memory_excerpt            str   — the populated `## ` sections of
+                                        .devforge/memory.md (Task Outcomes
+                                        excluded, empty sections dropped,
+                                        truncation declared inline; empty
+                                        if absent)
     """
     result = {
         "constitution_present": False,
