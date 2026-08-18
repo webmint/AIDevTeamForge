@@ -1,6 +1,6 @@
 # 79 — Memory Window And Receipt Plan
 
-**Status: BUILD DONE — Phase 0 CLOSED 2026-08-17. D1–D7 and OQ-1–OQ-5 all maintainer-ratified 2026-08-17; dispositions recorded inline below. Phases 1–5 BUILT 2026-08-18 — Phase 4.5 ran its YES arm, per OQ-3's ratified `yes`; Phase 5 migrated `/devforge:implement`'s preflight to `read_memory_context` (emitted key `memory_digest` → `memory_excerpt`) and DELETED `read_memory_digest`, per OQ-2. Phase 6 (consumer e2e) PENDING — user-driven. Build-verified, NOT consumer-validated.**
+**Status: ✅ DONE (build) — closed by maintainer 2026-08-18. Phases 0–5 are DONE and committed (`1feaf3f`..`4d06092`): Phase 0 CLOSED 2026-08-17, with D1–D7 and OQ-1–OQ-5 all maintainer-ratified that day and dispositions recorded inline below; Phases 1–5 BUILT 2026-08-18 — Phase 4.5 ran its YES arm, per OQ-3's ratified `yes`, and Phase 5 migrated `/devforge:implement`'s preflight to `read_memory_context` (emitted key `memory_digest` → `memory_excerpt`) and DELETED `read_memory_digest`, per OQ-2. Phase 6 (consumer e2e) DEFERRED — maintainer intends to run it (NOT waived; build-verified, NOT consumer-validated; the known-answer anchor is Phase 6's step-2/step-3 branch procedure).**
 
 Branch: `develop-2.0-init`.
 
