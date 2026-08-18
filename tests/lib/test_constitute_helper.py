@@ -2971,6 +2971,178 @@ class TestStep4CitationValidity(unittest.TestCase):
             self.assertAlmostEqual(score, 1.0)
 
 
+class TestStep4CitationTokenFilters(unittest.TestCase):
+    """Plan 80 Phase 1 (WI-1) — citation-token filters (a)-(d).
+
+    Naming-convention prose (placeholder names, bare extension fragments,
+    leading-slash fragments, cross-slash regex artifacts) must stop
+    counting as unresolved citations. The recall guard below is the
+    counterweight: a genuinely broken plain-path citation must still be
+    caught.
+    """
+
+    def test_citation_recall_guard_plain_path_not_in_fixture_still_unresolved(self):
+        """Recall guard (mandatory): a plain multi-segment path absent from
+        the fixture tree still counts unresolved and appears in
+        failed_items — the new filters must not swallow a real citation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See src/components/DoesNotExist.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 1)
+            self.assertAlmostEqual(score, 0.0)
+            self.assertTrue(
+                any("src/components/DoesNotExist.vue" in f for f in failed),
+                msg="failed_items={0}".format(failed),
+            )
+
+    def test_filter_a_placeholder_xxx_token(self):
+        """Filter (a): `Xxx` naming-convention placeholders are True."""
+        self.assertTrue(constitute_helper._is_placeholder_citation_token("PageXxx.vue"))
+        self.assertTrue(constitute_helper._is_placeholder_citation_token("UiXxx.vue"))
+        self.assertFalse(constitute_helper._is_placeholder_citation_token("Page.vue"))
+
+    def test_filter_b_extension_only_token(self):
+        """Filter (b): bare extension fragment True; a real relative path False."""
+        self.assertTrue(constitute_helper._is_extension_only_citation_token(".spec.ts"))
+        self.assertTrue(constitute_helper._is_extension_only_citation_token(".ts"))
+        self.assertFalse(
+            constitute_helper._is_extension_only_citation_token(".devforge/session-state.md")
+        )
+
+    def test_filter_c_leading_slash_token(self):
+        """Filter (c): a leading-slash fragment is True; a relative path False."""
+        self.assertTrue(constitute_helper._is_leading_slash_citation_token("/index.md"))
+        self.assertFalse(constitute_helper._is_leading_slash_citation_token("index.md"))
+
+    def test_filter_d_segment_artifact_token(self):
+        """Filter (d): cross-slash regex artifact True; real dot-directories False."""
+        self.assertTrue(constitute_helper._is_segment_artifact_citation_token(".ts/.vue"))
+        self.assertFalse(
+            constitute_helper._is_segment_artifact_citation_token(".devforge/session-state.md")
+        )
+        self.assertFalse(
+            constitute_helper._is_segment_artifact_citation_token(".github/workflows/ci.yaml")
+        )
+
+    def test_denominator_all_tokens_filtered_scores_1_0(self):
+        """A state whose only citation tokens are all filtered → score 1.0,
+        resolved==0, unresolved==0, failed_items empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [
+                    {"tag": "extracted", "text": "Component names follow PageXxx.vue."},
+                    {"tag": "extracted", "text": "Test files use the .spec.ts suffix."},
+                    {"tag": "extracted", "text": "See /index.md for the entry point."},
+                    {"tag": "extracted", "text": "Watch for stray .ts/.vue fragments."},
+                ],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertAlmostEqual(score, 1.0)
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 0)
+            self.assertEqual(failed, [])
+
+    def test_f1_regression_leading_slash_never_reaches_resolve(self):
+        """F1: `/index.md` is classified by filter (c) via the collector,
+        never counted as resolved or unresolved (not a filesystem-root probe)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See /index.md for the entry point."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            filtered = []
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge, filtered_out=filtered
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 0)
+            self.assertEqual(failed, [])
+            self.assertEqual(len(filtered), 1)
+            self.assertIn("filtered (c leading-slash)", filtered[0])
+            self.assertIn("/index.md", filtered[0])
+
+    def test_vocabulary_single_sourcing_tsconfig_json_not_js(self):
+        """Regex extracts `tsconfig.json` whole (pins the alternation order
+        pulled from `_PATH_EXTENSIONS`) — must not truncate to `tsconfig.js`."""
+        tokens = constitute_helper._extract_path_tokens(
+            "Set strict: true in tsconfig.json for this package."
+        )
+        self.assertIn("tsconfig.json", tokens)
+        self.assertNotIn("tsconfig.js", tokens)
+
+    def test_filtered_items_end_to_end_via_cmd_validate(self):
+        """cmd_validate's stdout JSON carries a `filtered_items` key naming
+        the filtered token and its filter class."""
+        state = _fully_populated_state()
+        state["architecture_rules"][0]["rules"].append(
+            {"tag": "extracted", "text": "See /index.md for the entry point."}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            devforge = install_root / ".devforge"
+            _write_state_for_test(devforge, state)
+            result = _run_validate(devforge, install_root)
+            data = json.loads(result.stdout)
+            self.assertIn("filtered_items", data)
+            self.assertIsInstance(data["filtered_items"], list)
+            self.assertEqual(len(data["filtered_items"]), 1)
+            self.assertIn("/index.md", data["filtered_items"][0])
+            self.assertIn("filtered (c", data["filtered_items"][0])
+
+    def test_resolving_token_never_filtered_even_if_shape_matches(self):
+        """D2 pin: `_try_resolve` runs BEFORE the (a)/(b)/(d) filters — a
+        token that resolves counts resolved even though its shape matches
+        filter (a) (`Xxx` placeholder). Regression guard: if a future edit
+        reordered the filters before resolution, this citation would be
+        silently dropped from both counters instead of counted resolved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            # Real file whose name shape matches filter (a).
+            real_file = install_root / "src" / "components" / "PageXxx.vue"
+            real_file.parent.mkdir(parents=True, exist_ok=True)
+            real_file.write_text("<template></template>\n", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See src/components/PageXxx.vue for the base component."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            filtered = []
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge, filtered_out=filtered
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertEqual(failed, [])
+            self.assertEqual(filtered, [])
+            self.assertAlmostEqual(score, 1.0)
+
+
 class TestStep4CodeExampleSyntax(unittest.TestCase):
     """Code-example syntax (dim 3) — 7 tests."""
 

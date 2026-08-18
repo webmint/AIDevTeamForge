@@ -70,6 +70,11 @@ from _constitute._validate_metrics import (  # noqa: E402,F401
     _count_code_syntax,
     _count_rule_tags,
     _count_slot_fill,
+    _extract_path_tokens,
+    _is_extension_only_citation_token,
+    _is_leading_slash_citation_token,
+    _is_placeholder_citation_token,
+    _is_segment_artifact_citation_token,
 )
 
 

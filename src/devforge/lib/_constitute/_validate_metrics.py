@@ -30,10 +30,17 @@ from ._schema import ENUM_FIELDS, _PATTERNS_BUCKETS
 # Alternation order matters: longer suffixes MUST come first so the regex
 # engine matches `.tsx` before `.ts`, `.json` before `.js`, `.jsx` before
 # `.js`, `.yaml` before `.yml`. Otherwise `tsconfig.json` extracts as
-# `tsconfig.js` and the existence check fails on the wrong path.
+# `tsconfig.js` and the existence check fails on the wrong path. This
+# ordered tuple is the single source for both the regex alternation and
+# the segment-artifact citation-token filter (filter (d) below) — the two
+# must never drift apart.
+_PATH_EXTENSIONS = (
+    "tsx", "ts", "jsx", "json", "yaml", "js", "vue", "py", "md", "yml", "toml",
+)
+
 _PATH_TOKEN_RE = re.compile(
     r"[\w\-\./]+"
-    r"\.(?:tsx|ts|jsx|json|yaml|js|vue|py|md|yml|toml)"
+    r"\.(?:" + "|".join(_PATH_EXTENSIONS) + r")"
 )
 
 # Composite weights (must sum to 1.0).
@@ -218,15 +225,98 @@ def _build_package_name_map(init_yaml_path: "Optional[Path]") -> "Dict[str, str]
     return result
 
 
+# ---------------------------------------------------------------------------
+# Citation-token filters — naming-convention placeholders and regex-
+# extraction fragments that look like path tokens but are not real
+# citations. Applied inside `_count_citations`; a token matching one of
+# these counts toward NEITHER `resolved` NOR `unresolved` and produces NO
+# `failed_items` entry.
+# ---------------------------------------------------------------------------
+
+
+def _is_placeholder_citation_token(token: str) -> bool:
+    """Filter (a) — naming-convention placeholder, e.g. `PageXxx.vue`.
+
+    `Xxx` (case-sensitive) is the framework-wide placeholder-name
+    convention used in prose to describe a naming pattern, not a specific
+    file (`PageXxx.vue`, `UiXxx.vue`).
+    """
+    return "Xxx" in token
+
+
+def _is_extension_only_citation_token(token: str) -> bool:
+    """Filter (b) — bare extension fragment with no path, e.g. `.spec.ts`.
+
+    A token with no `/` whose basename starts with `.` is a dotfile-shaped
+    extension fragment, not a citation. A token WITH a `/`
+    (`.devforge/session-state.md`) is a real relative path and must NOT
+    match this filter.
+    """
+    return "/" not in token and Path(token).name.startswith(".")
+
+
+def _is_leading_slash_citation_token(token: str) -> bool:
+    """Filter (c) — absolute-looking fragment, e.g. `/index.md`.
+
+    Also sidesteps a latent bug (F1): `Path(install_root) / "/index.md"`
+    silently discards the left operand for an absolute right operand,
+    resolving against filesystem root instead of `install_root`. Filter
+    (c) runs BEFORE `_try_resolve` in `_count_citations` so a
+    leading-slash token never reaches that join.
+    """
+    return token.startswith("/")
+
+
+def _is_pure_extension_chain_segment(segment: str) -> bool:
+    """True if `segment` is a dot-prefixed chain of known extensions.
+
+    E.g. `.ts` (parts=["ts"]) or `.spec.ts` (parts=["spec", "ts"]) — true
+    only when EVERY dot-separated part after the leading `.` is a member
+    of `_PATH_EXTENSIONS`. Used by filter (d) to tell a stray extension
+    fragment apart from a real directory segment: `.devforge` and
+    `.github` do NOT match (`devforge`/`github` aren't extensions).
+    """
+    if not segment.startswith("."):
+        return False
+    rest = segment[1:]
+    if not rest:
+        return False
+    return all(part in _PATH_EXTENSIONS for part in rest.split("."))
+
+
+def _is_segment_artifact_citation_token(token: str) -> bool:
+    """Filter (d) — cross-slash regex artifact, e.g. `.ts/.vue`.
+
+    True when `token` contains a `/` AND at least one NON-FINAL segment is
+    a pure-extension chain (see `_is_pure_extension_chain_segment`).
+    Catches a token the regex stitched together across an unrelated `/`
+    in prose (`.ts/.vue`) without catching a real relative path whose
+    leading segment happens to start with `.`
+    (`.devforge/session-state.md`, `.github/workflows/ci.yaml`).
+    """
+    if "/" not in token:
+        return False
+    segments = token.split("/")
+    return any(_is_pure_extension_chain_segment(seg) for seg in segments[:-1])
+
+
 def _count_citations(
     state: dict,
     install_root: "Union[str, os.PathLike[str]]",
     devforge_dir: "Union[str, os.PathLike[str]]",
+    filtered_out: "Optional[List[str]]" = None,
 ) -> "tuple":
     """Return (score_float, resolved, unresolved, failed_items).
 
     score = resolved / (resolved + unresolved); if 0 tokens found → 1.0 (N/A).
     failed_items is a list of strings describing unresolved references.
+
+    A token matching one of the four citation-token filters above
+    (placeholder / extension-only / leading-slash / segment-artifact)
+    counts toward NEITHER `resolved` NOR `unresolved` and produces NO
+    `failed_items` entry — nothing is filtered silently, though: pass a
+    list via `filtered_out` to collect one string per filtered token
+    (token + which filter class a/b/c/d matched it).
     """
     install_root_path = Path(install_root)
     init_yaml_path = Path(devforge_dir) / init_helper.OUTPUT_FILE_NAME
@@ -277,14 +367,54 @@ def _count_citations(
                     pass
         return False
 
+    def _classify_filtered(token):
+        """Return (letter, label) for a post-resolve filter match, else None.
+
+        Checked only after `_try_resolve` has already failed for `token` —
+        a token that resolves is never classified (a real citation always
+        wins over a filter shape). Order among (a)/(b)/(d) is fixed but
+        immaterial to correctness: a token can match more than one
+        predicate (e.g. `.Xxx.ts` matches both (a) and (b)) — whichever
+        runs first decides the recorded label, but every branch excludes
+        the token from resolved/unresolved identically, so the label
+        choice never affects the score.
+        """
+        if _is_placeholder_citation_token(token):
+            return "a", "placeholder"
+        if _is_extension_only_citation_token(token):
+            return "b", "extension-only"
+        if _is_segment_artifact_citation_token(token):
+            return "d", "segment-artifact"
+        return None
+
     seen = set()  # type: set
     for token in all_tokens:
         if token in seen:
             continue
         seen.add(token)
+
+        # Filter (c) runs BEFORE resolution — see F1 note on
+        # `_is_leading_slash_citation_token`.
+        if _is_leading_slash_citation_token(token):
+            if filtered_out is not None:
+                filtered_out.append(
+                    "filtered (c leading-slash): {0!r}".format(token)
+                )
+            continue
+
         if _try_resolve(token):
             resolved += 1
             continue
+
+        classified = _classify_filtered(token)
+        if classified is not None:
+            letter, label = classified
+            if filtered_out is not None:
+                filtered_out.append(
+                    "filtered ({0} {1}): {2!r}".format(letter, label, token)
+                )
+            continue
+
         unresolved += 1
         failed_items.append("citation unresolved: {0!r}".format(token))
 

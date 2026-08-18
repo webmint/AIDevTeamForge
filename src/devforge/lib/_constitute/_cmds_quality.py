@@ -41,7 +41,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
     Exit 1 on state file unreadable / corrupted JSON.
 
     stdout always receives a JSON object:
-      {"composite": float, "dimensions": {dim: {"score": float, "pass": bool}}, "failed_items": [...]}
+      {"composite": float, "dimensions": {dim: {"score": float, "pass": bool}},
+       "failed_items": [...], "filtered_items": [...]}
     """
     try:
         state = _load(args.devforge_dir)
@@ -56,8 +57,9 @@ def cmd_validate(args: argparse.Namespace) -> int:
     slot_score = filled / total_slots if total_slots > 0 else 1.0
 
     # Dim 2 — citation validity.
+    citation_filtered = []  # type: List[str]
     citation_score, _resolved, _unresolved, citation_failed = _count_citations(
-        state, args.install_root, args.devforge_dir
+        state, args.install_root, args.devforge_dir, filtered_out=citation_filtered
     )
 
     # Dim 3 — code-example syntax.
@@ -88,6 +90,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         "composite": round(composite, 6),
         "dimensions": dimensions,
         "failed_items": all_failed,
+        "filtered_items": citation_filtered,
     }
     sys.stdout.write(json.dumps(result_obj, indent=2))
     sys.stdout.write("\n")
