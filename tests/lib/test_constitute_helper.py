@@ -3158,14 +3158,14 @@ class TestStep4CitationRecursiveResolution(unittest.TestCase):
         nested below the install root."""
         with tempfile.TemporaryDirectory() as tmp:
             install_root = Path(tmp)
-            real_file = install_root / "src" / "components" / "PageCatalog.vue"
+            real_file = install_root / "src" / "components" / "PageDashboard.vue"
             real_file.parent.mkdir(parents=True)
             real_file.write_text("<template></template>\n", encoding="utf-8")
 
             state = constitute_helper.default_state()
             state["architecture_rules"] = [{
                 "number": "2.1", "title": "T", "tag": None, "description": None,
-                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "rules": [{"tag": "extracted", "text": "See PageDashboard.vue for the pattern."}],
                 "tables": [], "code_examples": [],
             }]
             devforge = install_root / ".devforge"
@@ -3184,7 +3184,7 @@ class TestStep4CitationRecursiveResolution(unittest.TestCase):
             state = constitute_helper.default_state()
             state["architecture_rules"] = [{
                 "number": "2.1", "title": "T", "tag": None, "description": None,
-                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "rules": [{"tag": "extracted", "text": "See PageDashboard.vue for the pattern."}],
                 "tables": [], "code_examples": [],
             }]
             devforge = install_root / ".devforge"
@@ -3195,7 +3195,7 @@ class TestStep4CitationRecursiveResolution(unittest.TestCase):
             self.assertEqual(unresolved, 1)
             self.assertAlmostEqual(score, 0.0)
             self.assertTrue(
-                any("PageCatalog.vue" in f for f in failed),
+                any("PageDashboard.vue" in f for f in failed),
                 msg="failed_items={0}".format(failed),
             )
 
@@ -3229,14 +3229,14 @@ class TestStep4CitationRecursiveResolution(unittest.TestCase):
         descends into it."""
         with tempfile.TemporaryDirectory() as tmp:
             install_root = Path(tmp)
-            buried = install_root / "node_modules" / "pkg" / "PageCatalog.vue"
+            buried = install_root / "node_modules" / "pkg" / "PageDashboard.vue"
             buried.parent.mkdir(parents=True)
             buried.write_text("<template></template>\n", encoding="utf-8")
 
             state = constitute_helper.default_state()
             state["architecture_rules"] = [{
                 "number": "2.1", "title": "T", "tag": None, "description": None,
-                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "rules": [{"tag": "extracted", "text": "See PageDashboard.vue for the pattern."}],
                 "tables": [], "code_examples": [],
             }]
             devforge = install_root / ".devforge"
@@ -3253,7 +3253,7 @@ class TestStep4CitationRecursiveResolution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             install_root = Path(tmp)
             inner_project = install_root / "module"
-            buried = inner_project / "node_modules" / "pkg" / "PageCatalog.vue"
+            buried = inner_project / "node_modules" / "pkg" / "PageDashboard.vue"
             buried.parent.mkdir(parents=True)
             buried.write_text("<template></template>\n", encoding="utf-8")
 
@@ -3270,7 +3270,7 @@ class TestStep4CitationRecursiveResolution(unittest.TestCase):
             state = constitute_helper.default_state()
             state["architecture_rules"] = [{
                 "number": "2.1", "title": "T", "tag": None, "description": None,
-                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "rules": [{"tag": "extracted", "text": "See PageDashboard.vue for the pattern."}],
                 "tables": [], "code_examples": [],
             }]
             score, resolved, unresolved, failed = constitute_helper._count_citations(
