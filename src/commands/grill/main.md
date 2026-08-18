@@ -271,13 +271,13 @@ The helper owns the verdict→bucket partition and the category routing; the orc
 .devforge/lib/grill_helper check-status-and-flip --feature-dir <feature> --to classify
 ```
 
-This is ORCHESTRATOR REASONING, not a helper verb — there is no `classify` verb. Read the `confirmed` and `contested` buckets from `$WORKDIR/partition.json` (the surviving grounded findings). For EACH surviving grounded finding, apply the two-question decision tree:
+This is ORCHESTRATOR REASONING, not a helper verb — there is no `classify` verb. Read the `confirmed` and `contested` buckets from `$WORKDIR/partition.json` (the surviving grounded findings). For a finding heading toward RE-ENTER-UPSTREAM, Q2's YES arm names two additional inputs — the feature's intake handoffs, read where they sit in the feature directory (they are not in the manifest and no scratch file carries them). For EACH surviving grounded finding, apply the two-question decision tree:
 
 - **Q1 — "Does a different HOW (a re-plan against the SAME spec) fix the defect?"**
   - YES → **REVISE-PLAN** (plan-local — fixing it leaves the plan intact; a different HOW satisfies the same WHAT).
   - NO (no HOW survives the fix — this is what "destroys the plan" means) → go to Q2.
 - **Q2 — "Would a corrected WHAT or grounding (re-`/devforge:specify` / re-`/devforge:discover` / re-`/devforge:research`) yield a viable design?"**
-  - YES → **RE-ENTER-UPSTREAM** — attributed to the NEAREST introducing stage (trace via `spec.md` + the dossier: a bad requirement already in the research handoff → `research`; introduced at discovery → `discovery`; introduced at `/devforge:specify` → `spec`; nearest-stage-first, NOT a blanket rewind to research).
+  - YES → **RE-ENTER-UPSTREAM** — attributed to the NEAREST introducing stage (trace via `spec.md` + the dossier: a bad requirement already in the research handoff → `research`; introduced at discovery → `discovery`; introduced at `/devforge:specify` → `spec`; nearest-stage-first, NOT a blanket rewind to research). The trace does not stop at `spec.md` and the dossier: `specs/[feature]/research-handoff.json` (the `research` stage's own artifact) and `specs/[feature]/discover-handoff.json` (`discovery`'s) are MANDATORY trace inputs where present — opened and read, not optional context. Where a conclusion was WRITTEN is not where it was INTRODUCED: when the invalidated conclusion's SUBSTANCE — a requirement's content, a caller row, a surface label — is already present in one of those handoffs, the introducing stage is that handoff's stage, and `spec` is the introducing stage ONLY when the conclusion has no upstream source. The `rationale` for a RE-ENTER-UPSTREAM NAMES the introducing artifact and the matching content found in it — an attribution naming no introducing artifact is a guess.
   - NO (nothing rescues it — the feature is infeasible, unjustified, or should be bought not built) → **KILL**.
 
 PROCEED is the no-surviving-attack / all-accepted-as-risk case — outside this YES/NO tree (the empty-`validated.json` branch in PHASE 3 already routes there; reach it here too when every survivor is accepted as risk).
