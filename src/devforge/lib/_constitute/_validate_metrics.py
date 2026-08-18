@@ -2,7 +2,8 @@
 
 Dimensions:
   Dim 1 slot_fill — required sections/fields populated
-  Dim 2 citation  — path-like tokens resolve under install_root
+  Dim 2 citation  — path-like tokens resolve under install_root (recursive, bounded;
+                    placeholder/fragment tokens filtered; devforge-namespace tokens exempt)
   Dim 3 code_syntax — code_example.code parses as declared language
   Dim 4 rule_tag  — every rule tag in closed enum
 """

@@ -32,7 +32,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
     Dimensions:
       1. slot_fill   — required sections/fields populated (weight 0.30)
-      2. citation    — path citations resolve under install_root (weight 0.25)
+      2. citation    — path citations resolve under install_root (recursive, bounded;
+                       placeholders/fragments filtered; devforge-namespace exempt) (weight 0.25)
       3. code_syntax — code examples parse as declared language (weight 0.25)
       4. rule_tag    — every rule tag in closed enum (weight 0.20)
 
