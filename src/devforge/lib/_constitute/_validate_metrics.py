@@ -207,6 +207,49 @@ def _resolve_effective_root(
     return Path(install_root) / project_root
 
 
+# Directory NAMES excluded from the recursive citation-fallback search, at
+# any depth. A directory whose basename is a member of this set is never
+# descended into, so a file that exists ONLY beneath one of these can never
+# resolve a citation token via `_try_resolve`'s bounded-walk stages. Applies
+# identically to standalone and wrapper mode (plan 80 Phase 2 OQ-2/OQ-4) —
+# a token resolvable today only via a file inside `node_modules` stops
+# resolving; that is a deliberate behavioral change, not a regression.
+_EXCLUDED_DIR_NAMES = frozenset([
+    ".git", "node_modules", "dist", "build", "target", "vendor",
+    ".venv", "venv", "__pycache__", ".next", "coverage",
+])
+
+
+def _bounded_walk_has_match(root: "Path", predicate) -> bool:
+    """Walk `root` recursively, pruning `_EXCLUDED_DIR_NAMES` at any depth,
+    and return True on the first entry (file or directory) for which
+    `predicate(name, rel_parts)` is True.
+
+    `predicate` is called with the entry's bare basename and its path
+    segments relative to `root` (a tuple). This helper is generic — it
+    knows nothing about `Path.rglob` semantics; the rglob-equivalence
+    (exact trailing-segments / slash-free-basename-suffix) is a property
+    of the two predicates `_try_resolve` composes it with over
+    Phase-1-filtered tokens, not of this function.
+
+    Uses `os.walk`, not `Path.rglob` + post-filtering: pruning `dirnames`
+    in place stops the walk from ever descending into an excluded
+    directory, rather than discarding matches found inside one after the
+    fact. `os.walk`'s default `onerror=None` already swallows an
+    `OSError` raised while listing an unreadable subdirectory — it skips
+    that subtree and continues, so a permission-denied directory cannot
+    crash the walk and no extra `try/except` is needed here (unlike
+    `Path.rglob`, which propagates that `OSError` to the caller).
+    """
+    for dirpath, dirnames, filenames in os.walk(str(root)):
+        dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIR_NAMES]
+        for name in dirnames + filenames:
+            rel_parts = (Path(dirpath) / name).relative_to(root).parts
+            if predicate(name, rel_parts):
+                return True
+    return False
+
+
 def _build_package_name_map(init_yaml_path: "Optional[Path]") -> "Dict[str, str]":
     """Build {package_name: path} from init.yaml packages_detected list."""
     if init_yaml_path is None or not Path(init_yaml_path).exists():
@@ -351,20 +394,24 @@ def _count_citations(
                 return True
             if effective_root is not None and (effective_root / pkg_map[token_name]).exists():
                 return True
-        if effective_root is not None:
-            try:
-                for found in effective_root.rglob(token):
-                    if found.exists():
-                        return True
-            except (OSError, ValueError):
-                pass
-            if "/" not in token:
-                try:
-                    for found in effective_root.rglob("*" + token):
-                        if found.exists():
-                            return True
-                except (OSError, ValueError):
-                    pass
+        # Bounded recursive fallback — root-agnostic (plan 80 Phase 2 D5):
+        # wrapper mode searches `effective_root`, standalone searches
+        # `install_root_path`. Both stages are pruned by
+        # `_EXCLUDED_DIR_NAMES` in `_bounded_walk_has_match` (OQ-2/OQ-4).
+        search_root = effective_root if effective_root is not None else install_root_path
+        token_segments = tuple(token.split("/"))
+        n = len(token_segments)
+        if _bounded_walk_has_match(
+            search_root,
+            lambda name, rel_parts: len(rel_parts) >= n and rel_parts[-n:] == token_segments,
+        ):
+            return True
+        if "/" not in token:
+            if _bounded_walk_has_match(
+                search_root,
+                lambda name, rel_parts: name.endswith(token),
+            ):
+                return True
         return False
 
     def _classify_filtered(token):

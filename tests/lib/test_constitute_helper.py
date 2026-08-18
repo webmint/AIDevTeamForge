@@ -3143,6 +3143,247 @@ class TestStep4CitationTokenFilters(unittest.TestCase):
             self.assertAlmostEqual(score, 1.0)
 
 
+class TestStep4CitationRecursiveResolution(unittest.TestCase):
+    """Plan 80 Phase 2 (WI-2) — standalone recursive citation resolution.
+
+    `_try_resolve`'s bounded-walk fallback stages (exact-pattern +
+    slash-free suffix) are root-agnostic: standalone installs search
+    `install_root`, wrapper installs search `effective_root` — one search
+    root, not both (D5) — and both are pruned by `_EXCLUDED_DIR_NAMES`
+    (OQ-2), including in wrapper mode (OQ-4).
+    """
+
+    def test_standalone_basename_token_resolves_via_nested_file(self):
+        """Standalone: a bare-basename token resolves against a real file
+        nested below the install root."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            real_file = install_root / "src" / "components" / "PageCatalog.vue"
+            real_file.parent.mkdir(parents=True)
+            real_file.write_text("<template></template>\n", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertAlmostEqual(score, 1.0)
+
+    def test_standalone_basename_token_absent_file_stays_unresolved(self):
+        """Standalone: same bare-basename token, file absent → unresolved
+        and present in failed_items (asymmetric counterpart of the above)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 1)
+            self.assertAlmostEqual(score, 0.0)
+            self.assertTrue(
+                any("PageCatalog.vue" in f for f in failed),
+                msg="failed_items={0}".format(failed),
+            )
+
+    def test_standalone_multi_segment_token_resolves_via_nested_path(self):
+        """Standalone: a multi-segment token resolves via the real nested
+        path matching its trailing segments exactly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            real_file = install_root / "src" / "components" / "Existing.vue"
+            real_file.parent.mkdir(parents=True)
+            real_file.write_text("<template></template>\n", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See src/components/Existing.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertAlmostEqual(score, 1.0)
+
+    def test_standalone_excluded_dir_file_does_not_resolve(self):
+        """A file present ONLY under an excluded directory name
+        (node_modules) does not resolve the token — the walk never
+        descends into it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            buried = install_root / "node_modules" / "pkg" / "PageCatalog.vue"
+            buried.parent.mkdir(parents=True)
+            buried.write_text("<template></template>\n", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 1)
+            self.assertAlmostEqual(score, 0.0)
+
+    def test_wrapper_mode_excluded_dir_file_does_not_resolve(self):
+        """OQ-4: the exclusion bound applies to wrapper mode too — a file
+        only under `<effective_root>/node_modules/...` does not resolve."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            inner_project = install_root / "module"
+            buried = inner_project / "node_modules" / "pkg" / "PageCatalog.vue"
+            buried.parent.mkdir(parents=True)
+            buried.write_text("<template></template>\n", encoding="utf-8")
+
+            devforge = install_root / ".devforge"
+            devforge.mkdir()
+            (devforge / "init.yaml").write_text(
+                "workspace_mode: wrapper\n"
+                "project_root: module\n"
+                "project_state: brownfield\n"
+                "default_branch: main\n"
+                "packages_detected: []\n",
+                encoding="utf-8",
+            )
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See PageCatalog.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 1)
+            self.assertAlmostEqual(score, 0.0)
+
+    def test_recall_guard_nonexistent_multi_segment_path_stays_unresolved(self):
+        """Recall guard: a nonexistent multi-segment path still counts
+        unresolved after the widened recursive search — with a
+        deliberately non-trivial fixture tree (real sibling files at
+        several depths) so the walk genuinely searches without
+        false-positiving on the absent target."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            for rel in [
+                "src/components/Existing.vue",
+                "src/components/Other.vue",
+                "src/utils/helpers.py",
+                "docs/readme.md",
+            ]:
+                p = install_root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("x", encoding="utf-8")
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See src/components/DoesNotExist.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 1)
+            self.assertAlmostEqual(score, 0.0)
+            self.assertTrue(
+                any("src/components/DoesNotExist.vue" in f for f in failed),
+                msg="failed_items={0}".format(failed),
+            )
+
+    def test_wrapper_mode_does_not_fall_back_to_install_root(self):
+        """D5 negative: wrapper mode searches ONLY `effective_root`, never
+        ALSO `install_root` as a fallback. The real file sits OUTSIDE
+        `effective_root` but NESTED (not at the `install_root` top level)
+        so the pre-existing unconditional top-level join check
+        (`install_root_path / token`, unchanged by Phase 2) can't
+        coincidentally resolve it — isolating the D5 property alone. A
+        buggy implementation that unioned both roots in the bounded-walk
+        fallback would find this file via the suffix stage and wrongly
+        resolve it; the correct implementation leaves it unresolved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            inner_project = install_root / "module"
+            inner_project.mkdir()
+            outside = install_root / "outside" / "OutsideModule.vue"
+            outside.parent.mkdir(parents=True)
+            outside.write_text("<template></template>\n", encoding="utf-8")
+
+            devforge = install_root / ".devforge"
+            devforge.mkdir()
+            (devforge / "init.yaml").write_text(
+                "workspace_mode: wrapper\n"
+                "project_root: module\n"
+                "project_state: brownfield\n"
+                "default_branch: main\n"
+                "packages_detected: []\n",
+                encoding="utf-8",
+            )
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See OutsideModule.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 1)
+            self.assertAlmostEqual(score, 0.0)
+
+    def test_directory_target_resolves_via_bounded_walk(self):
+        """Directory-match support (`dirnames + filenames` in
+        `_bounded_walk_has_match`) is exercised directly: a citation
+        target that is a real DIRECTORY (not a file) named `Widget.vue`
+        still resolves — the walk checks directory entries too, matching
+        `Path.rglob`'s any-path-type behavior."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            target_dir = install_root / "src" / "components" / "Widget.vue"
+            target_dir.mkdir(parents=True)
+
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted", "text": "See Widget.vue for the pattern."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertAlmostEqual(score, 1.0)
+
+
 class TestStep4CodeExampleSyntax(unittest.TestCase):
     """Code-example syntax (dim 3) — 7 tests."""
 
