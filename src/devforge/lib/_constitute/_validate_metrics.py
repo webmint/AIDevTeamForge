@@ -268,6 +268,47 @@ def _build_package_name_map(init_yaml_path: "Optional[Path]") -> "Dict[str, str]
     return result
 
 
+# Framework runtime-namespace allowance (D6) — a resolver, NOT one of the
+# four filters below. It counts a token RESOLVED; the filters below count
+# a token as neither resolved nor unresolved. Keep the two mechanisms
+# apart: this function must run (and win) BEFORE a namespace token could
+# ever reach `_classify_filtered`.
+def _is_devforge_namespace_token(
+    token: str,
+    devforge_dir: "Union[str, os.PathLike[str]]",
+) -> bool:
+    """Framework runtime-namespace citation allowance (plan 80 Phase 3 /
+    WI-3, ratified design D6, namespace-wide arm).
+
+    True when `token`'s FIRST path segment equals `Path(devforge_dir).name`
+    — segment equality, not a string prefix (`.devforgex/foo.md` does NOT
+    match a `.devforge` namespace). The namespace name is DERIVED from the
+    `devforge_dir` argument the caller already has; no literal directory
+    name appears here. A slash-free token exactly equal to the namespace
+    (e.g. bare `.devforge`) also matches — the "first path segment" of a
+    single-segment token is the whole token — but `_PATH_TOKEN_RE` never
+    extracts a bare `.devforge` (no recognized extension), so this case is
+    intentional and unreachable in production, not a gap.
+
+    Some framework runtime files (e.g. `.devforge/session-state.md`,
+    `.devforge/wip.md`) are created LATER by the pipeline, not at
+    constitution-authoring time — a constitution rule citing one is
+    correct even though the file does not yet exist on disk (root cause
+    RC5). A token matching this check is therefore counted RESOLVED with
+    NO filesystem check at all, unlike every other citation-token path.
+
+    Named, accepted recall cost (D6): a genuinely hallucinated
+    `.devforge/never-exists.md` citation also resolves silently under
+    this rule — that is the ratified trade-off for the namespace-wide
+    allowance, not an oversight.
+    """
+    namespace = Path(devforge_dir).name
+    if not namespace:
+        return False
+    first_segment = token.split("/", 1)[0]
+    return first_segment == namespace
+
+
 # ---------------------------------------------------------------------------
 # Citation-token filters — naming-convention placeholders and regex-
 # extraction fragments that look like path tokens but are not real
@@ -360,6 +401,11 @@ def _count_citations(
     `failed_items` entry — nothing is filtered silently, though: pass a
     list via `filtered_out` to collect one string per filtered token
     (token + which filter class a/b/c/d matched it).
+
+    Separately, a token under the `devforge_dir` runtime namespace
+    (`_is_devforge_namespace_token`) always counts RESOLVED, never
+    filtered and never subject to a filesystem check — see that
+    function's docstring for the ratified design (D6).
     """
     install_root_path = Path(install_root)
     init_yaml_path = Path(devforge_dir) / init_helper.OUTPUT_FILE_NAME
@@ -384,6 +430,12 @@ def _count_citations(
     failed_items = []  # type: List[str]
 
     def _try_resolve(token):
+        # Framework runtime-namespace allowance (plan 80 Phase 3 / WI-3,
+        # D6) runs BEFORE every filesystem check: a token under the
+        # `devforge_dir` namespace is always resolved, even when the
+        # cited file does not exist yet — see `_is_devforge_namespace_token`.
+        if _is_devforge_namespace_token(token, devforge_dir):
+            return True
         if (install_root_path / token).exists():
             return True
         if effective_root is not None and (effective_root / token).exists():

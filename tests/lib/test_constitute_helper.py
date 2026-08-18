@@ -3384,6 +3384,122 @@ class TestStep4CitationRecursiveResolution(unittest.TestCase):
             self.assertAlmostEqual(score, 1.0)
 
 
+class TestStep4CitationNamespaceAllowance(unittest.TestCase):
+    """Plan 80 Phase 3 (WI-3) — framework runtime-namespace citation
+    allowance (D6, maintainer-signed 2026-08-18, namespace-wide arm).
+
+    A token whose FIRST path segment equals the `devforge_dir` argument's
+    basename always counts resolved, with NO filesystem check — some
+    framework runtime files (e.g. `.devforge/session-state.md`) are
+    created LATER by the pipeline, so a constitution rule citing one at
+    authoring time is correct even though the file does not exist yet
+    (root cause RC5).
+    """
+
+    def test_devforge_namespace_degenerate_devforge_dir_is_false(self):
+        """Guard clause: a degenerate `devforge_dir` (`/`, `""`, `.`) whose
+        `Path(...).name` is empty must never match — the function returns
+        False rather than treating an empty namespace as a wildcard."""
+        self.assertFalse(constitute_helper._is_devforge_namespace_token("foo.md", "/"))
+        self.assertFalse(constitute_helper._is_devforge_namespace_token("foo.md", ""))
+        self.assertFalse(constitute_helper._is_devforge_namespace_token("foo.md", "."))
+
+    def test_devforge_namespace_token_resolves_without_filesystem_check(self):
+        """`.devforge/session-state.md` counts resolved with no such file
+        on disk (fixture's devforge_dir is named `.devforge`)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "Overwrite .devforge/session-state.md after each task."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertAlmostEqual(score, 1.0)
+
+    def test_devforge_namespace_derived_not_literal(self):
+        """Derived-not-literal: with `devforge_dir` named `.myforge`, a
+        token under `.myforge/` resolves via the namespace allowance, but
+        a token under `.devforge/` does NOT (stays unresolved, in
+        failed_items) — the namespace name is DERIVED from the
+        `devforge_dir` argument, never a hardcoded `.devforge` literal."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See .myforge/session-state.md and .devforge/session-state.md."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".myforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 1)
+            self.assertTrue(
+                any(".devforge/session-state.md" in f for f in failed),
+                msg="failed_items={0}".format(failed),
+            )
+
+    def test_devforge_namespace_segment_equality_not_prefix(self):
+        """Prefix-vs-segment: `.devforgex/foo.md` does NOT resolve under a
+        `.devforge` namespace — the check compares the FIRST PATH SEGMENT
+        for exact equality, not a string prefix (`.devforgex` is a
+        different directory name, not `.devforge` plus more path)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See .devforgex/foo.md for an unrelated directory."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 0)
+            self.assertEqual(unresolved, 1)
+            self.assertTrue(
+                any(".devforgex/foo.md" in f for f in failed),
+                msg="failed_items={0}".format(failed),
+            )
+
+    def test_devforge_namespace_never_exists_file_still_resolves_d6_accepted_cost(self):
+        """Negative case pinned to the ratified arm: `.devforge/never-
+        exists.md` counts RESOLVED with no such file on disk, ever. This
+        is D6's accepted recall cost (namespace-wide exemption), NOT an
+        oversight — a genuinely hallucinated `.devforge/<name>.md`
+        citation resolves silently under the same rule that lets a
+        legitimate not-yet-created runtime file resolve."""
+        with tempfile.TemporaryDirectory() as tmp:
+            install_root = Path(tmp)
+            state = constitute_helper.default_state()
+            state["architecture_rules"] = [{
+                "number": "2.1", "title": "T", "tag": None, "description": None,
+                "rules": [{"tag": "extracted",
+                           "text": "See .devforge/never-exists.md for details."}],
+                "tables": [], "code_examples": [],
+            }]
+            devforge = install_root / ".devforge"
+            score, resolved, unresolved, failed = constitute_helper._count_citations(
+                state, install_root, devforge
+            )
+            self.assertEqual(resolved, 1)
+            self.assertEqual(unresolved, 0)
+            self.assertAlmostEqual(score, 1.0)
+
+
 class TestStep4CodeExampleSyntax(unittest.TestCase):
     """Code-example syntax (dim 3) — 7 tests."""
 
