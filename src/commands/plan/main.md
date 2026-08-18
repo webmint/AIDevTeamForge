@@ -261,7 +261,7 @@ Render the skeleton via the helper:
 
 The helper enumerates every §3 / §4 / §5 / §6 / §7 / §8 / §9 item with an identifying snippet plus a per-section fill marker. Copy the helper's stdout VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase). In the SAME message, replace each marker inline with your coverage decision:
 
-- `[PLAN COVERAGE: ?]` on §3 / §4 / §5 lines → `[PLAN COVERAGE: <layer/file/decision>]` or `[PLAN COVERAGE: covered by Layer Map: <area>]`.
+- `[PLAN COVERAGE: ?]` on §3 / §4 / §5 lines → `[PLAN COVERAGE: <layer/file/decision>]` or `[PLAN COVERAGE: covered by Layer Map: <area>]`. A §5 line that is a BEHAVIORAL AC — one asserting what a path emits, returns, or does at runtime — takes the `<decision>` form, naming the Key Design Decision whose behavior change satisfies it; a Layer Map marker does not cover it (PHASE 2.5 step 2 states the standard).
 - `[must not contradict]` on §6 lines → leave as-is, OR append ` → confirmed: <why>` if the plan touches a related area.
 - `[LANDS IN: ?]` on §7 lines → `[LANDS IN: Constitution Compliance]` or `[LANDS IN: Risk Assessment]`.
 - `[RESOLUTION: ?]` on §8 lines → `[RESOLUTION: <decision>]` if resolved by the plan, or `[RESOLUTION: carry-forward to /devforge:breakdown]`.
@@ -529,6 +529,7 @@ Before presenting the plan to the user, verify completeness:
 2. For each AC, verify the plan addresses it:
    - Check the plan's "Layer Map" and "File Impact" for files/components related to this AC.
    - Check "Key Design Decisions" for approach decisions relevant to this AC.
+   - For a BEHAVIORAL AC — one asserting what a path emits, returns, or does at runtime — coverage means naming the "Key Design Decisions" row whose behavior change satisfies it. A "Layer Map" / "File Impact" file match does NOT cover such an AC, and an AC that no decision's behavior change reaches is uncovered even when every file it names already appears in "File Impact". This is what catches a change to shared code: there, "the files this AC names are unchanged" or "they are already in the impact list" reads as coverage while the behavior at that AC's path changes anyway — a file list is evidence about files, never about behavior. The two bullets above stay the whole check for an AC about files themselves (what exists, where code lives). A behavioral AC left uncovered goes to step 3 like any other uncovered AC — revise, or add the Risk Assessment line.
 3. If any AC has no clear implementation path in the plan:
    - Revise the plan to add the missing coverage.
    - If you cannot determine the implementation path, add it to the plan's Risk Assessment as: "AC-[N] has no clear implementation path — requires clarification during breakdown".
