@@ -55,7 +55,7 @@ It does NOT verify:
   - that the RIGHT memory entries were selected, or that memory.md's
     CONTENT is accurate.
   - (Rule 3) that an N/A command is truly memory-read-free — only that
-    none of the three KNOWN tokens appear in its surfaces or helper
+    none of the two KNOWN tokens appear in its surfaces or helper
     package. A read performed through some other, unnamed mechanism
     would not be caught.
 
@@ -135,9 +135,9 @@ DISPOSITIONS = {
     ),
     "implement": (
         READS,
-        "Per-task preflight surfaces a memory digest so the dispatched "
-        "engineer's brief carries known pitfalls forward instead of "
-        "rediscovering the same lesson task after task.",
+        "Per-task preflight surfaces a section-aware memory excerpt so the "
+        "dispatched engineer's brief carries known pitfalls forward "
+        "instead of rediscovering the same lesson task after task.",
     ),
     "pr-review": (
         READS,
@@ -242,7 +242,7 @@ DISPOSITIONS = {
 # (per the spec) for Rule 3, so an N/A command carrying ANY of these tokens
 # anywhere in its surfaces or helper package fails, whether or not it names
 # them "for consumption."
-MEMORY_TOKENS = ("memory_excerpt", "memory_digest", "memory_state")
+MEMORY_TOKENS = ("memory_excerpt", "memory_state")
 
 # Rule 4 — the dead path this checker forbids under src/. Scoped to src/
 # ONLY (see module docstring): tests/ deliberately keeps this literal in
@@ -256,7 +256,7 @@ DEAD_PATH_LITERAL = ".claude/memory"
 # string like "memory_excerpt" appearing in a comment or docstring is NOT
 # enough on its own to prove a read happens — an actual call is.
 _MEMORY_READ_CALL_RE = re.compile(
-    r"\b(read_memory_context|read_memory_excerpt|read_memory_digest|"
+    r"\b(read_memory_context|read_memory_excerpt|"
     r"probe_memory_state|memory_present)\s*\("
 )
 

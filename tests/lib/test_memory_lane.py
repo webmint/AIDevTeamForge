@@ -384,10 +384,10 @@ class TestPositiveControl(unittest.TestCase):
                 promoted=["plan"],
                 commands={
                     "plan": {
-                        "main_md": "Reads `memory_digest` from the launcher's preflight.\n",
+                        "main_md": "Reads `memory_excerpt` from the launcher's preflight.\n",
                         "launcher": (
-                            "from _shared.memory import read_memory_digest\n"
-                            "memory_digest = read_memory_digest(root)\n"
+                            "from _shared.memory import read_memory_excerpt\n"
+                            "memory_excerpt = read_memory_excerpt(root)\n"
                         ),
                     },
                 },
@@ -436,7 +436,7 @@ class TestNAHelperReads(unittest.TestCase):
                 promoted=["spec-check"],
                 commands={
                     "spec-check": {
-                        "main_md": "Somehow this mentions `memory_digest` in prose.\n",
+                        "main_md": "Somehow this mentions `memory_excerpt` in prose.\n",
                     },
                 },
             )

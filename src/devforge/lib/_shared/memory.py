@@ -27,7 +27,6 @@ Public surface
   read_memory_excerpt(workspace_root, n=DEFAULT_EXCERPT_LINES)
                                       -- -> str, section-aware (plan 79 --
                                          see "Bounded reads" below)
-  read_memory_digest(workspace_root, n=DEFAULT_DIGEST_LINES)   -- -> Optional[str]
   read_memory_context(workspace_root, excerpt_lines=DEFAULT_EXCERPT_LINES)
                                       -- -> dict with "present" / MEMORY_STATE_KEY
                                          / "excerpt", derived from a SINGLE
@@ -75,14 +74,6 @@ code-fence context; this is an accepted limitation, not a defect.
 
 Bounded reads
 --------------
-  digest:  first N NON-BLANK lines (terminators stripped) joined with
-           "\\n", default N=5. Absent/unreadable -> None.
-           Present-but-no-non-blank-lines -> "".
-           Blank lines interleaved between real lines are SKIPPED, not
-           counted toward N. Unchanged by plan 79 -- digest stays the
-           flat "first N non-blank lines" shape; only the excerpt below
-           became section-aware.
-
   excerpt: SECTION-AWARE (plan 79 Phase 1) -- no longer a positional
            "first N raw lines" slice (that shape froze the readable
            window on the shipped stub headings once memory.md grew past
@@ -334,7 +325,6 @@ def memory_present(workspace_root):
 # ---------------------------------------------------------------------------
 
 DEFAULT_EXCERPT_LINES = 120
-DEFAULT_DIGEST_LINES = 5
 
 # Section headings excluded from the excerpt outright, regardless of budget.
 # A DENYLIST, not an allowlist: an unknown "## " heading is INCLUDED by
@@ -499,22 +489,6 @@ def read_memory_excerpt(workspace_root, n=DEFAULT_EXCERPT_LINES):
     if lines is None:
         return ""
     return _render_excerpt(lines, n)
-
-
-def read_memory_digest(workspace_root, n=DEFAULT_DIGEST_LINES):
-    # type: (str, int) -> Optional[str]
-    """Return the first n NON-BLANK lines of memory.md, joined with "\\n".
-
-    Line terminators are stripped; blank lines are skipped, not counted
-    toward n. Absent/unreadable -> None. Present-but-no-non-blank-lines
-    -> "" (an empty string is NOT None -- it distinguishes "file exists but
-    carries nothing" from "file could not be read at all").
-    """
-    text = _read_text(memory_path(workspace_root))
-    if text is None:
-        return None
-    non_blank = [ln for ln in text.splitlines() if ln.strip()]
-    return "\n".join(non_blank[:n])
 
 
 # ---------------------------------------------------------------------------

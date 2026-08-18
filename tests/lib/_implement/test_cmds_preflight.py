@@ -40,10 +40,13 @@ Coverage:
     - Constitution has populate-guard → exit 2.
     - On main branch → exit 2.
     - wip.md present → exit 2.
-    - Emitted JSON has required fields: constitution_digest, memory_digest,
-      head_sha, branch.
-    - memory.md absent → memory_digest is null in output.
-    - memory.md present → memory_digest contains first lines.
+    - Emitted JSON has required fields: constitution_digest, memory_present,
+      memory_excerpt, memory_state, head_sha, branch.
+    - memory.md absent → memory_present False, memory_state "absent",
+      memory_excerpt "".
+    - memory.md present with a "## " section → memory_excerpt contains that
+      section's content (read_memory_context(), plan 79 Phase 5 -- section-
+      aware excerpt, not the old first-N-non-blank-lines digest).
 
 Design notes:
 - Tests seed a real temporary git repository (git init, config, commit) so
@@ -171,11 +174,23 @@ def _write_constitution(root, populated=True, guard_index=-1):
 
 def _write_memory(root, lines=None):
     # type: (Path, list) -> None
-    """Write .devforge/memory.md with the given lines."""
+    """Write .devforge/memory.md with the given lines.
+
+    Default fixture carries a "## " section heading (not a bare "# " title)
+    so it round-trips through read_memory_context()'s section-aware excerpt
+    as real content rather than being dropped as preamble -- see
+    _shared/memory.py's _render_excerpt().
+    """
     devforge = root / ".devforge"
     devforge.mkdir(exist_ok=True)
     if lines is None:
-        lines = ["# Memory\n", "- Lesson 1: Write tests.\n", "- Lesson 2: Read docs.\n"]
+        lines = [
+            "# Project Memory\n",
+            "\n",
+            "## Known Pitfalls\n",
+            "- Lesson 1: Write tests.\n",
+            "- Lesson 2: Read docs.\n",
+        ]
     (devforge / "memory.md").write_text("".join(lines), encoding="utf-8")
 
 
@@ -588,7 +603,14 @@ class TestCmdPreflightHappyPath(unittest.TestCase):
         with contextlib.redirect_stdout(buf):
             cmd_preflight(args)
         data = json.loads(buf.getvalue())
-        for field in ("constitution_digest", "memory_digest", "head_sha", "branch"):
+        for field in (
+            "constitution_digest",
+            "memory_present",
+            "memory_excerpt",
+            "memory_state",
+            "head_sha",
+            "branch",
+        ):
             self.assertIn(field, data, "Missing field: {0}".format(field))
 
     def test_head_sha_is_40_chars(self):
@@ -607,25 +629,36 @@ class TestCmdPreflightHappyPath(unittest.TestCase):
         data = json.loads(buf.getvalue())
         self.assertEqual(data["branch"], "feature/widget")
 
-    def test_memory_digest_null_when_absent(self):
-        """When .devforge/memory.md does not exist, memory_digest is null."""
+    def test_memory_excerpt_empty_when_absent(self):
+        """When .devforge/memory.md does not exist, memory_present is False,
+        memory_state is "absent", and memory_excerpt is "" (never None --
+        read_memory_context()'s absent shape, unlike the old digest's None).
+        """
         buf = io.StringIO()
         args = _FakeArgs(root=str(self.tmp))
         with contextlib.redirect_stdout(buf):
             cmd_preflight(args)
         data = json.loads(buf.getvalue())
-        self.assertIsNone(data["memory_digest"])
+        self.assertFalse(data["memory_present"])
+        self.assertEqual(data["memory_state"], "absent")
+        self.assertEqual(data["memory_excerpt"], "")
 
-    def test_memory_digest_present_when_file_exists(self):
-        """When .devforge/memory.md exists, memory_digest contains its lines."""
-        _write_memory(self.tmp, lines=["# Memory\n", "- lesson1\n"])
+    def test_memory_excerpt_present_when_file_exists(self):
+        """When .devforge/memory.md exists with a "## " section, the section's
+        content lands in memory_excerpt (section-aware, plan 79 Phase 5).
+        """
+        _write_memory(
+            self.tmp,
+            lines=["# Project Memory\n", "\n", "## Known Pitfalls\n", "- lesson1\n"],
+        )
         buf = io.StringIO()
         args = _FakeArgs(root=str(self.tmp))
         with contextlib.redirect_stdout(buf):
             cmd_preflight(args)
         data = json.loads(buf.getvalue())
-        self.assertIsNotNone(data["memory_digest"])
-        self.assertIn("Memory", data["memory_digest"])
+        self.assertTrue(data["memory_present"])
+        self.assertEqual(data["memory_state"], "populated")
+        self.assertIn("lesson1", data["memory_excerpt"])
 
     def test_constitution_digest_contains_content(self):
         buf = io.StringIO()
@@ -1008,12 +1041,15 @@ class TestCmdPreflightWrapperHappyPath(unittest.TestCase):
 
     def test_wrapper_memory_read_from_install_root(self):
         """memory.md is at the install root .devforge/, not the source root."""
-        _write_memory(self.tmp, lines=["# Memory\n", "- Wrapper lesson.\n"])
+        _write_memory(
+            self.tmp,
+            lines=["# Project Memory\n", "\n", "## Known Pitfalls\n", "- Wrapper lesson.\n"],
+        )
         code, stdout, stderr = self._run_preflight()
         self.assertEqual(code, 0)
         data = json.loads(stdout)
-        self.assertIsNotNone(data["memory_digest"])
-        self.assertIn("Memory", data["memory_digest"])
+        self.assertTrue(data["memory_present"])
+        self.assertIn("Wrapper lesson", data["memory_excerpt"])
 
 
 class TestCmdPreflightWrapperSourceOnMain(unittest.TestCase):
@@ -1150,12 +1186,14 @@ class TestCmdPreflightWrapperOutputShape(unittest.TestCase):
         return code, json.loads(buf.getvalue())
 
     def test_all_required_fields_present(self):
-        """JSON output must contain all 6 expected fields."""
+        """JSON output must contain all 8 expected fields."""
         code, data = self._get_output()
         self.assertEqual(code, 0)
         expected_fields = [
             "constitution_digest",
-            "memory_digest",
+            "memory_present",
+            "memory_excerpt",
+            "memory_state",
             "head_sha",
             "branch",
             "source_branch",

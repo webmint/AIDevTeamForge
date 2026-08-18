@@ -57,8 +57,9 @@ _SUBCOMMAND_REGISTRY = [
         "preflight",
         (
             "Run pre-task checks: constitution populated, feature branch, "
-            "no stale wip.md. Emits JSON {constitution_digest, memory_digest, "
-            "head_sha, branch} on success. Exit 2 on any failure."
+            "no stale wip.md. Emits JSON {constitution_digest, memory_present, "
+            "memory_excerpt, memory_state, head_sha, branch} on success. "
+            "Exit 2 on any failure."
         ),
         cmd_preflight,
         add_args_preflight,

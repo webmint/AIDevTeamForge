@@ -20,9 +20,6 @@ Coverage:
   read_memory_excerpt           -- absent, shorter-than-budget,
                                    longer-than-budget (single-section
                                    newest-wins truncation), custom n
-  read_memory_digest            -- absent -> None, present-empty -> "",
-                                   interleaved blank lines skipped not
-                                   counted toward n
   read_memory_context            -- the combined single-read accessor;
                                    agreement with the individual functions
                                    and exactly-one-read behaviour
@@ -66,7 +63,6 @@ if str(_LIB_DIR) not in sys.path:
 
 from _shared import memory as memory_module  # noqa: E402
 from _shared.memory import (  # noqa: E402
-    DEFAULT_DIGEST_LINES,
     DEFAULT_EXCERPT_LINES,
     EXCLUDED_MEMORY_SECTIONS,
     MEMORY_RELATIVE_PATH,
@@ -85,7 +81,6 @@ from _shared.memory import (  # noqa: E402
     memory_present,
     probe_memory_state,
     read_memory_context,
-    read_memory_digest,
     read_memory_excerpt,
 )
 
@@ -553,68 +548,6 @@ class TestReadMemoryExcerpt(unittest.TestCase):
                 read_memory_excerpt(root, n=2),
                 "## H\n" + expected_marker + "\nd\ne\n",
             )
-
-
-# ---------------------------------------------------------------------------
-# read_memory_digest
-# ---------------------------------------------------------------------------
-
-
-class TestReadMemoryDigest(unittest.TestCase):
-    def test_absent_returns_none(self):
-        with tempfile.TemporaryDirectory() as root:
-            result = read_memory_digest(root)
-            self.assertIsNone(result)
-
-    def test_default_n_is_5(self):
-        self.assertEqual(DEFAULT_DIGEST_LINES, 5)
-
-    def test_present_empty_returns_empty_string_not_none(self):
-        with tempfile.TemporaryDirectory() as root:
-            _write(root, MEMORY_RELATIVE_PATH, "")
-            result = read_memory_digest(root)
-            self.assertEqual(result, "")
-            self.assertIsNotNone(result)
-
-    def test_present_only_blank_lines_returns_empty_string(self):
-        with tempfile.TemporaryDirectory() as root:
-            _write(root, MEMORY_RELATIVE_PATH, "\n\n   \n")
-            self.assertEqual(read_memory_digest(root), "")
-
-    def test_blank_lines_interleaved_are_skipped_not_counted(self):
-        # 3 real lines separated by blanks; n=3 must return all three real
-        # lines, NOT stop early because blanks consumed slots.
-        content = "one\n\ntwo\n\n\nthree\n\nfour\n"
-        with tempfile.TemporaryDirectory() as root:
-            _write(root, MEMORY_RELATIVE_PATH, content)
-            result = read_memory_digest(root, n=3)
-            self.assertEqual(result, "one\ntwo\nthree")
-
-    def test_fewer_non_blank_lines_than_n(self):
-        content = "only one real line\n\n\n"
-        with tempfile.TemporaryDirectory() as root:
-            _write(root, MEMORY_RELATIVE_PATH, content)
-            self.assertEqual(read_memory_digest(root, n=5), "only one real line")
-
-    def test_terminators_stripped_and_joined_with_newline(self):
-        content = "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n"
-        with tempfile.TemporaryDirectory() as root:
-            _write(root, MEMORY_RELATIVE_PATH, content)
-            result = read_memory_digest(root, n=5)
-            self.assertEqual(result, "alpha\nbeta\ngamma\ndelta\nepsilon")
-
-    def test_against_real_shipped_stub_all_lines_are_headings_or_comments(self):
-        # The real stub's digest reflects that ALL of its non-blank lines
-        # are headings/comments in CONTENT, but read_memory_digest does not
-        # filter by that predicate -- it only skips BLANK lines. Pin the
-        # distinction: digest != populated-content filtering.
-        real_stub_text = _REAL_STUB_PATH.read_text(encoding="utf-8")
-        with tempfile.TemporaryDirectory() as root:
-            _write(root, MEMORY_RELATIVE_PATH, real_stub_text)
-            result = read_memory_digest(root, n=5)
-            non_blank = [ln for ln in real_stub_text.splitlines() if ln.strip()]
-            expected = "\n".join(non_blank[:5])
-            self.assertEqual(result, expected)
 
 
 # ---------------------------------------------------------------------------

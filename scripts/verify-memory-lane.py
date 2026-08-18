@@ -101,8 +101,8 @@ def _main(argv=None):
     print("Repo root : {}".format(repo_root))
     print("Scope     : verifies a memory READ is performed for READS commands AND that a")
     print("            consuming surface NAMES the field it reads (memory_excerpt /")
-    print("            memory_digest / memory_state). Rule 2 is CONJUNCTIVE — both must")
-    print("            hold; a preflight-only touchpoint with nobody reading it back FAILS.")
+    print("            memory_state). Rule 2 is CONJUNCTIVE — both must hold; a")
+    print("            preflight-only touchpoint with nobody reading it back FAILS.")
     print("            Verifies N/A commands carry none of those tokens. Verifies the dead")
     print("            '.claude/memory' path literal is absent from src/.")
     print("Does NOT verify: that a named field's consumption is SUBSTANTIVE, that the right")
@@ -148,7 +148,7 @@ def _main(argv=None):
             print("  - {}".format(name))
         print()
     else:
-        print("PASS — no N/A command carries memory_excerpt / memory_digest / memory_state.")
+        print("PASS — no N/A command carries memory_excerpt / memory_state.")
 
     if dead_path:
         print("FAIL — dead '.claude/memory' literal found under src/ (Rule 4):")

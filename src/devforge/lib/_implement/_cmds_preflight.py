@@ -24,7 +24,9 @@ Checks that the project is ready for /devforge:implement to start a task:
 Emits JSON to stdout on success:
   {
     "constitution_digest": "<first 5 lines of constitution.md>",
-    "memory_digest": "<first 5 lines of .devforge/memory.md or null>",
+    "memory_present": <bool -- .devforge/memory.md exists and is readable>,
+    "memory_excerpt": "<section-aware excerpt of .devforge/memory.md; "" if absent>",
+    "memory_state": "<absent|stub|populated>",
     "head_sha": "<full source-repo git HEAD SHA>",
     "branch": "<current branch name (source repo)>",
     "source_branch": "<same as branch (source repo, explicit alias)>",
@@ -53,9 +55,14 @@ Design notes:
   network-unavailable or missing-git conditions degrade gracefully.
 - _check_branch returns (branch_name, None) on success, (None, error) on
   failure so cmd_preflight reads the git branch exactly once.
-- Digest lines = first N non-blank lines (up to DIGEST_LINES) of each file.
-  Not the whole file — the orchestrator uses this as a quick sanity check.
-- memory.md absence is NOT an error; its digest is null in that case.
+- Digest lines = first N non-blank lines (up to DIGEST_LINES) of
+  constitution.md. Not the whole file — the orchestrator uses this as a
+  quick sanity check.
+- memory.md is read via _shared.memory.read_memory_context(), the same
+  section-aware excerpt + three-state probe every other read-memory verb
+  (plan_helper / breakdown_helper / pr_review_helper) uses -- NOT a
+  digest (plan 79 Phase 5). memory.md absence is NOT an error;
+  memory_present is False and memory_excerpt is "" in that case.
 - source_dirty_warning field: present in JSON output but set to null when
   the source repo is clean.  Non-null string value contains a human-readable
   advisory message.  This is ported from the proven 1.x execute-task.md
@@ -71,7 +78,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from _implement._workspace import resolve_workspace
-from _shared.memory import read_memory_digest
+from _shared.memory import MEMORY_STATE_KEY, read_memory_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -99,7 +106,7 @@ CONSTITUTION_POPULATE_GUARDS = (
 # via _git_origin_default_branch() and also refused.
 DEFAULT_BRANCHES = frozenset(["main", "master", "trunk"])
 
-# Number of leading lines to include in each digest.
+# Number of leading lines to include in the constitution digest.
 DIGEST_LINES = 5
 
 # Exit codes (match breakdown_helper.py convention).
@@ -414,16 +421,22 @@ def cmd_preflight(args):
             "per-task WIP commit, but the diff will be harder to read.)"
         )
 
-    # --- Build digests (install root — constitution + memory are wrapper artifacts). ---
+    # --- Build digest / excerpt (install root — constitution + memory are
+    # wrapper artifacts). ---
     constitution_path = root / "constitution.md"
     constitution_digest = _read_first_n_lines(constitution_path, DIGEST_LINES)
 
-    memory_digest = read_memory_digest(str(root), n=DIGEST_LINES)
-    # memory.md absence is NOT an error; null digest is valid.
+    # Single read of memory.md -- present / state / excerpt all derive from
+    # it, matching plan_helper / breakdown_helper / pr_review_helper's
+    # read-memory verb contract (plan 79 Phase 5). memory.md absence is NOT
+    # an error; memory_present is False and memory_excerpt is "" then.
+    memory_context = read_memory_context(str(root))
 
     result = {
         "constitution_digest": constitution_digest,
-        "memory_digest": memory_digest,
+        "memory_present": memory_context["present"],
+        "memory_excerpt": memory_context["excerpt"],
+        MEMORY_STATE_KEY: memory_context[MEMORY_STATE_KEY],
         "head_sha": head_sha,
         "branch": branch,
         "source_branch": branch,
