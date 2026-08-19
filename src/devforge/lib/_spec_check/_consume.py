@@ -5,7 +5,7 @@ Note: this module shares its bare filename with the unrelated
 confuse the two; they are independent modules in different subpackages with
 no shared code.
 
-Three responsibilities:
+Five responsibilities:
 
 1. ``extract_acs(source)`` -- the command's stable AC-extraction entry point.
    Thin delegation to ``_shared.spec_acs.parse_acs``; the command imports
@@ -46,6 +46,16 @@ Three responsibilities:
    a repo construction site); an ``unresolved`` variable's ``searched``
    claim is likewise never re-checked -- the negative claim is taken on
    faith (D3).
+
+5. ``citation_errors_by_variable(errors)`` -- D4 (this module's neighbor
+   ``_quorum.py``, ``merge_subject_resolutions``): a tiny lookup that maps
+   ``validate_citations()``'s human-readable error strings back to the
+   variable name each one names. Kept HERE, next to the function that
+   OWNS the ``"variable '<name>': ..."`` message format, rather than in
+   ``_quorum.py`` re-deriving that format from the outside -- the two
+   would drift independently otherwise. This does not change
+   ``validate_citations``'s own return type (still ``List[str]``); it is
+   a small, separate, format-aware reader of that same list.
 
 Two atom input shapes are accepted by ``parse_ir`` (mirroring the IR's own
 Bool/numeric/Enum representation, see ``ir_schema.Atom``):
@@ -691,3 +701,47 @@ def validate_citations(ir, workspace_root):
             )
 
     return sorted(set(errors))
+
+
+# ---------------------------------------------------------------------------
+# citation_errors_by_variable -- D4: a tiny reader of validate_citations'
+# own message format, kept next to the function that owns that format.
+# ---------------------------------------------------------------------------
+
+
+def citation_errors_by_variable(errors):
+    # type: (List[str]) -> Dict[str, str]
+    """Map each validate_citations() error string back to the Variable
+    name it names.
+
+    Every validate_citations() message is formatted
+    ``"variable '<name>': ..."`` (see that function's four ``errors.append``
+    call sites, all four share this prefix) -- this reads that prefix back
+    out. The name is closed on the literal delimiter SEQUENCE ``"': "``
+    (close-quote, colon, space) that validate_citations always emits
+    immediately after the name -- NOT on the first bare ``'`` in the
+    remainder, which would truncate a variable name that itself contains
+    an apostrophe (e.g. ``it's_shipped``) and silently fold a genuinely
+    failing citation into "resolved" (a false negative in the D4 merge).
+    validate_citations can append AT MOST ONE error per variable (each of
+    its four checks either ``continue``s after appending or is the final
+    check reached), so collisions are not expected in practice; a
+    duplicate name overwrites (last-write-wins), which is a harmless
+    default rather than a crash if that ever changes.
+
+    Any string not matching the ``"variable '<name>': "`` prefix+delimiter
+    shape is silently skipped -- this reader is scoped to
+    validate_citations' output specifically, not a general-purpose error
+    parser.
+    """
+    mapping = {}  # type: Dict[str, str]
+    prefix = "variable '"
+    delimiter = "': "
+    for err in errors:
+        if not err.startswith(prefix):
+            continue
+        remainder = err[len(prefix):]
+        end = remainder.find(delimiter)
+        if end != -1:
+            mapping[remainder[:end]] = err
+    return mapping

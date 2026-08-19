@@ -10,6 +10,10 @@ Covers:
     scoping edge branches (uncovered row + ghost-entry non-inflation).
   - write_spec_check_report: file written, path returned, dir created,
     overwrite idempotent.
+  - Plan 82 D4/OQ-2: the coverage line's third (J) term -- all four
+    K>0/K==0 x J>0/J==0 combos, each pinned as an exact full-string match;
+    the "## UNRESOLVED SUBJECTS" section (rendered / omitted); the
+    "**Spec hash**" header line (rendered / omitted).
 """
 
 import os
@@ -34,7 +38,14 @@ from _spec_check._report import (  # noqa: E402
     write_spec_check_report,
 )
 from _spec_check._solve import SolveResult  # noqa: E402
-from _spec_check.ir_schema import Atom, Constraint, Coverage, SpecCheckIR, Variable  # noqa: E402
+from _spec_check.ir_schema import (  # noqa: E402
+    Atom,
+    Constraint,
+    Coverage,
+    SpecCheckIR,
+    SubjectResolution,
+    Variable,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -558,6 +569,364 @@ class TestRenderReportStability(unittest.TestCase):
         self.assertNotIn("REVISE-SPEC", report)
         self.assertIn("CONSISTENT", report)
         self.assertNotIn("Formalization stability:", report)
+
+
+# ---------------------------------------------------------------------------
+# render_report -- Plan 82 D4/OQ-2 extension.
+# ---------------------------------------------------------------------------
+
+
+def _ir_one_ac_fully_formalized():
+    """K==0, J==0: a single AC, formalized, nothing skipped/unresolved."""
+    variables = [Variable(name="x", sort="Int", gloss="a count")]
+    constraints = [
+        Constraint(
+            ac_id="AC-1",
+            kind="assertion",
+            consequent=[Atom(var="x", op="<", value=100)],
+        )
+    ]
+    coverage = [Coverage(ac_id="AC-1", status="formalized")]
+    return SpecCheckIR(variables=variables, constraints=constraints, coverage=coverage)
+
+
+def _acs_one():
+    return [{"id": "AC-1", "text": "The count shall be under 100."}]
+
+
+def _ir_with_unresolved_subject_and_skip():
+    """K>0, J>0: one formalized, one skipped_prose, one unresolved_subject."""
+    variables = [
+        Variable(name="response_ms", sort="Int", gloss="Response time in ms"),
+        Variable(
+            name="shipped_state",
+            sort="Bool",
+            gloss="order has shipped",
+            subject_resolution=SubjectResolution(
+                status="unresolved",
+                searched="grepped 'shipped' and 'mark_shipped' across "
+                "src/, 0 hits",
+            ),
+        ),
+    ]
+    constraints = [
+        Constraint(
+            ac_id="AC-1",
+            kind="assertion",
+            consequent=[Atom(var="response_ms", op="<", value=100)],
+        ),
+    ]
+    coverage = [
+        Coverage(ac_id="AC-1", status="formalized"),
+        Coverage(ac_id="AC-2", status="unresolved_subject", subject="shipped_state"),
+        Coverage(ac_id="AC-3", status="skipped_prose", reason="vague, not measurable"),
+    ]
+    return SpecCheckIR(variables=variables, constraints=constraints, coverage=coverage)
+
+
+def _ir_with_unresolved_subject_no_skip():
+    """K==0, J>0: one formalized, one unresolved_subject, zero skipped."""
+    variables = [
+        Variable(name="x", sort="Int", gloss="a count"),
+        Variable(
+            name="y",
+            sort="Bool",
+            gloss="a flag nothing constructs",
+            subject_resolution=SubjectResolution(
+                status="unresolved", searched="grepped src/, 0 hits"
+            ),
+        ),
+    ]
+    constraints = [
+        Constraint(
+            ac_id="AC-1",
+            kind="assertion",
+            consequent=[Atom(var="x", op="<", value=100)],
+        ),
+    ]
+    coverage = [
+        Coverage(ac_id="AC-1", status="formalized"),
+        Coverage(ac_id="AC-2", status="unresolved_subject", subject="y"),
+    ]
+    return SpecCheckIR(variables=variables, constraints=constraints, coverage=coverage)
+
+
+def _ir_with_two_unresolved_subjects():
+    """K>0, J==2: pluralization pin fixture -- two DISTINCT unresolved
+    subjects (not the same variable counted twice)."""
+    variables = [
+        Variable(name="x", sort="Int", gloss="a count"),
+        Variable(
+            name="y",
+            sort="Bool",
+            gloss="a flag nothing constructs",
+            subject_resolution=SubjectResolution(
+                status="unresolved", searched="grepped src/, 0 hits"
+            ),
+        ),
+        Variable(
+            name="z",
+            sort="Bool",
+            gloss="another flag nothing constructs",
+            subject_resolution=SubjectResolution(
+                status="unresolved", searched="grepped src/, 0 hits (z)"
+            ),
+        ),
+    ]
+    constraints = [
+        Constraint(
+            ac_id="AC-1",
+            kind="assertion",
+            consequent=[Atom(var="x", op="<", value=100)],
+        ),
+    ]
+    coverage = [
+        Coverage(ac_id="AC-1", status="formalized"),
+        Coverage(ac_id="AC-2", status="unresolved_subject", subject="y"),
+        Coverage(ac_id="AC-3", status="unresolved_subject", subject="z"),
+        Coverage(ac_id="AC-4", status="skipped_prose", reason="vague"),
+    ]
+    return SpecCheckIR(variables=variables, constraints=constraints, coverage=coverage)
+
+
+class TestCoverageLineFourCombos(unittest.TestCase):
+    """Plan 82 D4: the coverage-line third (J) term, all four K>0/K==0 x
+    J>0/J==0 combos, each pinned as an exact composed-line full-string
+    match (not just substring pieces)."""
+
+    def test_k_gt0_j_eq0_byte_identical_to_pre_d4_format(self):
+        # Back-compat anchor: this is the SAME fixture/format the pre-D4
+        # test_coverage_section_checked_n_of_m already pins piecewise --
+        # here pinned as one exact composed string.
+        ir = _ir_with_implication()
+        acs = _acs()
+        solve_result = SolveResult(status="unsat", unsat_core=["AC-1", "AC-2"])
+        report = render_report(
+            _FEATURE, _DATE, solve_result, ir, acs, "REVISE-SPEC"
+        )
+        self.assertIn(
+            "**Checked 2 of 3 acceptance criteria** (1 unformalizable).",
+            report,
+        )
+        self.assertNotIn("unresolved subjects", report)
+
+    def test_k_eq0_j_eq0(self):
+        ir = _ir_one_ac_fully_formalized()
+        acs = _acs_one()
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        report = render_report(_FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT")
+        self.assertIn(
+            "**Checked 1 of 1 acceptance criteria** (0 unformalizable).",
+            report,
+        )
+        self.assertNotIn("unresolved subjects", report)
+
+    def test_k_gt0_j_eq1_singular(self):
+        # J==1 pins the SINGULAR "unresolved subject" (nit fix) -- not
+        # "unresolved subjects".
+        ir = _ir_with_unresolved_subject_and_skip()
+        acs = _acs()
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        report = render_report(_FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT")
+        self.assertIn(
+            "**Checked 1 of 3 acceptance criteria** (1 unformalizable; "
+            "1 unresolved subject).",
+            report,
+        )
+        self.assertNotIn("1 unresolved subjects)", report)
+
+    def test_k_eq0_j_eq1_singular(self):
+        ir = _ir_with_unresolved_subject_no_skip()
+        acs = [
+            {"id": "AC-1", "text": "The count shall be under 100."},
+            {"id": "AC-2", "text": "The flag shall not be set."},
+        ]
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        report = render_report(_FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT")
+        self.assertIn(
+            "**Checked 1 of 2 acceptance criteria** (0 unformalizable; "
+            "1 unresolved subject).",
+            report,
+        )
+        self.assertNotIn("1 unresolved subjects)", report)
+
+    def test_k_gt0_j_gt1_plural(self):
+        # J>1 pins the PLURAL "unresolved subjects" -- the nit fix must
+        # not over-correct into always-singular.
+        ir = _ir_with_two_unresolved_subjects()
+        acs = [
+            {"id": "AC-1", "text": "t1"},
+            {"id": "AC-2", "text": "t2"},
+            {"id": "AC-3", "text": "t3"},
+            {"id": "AC-4", "text": "t4"},
+        ]
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        report = render_report(_FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT")
+        self.assertIn(
+            "**Checked 1 of 4 acceptance criteria** (1 unformalizable; "
+            "2 unresolved subjects).",
+            report,
+        )
+
+    def test_unresolved_subject_row_shows_subject_name(self):
+        ir = _ir_with_unresolved_subject_and_skip()
+        acs = _acs()
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        report = render_report(_FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT")
+        self.assertIn(
+            "- AC-2: unresolved_subject (subject: shipped_state)", report
+        )
+
+
+class TestRenderReportUnresolvedSubjectsSection(unittest.TestCase):
+    """Plan 82 D4: the '## UNRESOLVED SUBJECTS' section -- rendered only
+    when unresolved_subjects is a non-empty list; placed right after
+    Recommendation, before 'How your ACs were read'."""
+
+    def _base_call(self, unresolved_subjects):
+        ir = _ir_with_implication()
+        acs = _acs()
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        return render_report(
+            _FEATURE,
+            _DATE,
+            solve_result,
+            ir,
+            acs,
+            "CONSISTENT",
+            unresolved_subjects=unresolved_subjects,
+        )
+
+    def test_omitted_renders_nothing_extra_byte_identical(self):
+        report_no_kwarg = render_report(
+            _FEATURE, _DATE, SolveResult(status="sat", unsat_core=[]),
+            _ir_with_implication(), _acs(), "CONSISTENT",
+        )
+        report_explicit_none = self._base_call(None)
+        report_explicit_empty = self._base_call([])
+        self.assertEqual(report_no_kwarg, report_explicit_none)
+        self.assertEqual(report_no_kwarg, report_explicit_empty)
+        self.assertNotIn("## UNRESOLVED SUBJECTS", report_no_kwarg)
+
+    def test_non_empty_renders_section_with_variable_gloss_and_ac_ids(self):
+        unresolved = [
+            {
+                "variable": "shipped_state",
+                "gloss": "order has shipped",
+                "ac_ids": ["AC-4", "AC-9"],
+                "passes": [
+                    {
+                        "pass": 1,
+                        "outcome": "unresolved",
+                        "searched": "grepped 'shipped', 0 hits",
+                        "citation_error": None,
+                    },
+                    {
+                        "pass": 2,
+                        "outcome": "citation_failed",
+                        "searched": None,
+                        "citation_error": (
+                            "variable 'shipped_state': cited file "
+                            "'src/missing.py' does not exist under "
+                            "workspace root"
+                        ),
+                    },
+                ],
+            }
+        ]
+        report = self._base_call(unresolved)
+        self.assertIn("## UNRESOLVED SUBJECTS", report)
+        self.assertIn("shipped_state", report)
+        self.assertIn("order has shipped", report)
+        self.assertIn("`AC-4`", report)
+        self.assertIn("`AC-9`", report)
+        self.assertIn(
+            "pass 1: searched -- grepped 'shipped', 0 hits", report
+        )
+        self.assertIn(
+            "pass 2: claimed resolved, but the citation check failed -- "
+            "variable 'shipped_state': cited file 'src/missing.py' does "
+            "not exist under workspace root",
+            report,
+        )
+
+    def test_section_placed_right_after_recommendation_before_reading(self):
+        unresolved = [
+            {
+                "variable": "z",
+                "gloss": "g",
+                "ac_ids": [],
+                "passes": [
+                    {
+                        "pass": 1,
+                        "outcome": "unresolved",
+                        "searched": "s",
+                        "citation_error": None,
+                    }
+                ],
+            }
+        ]
+        report = self._base_call(unresolved)
+        rec_idx = report.index("## Recommendation")
+        unresolved_idx = report.index("## UNRESOLVED SUBJECTS")
+        reading_idx = report.index("## How your ACs were read as logic")
+        self.assertLess(rec_idx, unresolved_idx)
+        self.assertLess(unresolved_idx, reading_idx)
+
+    def test_empty_ac_ids_renders_none_named(self):
+        unresolved = [
+            {
+                "variable": "z",
+                "gloss": "g",
+                "ac_ids": [],
+                "passes": [
+                    {
+                        "pass": 1,
+                        "outcome": "unresolved",
+                        "searched": "s",
+                        "citation_error": None,
+                    }
+                ],
+            }
+        ]
+        report = self._base_call(unresolved)
+        self.assertIn("(none named)", report)
+
+
+class TestRenderReportSpecHash(unittest.TestCase):
+    """Plan 82 OQ-2: the '**Spec hash**' header line."""
+
+    _HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    def test_omitted_renders_nothing_extra_byte_identical(self):
+        ir = _ir_with_implication()
+        acs = _acs()
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        report_no_kwarg = render_report(
+            _FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT"
+        )
+        report_explicit_none = render_report(
+            _FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT", spec_sha256=None
+        )
+        self.assertEqual(report_no_kwarg, report_explicit_none)
+        self.assertNotIn("**Spec hash**", report_no_kwarg)
+
+    def test_given_hash_renders_greppable_header_line(self):
+        ir = _ir_with_implication()
+        acs = _acs()
+        solve_result = SolveResult(status="sat", unsat_core=[])
+        report = render_report(
+            _FEATURE, _DATE, solve_result, ir, acs, "CONSISTENT",
+            spec_sha256=self._HASH,
+        )
+        self.assertIn("**Spec hash**: {0}".format(self._HASH), report)
+        # Positioned in the header, after **Date** and before the scope
+        # line.
+        date_idx = report.index("**Date**:")
+        hash_idx = report.index("**Spec hash**:")
+        scope_idx = report.index("> **Scope:**")
+        self.assertLess(date_idx, hash_idx)
+        self.assertLess(hash_idx, scope_idx)
 
 
 if __name__ == "__main__":

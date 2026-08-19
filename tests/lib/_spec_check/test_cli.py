@@ -41,6 +41,13 @@ consume-ir:
   IR missing a coverage entry          → returns 3 (IRValidationError)
   valid IR                             → returns 0, canonical IR JSON
 
+consume-ir citation check (Plan 82 D3/D4):
+  no --workspace-root (getattr default) → rc 0, "citation_errors" present
+  valid citation under --workspace-root → rc 0, citation_errors == []
+  failing citation                      → STILL rc 0 (never a re-prompt
+                                           failure), error recorded
+  no subject_resolution anywhere        → citation_errors == []
+
 solve:
   missing --ir-file                    → returns 2
   malformed canonical IR               → returns 2
@@ -58,6 +65,18 @@ render-report:
   happy path REVISE-SPEC (unsat)       → returns 0, file written
   --stability-file (D13)               → returns 0, stability line in report
 
+render-report merge + hash (Plan 82 D4/D5/OQ-2):
+  --ir-files-file merges + renders '## UNRESOLVED SUBJECTS'
+  --ir-files-file + --stability-file → ack["clean"] (composite predicate;
+    the single most important case: consistent quorum + 1 unresolved → False)
+  resolved-in-one-pass-only via --ir-files-file → NOT in the section
+  malformed / empty / bad-entry --ir-files-file → returns 2
+  --spec-file → ack["spec_sha256"] == hashlib.sha256(bytes).hexdigest(),
+    report has a matching "**Spec hash**" line
+  missing --spec-file (file not found) → returns 2
+  neither given → ack["clean"] / counts / spec_sha256 all None (never a
+    default-true guess)
+
 write-seed:
   missing required args                → returns 2
   bad --cycle-count                    → returns 2
@@ -73,6 +92,7 @@ End-to-end scratch-chain round-trip (real fixture):
 
 import contextlib
 import dataclasses
+import hashlib
 import io
 import json
 import os
@@ -700,6 +720,135 @@ class TestConsumeIR(unittest.TestCase):
             self.assertEqual(rc, 2)
 
 
+class TestConsumeIRCitationCheck(unittest.TestCase):
+    """Plan 82 D3/D4: consume-ir's --workspace-root citation check. A
+    citation MISS is a mechanical finding recorded in the output's
+    "citation_errors" -- it must NEVER consume a re-prompt exit code
+    (rc stays 0 either way)."""
+
+    def _ir_with_code_citation(self, citation, locator="def mark_shipped"):
+        # The variable itself is not tied to AC-1's coverage row (the
+        # subject-resolution mechanism is orthogonal to formalization) --
+        # AC-1 is marked skipped_prose so validate_ir's coverage-
+        # completeness check is satisfied and this fixture reaches the D3
+        # citation check at all.
+        return {
+            "variables": [
+                {
+                    "name": "shipped_state",
+                    "sort": "Bool",
+                    "gloss": "order has shipped",
+                    "subject_resolution": {
+                        "status": "resolved",
+                        "arm": "code",
+                        "citation": citation,
+                        "locator": locator,
+                        "note": "mark_shipped() sets the flag.",
+                    },
+                }
+            ],
+            "constraints": [],
+            "coverage": [
+                {"ac_id": "AC-1", "status": "skipped_prose", "reason": "not logical"}
+            ],
+        }
+
+    def test_missing_workspace_root_defaults_to_cwd_and_stays_rc0(self):
+        # No --workspace-root attribute at all on args (mirrors every
+        # pre-D3 _Args(...) call site in this file) -- getattr default
+        # kicks in, and a citation that will not resolve under CWD still
+        # yields rc=0 (never a re-prompt-consuming failure).
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ir_path = _write_json(
+                tmpdir, "ir.json", self._ir_with_code_citation("src/nope.py")
+            )
+            acs_path = _write_json(
+                tmpdir, "acs.json", {"acs": [{"id": "AC-1", "text": "t"}]}
+            )
+            args = _Args(ir_file=ir_path, acs_file=acs_path)
+            rc, out = _capture(cmd_consume_ir, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertIn("citation_errors", data)
+
+    def test_valid_citation_under_workspace_root_is_clean(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_dir = os.path.join(tmpdir, "src")
+            os.makedirs(src_dir, exist_ok=True)
+            with open(
+                os.path.join(src_dir, "orders.py"), "w", encoding="utf-8"
+            ) as fh:
+                fh.write("def mark_shipped():\n    pass\n")
+
+            ir_path = _write_json(
+                tmpdir,
+                "ir.json",
+                self._ir_with_code_citation("src/orders.py"),
+            )
+            acs_path = _write_json(
+                tmpdir, "acs.json", {"acs": [{"id": "AC-1", "text": "t"}]}
+            )
+            args = _Args(
+                ir_file=ir_path, acs_file=acs_path, workspace_root=tmpdir
+            )
+            rc, out = _capture(cmd_consume_ir, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertEqual(data["citation_errors"], [])
+
+    def test_failing_citation_is_still_rc0_with_error_recorded(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ir_path = _write_json(
+                tmpdir,
+                "ir.json",
+                self._ir_with_code_citation("src/does_not_exist.py"),
+            )
+            acs_path = _write_json(
+                tmpdir, "acs.json", {"acs": [{"id": "AC-1", "text": "t"}]}
+            )
+            args = _Args(
+                ir_file=ir_path, acs_file=acs_path, workspace_root=tmpdir
+            )
+            # No stderr redirect assertion needed -- this is NOT a failure
+            # path; rc must be 0 exactly like the clean case above.
+            rc, out = _capture(cmd_consume_ir, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertEqual(len(data["citation_errors"]), 1)
+            self.assertIn("does not exist", data["citation_errors"][0])
+            self.assertIn("shipped_state", data["citation_errors"][0])
+            # The canonical IR itself is still present/usable downstream --
+            # a citation miss does not withhold the parsed IR.
+            self.assertEqual(data["variables"][0]["name"], "shipped_state")
+
+    def test_no_subject_resolution_yields_empty_citation_errors(self):
+        # The pre-existing _valid_ir_dict() fixture (no subject_resolution
+        # anywhere) must round-trip with an empty citation_errors list --
+        # confirms the additive key never surprises a caller that has no
+        # opinion on D3/D4 at all.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ir_raw = {
+                "variables": [{"name": "x", "sort": "Int", "gloss": "count"}],
+                "constraints": [
+                    {
+                        "ac_id": "AC-1",
+                        "kind": "assertion",
+                        "consequent": [{"var": "x", "op": "<", "value": 10}],
+                    }
+                ],
+                "coverage": [{"ac_id": "AC-1", "status": "formalized"}],
+            }
+            ir_path = _write_json(tmpdir, "ir.json", ir_raw)
+            acs_path = _write_json(
+                tmpdir, "acs.json", {"acs": [{"id": "AC-1", "text": "t1"}]}
+            )
+            args = _Args(ir_file=ir_path, acs_file=acs_path)
+            rc, out = _capture(cmd_consume_ir, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertEqual(data["citation_errors"], [])
+
+
 # ---------------------------------------------------------------------------
 # solve
 # ---------------------------------------------------------------------------
@@ -1076,6 +1225,217 @@ class TestRenderReport(unittest.TestCase):
                 rc, out = _capture(cmd_render_report, args)
             self.assertEqual(rc, 2)
             self.assertFalse(os.path.isfile(os.path.join(feature_dir, "spec-check.md")))
+
+
+class TestRenderReportMergeAndHash(unittest.TestCase):
+    """Plan 82 D4/D5/OQ-2: --ir-files-file (cross-pass merge + ack['clean']
+    composite predicate) and --spec-file (content hash)."""
+
+    def _pass_dict(self, variables, coverage=None, citation_errors=None):
+        return {
+            "variables": variables,
+            "constraints": [],
+            "coverage": coverage or [],
+            "citation_errors": citation_errors or [],
+        }
+
+    def _var_unresolved(self, name, searched):
+        return {
+            "name": name,
+            "sort": "Bool",
+            "gloss": "gloss-" + name,
+            "subject_resolution": {"status": "unresolved", "searched": searched},
+        }
+
+    def _var_resolved_code(self, name, citation="src/x.py", locator="def x"):
+        return {
+            "name": name,
+            "sort": "Bool",
+            "gloss": "gloss-" + name,
+            "subject_resolution": {
+                "status": "resolved",
+                "arm": "code",
+                "citation": citation,
+                "locator": locator,
+                "note": "found it",
+            },
+        }
+
+    def _base_render_args(self, tmpdir, feature_dir, **overrides):
+        ir_path = _write_json(tmpdir, "ir.json", _valid_ir_dict())
+        solve_path = _write_json(
+            tmpdir, "solve.json", {"status": "sat", "unsat_core": []}
+        )
+        acs = [{"id": "AC-{0}".format(i), "text": "t{0}".format(i)} for i in range(1, 8)]
+        acs_path = _write_json(tmpdir, "acs.json", {"acs": acs, "count": 7})
+        kwargs = dict(
+            ir_file=ir_path, solve_file=solve_path, acs_file=acs_path,
+            feature="specs/001-x", feature_dir=feature_dir,
+        )
+        kwargs.update(overrides)
+        return _Args(**kwargs)
+
+    def test_ir_files_file_merges_and_renders_unresolved_subjects_section(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            passes = [
+                self._pass_dict([self._var_unresolved("shipped_state", "s1")]),
+                self._pass_dict([self._var_unresolved("shipped_state", "s2")]),
+            ]
+            ir_files_path = _write_json(tmpdir, "ir-files.json", passes)
+            args = self._base_render_args(
+                tmpdir, feature_dir, ir_files_file=ir_files_path
+            )
+            rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertEqual(data["unresolved_subject_count"], 1)
+            self.assertEqual(data["citation_failure_count"], 0)
+            # No --stability-file given -> "clean" cannot be claimed.
+            self.assertIsNone(data["clean"])
+            with open(data["report_path"], encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn("## UNRESOLVED SUBJECTS", content)
+            self.assertIn("shipped_state", content)
+
+    def test_resolved_in_one_pass_only_excluded_from_section(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            passes = [
+                self._pass_dict([self._var_unresolved("Q", "s1")]),
+                self._pass_dict([self._var_resolved_code("Q")]),
+            ]
+            ir_files_path = _write_json(tmpdir, "ir-files.json", passes)
+            args = self._base_render_args(
+                tmpdir, feature_dir, ir_files_file=ir_files_path
+            )
+            rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertEqual(data["unresolved_subject_count"], 0)
+            with open(data["report_path"], encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertNotIn("## UNRESOLVED SUBJECTS", content)
+
+    def test_stability_and_ir_files_together_yield_clean_false(self):
+        # THE single most important integration case: a quorum-consistent
+        # verdict alongside a merge that found one unresolved subject
+        # MUST report clean=False -- never silently True.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            passes = [self._pass_dict([self._var_unresolved("Z", "s1")])]
+            ir_files_path = _write_json(tmpdir, "ir-files.json", passes)
+            stability_path = _write_json(
+                tmpdir, "stability.json",
+                {"verdict": "consistent", "reproduced_in": 0, "of": 1},
+            )
+            args = self._base_render_args(
+                tmpdir, feature_dir,
+                ir_files_file=ir_files_path, stability_file=stability_path,
+            )
+            rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertFalse(data["clean"])
+
+    def test_stability_and_ir_files_together_yield_clean_true(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            passes = [self._pass_dict([self._var_resolved_code("Z")])]
+            ir_files_path = _write_json(tmpdir, "ir-files.json", passes)
+            stability_path = _write_json(
+                tmpdir, "stability.json",
+                {"verdict": "consistent", "reproduced_in": 0, "of": 1},
+            )
+            args = self._base_render_args(
+                tmpdir, feature_dir,
+                ir_files_file=ir_files_path, stability_file=stability_path,
+            )
+            rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertTrue(data["clean"])
+
+    def test_malformed_ir_files_file_returns_2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            ir_files_path = _write_json(tmpdir, "ir-files.json", {"not": "a list"})
+            args = self._base_render_args(
+                tmpdir, feature_dir, ir_files_file=ir_files_path
+            )
+            buf_err = io.StringIO()
+            with contextlib.redirect_stderr(buf_err):
+                rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 2)
+
+    def test_empty_ir_files_file_returns_2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            ir_files_path = _write_json(tmpdir, "ir-files.json", [])
+            args = self._base_render_args(
+                tmpdir, feature_dir, ir_files_file=ir_files_path
+            )
+            buf_err = io.StringIO()
+            with contextlib.redirect_stderr(buf_err):
+                rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 2)
+
+    def test_ir_files_file_bad_entry_returns_2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            ir_files_path = _write_json(tmpdir, "ir-files.json", [{"variables": []}])
+            args = self._base_render_args(
+                tmpdir, feature_dir, ir_files_file=ir_files_path
+            )
+            buf_err = io.StringIO()
+            with contextlib.redirect_stderr(buf_err):
+                rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 2)
+
+    def test_spec_file_hash_matches_real_sha256(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            spec_content = b"# Spec\n\nsome real content\n"
+            spec_path = os.path.join(tmpdir, "spec.md")
+            with open(spec_path, "wb") as fh:
+                fh.write(spec_content)
+            expected_hash = hashlib.sha256(spec_content).hexdigest()
+
+            args = self._base_render_args(tmpdir, feature_dir, spec_file=spec_path)
+            rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertEqual(data["spec_sha256"], expected_hash)
+            with open(data["report_path"], encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn("**Spec hash**: {0}".format(expected_hash), content)
+
+    def test_spec_file_missing_returns_2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            args = self._base_render_args(
+                tmpdir, feature_dir,
+                spec_file=os.path.join(tmpdir, "does-not-exist.md"),
+            )
+            buf_err = io.StringIO()
+            with contextlib.redirect_stderr(buf_err):
+                rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 2)
+
+    def test_neither_given_leaves_new_ack_fields_none(self):
+        # Back-compat/honesty check: omitting BOTH new optional inputs
+        # must never default "clean" to True, nor the counts to 0 --
+        # None means "not computed", not "checked and found nothing".
+        with tempfile.TemporaryDirectory() as tmpdir:
+            feature_dir = os.path.join(tmpdir, "specs", "001-x")
+            args = self._base_render_args(tmpdir, feature_dir)
+            rc, out = _capture(cmd_render_report, args)
+            self.assertEqual(rc, 0)
+            data = json.loads(out)
+            self.assertIsNone(data["clean"])
+            self.assertIsNone(data["unresolved_subject_count"])
+            self.assertIsNone(data["citation_failure_count"])
+            self.assertIsNone(data["spec_sha256"])
 
 
 # ---------------------------------------------------------------------------

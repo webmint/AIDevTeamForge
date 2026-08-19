@@ -11,17 +11,34 @@ captures each verb's stdout to a file and passes it to the next verb via a
   preflight               -- gate on setup-chain artefacts + spec + z3
   resolve-scope           -- extract ACs from the feature's spec.md
   render-formalize-brief  -- assemble the spec-formalizer dispatch brief
-  consume-ir              -- parse + validate the LLM's raw IR JSON
+  consume-ir              -- parse + validate the LLM's raw IR JSON, then
+                              (Plan 82 D3/D4) mechanically check any
+                              arm="code" citations against --workspace-root
+                              and embed the (possibly empty) result as this
+                              pass's "citation_errors" -- see that verb's
+                              own docstring for why a citation MISS never
+                              fails this verb's exit code
   solve                   -- run the Z3 solver over a canonical IR
   quorum-core             -- analyze k solve-result passes for D13
                               cross-run reproducibility (confirmed_unsat /
                               unstable / consistent)
-  render-report           -- render + write specs/<feature>/spec-check.md
+  render-report           -- render + write specs/<feature>/spec-check.md;
+                              optionally (Plan 82 D4) merges ALL passes'
+                              subject resolutions (--ir-files-file),
+                              computes the composite clean-verdict
+                              predicate, and (OQ-2) content-hashes
+                              --spec-file into the report
   write-seed              -- build + write spec-check-seed.json (REVISE-SPEC
                               backward re-entry arm)
 
 Exit-code convention (matches the sibling _grill/_audit/_review CLIs):
-  0  -- success
+  0  -- success. For consume-ir specifically: the IR parsed AND passed
+       cross-record validation -- a D3 citation MISS is STILL exit 0 (it
+       degrades that pass's subject resolution for the cross-pass merge;
+       it is not a re-promptable parse/validation failure, so it must
+       never consume a caller's retry budget the way exit 2/3 do). The
+       citation result rides in the same stdout JSON under
+       "citation_errors" (see consume-ir's docstring).
   1  -- unexpected top-level error (caught in main())
   2  -- gate failure / bad or missing input
   3  -- consume-ir only: IR parsed but failed cross-record validation
@@ -35,6 +52,7 @@ Stdlib only. Targets Python 3.8+. No from __future__ import annotations.
 import argparse
 import dataclasses
 import datetime
+import hashlib
 import json
 import os
 import sys
@@ -58,6 +76,7 @@ from _spec_check._consume import (  # noqa: E402
     IRValidationError,
     extract_acs,
     parse_ir,
+    validate_citations,
     validate_ir,
 )
 from _spec_check._preflight import Z3_INSTALL_MESSAGE, preflight  # noqa: E402
@@ -332,9 +351,16 @@ def cmd_render_formalize_brief(args):
 
 def cmd_consume_ir(args):
     # type: (argparse.Namespace) -> int
-    """Parse + cross-validate the LLM's raw IR JSON.
+    """Parse + cross-validate the LLM's raw IR JSON, then (Plan 82 D3/D4)
+    mechanically check any arm="code" subject-resolution citations.
 
-    Returns 0 on success (prints the canonical IR as JSON to stdout).
+    Returns 0 on success (prints the canonical IR as JSON to stdout, with
+      one extra top-level key -- "citation_errors": the sorted list from
+      validate_citations(ir, --workspace-root), [] when there is nothing
+      to check or nothing failed). The extra key is additive: every
+      existing consumer of this stdout shape (_ir_from_dict / parse_ir)
+      ignores unknown top-level keys, so solve --ir-file and render-report
+      --ir-file both keep working unchanged on this output.
     Returns 2 when --ir-file / --acs-file are missing or unreadable, or the
       IR is shape-malformed (IRParseError) -- re-prompt the formalizer with
       a syntax fix.
@@ -342,9 +368,21 @@ def cmd_consume_ir(args):
       against the ACs -- re-prompt the formalizer with the validation
       errors (a distinct exit code so main.md can tell the two failure
       modes apart; the stderr content differs).
+
+    D4 -- a citation MISS is NEVER an exit-2/3 failure here, by design: a
+    failing citation is not a shape problem (exit 2) and not a cross-
+    record inconsistency with the ACs (exit 3); it is a MECHANICAL
+    finding about ONE pass's subject resolution that the cross-pass D4
+    merge (_quorum.merge_subject_resolutions, run later at render-report)
+    needs to see, not something that should burn this pass's PHASE-2.3
+    retry budget re-prompting the formalizer over. So this verb always
+    returns 0 once the IR itself is valid, regardless of how many
+    citation_errors it found; only the report / clean-verdict layer
+    downstream reacts to a non-empty citation_errors list.
     """
     ir_file = getattr(args, "ir_file", None)
     acs_file = getattr(args, "acs_file", None)
+    workspace_root = getattr(args, "workspace_root", None) or "."
 
     if not ir_file:
         sys.stderr.write(
@@ -392,7 +430,14 @@ def cmd_consume_ir(args):
             sys.stderr.write("  - {0}\n".format(line))
         return 3
 
-    sys.stdout.write(json.dumps(_ir_to_dict(ir), indent=2, sort_keys=True) + "\n")
+    # D3/D4: mechanically check arm="code" citations. Never affects this
+    # verb's exit code (see docstring) -- the result rides in the stdout
+    # JSON for the cross-pass merge at render-report to consume later.
+    citation_errors = validate_citations(ir, workspace_root)
+
+    out_dict = _ir_to_dict(ir)
+    out_dict["citation_errors"] = citation_errors
+    sys.stdout.write(json.dumps(out_dict, indent=2, sort_keys=True) + "\n")
     return 0
 
 
@@ -512,12 +557,40 @@ def cmd_render_report(args):
     """Render + write specs/<feature>/spec-check.md from the solved IR.
 
     Returns 0 on success (prints {"report_path", "recommended_disposition",
-      "unsat_core", "status"} as JSON to stdout).
+      "unsat_core", "status", "clean", "unresolved_subject_count",
+      "citation_failure_count", "spec_sha256"} as JSON to stdout -- see
+      below for the four new (Plan 82) keys).
     Returns 2 on missing/unreadable/malformed input files, including a
       --solve-file that does not reconstruct into a valid SolveResult (e.g.
       a self-contradictory {"status": "sat", "unsat_core": [...]} that
-      SolveResult.__post_init__ rejects).
+      SolveResult.__post_init__ rejects), a malformed/empty
+      --ir-files-file, or an unreadable --spec-file.
+
+    Two OPTIONAL Plan-82 inputs, both additive (omitting either preserves
+    the exact pre-D4 behaviour):
+
+    --ir-files-file : path to a JSON array of ALL k passes' canonical IR
+      dicts (each the stdout shape of consume-ir, including its
+      "citation_errors" key -- typically built the same way PHASE 3
+      already assembles --passes-file, by globbing ir-canon-<i>.json).
+      When given, runs _quorum.merge_subject_resolutions across every
+      pass and feeds the merged "unresolved" list into render_report
+      (the "## UNRESOLVED SUBJECTS" section) and the "clean" ack field
+      below. When omitted, "unresolved_subject_count" /
+      "citation_failure_count" in the ack are None (UNKNOWN -- not
+      computed -- deliberately NOT 0/"assumed clean"; see "clean" below).
+
+    --spec-file : path to spec.md to content-hash (sha256) into the
+      report's "**Spec hash**" header line (Plan 82 OQ-2) and the ack's
+      "spec_sha256". Omitted by default -- no hash line rendered.
+
+    ack["clean"] (Plan 82 D5): True/False when BOTH --stability-file AND
+      --ir-files-file were given (is_clean_verdict over the parsed
+      quorum verdict + the merge); None when either is missing -- "clean"
+      is a claim this verb can only make when it actually checked both
+      dimensions, never a default-true guess.
     """
+    from _spec_check._quorum import is_clean_verdict, merge_subject_resolutions
     from _spec_check._report import (
         recommend_disposition,
         render_report,
@@ -530,6 +603,8 @@ def cmd_render_report(args):
     feature = getattr(args, "feature", None) or "."
     feature_dir = getattr(args, "feature_dir", None)
     stability_file = getattr(args, "stability_file", None)
+    ir_files_file = getattr(args, "ir_files_file", None)
+    spec_file = getattr(args, "spec_file", None)
 
     if not ir_file:
         sys.stderr.write(
@@ -592,6 +667,60 @@ def cmd_render_report(args):
             )
             return 2
 
+    # Plan 82 D4: the optional cross-pass subject-resolution merge.
+    merge = None
+    unresolved_subjects = None
+    if ir_files_file:
+        ir_files_data, err = _read_json_file(ir_files_file, "--ir-files-file")
+        if err:
+            sys.stderr.write("spec_check_helper render-report: {0}\n".format(err))
+            return 2
+        if not isinstance(ir_files_data, list) or not ir_files_data:
+            sys.stderr.write(
+                "spec_check_helper render-report: --ir-files-file must "
+                "decode to a non-empty JSON array of consume-ir-shaped "
+                "canonical IR objects\n"
+            )
+            return 2
+
+        pass_irs = []
+        citation_errors_by_pass = []
+        for i, entry in enumerate(ir_files_data):
+            if not isinstance(entry, dict):
+                sys.stderr.write(
+                    "spec_check_helper render-report: --ir-files-file[{0}] "
+                    "must be an object, got {1}\n".format(
+                        i, type(entry).__name__
+                    )
+                )
+                return 2
+            try:
+                pass_irs.append(_ir_from_dict(entry))
+            except IRParseError as exc:
+                sys.stderr.write(
+                    "spec_check_helper render-report: --ir-files-file[{0}]: "
+                    "{1}\n".format(i, exc)
+                )
+                return 2
+            citation_errors_by_pass.append(entry.get("citation_errors") or [])
+
+        merge = merge_subject_resolutions(pass_irs, citation_errors_by_pass)
+        unresolved_subjects = merge["unresolved"]
+
+    # Plan 82 OQ-2: the optional spec.md content hash.
+    spec_sha256 = None
+    if spec_file:
+        try:
+            with open(spec_file, "rb") as fh:
+                spec_bytes = fh.read()
+        except OSError as exc:
+            sys.stderr.write(
+                "spec_check_helper render-report: cannot read --spec-file: "
+                "{0}\n".format(exc)
+            )
+            return 2
+        spec_sha256 = hashlib.sha256(spec_bytes).hexdigest()
+
     try:
         ir = _ir_from_dict(ir_data)
     except IRParseError as exc:
@@ -612,7 +741,15 @@ def cmd_render_report(args):
 
     try:
         content = render_report(
-            feature, date_str, solve_result, ir, acs, rec, stability=stability
+            feature,
+            date_str,
+            solve_result,
+            ir,
+            acs,
+            rec,
+            stability=stability,
+            unresolved_subjects=unresolved_subjects,
+            spec_sha256=spec_sha256,
         )
     except ValueError as exc:
         sys.stderr.write("spec_check_helper render-report: {0}\n".format(exc))
@@ -627,11 +764,27 @@ def cmd_render_report(args):
         )
         return 2
 
+    # Plan 82 D5: "clean" is only ever a real claim when BOTH the quorum
+    # verdict (--stability-file) AND the cross-pass merge (--ir-files-file)
+    # were actually computed -- never a default-true guess when either is
+    # missing (see this function's docstring).
+    clean = None
+    if stability is not None and merge is not None:
+        clean = is_clean_verdict(stability, merge)
+
     ack = {
         "report_path": report_path,
         "recommended_disposition": rec,
         "unsat_core": solve_result.unsat_core,
         "status": solve_result.status,
+        "clean": clean,
+        "unresolved_subject_count": (
+            len(merge["unresolved"]) if merge is not None else None
+        ),
+        "citation_failure_count": (
+            len(merge["citation_failures"]) if merge is not None else None
+        ),
+        "spec_sha256": spec_sha256,
     }
     sys.stdout.write(json.dumps(ack, indent=2, sort_keys=True) + "\n")
     return 0
@@ -769,7 +922,8 @@ _SUBCOMMAND_REGISTRY = [
     ),
     (
         "consume-ir",
-        "Parse + cross-validate the LLM's raw IR JSON against the ACs.",
+        "Parse + cross-validate the LLM's raw IR JSON against the ACs; "
+        "degrades (never fails) on a D3 citation miss.",
         cmd_consume_ir,
     ),
     (
@@ -784,7 +938,8 @@ _SUBCOMMAND_REGISTRY = [
     ),
     (
         "render-report",
-        "Render + write specs/<feature>/spec-check.md from the solved IR.",
+        "Render + write specs/<feature>/spec-check.md from the solved IR; "
+        "optionally merges cross-pass subject resolution + a spec hash.",
         cmd_render_report,
     ),
     (
@@ -900,6 +1055,20 @@ def _register_subcommands(subparsers):
                     "stdout ({\"acs\": [...], \"count\": N})."
                 ),
             )
+            sp.add_argument(
+                "--workspace-root",
+                default=".",
+                dest="workspace_root",
+                metavar="DIR",
+                help=(
+                    "Workspace root for the D3 citation check "
+                    "(validate_citations) -- arm='code' SubjectResolution "
+                    "citations are resolved relative to this root. "
+                    "Default: CWD. A citation MISS is recorded in the "
+                    "output's 'citation_errors' list; it never fails this "
+                    "verb's exit code -- see this verb's own docstring."
+                ),
+            )
 
         elif verb == "solve":
             sp.add_argument(
@@ -991,6 +1160,35 @@ def _register_subcommands(subparsers):
                     "sub-object. When given, renders a formalization "
                     "stability line in the report. Default: omitted -- "
                     "renders exactly as before quorum support existed."
+                ),
+            )
+            sp.add_argument(
+                "--ir-files-file",
+                default=None,
+                dest="ir_files_file",
+                metavar="PATH",
+                help=(
+                    "Optional path to a JSON array of ALL k passes' "
+                    "canonical IR objects (each the stdout shape of "
+                    "consume-ir, including its 'citation_errors' key). "
+                    "When given, merges every pass' subject resolutions "
+                    "(Plan 82 D4, resolved-in-any-pass) and renders the "
+                    "'## UNRESOLVED SUBJECTS' section + feeds the ack's "
+                    "'clean' / 'unresolved_subject_count' / "
+                    "'citation_failure_count' fields. Default: omitted -- "
+                    "renders exactly as before this mechanism existed."
+                ),
+            )
+            sp.add_argument(
+                "--spec-file",
+                default=None,
+                dest="spec_file",
+                metavar="PATH",
+                help=(
+                    "Optional path to spec.md to content-hash (sha256) "
+                    "into the report's '**Spec hash**' header line (Plan "
+                    "82 OQ-2) and the ack's 'spec_sha256'. Default: "
+                    "omitted -- no hash line rendered."
                 ),
             )
 

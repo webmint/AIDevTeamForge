@@ -23,7 +23,11 @@ human gate is the escape hatch when layer 1 is wrong.
 ## Sections (in render order)
 
 - **Header** — `# Spec-Check: <feature>`, then `**Feature**` and `**Date**` (the
-  helper computes the date itself).
+  helper computes the date itself), then `**Spec hash**: <sha256-hex>` when the
+  `render-report` call supplied a `--spec-file`: the content hash of the
+  `spec.md` this check ran over, so a later consumer can re-hash that file and
+  detect drift between when the report was produced and when it is consumed. No
+  `--spec-file`, no hash line.
 - **Scope blockquote (D11)** — the verbatim "consistency prover, not a
   mind-reader" boundary. Rendered near the top of every report.
 - **`## Recommendation`** — the recommended disposition (CONSISTENT / REVISE-SPEC
@@ -34,6 +38,18 @@ human gate is the escape hatch when layer 1 is wrong.
   formalization-stability line — "contradiction core reproduced in j/k passes" for
   a stable verdict, or a prominent "Formalization unstable" caveat for an unstable
   one (the instability is surfaced here, never folded into the disposition).
+- **`## UNRESOLVED SUBJECTS`** — rendered ONLY when the run supplied an
+  `--ir-files-file` and the cross-pass merge over those passes reports at least
+  one variable whose subject no pass resolved; otherwise the section is absent
+  entirely. One entry per such variable — its name, its gloss, and the `ac_id`s
+  whose coverage rows named it — then one line per pass that failed it: what
+  that pass searched, or, when the pass claimed a resolution whose citation did
+  not check out, that citation error. A variable resolved in ANY pass is
+  excluded. This is a FORMALIZATION FAILURE, not a solver result — those ACs
+  carry no constraint at all, so Z3 never reasoned about them and a CONSISTENT
+  verdict elsewhere in this report says nothing about them. Placed right after
+  the recommendation it qualifies: this is exactly the case a CONSISTENT verdict
+  can otherwise hide.
 - **`## How your ACs were read as logic`** (D4 SOFT layer) — the variable glosses,
   then each formalized AC's original text beside its logic reading. This is the
   human's check against a mistranslation.
@@ -41,10 +57,19 @@ human gate is the escape hatch when layer 1 is wrong.
   exactly the `unsat_core` ACs and the constraints that produced them, and states
   it is a deterministic proof over the formalization shown above, not a judgment
   about whether that formalization is what you meant.
-- **`## Coverage`** (D6 honesty ledger) — "Checked N of M acceptance criteria (K
-  unformalizable)", then a per-AC line marking each `formalized` /
-  `skipped_prose` / `skipped_unsupported` (with the skip reason). Makes "the solver
-  only proves over the formalized subset" structural, not a footnote.
+- **`## Coverage`** (D6 honesty ledger) — the headline
+  `**Checked N of M acceptance criteria** (K unformalizable).`, which gains a
+  third term — `(K unformalizable; J unresolved subjects).` — only when J > 0
+  (singular `subject` when J is 1; the K term renders unconditionally, "0
+  unformalizable" included). Then a per-AC line marking each `formalized` /
+  `skipped_prose` / `skipped_unsupported` (with the skip reason) /
+  `unresolved_subject` (with the named subject variable:
+  `- AC-2: unresolved_subject (subject: <variable>)`).
+  An `unresolved_subject` AC counts in neither N nor K — it is the ledger's
+  fourth term: the AC was never formalized, because nothing resolved what its
+  subject IS, so the solver never saw it; the failure detail lives in the
+  UNRESOLVED SUBJECTS section above. Makes "the solver only proves over the
+  formalized subset" structural, not a footnote.
 
 When the IR carries at least one `implication` constraint, a short reachability
 note (conditional ACs are checked assuming their trigger can fire — the solver

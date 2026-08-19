@@ -40,6 +40,7 @@ if str(_LIB_DIR) not in sys.path:
 from _spec_check._consume import (  # noqa: E402
     IRParseError,
     IRValidationError,
+    citation_errors_by_variable,
     extract_acs,
     parse_ir,
     validate_citations,
@@ -1343,6 +1344,92 @@ class TestValidateCitations(unittest.TestCase):
         ir = parse_ir(raw)
         errors = validate_citations(ir, self.workspace_root)
         self.assertEqual(len(errors), 2)
+
+
+# ---------------------------------------------------------------------------
+# citation_errors_by_variable
+# ---------------------------------------------------------------------------
+
+
+class TestCitationErrorsByVariable(unittest.TestCase):
+    """Direct unit tests -- this function has no caller-coverage exception
+    (house rule: every function gets its own test)."""
+
+    def test_empty_list_returns_empty_dict(self):
+        self.assertEqual(citation_errors_by_variable([]), {})
+
+    def test_one_error(self):
+        err = "variable 'shipped_state': cited file 'src/nope.py' does not exist under workspace root"
+        self.assertEqual(
+            citation_errors_by_variable([err]), {"shipped_state": err}
+        )
+
+    def test_multiple_errors_distinct_variables(self):
+        err_a = "variable 'a': cited file 'src/a.py' does not exist under workspace root"
+        err_b = "variable 'b': cited locator 'def b' not found in 'src/b.py'"
+        self.assertEqual(
+            citation_errors_by_variable([err_a, err_b]),
+            {"a": err_a, "b": err_b},
+        )
+
+    def test_non_matching_prefix_string_is_silently_skipped(self):
+        stray = "some unrelated error string that does not start with the prefix"
+        err = "variable 'a': cited file 'src/a.py' does not exist under workspace root"
+        result = citation_errors_by_variable([stray, err])
+        self.assertEqual(result, {"a": err})
+        self.assertNotIn(stray, result.values())
+
+    def test_duplicate_name_last_write_wins(self):
+        # Per the docstring: not expected in practice (validate_citations
+        # appends at most one error per variable), but a harmless default
+        # rather than a crash if it ever happens.
+        err1 = "variable 'a': cited file 'src/first.py' does not exist under workspace root"
+        err2 = "variable 'a': cited locator 'def a' not found in 'src/second.py'"
+        result = citation_errors_by_variable([err1, err2])
+        self.assertEqual(result, {"a": err2})
+
+    def test_apostrophe_bearing_variable_name_does_not_truncate(self):
+        # Regression for the FIRST-QUOTE truncation bug: the name closes
+        # on the literal "': " delimiter sequence, not the first bare "'"
+        # -- a name containing an apostrophe must not be cut short, and
+        # must not silently vanish from the mapping (which would fold a
+        # genuinely failing citation into "resolved" in the D4 merge).
+        err = (
+            "variable 'it's_shipped': cited file 'src/nope.py' does not "
+            "exist under workspace root"
+        )
+        result = citation_errors_by_variable([err])
+        self.assertEqual(result, {"it's_shipped": err})
+
+    def test_real_producer_apostrophe_name_via_validate_citations(self):
+        # Real-fixture round-trip: an actual validate_citations() failure
+        # for an apostrophe-bearing variable name, not a hand-authored
+        # string, fed through citation_errors_by_variable.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raw = {
+                "variables": [
+                    {
+                        "name": "it's_shipped",
+                        "sort": "Bool",
+                        "gloss": "g",
+                        "subject_resolution": {
+                            "status": "resolved",
+                            "arm": "code",
+                            "citation": "src/nope.py",
+                            "locator": "def x",
+                            "note": "n",
+                        },
+                    }
+                ],
+                "constraints": [],
+                "coverage": [],
+            }
+            ir = parse_ir(raw)
+            errors = validate_citations(ir, tmpdir)
+            self.assertEqual(len(errors), 1)
+            result = citation_errors_by_variable(errors)
+            self.assertIn("it's_shipped", result)
+            self.assertEqual(result["it's_shipped"], errors[0])
 
 
 # ---------------------------------------------------------------------------
