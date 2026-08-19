@@ -22,8 +22,10 @@ Module-level unit tests import plan_helper directly via sys.path insert.
 Stdlib only.
 """
 
+import hashlib
 import importlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -32,6 +34,7 @@ import tempfile
 import time
 import types
 import unittest
+import unittest.mock
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -103,6 +106,25 @@ from _specify._cmds_handoff import cmd_finalize_handoff as _specify_finalize_han
 from _specify._cmds_handoff import _dict_to_dataclass as _specify_dict_to_dataclass  # noqa: E402
 from _discover._cmds_handoff import cmd_finalize_handoff as _discover_finalize_handoff  # noqa: E402
 from _discover._state import _atomic_write_json, MEMO_FILE_NAME, REPORT_FILE_NAME  # noqa: E402
+
+# Producer imports for the verify-spec-check tests (real /devforge:spec-check
+# producer round-trip -- see VerifySpecCheckTests below). _spec_check depends
+# on the third-party z3 package only inside _solve.py; render_report/
+# write_spec_check_report/ir_schema stay stdlib-only (see _report.py's module
+# docstring), but SolveResult is defined in _solve.py, so this import DOES
+# require z3 to be installed. That is consistent with the rest of this
+# repo's test suite (tests/lib/_spec_check/test_report.py imports the same
+# symbol the same way) and with this being an opt-in dependency of a
+# separately-tested command, not of plan_helper itself.
+from _spec_check._report import render_report as _spec_check_render_report  # noqa: E402
+from _spec_check._report import write_spec_check_report as _spec_check_write_report  # noqa: E402
+from _spec_check._solve import SolveResult as _SpecCheckSolveResult  # noqa: E402
+from _spec_check.ir_schema import SpecCheckIR as _SpecCheckIR  # noqa: E402
+
+# The owner of the Z3 install message plan_helper._Z3_INSTALL_MESSAGE
+# duplicates (see cmd_verify_spec_check's docstring) -- stdlib-only, no z3
+# import required to read this constant.
+from _spec_check._preflight import Z3_INSTALL_MESSAGE as _OWNER_Z3_INSTALL_MESSAGE  # noqa: E402
 
 
 def _run(cwd, *args):
@@ -190,6 +212,42 @@ Minimal current state.
         "{sections}"
     ).format(status=status, sections=sections)
     Path(path).write_text(content, encoding="utf-8")
+
+
+def _write_real_spec_check_report(feature_dir, spec_path, with_hash=True):
+    """Write a real spec-check.md report next to spec_path via the REAL
+    /devforge:spec-check producer (_spec_check._report.render_report +
+    write_spec_check_report), using the REAL sha256-of-bytes code path
+    _spec_check/_cli.py uses ("Plan 82 OQ-2: the optional spec.md content
+    hash") when with_hash is True.
+
+    A minimal-but-real IR (zero variables/constraints/coverage -- valid
+    per SpecCheckIR's own docstring: "Each list may be empty
+    individually") and a minimal-but-real SolveResult(status="sat")
+    stand in for a real spec-check run; this test is exercising
+    plan_helper's gate logic against genuine producer OUTPUT SHAPE, not
+    re-testing render_report's own content (that's
+    tests/lib/_spec_check/test_report.py's job, already pinned there).
+
+    Returns the sha256 hex digest actually embedded (or None when
+    with_hash is False).
+    """
+    spec_bytes = Path(spec_path).read_bytes()
+    spec_sha256 = hashlib.sha256(spec_bytes).hexdigest() if with_hash else None
+
+    ir = _SpecCheckIR(variables=[], constraints=[], coverage=[])
+    solve_result = _SpecCheckSolveResult(status="sat", unsat_core=[])
+    content = _spec_check_render_report(
+        "specs/test-feature",
+        "2026-08-19",
+        solve_result,
+        ir,
+        [],
+        "CONSISTENT",
+        spec_sha256=spec_sha256,
+    )
+    _spec_check_write_report(str(feature_dir), content)
+    return spec_sha256
 
 
 class _CwdIsolation(unittest.TestCase):
@@ -3650,6 +3708,351 @@ class CallerClassificationBackCompatTests(unittest.TestCase):
 
         self.assertEqual(ps_dict1, ps_dict2,
                          "Round-trip must produce byte-identical plan_seeds dict")
+
+
+# ---------------------------------------------------------------------------
+# Tests: verify-spec-check (Plan 82 Phase 5)
+# ---------------------------------------------------------------------------
+
+
+class ParseSpecHashTests(unittest.TestCase):
+    """Unit tests for plan_helper._parse_spec_hash (direct import)."""
+
+    # 64 hex chars -- matches the real hex-digest length _spec_check emits.
+    _HASH_64 = "abcd" * 16
+
+    def test_no_hash_line_returns_none(self):
+        content = "# Spec-Check: x\n\n**Feature**: x\n**Date**: 2026-08-19\n\n"
+        self.assertIsNone(plan_helper._parse_spec_hash(content))
+
+    def test_valid_hash_line_returns_lowercased_hex(self):
+        content = "**Date**: 2026-08-19\n**Spec hash**: {0}\n\n".format(
+            self._HASH_64.upper()
+        )
+        self.assertEqual(
+            plan_helper._parse_spec_hash(content), self._HASH_64.lower()
+        )
+
+    def test_tolerates_surrounding_whitespace(self):
+        content = "**Spec hash**:   {0}   \n".format(self._HASH_64)
+        self.assertEqual(plan_helper._parse_spec_hash(content), self._HASH_64)
+
+    def test_too_short_token_is_malformed_returns_none(self):
+        content = "**Spec hash**: abc123\n"
+        self.assertIsNone(plan_helper._parse_spec_hash(content))
+
+    def test_too_long_token_is_malformed_returns_none(self):
+        content = "**Spec hash**: {0}ff\n".format(self._HASH_64)
+        self.assertIsNone(plan_helper._parse_spec_hash(content))
+
+    def test_non_hex_chars_are_malformed_returns_none(self):
+        content = "**Spec hash**: {0}\n".format("z" * 64)
+        self.assertIsNone(plan_helper._parse_spec_hash(content))
+
+    def test_empty_token_is_malformed_returns_none(self):
+        content = "**Spec hash**: \n"
+        self.assertIsNone(plan_helper._parse_spec_hash(content))
+
+    def test_first_match_wins(self):
+        content = (
+            "**Spec hash**: {0}\n"
+            "some other text\n"
+            "**Spec hash**: {1}\n"
+        ).format(self._HASH_64, "1234" * 16)
+        self.assertEqual(plan_helper._parse_spec_hash(content), self._HASH_64)
+
+
+class Z3AvailableTests(unittest.TestCase):
+    """Unit test for plan_helper._z3_available (direct import)."""
+
+    def test_matches_real_environment(self):
+        expected = importlib.util.find_spec("z3") is not None
+        self.assertEqual(plan_helper._z3_available(), expected)
+
+
+class Z3InstallMessageDriftTests(unittest.TestCase):
+    """Drift detection for the duplicated Z3_INSTALL_MESSAGE constant.
+
+    plan_helper._Z3_INSTALL_MESSAGE is a deliberate duplicate of
+    _spec_check/_preflight.py's Z3_INSTALL_MESSAGE (per-command isolation
+    convention -- see _z3_available's docstring). A byte-for-byte
+    equality pin here means an edit to the owner fails this test loudly,
+    instead of the two silently drifting apart.
+    """
+
+    def test_byte_identical_to_owner(self):
+        self.assertEqual(
+            plan_helper._Z3_INSTALL_MESSAGE, _OWNER_Z3_INSTALL_MESSAGE
+        )
+
+
+class VerifySpecCheckTests(_CwdIsolation):
+    """CLI-level tests for `plan_helper verify-spec-check` (subprocess)."""
+
+    def _feature_dir(self):
+        d = self.tmp_path / "specs" / "010-widget-catalog-search"
+        d.mkdir(parents=True)
+        return d
+
+    def test_spec_missing_sibling_gate_shape(self):
+        """(a) spec.md itself missing -- plain sibling-gate message, NOT
+        the multi-line BLOCKED form (nonsensical to tell the user to run
+        /devforge:spec-check when the spec path itself is bad)."""
+        missing = self.tmp_path / "specs" / "010-x" / "spec.md"
+        result = _run(
+            self.tmp_path, "verify-spec-check", "--spec", str(missing)
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("plan_helper: cannot read spec:", result.stderr)
+        self.assertNotIn("BLOCKED:", result.stderr)
+
+    def test_relative_spec_path_missing_shows_raw_string_in_stderr(self):
+        """(a) with a RELATIVE --spec pointing at a nonexistent file: the
+        stderr message carries the raw relative string the user passed,
+        NOT the resolved absolute path -- pins the deliberate
+        spec_path_raw usage in arm (a) (cmd_verify_spec_check reports
+        args.spec verbatim, matching every other spec-reading subcommand
+        in this file, e.g. cmd_render_pick_summary)."""
+        rel = "specs/010-x/spec.md"
+        result = _run(self.tmp_path, "verify-spec-check", "--spec", rel)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "plan_helper: cannot read spec: {0}".format(rel), result.stderr
+        )
+        # The resolved absolute path must NOT appear -- this is what
+        # distinguishes "raw" from "resolved" in the assertion above.
+        resolved = str((self.tmp_path / rel).resolve())
+        self.assertNotIn(resolved, result.stderr)
+
+    def test_report_absent_exits_2_blocked(self):
+        """(b) spec.md exists, no sibling spec-check.md -> BLOCKED, exit 2."""
+        d = self._feature_dir()
+        spec_path = d / "spec.md"
+        _write_minimal_spec(str(spec_path))
+
+        result = _run(
+            self.tmp_path, "verify-spec-check", "--spec", str(spec_path)
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "BLOCKED: /devforge:plan requires a fresh /devforge:spec-check "
+            "report.",
+            result.stderr,
+        )
+        self.assertIn(
+            "no spec-check report exists for this spec — run "
+            "`/devforge:spec-check` first",
+            result.stderr,
+        )
+        self.assertIn(
+            "This gate is mandatory, with no override.", result.stderr
+        )
+        self.assertIn(
+            "Run the following first, then retry /devforge:plan:",
+            result.stderr,
+        )
+        self.assertIn(
+            "  /devforge:spec-check {0}".format(spec_path.resolve()),
+            result.stderr,
+        )
+        self._assert_z3_append_matches_environment(result.stderr)
+
+    def test_fresh_report_exits_0_with_ack(self):
+        """Report present, hash matches current spec.md -> exit 0 + JSON ack."""
+        d = self._feature_dir()
+        spec_path = d / "spec.md"
+        _write_minimal_spec(str(spec_path))
+        expected_hash = _write_real_spec_check_report(d, spec_path)
+
+        result = _run(
+            self.tmp_path, "verify-spec-check", "--spec", str(spec_path)
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ack = json.loads(result.stdout)
+        self.assertEqual(ack["fresh"], True)
+        self.assertEqual(ack["spec_sha256"], expected_hash)
+        self.assertEqual(
+            ack["report_path"], str((d / "spec-check.md").resolve())
+        )
+
+    def test_relative_spec_path_resolves_and_succeeds(self):
+        """A relative --spec path resolves against cwd, same as pick-spec."""
+        d = self._feature_dir()
+        spec_path = d / "spec.md"
+        _write_minimal_spec(str(spec_path))
+        _write_real_spec_check_report(d, spec_path)
+
+        rel = os.path.relpath(str(spec_path), str(self.tmp_path))
+        result = _run(self.tmp_path, "verify-spec-check", "--spec", rel)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ack = json.loads(result.stdout)
+        self.assertEqual(ack["fresh"], True)
+
+    def test_stale_after_spec_edit_exits_2_blocked(self):
+        """(d) spec.md edited after the report was produced -> hash
+        mismatch -> BLOCKED, exit 2."""
+        d = self._feature_dir()
+        spec_path = d / "spec.md"
+        _write_minimal_spec(str(spec_path))
+        _write_real_spec_check_report(d, spec_path)
+
+        # Mutate spec.md after the report was produced.
+        with open(spec_path, "a", encoding="utf-8") as fh:
+            fh.write("\n## Edited after spec-check\n")
+
+        result = _run(
+            self.tmp_path, "verify-spec-check", "--spec", str(spec_path)
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "BLOCKED: /devforge:plan requires a fresh /devforge:spec-check "
+            "report.",
+            result.stderr,
+        )
+        self.assertIn("changed after the spec-check report at", result.stderr)
+        self.assertIn("re-run required", result.stderr)
+        self.assertIn(
+            "This gate is mandatory, with no override.", result.stderr
+        )
+        self._assert_z3_append_matches_environment(result.stderr)
+
+    def test_pre_hash_report_exits_2_blocked(self):
+        """(c) report exists but predates hash tracking (no '**Spec hash**:'
+        line) -> BLOCKED, exit 2."""
+        d = self._feature_dir()
+        spec_path = d / "spec.md"
+        _write_minimal_spec(str(spec_path))
+        _write_real_spec_check_report(d, spec_path, with_hash=False)
+
+        result = _run(
+            self.tmp_path, "verify-spec-check", "--spec", str(spec_path)
+        )
+        self.assertEqual(result.returncode, 2)
+        report_path = d / "spec-check.md"
+        self.assertIn(
+            "the spec-check report at {0} carries no valid "
+            "`**Spec hash**:` line".format(report_path.resolve()),
+            result.stderr,
+        )
+        self.assertIn("stale, re-run required", result.stderr)
+        self._assert_z3_append_matches_environment(result.stderr)
+
+    def test_malformed_hash_line_exits_2_blocked(self):
+        """(c) report present with a malformed (non-64-hex) '**Spec
+        hash**:' line -> same treatment as a pre-hash report -> BLOCKED,
+        exit 2.
+
+        This scenario is produced by taking REAL producer output (a valid
+        report from _write_real_spec_check_report) and mutating only the
+        hash token via string substitution -- a real render_report never
+        emits a malformed token (hashlib.hexdigest() is always exactly 64
+        hex chars), so a hand-authored corruption of an otherwise-real
+        report is the only way to exercise this defensive branch; it
+        stands in for a hand-edited or truncated spec-check.md on disk.
+        """
+        d = self._feature_dir()
+        spec_path = d / "spec.md"
+        _write_minimal_spec(str(spec_path))
+        real_hash = _write_real_spec_check_report(d, spec_path)
+        report_path = d / "spec-check.md"
+        corrupted = report_path.read_text(encoding="utf-8").replace(
+            "**Spec hash**: {0}".format(real_hash),
+            "**Spec hash**: not-a-hash",
+        )
+        self.assertIn("**Spec hash**: not-a-hash", corrupted)
+        report_path.write_text(corrupted, encoding="utf-8")
+
+        result = _run(
+            self.tmp_path, "verify-spec-check", "--spec", str(spec_path)
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(
+            "carries no valid `**Spec hash**:` line", result.stderr
+        )
+        self.assertIn("stale, re-run required", result.stderr)
+
+    def _assert_z3_append_matches_environment(self, stderr):
+        """The z3-install-message append is environment-driven (probes the
+        REAL `import z3`); assert its presence matches whether z3 is
+        actually importable here, rather than hardcoding either state.
+        The mock-driven append/skip behavior itself is pinned
+        independently of the real environment in VerifySpecCheckZ3Tests.
+        """
+        z3_installed = importlib.util.find_spec("z3") is not None
+        if z3_installed:
+            self.assertNotIn("pip install z3-solver", stderr)
+        else:
+            self.assertIn("pip install z3-solver", stderr)
+            self.assertIn(
+                "/devforge:spec-check requires the Z3 SMT solver", stderr
+            )
+
+
+class VerifySpecCheckZ3Tests(unittest.TestCase):
+    """Direct-import tests pinning the z3-probe append/skip behavior of
+    `verify-spec-check`, via monkeypatching plan_helper._z3_available --
+    does NOT require z3 to be absent (or present) on the test machine.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.feature_dir = self.tmp / "specs" / "011-widget"
+        self.feature_dir.mkdir(parents=True)
+        self.spec_path = self.feature_dir / "spec.md"
+        _write_minimal_spec(str(self.spec_path))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _call(self, spec_path):
+        ns = types.SimpleNamespace(spec=str(spec_path))
+        stderr_capture = io.StringIO()
+        stdout_capture = io.StringIO()
+        with unittest.mock.patch("sys.stderr", stderr_capture), \
+                unittest.mock.patch("sys.stdout", stdout_capture):
+            rc = plan_helper.cmd_verify_spec_check(ns)
+        return rc, stdout_capture.getvalue(), stderr_capture.getvalue()
+
+    def test_z3_absent_appends_install_message_on_blocked_arm(self):
+        """Report absent (arm b) + z3 unavailable -> the install message
+        is appended to the BLOCKED text."""
+        with unittest.mock.patch.object(
+            plan_helper, "_z3_available", return_value=False
+        ):
+            rc, _out, err = self._call(self.spec_path)
+        self.assertEqual(rc, 2)
+        self.assertIn(plan_helper._Z3_INSTALL_MESSAGE, err)
+
+    def test_z3_present_no_append_on_blocked_arm(self):
+        """Report absent (arm b) + z3 available -> no install message."""
+        with unittest.mock.patch.object(
+            plan_helper, "_z3_available", return_value=True
+        ):
+            rc, _out, err = self._call(self.spec_path)
+        self.assertEqual(rc, 2)
+        self.assertNotIn(plan_helper._Z3_INSTALL_MESSAGE, err)
+
+    def test_z3_probe_skipped_entirely_on_exit_0(self):
+        """Fresh report (exit 0) -> the z3 probe is never invoked at all --
+        a fresh report means the check already ran; z3 absence must not
+        block planning."""
+        _write_real_spec_check_report(
+            self.feature_dir, self.spec_path
+        )
+        never_called = unittest.mock.Mock(
+            side_effect=AssertionError(
+                "_z3_available must not be called on the exit-0 path"
+            )
+        )
+        with unittest.mock.patch.object(
+            plan_helper, "_z3_available", never_called
+        ):
+            rc, out, _err = self._call(self.spec_path)
+        self.assertEqual(rc, 0)
+        never_called.assert_not_called()
+        ack = json.loads(out)
+        self.assertEqual(ack["fresh"], True)
 
 
 if __name__ == "__main__":

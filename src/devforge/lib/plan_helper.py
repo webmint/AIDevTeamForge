@@ -130,6 +130,38 @@ Subcommands:
       Absent/stub is the correct state on a fresh install, not a fault to
       report -- takes no arguments and always exits 0.
 
+  verify-spec-check --spec <spec-path>
+      Plan 82 Phase 5: mandatory presence+freshness gate for
+      /devforge:spec-check, run at /devforge:plan's PHASE 0a.8 before
+      planning starts. Checks PRESENCE + FRESHNESS ONLY -- NEVER the
+      spec-check VERDICT (a REVISE-SPEC report satisfies this gate just
+      as well as a CONSISTENT one; the human owns dispositions).
+      Freshness = content hash: re-hashes the current spec.md (sha256 of
+      its raw bytes) and compares against the sibling report's
+      "**Spec hash**:" header line (<spec-dir>/spec-check.md, written by
+      _spec_check/_report.py's render_report). Read-only -- never flips
+      a **Status**: line, never writes a file.
+      Modeled on specify_helper's `find-handoffs --require` gate: exit 2
+      + a BLOCKED stderr message the command copies verbatim, with NO
+      override flag of any kind.
+      Exit 0: report exists, carries a valid 64-hex spec-hash line, and
+        it matches sha256(spec.md). Prints a JSON ack to stdout (fresh,
+        report_path, spec_sha256). The z3 probe is skipped entirely on
+        this path.
+      Exit 2 (BLOCKED, stderr), one of:
+        (a) spec.md itself missing/unreadable -- the plain
+            "cannot read spec: <path>" sibling-gate shape, NOT the
+            multi-line BLOCKED form (telling the user to run
+            /devforge:spec-check would be nonsensical when the spec
+            path itself is bad).
+        (b) no spec-check.md report exists next to the spec.
+        (c) the report exists but carries no valid hash line (a
+            pre-hash report, or a malformed one).
+        (d) the report's recorded hash does not match the current
+            spec.md (the spec changed after the check ran).
+        Arms (b)/(c)/(d) probe z3 availability and, when absent, append
+        the one-time install message to the BLOCKED text.
+
 Exit codes:
   0 — success
   1 — reserved for I/O failures (write errors)
@@ -143,6 +175,7 @@ Stdlib only. Python 3.8+.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -2360,6 +2393,212 @@ def cmd_read_memory(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: verify-spec-check
+# ---------------------------------------------------------------------------
+#
+# Plan 82 Phase 5: the mandatory presence+freshness gate for
+# /devforge:spec-check, run at /devforge:plan's PHASE 0a.8 before planning
+# starts. Checks PRESENCE + FRESHNESS ONLY -- never the spec-check VERDICT
+# (a REVISE-SPEC report satisfies this gate exactly like a CONSISTENT one;
+# the human owns dispositions, not this helper). Modeled on
+# specify_helper's `find-handoffs --require` (_specify/_cmds_handoff.py
+# cmd_find_handoffs): exit 2 + a BLOCKED stderr message the command copies
+# verbatim, with NO override flag of any kind.
+
+_SPEC_HASH_LINE_PATTERN = re.compile(
+    r"^\*\*Spec hash\*\*:[ \t]*(\S*)[ \t]*$", re.MULTILINE
+)
+_HEX64_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def _parse_spec_hash(report_content: str) -> Optional[str]:
+    """Return the lowercased 64-hex spec hash recorded in a spec-check report.
+
+    Anchors on the literal '**Spec hash**: ' prefix at line start -- the
+    exact line _spec_check/_report.py's render_report emits
+    ('**Spec hash**: {0}'.format(spec_sha256), Plan 82 OQ-2). Tolerates
+    surrounding whitespace around the captured token; the first matching
+    line wins.
+
+    Returns None for two distinct producer states this gate treats
+    identically (both are "not verifiably fresh"):
+      - no such line exists at all (a report rendered before the hash
+        mechanism existed -- a pre-hash report);
+      - the line exists but its token is not exactly 64 hex characters
+        (a malformed hash line).
+    """
+    m = _SPEC_HASH_LINE_PATTERN.search(report_content)
+    if not m:
+        return None
+    token = m.group(1)
+    if not _HEX64_PATTERN.match(token):
+        return None
+    return token.lower()
+
+
+def _z3_available() -> bool:
+    """Probe whether the z3 SMT solver package is importable.
+
+    Duplicates _spec_check/_preflight.py's check_z3 predicate (import-only
+    -- no injectable importer parameter here, since plan_helper has no
+    CLI-level test-only flag; tests instead monkeypatch this function
+    directly via the module-level import, per test_plan_helper.py's
+    "Module-level unit tests import plan_helper directly" convention).
+    Duplicated rather than imported across the command-package boundary,
+    matching this repo's per-command isolation convention (see
+    _spec_check/_preflight.py's own docstring, which duplicates the same
+    sentinel set from _grill/_audit/_review rather than importing them).
+    """
+    try:
+        import z3  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+# Duplicated verbatim from _spec_check/_preflight.py's Z3_INSTALL_MESSAGE --
+# plan_helper does not import across command packages (see _z3_available's
+# docstring above for the rationale). Keep byte-identical to the owner if
+# it ever changes.
+_Z3_INSTALL_MESSAGE = (
+    "/devforge:spec-check requires the Z3 SMT solver. Install it once with:\n"
+    "\n"
+    "    pip install z3-solver\n"
+    "\n"
+    "(opt-in dependency -- not installed by default, since /devforge:spec-check is "
+    "opt-in.)"
+)
+
+
+def _render_blocked_spec_check(cause_line: str, spec_path: Path) -> str:
+    """Assemble the multi-line BLOCKED message for a failed presence/freshness gate.
+
+    Every arm names /devforge:spec-check as the required next step and
+    states the gate is mandatory with no override (no flag on this verb
+    offers one). When z3 is unavailable, appends the one-time install
+    message -- so the user is not sent to a command (/devforge:spec-check)
+    that will itself refuse to run, for a different, undiagnosed reason.
+    """
+    lines = [
+        "BLOCKED: /devforge:plan requires a fresh /devforge:spec-check report.",
+        cause_line,
+        "This gate is mandatory, with no override.",
+        "",
+        "Run the following first, then retry /devforge:plan:",
+        "  /devforge:spec-check {0}".format(spec_path),
+    ]
+    if not _z3_available():
+        lines.append("")
+        lines.append(_Z3_INSTALL_MESSAGE)
+    return "\n".join(lines) + "\n"
+
+
+def cmd_verify_spec_check(args: argparse.Namespace) -> int:
+    """Mandatory presence+freshness gate for /devforge:spec-check.
+
+    Usage: verify-spec-check --spec <path-to-spec.md>
+
+    Read-only probe -- never flips a **Status**: line, never writes a
+    file. Checks PRESENCE + FRESHNESS of the sibling spec-check report
+    (<feature-dir>/spec-check.md) ONLY; never the spec-check VERDICT (a
+    REVISE-SPEC report satisfies this gate exactly like a CONSISTENT one
+    -- the human owns dispositions, not this helper).
+
+    Freshness = content hash: re-hashes the CURRENT spec.md (sha256 of
+    its raw bytes, matching _spec_check/_cli.py's own
+    hashlib.sha256(spec_bytes).hexdigest() code path) and compares
+    against the report's '**Spec hash**:' header line
+    (_spec_check/_report.py's render_report, Plan 82 OQ-2).
+
+    Exit 0: report exists, carries a valid 64-hex '**Spec hash**:' line,
+      and it equals sha256(spec.md). Prints a JSON ack to stdout:
+        {"fresh": true, "report_path": <str>, "spec_sha256": <hex>}
+      The z3 probe is skipped entirely on this path -- a fresh report
+      means the check already ran; z3 absence must not block planning.
+
+    Exit 2 (BLOCKED, stderr), one of four distinct causes:
+      (a) spec.md itself missing/unreadable -- same failure shape as the
+          other spec-reading subcommands in this file (a plain
+          "plan_helper: cannot read spec: <path>" line via _die()), NOT
+          the multi-line BLOCKED form: telling the user to run
+          /devforge:spec-check would be nonsensical when the spec path
+          itself is bad.
+      (b) no spec-check report exists next to the spec.
+      (c) the report exists but carries no valid hash line (a pre-hash
+          report, or a malformed one -- both "not verifiably fresh",
+          see _parse_spec_hash).
+      (d) the report's recorded hash does not match the current
+          spec.md (the spec changed after the check ran).
+      Arms (b)/(c)/(d) each probe z3 availability and, when absent,
+      append the one-time install message to the BLOCKED text.
+    """
+    spec_path_raw = args.spec
+    spec_path = Path(spec_path_raw)
+    if not spec_path.is_absolute():
+        spec_path = Path.cwd() / spec_path
+
+    # (a) spec.md missing/unreadable -- sibling-gate failure shape (same
+    # message _die() produces for every other spec-reading subcommand in
+    # this file), NOT the multi-line BLOCKED form.
+    try:
+        spec_bytes = spec_path.read_bytes()
+    except OSError:
+        return _die("cannot read spec: {0}".format(spec_path_raw))
+
+    spec_path = spec_path.resolve()
+    report_path = spec_path.parent / "spec-check.md"
+    current_hash = hashlib.sha256(spec_bytes).hexdigest()
+
+    report_content = _read_file(str(report_path))
+    if report_content is None:
+        # (b) no report at all.
+        sys.stderr.write(
+            _render_blocked_spec_check(
+                "no spec-check report exists for this spec — run "
+                "`/devforge:spec-check` first",
+                spec_path,
+            )
+        )
+        return 2
+
+    recorded_hash = _parse_spec_hash(report_content)
+    if recorded_hash is None:
+        # (c) report present but no valid hash line.
+        sys.stderr.write(
+            _render_blocked_spec_check(
+                "the spec-check report at {0} carries no valid "
+                "`**Spec hash**:` line (a pre-hash report, or a "
+                "malformed one) — stale, re-run required".format(
+                    report_path
+                ),
+                spec_path,
+            )
+        )
+        return 2
+
+    if recorded_hash != current_hash:
+        # (d) hash mismatch -- the spec changed after the check ran.
+        sys.stderr.write(
+            _render_blocked_spec_check(
+                "the spec at {0} changed after the spec-check report at "
+                "{1} was produced — re-run required".format(
+                    spec_path, report_path
+                ),
+                spec_path,
+            )
+        )
+        return 2
+
+    ack = {
+        "fresh": True,
+        "report_path": str(report_path),
+        "spec_sha256": current_hash,
+    }
+    sys.stdout.write(json.dumps(ack, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI wiring.
 # ---------------------------------------------------------------------------
 
@@ -2513,6 +2752,30 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     sp.set_defaults(func=cmd_read_memory)
+
+    # verify-spec-check
+    sp = sub.add_parser(
+        "verify-spec-check",
+        help=(
+            "Mandatory presence+freshness gate for /devforge:spec-check, "
+            "run before /devforge:plan. Read-only; never flips status, "
+            "never writes a file. Exit 0 + JSON ack when a spec-check "
+            "report exists and its recorded hash matches the current "
+            "spec.md; exit 2 with a BLOCKED message (naming "
+            "/devforge:spec-check, mandatory, no override) otherwise."
+        ),
+    )
+    # Deliberate departure from this file's positional-primary-path
+    # convention (every other verb takes its spec/plan path positionally):
+    # a named --spec reads unambiguously in plan/main.md's Phase 0a.8 bash
+    # block, which already emits --spec explicitly.
+    sp.add_argument(
+        "--spec",
+        required=True,
+        dest="spec",
+        help="Path to spec.md (the command resolves this at PHASE 0a.8).",
+    )
+    sp.set_defaults(func=cmd_verify_spec_check)
 
     return parser
 

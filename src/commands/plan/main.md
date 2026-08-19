@@ -6,7 +6,7 @@ argument-hint: "[spec-file]"
 
 # /devforge:plan — Technical Implementation Plan
 
-`/devforge:plan` is repeatable per feature. It takes an approved spec authored by `/devforge:specify` and produces a technical plan: research findings, optional data model, optional API contracts, architecture decisions, layer map, file impact, and risk assessment. The orchestrator (the LLM following this spec) writes all plan artefacts in the main thread via Write or Edit. Subagent dispatch is reserved for **decision work at two mandatory hooks**: the `architect` agent is invoked at Phase 1.3 (Architecture Decisions) for every run, and at Phase 0 Step 3 when 2+ architectural alternatives are being compared. Outside those hooks, the orchestrator authors directly — no per-phase auto-dispatch. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any plan work fires. Produces `specs/NNN-<feature>/plan.md` plus optional supporting docs, and ends with a manual handoff to `/devforge:breakdown` — no automated dispatch.
+`/devforge:plan` is repeatable per feature. It takes an approved spec authored by `/devforge:specify` and produces a technical plan: research findings, optional data model, optional API contracts, architecture decisions, layer map, file impact, and risk assessment. The orchestrator (the LLM following this spec) writes all plan artefacts in the main thread via Write or Edit. Subagent dispatch is reserved for **decision work at two mandatory hooks**: the `architect` agent is invoked at Phase 1.3 (Architecture Decisions) for every run, and at Phase 0 Step 3 when 2+ architectural alternatives are being compared. Outside those hooks, the orchestrator authors directly — no per-phase auto-dispatch. Phase 0's hard gate ensures the one-time setup chain (`/devforge:init-forge` → `/devforge:generate-docs` → `/devforge:configure` → `/devforge:constitute`) has completed before any plan work fires, and Phase 0a.8 additionally hard-gates on a fresh `/devforge:spec-check` report for the resolved spec. Produces `specs/NNN-<feature>/plan.md` plus optional supporting docs, and ends with a manual handoff to `/devforge:breakdown` — no automated dispatch.
 
 Usage: `/devforge:plan [spec-file]` (e.g. `/devforge:plan specs/008-prevent-duplicate-config-options/spec.md`, or `/devforge:plan` with no argument to use the most-recently-modified spec under `specs/`).
 
@@ -22,10 +22,12 @@ On approve, Phase 4 `[WIP]`-commits `spec.md` (whose `**Status**:` Phase 0b flip
 ## Context in the Workflow
 
 ```
-/devforge:research (optional) → /devforge:specify → /devforge:plan → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
+/devforge:research (optional) → /devforge:specify → /devforge:spec-check → /devforge:plan → /devforge:breakdown → /devforge:implement → /devforge:review → /devforge:verify → /devforge:summarize → /devforge:finalize
 ```
 
 `/devforge:plan` runs AFTER the spec is approved, BEFORE task breakdown. It answers technical questions the spec intentionally left open (specs describe WHAT, plans describe HOW).
+
+A fresh `/devforge:spec-check` report for the resolved spec is a precondition of this command: Phase 0a.8 blocks the run when no `spec-check.md` sits next to the spec, when the report carries no verifiable spec-content hash, or when its recorded hash no longer matches the current spec. That gate reads the report's presence and freshness only — never its verdict.
 
 ## PHASE 0a: Spec resolution
 
@@ -90,10 +92,10 @@ Check for drift via the helper:
 
 Stdout is one of four forms:
 
-- `current` — the spec's cited files are unchanged since it was stamped. Proceed silently to Phase 0b with the resolved path; no message needed.
-- `missing` — no drift stamp exists for this spec. Tell the user `"No drift stamp for this spec; proceeding."` and proceed to Phase 0b with the resolved path.
-- `drift <a>..<b> <file-1> <file-2> ...` — one or more spec-cited files changed since the spec was stamped. Tell the user the spec's cited files changed since it was stamped, listing the changed files from the `<file-...>` tokens. If the `drift` token carries no `<file-...>` tokens (only the two SHAs), do not claim specific files changed — tell the user the spec has drifted from its stamp but the cited-file list could not be computed (the spec file may have moved). Then ask via `AskUserQuestion` `"Spec-cited files changed since the spec was written — proceed with planning?"` — single-line text — with options `["proceed", "cancel"]`. On `cancel`, tell the user `"Re-check the spec against the changed files before re-running /devforge:plan."` and end the turn. On `proceed`, continue to Phase 0b with the resolved path.
-- `not-a-git-repo` (exit 2) — the drift check cannot run (no git repository / no HEAD / git binary missing). Tell the user `"Spec drift check unavailable (not a git repository); proceeding without it."` and proceed to Phase 0b with the resolved path. The drift check is advisory — a non-git target must NOT block planning.
+- `current` — the spec's cited files are unchanged since it was stamped. Proceed silently to Phase 0a.7 with the resolved path; no message needed.
+- `missing` — no drift stamp exists for this spec. Tell the user `"No drift stamp for this spec; proceeding."` and proceed to Phase 0a.7 with the resolved path.
+- `drift <a>..<b> <file-1> <file-2> ...` — one or more spec-cited files changed since the spec was stamped. Tell the user the spec's cited files changed since it was stamped, listing the changed files from the `<file-...>` tokens. If the `drift` token carries no `<file-...>` tokens (only the two SHAs), do not claim specific files changed — tell the user the spec has drifted from its stamp but the cited-file list could not be computed (the spec file may have moved). Then ask via `AskUserQuestion` `"Spec-cited files changed since the spec was written — proceed with planning?"` — single-line text — with options `["proceed", "cancel"]`. On `cancel`, tell the user `"Re-check the spec against the changed files before re-running /devforge:plan."` and end the turn. On `proceed`, continue to Phase 0a.7 with the resolved path.
+- `not-a-git-repo` (exit 2) — the drift check cannot run (no git repository / no HEAD / git binary missing). Tell the user `"Spec drift check unavailable (not a git repository); proceeding without it."` and proceed to Phase 0a.7 with the resolved path. The drift check is advisory — a non-git target must NOT block planning.
 
 ## PHASE 0a.7: Re-entry from /devforge:grill (conditional — skip if no seed)
 
@@ -105,11 +107,32 @@ Before beginning the plan work, check for a `/devforge:grill` re-entry seed. Glo
 - `must_satisfy` — what the revised plan must now satisfy; address it explicitly in the revised `plan.md`.
 - `carried_findings` — the remaining confirmed grill findings to address; stay monotonic (never re-introduce a defect a prior pass fixed).
 
-State up front in your first user-facing message that you are running in grill-revision mode for the named `feature`, and how this run addresses each `must_satisfy` item. The planning phases below run normally with this directive constraining what they produce — Phase 2 writes `plan.md` to the same path (overwriting the prior draft), so the result REPLACES rather than hand-patches the existing plan; the grill directive ensures the replacement addresses the confirmed findings rather than re-deriving the flawed decisions.
+State up front in your first user-facing message that you are running in grill-revision mode for the named `feature`, and how this run addresses each `must_satisfy` item. The planning phases below run normally with this directive constraining what they produce — Phase 2 writes `plan.md` to the same path (overwriting the prior draft), so the result REPLACES rather than hand-patches the existing plan; the grill directive ensures the replacement addresses the confirmed findings rather than re-deriving the flawed decisions. Proceed to Phase 0a.8 with the resolved path.
 
 This block only READS the seed's directive. It does NOT delete the seed or change its `cycle_count` (the seed's lifecycle is owned by the next `/devforge:grill` run — v1 simplification; do not add seed-deletion logic here).
 
-When no `specs/*/grill-seed.json` file matches `target_stage == "plan"`, this block is a no-op — proceed normally to Phase 0b with the resolved path (the normal case — `/devforge:grill` is opt-in, and no seed with `target_stage="plan"` is ever produced unless a `/devforge:grill` run reaches a REVISE-PLAN verdict).
+When no `specs/*/grill-seed.json` file matches `target_stage == "plan"`, this block is a no-op — proceed normally to Phase 0a.8 with the resolved path (the normal case — `/devforge:grill` is opt-in, and no seed with `target_stage="plan"` is ever produced unless a `/devforge:grill` run reaches a REVISE-PLAN verdict).
+
+## PHASE 0a.8: Spec-check gate (mandatory)
+
+`/devforge:plan` requires a fresh `/devforge:spec-check` report for the resolved spec. This phase is a gate only — it blocks the run when that report is absent or stale, and does nothing else. There is no user gate here; do not invoke `AskUserQuestion`.
+
+Check the report via the helper:
+
+```bash
+.devforge/lib/plan_helper verify-spec-check --spec <resolved-path>
+```
+
+The verb is read-only — it never flips a `**Status**:` line and never writes a file. It re-hashes the current `spec.md` (sha256 over the file's raw bytes) and compares that hash against the `**Spec hash**:` line recorded in the sibling `spec-check.md`. Handle the exit code:
+
+- Exit 0 → a `spec-check.md` sits next to the spec and its recorded hash matches the current `spec.md`. Stdout is a JSON ack carrying `fresh`, `report_path`, and `spec_sha256`; surface the `report_path` value to the user in one line, e.g. `"Spec-check report is fresh: <report_path>."` Then proceed to Phase 0b with the resolved path.
+- Exit 2 → BLOCKED. Copy the helper's stderr VERBATIM into your next user-facing message as a fenced code block (do not summarize or paraphrase), then end the turn. The stderr is already the complete user-facing message: on the three report-state causes — no `spec-check.md` next to the spec, a report carrying no valid `**Spec hash**:` line, a report whose recorded hash no longer matches the spec — it names the cause, states that this gate is mandatory with no override, carries the `/devforge:spec-check <spec-path>` line to run next, and appends the one-time `pip install z3-solver` message when that package is not importable. The fourth cause is the resolved `spec.md` itself being unreadable, which prints the plain `plan_helper: cannot read spec: <path>` line and names no next command (running `/devforge:spec-check` would not repair a bad spec path). Add nothing to either shape and drop nothing from it.
+
+`/devforge:spec-check` is user-invoked: name it, never run it yourself. On the BLOCKED path this run is over — the user runs `/devforge:spec-check`, then re-invokes `/devforge:plan`, which restarts at Phase 0a.
+
+This gate reads PRESENCE and FRESHNESS only — never the report's verdict. A report recommending REVISE-SPEC satisfies it exactly as a CONSISTENT one does, because the human owns the disposition. Do not add a verdict condition, an override flag, or a skip arm to this phase: the helper offers none of them, and a future session must not "strengthen" the gate into one that reads the verdict.
+
+This phase runs BEFORE Phase 0b's Draft → Approved flip by design — a spec that cannot be planned must not be flipped to Approved.
 
 ## PHASE 0b: Status flip
 
